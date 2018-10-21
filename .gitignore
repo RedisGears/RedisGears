@@ -50,3 +50,10 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+config.txt
+run_script.py
+script_example.py
+.cproject
+.project
+.settings/
