@@ -18,7 +18,9 @@ static void KeysWriter_WriteRecord(void* ctx, Record* record){
     ResponseWriterCtx *rctx = ctx;
     size_t listLen;
     char* str;
+#ifdef WITHPYTHON
     PyObject* obj;
+#endif
     switch(RediStar_RecordGetType(record)){
     case STRING_RECORD:
         str = RediStar_StringRecordGet(record);
@@ -47,6 +49,7 @@ static void KeysWriter_WriteRecord(void* ctx, Record* record){
             KeysWriter_WriteRecord(ctx, RediStar_ListRecordGet(record, i));
         }
         break;
+#ifdef WITHPYTHON
     case PY_RECORD:
         obj = RS_PyObjRecordGet(record);
         if(PyObject_TypeCheck(obj, &PyBaseString_Type)) {
@@ -56,6 +59,7 @@ static void KeysWriter_WriteRecord(void* ctx, Record* record){
             RedisModule_ReplyWithStringBuffer(rctx->rctx, "PY RECORD", strlen("PY RECORD"));
         }
         break;
+#endif
     default:
         assert(false);
     }

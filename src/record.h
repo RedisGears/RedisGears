@@ -9,7 +9,9 @@
 #define SRC_RECORD_H_
 
 #include "redistar.h"
+#ifdef WITHPYTHON
 #include <Python.h>
+#endif
 
 void RS_FreeRecord(Record* record);
 enum RecordType RS_RecordGetType(Record* r);
@@ -34,8 +36,11 @@ void RS_LongRecordSet(Record* r, long val);
 Record* RS_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RS_KeyHandlerRecordGet(Record* r);
 Record* RS_PyObjRecordCreare();
+
+#ifdef WITHPYTHON
 PyObject* RS_PyObjRecordGet(Record* r);
 void RS_PyObjRecordSet(Record* r, PyObject* obj);
+#endif
 
 
 

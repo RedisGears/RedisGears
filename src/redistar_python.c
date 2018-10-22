@@ -51,7 +51,7 @@ static PyObject* run(PyObject *cls, PyObject *args){
 
     RSM_Write(rsctx, ReplyWriter, currCtx);
 
-    return PyLong_FromLong(1);;
+    return PyLong_FromLong(1);
 }
 
 PyMethodDef EmbMethods[] = {
@@ -60,7 +60,7 @@ PyMethodDef EmbMethods[] = {
     {NULL, NULL, 0, NULL}
 };
 
-int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc != 2){
         return RedisModule_WrongArity(ctx);
     }
@@ -74,7 +74,7 @@ int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     return REDISMODULE_OK;
 }
 
-Record* RediStarPy_PyCallbackMapper(Record *record, void* arg){
+static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg){
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -91,7 +91,7 @@ Record* RediStarPy_PyCallbackMapper(Record *record, void* arg){
     return record;
 }
 
-bool RediStarPy_PyCallbackFilter(Record *record, void* arg){
+static bool RediStarPy_PyCallbackFilter(Record *record, void* arg){
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -106,7 +106,7 @@ bool RediStarPy_PyCallbackFilter(Record *record, void* arg){
     return PyObject_IsTrue(ret);
 }
 
-char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* len){
+static char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* len){
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* extractor = arg;
     PyObject* pArgs = PyTuple_New(1);
@@ -131,7 +131,7 @@ char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* len){
     return retCStr;
 }
 
-Record* RediStarPy_PyCallbackReducer(char* key, size_t keyLen, Record *records, void* arg){
+static Record* RediStarPy_PyCallbackReducer(char* key, size_t keyLen, Record *records, void* arg){
     assert(RediStar_RecordGetType(records) == LIST_RECORD);
     PyObject* obj = PyList_New(0);
     for(size_t i = 0 ; i < RediStar_ListRecordLen(records) ; ++i){
@@ -214,7 +214,7 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
     return res;
 }
 
-Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg){
+static Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg){
     Record* res = RediStarPy_ToPyRecordMapperInternal(record, arg);
     RediStar_FreeRecord(record);
     return res;
@@ -227,7 +227,7 @@ Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg){
 //    ctx = starCtx('*')
 //    ctx.filter(filter)\n
 //    ctx.returnResults()
-int RediStarPy_Init(){
+int RediStarPy_Init(RedisModuleCtx *ctx){
     Py_SetProgramName("test");  /* optional but recommended */
     Py_Initialize();
     Py_InitModule("redistar", EmbMethods);
@@ -248,5 +248,17 @@ int RediStarPy_Init(){
                        "        return self\n"
                        "    def returnResults(self, recordToStr):\n"
                        "        redistar.run(self, recordToStr)\n");
+
+    RSM_RegisterFilter(RediStarPy_PyCallbackFilter);
+    RSM_RegisterMap(RediStarPy_ToPyRecordMapper);
+    RSM_RegisterMap(RediStarPy_PyCallbackMapper);
+    RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor);
+    RSM_RegisterReducer(RediStarPy_PyCallbackReducer);
+
+    if (RedisModule_CreateCommand(ctx, "execute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command example");
+        return REDISMODULE_ERR;
+    }
+
     return true;
 }

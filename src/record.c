@@ -1,7 +1,7 @@
 #include "redistar.h"
 #include "redistar_memory.h"
 #include "utils/arr_rm_alloc.h"
-#include <Python.h>
+#include "record.h"
 
 typedef struct KeysHandlerRecord{
     RedisModuleKey *keyHandler;
@@ -23,9 +23,11 @@ typedef struct ListRecord{
     Record** records;
 }ListRecord;
 
+#ifdef WITHPYTHON
 typedef struct PythonRecord{
     PyObject* obj;
 }PythonRecord;
+#endif
 
 typedef struct KeyRecord{
     char* key;
@@ -41,7 +43,9 @@ typedef struct Record{
         DoubleRecord doubleRecord;
         ListRecord listRecord;
         KeyRecord keyRecord;
+#ifdef WITHPYTHON
         PythonRecord pyRecord;
+#endif
     };
     enum RecordType type;
 }Record;
@@ -67,9 +71,11 @@ void RS_FreeRecord(Record* record){
     case KEY_HANDLER_RECORD:
         RedisModule_CloseKey(record->keyHandlerRecord.keyHandler);
         break;
+#ifdef WITHPYTHON
     case PY_RECORD:
         Py_DECREF(record->pyRecord.obj);
         break;
+#endif
     default:
         assert(false);
     }
@@ -192,6 +198,7 @@ RedisModuleKey* RS_KeyHandlerRecordGet(Record* r){
     return r->keyHandlerRecord.keyHandler;
 }
 
+#ifdef WITHPYTHON
 Record* RS_PyObjRecordCreare(){
     Record* ret = RS_ALLOC(sizeof(Record));
     ret->type = PY_RECORD;
@@ -209,3 +216,4 @@ void RS_PyObjRecordSet(Record* r, PyObject* obj){
     Py_INCREF(obj);
     r->pyRecord.obj = obj;
 }
+#endif

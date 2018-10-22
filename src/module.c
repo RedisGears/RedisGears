@@ -13,11 +13,11 @@
 #include "example.h"
 #include "utils/arr_rm_alloc.h"
 #include "redistar_memory.h"
+#ifdef WITHPYTHON
 #include "redistar_python.h"
+#endif
 #include "record.h"
 #include <stdbool.h>
-
-#include <Python.h>
 
 int moduleRegisterApi(const char *funcname, void *funcptr);
 
@@ -149,23 +149,15 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RSM_RegisterReader(KeysReader);
     RSM_RegisterWriter(ReplyWriter);
     RSM_RegisterFilter(TypeFilter);
-    RSM_RegisterFilter(RediStarPy_PyCallbackFilter);
     RSM_RegisterMap(ValueToRecordMapper);
-    RSM_RegisterMap(RediStarPy_ToPyRecordMapper);
-    RSM_RegisterMap(RediStarPy_PyCallbackMapper);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor);
-    RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor);
     RSM_RegisterReducer(CountReducer);
-    RSM_RegisterReducer(RediStarPy_PyCallbackReducer);
 
-    RediStarPy_Init();
+#ifdef WITHPYTHON
+    RediStarPy_Init(ctx);
+#endif
 
     if (RedisModule_CreateCommand(ctx, "example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command example");
-        return REDISMODULE_ERR;
-    }
-
-    if (RedisModule_CreateCommand(ctx, "execute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command example");
         return REDISMODULE_ERR;
     }
