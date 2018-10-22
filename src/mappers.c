@@ -50,9 +50,15 @@ static Record* ValueToListMapper(Record *record, void* arg){
     return record;
 }
 
-Record* ValueToRecordMapper(Record *record, void* redisModuleCtx){
-    assert(RediStar_RecordGetType(record) == KEY_RECORD);
-    assert(RediStar_RecordGetType(RediStar_KeyRecordGetVal(record)) == KEY_HANDLER_RECORD);
+Record* ValueToRecordMapper(Record *record, void* redisModuleCtx, char** err){
+    if(RediStar_RecordGetType(record) != KEY_RECORD){
+        *err = RS_STRDUP("value to record mapper works only on key records");
+        return NULL;
+    }
+    if(RediStar_RecordGetType(RediStar_KeyRecordGetVal(record)) != KEY_HANDLER_RECORD){
+        *err = RS_STRDUP("value to record mapper works only on key records with handler value");
+        return NULL;
+    }
     Record* handlerRecord = RediStar_KeyRecordGetVal(record);
     RedisModuleKey* handler = RediStar_KeyHandlerRecordGet(handlerRecord);
     switch(RedisModule_KeyType(handler)){

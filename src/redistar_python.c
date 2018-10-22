@@ -1,10 +1,13 @@
 #include "redistar_python.h"
 #include "redistar.h"
+#include "redistar_memory.h"
 #include "record.h"
 #include <Python.h>
 #include <assert.h>
 
 static RedisModuleCtx* currCtx = NULL;
+
+#define PYTHON_ERROR "error running python code"
 
 static PyObject* run(PyObject *cls, PyObject *args){
     PyObject* self = PyTuple_GetItem(args, 0);
@@ -69,12 +72,14 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
 
-    PyRun_SimpleString(script);
+    if(PyRun_SimpleString(script)){
+        RedisModule_ReplyWithError(ctx, "failed running the given script");
+    }
 
     return REDISMODULE_OK;
 }
 
-static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg){
+static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg, char** err){
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -83,6 +88,8 @@ static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg){
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     if(!newObj){
         PyErr_Print();
+        *err = RS_STRDUP(PYTHON_ERROR);
+        RediStar_FreeRecord(record);
         return NULL;
     }
     Py_INCREF(newObj);
@@ -91,7 +98,7 @@ static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg){
     return record;
 }
 
-static bool RediStarPy_PyCallbackFilter(Record *record, void* arg){
+static bool RediStarPy_PyCallbackFilter(Record *record, void* arg, char** err){
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -101,12 +108,13 @@ static bool RediStarPy_PyCallbackFilter(Record *record, void* arg){
     Py_DECREF(pArgs);
     if(!ret){
         PyErr_Print();
+        *err = RS_STRDUP(PYTHON_ERROR);
         return false;
     }
     return PyObject_IsTrue(ret);
 }
 
-static char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* len){
+static char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* len, char** err){
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* extractor = arg;
     PyObject* pArgs = PyTuple_New(1);
@@ -116,6 +124,7 @@ static char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* l
     Py_DECREF(pArgs);
     if(!ret){
         PyErr_Print();
+        *err = RS_STRDUP(PYTHON_ERROR);
         return "";
     }
     PyObject* retStr;
@@ -131,7 +140,7 @@ static char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* l
     return retCStr;
 }
 
-static Record* RediStarPy_PyCallbackReducer(char* key, size_t keyLen, Record *records, void* arg){
+static Record* RediStarPy_PyCallbackReducer(char* key, size_t keyLen, Record *records, void* arg, char** err){
     assert(RediStar_RecordGetType(records) == LIST_RECORD);
     PyObject* obj = PyList_New(0);
     for(size_t i = 0 ; i < RediStar_ListRecordLen(records) ; ++i){
@@ -146,11 +155,11 @@ static Record* RediStarPy_PyCallbackReducer(char* key, size_t keyLen, Record *re
     PyTuple_SetItem(pArgs, 0, keyPyObj);
     PyTuple_SetItem(pArgs, 1, obj);
     PyObject* ret = PyObject_CallObject(reducer, pArgs);
-    Py_DECREF(keyPyObj);
     Py_DECREF(pArgs);
     if(!ret){
         PyErr_Print();
         RediStar_FreeRecord(records);
+        *err = RS_STRDUP(PYTHON_ERROR);
         return NULL;
     }
     Record* retRecord = RS_PyObjRecordCreare();
@@ -214,7 +223,7 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
     return res;
 }
 
-static Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg){
+static Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg, char** err){
     Record* res = RediStarPy_ToPyRecordMapperInternal(record, arg);
     RediStar_FreeRecord(record);
     return res;

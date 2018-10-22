@@ -30,7 +30,6 @@ typedef struct GroupByExecutionStep{
     RediStar_ReducerCallback reducer;
     void* reducerArg;
     Record** groupedRecords;
-    size_t index;
 }GroupByExecutionStep;
 
 typedef struct ExecutionStep{

@@ -15,7 +15,15 @@ typedef struct RediStarCtx RediStarCtx;
 typedef struct Record Record;
 
 enum RecordType{
-    KEY_HANDLER_RECORD, LONG_RECORD, DOUBLE_RECORD, STRING_RECORD, LIST_RECORD, KEY_RECORD, PY_RECORD
+    KEY_HANDLER_RECORD,
+    LONG_RECORD,
+    DOUBLE_RECORD,
+    STRING_RECORD,
+    LIST_RECORD,
+    KEY_RECORD,
+#ifdef WITHPYTHON
+    PY_RECORD
+#endif
 };
 
 /******************************* READERS *******************************/
@@ -41,23 +49,23 @@ typedef struct Writer{
 Writer* ReplyWriter(void* arg);
 
 /******************************* Filters *******************************/
-bool TypeFilter(Record *data, void* arg);
+bool TypeFilter(Record *data, void* arg, char** err);
 
 /******************************* Mappers *******************************/
-Record* ValueToRecordMapper(Record *record, void* redisModuleCtx);
+Record* ValueToRecordMapper(Record *record, void* redisModuleCtx, char** err);
 
 /******************************* GroupByExtractors *********************/
-char* KeyRecordStrValueExtractor(Record *data, void* arg, size_t* len);
+char* KeyRecordStrValueExtractor(Record *data, void* arg, size_t* len, char** err);
 
 /******************************* GroupByReducers ***********************/
-Record* CountReducer(char* key, size_t keyLen, Record *records, void* arg);
+Record* CountReducer(char* key, size_t keyLen, Record *records, void* arg, char** err);
 
 typedef Reader* (*RediStar_ReaderCallback)(void* arg);
 typedef Writer* (*RediStar_WriterCallback)(void* arg);
-typedef Record* (*RediStar_MapCallback)(Record *data, void* arg);
-typedef bool (*RediStar_FilterCallback)(Record *data, void* arg);
-typedef char* (*RediStar_ExtractorCallback)(Record *data, void* arg, size_t* len);
-typedef Record* (*RediStar_ReducerCallback)(char* key, size_t keyLen, Record *records, void* arg);
+typedef Record* (*RediStar_MapCallback)(Record *data, void* arg, char** err);
+typedef bool (*RediStar_FilterCallback)(Record *data, void* arg, char** err);
+typedef char* (*RediStar_ExtractorCallback)(Record *data, void* arg, size_t* len, char** err);
+typedef Record* (*RediStar_ReducerCallback)(char* key, size_t keyLen, Record *records, void* arg, char** err);
 
 #define MODULE_API_FUNC(x) (*x)
 

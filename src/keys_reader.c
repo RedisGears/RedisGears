@@ -18,7 +18,7 @@ static RedisModuleString* KeysReader_NextKey(KeysReaderCtx* readerCtx){
     if(readerCtx->isDone){
         return NULL;
     }
-    RedisModuleCallReply *reply = RedisModule_Call(readerCtx->ctx, "SCAN", "lcc", readerCtx->cursorIndex, "COUNT", "1");
+    RedisModuleCallReply *reply = RedisModule_Call(readerCtx->ctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "1000", "MATCH", readerCtx->match);
     if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
         if(reply) RedisModule_FreeCallReply(reply);
         return NULL;
@@ -96,6 +96,9 @@ Record* KeysReader_Next(void* ctx){
 void KeysReader_Free(void* ctx){
     KeysReaderCtx* krctx = ctx;
     RS_FREE(krctx->match);
+    for(size_t i = 0 ; i < array_len(krctx->pendingKeys) ; ++i){
+        RedisModule_FreeString(krctx->ctx, krctx->pendingKeys[i]);
+    }
     array_free(krctx->pendingKeys);
     RS_FREE(krctx);
 }
