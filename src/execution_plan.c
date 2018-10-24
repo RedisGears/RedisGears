@@ -9,102 +9,148 @@
 
 static Record* ExecutionPlan_NextRecord(ExecutionStep* step, char** err);
 
-static void ExecutionPlan_Group(ExecutionStep* step, char** err){
-#define GROUP_RECORD_INIT_LEN 10
-    assert(step->type == GROUPBY);
-    step->groupBy.groupedRecords = array_new(Record*, GROUP_RECORD_INIT_LEN);
-    dict* d = dictCreate(&dictTypeHeapStrings, NULL);
+static Record* ExecutionPlan_FilterNextRecord(ExecutionStep* step, char** err){
     Record* record = NULL;
     while((record = ExecutionPlan_NextRecord(step->prev, err))){
-        size_t buffLen;
-        char* buff = step->groupBy.extractor(record, step->groupBy.extractorArg, &buffLen, err);
+        bool filterRes = step->filter.filter(record, step->filter.stepArg, err);
         if(*err){
             RediStar_FreeRecord(record);
-            break;
+            return NULL;
         }
-        char* newBuff = RS_ALLOC(buffLen + 1);
-        memcpy(newBuff, buff, buffLen);
-        newBuff[buffLen] = '\0';
-        dictEntry* entry = dictFind(d, newBuff);
-        Record* r = NULL;
-        if(!entry){
-            r = RediStar_KeyRecordCreate();
-            RediStar_KeyRecordSetKey(r, newBuff, buffLen);
-            Record* val  = RediStar_ListRecordCreate(GROUP_RECORD_INIT_LEN);
-            RediStar_KeyRecordSetVal(r, val);
-            dictAdd(d, newBuff, r);
-            step->groupBy.groupedRecords = array_append(step->groupBy.groupedRecords, r);
+        if(filterRes){
+            return record;
         }else{
-            r = dictGetVal(entry);
-            RS_FREE(newBuff);
+            RediStar_FreeRecord(record);
         }
-        Record* listRecord = RediStar_KeyRecordGetVal(r);
-        RediStar_ListRecordAdd(listRecord, record);
     }
-    dictRelease(d);
+    return NULL;
+}
+
+static Record* ExecutionPlan_MapNextRecord(ExecutionStep* step, char** err){
+    Record* record = ExecutionPlan_NextRecord(step->prev, err);
+    if(record == NULL){
+        return NULL;
+    }
+    if(*err){
+        RediStar_FreeRecord(record);
+        return NULL;
+    }
+    if(record != NULL){
+        record = step->map.map(record, step->map.stepArg, err);
+        if(*err){
+            if(record){
+                RediStar_FreeRecord(record);
+            }
+            return NULL;
+        }
+    }
+    return record;
+}
+
+static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionStep* step, char** err){
+    size_t buffLen;
+    Record* record = ExecutionPlan_NextRecord(step->prev, err);
+    if(record == NULL){
+        return NULL;
+    }
+    char* buff = step->extractKey.extractor(record, step->extractKey.extractorArg, &buffLen, err);
+    if(*err){
+        RediStar_FreeRecord(record);
+        return NULL;
+    }
+    char* newBuff = RS_ALLOC(buffLen + 1);
+    memcpy(newBuff, buff, buffLen);
+    newBuff[buffLen] = '\0';
+    Record* r = RediStar_KeyRecordCreate();
+    RediStar_KeyRecordSetKey(r, newBuff, buffLen);
+    RediStar_KeyRecordSetVal(r, record);
+    return r;
+}
+
+static Record* ExecutionPlan_GroupNextRecord(ExecutionStep* step, char** err){
+#define GROUP_RECORD_INIT_LEN 10
+    dict* d = dictCreate(&dictTypeHeapStrings, NULL);
+    Record* record = NULL;
+    if(step->group.groupedRecords == NULL){
+        step->group.groupedRecords = array_new(Record*, GROUP_RECORD_INIT_LEN);
+        while((record = ExecutionPlan_NextRecord(step->prev, err))){
+            assert(RediStar_RecordGetType(record) == KEY_RECORD);
+            size_t keyLen;
+            char* key = RediStar_KeyRecordGetKey(record, &keyLen);
+            if(*err){
+                RediStar_FreeRecord(record);
+                break;
+            }
+            dictEntry* entry = dictFind(d, key);
+            Record* r = NULL;
+            if(!entry){
+                r = RediStar_KeyRecordCreate();
+                RediStar_KeyRecordSetKey(r, key, keyLen);
+                RediStar_KeyRecordSetKey(record, NULL, 0);
+                Record* val  = RediStar_ListRecordCreate(GROUP_RECORD_INIT_LEN);
+                RediStar_KeyRecordSetVal(r, val);
+                dictAdd(d, key, r);
+                step->group.groupedRecords = array_append(step->group.groupedRecords, r);
+            }else{
+                r = dictGetVal(entry);
+            }
+            Record* listRecord = RediStar_KeyRecordGetVal(r);
+            RediStar_ListRecordAdd(listRecord, RediStar_KeyRecordGetVal(record));
+            RediStar_KeyRecordSetVal(record, NULL);
+            RediStar_FreeRecord(record);
+        }
+        dictRelease(d);
+    }
+    if(array_len(step->group.groupedRecords) == 0){
+        return NULL;
+    }
+    return array_pop(step->group.groupedRecords);
+}
+
+static Record* ExecutionPlan_ReduceNextRecord(ExecutionStep* step, char** err){
+    Record* record = ExecutionPlan_NextRecord(step->prev, err);
+    if(!record){
+        return NULL;
+    }
+    if(*err){
+        if(record){
+            RediStar_FreeRecord(record);
+        }
+        return NULL;
+    }
+    assert(RediStar_RecordGetType(record) == KEY_RECORD);
+    size_t keyLen;
+    char* key = RediStar_KeyRecordGetKey(record, &keyLen);
+    Record* r = step->reduce.reducer(key, keyLen, RediStar_KeyRecordGetVal(record), step->reduce.reducerArg, err);
+    RediStar_KeyRecordSetVal(record, r);
+    return record;
 }
 
 static Record* ExecutionPlan_NextRecord(ExecutionStep* step, char** err){
     Record* record = NULL;
+    Record* r;
+    dictEntry* entry;
     switch(step->type){
     case READER:
         return step->reader->Next(step->reader->ctx);
         break;
     case MAP:
-        record = ExecutionPlan_NextRecord(step->prev, err);
-        if(record != NULL){
-            record = step->map.map(record, step->map.stepArg, err);
-            if(*err){
-                if(record){
-                    RediStar_FreeRecord(record);
-                }
-                return NULL;
-            }
-        }
-        return record;
+        return ExecutionPlan_MapNextRecord(step, err);
         break;
     case FILTER:
-        record = NULL;
-        while((record = ExecutionPlan_NextRecord(step->prev, err))){
-            bool filterRes = step->filter.filter(record, step->filter.stepArg, err);
-            if(*err){
-                RediStar_FreeRecord(record);
-                return NULL;
-            }
-            if(filterRes){
-                return record;
-            }else{
-                RediStar_FreeRecord(record);
-            }
-        }
-        return NULL;
+        return ExecutionPlan_FilterNextRecord(step, err);
         break;
-    case GROUPBY:
-        if(!step->groupBy.groupedRecords){
-            ExecutionPlan_Group(step, err);
-            if(*err){
-                return NULL;
-            }
-        }
-        if(array_len(step->groupBy.groupedRecords) == 0){
-            return NULL;
-        }
-        record = array_pop(step->groupBy.groupedRecords);
-        assert(RediStar_RecordGetType(record) == KEY_RECORD);
-        assert(RediStar_RecordGetType(RediStar_KeyRecordGetVal(record)) == LIST_RECORD);
-        size_t keyLen;
-        char* key = RediStar_KeyRecordGetKey(record, &keyLen);
-        Record* listRecord = RediStar_KeyRecordGetVal(record);
-        Record* reducedRecord = step->groupBy.reducer(key, keyLen, listRecord, step->groupBy.reducerArg, err);
-        if(*err){
-            if(reducedRecord){
-                RediStar_FreeRecord(reducedRecord);
-            }
-            return NULL;
-        }
-        RediStar_KeyRecordSetVal(record, reducedRecord);
-        return record;
+    case EXTRACTKEY:
+        return ExecutionPlan_ExtractKeyNextRecord(step, err);
         break;
+    case GROUP:
+        return ExecutionPlan_GroupNextRecord(step, err);
+        break;
+    case REDUCE:
+        return ExecutionPlan_ReduceNextRecord(step, err);
+        break;
+    case REPARTITION:
+        return ExecutionPlan_NextRecord(step->prev, err);
     default:
         assert(false);
         return NULL;
@@ -148,12 +194,18 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
         es->filter.filter = FiltersMgmt_Get(step->bStep.stepName);
         es->filter.stepArg = step->bStep.arg;
         break;
-    case GROUPBY:
-        es->groupBy.extractor = ExtractorsMgmt_Get(step->gbStep.extractorName);
-        es->groupBy.extractorArg = step->gbStep.extractorArg;
-        es->groupBy.reducer = ReducersMgmt_Get(step->gbStep.reducerName);
-        es->groupBy.reducerArg = step->gbStep.reducerArg;
-        es->groupBy.groupedRecords = NULL;
+    case EXTRACTKEY:
+        es->extractKey.extractor = ExtractorsMgmt_Get(step->bStep.stepName);
+        es->extractKey.extractorArg = step->bStep.arg;
+        break;
+    case REDUCE:
+        es->reduce.reducer = ReducersMgmt_Get(step->bStep.stepName);
+        es->reduce.reducerArg = step->bStep.arg;
+        break;
+    case GROUP:
+        es->group.groupedRecords = NULL;
+        break;
+    case REPARTITION:
         break;
     default:
         assert(false);
@@ -206,17 +258,20 @@ void ExecutionStep_Free(ExecutionStep* es){
     switch(es->type){
     case MAP:
     case FILTER:
+    case REPARTITION:
+    case EXTRACTKEY:
+    case REDUCE:
         break;
     case READER:
         es->reader->Free(es->reader->ctx);
         break;
-    case GROUPBY:
-        if(es->groupBy.groupedRecords){
-            for(size_t i = 0 ; i < array_len(es->groupBy.groupedRecords) ; ++i){
-                Record* r = es->groupBy.groupedRecords[i];
+    case GROUP:
+        if(es->group.groupedRecords){
+            for(size_t i = 0 ; i < array_len(es->group.groupedRecords) ; ++i){
+                Record* r = es->group.groupedRecords[i];
                 RediStar_FreeRecord(r);
             }
-            array_free(es->groupBy.groupedRecords);
+            array_free(es->group.groupedRecords);
         }
         break;
     default:
@@ -263,18 +318,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     RS_FREE(fep->writer);
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
-        switch(step->type){
-        case MAP:
-        case FILTER:
-            RS_FREE(step->bStep.stepName);
-            break;
-        case GROUPBY:
-            RS_FREE(step->gbStep.extractorName);
-            RS_FREE(step->gbStep.reducerName);
-            break;
-        default:
-            assert(false);
-        }
+        RS_FREE(step->bStep.stepName);
     }
     array_free(fep->steps);
     RS_FREE(fep);
@@ -292,7 +336,11 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
     FlatExecutionStep s;
     s.type = type;
     s.bStep.arg = arg;
-    s.bStep.stepName = RS_STRDUP(callbackName);
+    if(callbackName){
+        s.bStep.stepName = RS_STRDUP(callbackName);
+    }else{
+        s.bStep.stepName = NULL;
+    }
     fep->steps = array_append(fep->steps, s);
 }
 
@@ -306,11 +354,9 @@ void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbac
 
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                   const char* reducerName, void* reducerArg){
-    FlatExecutionStep s;
-    s.type = GROUPBY;
-    s.gbStep.extractorName = RS_STRDUP(extraxtorName);
-    s.gbStep.extractorArg = extractorArg;
-    s.gbStep.reducerName = RS_STRDUP(reducerName);
-    s.gbStep.reducerArg = reducerArg;
-    fep->steps = array_append(fep->steps, s);
+    FlatExecutionStep extractKey;
+    FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
+    FlatExecutionPlan_AddBasicStep(fep, NULL, NULL, REPARTITION);
+    FlatExecutionPlan_AddBasicStep(fep, NULL, NULL, GROUP);
+    FlatExecutionPlan_AddBasicStep(fep, reducerName, reducerArg, REDUCE);
 }

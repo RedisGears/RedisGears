@@ -65,8 +65,12 @@ void RS_FreeRecord(Record* record){
         array_free(record->listRecord.records);
         break;
     case KEY_RECORD:
-        RS_FREE(record->keyRecord.key);
-        RS_FreeRecord(record->keyRecord.record);
+        if(record->keyRecord.key){
+            RS_FREE(record->keyRecord.key);
+        }
+        if(record->keyRecord.record){
+            RS_FreeRecord(record->keyRecord.record);
+        }
         break;
     case KEY_HANDLER_RECORD:
         RedisModule_CloseKey(record->keyHandlerRecord.keyHandler);

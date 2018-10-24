@@ -11,7 +11,7 @@
 #include "redistar.h"
 
 enum StepType{
-    MAP, FILTER, READER, GROUPBY
+    MAP, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE
 };
 
 typedef struct MapExecutionStep{
@@ -24,20 +24,33 @@ typedef struct FilterExecutionStep{
     void* stepArg;
 }FilterExecutionStep;
 
-typedef struct GroupByExecutionStep{
+typedef struct ExtractKeyExecutionStep{
     RediStar_ExtractorCallback extractor;
     void* extractorArg;
+}ExtractKeyExecutionStep;
+
+typedef struct GroupExecutionStep{
+    Record** groupedRecords;
+}GroupExecutionStep;
+
+typedef struct ReduceExecutionStep{
     RediStar_ReducerCallback reducer;
     void* reducerArg;
-    Record** groupedRecords;
-}GroupByExecutionStep;
+}ReduceExecutionStep;
+
+typedef struct RepartitionExecutionStep{
+
+}RepartitionExecutionStep;
 
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
     union{
         MapExecutionStep map;
         FilterExecutionStep filter;
-        GroupByExecutionStep groupBy;
+        ExtractKeyExecutionStep extractKey;
+        RepartitionExecutionStep repartion;
+        GroupExecutionStep group;
+        ReduceExecutionStep reduce;
         Reader* reader;
     };
     enum StepType type;
@@ -54,17 +67,9 @@ typedef struct FlatBasicStep{
     void* arg;
 }FlatBasicStep;
 
-typedef struct FlatGroupByStep{
-    char* extractorName;
-    void* extractorArg;
-    char* reducerName;
-    void* reducerArg;
-}FlatGroupByStep;
-
 typedef struct FlatExecutionStep{
     union{
         FlatBasicStep bStep;
-        FlatGroupByStep gbStep;
     };
     enum StepType type;
 }FlatExecutionStep;
