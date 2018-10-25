@@ -6,12 +6,85 @@
 #include "redistar.h"
 #include "redistar_memory.h"
 #include "utils/dict.h"
+#include "utils/adlist.h"
+#include <pthread.h>
+#include <unistd.h>
 
-static Record* ExecutionPlan_NextRecord(ExecutionStep* step, char** err);
+typedef struct ExecutionPlansData{
+    list* executionPlansToRun;
+    list* executionPlansWaiting;
+    pthread_mutex_t mutex;
+    pthread_t* workers;
+}ExecutionPlansData;
 
-static Record* ExecutionPlan_FilterNextRecord(ExecutionStep* step, char** err){
+ExecutionPlansData epData;
+
+static Record* ExecutionPlan_NextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err);
+
+static void ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     Record* record = NULL;
-    while((record = ExecutionPlan_NextRecord(step->prev, err))){
+    ep->writer->Start(rctx, ep->writer->ctx);
+    char* err = NULL;
+    while((record = ExecutionPlan_NextRecord(ep->start, rctx, &err))){
+        if(err){
+            Record* r = RediStar_StringRecordCreate(err);
+            ep->writer->Write(rctx, ep->writer->ctx, r);
+            break;
+        }
+        ep->writer->Write(rctx, ep->writer->ctx, record);
+    }
+    if(err){
+        Record* r = RediStar_StringRecordCreate(err);
+        ep->writer->Write(rctx, ep->writer->ctx, r);
+    }
+    ep->writer->Done(rctx, ep->writer->ctx);
+
+    ExecutionPlan_Free(ep, rctx);
+}
+
+static void* ExecutionPlan_ThreadMain(void *arg){
+    while(true){
+        pthread_mutex_lock(&epData.mutex);
+        listNode *node = listFirst(epData.executionPlansToRun);
+        if(!node){
+            pthread_mutex_unlock(&epData.mutex);
+            sleep(1);
+            continue;
+        }
+        ExecutionPlan* ep = node->value;
+        listDelNode(epData.executionPlansToRun, node);
+        pthread_mutex_unlock(&epData.mutex);
+        RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(ep->bc);
+        ExecutionPlan_Execute(ep, rctx);
+        if(ep->bc){
+            RedisModule_UnblockClient(ep->bc, NULL);
+        }
+        RedisModule_FreeThreadSafeContext(rctx);
+    }
+}
+
+static void ExecutionPlan_AddToRunList(ExecutionPlan* ep){
+    pthread_mutex_lock(&epData.mutex);
+    listAddNodeTail(epData.executionPlansToRun, ep);
+    pthread_mutex_unlock(&epData.mutex);
+
+}
+
+void ExecutionPlan_InitializeWorkers(size_t numberOfworkers){
+    epData.executionPlansToRun = listCreate();
+    epData.executionPlansWaiting = listCreate();
+    pthread_mutex_init(&epData.mutex, NULL);
+    epData.workers = array_new(pthread_t, numberOfworkers);
+    for(size_t i = 0 ; i < numberOfworkers ; ++i){
+        pthread_t thread;
+        epData.workers = array_append(epData.workers, thread);
+        pthread_create(epData.workers + i, NULL, ExecutionPlan_ThreadMain, NULL);
+    }
+}
+
+static Record* ExecutionPlan_FilterNextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    Record* record = NULL;
+    while((record = ExecutionPlan_NextRecord(step->prev, rctx, err))){
         bool filterRes = step->filter.filter(record, step->filter.stepArg, err);
         if(*err){
             RediStar_FreeRecord(record);
@@ -26,8 +99,8 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionStep* step, char** err){
     return NULL;
 }
 
-static Record* ExecutionPlan_MapNextRecord(ExecutionStep* step, char** err){
-    Record* record = ExecutionPlan_NextRecord(step->prev, err);
+static Record* ExecutionPlan_MapNextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    Record* record = ExecutionPlan_NextRecord(step->prev, rctx, err);
     if(record == NULL){
         return NULL;
     }
@@ -47,9 +120,9 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionStep* step, char** err){
     return record;
 }
 
-static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionStep* step, char** err){
+static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     size_t buffLen;
-    Record* record = ExecutionPlan_NextRecord(step->prev, err);
+    Record* record = ExecutionPlan_NextRecord(step->prev, rctx, err);
     if(record == NULL){
         return NULL;
     }
@@ -67,13 +140,13 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionStep* step, char** er
     return r;
 }
 
-static Record* ExecutionPlan_GroupNextRecord(ExecutionStep* step, char** err){
+static Record* ExecutionPlan_GroupNextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err){
 #define GROUP_RECORD_INIT_LEN 10
     dict* d = dictCreate(&dictTypeHeapStrings, NULL);
     Record* record = NULL;
     if(step->group.groupedRecords == NULL){
         step->group.groupedRecords = array_new(Record*, GROUP_RECORD_INIT_LEN);
-        while((record = ExecutionPlan_NextRecord(step->prev, err))){
+        while((record = ExecutionPlan_NextRecord(step->prev, rctx, err))){
             assert(RediStar_RecordGetType(record) == KEY_RECORD);
             size_t keyLen;
             char* key = RediStar_KeyRecordGetKey(record, &keyLen);
@@ -107,8 +180,8 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionStep* step, char** err){
     return array_pop(step->group.groupedRecords);
 }
 
-static Record* ExecutionPlan_ReduceNextRecord(ExecutionStep* step, char** err){
-    Record* record = ExecutionPlan_NextRecord(step->prev, err);
+static Record* ExecutionPlan_ReduceNextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    Record* record = ExecutionPlan_NextRecord(step->prev, rctx, err);
     if(!record){
         return NULL;
     }
@@ -126,54 +199,42 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionStep* step, char** err){
     return record;
 }
 
-static Record* ExecutionPlan_NextRecord(ExecutionStep* step, char** err){
+static Record* ExecutionPlan_NextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = NULL;
     Record* r;
     dictEntry* entry;
     switch(step->type){
     case READER:
-        return step->reader->Next(step->reader->ctx);
+        return step->reader->Next(rctx, step->reader->ctx);
         break;
     case MAP:
-        return ExecutionPlan_MapNextRecord(step, err);
+        return ExecutionPlan_MapNextRecord(step, rctx, err);
         break;
     case FILTER:
-        return ExecutionPlan_FilterNextRecord(step, err);
+        return ExecutionPlan_FilterNextRecord(step, rctx, err);
         break;
     case EXTRACTKEY:
-        return ExecutionPlan_ExtractKeyNextRecord(step, err);
+        return ExecutionPlan_ExtractKeyNextRecord(step, rctx, err);
         break;
     case GROUP:
-        return ExecutionPlan_GroupNextRecord(step, err);
+        return ExecutionPlan_GroupNextRecord(step, rctx, err);
         break;
     case REDUCE:
-        return ExecutionPlan_ReduceNextRecord(step, err);
+        return ExecutionPlan_ReduceNextRecord(step, rctx, err);
         break;
     case REPARTITION:
-        return ExecutionPlan_NextRecord(step->prev, err);
+        return ExecutionPlan_NextRecord(step->prev, rctx, err);
     default:
         assert(false);
         return NULL;
     }
 }
 
-void ExecutionPlan_Run(ExecutionPlan* ep){
-    Record* record = NULL;
-    ep->writer->Start(ep->writer->ctx);
-    char* err = NULL;
-    while((record = ExecutionPlan_NextRecord(ep->start, &err))){
-        if(err){
-            Record* r = RediStar_StringRecordCreate(err);
-            ep->writer->Write(ep->writer->ctx, r);
-            break;
-        }
-        ep->writer->Write(ep->writer->ctx, record);
+void ExecutionPlan_Run(ExecutionPlan* ep, RedisModuleCtx* rctx){
+    if(rctx){
+        ep->bc = RedisModule_BlockClient(rctx, NULL, NULL, NULL, 1000000000);
     }
-    if(err){
-        Record* r = RediStar_StringRecordCreate(err);
-        ep->writer->Write(ep->writer->ctx, r);
-    }
-    ep->writer->Done(ep->writer->ctx);
+    ExecutionPlan_AddToRunList(ep);
 }
 
 static Writer* ExecutionPlan_NewWriter(FlatExecutionWriter* writer){
@@ -248,12 +309,13 @@ ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep){
     }else{
         ret->start = reader;
     }
+    ret->bc = NULL;
     return ret;
 }
 
-void ExecutionStep_Free(ExecutionStep* es){
+void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     if(es->prev){
-        ExecutionStep_Free(es->prev);
+        ExecutionStep_Free(es->prev, ctx);
     }
     switch(es->type){
     case MAP:
@@ -263,7 +325,7 @@ void ExecutionStep_Free(ExecutionStep* es){
     case REDUCE:
         break;
     case READER:
-        es->reader->Free(es->reader->ctx);
+        es->reader->Free(ctx, es->reader->ctx);
         break;
     case GROUP:
         if(es->group.groupedRecords){
@@ -280,9 +342,9 @@ void ExecutionStep_Free(ExecutionStep* es){
     RS_FREE(es);
 }
 
-void ExecutionPlan_Free(ExecutionPlan* ep){
-    ExecutionStep_Free(ep->start);
-    ep->writer->Free(ep->writer->ctx);
+void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
+    ExecutionStep_Free(ep->start, ctx);
+    ep->writer->Free(ctx, ep->writer->ctx);
     RS_FREE(ep->reader);
     RS_FREE(ep->writer);
     RS_FREE(ep);

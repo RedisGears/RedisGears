@@ -23,6 +23,7 @@ int moduleRegisterApi(const char *funcname, void *funcptr);
 
 typedef struct RediStarCtx{
     FlatExecutionPlan* fep;
+    RedisModuleCtx *ctx;
 }RediStarCtx;
 
 #define REGISTER_API(name) \
@@ -55,10 +56,11 @@ static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer){
     return ReducersMgmt_Add(name, reducer);
 }
 
-static RediStarCtx* RS_Load(char* name, void* arg){
+static RediStarCtx* RS_Load(char* name, RedisModuleCtx *ctx, void* arg){
     RediStarCtx* res = RS_ALLOC(sizeof(*res));
     res->fep = FlatExecutionPlan_New();
     FlatExecutionPlan_SetReader(res->fep, name, arg);
+    res->ctx = ctx;
     return res;
 }
 
@@ -80,8 +82,7 @@ static int RS_GroupBy(RediStarCtx* ctx, char* extraxtorName, void* extractorArg,
 static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
     FlatExecutionPlan_SetWriter(ctx->fep, name, arg);
     ExecutionPlan* ep = ExecutionPlan_New(ctx->fep);
-    ExecutionPlan_Run(ep);
-    ExecutionPlan_Free(ep);
+    ExecutionPlan_Run(ep, ctx->ctx);
     FlatExecutionPlan_Free(ctx->fep);
     RS_FREE(ctx);
     return 1;
@@ -152,6 +153,8 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RSM_RegisterMap(ValueToRecordMapper);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor);
     RSM_RegisterReducer(CountReducer);
+
+    ExecutionPlan_InitializeWorkers(1);
 
 #ifdef WITHPYTHON
     RediStarPy_Init(ctx);

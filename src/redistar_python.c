@@ -16,8 +16,8 @@ static PyObject* run(PyObject *cls, PyObject *args){
     PyObject* regex = PyObject_GetAttr(self, regexKey);
     Py_DECREF(regexKey);
     char* regexStr = PyString_AsString(regex);
-    KeysReaderCtx* readerCtx = RediStar_KeysReaderCtxCreate(currCtx, regexStr);
-    RediStarCtx* rsctx = RSM_Load(KeysReader, readerCtx);
+    KeysReaderCtx* readerCtx = RediStar_KeysReaderCtxCreate(regexStr);
+    RediStarCtx* rsctx = RSM_Load(KeysReader, currCtx, readerCtx);
     RSM_Map(rsctx, ValueToRecordMapper, currCtx);
     RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
 
@@ -76,10 +76,14 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
         RedisModule_ReplyWithError(ctx, "failed running the given script");
     }
 
+    PyEval_ReleaseLock();
+
     return REDISMODULE_OK;
 }
 
 static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg, char** err){
+    PyGILState_STATE state = PyGILState_Ensure();
+    // Call Python/C API functions...
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -95,6 +99,7 @@ static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg, char** err
     Py_INCREF(newObj);
     Py_DECREF(oldObj);
     RS_PyObjRecordSet(record, newObj);
+    PyGILState_Release(state);
     return record;
 }
 
@@ -224,8 +229,10 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
 }
 
 static Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg, char** err){
+    PyGILState_STATE state = PyGILState_Ensure();
     Record* res = RediStarPy_ToPyRecordMapperInternal(record, arg);
     RediStar_FreeRecord(record);
+    PyGILState_Release(state);
     return res;
 }
 
@@ -239,6 +246,7 @@ static Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg, char** err
 int RediStarPy_Init(RedisModuleCtx *ctx){
     Py_SetProgramName("test");  /* optional but recommended */
     Py_Initialize();
+    PyEval_InitThreads();
     Py_InitModule("redistar", EmbMethods);
 
     PyRun_SimpleString("import redistar\n"
