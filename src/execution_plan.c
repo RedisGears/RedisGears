@@ -48,7 +48,7 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         listNode *node = listFirst(epData.executionPlansToRun);
         if(!node){
             pthread_mutex_unlock(&epData.mutex);
-            sleep(1);
+            usleep(10000);
             continue;
         }
         ExecutionPlan* ep = node->value;
