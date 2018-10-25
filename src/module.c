@@ -32,28 +32,28 @@ typedef struct RediStarCtx{
         return false;\
     }
 
-static int RS_RegisterReader(char* name, RediStar_ReaderCallback reader){
-    return ReadersMgmt_Add(name, reader);
+static int RS_RegisterReader(char* name, RediStar_ReaderCallback reader, ArgType* type){
+    return ReadersMgmt_Add(name, reader, type);
 }
 
-static int RS_RegisterWriter(char* name, RediStar_WriterCallback writer){
-    return WritersMgmt_Add(name, writer);
+static int RS_RegisterWriter(char* name, RediStar_WriterCallback writer, ArgType* type){
+    return WritersMgmt_Add(name, writer, type);
 }
 
-static int RS_RegisterMap(char* name, RediStar_MapCallback map){
-    return MapsMgmt_Add(name, map);
+static int RS_RegisterMap(char* name, RediStar_MapCallback map, ArgType* type){
+    return MapsMgmt_Add(name, map, type);
 }
 
-static int RS_RegisterFilter(char* name, RediStar_FilterCallback filter){
-    return FiltersMgmt_Add(name, filter);
+static int RS_RegisterFilter(char* name, RediStar_FilterCallback filter, ArgType* type){
+    return FiltersMgmt_Add(name, filter, type);
 }
 
-static int RS_RegisterGroupByExtractor(char* name, RediStar_ExtractorCallback extractor){
-    return ExtractorsMgmt_Add(name, extractor);
+static int RS_RegisterGroupByExtractor(char* name, RediStar_ExtractorCallback extractor, ArgType* type){
+    return ExtractorsMgmt_Add(name, extractor, type);
 }
 
-static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer){
-    return ReducersMgmt_Add(name, reducer);
+static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer, ArgType* type){
+    return ReducersMgmt_Add(name, reducer, type);
 }
 
 static RediStarCtx* RS_Load(char* name, RedisModuleCtx *ctx, void* arg){
@@ -81,16 +81,25 @@ static int RS_GroupBy(RediStarCtx* ctx, char* extraxtorName, void* extractorArg,
 
 static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
     FlatExecutionPlan_SetWriter(ctx->fep, name, arg);
-    ExecutionPlan* ep = ExecutionPlan_New(ctx->fep);
-    ExecutionPlan_Run(ep, ctx->ctx);
-    FlatExecutionPlan_Free(ctx->fep);
+    FlatExecutionPlan_Run(ctx->fep, ctx->ctx);
     RS_FREE(ctx);
     return 1;
 }
 
-KeysReaderCtx* RS_KeysReaderCtxCreate(RedisModuleCtx* ctx, char* match);
+ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize){
+    ArgType* ret = RS_ALLOC(sizeof(*ret));
+    *ret = (ArgType){
+        .type = RS_STRDUP(name),
+        .free = free,
+        .serialize = serialize,
+        .deserialize = deserialize,
+    };
+    return ret;
+}
 
 static bool RediStar_RegisterApi(){
+    REGISTER_API(CreateType);
+
     REGISTER_API(RegisterReader);
     REGISTER_API(RegisterWriter);
     REGISTER_API(RegisterMap);
@@ -102,7 +111,6 @@ static bool RediStar_RegisterApi(){
     REGISTER_API(Filter);
     REGISTER_API(GroupBy);
     REGISTER_API(Write);
-    REGISTER_API(KeysReaderCtxCreate);
 
     REGISTER_API(FreeRecord);
     REGISTER_API(RecordGetType);
@@ -130,6 +138,9 @@ static bool RediStar_RegisterApi(){
     return true;
 }
 
+ArgType* GetKeysReaderArgType();
+ArgType* GetKeysWriterArgType();
+
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (RedisModule_Init(ctx, "RediStar", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
@@ -147,12 +158,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
     Mgmt_Init();
 
-    RSM_RegisterReader(KeysReader);
-    RSM_RegisterWriter(ReplyWriter);
-    RSM_RegisterFilter(TypeFilter);
-    RSM_RegisterMap(ValueToRecordMapper);
-    RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor);
-    RSM_RegisterReducer(CountReducer);
+    RSM_RegisterReader(KeysReader, GetKeysReaderArgType());
+    RSM_RegisterWriter(ReplyWriter, GetKeysWriterArgType());
+    RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
+    RSM_RegisterReducer(CountReducer, NULL);
 
     ExecutionPlan_InitializeWorkers(1);
 

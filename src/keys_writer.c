@@ -3,10 +3,35 @@
 #include <assert.h>
 #include "redistar_memory.h"
 #include "record.h"
+#include "mgmt.h"
 
 typedef struct ResponseWriterCtx{
     size_t replySize;
 }ResponseWriterCtx;
+
+static void KeysWriter_Free(void* ctx){
+    ResponseWriterCtx *writerCtx = ctx;
+    RS_FREE(writerCtx);
+}
+
+static char* KeysWriter_Serialize(void* ctx){
+    return NULL;
+}
+
+static void* KeysWriter_Deserialize(char* ctx){
+    ResponseWriterCtx* rctx = RS_ALLOC(sizeof(*ctx));
+    *rctx = (ResponseWriterCtx){
+        .replySize = 0,
+    };
+    return rctx;;
+}
+
+static ArgType KeysWriterType = (ArgType){
+    .type = "KeysWriterType",
+    .free = KeysWriter_Free,
+    .serialize = KeysWriter_Serialize,
+    .deserialize = KeysWriter_Deserialize,
+};
 
 static void KeysWriter_Start(RedisModuleCtx* rctx, void* ctx){
     RedisModule_ReplyWithArray(rctx, REDISMODULE_POSTPONED_ARRAY_LEN);
@@ -74,9 +99,8 @@ static void KeysWriter_Done(RedisModuleCtx* rctx, void* ctx){
     RedisModule_ReplySetArrayLength(rctx, writerCtx->replySize);
 }
 
-static void KeysWriter_Free(RedisModuleCtx* rctx, void* ctx){
-    ResponseWriterCtx *writerCtx = ctx;
-    RS_FREE(writerCtx);
+ArgType* GetKeysWriterArgType(){
+    return &KeysWriterType;
 }
 
 Writer* ReplyWriter(void* arg){
@@ -91,7 +115,6 @@ Writer* ReplyWriter(void* arg){
         .Start = KeysWriter_Start,
         .Write = KeysWriter_Write,
         .Done = KeysWriter_Done,
-        .Free = KeysWriter_Free,
     };
     return ret;
 }
