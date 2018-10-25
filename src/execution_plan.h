@@ -60,6 +60,7 @@ typedef struct ExecutionPlan{
     Reader* reader;
     ExecutionStep* start;
     Writer* writer;
+    RedisModuleBlockedClient* bc;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -100,8 +101,10 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
                                   const char* reducerName, void* reducerArg);
 
 ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep);
-void ExecutionPlan_Free(ExecutionPlan* ep);
-void ExecutionPlan_Run(ExecutionPlan* ep);
+void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx);
+void ExecutionPlan_Run(ExecutionPlan* ep, RedisModuleCtx *ctx);
+
+void ExecutionPlan_InitializeWorkers(size_t numberOfworkers);
 
 
 #endif /* SRC_EXECUTION_PLAN_H_ */

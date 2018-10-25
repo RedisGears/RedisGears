@@ -30,8 +30,8 @@ enum RecordType{
 
 typedef struct Reader{
     void* ctx;
-    Record* (*Next)(void* ctx);
-    void (*Free)(void* ctx);
+    Record* (*Next)(RedisModuleCtx* rctx, void* ctx);
+    void (*Free)(RedisModuleCtx* rctx, void* ctx);
 }Reader;
 
 Reader* KeysReader(void* arg);
@@ -40,10 +40,10 @@ Reader* KeysReader(void* arg);
 
 typedef struct Writer{
     void* ctx;
-    void (*Start)(void* ctx);
-    void (*Write)(void* ctx, Record* record);
-    void (*Done)(void* ctx);
-    void (*Free)(void* ctx);
+    void (*Start)(RedisModuleCtx* rctx, void* ctx);
+    void (*Write)(RedisModuleCtx* rctx, void* ctx, Record* record);
+    void (*Done)(RedisModuleCtx* rctx, void* ctx);
+    void (*Free)(RedisModuleCtx* rctx, void* ctx);
 }Writer;
 
 Writer* ReplyWriter(void* arg);
@@ -70,7 +70,7 @@ typedef Record* (*RediStar_ReducerCallback)(char* key, size_t keyLen, Record *re
 #define MODULE_API_FUNC(x) (*x)
 
 typedef struct KeysReaderCtx KeysReaderCtx;
-KeysReaderCtx* MODULE_API_FUNC(RediStar_KeysReaderCtxCreate)(RedisModuleCtx* ctx, char* match);
+KeysReaderCtx* MODULE_API_FUNC(RediStar_KeysReaderCtxCreate)(char* match);
 
 void MODULE_API_FUNC(RediStar_FreeRecord)(Record* record);
 enum RecordType MODULE_API_FUNC(RediStar_RecordGetType)(Record* r);
@@ -109,8 +109,8 @@ int MODULE_API_FUNC(RediStar_RegisterReducer)(char* name, RediStar_ReducerCallba
 #define RSM_RegisterGroupByExtractor(name) RediStar_RegisterGroupByExtractor(#name, name);
 #define RSM_RegisterReducer(name) RediStar_RegisterReducer(#name, name);
 
-RediStarCtx* MODULE_API_FUNC(RediStar_Load)(char* name, void* arg);
-#define RSM_Load(name, arg) RediStar_Load(#name, arg)
+RediStarCtx* MODULE_API_FUNC(RediStar_Load)(char* name, RedisModuleCtx *ctx, void* arg);
+#define RSM_Load(name, ctx, arg) RediStar_Load(#name, ctx, arg)
 
 int MODULE_API_FUNC(RediStar_Map)(RediStarCtx* ctx, char* name, void* arg);
 #define RSM_Map(ctx, name, arg) RediStar_Map(ctx, #name, arg)

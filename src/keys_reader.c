@@ -4,21 +4,20 @@
 #include <stdbool.h>
 
 typedef struct KeysReaderCtx{
-    RedisModuleCtx* ctx;
     char* match;
     long long cursorIndex;
     bool isDone;
     RedisModuleString** pendingKeys;
 }KeysReaderCtx;
 
-static RedisModuleString* KeysReader_NextKey(KeysReaderCtx* readerCtx){
+static RedisModuleString* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
     if(array_len(readerCtx->pendingKeys) > 0){
         return array_pop(readerCtx->pendingKeys);
     }
     if(readerCtx->isDone){
         return NULL;
     }
-    RedisModuleCallReply *reply = RedisModule_Call(readerCtx->ctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "1000", "MATCH", readerCtx->match);
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "1000", "MATCH", readerCtx->match);
     if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
         if(reply) RedisModule_FreeCallReply(reply);
         return NULL;
@@ -39,7 +38,7 @@ static RedisModuleString* KeysReader_NextKey(KeysReaderCtx* readerCtx){
 
     RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
     RedisModule_StringToLongLong(cursorStr, &readerCtx->cursorIndex);
-    RedisModule_FreeString(readerCtx->ctx, cursorStr);
+    RedisModule_FreeString(rctx, cursorStr);
 
     if(readerCtx->cursorIndex == 0){
         readerCtx->isDone = true;
@@ -62,13 +61,13 @@ static RedisModuleString* KeysReader_NextKey(KeysReaderCtx* readerCtx){
     return array_pop(readerCtx->pendingKeys);
 }
 
-Record* KeysReader_Next(void* ctx){
+Record* KeysReader_Next(RedisModuleCtx* rctx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
     RedisModuleString* key = NULL;
-    while((key = KeysReader_NextKey(readerCtx))){
-        RedisModuleKey *keyHandler = RedisModule_OpenKey(readerCtx->ctx, key, REDISMODULE_READ);
+    while((key = KeysReader_NextKey(rctx, readerCtx))){
+        RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
         if(!keyHandler){
-            RedisModule_FreeString(readerCtx->ctx, key);
+            RedisModule_FreeString(rctx, key);
             continue;
         }
         size_t keyLen;
@@ -86,29 +85,28 @@ Record* KeysReader_Next(void* ctx){
 
         RediStar_KeyRecordSetVal(record, handlerRecord);
 
-        RedisModule_FreeString(readerCtx->ctx, key);
+        RedisModule_FreeString(rctx, key);
 
         return record;
     }
     return NULL;
 }
 
-void KeysReader_Free(void* ctx){
+void KeysReader_Free(RedisModuleCtx* rctx, void* ctx){
     KeysReaderCtx* krctx = ctx;
     RS_FREE(krctx->match);
     for(size_t i = 0 ; i < array_len(krctx->pendingKeys) ; ++i){
-        RedisModule_FreeString(krctx->ctx, krctx->pendingKeys[i]);
+        RedisModule_FreeString(rctx, krctx->pendingKeys[i]);
     }
     array_free(krctx->pendingKeys);
     RS_FREE(krctx);
 }
 
-KeysReaderCtx* RS_KeysReaderCtxCreate(RedisModuleCtx* ctx, char* match){
+KeysReaderCtx* RS_KeysReaderCtxCreate(char* match){
 #define PENDING_KEYS_INIT_CAP 10
     KeysReaderCtx* krctx = RS_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
         .match = RS_STRDUP(match),
-        .ctx = ctx,
         .cursorIndex = 0,
         .isDone = false,
         .pendingKeys = array_new(RedisModuleString*, PENDING_KEYS_INIT_CAP),
