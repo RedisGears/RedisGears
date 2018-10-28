@@ -15,7 +15,7 @@ KeysReaderCtx* RS_KeysReaderCtxCreate(char* match){
 #define PENDING_KEYS_INIT_CAP 10
     KeysReaderCtx* krctx = RS_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
-        .match = RS_STRDUP(match),
+        .match = match,
         .cursorIndex = 0,
         .isDone = false,
         .pendingRecords = array_new(Record*, PENDING_KEYS_INIT_CAP),
@@ -23,14 +23,14 @@ KeysReaderCtx* RS_KeysReaderCtxCreate(char* match){
     return krctx;
 }
 
-char* RS_KeysReaderCtxSerialize(void* argType){
-    KeysReaderCtx* readerCtx = argType;
-    return readerCtx->match;
+void RS_KeysReaderCtxSerialize(void* arg, BufferWriter* bw){
+    char* match = arg;
+    RediStar_BWWriteString(bw, match);
 }
 
-void* RS_KeysReaderCtxDeserialize(char* argTypeSerialized){
-    KeysReaderCtx* readerCtx = RS_KeysReaderCtxCreate(argTypeSerialized);
-    return readerCtx;
+void* RS_KeysReaderCtxDeserialize(BufferReader* br){
+    char* match = RediStar_BRReadString(br);
+    return RS_STRDUP(match);
 }
 
 void KeysReader_Free(void* ctx){

@@ -9,6 +9,7 @@
 #define SRC_RECORD_H_
 
 #include "redistar.h"
+#include "utils/buffer.h"
 #ifdef WITHPYTHON
 #include <Python.h>
 #endif
@@ -36,6 +37,9 @@ void RS_LongRecordSet(Record* r, long val);
 Record* RS_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RS_KeyHandlerRecordGet(Record* r);
 Record* RS_PyObjRecordCreare();
+
+void RS_SerializeRecord(BufferWriter* bw, Record* r);
+Record* RS_DeserializeRecord(BufferReader* br);
 
 #ifdef WITHPYTHON
 PyObject* RS_PyObjRecordGet(Record* r);

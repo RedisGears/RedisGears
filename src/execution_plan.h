@@ -11,7 +11,7 @@
 #include "redistar.h"
 
 enum StepType{
-    MAP, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE
+    MAP=1, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE
 };
 
 typedef struct ExecutionStepArg{
@@ -73,11 +73,18 @@ typedef struct ExecutionStep{
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 
+typedef enum ExecutionPlanStatus{
+    CREATED, RUNNING, WAITING_FOR_CLUSTER_RESULTS
+}ExecutionPlanStatus;
+
 typedef struct ExecutionPlan{
     ExecutionStep* start;
     WriterStep writerStep;
     RedisModuleBlockedClient* bc;
     FlatExecutionPlan* fep;
+    size_t totalShardsCompleted;
+    Record** results;
+    ExecutionPlanStatus status;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -102,7 +109,10 @@ typedef struct FlatExecutionWriter{
     void* arg;
 }FlatExecutionWriter;
 
+#define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
+
 typedef struct FlatExecutionPlan{
+    char id[EXECUTION_PLAN_ID_LEN];
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
     FlatExecutionWriter* writer;
@@ -117,7 +127,7 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
                                   const char* reducerName, void* reducerArg);
 void FlatExecutionPlan_Run(FlatExecutionPlan* fep, RedisModuleCtx *ctx);
 
-void ExecutionPlan_InitializeWorkers(size_t numberOfworkers);
+void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);
 
 
 #endif /* SRC_EXECUTION_PLAN_H_ */

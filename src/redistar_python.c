@@ -3,9 +3,12 @@
 #include "redistar_memory.h"
 #include "record.h"
 #include <Python.h>
+#include <marshal.h>
 #include <assert.h>
 
 static RedisModuleCtx* currCtx = NULL;
+static PyObject* pFunc;
+static PyObject* globals;
 
 #define PYTHON_ERROR "error running python code"
 
@@ -17,7 +20,7 @@ static PyObject* run(PyObject *cls, PyObject *args){
     PyObject* regex = PyObject_GetAttr(self, regexKey);
     Py_DECREF(regexKey);
     char* regexStr = PyString_AsString(regex);
-    RediStarCtx* rsctx = RSM_Load(KeysReader, currCtx, regexStr);
+    RediStarCtx* rsctx = RSM_Load(KeysReader, currCtx, RS_STRDUP(regexStr));
     RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
 
     PyObject* stepsKey = PyString_FromString("steps");
@@ -58,9 +61,17 @@ static PyObject* run(PyObject *cls, PyObject *args){
     return PyLong_FromLong(1);
 }
 
+static PyObject* saveGlobals(PyObject *cls, PyObject *args){
+    globals = PyEval_GetGlobals();
+    Py_INCREF(globals);
+    return PyLong_FromLong(1);
+}
+
 PyMethodDef EmbMethods[] = {
     {"run", run, METH_VARARGS,
      "running"},
+    {"saveGlobals", saveGlobals, METH_VARARGS,
+     "saveGlobals"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -95,6 +106,7 @@ static Record* RediStarPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record,
         PyErr_Print();
         *err = RS_STRDUP(PYTHON_ERROR);
         RediStar_FreeRecord(record);
+        PyGILState_Release(state);
         return NULL;
     }
     Py_INCREF(newObj);
@@ -116,6 +128,7 @@ static bool RediStarPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, vo
     if(!ret){
         PyErr_Print();
         *err = RS_STRDUP(PYTHON_ERROR);
+        PyGILState_Release(state);
         return false;
     }
     bool ret1 = PyObject_IsTrue(ret);
@@ -135,6 +148,7 @@ static char* RediStarPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record
     if(!ret){
         PyErr_Print();
         *err = RS_STRDUP(PYTHON_ERROR);
+        PyGILState_Release(state);
         return "";
     }
     PyObject* retStr;
@@ -172,6 +186,7 @@ static Record* RediStarPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, siz
         PyErr_Print();
         RediStar_FreeRecord(records);
         *err = RS_STRDUP(PYTHON_ERROR);
+        PyGILState_Release(state);
         return NULL;
     }
     Record* retRecord = RS_PyObjRecordCreare();
@@ -249,12 +264,52 @@ static void RediStarPy_PyObjectFree(void* arg){
     Py_DECREF(obj);
 }
 
-static char* RediStarPy_PyObjectSerialize(void* arg){
-    return NULL;
+void RediStarPy_PyObjectSerialize(void* arg, BufferWriter* bw){
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* obj = arg;
+    PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
+    if(!objStr){
+        PyErr_Print();
+        assert(false);
+    }
+    size_t len = PyString_Size(objStr);
+    char* objStrCstr  = PyString_AsString(objStr);
+    RediStar_BWWriteBuffer(bw, objStrCstr, len);
+    Py_DECREF(objStr);
+    PyGILState_Release(state);
+    return;
 }
 
-static void* RediStarPy_PyObjectDeserialize(char* arg){
-    return NULL;
+void* RediStarPy_PyObjectDeserialize(BufferReader* br){
+    PyGILState_STATE state = PyGILState_Ensure();
+    size_t len;
+    char* data = RediStar_BRReadBuffer(br, &len);
+    PyObject* obj = PyMarshal_ReadObjectFromString(data, len);
+    PyGILState_Release(state);
+    return obj;
+}
+
+static void RediStarPy_PyCallbackSerialize(void* arg, BufferWriter* bw){
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* callback = arg;
+    PyObject* callbackCode = PyObject_GetAttrString(callback, "func_code");
+    RediStarPy_PyObjectSerialize(callbackCode, bw);
+    Py_DECREF(callbackCode);
+    PyGILState_Release(state);
+    return;
+}
+
+static void* RediStarPy_PyCallbackDeserialize(BufferReader* br){
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* callbackCode = RediStarPy_PyObjectDeserialize(br);
+    PyObject* pArgs = PyTuple_New(2);
+    PyTuple_SetItem(pArgs, 0, callbackCode);
+    PyTuple_SetItem(pArgs, 1, globals);
+    Py_INCREF(globals);
+    PyObject* callback = PyObject_CallObject(pFunc, pArgs);
+    Py_DECREF(pArgs);
+    PyGILState_Release(state);
+    return callback;
 }
 
 //  Script example
@@ -285,15 +340,21 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "        self.steps.append((3, extractor, reducer))\n"
                        "        return self\n"
                        "    def returnResults(self, recordToStr):\n"
-                       "        redistar.run(self, recordToStr)\n");
+                       "        redistar.run(self, recordToStr)\n"
+                       "globals()['str'] = str\n"
+                       "redistar.saveGlobals()\n");
 
-    ArgType* pyObjectType = RediStar_CreateType("PyObjectType", RediStarPy_PyObjectFree, RediStarPy_PyObjectSerialize, RediStarPy_PyObjectDeserialize);
+    PyObject* pName = PyString_FromString("types");
+    PyObject* pModule = PyImport_Import(pName);
+    pFunc = PyObject_GetAttrString(pModule, "FunctionType");
 
-    RSM_RegisterFilter(RediStarPy_PyCallbackFilter, pyObjectType);
+    ArgType* pyCallbackType = RediStar_CreateType("PyObjectType", RediStarPy_PyObjectFree, RediStarPy_PyCallbackSerialize, RediStarPy_PyCallbackDeserialize);
+
+    RSM_RegisterFilter(RediStarPy_PyCallbackFilter, pyCallbackType);
     RSM_RegisterMap(RediStarPy_ToPyRecordMapper, NULL);
-    RSM_RegisterMap(RediStarPy_PyCallbackMapper, pyObjectType);
-    RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor, pyObjectType);
-    RSM_RegisterReducer(RediStarPy_PyCallbackReducer, pyObjectType);
+    RSM_RegisterMap(RediStarPy_PyCallbackMapper, pyCallbackType);
+    RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor, pyCallbackType);
+    RSM_RegisterReducer(RediStarPy_PyCallbackReducer, pyCallbackType);
 
     if (RedisModule_CreateCommand(ctx, "execute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command example");

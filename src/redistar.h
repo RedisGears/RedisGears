@@ -17,7 +17,7 @@ typedef struct RediStarCtx RediStarCtx;
 typedef struct Record Record;
 
 enum RecordType{
-    KEY_HANDLER_RECORD,
+    KEY_HANDLER_RECORD = 1,
     LONG_RECORD,
     DOUBLE_RECORD,
     STRING_RECORD,
@@ -49,13 +49,22 @@ typedef struct Writer{
 Writer* ReplyWriter(void* arg);
 
 /******************************* args *********************************/
+typedef struct BufferWriter BufferWriter;
+typedef struct BufferReader BufferReader;
+
 typedef void (*ArgFree)(void* arg);
-typedef char* (*ArgSerialize)(void* arg);
-typedef void* (*ArgDeserialize)(char* serializedArg);
+typedef void (*ArgSerialize)(void* arg, BufferWriter* bw);
+typedef void* (*ArgDeserialize)(BufferReader* br);
 
 typedef struct ArgType ArgType;
 
 ArgType* MODULE_API_FUNC(RediStar_CreateType)(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize);
+void MODULE_API_FUNC(RediStar_BWWriteLong)(BufferWriter* bw, long val);
+void MODULE_API_FUNC(RediStar_BWWriteString)(BufferWriter* bw, char* str);
+void MODULE_API_FUNC(RediStar_BWWriteBuffer)(BufferWriter* bw, char* buff, size_t len);
+long MODULE_API_FUNC(RediStar_BRReadLong)(BufferReader* br);
+char* MODULE_API_FUNC(RediStar_BRReadString)(BufferReader* br);
+char* MODULE_API_FUNC(RediStar_BRReadBuffer)(BufferReader* br, size_t* len);
 
 /******************************* Filters *******************************/
 
@@ -138,6 +147,12 @@ int MODULE_API_FUNC(RediStar_GroupBy)(RediStarCtx* ctx, char* extraxtorName, voi
 
 static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(CreateType);
+    PROXY_MODULE_INIT_FUNCTION(BWWriteLong);
+    PROXY_MODULE_INIT_FUNCTION(BWWriteString);
+    PROXY_MODULE_INIT_FUNCTION(BWWriteBuffer);
+    PROXY_MODULE_INIT_FUNCTION(BRReadLong);
+    PROXY_MODULE_INIT_FUNCTION(BRReadString);
+    PROXY_MODULE_INIT_FUNCTION(BRReadBuffer);
 
     PROXY_MODULE_INIT_FUNCTION(RegisterReader);
     PROXY_MODULE_INIT_FUNCTION(RegisterWriter);
