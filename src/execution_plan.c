@@ -20,26 +20,27 @@ typedef struct ExecutionPlansData{
 ExecutionPlansData epData;
 
 static Record* ExecutionPlan_NextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err);
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep);
+static void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
+static void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx);
 
 static void ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     Record* record = NULL;
-    ep->writer->Start(rctx, ep->writer->ctx);
+    ep->writerStep.w->Start(rctx, ep->writerStep.w->ctx);
     char* err = NULL;
     while((record = ExecutionPlan_NextRecord(ep->start, rctx, &err))){
         if(err){
             Record* r = RediStar_StringRecordCreate(err);
-            ep->writer->Write(rctx, ep->writer->ctx, r);
+            ep->writerStep.w->Write(rctx, ep->writerStep.w->ctx, r);
             break;
         }
-        ep->writer->Write(rctx, ep->writer->ctx, record);
+        ep->writerStep.w->Write(rctx, ep->writerStep.w->ctx, record);
     }
     if(err){
         Record* r = RediStar_StringRecordCreate(err);
-        ep->writer->Write(rctx, ep->writer->ctx, r);
+        ep->writerStep.w->Write(rctx, ep->writerStep.w->ctx, r);
     }
-    ep->writer->Done(rctx, ep->writer->ctx);
-
-    ExecutionPlan_Free(ep, rctx);
+    ep->writerStep.w->Done(rctx, ep->writerStep.w->ctx);
 }
 
 static void* ExecutionPlan_ThreadMain(void *arg){
@@ -59,6 +60,7 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         if(ep->bc){
             RedisModule_UnblockClient(ep->bc, NULL);
         }
+        ExecutionPlan_Free(ep, rctx);
         RedisModule_FreeThreadSafeContext(rctx);
     }
 }
@@ -85,7 +87,7 @@ void ExecutionPlan_InitializeWorkers(size_t numberOfworkers){
 static Record* ExecutionPlan_FilterNextRecord(ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = NULL;
     while((record = ExecutionPlan_NextRecord(step->prev, rctx, err))){
-        bool filterRes = step->filter.filter(record, step->filter.stepArg, err);
+        bool filterRes = step->filter.filter(rctx, record, step->filter.stepArg.stepArg, err);
         if(*err){
             RediStar_FreeRecord(record);
             return NULL;
@@ -109,7 +111,7 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionStep* step, RedisModuleCtx* 
         return NULL;
     }
     if(record != NULL){
-        record = step->map.map(record, step->map.stepArg, err);
+        record = step->map.map(rctx, record, step->map.stepArg.stepArg, err);
         if(*err){
             if(record){
                 RediStar_FreeRecord(record);
@@ -126,7 +128,7 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionStep* step, RedisModu
     if(record == NULL){
         return NULL;
     }
-    char* buff = step->extractKey.extractor(record, step->extractKey.extractorArg, &buffLen, err);
+    char* buff = step->extractKey.extractor(rctx, record, step->extractKey.extractorArg.stepArg, &buffLen, err);
     if(*err){
         RediStar_FreeRecord(record);
         return NULL;
@@ -194,7 +196,7 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionStep* step, RedisModuleCt
     assert(RediStar_RecordGetType(record) == KEY_RECORD);
     size_t keyLen;
     char* key = RediStar_KeyRecordGetKey(record, &keyLen);
-    Record* r = step->reduce.reducer(key, keyLen, RediStar_KeyRecordGetVal(record), step->reduce.reducerArg, err);
+    Record* r = step->reduce.reducer(rctx, key, keyLen, RediStar_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg, err);
     RediStar_KeyRecordSetVal(record, r);
     return record;
 }
@@ -205,7 +207,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionStep* step, RedisModuleCtx* rct
     dictEntry* entry;
     switch(step->type){
     case READER:
-        return step->reader->Next(rctx, step->reader->ctx);
+        return step->reader.r->Next(rctx, step->reader.r->ctx);
         break;
     case MAP:
         return ExecutionPlan_MapNextRecord(step, rctx, err);
@@ -230,17 +232,26 @@ static Record* ExecutionPlan_NextRecord(ExecutionStep* step, RedisModuleCtx* rct
     }
 }
 
-void ExecutionPlan_Run(ExecutionPlan* ep, RedisModuleCtx* rctx){
+void FlatExecutionPlan_Run(FlatExecutionPlan* fep, RedisModuleCtx* rctx){
+    ExecutionPlan* ep = ExecutionPlan_New(fep);
     if(rctx){
         ep->bc = RedisModule_BlockClient(rctx, NULL, NULL, NULL, 1000000000);
     }
     ExecutionPlan_AddToRunList(ep);
 }
 
-static Writer* ExecutionPlan_NewWriter(FlatExecutionWriter* writer){
+static WriterStep ExecutionPlan_NewWriter(FlatExecutionWriter* writer){
     RediStar_WriterCallback callback = WritersMgmt_Get(writer->writer);
+    ArgType* type = WritersMgmt_GetArgType(writer->writer);
     assert(callback); // todo: handle as error in future
-    return callback(writer->arg);
+    return (WriterStep){.w = callback(writer->arg), .type = type};
+}
+
+static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader){
+    RediStar_ReaderCallback callback = ReadersMgmt_Get(reader->reader);
+    ArgType* type = ReadersMgmt_GetArgType(reader->reader);
+    assert(callback); // todo: handle as error in future
+    return (ReaderStep){.r = callback(reader->arg), .type = type};
 }
 
 static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
@@ -249,19 +260,23 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     switch(step->type){
     case MAP:
         es->map.map = MapsMgmt_Get(step->bStep.stepName);
-        es->map.stepArg = step->bStep.arg;
+        es->map.stepArg.type = MapsMgmt_GetArgType(step->bStep.stepName);
+        es->map.stepArg.stepArg = step->bStep.arg;
         break;
     case FILTER:
         es->filter.filter = FiltersMgmt_Get(step->bStep.stepName);
-        es->filter.stepArg = step->bStep.arg;
+        es->filter.stepArg.type = FiltersMgmt_GetArgType(step->bStep.stepName);
+        es->filter.stepArg.stepArg = step->bStep.arg;
         break;
     case EXTRACTKEY:
         es->extractKey.extractor = ExtractorsMgmt_Get(step->bStep.stepName);
-        es->extractKey.extractorArg = step->bStep.arg;
+        es->extractKey.extractorArg.type = ExtractorsMgmt_GetArgType(step->bStep.stepName);
+        es->extractKey.extractorArg.stepArg = step->bStep.arg;
         break;
     case REDUCE:
         es->reduce.reducer = ReducersMgmt_Get(step->bStep.stepName);
-        es->reduce.reducerArg = step->bStep.arg;
+        es->reduce.reducerArg.type = ReducersMgmt_GetArgType(step->bStep.stepName);
+        es->reduce.reducerArg.stepArg = step->bStep.arg;
         break;
     case GROUP:
         es->group.groupedRecords = NULL;
@@ -274,23 +289,17 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     return es;
 }
 
-static Reader* ExecutionPlan_NewReader(FlatExecutionReader* reader){
-    RediStar_ReaderCallback callback =  ReadersMgmt_Get(reader->reader);
-    assert(callback); // todo: handle as error in future
-    return callback(reader->arg);
-}
-
-static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(Reader* r){
+static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
     ExecutionStep* es = RS_ALLOC(sizeof(*es));
     es->type = READER;
-    es->reader = r;
+    es->reader = reader;
     es->prev = NULL;
     return es;
 }
 
-ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep){
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep){
     ExecutionPlan* ret = RS_ALLOC(sizeof(*ret));
-    ret->writer = ExecutionPlan_NewWriter(fep->writer);
+    ret->writerStep = ExecutionPlan_NewWriter(fep->writer);
     ExecutionStep* last = NULL;
     for(int i = array_len(fep->steps) - 1 ; i >= 0 ; --i){
         FlatExecutionStep* s = fep->steps + i;
@@ -302,14 +311,15 @@ ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep){
         }
         last = es;
     }
-    ret->reader = ExecutionPlan_NewReader(fep->reader);
-    ExecutionStep* reader = ExecutionPlan_NewReaderExecutionStep(ret->reader);
+    ReaderStep rs = ExecutionPlan_NewReader(fep->reader);
+    ExecutionStep* reader = ExecutionPlan_NewReaderExecutionStep(rs);
     if(last){
         last->prev = reader;
     }else{
         ret->start = reader;
     }
     ret->bc = NULL;
+    ret->fep = fep;
     return ret;
 }
 
@@ -319,13 +329,32 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     }
     switch(es->type){
     case MAP:
+        if (es->map.stepArg.type && es->map.stepArg.type->free){
+            es->map.stepArg.type->free(es->map.stepArg.stepArg);
+        }
+        break;
     case FILTER:
-    case REPARTITION:
+        if (es->filter.stepArg.type && es->filter.stepArg.type->free){
+            es->filter.stepArg.type->free(es->filter.stepArg.stepArg);
+        }
+        break;
     case EXTRACTKEY:
+        if (es->extractKey.extractorArg.type && es->extractKey.extractorArg.type->free){
+            es->extractKey.extractorArg.type->free(es->extractKey.extractorArg.stepArg);
+        }
+        break;
     case REDUCE:
+        if(es->reduce.reducerArg.type && es->reduce.reducerArg.type->free){
+            es->reduce.reducerArg.type->free(es->reduce.reducerArg.stepArg);
+        }
+        break;
+    case REPARTITION:
         break;
     case READER:
-        es->reader->Free(ctx, es->reader->ctx);
+        if(es->reader.type && es->reader.type->free){
+            es->reader.type->free(es->reader.r->ctx);
+        }
+        RS_FREE(es->reader.r);
         break;
     case GROUP:
         if(es->group.groupedRecords){
@@ -342,11 +371,13 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     RS_FREE(es);
 }
 
-void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
+static void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
+    FlatExecutionPlan_Free(ep->fep);
     ExecutionStep_Free(ep->start, ctx);
-    ep->writer->Free(ctx, ep->writer->ctx);
-    RS_FREE(ep->reader);
-    RS_FREE(ep->writer);
+    if(ep->writerStep.type && ep->writerStep.type->free){
+        ep->writerStep.type->free(ep->writerStep.w->ctx);
+    }
+    RS_FREE(ep->writerStep.w);
     RS_FREE(ep);
 }
 
@@ -373,7 +404,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     return res;
 }
 
-void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
+static void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     RS_FREE(fep->reader->reader);
     RS_FREE(fep->reader);
     RS_FREE(fep->writer->writer);

@@ -17,9 +17,7 @@ static PyObject* run(PyObject *cls, PyObject *args){
     PyObject* regex = PyObject_GetAttr(self, regexKey);
     Py_DECREF(regexKey);
     char* regexStr = PyString_AsString(regex);
-    KeysReaderCtx* readerCtx = RediStar_KeysReaderCtxCreate(regexStr);
-    RediStarCtx* rsctx = RSM_Load(KeysReader, currCtx, readerCtx);
-    RSM_Map(rsctx, ValueToRecordMapper, currCtx);
+    RediStarCtx* rsctx = RSM_Load(KeysReader, currCtx, regexStr);
     RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
 
     PyObject* stepsKey = PyString_FromString("steps");
@@ -84,7 +82,7 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     return REDISMODULE_OK;
 }
 
-static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg, char** err){
+static Record* RediStarPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
     assert(RediStar_RecordGetType(record) == PY_RECORD);
@@ -106,7 +104,7 @@ static Record* RediStarPy_PyCallbackMapper(Record *record, void* arg, char** err
     return record;
 }
 
-static bool RediStarPy_PyCallbackFilter(Record *record, void* arg, char** err){
+static bool RediStarPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
@@ -125,7 +123,7 @@ static bool RediStarPy_PyCallbackFilter(Record *record, void* arg, char** err){
     return ret1;
 }
 
-static char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* len, char** err){
+static char* RediStarPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record, void* arg, size_t* len, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     assert(RediStar_RecordGetType(record) == PY_RECORD);
     PyObject* extractor = arg;
@@ -153,7 +151,7 @@ static char* RediStarPy_PyCallbackExtractor(Record *record, void* arg, size_t* l
     return retCStr;
 }
 
-static Record* RediStarPy_PyCallbackReducer(char* key, size_t keyLen, Record *records, void* arg, char** err){
+static Record* RediStarPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     assert(RediStar_RecordGetType(records) == LIST_RECORD);
     PyObject* obj = PyList_New(0);
@@ -238,12 +236,25 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
     return res;
 }
 
-static Record* RediStarPy_ToPyRecordMapper(Record *record, void* arg, char** err){
+static Record* RediStarPy_ToPyRecordMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     Record* res = RediStarPy_ToPyRecordMapperInternal(record, arg);
     RediStar_FreeRecord(record);
     PyGILState_Release(state);
     return res;
+}
+
+static void RediStarPy_PyObjectFree(void* arg){
+    PyObject* obj = arg;
+    Py_DECREF(obj);
+}
+
+static char* RediStarPy_PyObjectSerialize(void* arg){
+    return NULL;
+}
+
+static void* RediStarPy_PyObjectDeserialize(char* arg){
+    return NULL;
 }
 
 //  Script example
@@ -276,11 +287,13 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "    def returnResults(self, recordToStr):\n"
                        "        redistar.run(self, recordToStr)\n");
 
-    RSM_RegisterFilter(RediStarPy_PyCallbackFilter);
-    RSM_RegisterMap(RediStarPy_ToPyRecordMapper);
-    RSM_RegisterMap(RediStarPy_PyCallbackMapper);
-    RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor);
-    RSM_RegisterReducer(RediStarPy_PyCallbackReducer);
+    ArgType* pyObjectType = RediStar_CreateType("PyObjectType", RediStarPy_PyObjectFree, RediStarPy_PyObjectSerialize, RediStarPy_PyObjectDeserialize);
+
+    RSM_RegisterFilter(RediStarPy_PyCallbackFilter, pyObjectType);
+    RSM_RegisterMap(RediStarPy_ToPyRecordMapper, NULL);
+    RSM_RegisterMap(RediStarPy_PyCallbackMapper, pyObjectType);
+    RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor, pyObjectType);
+    RSM_RegisterReducer(RediStarPy_PyCallbackReducer, pyObjectType);
 
     if (RedisModule_CreateCommand(ctx, "execute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command example");

@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include "redismodule.h"
 
+#define MODULE_API_FUNC(x) (*x)
+
 typedef struct RediStarCtx RediStarCtx;
 typedef struct Record Record;
 
@@ -31,7 +33,6 @@ enum RecordType{
 typedef struct Reader{
     void* ctx;
     Record* (*Next)(RedisModuleCtx* rctx, void* ctx);
-    void (*Free)(RedisModuleCtx* rctx, void* ctx);
 }Reader;
 
 Reader* KeysReader(void* arg);
@@ -43,31 +44,35 @@ typedef struct Writer{
     void (*Start)(RedisModuleCtx* rctx, void* ctx);
     void (*Write)(RedisModuleCtx* rctx, void* ctx, Record* record);
     void (*Done)(RedisModuleCtx* rctx, void* ctx);
-    void (*Free)(RedisModuleCtx* rctx, void* ctx);
 }Writer;
 
 Writer* ReplyWriter(void* arg);
 
+/******************************* args *********************************/
+typedef void (*ArgFree)(void* arg);
+typedef char* (*ArgSerialize)(void* arg);
+typedef void* (*ArgDeserialize)(char* serializedArg);
+
+typedef struct ArgType ArgType;
+
+ArgType* MODULE_API_FUNC(RediStar_CreateType)(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize);
+
 /******************************* Filters *******************************/
-bool TypeFilter(Record *data, void* arg, char** err);
 
 /******************************* Mappers *******************************/
-Record* ValueToRecordMapper(Record *record, void* redisModuleCtx, char** err);
 
 /******************************* GroupByExtractors *********************/
-char* KeyRecordStrValueExtractor(Record *data, void* arg, size_t* len, char** err);
+char* KeyRecordStrValueExtractor(RedisModuleCtx* rctx, Record *data, void* arg, size_t* len, char** err);
 
 /******************************* GroupByReducers ***********************/
-Record* CountReducer(char* key, size_t keyLen, Record *records, void* arg, char** err);
+Record* CountReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err);
 
 typedef Reader* (*RediStar_ReaderCallback)(void* arg);
 typedef Writer* (*RediStar_WriterCallback)(void* arg);
-typedef Record* (*RediStar_MapCallback)(Record *data, void* arg, char** err);
-typedef bool (*RediStar_FilterCallback)(Record *data, void* arg, char** err);
-typedef char* (*RediStar_ExtractorCallback)(Record *data, void* arg, size_t* len, char** err);
-typedef Record* (*RediStar_ReducerCallback)(char* key, size_t keyLen, Record *records, void* arg, char** err);
-
-#define MODULE_API_FUNC(x) (*x)
+typedef Record* (*RediStar_MapCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
+typedef bool (*RediStar_FilterCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
+typedef char* (*RediStar_ExtractorCallback)(RedisModuleCtx* rctx, Record *data, void* arg, size_t* len, char** err);
+typedef Record* (*RediStar_ReducerCallback)(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err);
 
 typedef struct KeysReaderCtx KeysReaderCtx;
 KeysReaderCtx* MODULE_API_FUNC(RediStar_KeysReaderCtxCreate)(char* match);
@@ -95,19 +100,19 @@ void MODULE_API_FUNC(RediStar_LongRecordSet)(Record* r, long val);
 Record* MODULE_API_FUNC(RediStar_KeyHandlerRecordCreate)(RedisModuleKey* handler);
 RedisModuleKey* MODULE_API_FUNC(RediStar_KeyHandlerRecordGet)(Record* r);
 
-int MODULE_API_FUNC(RediStar_RegisterReader)(char* name, RediStar_ReaderCallback reader);
-int MODULE_API_FUNC(RediStar_RegisterWriter)(char* name, RediStar_WriterCallback reader);
-int MODULE_API_FUNC(RediStar_RegisterMap)(char* name, RediStar_MapCallback map);
-int MODULE_API_FUNC(RediStar_RegisterFilter)(char* name, RediStar_FilterCallback filter);
-int MODULE_API_FUNC(RediStar_RegisterGroupByExtractor)(char* name, RediStar_ExtractorCallback extractor);
-int MODULE_API_FUNC(RediStar_RegisterReducer)(char* name, RediStar_ReducerCallback reducer);
+int MODULE_API_FUNC(RediStar_RegisterReader)(char* name, RediStar_ReaderCallback reader, ArgType* type);
+int MODULE_API_FUNC(RediStar_RegisterWriter)(char* name, RediStar_WriterCallback reader, ArgType* type);
+int MODULE_API_FUNC(RediStar_RegisterMap)(char* name, RediStar_MapCallback map, ArgType* type);
+int MODULE_API_FUNC(RediStar_RegisterFilter)(char* name, RediStar_FilterCallback filter, ArgType* type);
+int MODULE_API_FUNC(RediStar_RegisterGroupByExtractor)(char* name, RediStar_ExtractorCallback extractor, ArgType* type);
+int MODULE_API_FUNC(RediStar_RegisterReducer)(char* name, RediStar_ReducerCallback reducer, ArgType* type);
 
-#define RSM_RegisterReader(name) RediStar_RegisterReader(#name, name);
-#define RSM_RegisterMap(name) RediStar_RegisterMap(#name, name);
-#define RSM_RegisterFilter(name) RediStar_RegisterFilter(#name, name);
-#define RSM_RegisterWriter(name) RediStar_RegisterWriter(#name, name);
-#define RSM_RegisterGroupByExtractor(name) RediStar_RegisterGroupByExtractor(#name, name);
-#define RSM_RegisterReducer(name) RediStar_RegisterReducer(#name, name);
+#define RSM_RegisterReader(name, type) RediStar_RegisterReader(#name, name, type);
+#define RSM_RegisterMap(name, type) RediStar_RegisterMap(#name, name, type);
+#define RSM_RegisterFilter(name, type) RediStar_RegisterFilter(#name, name, type);
+#define RSM_RegisterWriter(name, type) RediStar_RegisterWriter(#name, name, type);
+#define RSM_RegisterGroupByExtractor(name, type) RediStar_RegisterGroupByExtractor(#name, name, type);
+#define RSM_RegisterReducer(name, type) RediStar_RegisterReducer(#name, name, type);
 
 RediStarCtx* MODULE_API_FUNC(RediStar_Load)(char* name, RedisModuleCtx *ctx, void* arg);
 #define RSM_Load(name, ctx, arg) RediStar_Load(#name, ctx, arg)
@@ -132,6 +137,8 @@ int MODULE_API_FUNC(RediStar_GroupBy)(RediStarCtx* ctx, char* extraxtorName, voi
         }
 
 static bool RediStar_Initialize(){
+    PROXY_MODULE_INIT_FUNCTION(CreateType);
+
     PROXY_MODULE_INIT_FUNCTION(RegisterReader);
     PROXY_MODULE_INIT_FUNCTION(RegisterWriter);
     PROXY_MODULE_INIT_FUNCTION(RegisterMap);
@@ -143,7 +150,6 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(Filter);
     PROXY_MODULE_INIT_FUNCTION(Write);
     PROXY_MODULE_INIT_FUNCTION(GroupBy);
-    PROXY_MODULE_INIT_FUNCTION(KeysReaderCtxCreate);
 
     PROXY_MODULE_INIT_FUNCTION(FreeRecord);
     PROXY_MODULE_INIT_FUNCTION(RecordGetType);
