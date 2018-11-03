@@ -23,9 +23,6 @@ enum RecordType{
     STRING_RECORD,
     LIST_RECORD,
     KEY_RECORD,
-#ifdef WITHPYTHON
-    PY_RECORD
-#endif
 };
 
 /******************************* READERS *******************************/

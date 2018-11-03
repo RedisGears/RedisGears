@@ -44,7 +44,9 @@ typedef struct ReduceExecutionStep{
 }ReduceExecutionStep;
 
 typedef struct RepartitionExecutionStep{
-
+    bool stoped;
+    Record** pendings;
+    size_t totalShardsCompleted;
 }RepartitionExecutionStep;
 
 typedef struct ReaderStep{
@@ -59,6 +61,7 @@ typedef struct WriterStep{
 
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
+    size_t stepId;
     union{
         MapExecutionStep map;
         FilterExecutionStep filter;
@@ -78,7 +81,7 @@ typedef enum ExecutionPlanStatus{
 }ExecutionPlanStatus;
 
 typedef struct ExecutionPlan{
-    ExecutionStep* start;
+    ExecutionStep** steps;
     WriterStep writerStep;
     RedisModuleBlockedClient* bc;
     FlatExecutionPlan* fep;

@@ -51,6 +51,12 @@ typedef struct Record{
     enum RecordType type;
 }Record;
 
+
+Record StopRecord = (Record){
+        .type = STOP_RECORD,
+};
+
+
 void RS_FreeRecord(Record* record){
     switch(record->type){
     case STRING_RECORD:

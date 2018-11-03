@@ -14,6 +14,15 @@
 #include <Python.h>
 #endif
 
+enum AdditionalRecordTypes{
+    STOP_RECORD = 7, // telling the execution plan to stop the execution.
+#ifdef WITHPYTHON
+    PY_RECORD
+#endif
+};
+
+extern Record StopRecord;
+
 void RS_FreeRecord(Record* record);
 enum RecordType RS_RecordGetType(Record* r);
 Record* RS_KeyRecordCreate();
