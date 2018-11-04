@@ -2,6 +2,7 @@
 #include "utils/arr_rm_alloc.h"
 #include "mgmt.h"
 #include "record.h"
+#include "cluster.h"
 #include <assert.h>
 #include <stdbool.h>
 #include "redistar.h"
@@ -161,24 +162,17 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(BufferReader* br){
 }
 
 static void ExecutionPlan_Distribute(ExecutionPlan* ep, RedisModuleCtx *rctx){
-    RedisModule_ThreadSafeContextLock(rctx);
-    if(!(RedisModule_GetContextFlags(rctx) & REDISMODULE_CTX_FLAGS_CLUSTER)){
-        RedisModule_ThreadSafeContextUnlock(rctx);
-        return;
-    }
-    RedisModule_ThreadSafeContextUnlock(rctx);
     Buffer* buff = Buffer_Create();
     BufferWriter bw;
     BufferWriter_Init(&bw, buff);
     FlatExecutionPlan_Serialize(ep->fep, &bw);
     size_t numOfNodes;
     RedisModule_ThreadSafeContextLock(rctx);
-    char **nodesList = RedisModule_GetClusterNodesList(rctx, &numOfNodes);
+    char **nodesList = Cluster_GetNodesList(&numOfNodes);
     for(size_t i = 0 ; i < numOfNodes ; ++i){
         char *node = nodesList[i];
         RedisModule_SendClusterMessage(rctx, node, NEW_EP_MSG_TYPE, buff->buff, buff->size);
     }
-    RedisModule_FreeClusterNodesList(nodesList);
     RedisModule_ThreadSafeContextUnlock(rctx);
     Buffer_Free(buff);
 }
@@ -201,14 +195,18 @@ static void ExecutionPlan_SerializeResults(ExecutionPlan* ep, RedisModuleCtx* rc
         RediStar_BWWriteBuffer(&bw, ep->fep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
         RS_SerializeRecord(&bw, r);
         RediStar_FreeRecord(r);
+
         RedisModule_ThreadSafeContextLock(rctx);
         RedisModule_SendClusterMessage(rctx, ep->fep->id, NEW_RECORD_MSG_TYPE, buff->buff, buff->size);
         RedisModule_ThreadSafeContextUnlock(rctx);
+
         Buffer_Clear(buff);
     }
+
     RedisModule_ThreadSafeContextLock(rctx);
     RedisModule_SendClusterMessage(rctx, ep->fep->id, DONE_SENDING_RECORDS_MSG_TYPE, ep->fep->id, EXECUTION_PLAN_ID_LEN);
     RedisModule_ThreadSafeContextUnlock(rctx);
+
     Buffer_Free(buff);
 }
 
@@ -348,50 +346,78 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     return record;
 }
 
-static void ExecutionPlan_GetShardId(Record* r, RedisModuleCtx* rctx, char* nodeId){
-    assert(RediStar_RecordGetType(r) == KEY_RECORD);
-    size_t len;
-    char* key = RediStar_KeyRecordGetKey(r, &len);
-    RedisModule_ThreadSafeContextLock(rctx);
-    RedisModuleCallReply *keyslotRelpy = RedisModule_Call(rctx, "cluster", "cc", "keyslot", key);
-    assert(RedisModule_CallReplyType(keyslotRelpy) == REDISMODULE_REPLY_INTEGER);
-    long long slot = RedisModule_CallReplyInteger(keyslotRelpy);
-    RedisModule_FreeCallReply(keyslotRelpy);
-    RedisModuleCallReply *allSlotsRelpy = RedisModule_Call(rctx, "cluster", "c", "slots");
-    assert(RedisModule_CallReplyType(allSlotsRelpy) == REDISMODULE_REPLY_ARRAY);
-    for(size_t i = 0 ; i < RedisModule_CallReplyLength(allSlotsRelpy) ; ++i){
-        RedisModuleCallReply *slotRangeRelpy = RedisModule_CallReplyArrayElement(allSlotsRelpy, i);
-
-        RedisModuleCallReply *minslotRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 0);
-        assert(RedisModule_CallReplyType(minslotRelpy) == REDISMODULE_REPLY_INTEGER);
-        long long minslot = RedisModule_CallReplyInteger(minslotRelpy);
-
-        RedisModuleCallReply *maxslotRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 1);
-        assert(RedisModule_CallReplyType(maxslotRelpy) == REDISMODULE_REPLY_INTEGER);
-        long long maxslot = RedisModule_CallReplyInteger(maxslotRelpy);
-
-        if(slot >= minslot && slot <= maxslot){
-            RedisModuleCallReply *nodeDetailsRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 2);
-            assert(RedisModule_CallReplyType(nodeDetailsRelpy) == REDISMODULE_REPLY_ARRAY);
-            assert(RedisModule_CallReplyLength(nodeDetailsRelpy) == 3);
-            RedisModuleCallReply *nodeidReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 2);
-            size_t idLen;
-            const char* id = RedisModule_CallReplyStringPtr(nodeidReply,&idLen);
-            memcpy(nodeId, id, REDISMODULE_NODE_ID_LEN);
-            RedisModule_FreeCallReply(allSlotsRelpy);
+static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    Buffer* buff;
+    BufferWriter bw;
+    Record* record;
+    if(!Cluster_IsClusterMode()){
+        return ExecutionPlan_NextRecord(ep, step->prev, rctx, err);
+    }
+    if(step->repartion.stoped){
+        if(array_len(step->repartion.pendings) > 0){
+            return array_pop(step->repartion.pendings);
+        }
+        return NULL;
+    }
+    buff = Buffer_Create();
+    while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err)) != NULL){
+        if(record == &StopRecord){
+            Buffer_Free(buff);
+            return record;
+        }
+        if(*err){
+            Buffer_Free(buff);
+            return record;
+        }
+        size_t len;
+        char* key = RediStar_KeyRecordGetKey(record, &len);
+        char* shardIdToSendRecord = Cluster_GetNodeIdByKey(key);
+        if(memcmp(shardIdToSendRecord, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+            // this record should stay with us, lets save it.
+            RedisModule_ThreadSafeContextLock(rctx);
+            step->repartion.pendings = array_append(step->repartion.pendings, record);
             RedisModule_ThreadSafeContextUnlock(rctx);
-            return;
+        }
+        else{
+            // we need to send the record to another shard
+            BufferWriter_Init(&bw, buff);
+            RediStar_BWWriteBuffer(&bw, ep->fep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+            RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
+            RS_SerializeRecord(&bw, record);
+            RediStar_FreeRecord(record);
+
+            RedisModule_ThreadSafeContextLock(rctx);
+            RedisModule_SendClusterMessage(rctx, shardIdToSendRecord, NEW_REPARTITION_MSG_TYPE, buff->buff, buff->size);
+            RedisModule_ThreadSafeContextUnlock(rctx);
+
+            Buffer_Clear(buff);
         }
     }
-    assert(false);
+    if(*err){
+        Buffer_Free(buff);
+        return record;
+    }
+    BufferWriter_Init(&bw, buff);
+    RediStar_BWWriteBuffer(&bw, ep->fep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+    RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
+    size_t numnodes;
+    char** nodes = Cluster_GetNodesList(&numnodes);
+
+    RedisModule_ThreadSafeContextLock(rctx);
+    for(size_t i = 0 ; i < numnodes ; ++i){
+        RedisModule_SendClusterMessage(rctx, nodes[i], DONE_REPARTITION_MSG_TYPE, buff->buff, buff->size);
+    }
+    RedisModule_ThreadSafeContextUnlock(rctx);
+
+    Buffer_Free(buff);
+    step->repartion.stoped = true;
+    return &StopRecord;
 }
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = NULL;
     Record* r;
     dictEntry* entry;
-    Buffer* buff;
-    BufferWriter bw;
     switch(step->type){
     case READER:
         return step->reader.r->Next(rctx, step->reader.r->ctx);
@@ -411,63 +437,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     case REDUCE:
         return ExecutionPlan_ReduceNextRecord(ep, step, rctx, err);
     case REPARTITION:
-        if(!(RedisModule_GetContextFlags(rctx) & REDISMODULE_CTX_FLAGS_CLUSTER)){
-            return ExecutionPlan_NextRecord(ep, step->prev, rctx, err);
-        }
-        if(step->repartion.stoped){
-            if(array_len(step->repartion.pendings) > 0){
-                return array_pop(step->repartion.pendings);
-            }
-            return NULL;
-        }
-        buff = Buffer_Create();
-        while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err)) != NULL){
-            if(record == &StopRecord){
-                Buffer_Free(buff);
-                return record;
-            }
-            if(*err){
-                Buffer_Free(buff);
-                return record;
-            }
-            char shardIdToSendRecord[40];
-            ExecutionPlan_GetShardId(record, rctx, shardIdToSendRecord);
-            if(memcmp(shardIdToSendRecord, RedisModule_GetMyClusterID(), REDISMODULE_NODE_ID_LEN) == 0){
-                // this record should stay with us, lets save it.
-                RedisModule_ThreadSafeContextLock(rctx);
-                step->repartion.pendings = array_append(step->repartion.pendings, record);
-                RedisModule_ThreadSafeContextUnlock(rctx);
-            }
-            else{
-                // we need to send the record to another shard
-                BufferWriter_Init(&bw, buff);
-                RediStar_BWWriteBuffer(&bw, ep->fep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
-                RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
-                RS_SerializeRecord(&bw, record);
-                RediStar_FreeRecord(record);
-                RedisModule_ThreadSafeContextLock(rctx);
-                RedisModule_SendClusterMessage(rctx, shardIdToSendRecord, NEW_REPARTITION_MSG_TYPE, buff->buff, buff->size);
-                RedisModule_ThreadSafeContextUnlock(rctx);
-                Buffer_Clear(buff);
-            }
-        }
-        if(*err){
-            Buffer_Free(buff);
-            return record;
-        }
-        BufferWriter_Init(&bw, buff);
-        RediStar_BWWriteBuffer(&bw, ep->fep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
-        RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
-        RedisModule_ThreadSafeContextLock(rctx);
-        size_t numnodes;
-        char** nodes = RedisModule_GetClusterNodesList(rctx, &numnodes);
-        for(size_t i = 0 ; i < numnodes ; ++i){
-            RedisModule_SendClusterMessage(rctx, nodes[i], DONE_REPARTITION_MSG_TYPE, buff->buff, buff->size);
-        }
-        RedisModule_ThreadSafeContextUnlock(rctx);
-        Buffer_Free(buff);
-        step->repartion.stoped = true;
-        return &StopRecord;
+        return ExecutionPlan_RepartitionNextRecord(ep, step, rctx, err);
     default:
         assert(false);
         return NULL;
@@ -506,13 +476,13 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
         RedisModule_ThreadSafeContextUnlock(rctx);
     }
 
-    if(!(RedisModule_GetContextFlags(rctx) & REDISMODULE_CTX_FLAGS_CLUSTER)){
+    if(!Cluster_IsClusterMode()){
         ExecutionPlan_WriteResults(ep, rctx);
         return true;
     }else{
         // we need to send the results to the initializer node unless we are the initializer
         // in this case we need to wait for all the results the arrived from the other nodes
-        if(memcmp(ep->fep->id, RedisModule_GetMyClusterID(), REDISMODULE_NODE_ID_LEN) != 0){
+        if(memcmp(ep->fep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) != 0){
             ExecutionPlan_SerializeResults(ep, rctx);
             return true;
         } else {
@@ -540,8 +510,8 @@ static void* ExecutionPlan_ThreadMain(void *arg){
             ((void**)rctx)[1] = modulePointer;
         }
         if(ep->status == CREATED){
-            if(RedisModule_GetMyClusterID()){
-                if(memcmp(ep->fep->id, RedisModule_GetMyClusterID(), REDISMODULE_NODE_ID_LEN) == 0){
+            if(Cluster_IsClusterMode()){
+                if(memcmp(ep->fep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
                    ExecutionPlan_Distribute(ep, rctx);
                 }
             }
@@ -599,8 +569,8 @@ static void ExecutionPlan_DoneSendingRecords(RedisModuleCtx *ctx, const char *se
     assert(entry);
     ExecutionPlan* ep = dictGetVal(entry);
     ++ep->totalShardsCompleted;
-    assert(RedisModule_GetClusterSize() - 1 >= ep->totalShardsCompleted);
-    if((RedisModule_GetClusterSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
+    assert(Cluster_GetSize() - 1 >= ep->totalShardsCompleted);
+    if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
         ExecutionPlan_AddToRunList(ep);
     }
 }
@@ -639,8 +609,8 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
     ExecutionPlan* ep = dictGetVal(entry);
     assert(ep->steps[stepId]->type == REPARTITION);
     ++ep->steps[stepId]->repartion.totalShardsCompleted;
-    assert(RedisModule_GetClusterSize() - 1 >= ep->steps[stepId]->repartion.totalShardsCompleted);
-    if((RedisModule_GetClusterSize() - 1) == ep->steps[stepId]->repartion.totalShardsCompleted){ // no need to wait to myself
+    assert(Cluster_GetSize() - 1 >= ep->steps[stepId]->repartion.totalShardsCompleted);
+    if((Cluster_GetSize() - 1) == ep->steps[stepId]->repartion.totalShardsCompleted){ // no need to wait to myself
         ExecutionPlan_AddToRunList(ep);
     }
 }
@@ -847,8 +817,8 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->writer = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
     memset(res->id, 0, EXECUTION_PLAN_ID_LEN);
-    if(RedisModule_GetMyClusterID()){
-        memcpy(res->id, RedisModule_GetMyClusterID(), REDISMODULE_NODE_ID_LEN);
+    if(Cluster_IsClusterMode()){
+        memcpy(res->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN);
         memcpy(res->id + REDISMODULE_NODE_ID_LEN, &lastId, sizeof(long long));
     }
     ++lastId;

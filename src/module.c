@@ -11,6 +11,7 @@
 #include "mgmt.h"
 #include "execution_plan.h"
 #include "example.h"
+#include "cluster.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/buffer.h"
 #include "redistar_memory.h"
@@ -173,6 +174,14 @@ static bool RediStar_RegisterApi(){
 ArgType* GetKeysReaderArgType();
 ArgType* GetKeysWriterArgType();
 
+/* this cluster refresh is a hack for now, we should come up with a better solution!! */
+
+static int RS_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    Cluster_Refresh();
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
+}
+
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (RedisModule_Init(ctx, "RediStar", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
@@ -201,8 +210,13 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RediStarPy_Init(ctx);
 #endif
 
-    if (RedisModule_CreateCommand(ctx, "example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rs.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command example");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rs.refreshcluster", RS_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
         return REDISMODULE_ERR;
     }
 

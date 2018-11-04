@@ -356,7 +356,7 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
     RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor, pyCallbackType);
     RSM_RegisterReducer(RediStarPy_PyCallbackReducer, pyCallbackType);
 
-    if (RedisModule_CreateCommand(ctx, "execute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rs.execute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command example");
         return REDISMODULE_ERR;
     }
