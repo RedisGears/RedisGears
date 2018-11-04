@@ -4,6 +4,7 @@
 #include "redistar_memory.h"
 #include "record.h"
 #include "mgmt.h"
+#include "redismodule.h"
 
 typedef struct ResponseWriterCtx{
     size_t replySize;
@@ -14,26 +15,15 @@ static void KeysWriter_Free(void* ctx){
     RS_FREE(writerCtx);
 }
 
-static char* KeysWriter_Serialize(void* ctx){
-    return NULL;
-}
-
-static void* KeysWriter_Deserialize(char* ctx){
-    ResponseWriterCtx* rctx = RS_ALLOC(sizeof(*ctx));
-    *rctx = (ResponseWriterCtx){
-        .replySize = 0,
-    };
-    return rctx;;
-}
-
 static ArgType KeysWriterType = (ArgType){
     .type = "KeysWriterType",
     .free = KeysWriter_Free,
-    .serialize = KeysWriter_Serialize,
-    .deserialize = KeysWriter_Deserialize,
+    .serialize = NULL,
+    .deserialize = NULL,
 };
 
 static void KeysWriter_Start(RedisModuleCtx* rctx, void* ctx){
+    RedisModule_ThreadSafeContextLock(rctx);
     RedisModule_ReplyWithArray(rctx, REDISMODULE_POSTPONED_ARRAY_LEN);
 }
 
@@ -97,6 +87,7 @@ static void KeysWriter_Write(RedisModuleCtx* rctx, void* ctx, Record* record){
 static void KeysWriter_Done(RedisModuleCtx* rctx, void* ctx){
     ResponseWriterCtx *writerCtx = ctx;
     RedisModule_ReplySetArrayLength(rctx, writerCtx->replySize);
+    RedisModule_ThreadSafeContextUnlock(rctx);
 }
 
 ArgType* GetKeysWriterArgType(){
@@ -104,7 +95,6 @@ ArgType* GetKeysWriterArgType(){
 }
 
 Writer* ReplyWriter(void* arg){
-    RedisModuleCtx *rctx = arg;
     ResponseWriterCtx* ctx = RS_ALLOC(sizeof(*ctx));
     *ctx = (ResponseWriterCtx){
         .replySize = 0,

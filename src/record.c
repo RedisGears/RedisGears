@@ -2,6 +2,7 @@
 #include "redistar_memory.h"
 #include "utils/arr_rm_alloc.h"
 #include "record.h"
+#include "redistar_python.h"
 
 typedef struct KeysHandlerRecord{
     RedisModuleKey *keyHandler;
@@ -49,6 +50,12 @@ typedef struct Record{
     };
     enum RecordType type;
 }Record;
+
+
+Record StopRecord = (Record){
+        .type = STOP_RECORD,
+};
+
 
 void RS_FreeRecord(Record* record){
     switch(record->type){
@@ -221,3 +228,94 @@ void RS_PyObjRecordSet(Record* r, PyObject* obj){
     r->pyRecord.obj = obj;
 }
 #endif
+
+void RS_SerializeRecord(BufferWriter* bw, Record* r){
+    RediStar_BWWriteLong(bw, r->type);
+    switch(r->type){
+    case STRING_RECORD:
+        RediStar_BWWriteString(bw, r->stringRecord.str);
+        break;
+    case LONG_RECORD:
+        RediStar_BWWriteLong(bw, r->longRecord.num);
+        break;
+    case DOUBLE_RECORD:
+        RediStar_BWWriteLong(bw, (long)r->doubleRecord.num);
+        break;
+    case LIST_RECORD:
+        RediStar_BWWriteLong(bw, RediStar_ListRecordLen(r));
+        for(size_t i = 0 ; i < RediStar_ListRecordLen(r) ; ++i){
+            RS_SerializeRecord(bw, r->listRecord.records[i]);
+        }
+        break;
+    case KEY_RECORD:
+        RediStar_BWWriteString(bw, r->keyRecord.key);
+        if(r->keyRecord.record){
+            RediStar_BWWriteLong(bw, 1); // value exists
+            RS_SerializeRecord(bw, r->keyRecord.record);
+        }else{
+            RediStar_BWWriteLong(bw, 0); // value missing
+        }
+        break;
+    case KEY_HANDLER_RECORD:
+        assert(false && "can not serialize key handler record");
+        break;
+#ifdef WITHPYTHON
+    case PY_RECORD:
+        RediStarPy_PyObjectSerialize(r->pyRecord.obj, bw);
+        break;
+#endif
+    default:
+        assert(false);
+    }
+}
+
+Record* RS_DeserializeRecord(BufferReader* br){
+    enum RecordType type = RediStar_BRReadLong(br);
+    Record* r;
+    char* temp;
+    size_t size;
+    switch(type){
+    case STRING_RECORD:
+        temp = RediStar_BRReadString(br);
+        r = RS_StringRecordCreate(RS_STRDUP(temp));
+        break;
+    case LONG_RECORD:
+        r = RS_LongRecordCreate(RediStar_BRReadLong(br));
+        break;
+    case DOUBLE_RECORD:
+        r = RS_DoubleRecordCreate((double)RediStar_BRReadLong(br));
+        break;
+    case LIST_RECORD:
+        size = (size_t)RediStar_BRReadLong(br);
+        r = RS_ListRecordCreate(size);
+        for(size_t i = 0 ; i < size ; ++i){
+            RS_ListRecordAdd(r, RS_DeserializeRecord(br));
+        }
+        break;
+    case KEY_RECORD:
+        r = RediStar_KeyRecordCreate();
+        char* key = RS_STRDUP(RediStar_BRReadString(br));
+        RS_KeyRecordSetKey(r, key, strlen(key));
+        bool isValExists = (bool)RediStar_BRReadLong(br);
+        if(isValExists){
+            RediStar_KeyRecordSetVal(r, RS_DeserializeRecord(br));
+        }else{
+            RediStar_KeyRecordSetVal(r, NULL);
+        }
+        break;
+    case KEY_HANDLER_RECORD:
+        assert(false && "can not deserialize key handler record");
+        break;
+#ifdef WITHPYTHON
+    case PY_RECORD:
+        r = RS_PyObjRecordCreare();
+        PyObject* obj = RediStarPy_PyObjectDeserialize(br);
+        r->pyRecord.obj = obj;
+        break;
+#endif
+    default:
+        assert(false);
+    }
+    return r;
+}
+

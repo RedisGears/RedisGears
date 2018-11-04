@@ -6,7 +6,12 @@ class testBasic:
     def __init__(self):
         self.env = Env()
         for i in range(100):
-            self.env.cmd('set', str(i), str(i))
+            conn = None
+            if self.env.env == 'oss-cluster':
+                conn = self.env.envRunner.getClusterConnection()
+            else:
+                conn = self.env.getConnection()
+            conn.execute_command('set', str(i), str(i))
 
     def testBasicQuery(self):
         res = self.env.cmd('execute', 'starCtx("*").returnResults(lambda x:str(x))')

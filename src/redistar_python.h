@@ -14,6 +14,8 @@
 
 extern PyMethodDef EmbMethods[];
 
+void RediStarPy_PyObjectSerialize(void* arg, BufferWriter* bw);
+void* RediStarPy_PyObjectDeserialize(BufferReader* br);
 int RediStarPy_Init(RedisModuleCtx *ctx);
 
 

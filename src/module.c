@@ -12,6 +12,7 @@
 #include "execution_plan.h"
 #include "example.h"
 #include "utils/arr_rm_alloc.h"
+#include "utils/buffer.h"
 #include "redistar_memory.h"
 #ifdef WITHPYTHON
 #include "redistar_python.h"
@@ -86,7 +87,7 @@ static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
     return 1;
 }
 
-ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize){
+static ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize){
     ArgType* ret = RS_ALLOC(sizeof(*ret));
     *ret = (ArgType){
         .type = RS_STRDUP(name),
@@ -97,8 +98,39 @@ ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDese
     return ret;
 }
 
+static void RS_BWWriteLong(BufferWriter* bw, long val){
+    BufferWriter_WriteLong(bw, val);
+}
+
+static void RS_BWWriteString(BufferWriter* bw, char* str){
+    BufferWriter_WriteString(bw, str);
+}
+
+static void RS_BWWriteBuffer(BufferWriter* bw, char* buff, size_t len){
+    BufferWriter_WriteBuff(bw, buff, len);
+}
+
+static long RS_BRReadLong(BufferReader* br){
+    return BufferReader_ReadLong(br);
+}
+
+static char* RS_BRReadString(BufferReader* br){
+    return BufferReader_ReadString(br);
+}
+
+static char* RS_BRReadBuffer(BufferReader* br, size_t* len){
+    return BufferReader_ReadBuff(br, len);
+}
+
+
 static bool RediStar_RegisterApi(){
     REGISTER_API(CreateType);
+    REGISTER_API(BWWriteLong);
+    REGISTER_API(BWWriteString);
+    REGISTER_API(BWWriteBuffer);
+    REGISTER_API(BRReadLong);
+    REGISTER_API(BRReadString);
+    REGISTER_API(BRReadBuffer);
 
     REGISTER_API(RegisterReader);
     REGISTER_API(RegisterWriter);
@@ -163,7 +195,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
     RSM_RegisterReducer(CountReducer, NULL);
 
-    ExecutionPlan_InitializeWorkers(1);
+    ExecutionPlan_Initialize(ctx, 1);
 
 #ifdef WITHPYTHON
     RediStarPy_Init(ctx);

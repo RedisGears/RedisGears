@@ -9,9 +9,19 @@
 #define SRC_RECORD_H_
 
 #include "redistar.h"
+#include "utils/buffer.h"
 #ifdef WITHPYTHON
 #include <Python.h>
 #endif
+
+enum AdditionalRecordTypes{
+    STOP_RECORD = 7, // telling the execution plan to stop the execution.
+#ifdef WITHPYTHON
+    PY_RECORD
+#endif
+};
+
+extern Record StopRecord;
 
 void RS_FreeRecord(Record* record);
 enum RecordType RS_RecordGetType(Record* r);
@@ -36,6 +46,9 @@ void RS_LongRecordSet(Record* r, long val);
 Record* RS_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RS_KeyHandlerRecordGet(Record* r);
 Record* RS_PyObjRecordCreare();
+
+void RS_SerializeRecord(BufferWriter* bw, Record* r);
+Record* RS_DeserializeRecord(BufferReader* br);
 
 #ifdef WITHPYTHON
 PyObject* RS_PyObjRecordGet(Record* r);
