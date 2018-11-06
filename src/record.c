@@ -2,7 +2,9 @@
 #include "redistar_memory.h"
 #include "utils/arr_rm_alloc.h"
 #include "record.h"
+#ifdef WITHPYTHON
 #include "redistar_python.h"
+#endif
 
 typedef struct KeysHandlerRecord{
     RedisModuleKey *keyHandler;
