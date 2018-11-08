@@ -25,7 +25,7 @@ static void Cluster_Free(RedisModuleCtx* ctx){
 }
 
 bool Cluster_IsClusterMode(){
-    return cluster->isClusterMode && cluster->idsLen > 1;
+    return cluster && cluster->isClusterMode && cluster->idsLen > 1;
 }
 
 size_t Cluster_GetSize(){
