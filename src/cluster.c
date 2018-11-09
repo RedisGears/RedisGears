@@ -96,3 +96,7 @@ char* Cluster_GetNodeIdByKey(char* key){
     unsigned int slot = keyHashSlot(key, strlen(key));
     return cluster->slots[slot];
 }
+
+bool Cluster_IsMyId(char* id){
+	return memcmp(cluster->myId, id, REDISMODULE_NODE_ID_LEN) == 0;
+}

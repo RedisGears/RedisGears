@@ -15,6 +15,7 @@ bool Cluster_IsClusterMode();
 size_t Cluster_GetSize();
 void Cluster_Refresh();
 char* Cluster_GetMyId();
+bool Cluster_IsMyId(char* id);
 char** Cluster_GetNodesList(size_t* len);
 char* Cluster_GetNodeIdByKey(char* key);
 

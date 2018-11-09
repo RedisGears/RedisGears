@@ -6,7 +6,6 @@
 #include <marshal.h>
 #include <assert.h>
 
-static RedisModuleCtx* currCtx = NULL;
 static PyObject* pFunc;
 static PyObject* globals;
 
@@ -14,13 +13,18 @@ static PyObject* globals;
 
 static PyObject* run(PyObject *cls, PyObject *args){
     PyObject* self = PyTuple_GetItem(args, 0);
-    PyObject* recordToStrCallback = PyTuple_GetItem(args, 1);
-    Py_INCREF(recordToStrCallback);
     PyObject* regexKey = PyString_FromString("regex");
     PyObject* regex = PyObject_GetAttr(self, regexKey);
+    PyObject* nameKey = PyString_FromString("name");
+	PyObject* name = PyObject_GetAttr(self, nameKey);
     Py_DECREF(regexKey);
+    Py_DECREF(nameKey);
     char* regexStr = PyString_AsString(regex);
-    RediStarCtx* rsctx = RSM_Load(KeysReader, currCtx, RS_STRDUP(regexStr));
+    char* nameStr = PyString_AsString(name);
+    Py_DECREF(regex);
+	Py_DECREF(name);
+    // todo : expose execution name on python interface
+    RediStarCtx* rsctx = RSM_CreateCtx(nameStr, KeysReader, RS_STRDUP(regexStr));
     RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
 
     PyObject* stepsKey = PyString_FromString("steps");
@@ -31,7 +35,6 @@ static PyObject* run(PyObject *cls, PyObject *args){
         PyObject* step = PyList_GetItem(stepsList, i);
         PyObject* stepType = PyTuple_GetItem(step, 0);
         PyObject* callback = PyTuple_GetItem(step, 1);
-        Py_INCREF(recordToStrCallback);
         PyObject* reducer = NULL;
         long type = PyLong_AsLong(stepType);
         switch(type){
@@ -47,16 +50,15 @@ static PyObject* run(PyObject *cls, PyObject *args){
             RSM_GroupBy(rsctx, RediStarPy_PyCallbackExtractor, callback, RediStarPy_PyCallbackReducer, reducer);
             RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
             break;
+        case 4:
+        	RSM_Collect(rsctx);
+        	break;
         default:
             assert(false);
         }
     }
 
-    if(recordToStrCallback){
-        RSM_Map(rsctx, RediStarPy_PyCallbackMapper, recordToStrCallback);
-    }
-
-    RSM_Write(rsctx, ReplyWriter, currCtx);
+    RSM_Run(rsctx);
 
     return PyLong_FromLong(1);
 }
@@ -80,8 +82,6 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
         return RedisModule_WrongArity(ctx);
     }
 
-    currCtx = ctx;
-
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
 
     PyGILState_STATE state = PyGILState_Ensure();
@@ -89,6 +89,8 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
         RedisModule_ReplyWithError(ctx, "failed running the given script");
     }
     PyGILState_Release(state);
+
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
 
     return REDISMODULE_OK;
 }
@@ -327,8 +329,9 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
 
     PyRun_SimpleString("import redistar\n"
                        "class starCtx:\n"
-                       "    def __init__(self, regex):\n"
+                       "    def __init__(self, name, regex):\n"
                        "        self.regex = regex\n"
+    				   "        self.name = name\n"
                        "        self.steps = []\n"
                        "    def map(self, mapFunc):\n"
                        "        self.steps.append((1, mapFunc))\n"
@@ -339,8 +342,11 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "    def groupby(self, extractor, reducer):\n"
                        "        self.steps.append((3, extractor, reducer))\n"
                        "        return self\n"
-                       "    def returnResults(self, recordToStr):\n"
-                       "        redistar.run(self, recordToStr)\n"
+    				   "    def collect(self):\n"
+					   "        self.steps.append((4, None))\n"
+					   "        return self\n"
+                       "    def run(self):\n"
+                       "        redistar.run(self)\n"
                        "globals()['str'] = str\n"
                        "redistar.saveGlobals()\n");
 
