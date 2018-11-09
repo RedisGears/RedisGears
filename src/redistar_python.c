@@ -58,7 +58,7 @@ static PyObject* run(PyObject *cls, PyObject *args){
         }
     }
 
-    RSM_Run(rsctx);
+    RSM_Run(rsctx, NULL, NULL);
 
     return PyLong_FromLong(1);
 }

@@ -9,10 +9,19 @@
 #define SRC_EXECUTION_PLAN_H_
 
 #include "redistar.h"
+#include <stdbool.h>
 
 enum StepType{
     MAP=1, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE, COLLECT
 };
+
+typedef struct FlatExecutionPlan FlatExecutionPlan;
+typedef struct ExecutionPlan ExecutionPlan;
+
+typedef struct RediStarCtx{
+    FlatExecutionPlan* fep;
+    ExecutionPlan* ep;
+}RediStarCtx;
 
 typedef struct ExecutionStepArg{
     void* stepArg;
@@ -95,6 +104,8 @@ typedef struct ExecutionPlan{
     Record** results;
     ExecutionPlanStatus status;
     bool isDone;
+    RediStar_OnExecutionDoneCallback callback;
+    void* privateData;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -137,12 +148,14 @@ void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbac
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                   const char* reducerName, void* reducerArg);
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
-void FlatExecutionPlan_Run(FlatExecutionPlan* fep);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData);
 
 void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);
+void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx);
+
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-int ExecutionPlan_GetResultsByExecutionName(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-
+ExecutionPlan* ExecutionPlan_FindByName(const char* name);
+ExecutionPlan* ExecutionPlan_FindById(const char* id);
 
 #endif /* SRC_EXECUTION_PLAN_H_ */
