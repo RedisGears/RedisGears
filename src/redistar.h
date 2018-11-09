@@ -120,8 +120,14 @@ int MODULE_API_FUNC(RediStar_RegisterReducer)(char* name, RediStar_ReducerCallba
 #define RSM_RegisterGroupByExtractor(name, type) RediStar_RegisterGroupByExtractor(#name, name, type);
 #define RSM_RegisterReducer(name, type) RediStar_RegisterReducer(#name, name, type);
 
-RediStarCtx* MODULE_API_FUNC(RediStar_Load)(char* name, RedisModuleCtx *ctx, void* arg);
-#define RSM_Load(name, ctx, arg) RediStar_Load(#name, ctx, arg)
+/**
+ * Create an execution plan with the given reader.
+ * It is possible to continue adding operation such as map, filter, group by, and so on using the return context.
+ */
+RediStarCtx* MODULE_API_FUNC(RediStar_CreateCtx)(char* name, char* readerName, void* arg);
+#define RSM_CreateCtx(name, readerName, arg) RediStar_CreateCtx(name, #readerName, arg)
+
+/******************************* Execution plan operations *******************************/
 
 int MODULE_API_FUNC(RediStar_Map)(RediStarCtx* ctx, char* name, void* arg);
 #define RSM_Map(ctx, name, arg) RediStar_Map(ctx, #name, arg)
@@ -129,12 +135,26 @@ int MODULE_API_FUNC(RediStar_Map)(RediStarCtx* ctx, char* name, void* arg);
 int MODULE_API_FUNC(RediStar_Filter)(RediStarCtx* ctx, char* name, void* arg);
 #define RSM_Filter(ctx, name, arg) RediStar_Filter(ctx, #name, arg)
 
-int MODULE_API_FUNC(RediStar_Write)(RediStarCtx* ctx, char* name, void* arg);
-#define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)
-
 int MODULE_API_FUNC(RediStar_GroupBy)(RediStarCtx* ctx, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg);
 #define RSM_GroupBy(ctx, extractor, extractorArg, reducer, reducerArg)\
     RediStar_GroupBy(ctx, #extractor, extractorArg, #reducer, reducerArg)
+
+int MODULE_API_FUNC(RediStar_Collect)(RediStarCtx* ctx);
+#define RSM_Collect(ctx) RediStar_Collect(ctx)
+
+/******************************* Execution plan runners *******************************/
+
+/*
+ * There are three ways to start running an execution plan
+ * 1. Write in using a writer
+ * 2. just run it, store the result inside the redis memory (not in the key space) and later read it.
+ */
+
+int MODULE_API_FUNC(RediStar_Run)(RediStarCtx* ctx);
+#define RSM_Run(ctx) RediStar_Run(ctx)
+
+int MODULE_API_FUNC(RediStar_Write)(RediStarCtx* ctx, char* name, void* arg);
+#define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)
 
 #define PROXY_MODULE_INIT_FUNCTION(name) \
         if (RedisModule_GetApi("RediStar_" #name, ((void **)&RediStar_ ## name))) { \
@@ -157,11 +177,13 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(RegisterFilter);
     PROXY_MODULE_INIT_FUNCTION(RegisterGroupByExtractor);
     PROXY_MODULE_INIT_FUNCTION(RegisterReducer);
-    PROXY_MODULE_INIT_FUNCTION(Load);
+    PROXY_MODULE_INIT_FUNCTION(CreateCtx);
     PROXY_MODULE_INIT_FUNCTION(Map);
     PROXY_MODULE_INIT_FUNCTION(Filter);
+    PROXY_MODULE_INIT_FUNCTION(Run);
     PROXY_MODULE_INIT_FUNCTION(Write);
     PROXY_MODULE_INIT_FUNCTION(GroupBy);
+    PROXY_MODULE_INIT_FUNCTION(Collect);
 
     PROXY_MODULE_INIT_FUNCTION(FreeRecord);
     PROXY_MODULE_INIT_FUNCTION(RecordGetType);

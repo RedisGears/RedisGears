@@ -25,7 +25,6 @@ int moduleRegisterApi(const char *funcname, void *funcptr);
 
 typedef struct RediStarCtx{
     FlatExecutionPlan* fep;
-    RedisModuleCtx *ctx;
 }RediStarCtx;
 
 #define REGISTER_API(name) \
@@ -58,11 +57,10 @@ static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer, ArgT
     return ReducersMgmt_Add(name, reducer, type);
 }
 
-static RediStarCtx* RS_Load(char* name, RedisModuleCtx *ctx, void* arg){
+static RediStarCtx* RS_CreateCtx(char* name, char* readerName, void* arg){
     RediStarCtx* res = RS_ALLOC(sizeof(*res));
-    res->fep = FlatExecutionPlan_New();
-    FlatExecutionPlan_SetReader(res->fep, name, arg);
-    res->ctx = ctx;
+    res->fep = FlatExecutionPlan_New(name);
+    FlatExecutionPlan_SetReader(res->fep, readerName, arg);
     return res;
 }
 
@@ -81,11 +79,22 @@ static int RS_GroupBy(RediStarCtx* ctx, char* extraxtorName, void* extractorArg,
     return 1;
 }
 
+static int RS_Collect(RediStarCtx* ctx){
+	FlatExecutionPlan_AddCollectStep(ctx->fep);
+	return 1;
+}
+
 static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
     FlatExecutionPlan_SetWriter(ctx->fep, name, arg);
-    FlatExecutionPlan_Run(ctx->fep, ctx->ctx);
+    FlatExecutionPlan_Run(ctx->fep);
     RS_FREE(ctx);
     return 1;
+}
+
+static int RS_Run(RediStarCtx* ctx){
+	FlatExecutionPlan_Run(ctx->fep);
+	RS_FREE(ctx);
+	return 1;
 }
 
 static ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize){
@@ -139,11 +148,13 @@ static bool RediStar_RegisterApi(){
     REGISTER_API(RegisterFilter);
     REGISTER_API(RegisterGroupByExtractor);
     REGISTER_API(RegisterReducer);
-    REGISTER_API(Load);
+    REGISTER_API(CreateCtx);
     REGISTER_API(Map);
     REGISTER_API(Filter);
     REGISTER_API(GroupBy);
+    REGISTER_API(Collect);
     REGISTER_API(Write);
+    REGISTER_API(Run);
 
     REGISTER_API(FreeRecord);
     REGISTER_API(RecordGetType);
@@ -219,6 +230,16 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
         return REDISMODULE_ERR;
     }
+
+    if (RedisModule_CreateCommand(ctx, "rs.dumpexecutions", ExecutionPlan_ExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+		return REDISMODULE_ERR;
+	}
+
+    if (RedisModule_CreateCommand(ctx, "rs.getresults", ExecutionPlan_GetResultsByExecutionName, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+		return REDISMODULE_ERR;
+	}
 
     return REDISMODULE_OK;
 }
