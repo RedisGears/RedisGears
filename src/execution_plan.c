@@ -38,7 +38,6 @@ static long long lastId = 0;
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err);
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep);
 static void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
-static void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader, void* readerArg);
 static FlatExecutionWriter* FlatExecutionPlan_NewWriter(char* writer, void* writerArg);
 static void ExecutionPlan_AddToRunList(ExecutionPlan* ep);
@@ -70,7 +69,7 @@ dictType dictTypeHeapIds = {
         .valDestructor = NULL,
 };
 
-static ExecutionPlan* ExecutionPlan_FindByName(const char* name){
+ExecutionPlan* ExecutionPlan_FindByName(const char* name){
 	dictEntry *entry = dictFind(epData.namesDict, name);
 	if(!entry){
 		return NULL;
@@ -78,7 +77,7 @@ static ExecutionPlan* ExecutionPlan_FindByName(const char* name){
 	return dictGetVal(entry);
 }
 
-static ExecutionPlan* ExecutionPlan_FindById(const char* id){
+ExecutionPlan* ExecutionPlan_FindById(const char* id){
 	dictEntry *entry = dictFind(epData.epDict, id);
 	if(!entry){
 		return NULL;
@@ -461,9 +460,11 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 
 	while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err)) != NULL){
 		if(record == &StopRecord){
+			Buffer_Free(buff);
 			return record;
 		}
 		if(*err){
+			Buffer_Free(buff);
 			return record;
 		}
 		if(Cluster_IsMyId(ep->fep->id)){
@@ -487,12 +488,13 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 
 	step->collect.stoped = true;
 
-	Buffer_Free(buff);
 	if(*err){
+		Buffer_Free(buff);
 		return record;
 	}
 
 	if(Cluster_IsMyId(ep->fep->id)){
+		Buffer_Free(buff);
 		return &StopRecord;
 	}else{
 		BufferWriter_Init(&bw, buff);
@@ -502,6 +504,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 		RedisModule_ThreadSafeContextLock(rctx);
 		RedisModule_SendClusterMessage(rctx, ep->fep->id, DONE_COLLECT_MSG_TYPE, buff->buff, buff->size);
 		RedisModule_ThreadSafeContextUnlock(rctx);
+		Buffer_Free(buff);
 		return NULL;
 	}
 }
@@ -607,6 +610,13 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         	RedisModule_ThreadSafeContextLock(rctx);
         	ep->isDone = true;
         	RedisModule_ThreadSafeContextUnlock(rctx);
+        	if(ep->callback){
+        		RediStarCtx starCtx = {
+        				.fep = ep->fep,
+						.ep = ep,
+        		};
+        		ep->callback(&starCtx, ep->privateData);
+        	}
         }
         RedisModule_FreeThreadSafeContext(rctx);
     }
@@ -628,7 +638,7 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     BufferReader br;
     BufferReader_Init(&br, &buff);
     FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
-    FlatExecutionPlan_Run(fep);
+    FlatExecutionPlan_Run(fep, NULL, NULL);
 }
 
 static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -728,9 +738,12 @@ void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
     }
 }
 
-void FlatExecutionPlan_Run(FlatExecutionPlan* fep){
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData){
     ExecutionPlan* ep = ExecutionPlan_New(fep);
+    ep->callback = callback;
+    ep->privateData = privateData;
     ExecutionPlan_AddToRunList(ep);
+    return ep;
 }
 
 static WriterStep ExecutionPlan_NewWriter(FlatExecutionWriter* writer){
@@ -857,7 +870,23 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         }
         break;
     case REPARTITION:
-        break;
+    	if(es->repartion.pendings){
+			for(size_t i = 0 ; i < array_len(es->repartion.pendings) ; ++i){
+				Record* r = es->repartion.pendings[i];
+				RediStar_FreeRecord(r);
+			}
+			array_free(es->repartion.pendings);
+		}
+		break;
+    case COLLECT:
+    	if(es->collect.pendings){
+    		for(size_t i = 0 ; i < array_len(es->collect.pendings) ; ++i){
+				Record* r = es->collect.pendings[i];
+				RediStar_FreeRecord(r);
+			}
+			array_free(es->collect.pendings);
+    	}
+		break;
     case GROUP:
         if(es->group.groupedRecords){
             for(size_t i = 0 ; i < array_len(es->group.groupedRecords) ; ++i){
@@ -879,7 +908,7 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     RS_FREE(es);
 }
 
-static void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
+void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
     dictDelete(epData.epDict, ep->fep->id);
     FlatExecutionPlan_Free(ep->fep);
 
@@ -933,10 +962,13 @@ FlatExecutionPlan* FlatExecutionPlan_New(char* name){
 }
 
 static void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
+	RS_FREE(fep->name);
     RS_FREE(fep->reader->reader);
     RS_FREE(fep->reader);
-    RS_FREE(fep->writer->writer);
-    RS_FREE(fep->writer);
+    if(fep->writer){
+    	RS_FREE(fep->writer->writer);
+    	RS_FREE(fep->writer);
+    }
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
         RS_FREE(step->bStep.stepName);
@@ -1008,76 +1040,5 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 		++numOfEntries;
 	}
 	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
-	return REDISMODULE_OK;
-}
-
-static void ExecutionPlan_WriteRecord(RedisModuleCtx* rctx, Record* record){
-    size_t listLen;
-    char* str;
-#ifdef WITHPYTHON
-    PyObject* obj;
-#endif
-    switch(RediStar_RecordGetType(record)){
-    case STRING_RECORD:
-        str = RediStar_StringRecordGet(record);
-        RedisModule_ReplyWithStringBuffer(rctx, str, strlen(str));
-        break;
-    case LONG_RECORD:
-        RedisModule_ReplyWithLongLong(rctx, RediStar_LongRecordGet(record));
-        break;
-    case DOUBLE_RECORD:
-        RedisModule_ReplyWithDouble(rctx, RediStar_DoubleRecordGet(record));
-        break;
-    case KEY_HANDLER_RECORD:
-        RedisModule_ReplyWithStringBuffer(rctx, "KEY HANDLER RECORD", strlen("KEY HANDLER RECORD"));
-        break;
-    case KEY_RECORD:
-        RedisModule_ReplyWithArray(rctx, 2);
-        size_t keyLen;
-        char* key = RediStar_KeyRecordGetKey(record, &keyLen);
-        RedisModule_ReplyWithStringBuffer(rctx, key, keyLen);
-        ExecutionPlan_WriteRecord(rctx, RediStar_KeyRecordGetVal(record));
-        break;
-    case LIST_RECORD:
-        listLen = RediStar_ListRecordLen(record);
-        RedisModule_ReplyWithArray(rctx, listLen);
-        for(int i = 0 ; i < listLen ; ++i){
-        	ExecutionPlan_WriteRecord(rctx, RediStar_ListRecordGet(record, i));
-        }
-        break;
-#ifdef WITHPYTHON
-    case PY_RECORD:
-        obj = RS_PyObjRecordGet(record);
-        if(PyObject_TypeCheck(obj, &PyBaseString_Type)) {
-            str = PyString_AsString(obj);
-            RedisModule_ReplyWithStringBuffer(rctx, str, strlen(str));
-        }else{
-            RedisModule_ReplyWithStringBuffer(rctx, "PY RECORD", strlen("PY RECORD"));
-        }
-        break;
-#endif
-    default:
-        assert(false);
-    }
-}
-
-int ExecutionPlan_GetResultsByExecutionName(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-	if(argc < 2){
-		return RedisModule_WrongArity(ctx);
-	}
-
-	const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* ep = ExecutionPlan_FindByName(name);
-
-	if(!ep){
-		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
-		return REDISMODULE_OK;
-	}
-
-	RedisModule_ReplyWithArray(ctx, array_len(ep->results));
-	for(size_t i = 0 ; i < array_len(ep->results) ; ++i){
-		ExecutionPlan_WriteRecord(ctx, ep->results[i]);
-	}
-
 	return REDISMODULE_OK;
 }

@@ -73,6 +73,8 @@ char* KeyRecordStrValueExtractor(RedisModuleCtx* rctx, Record *data, void* arg, 
 /******************************* GroupByReducers ***********************/
 Record* CountReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err);
 
+
+typedef void (*RediStar_OnExecutionDoneCallback)(RediStarCtx* ctx, void* privateData);
 typedef Reader* (*RediStar_ReaderCallback)(void* arg);
 typedef Writer* (*RediStar_WriterCallback)(void* arg);
 typedef Record* (*RediStar_MapCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
@@ -149,9 +151,8 @@ int MODULE_API_FUNC(RediStar_Collect)(RediStarCtx* ctx);
  * 1. Write in using a writer
  * 2. just run it, store the result inside the redis memory (not in the key space) and later read it.
  */
-
-int MODULE_API_FUNC(RediStar_Run)(RediStarCtx* ctx);
-#define RSM_Run(ctx) RediStar_Run(ctx)
+int MODULE_API_FUNC(RediStar_Run)(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback, void* privateData);
+#define RSM_Run(ctx, callback, privateData) RediStar_Run(ctx, callback, privateData)
 
 int MODULE_API_FUNC(RediStar_Write)(RediStarCtx* ctx, char* name, void* arg);
 #define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)

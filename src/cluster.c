@@ -2,7 +2,7 @@
 #include "redistar_memory.h"
 #include <assert.h>
 
-#define MAX_SLOT 16383
+#define MAX_SLOT 16384
 
 typedef struct Cluster{
     char* myId;

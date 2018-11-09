@@ -12,11 +12,9 @@
 
 Buffer* Buffer_New(size_t initialCap){
     Buffer* ret = RS_ALLOC(sizeof(*ret));
-    *ret = (Buffer){
-            .cap = initialCap,
-            .size = 0,
-            .buff = RS_ALLOC(initialCap * sizeof(char)),
-    };
+    ret->cap = initialCap;
+    ret->size = 0;
+    ret->buff = RS_ALLOC(initialCap * sizeof(char));
     return ret;
 }
 
