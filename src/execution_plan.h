@@ -106,6 +106,7 @@ typedef struct ExecutionPlan{
     bool isDone;
     RediStar_OnExecutionDoneCallback callback;
     void* privateData;
+    FreePrivateData freeCallback;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
