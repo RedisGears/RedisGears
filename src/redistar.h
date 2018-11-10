@@ -157,6 +157,19 @@ int MODULE_API_FUNC(RediStar_Run)(RediStarCtx* ctx, RediStar_OnExecutionDoneCall
 int MODULE_API_FUNC(RediStar_Write)(RediStarCtx* ctx, char* name, void* arg);
 #define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)
 
+typedef void (*FreePrivateData)(void* privateData);
+
+bool MODULE_API_FUNC(RediStar_RegisterExecutionDoneCallback)(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback);
+void MODULE_API_FUNC(RediStar_FreeCtx)(RediStarCtx* ctx);
+bool MODULE_API_FUNC(RediStar_IsDone)(RediStarCtx* ctx);
+long long MODULE_API_FUNC(RediStar_GetRecordsLen)(RediStarCtx* ctx);
+void* MODULE_API_FUNC(RediStar_GetPrivateData)(RediStarCtx* ctx);
+void MODULE_API_FUNC(RediStar_SetPrivateData)(RediStarCtx* ctx, void* privateData, FreePrivateData freeCallback);
+Record* MODULE_API_FUNC(RediStar_GetRecord)(RediStarCtx* ctx, long long i);
+RediStarCtx* MODULE_API_FUNC(RediStar_GetCtxById)(const char* id);
+RediStarCtx* MODULE_API_FUNC(RediStar_GetCtxByName)(const char* name);
+void MODULE_API_FUNC(RediStar_DropExecution)(RediStarCtx* starCtx, RedisModuleCtx* ctx);
+
 #define PROXY_MODULE_INIT_FUNCTION(name) \
         if (RedisModule_GetApi("RediStar_" #name, ((void **)&RediStar_ ## name))) { \
             printf("could not initialize RediStar_" #name "\r\n");\
@@ -185,6 +198,17 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(Write);
     PROXY_MODULE_INIT_FUNCTION(GroupBy);
     PROXY_MODULE_INIT_FUNCTION(Collect);
+
+    PROXY_MODULE_INIT_FUNCTION(GetCtxByName);
+    PROXY_MODULE_INIT_FUNCTION(GetCtxById);
+    PROXY_MODULE_INIT_FUNCTION(FreeCtx);
+    PROXY_MODULE_INIT_FUNCTION(IsDone);
+    PROXY_MODULE_INIT_FUNCTION(GetRecordsLen);
+    PROXY_MODULE_INIT_FUNCTION(GetRecord);
+    PROXY_MODULE_INIT_FUNCTION(RegisterExecutionDoneCallback);
+    PROXY_MODULE_INIT_FUNCTION(GetPrivateData);
+	PROXY_MODULE_INIT_FUNCTION(SetPrivateData);
+	PROXY_MODULE_INIT_FUNCTION(DropExecution);
 
     PROXY_MODULE_INIT_FUNCTION(FreeRecord);
     PROXY_MODULE_INIT_FUNCTION(RecordGetType);

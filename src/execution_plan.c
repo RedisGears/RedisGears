@@ -609,7 +609,6 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         if(isDone){
         	RedisModule_ThreadSafeContextLock(rctx);
         	ep->isDone = true;
-        	RedisModule_ThreadSafeContextUnlock(rctx);
         	if(ep->callback){
         		RediStarCtx starCtx = {
         				.fep = ep->fep,
@@ -617,6 +616,7 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         		};
         		ep->callback(&starCtx, ep->privateData);
         	}
+        	RedisModule_ThreadSafeContextUnlock(rctx);
         }
         RedisModule_FreeThreadSafeContext(rctx);
     }
@@ -839,6 +839,10 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep){
     ret->totalShardsCompleted = 0;
     ret->results = array_new(Record*, 100);
     ret->status = CREATED;
+    ret->isDone = false;
+    ret->callback = NULL;
+    ret->privateData = NULL;
+    ret->freeCallback = NULL;
     dictAdd(epData.epDict, fep->id, ret);
     dictAdd(epData.namesDict, fep->name, ret);
     return ret;
@@ -910,6 +914,7 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
 
 void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
     dictDelete(epData.epDict, ep->fep->id);
+    dictDelete(epData.namesDict, ep->fep->name);
     FlatExecutionPlan_Free(ep->fep);
 
     if(ep->writerStep.w){
