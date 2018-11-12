@@ -23,6 +23,7 @@ enum RecordType{
     STRING_RECORD,
     LIST_RECORD,
     KEY_RECORD,
+    HASH_SET_RECORD,
 };
 
 /******************************* READERS *******************************/
@@ -99,6 +100,11 @@ long MODULE_API_FUNC(RediStar_LongRecordGet)(Record* r);
 void MODULE_API_FUNC(RediStar_LongRecordSet)(Record* r, long val);
 Record* MODULE_API_FUNC(RediStar_KeyHandlerRecordCreate)(RedisModuleKey* handler);
 RedisModuleKey* MODULE_API_FUNC(RediStar_KeyHandlerRecordGet)(Record* r);
+Record* MODULE_API_FUNC(RediStar_HashSetRecordCreate)();
+int MODULE_API_FUNC(RediStar_HashSetRecordSet)(Record* r, char* key, Record* val);
+Record* MODULE_API_FUNC(RediStar_HashSetRecordGet)(Record* r, char* key);
+char** MODULE_API_FUNC(RediStar_HashSetRecordGetAllKeys)(Record* r, size_t* len);
+void MODULE_API_FUNC(RediStar_HashSetRecordFreeKeysArray)(char** keyArr);
 
 int MODULE_API_FUNC(RediStar_RegisterReader)(char* name, RediStar_ReaderCallback reader, ArgType* type);
 int MODULE_API_FUNC(RediStar_RegisterWriter)(char* name, RediStar_WriterCallback reader, ArgType* type);
@@ -227,6 +233,11 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(LongRecordSet);
     PROXY_MODULE_INIT_FUNCTION(KeyHandlerRecordCreate);
     PROXY_MODULE_INIT_FUNCTION(KeyHandlerRecordGet);
+    PROXY_MODULE_INIT_FUNCTION(HashSetRecordCreate);
+    PROXY_MODULE_INIT_FUNCTION(HashSetRecordSet);
+    PROXY_MODULE_INIT_FUNCTION(HashSetRecordGet);
+    PROXY_MODULE_INIT_FUNCTION(HashSetRecordGetAllKeys);
+    PROXY_MODULE_INIT_FUNCTION(HashSetRecordFreeKeysArray);
 
     return true;
 }

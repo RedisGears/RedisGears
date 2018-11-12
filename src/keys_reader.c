@@ -63,6 +63,32 @@ static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
     return record;
 }
 
+static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
+    RedisModuleCallReply *reply = RedisModule_Call(ctx, "HGETALL", "c", RediStar_KeyRecordGetKey(record, NULL));
+    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+    size_t len = RedisModule_CallReplyLength(reply);
+    assert(len % 2 == 0);
+    Record *hashSetRecord = RediStar_HashSetRecordCreate();
+    for(int i = 0 ; i < len ; i+=2){
+        RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(reply, i);
+        RedisModuleCallReply *valReply = RedisModule_CallReplyArrayElement(reply, i + 1);
+        size_t keyStrLen;
+        const char* keyStr = RedisModule_CallReplyStringPtr(keyReply, &keyStrLen);
+        char keyCStr[keyStrLen + 1];
+        memcpy(keyCStr, keyStr, keyStrLen);
+        keyCStr[keyStrLen] = '\0';
+        size_t valStrLen;
+        const char* valStr = RedisModule_CallReplyStringPtr(valReply, &valStrLen);
+        char valCStr[valStrLen + 1];
+        memcpy(valCStr, valStr, valStrLen);
+        valCStr[valStrLen] = '\0';
+        Record* valRecord = RediStar_StringRecordCreate(RS_STRDUP(valCStr));
+        RediStar_HashSetRecordSet(hashSetRecord, keyCStr, valRecord);
+    }
+    RediStar_KeyRecordSetVal(record, hashSetRecord);
+    return record;
+}
+
 static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
     RedisModuleCallReply *reply = RedisModule_Call(ctx, "lrange", "cll", RediStar_KeyRecordGetKey(record, NULL), 0, -1);
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
@@ -93,6 +119,9 @@ static Record* ValueToRecordMapper(RedisModuleCtx* rctx, Record* record, RedisMo
         break;
     case REDISMODULE_KEYTYPE_LIST:
         return ValueToListMapper(record, rctx);
+        break;
+    case REDISMODULE_KEYTYPE_HASH:
+        return ValueToHashSetMapper(record, rctx);
         break;
     default:
         assert(false);

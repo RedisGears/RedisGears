@@ -255,6 +255,7 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
     long longNum;
     double doubleNum;
     char* key;
+    char** keys;
     size_t len;
     switch(RediStar_RecordGetType(record)){
     case STRING_RECORD:
@@ -290,6 +291,20 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
             PyList_Append(obj, RS_PyObjRecordGet(tempRecord));
             RediStar_FreeRecord(tempRecord);
         }
+        break;
+    case HASH_SET_RECORD:
+        keys = RediStar_HashSetRecordGetAllKeys(record, &len);
+        obj = PyDict_New();
+        for(size_t i = 0 ; i < len ; ++i){
+            key = keys[i];
+            temp = PyString_FromString(key);
+            tempRecord = RediStar_HashSetRecordGet(record, key);
+            tempRecord = RediStarPy_ToPyRecordMapperInternal(tempRecord, arg);
+            assert(RediStar_RecordGetType(tempRecord) == PY_RECORD);
+            PyDict_SetItem(obj, temp, RS_PyObjRecordGet(tempRecord));
+            RediStar_FreeRecord(tempRecord);
+        }
+        RediStar_HashSetRecordFreeKeysArray(keys);
         break;
     case PY_RECORD:
         obj = RS_PyObjRecordGet(record);
