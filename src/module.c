@@ -82,10 +82,13 @@ static int RS_Collect(RediStarCtx* ctx){
 	return 1;
 }
 
+static int RS_Repartition(RediStarCtx* ctx){
+    FlatExecutionPlan_AddRepartitionStep(ctx->fep);
+    return 1;
+}
+
 static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
-    FlatExecutionPlan_SetWriter(ctx->fep, name, arg);
-    ctx->ep = FlatExecutionPlan_Run(ctx->fep, NULL, NULL);
-    RS_FREE(ctx);
+    FlatExecutionPlan_AddWriter(ctx->fep, name, arg);
     return 1;
 }
 
@@ -215,6 +218,7 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(Filter, registerApiCallback);
     REGISTER_API(GroupBy, registerApiCallback);
     REGISTER_API(Collect, registerApiCallback);
+    REGISTER_API(Repartition, registerApiCallback);
     REGISTER_API(Write, registerApiCallback);
     REGISTER_API(Run, registerApiCallback);
 
@@ -266,7 +270,6 @@ static void RS_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sende
 }
 
 ArgType* GetKeysReaderArgType();
-ArgType* GetKeysWriterArgType();
 
 bool apiRegistered = false;
 
@@ -300,7 +303,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     Mgmt_Init();
 
     RSM_RegisterReader(KeysReader, GetKeysReaderArgType());
-    RSM_RegisterWriter(ReplyWriter, GetKeysWriterArgType());
+    RSM_RegisterWriter(KeyRecordWriter, NULL);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
     RSM_RegisterReducer(CountReducer, NULL);
 

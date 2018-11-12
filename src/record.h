@@ -43,14 +43,16 @@ void RS_DoubleRecordSet(Record* r, double val);
 Record* RS_LongRecordCreate(long val);
 long RS_LongRecordGet(Record* r);
 void RS_LongRecordSet(Record* r, long val);
+
+/* todo: think if we can removed this!! */
 Record* RS_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RS_KeyHandlerRecordGet(Record* r);
-Record* RS_PyObjRecordCreare();
 
 void RS_SerializeRecord(BufferWriter* bw, Record* r);
 Record* RS_DeserializeRecord(BufferReader* br);
 
 #ifdef WITHPYTHON
+Record* RS_PyObjRecordCreare();
 PyObject* RS_PyObjRecordGet(Record* r);
 void RS_PyObjRecordSet(Record* r, PyObject* obj);
 #endif

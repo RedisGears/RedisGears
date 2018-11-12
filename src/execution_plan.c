@@ -39,7 +39,6 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep);
 static void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader, void* readerArg);
-static FlatExecutionWriter* FlatExecutionPlan_NewWriter(char* writer, void* writerArg);
 static void ExecutionPlan_AddToRunList(ExecutionPlan* ep);
 
 static uint64_t idHashFunction(const void *key){
@@ -94,15 +93,6 @@ static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, BufferW
     }
 }
 
-static void FlatExecutionPlan_SerializeWriter(FlatExecutionWriter* wfep, BufferWriter* bw){
-    RediStar_BWWriteString(bw, wfep->writer);
-    ArgType* type = WritersMgmt_GetArgType(wfep->writer);
-    if(type && type->serialize){
-        // if we do not have a type or type do not have a serializer then we assume arg is NULL
-        type->serialize(wfep->arg, bw);
-    }
-}
-
 static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWriter* bw){
     RediStar_BWWriteLong(bw, step->type);
     RediStar_BWWriteString(bw, step->bStep.stepName);
@@ -137,23 +127,6 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, BufferWriter* bw
         FlatExecutionStep* step = fep->steps + i;
         FlatExecutionPlan_SerializeStep(step, bw);
     }
-    if(fep->writer){
-    	RediStar_BWWriteLong(bw, 1); // writer exits
-    	FlatExecutionPlan_SerializeWriter(fep->writer, bw);
-    }else{
-    	RediStar_BWWriteLong(bw, 0); // writer missing
-    }
-}
-
-static FlatExecutionWriter* FlatExecutionPlan_DeserializeWriter(BufferReader* br){
-    char* writerName = RediStar_BRReadString(br);
-    void* arg = NULL;
-    ArgType* type = ReadersMgmt_GetArgType(writerName);
-    if(type && type->deserialize){
-        arg = type->deserialize(br);
-    }
-    FlatExecutionWriter* writer = FlatExecutionPlan_NewWriter(writerName, arg);
-    return writer;
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(BufferReader* br){
@@ -206,10 +179,6 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(BufferReader* br){
     long numberOfSteps = RediStar_BRReadLong(br);
     for(int i = 0 ; i < numberOfSteps ; ++i){
         ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
-    }
-    if(RediStar_BRReadLong(br)){
-    	// writer exists
-    	ret->writer = FlatExecutionPlan_DeserializeWriter(br);
     }
     return ret;
 }
@@ -509,6 +478,20 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 	}
 }
 
+static Record* ExecutionPlan_WriteNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err);
+    if(record == &StopRecord){
+        return record;
+    }
+    if(*err){
+        return record;
+    }
+    if(record){
+        step->writer.write(rctx, record, step->writer.stepArg.stepArg, err);
+    }
+    return record;
+}
+
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = NULL;
     Record* r;
@@ -535,6 +518,8 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
         return ExecutionPlan_RepartitionNextRecord(ep, step, rctx, err);
     case COLLECT:
     	return ExecutionPlan_CollectNextRecord(ep, step, rctx, err);
+    case WRITER:
+        return ExecutionPlan_WriteNextRecord(ep, step, rctx, err);
     default:
         assert(false);
         return NULL;
@@ -542,22 +527,14 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
 }
 
 static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
-	if(ep->writerStep.w){
-		ep->writerStep.w->Write(rctx, ep->writerStep.w->ctx, record);
-	}else{
-		RedisModule_ThreadSafeContextLock(rctx);
-		ep->results = array_append(ep->results, record);
-		RedisModule_ThreadSafeContextUnlock(rctx);
-	}
+    RedisModule_ThreadSafeContextLock(rctx);
+    ep->results = array_append(ep->results, record);
+    RedisModule_ThreadSafeContextUnlock(rctx);
 }
 
 static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     Record* record = NULL;
     char* err = NULL;
-
-    if(ep->writerStep.w){
-    	ep->writerStep.w->Start(rctx, ep->writerStep.w->ctx);
-    }
 
     while((record = ExecutionPlan_NextRecord(ep, ep->steps[0], rctx, &err))){
         if(err){
@@ -574,10 +551,6 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     if(err){
         Record* r = RediStar_StringRecordCreate(err);
         ExecutionPlan_WriteResult(ep, rctx, r);
-    }
-
-    if(ep->writerStep.w){
-    	ep->writerStep.w->Done(rctx, ep->writerStep.w->ctx);
     }
 
     return true;
@@ -746,16 +719,6 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutio
     return ep;
 }
 
-static WriterStep ExecutionPlan_NewWriter(FlatExecutionWriter* writer){
-	if(!writer){
-		return (WriterStep){.w = NULL, .type = NULL};
-	}
-    RediStar_WriterCallback callback = WritersMgmt_Get(writer->writer);
-    ArgType* type = WritersMgmt_GetArgType(writer->writer);
-    assert(callback); // todo: handle as error in future
-    return (WriterStep){.w = callback(writer->arg), .type = type};
-}
-
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader){
     RediStar_ReaderCallback callback = ReadersMgmt_Get(reader->reader);
     ArgType* type = ReadersMgmt_GetArgType(reader->reader);
@@ -801,6 +764,11 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     	es->collect.stoped = false;
     	es->collect.pendings = array_new(Record*, PENDING_INITIAL_SIZE);
     	break;
+    case WRITER:
+        es->writer.write = WritersMgmt_Get(step->bStep.stepName);
+        es->writer.stepArg.type = WritersMgmt_GetArgType(step->bStep.stepName);
+        es->writer.stepArg.stepArg = step->bStep.arg;
+        break;
     default:
         assert(false);
     }
@@ -818,7 +786,6 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep){
     ExecutionPlan* ret = RS_ALLOC(sizeof(*ret));
     ret->steps = array_new(FlatExecutionStep*, 10);
-    ret->writerStep = ExecutionPlan_NewWriter(fep->writer);
     ExecutionStep* last = NULL;
     for(int i = array_len(fep->steps) - 1 ; i >= 0 ; --i){
         FlatExecutionStep* s = fep->steps + i;
@@ -906,6 +873,11 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         }
         RS_FREE(es->reader.r);
         break;
+    case WRITER:
+        if (es->writer.stepArg.type && es->writer.stepArg.type->free){
+            es->writer.stepArg.type->free(es->writer.stepArg.stepArg);
+        }
+        break;
     default:
         assert(false);
     }
@@ -916,13 +888,6 @@ void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
     dictDelete(epData.epDict, ep->fep->id);
     dictDelete(epData.namesDict, ep->fep->name);
     FlatExecutionPlan_Free(ep->fep);
-
-    if(ep->writerStep.w){
-		if(ep->writerStep.type && ep->writerStep.type->free){
-			ep->writerStep.type->free(ep->writerStep.w->ctx);
-		}
-		RS_FREE(ep->writerStep.w);
-    }
 
     ExecutionStep_Free(ep->steps[0], ctx);
     array_free(ep->steps);
@@ -938,20 +903,12 @@ static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader, void* read
     return res;
 }
 
-static FlatExecutionWriter* FlatExecutionPlan_NewWriter(char* writer, void* writerArg){
-    FlatExecutionWriter* res = RS_ALLOC(sizeof(*res));
-    res->writer = RS_STRDUP(writer);
-    res->arg = writerArg;
-    return res;
-}
-
 FlatExecutionPlan* FlatExecutionPlan_New(char* name){
 #define STEPS_INITIAL_CAP 10
 	char noneClusterId[REDISMODULE_NODE_ID_LEN] = {0};
     FlatExecutionPlan* res = RS_ALLOC(sizeof(*res));
     res->name = RS_STRDUP(name);
     res->reader = NULL;
-    res->writer = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
     memset(res->id, 0, EXECUTION_PLAN_ID_LEN);
     char* id;
@@ -970,10 +927,6 @@ static void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
 	RS_FREE(fep->name);
     RS_FREE(fep->reader->reader);
     RS_FREE(fep->reader);
-    if(fep->writer){
-    	RS_FREE(fep->writer->writer);
-    	RS_FREE(fep->writer);
-    }
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
         RS_FREE(step->bStep.stepName);
@@ -984,10 +937,6 @@ static void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
 
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader, void* readerArg){
     fep->reader = FlatExecutionPlan_NewReader(reader, readerArg);
-}
-
-void FlatExecutionPlan_SetWriter(FlatExecutionPlan* fep, char* writer, void* writerArg){
-    fep->writer = FlatExecutionPlan_NewWriter(writer, writerArg);
 }
 
 static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* callbackName, void* arg, enum StepType type){
@@ -1002,6 +951,10 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
     fep->steps = array_append(fep->steps, s);
 }
 
+void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* writerArg){
+    FlatExecutionPlan_AddBasicStep(fep, writer, writerArg, WRITER);
+}
+
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){
     FlatExecutionPlan_AddBasicStep(fep, callbackName, arg, MAP);
 }
@@ -1014,13 +967,17 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
                                   const char* reducerName, void* reducerArg){
     FlatExecutionStep extractKey;
     FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
-    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
+    FlatExecutionPlan_AddRepartitionStep(fep);
     FlatExecutionPlan_AddBasicStep(fep, "Group", NULL, GROUP);
     FlatExecutionPlan_AddBasicStep(fep, reducerName, reducerArg, REDUCE);
 }
 
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){
 	FlatExecutionPlan_AddBasicStep(fep, "Collect", NULL, COLLECT);
+}
+
+void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep){
+    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
 }
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
