@@ -24,10 +24,8 @@
 
 #define EXECUTION_PLAN_FREE_MSG 6
 
-int moduleRegisterApi(const char *funcname, void *funcptr);
-
-#define REGISTER_API(name) \
-    if(moduleRegisterApi("RediStar_" #name, RS_ ## name)){\
+#define REGISTER_API(name, registerApiCallback) \
+    if(registerApiCallback("RediStar_" #name, RS_ ## name)){\
         printf("could not register RediStar_" #name "\r\n");\
         return false;\
     }
@@ -197,62 +195,62 @@ static char* RS_BRReadBuffer(BufferReader* br, size_t* len){
 }
 
 
-static bool RediStar_RegisterApi(){
-    REGISTER_API(CreateType);
-    REGISTER_API(BWWriteLong);
-    REGISTER_API(BWWriteString);
-    REGISTER_API(BWWriteBuffer);
-    REGISTER_API(BRReadLong);
-    REGISTER_API(BRReadString);
-    REGISTER_API(BRReadBuffer);
+static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)){
+    REGISTER_API(CreateType, registerApiCallback);
+    REGISTER_API(BWWriteLong, registerApiCallback);
+    REGISTER_API(BWWriteString, registerApiCallback);
+    REGISTER_API(BWWriteBuffer, registerApiCallback);
+    REGISTER_API(BRReadLong, registerApiCallback);
+    REGISTER_API(BRReadString, registerApiCallback);
+    REGISTER_API(BRReadBuffer, registerApiCallback);
 
-    REGISTER_API(RegisterReader);
-    REGISTER_API(RegisterWriter);
-    REGISTER_API(RegisterMap);
-    REGISTER_API(RegisterFilter);
-    REGISTER_API(RegisterGroupByExtractor);
-    REGISTER_API(RegisterReducer);
-    REGISTER_API(CreateCtx);
-    REGISTER_API(Map);
-    REGISTER_API(Filter);
-    REGISTER_API(GroupBy);
-    REGISTER_API(Collect);
-    REGISTER_API(Write);
-    REGISTER_API(Run);
+    REGISTER_API(RegisterReader, registerApiCallback);
+    REGISTER_API(RegisterWriter, registerApiCallback);
+    REGISTER_API(RegisterMap, registerApiCallback);
+    REGISTER_API(RegisterFilter, registerApiCallback);
+    REGISTER_API(RegisterGroupByExtractor, registerApiCallback);
+    REGISTER_API(RegisterReducer, registerApiCallback);
+    REGISTER_API(CreateCtx, registerApiCallback);
+    REGISTER_API(Map, registerApiCallback);
+    REGISTER_API(Filter, registerApiCallback);
+    REGISTER_API(GroupBy, registerApiCallback);
+    REGISTER_API(Collect, registerApiCallback);
+    REGISTER_API(Write, registerApiCallback);
+    REGISTER_API(Run, registerApiCallback);
 
-    REGISTER_API(GetCtxByName);
-    REGISTER_API(GetCtxById);
-    REGISTER_API(FreeCtx);
-    REGISTER_API(IsDone);
-    REGISTER_API(GetRecordsLen);
-    REGISTER_API(GetRecord);
-    REGISTER_API(RegisterExecutionDoneCallback);
-    REGISTER_API(GetPrivateData);
-	REGISTER_API(SetPrivateData);
-	REGISTER_API(DropExecution);
+    REGISTER_API(GetCtxByName, registerApiCallback);
+    REGISTER_API(GetCtxById, registerApiCallback);
+    REGISTER_API(FreeCtx, registerApiCallback);
+    REGISTER_API(IsDone, registerApiCallback);
+    REGISTER_API(GetRecordsLen, registerApiCallback);
+    REGISTER_API(GetRecord, registerApiCallback);
+    REGISTER_API(RegisterExecutionDoneCallback, registerApiCallback);
+    REGISTER_API(GetPrivateData, registerApiCallback);
+	REGISTER_API(SetPrivateData, registerApiCallback);
+	REGISTER_API(DropExecution, registerApiCallback);
 
-    REGISTER_API(FreeRecord);
-    REGISTER_API(RecordGetType);
-    REGISTER_API(KeyRecordCreate);
-    REGISTER_API(KeyRecordSetKey);
-    REGISTER_API(KeyRecordSetVal);
-    REGISTER_API(KeyRecordGetVal);
-    REGISTER_API(KeyRecordGetKey);
-    REGISTER_API(ListRecordCreate);
-    REGISTER_API(ListRecordLen);
-    REGISTER_API(ListRecordAdd);
-    REGISTER_API(ListRecordGet);
-    REGISTER_API(StringRecordCreate);
-    REGISTER_API(StringRecordGet);
-    REGISTER_API(StringRecordSet);
-    REGISTER_API(DoubleRecordCreate);
-    REGISTER_API(DoubleRecordGet);
-    REGISTER_API(DoubleRecordSet);
-    REGISTER_API(LongRecordCreate);
-    REGISTER_API(LongRecordGet);
-    REGISTER_API(LongRecordSet);
-    REGISTER_API(KeyHandlerRecordCreate);
-    REGISTER_API(KeyHandlerRecordGet);
+    REGISTER_API(FreeRecord, registerApiCallback);
+    REGISTER_API(RecordGetType, registerApiCallback);
+    REGISTER_API(KeyRecordCreate, registerApiCallback);
+    REGISTER_API(KeyRecordSetKey, registerApiCallback);
+    REGISTER_API(KeyRecordSetVal, registerApiCallback);
+    REGISTER_API(KeyRecordGetVal, registerApiCallback);
+    REGISTER_API(KeyRecordGetKey, registerApiCallback);
+    REGISTER_API(ListRecordCreate, registerApiCallback);
+    REGISTER_API(ListRecordLen, registerApiCallback);
+    REGISTER_API(ListRecordAdd, registerApiCallback);
+    REGISTER_API(ListRecordGet, registerApiCallback);
+    REGISTER_API(StringRecordCreate, registerApiCallback);
+    REGISTER_API(StringRecordGet, registerApiCallback);
+    REGISTER_API(StringRecordSet, registerApiCallback);
+    REGISTER_API(DoubleRecordCreate, registerApiCallback);
+    REGISTER_API(DoubleRecordGet, registerApiCallback);
+    REGISTER_API(DoubleRecordSet, registerApiCallback);
+    REGISTER_API(LongRecordCreate, registerApiCallback);
+    REGISTER_API(LongRecordGet, registerApiCallback);
+    REGISTER_API(LongRecordSet, registerApiCallback);
+    REGISTER_API(KeyHandlerRecordCreate, registerApiCallback);
+    REGISTER_API(KeyHandlerRecordGet, registerApiCallback);
 
     return true;
 }
@@ -270,14 +268,28 @@ static void RS_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sende
 ArgType* GetKeysReaderArgType();
 ArgType* GetKeysWriterArgType();
 
+bool apiRegistered = false;
+
+int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)) {
+	if(!RediStar_RegisterApi(registerApiCallback)){
+		return REDISMODULE_ERR;
+	}
+	apiRegistered = true;
+	return REDISMODULE_OK;
+}
+
+int moduleRegisterApi(const char *funcname, void *funcptr);
+
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (RedisModule_Init(ctx, "RediStar", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
     }
 
-    if(!RediStar_RegisterApi()){
-        RedisModule_Log(ctx, "warning", "could not register RediStar api\r\n");
-        return REDISMODULE_ERR;
+    if(!apiRegistered){
+        if(!RediStar_RegisterApi(moduleRegisterApi)){
+            RedisModule_Log(ctx, "warning", "could not register RediStar api\r\n");
+            return REDISMODULE_ERR;
+        }
     }
 
     if(!RediStar_Initialize()){

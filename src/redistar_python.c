@@ -87,6 +87,7 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     PyGILState_STATE state = PyGILState_Ensure();
     if(PyRun_SimpleString(script)){
         RedisModule_ReplyWithError(ctx, "failed running the given script");
+        return REDISMODULE_OK;
     }
     PyGILState_Release(state);
 
