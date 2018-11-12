@@ -262,6 +262,11 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(LongRecordSet, registerApiCallback);
     REGISTER_API(KeyHandlerRecordCreate, registerApiCallback);
     REGISTER_API(KeyHandlerRecordGet, registerApiCallback);
+    REGISTER_API(HashSetRecordCreate, registerApiCallback);
+    REGISTER_API(HashSetRecordSet, registerApiCallback);
+    REGISTER_API(HashSetRecordGet, registerApiCallback);
+    REGISTER_API(HashSetRecordGetAllKeys, registerApiCallback);
+    REGISTER_API(HashSetRecordFreeKeysArray, registerApiCallback);
 
     return true;
 }

@@ -1,6 +1,7 @@
 #include "redistar.h"
 #include "redistar_memory.h"
 #include "utils/arr_rm_alloc.h"
+#include "utils/dict.h"
 #include "record.h"
 #ifdef WITHPYTHON
 #include "redistar_python.h"
@@ -38,6 +39,10 @@ typedef struct KeyRecord{
     Record* record;
 }KeyRecord;
 
+typedef struct HashSetRecord{
+    dict* d;
+}HashSetRecord;
+
 typedef struct Record{
     union{
         KeysHandlerRecord keyHandlerRecord;
@@ -46,6 +51,7 @@ typedef struct Record{
         DoubleRecord doubleRecord;
         ListRecord listRecord;
         KeyRecord keyRecord;
+        HashSetRecord hashSetRecord;
 #ifdef WITHPYTHON
         PythonRecord pyRecord;
 #endif
@@ -60,6 +66,9 @@ Record StopRecord = (Record){
 
 
 void RS_FreeRecord(Record* record){
+    dictIterator *iter;
+    dictEntry *entry;
+    Record* temp;
     switch(record->type){
     case STRING_RECORD:
         RS_FREE(record->stringRecord.str);
@@ -83,6 +92,15 @@ void RS_FreeRecord(Record* record){
         break;
     case KEY_HANDLER_RECORD:
         RedisModule_CloseKey(record->keyHandlerRecord.keyHandler);
+        break;
+    case HASH_SET_RECORD:
+        iter = dictGetIterator(record->hashSetRecord.d);
+        entry = NULL;
+        while((entry = dictNext(iter))){
+            temp = dictGetVal(entry);
+            RS_FreeRecord(temp);
+        }
+        dictRelease(record->hashSetRecord.d);
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
@@ -197,6 +215,49 @@ long RS_LongRecordGet(Record* r){
 void RS_LongRecordSet(Record* r, long val){
     assert(r->type == LONG_RECORD);
     r->longRecord.num = val;
+}
+
+Record* RS_HashSetRecordCreate(){
+    Record* ret = RS_ALLOC(sizeof(Record));
+    ret->type = HASH_SET_RECORD;
+    ret->hashSetRecord.d = dictCreate(&dictTypeHeapStrings, NULL);
+    return ret;
+}
+
+int RS_HashSetRecordSet(Record* r, char* key, Record* val){
+    assert(r->type == HASH_SET_RECORD);
+    Record* oldVal = RS_HashSetRecordGet(r, key);
+    if(oldVal){
+        RS_FreeRecord(oldVal);
+        dictDelete(r->hashSetRecord.d, key);
+    }
+    return dictAdd(r->hashSetRecord.d, key, val) == DICT_OK;
+}
+
+Record* RS_HashSetRecordGet(Record* r, char* key){
+    assert(r->type == HASH_SET_RECORD);
+    dictEntry *entry = dictFind(r->hashSetRecord.d, key);
+    if(!entry){
+        return 0;
+    }
+    return dictGetVal(entry);
+}
+
+char** RS_HashSetRecordGetAllKeys(Record* r, size_t* len){
+    assert(r->type == HASH_SET_RECORD);
+    dictIterator *iter = dictGetIterator(r->hashSetRecord.d);
+    dictEntry *entry = NULL;
+    char** ret = array_new(char*, dictSize(r->hashSetRecord.d));
+    while((entry = dictNext(iter))){
+        char* key = dictGetKey(entry);
+        ret = array_append(ret, key);
+    }
+    *len = array_len(ret);
+    return ret;
+}
+
+void RS_HashSetRecordFreeKeysArray(char** keyArr){
+    array_free(keyArr);
 }
 
 Record* RS_KeyHandlerRecordCreate(RedisModuleKey* handler){
