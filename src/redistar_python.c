@@ -9,6 +9,8 @@
 static PyObject* pFunc;
 static PyObject* globals;
 
+static RedisModuleCtx* currentCtx = NULL;
+
 #define PYTHON_ERROR "error running python code"
 
 static PyObject* run(PyObject *cls, PyObject *args){
@@ -65,8 +67,14 @@ static PyObject* run(PyObject *cls, PyObject *args){
         }
     }
 
-    RSM_Run(rsctx, NULL, NULL);
+    if(!RSM_Run(rsctx, NULL, NULL)){
+        RedisModule_ReplyWithError(currentCtx, "Execution with the given name already exists, pleas drop it first.");
+        RediStar_DropExecution(rsctx, currentCtx);
+    }else{
+        RedisModule_ReplyWithSimpleString(currentCtx, "OK");
+    }
 
+    RediStar_FreeCtx(rsctx);
     return PyLong_FromLong(1);
 }
 
@@ -90,6 +98,7 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     }
 
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
+    currentCtx = ctx;
 
     PyGILState_STATE state = PyGILState_Ensure();
     if(PyRun_SimpleString(script)){
@@ -97,8 +106,6 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
         return REDISMODULE_OK;
     }
     PyGILState_Release(state);
-
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
 
     return REDISMODULE_OK;
 }

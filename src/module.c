@@ -94,6 +94,9 @@ static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
 
 static int RS_Run(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback, void* privateData){
 	ctx->ep = FlatExecutionPlan_Run(ctx->fep, callback, privateData);
+	if(!ctx->ep){
+	    return 0;
+	}
 	return 1;
 }
 
@@ -134,10 +137,14 @@ static Record* RS_GetRecord(RediStarCtx* ctx, long long i){
 }
 
 static void RS_DropExecution(RediStarCtx* starCtx, RedisModuleCtx* ctx){
-	if(Cluster_IsClusterMode()){
-		RedisModule_SendClusterMessage(ctx, NULL, EXECUTION_PLAN_FREE_MSG, starCtx->fep->id, EXECUTION_PLAN_ID_LEN);
-	}
-	ExecutionPlan_Free(starCtx->ep, ctx);
+    if(starCtx->ep){
+        if(Cluster_IsClusterMode()){
+            RedisModule_SendClusterMessage(ctx, NULL, EXECUTION_PLAN_FREE_MSG, starCtx->fep->id, EXECUTION_PLAN_ID_LEN);
+        }
+        ExecutionPlan_Free(starCtx->ep, ctx);
+    }else if(starCtx->fep){
+        FlatExecutionPlan_Free(starCtx->fep);
+    }
 }
 
 static RediStarCtx* RS_GetCtxById(const char* id){

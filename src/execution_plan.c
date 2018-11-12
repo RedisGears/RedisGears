@@ -37,7 +37,6 @@ static long long lastId = 0;
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err);
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep);
-static void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader, void* readerArg);
 static void ExecutionPlan_AddToRunList(ExecutionPlan* ep);
 
@@ -713,6 +712,9 @@ void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
 
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData){
     ExecutionPlan* ep = ExecutionPlan_New(fep);
+    if(!ep){
+        return NULL;
+    }
     ep->callback = callback;
     ep->privateData = privateData;
     ExecutionPlan_AddToRunList(ep);
@@ -784,6 +786,9 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
 }
 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep){
+    if(ExecutionPlan_FindByName(fep->name)){
+        return NULL;
+    }
     ExecutionPlan* ret = RS_ALLOC(sizeof(*ret));
     ret->steps = array_new(FlatExecutionStep*, 10);
     ExecutionStep* last = NULL;
@@ -923,7 +928,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(char* name){
     return res;
 }
 
-static void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
+void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
 	RS_FREE(fep->name);
     RS_FREE(fep->reader->reader);
     RS_FREE(fep->reader);
