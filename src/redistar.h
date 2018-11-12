@@ -35,15 +35,7 @@ typedef struct Reader{
 Reader* KeysReader(void* arg);
 
 /******************************* Writers *******************************/
-
-typedef struct Writer{
-    void* ctx;
-    void (*Start)(RedisModuleCtx* rctx, void* ctx);
-    void (*Write)(RedisModuleCtx* rctx, void* ctx, Record* record);
-    void (*Done)(RedisModuleCtx* rctx, void* ctx);
-}Writer;
-
-Writer* ReplyWriter(void* arg);
+void KeyRecordWriter(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 
 /******************************* args *********************************/
 typedef struct BufferWriter BufferWriter;
@@ -76,7 +68,7 @@ Record* CountReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *rec
 
 typedef void (*RediStar_OnExecutionDoneCallback)(RediStarCtx* ctx, void* privateData);
 typedef Reader* (*RediStar_ReaderCallback)(void* arg);
-typedef Writer* (*RediStar_WriterCallback)(void* arg);
+typedef void (*RediStar_WriterCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 typedef Record* (*RediStar_MapCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 typedef bool (*RediStar_FilterCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 typedef char* (*RediStar_ExtractorCallback)(RedisModuleCtx* rctx, Record *data, void* arg, size_t* len, char** err);
@@ -144,6 +136,8 @@ int MODULE_API_FUNC(RediStar_GroupBy)(RediStarCtx* ctx, char* extraxtorName, voi
 int MODULE_API_FUNC(RediStar_Collect)(RediStarCtx* ctx);
 #define RSM_Collect(ctx) RediStar_Collect(ctx)
 
+int MODULE_API_FUNC(RediStar_Repartition)(RediStarCtx* ctx);
+#define RSM_Repartition(ctx) RediStar_Repartition(ctx)
 /******************************* Execution plan runners *******************************/
 
 /*
@@ -198,6 +192,7 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(Write);
     PROXY_MODULE_INIT_FUNCTION(GroupBy);
     PROXY_MODULE_INIT_FUNCTION(Collect);
+    PROXY_MODULE_INIT_FUNCTION(Repartition);
 
     PROXY_MODULE_INIT_FUNCTION(GetCtxByName);
     PROXY_MODULE_INIT_FUNCTION(GetCtxById);

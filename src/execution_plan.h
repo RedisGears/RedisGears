@@ -12,7 +12,7 @@
 #include <stdbool.h>
 
 enum StepType{
-    MAP=1, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE, COLLECT
+    MAP=1, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE, COLLECT, WRITER
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -69,10 +69,10 @@ typedef struct ReaderStep{
     ArgType* type;
 }ReaderStep;
 
-typedef struct WriterStep{
-    Writer* w;
-    ArgType* type;
-}WriterStep;
+typedef struct WriterExecutionStep{
+    RediStar_WriterCallback write;
+    ExecutionStepArg stepArg;
+}WriterExecutionStep;
 
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
@@ -86,6 +86,7 @@ typedef struct ExecutionStep{
         ReduceExecutionStep reduce;
         CollectExecutionStep collect;
         ReaderStep reader;
+        WriterExecutionStep writer;
     };
     enum StepType type;
 }ExecutionStep;
@@ -98,7 +99,6 @@ typedef enum ExecutionPlanStatus{
 
 typedef struct ExecutionPlan{
     ExecutionStep** steps;
-    WriterStep writerStep;
     FlatExecutionPlan* fep;
     size_t totalShardsCompleted;
     Record** results;
@@ -126,11 +126,6 @@ typedef struct FlatExecutionReader{
     void* arg;
 }FlatExecutionReader;
 
-typedef struct FlatExecutionWriter{
-    char* writer;
-    void* arg;
-}FlatExecutionWriter;
-
 #define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
 
 typedef struct FlatExecutionPlan{
@@ -138,17 +133,17 @@ typedef struct FlatExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
-    FlatExecutionWriter* writer;
 }FlatExecutionPlan;
 
 FlatExecutionPlan* FlatExecutionPlan_New(char* name);
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader, void* readerArg);
-void FlatExecutionPlan_SetWriter(FlatExecutionPlan* fep, char* writer, void* writerArg);
+void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* writerArg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                   const char* reducerName, void* reducerArg);
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
+void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData);
 
 void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);
