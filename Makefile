@@ -9,8 +9,8 @@ ifeq ($(DEBUG), 1)
 endif
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redistar_python.c
-	PYTHON_CFLAGS=-I/usr/include/python2.7 -I/usr/include/x86_64-linux-gnu/python2.7
-	PYTHON_LFLAGS=-Bsymbolic -lc -L/usr/lib/python2.7/config-x86_64-linux-gnu -L/usr/lib -lpython2.7 -lpthread -ldl -lutil -lm
+	PYTHON_CFLAGS=$(shell python-config --includes)
+	PYTHON_LFLAGS=-L$(shell python-config --configdir) -L/usr/lib $(shell python-config --libs)
 	CFLAGS+=-DWITHPYTHON
     CFLAGS+=$(PYTHON_CFLAGS)
     LFLAGS+=PYTHON_LFLAGS
