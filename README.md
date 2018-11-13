@@ -1,7 +1,7 @@
 # RediStar
 Allow performing chain of operations on redis datatypes, simply:
 ```
-starCtx('*').filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).returnResults(to_str_function)
+starCtx('execution-name', '*').filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run()
 ```
 RediStar supports full python syntax and low level c api. In addition you can run it on oss cluster.
 
@@ -19,7 +19,8 @@ run: `redis-server --loadmodule ./redistar.so`
 
 Add some keys to your redis server and then run:
 ```
-rs.execute "starCtx('*').returnResults(lambda x: str(x))"
+rs.execute "starCtx('test', '*').map(lambda x:str(x)).run()"
+rs.getresultsblocking test
 ```
 You will get all of your keys and values in redis.
 
@@ -37,11 +38,10 @@ The reader is the first component on each execution, The reader responsable for 
 ```
 
 ## Writer
-The Writer is responsable for returning the result to the client. RediStar comes with a default writer that return each Record as a string to the client. With python it is possible to use the default writer via the star context by performing:
+Writer allows to write the records back to the redis. The only writer available today is keyWriter which write a key record to redis. Notice, on cluster you might write keys to the wrong shard, it is important to do repartition before using writer (we will expend the talk about repartition later). Writer example (using python api), the example will write each value as key and each key as value (using python api repartition is automatically):
 ```
-ctx.returnResults(< to string function >)
+starCtx('test', '*').writeKeys(lambda x: {'key':x['value'], 'value':x['key']}).map(lambda x : str(x)).run()
 ```
-The < to string function > is a function that gets the Record as input and return string representation of the Record.
 
 ## Operation
 Operation is a logic unit that can be applied on the Record. Each operation recieves the Record as input and return result according to the operation type. The supported operation types are:
@@ -64,11 +64,17 @@ Filter operation receive extractor and reducer. The extractor is a function that
 ctx.groupby(lambda r : r[value], lambda key,vals: len(vals)) # count how many times each value appeared
 ```
 
+### Collect
+Return the results to the initiator (this operation has meaning only on cluster with more then one node, otherwise it has no meaning and it actually do nothing). example (using python api):
+```
+ctx.collect()
+```
+
 # Cluster Support
 RediStar support all of the operations on oss-cluster. Notice that the module needs to be loaded on all the cluster nodes. In addition, after setting up the cluster you need to run `rs.refreshcluster` on each node.
 
 ## Future plans
-* Support more operations: FlatMap, SortBy, LocalGroupBy (for faster groupby on oss-cluster).
+* Support more operations: FlatMap, SortBy, LocalGroupBy (for faster groupby on oss-cluster), limit (to limit the number of results).
 * StarQL - SQL like language for quering your data.
 * StarStreaming - Stream processing on your data.
 
