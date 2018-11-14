@@ -52,6 +52,12 @@ Just like map but if the result is a list it flatten it right after, example (us
 ctx.flatMap(lambda r : [r, r]) # pass each record twice in the execution plan
 ```
 
+### Limit
+Limit the number of return results, limit operation gets the offset and the len and return result start from offset and up to len. Notice, limit is a single shard operation, if you want to limit the total number of the execution results you need to use limit then collect and then limit again. example (using python api):
+```
+ctx.limit(1, 3) # will return results 1 and 2.
+```
+
 ### Filter
 Filter operation receive a Record and return a boolean indicating whether or not the record should continue with the execution, example (using python api)
 ```
@@ -88,7 +94,7 @@ starCtx('test', '*').write(lambda x: redistar.saveKey(x['value'], x['key'])) # w
 RediStar support all of the operations on oss-cluster. Notice that the module needs to be loaded on all the cluster nodes. In addition, after setting up the cluster you need to run `rs.refreshcluster` on each node.
 
 ## Future plans
-* Support more operations: FlatMap, SortBy, LocalGroupBy (for faster groupby on oss-cluster), limit (to limit the number of results).
+* Support more operations: SortBy, LocalGroupBy (for faster groupby on oss-cluster), limit (to limit the number of results).
 * StarQL - SQL like language for quering your data.
 * StarStreaming - Stream processing on your data.
 
