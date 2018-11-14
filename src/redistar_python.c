@@ -56,12 +56,11 @@ static PyObject* run(PyObject *cls, PyObject *args){
         	RSM_Collect(rsctx);
         	break;
         case 5:
-            RSM_Map(rsctx, RediStarPy_PyCallbackMapper, callback);
-            RSM_Map(rsctx, RediStarPy_ToKeyValueRecord, NULL);
-            RSM_Repartition(rsctx);
-            RSM_Write(rsctx, KeyRecordWriter, NULL);
-            RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
+            RSM_Write(rsctx, RediStarPy_PyCallbackWriter, callback);
         	break;
+        case 6:
+            RSM_Repartition(rsctx, RediStarPy_PyCallbackExtractor, callback);
+            break;
         default:
             assert(false);
         }
@@ -84,11 +83,33 @@ static PyObject* saveGlobals(PyObject *cls, PyObject *args){
     return PyLong_FromLong(1);
 }
 
+static PyObject* saveKey(PyObject *cls, PyObject *args){
+    if(PyTuple_Size(args) != 2){
+        return PyBool_FromLong(0);
+    }
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    PyObject* key = PyTuple_GetItem(args, 0);
+    PyObject* val = PyTuple_GetItem(args, 1);
+    char* keyStr = PyString_AsString(key);
+    char* valStr = PyString_AsString(val);
+    RedisModule_ThreadSafeContextLock(rctx);
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(rctx, keyStr, strlen(keyStr));
+    RedisModuleKey* keyHandler = RedisModule_OpenKey(rctx, keyRedisStr, REDISMODULE_WRITE);
+    int type = RedisModule_KeyType(keyHandler);
+    if(type != REDISMODULE_KEYTYPE_EMPTY){
+        RedisModule_DeleteKey(keyHandler);
+    }
+    RedisModuleString* valRedisStr = RedisModule_CreateString(rctx, valStr, strlen(valStr));
+    RedisModule_StringSet(keyHandler, valRedisStr);
+    RedisModule_ThreadSafeContextUnlock(rctx);
+    RedisModule_FreeThreadSafeContext(rctx);
+    return PyBool_FromLong(1);
+}
+
 PyMethodDef EmbMethods[] = {
-    {"run", run, METH_VARARGS,
-     "running"},
-    {"saveGlobals", saveGlobals, METH_VARARGS,
-     "saveGlobals"},
+    {"run", run, METH_VARARGS, "start running the execution plan"},
+    {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
+    {"saveKey", saveKey, METH_VARARGS, "saving the given key to a give value"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -110,37 +131,16 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     return REDISMODULE_OK;
 }
 
-static Record* RediStarPy_ToKeyValueRecord(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+void RediStarPy_PyCallbackWriter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
     assert(RediStar_RecordGetType(record) == PY_RECORD);
+    PyObject* pArgs = PyTuple_New(1);
+    PyObject* callback = arg;
     PyObject* obj = RS_PyObjRecordGet(record);
-    PyObject* key = PyDict_GetItemString(obj, "key");
-    if(!key){
-        PyErr_Print();
-        *err = RS_STRDUP(PYTHON_ERROR);
-        RediStar_FreeRecord(record);
-        PyGILState_Release(state);
-        return NULL;
-    }
-    PyObject* value = PyDict_GetItemString(obj, "value");
-    if(!value){
-        PyErr_Print();
-        *err = RS_STRDUP(PYTHON_ERROR);
-        RediStar_FreeRecord(record);
-        PyGILState_Release(state);
-        return NULL;
-    }
-    size_t keyStrLen = PyString_Size(key);
-    char* keyStr = PyString_AsString(key);
-    char* valueStr = PyString_AsString(value);
-    Record* r = RediStar_KeyRecordCreate();
-    RediStar_KeyRecordSetKey(r, RS_STRDUP(keyStr), keyStrLen);
-    Record* val = RediStar_StringRecordCreate(RS_STRDUP(valueStr));
-    RediStar_KeyRecordSetVal(r, val);
+    PyTuple_SetItem(pArgs, 0, obj);
+    PyObject_CallObject(callback, pArgs);
     PyGILState_Release(state);
-    RediStar_FreeRecord(record);
-    return r;
 }
 
 static Record* RediStarPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
@@ -408,13 +408,16 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
     				   "    def collect(self):\n"
 					   "        self.steps.append((4, None))\n"
 					   "        return self\n"
-                       "    def writeKeys(self, toKeyValue):\n"
-                       "        self.steps.append((5, toKeyValue))\n"
+                       "    def write(self, writeCallback):\n"
+                       "        self.steps.append((5, writeCallback))\n"
+                       "        return self\n"
+                       "    def repartition(self, extractor):\n"
+                       "        self.steps.append((6, extractor))\n"
                        "        return self\n"
                        "    def run(self):\n"
                        "        redistar.run(self)\n"
                        "globals()['str'] = str\n"
-                       "redistar.saveGlobals()\n");
+                       "redistar._saveGlobals()\n");
 
     PyObject* pName = PyString_FromString("types");
     PyObject* pModule = PyImport_Import(pName);
@@ -422,14 +425,14 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
 
     ArgType* pyCallbackType = RediStar_CreateType("PyObjectType", RediStarPy_PyObjectFree, RediStarPy_PyCallbackSerialize, RediStarPy_PyCallbackDeserialize);
 
+    RSM_RegisterWriter(RediStarPy_PyCallbackWriter, pyCallbackType);
     RSM_RegisterFilter(RediStarPy_PyCallbackFilter, pyCallbackType);
     RSM_RegisterMap(RediStarPy_ToPyRecordMapper, NULL);
-    RSM_RegisterMap(RediStarPy_ToKeyValueRecord, NULL);
     RSM_RegisterMap(RediStarPy_PyCallbackMapper, pyCallbackType);
     RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor, pyCallbackType);
     RSM_RegisterReducer(RediStarPy_PyCallbackReducer, pyCallbackType);
 
-    if (RedisModule_CreateCommand(ctx, "rs.execute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rs.pyexecute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command example");
         return REDISMODULE_ERR;
     }

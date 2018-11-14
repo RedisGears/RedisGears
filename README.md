@@ -19,7 +19,7 @@ run: `redis-server --loadmodule ./redistar.so`
 
 Add some keys to your redis server and then run:
 ```
-rs.execute "starCtx('test', '*').map(lambda x:str(x)).run()"
+rs.pyexecute "starCtx('test', '*').map(lambda x:str(x)).run()"
 rs.getresultsblocking test
 ```
 You will get all of your keys and values in redis.
@@ -32,15 +32,9 @@ RediStar end goal is to allow the user building Execution Plans and run them. Ea
 Record is the most basic object in RediStar. A Record go through the entire execution plan and in the end returned to the user as a result.
 
 ## Reader
-The reader is the first component on each execution, The reader responsable for suppling Record to the other components in the execution plan. RediStar comes with a default reader that reads keys from redis. Using python it is possible to use the default reader with the flowing syntax: `starCtx(<key name or prefix>)`, this line will return a star context (which is basicly saves the exectution plan) with the default reader that reads the keys with the given prefix. The default reader will return Records in the following format:
+The reader is the first component on each execution, The reader responsable for suppling Record to the other components in the execution plan. RediStar comes with a default reader that reads keys from redis. Using python it is possible to use the default reader with the flowing syntax: `starCtx(<execution name>, <key name or prefix>)`, this line will return a star context (which is basicly saves the exectution plan) with the default reader that reads the keys with the given prefix. The default reader will return Records in the following format:
 ```
 {'key':< key as string >, 'value': < value (value type is depend on the key content) >}
-```
-
-## Writer
-Writer allows to write the records back to the redis. The only writer available today is keyWriter which write a key record to redis. Notice, on cluster you might write keys to the wrong shard, it is important to do repartition before using writer (we will expend the talk about repartition later). Writer example (using python api), the example will write each value as key and each key as value (using python api repartition is automatically):
-```
-starCtx('test', '*').writeKeys(lambda x: {'key':x['value'], 'value':x['key']}).map(lambda x : str(x)).run()
 ```
 
 ## Operation
@@ -59,7 +53,7 @@ ctx.filter(lambda r : int(r['value']) > 50) # continue with the record if its va
 ```
 
 ### Groupby
-Filter operation receive extractor and reducer. The extractor is a function that receive a Record and return a string by which the group operation need to be performed. The reducer is a function that receive key and list of records that grouped together by this key, the reducer return a new Record which is the reduce operation on all the Record in the same group. example (using python api)
+Groupby operation receive extractor and reducer. The extractor is a function that receive a Record and return a string by which the group operation need to be performed. The reducer is a function that receive key and list of records that grouped together by this key, the reducer return a new Record which is the reduce operation on all the Record in the same group. example (using python api)
 ```
 ctx.groupby(lambda r : r[value], lambda key,vals: len(vals)) # count how many times each value appeared
 ```
@@ -68,6 +62,20 @@ ctx.groupby(lambda r : r[value], lambda key,vals: len(vals)) # count how many ti
 Return the results to the initiator (this operation has meaning only on cluster with more then one node, otherwise it has no meaning and it actually do nothing). example (using python api):
 ```
 ctx.collect()
+```
+
+### Repartition
+Repartition the record between the cluster nodes (this operation has meaning only on cluster with more then one node, otherwise it has no meaning and it actually do nothing). This operation receives an extractor, the repartition is perfomed by calculating the hslot on which the extracted data should be located and then move the record to the node hold this hslot.
+example (using python api):
+```
+starCtx('test', '*').repartition(lambda x: x['value']) # repartition record by value
+```
+
+### Write
+Write is similar to map but it does not return any value, the write operation goal is to write results to the redis. After performing the write operation the execution plan will continue with the same records. Notice, on cluster, it is possible to write keys to shards that does not hold the keys hslot, its the user responsability to make sure this does not happened using repartition.
+example (using python api):
+```
+starCtx('test', '*').write(lambda x: redistar.saveKey(x['value'], x['key'])) # will value as key and key as value
 ```
 
 # Cluster Support

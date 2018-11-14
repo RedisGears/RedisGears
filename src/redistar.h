@@ -59,6 +59,7 @@ char* MODULE_API_FUNC(RediStar_BRReadBuffer)(BufferReader* br, size_t* len);
 /******************************* Filters *******************************/
 
 /******************************* Mappers *******************************/
+Record* GetValueMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err);
 
 /******************************* GroupByExtractors *********************/
 char* KeyRecordStrValueExtractor(RedisModuleCtx* rctx, Record *data, void* arg, size_t* len, char** err);
@@ -142,8 +143,8 @@ int MODULE_API_FUNC(RediStar_GroupBy)(RediStarCtx* ctx, char* extraxtorName, voi
 int MODULE_API_FUNC(RediStar_Collect)(RediStarCtx* ctx);
 #define RSM_Collect(ctx) RediStar_Collect(ctx)
 
-int MODULE_API_FUNC(RediStar_Repartition)(RediStarCtx* ctx);
-#define RSM_Repartition(ctx) RediStar_Repartition(ctx)
+int MODULE_API_FUNC(RediStar_Repartition)(RediStarCtx* ctx, char* extraxtorName, void* extractorArg);
+#define RSM_Repartition(ctx, extractor, extractorArg) RediStar_Repartition(ctx, #extractor, extractorArg)
 /******************************* Execution plan runners *******************************/
 
 /*

@@ -109,6 +109,9 @@ static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWrite
     case REDUCE:
         type = ReducersMgmt_GetArgType(step->bStep.stepName);
         break;
+    case WRITER:
+        type = WritersMgmt_GetArgType(step->bStep.stepName);
+        break;
     default:
         break;
     }
@@ -157,6 +160,9 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(BufferReader* br){
         break;
     case REDUCE:
         type = ReducersMgmt_GetArgType(step.bStep.stepName);
+        break;
+    case WRITER:
+        type = WritersMgmt_GetArgType(step.bStep.stepName);
         break;
     default:
         break;
@@ -513,12 +519,16 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
         break;
     case REDUCE:
         return ExecutionPlan_ReduceNextRecord(ep, step, rctx, err);
+        break;
     case REPARTITION:
         return ExecutionPlan_RepartitionNextRecord(ep, step, rctx, err);
+        break;
     case COLLECT:
     	return ExecutionPlan_CollectNextRecord(ep, step, rctx, err);
+    	break;
     case WRITER:
         return ExecutionPlan_WriteNextRecord(ep, step, rctx, err);
+        break;
     default:
         assert(false);
         return NULL;
@@ -972,7 +982,7 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
                                   const char* reducerName, void* reducerArg){
     FlatExecutionStep extractKey;
     FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
-    FlatExecutionPlan_AddRepartitionStep(fep);
+    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
     FlatExecutionPlan_AddBasicStep(fep, "Group", NULL, GROUP);
     FlatExecutionPlan_AddBasicStep(fep, reducerName, reducerArg, REDUCE);
 }
@@ -981,8 +991,10 @@ void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){
 	FlatExecutionPlan_AddBasicStep(fep, "Collect", NULL, COLLECT);
 }
 
-void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep){
+void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg){
+    FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
     FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
+    FlatExecutionPlan_AddMapStep(fep, "GetValueMapper", NULL);
 }
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){

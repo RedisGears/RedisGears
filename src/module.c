@@ -82,8 +82,8 @@ static int RS_Collect(RediStarCtx* ctx){
 	return 1;
 }
 
-static int RS_Repartition(RediStarCtx* ctx){
-    FlatExecutionPlan_AddRepartitionStep(ctx->fep);
+static int RS_Repartition(RediStarCtx* ctx, char* extraxtorName, void* extractorArg){
+    FlatExecutionPlan_AddRepartitionStep(ctx->fep, extraxtorName, extractorArg);
     return 1;
 }
 
@@ -316,6 +316,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
     RSM_RegisterReader(KeysReader, GetKeysReaderArgType());
     RSM_RegisterWriter(KeyRecordWriter, NULL);
+    RSM_RegisterMap(GetValueMapper, NULL);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
     RSM_RegisterReducer(CountReducer, NULL);
 

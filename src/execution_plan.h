@@ -143,7 +143,7 @@ void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbac
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                   const char* reducerName, void* reducerArg);
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
-void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep);
+void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
