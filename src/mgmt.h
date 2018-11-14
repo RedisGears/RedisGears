@@ -18,29 +18,29 @@ typedef struct ArgType{
     ArgDeserialize deserialize;
 }ArgType;
 
-bool FiltersMgmt_Add(char* name, RediStar_FilterCallback callback, ArgType* type);
-RediStar_FilterCallback FiltersMgmt_Get(char* name);
-ArgType* FiltersMgmt_GetArgType(char* name);
+bool FiltersMgmt_Add(const char* name, RediStar_FilterCallback callback, ArgType* type);
+RediStar_FilterCallback FiltersMgmt_Get(const char* name);
+ArgType* FiltersMgmt_GetArgType(const char* name);
 
-bool MapsMgmt_Add(char* name, RediStar_MapCallback callback, ArgType* type);
-RediStar_MapCallback MapsMgmt_Get(char* name);
-ArgType* MapsMgmt_GetArgType(char* name);
+bool MapsMgmt_Add(const char* name, RediStar_MapCallback callback, ArgType* type);
+RediStar_MapCallback MapsMgmt_Get(const char* name);
+ArgType* MapsMgmt_GetArgType(const char* name);
 
-bool ReadersMgmt_Add(char* name, RediStar_ReaderCallback callback, ArgType* type);
-RediStar_ReaderCallback ReadersMgmt_Get(char* name);
-ArgType* ReadersMgmt_GetArgType(char* name);
+bool ReadersMgmt_Add(const char* name, RediStar_ReaderCallback callback, ArgType* type);
+RediStar_ReaderCallback ReadersMgmt_Get(const char* name);
+ArgType* ReadersMgmt_GetArgType(const char* name);
 
-bool WritersMgmt_Add(char* name, RediStar_WriterCallback callback, ArgType* type);
-RediStar_WriterCallback WritersMgmt_Get(char* name);
-ArgType* WritersMgmt_GetArgType(char* name);
+bool WritersMgmt_Add(const char* name, RediStar_WriterCallback callback, ArgType* type);
+RediStar_WriterCallback WritersMgmt_Get(const char* name);
+ArgType* WritersMgmt_GetArgType(const char* name);
 
-bool ExtractorsMgmt_Add(char* name, RediStar_ExtractorCallback callback, ArgType* type);
-RediStar_ExtractorCallback ExtractorsMgmt_Get(char* name);
-ArgType* ExtractorsMgmt_GetArgType(char* name);
+bool ExtractorsMgmt_Add(const char* name, RediStar_ExtractorCallback callback, ArgType* type);
+RediStar_ExtractorCallback ExtractorsMgmt_Get(const char* name);
+ArgType* ExtractorsMgmt_GetArgType(const char* name);
 
-bool ReducersMgmt_Add(char* name, RediStar_ReducerCallback callback, ArgType* type);
-RediStar_ReducerCallback ReducersMgmt_Get(char* name);
-ArgType* ReducersMgmt_GetArgType(char* name);
+bool ReducersMgmt_Add(const char* name, RediStar_ReducerCallback callback, ArgType* type);
+RediStar_ReducerCallback ReducersMgmt_Get(const char* name);
+ArgType* ReducersMgmt_GetArgType(const char* name);
 
 void Mgmt_Init();
 

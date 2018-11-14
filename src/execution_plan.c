@@ -19,6 +19,34 @@
 #define NEW_REPARTITION_MSG_TYPE 4
 #define DONE_REPARTITION_MSG_TYPE 5
 
+typedef struct LimitExecutionStepArg{
+    size_t offset;
+    size_t len;
+}LimitExecutionStepArg;
+
+static void FreeLimitArg(void* arg){
+    RS_FREE(arg);
+}
+
+static void LimitArgSerialize(void* arg, BufferWriter* bw){
+    LimitExecutionStepArg* limitArg = arg;
+    RediStar_BWWriteLong(bw, limitArg->offset);
+    RediStar_BWWriteLong(bw, limitArg->len);
+}
+
+static void* LimitArgDeserialize(BufferReader* br){
+    LimitExecutionStepArg* limitArg = RS_ALLOC(sizeof(*limitArg));
+    limitArg->offset = RediStar_BRReadLong(br);
+    limitArg->len = RediStar_BRReadLong(br);
+    return limitArg;
+}
+
+static ArgType LimitArgType = {
+        .free = FreeLimitArg,
+        .serialize = LimitArgSerialize,
+        .deserialize = LimitArgDeserialize,
+};
+
 // this is an hack so redis will not crash, we should try to
 // avoid this as soon as possible.
 static void* modulePointer;
@@ -67,6 +95,29 @@ dictType dictTypeHeapIds = {
         .valDestructor = NULL,
 };
 
+static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const char* name){
+    switch(type){
+    case MAP:
+    case FLAT_MAP:
+        return MapsMgmt_GetArgType(name);
+    case FILTER:
+        return FiltersMgmt_GetArgType(name);
+    case EXTRACTKEY:
+        return ExtractorsMgmt_GetArgType(name);
+    case REDUCE:
+        return ReducersMgmt_GetArgType(name);
+    case WRITER:
+        return WritersMgmt_GetArgType(name);
+    case READER:
+        // todo: fix reader args handling for now we free the reader on execution plan itself
+        return NULL;
+    case LIMIT:
+        return &LimitArgType;
+    default:
+        return NULL;
+    }
+}
+
 ExecutionPlan* ExecutionPlan_FindByName(const char* name){
 	dictEntry *entry = dictFind(epData.namesDict, name);
 	if(!entry){
@@ -95,29 +146,9 @@ static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, BufferW
 static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWriter* bw){
     RediStar_BWWriteLong(bw, step->type);
     RediStar_BWWriteString(bw, step->bStep.stepName);
-    ArgType* type = NULL;
-    switch(step->type){
-    case MAP:
-    case FLAT_MAP:
-        type = MapsMgmt_GetArgType(step->bStep.stepName);
-        break;
-    case FILTER:
-        type = FiltersMgmt_GetArgType(step->bStep.stepName);
-        break;
-    case EXTRACTKEY:
-        type = ExtractorsMgmt_GetArgType(step->bStep.stepName);
-        break;
-    case REDUCE:
-        type = ReducersMgmt_GetArgType(step->bStep.stepName);
-        break;
-    case WRITER:
-        type = WritersMgmt_GetArgType(step->bStep.stepName);
-        break;
-    default:
-        break;
-    }
+    ArgType* type = step->bStep.arg.type;
     if(type && type->serialize){
-        type->serialize(step->bStep.arg, bw);
+        type->serialize(step->bStep.arg.stepArg, bw);
     }
 }
 
@@ -147,30 +178,10 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(BufferReader* br){
     FlatExecutionStep step;
     step.type = RediStar_BRReadLong(br);
     step.bStep.stepName = RS_STRDUP(RediStar_BRReadString(br));
-    step.bStep.arg = NULL;
-    ArgType* type = NULL;
-    switch(step.type){
-    case MAP:
-    case FLAT_MAP:
-        type = MapsMgmt_GetArgType(step.bStep.stepName);
-        break;
-    case FILTER:
-        type = FiltersMgmt_GetArgType(step.bStep.stepName);
-        break;
-    case EXTRACTKEY:
-        type = ExtractorsMgmt_GetArgType(step.bStep.stepName);
-        break;
-    case REDUCE:
-        type = ReducersMgmt_GetArgType(step.bStep.stepName);
-        break;
-    case WRITER:
-        type = WritersMgmt_GetArgType(step.bStep.stepName);
-        break;
-    default:
-        break;
-    }
-    if(type && type->deserialize){
-        step.bStep.arg = type->deserialize(br);
+    step.bStep.arg.stepArg = NULL;
+    step.bStep.arg.type = FlatExecutionPlan_GetArgTypeByStepType(step.type, step.bStep.stepName);
+    if(step.bStep.arg.type && step.bStep.arg.type->deserialize){
+        step.bStep.arg.stepArg = step.bStep.arg.type->deserialize(br);
     }
     return step;
 }
@@ -535,6 +546,29 @@ static Record* ExecutionPlan_WriteNextRecord(ExecutionPlan* ep, ExecutionStep* s
     return record;
 }
 
+static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err);
+    if(record == NULL){
+        return NULL;
+    }
+    if(record == &StopRecord){
+        return record;
+    }
+    if(*err){
+        return record;
+    }
+
+    Record* ret = NULL;
+    LimitExecutionStepArg* arg = (LimitExecutionStepArg*)step->limit.stepArg.stepArg;
+    if(step->limit.currRecordIndex >= arg->offset &&
+            step->limit.currRecordIndex < arg->offset + arg->len){
+
+        ret = record;
+    }
+    ++step->limit.currRecordIndex;
+    return ret;
+}
+
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = NULL;
     Record* r;
@@ -542,34 +576,26 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     switch(step->type){
     case READER:
         return step->reader.r->Next(rctx, step->reader.r->ctx);
-        break;
     case MAP:
         return ExecutionPlan_MapNextRecord(ep, step, rctx, err);
-        break;
     case FLAT_MAP:
         return ExecutionPlan_FlatMapNextRecord(ep, step, rctx, err);
-        break;
     case FILTER:
         return ExecutionPlan_FilterNextRecord(ep, step, rctx, err);
-        break;
     case EXTRACTKEY:
         return ExecutionPlan_ExtractKeyNextRecord(ep, step, rctx, err);
-        break;
     case GROUP:
         return ExecutionPlan_GroupNextRecord(ep, step, rctx, err);
-        break;
     case REDUCE:
         return ExecutionPlan_ReduceNextRecord(ep, step, rctx, err);
-        break;
     case REPARTITION:
         return ExecutionPlan_RepartitionNextRecord(ep, step, rctx, err);
-        break;
     case COLLECT:
     	return ExecutionPlan_CollectNextRecord(ep, step, rctx, err);
-    	break;
     case WRITER:
         return ExecutionPlan_WriteNextRecord(ep, step, rctx, err);
-        break;
+    case LIMIT:
+        return ExecutionPlan_LimitNextRecord(ep, step, rctx, err);
     default:
         assert(false);
         return NULL;
@@ -643,6 +669,7 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         }
         RedisModule_FreeThreadSafeContext(rctx);
     }
+    return NULL;
 }
 
 static void ExecutionPlan_AddToRunList(ExecutionPlan* ep){
@@ -786,29 +813,24 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     switch(step->type){
     case MAP:
         es->map.map = MapsMgmt_Get(step->bStep.stepName);
-        es->map.stepArg.type = MapsMgmt_GetArgType(step->bStep.stepName);
-        es->map.stepArg.stepArg = step->bStep.arg;
+        es->map.stepArg = step->bStep.arg;
         break;
     case FLAT_MAP:
         es->flatMap.mapStep.map = MapsMgmt_Get(step->bStep.stepName);
-        es->flatMap.mapStep.stepArg.type = MapsMgmt_GetArgType(step->bStep.stepName);
-        es->flatMap.mapStep.stepArg.stepArg = step->bStep.arg;
+        es->flatMap.mapStep.stepArg = step->bStep.arg;
         es->flatMap.pendings = NULL;
         break;
     case FILTER:
         es->filter.filter = FiltersMgmt_Get(step->bStep.stepName);
-        es->filter.stepArg.type = FiltersMgmt_GetArgType(step->bStep.stepName);
-        es->filter.stepArg.stepArg = step->bStep.arg;
+        es->filter.stepArg = step->bStep.arg;
         break;
     case EXTRACTKEY:
         es->extractKey.extractor = ExtractorsMgmt_Get(step->bStep.stepName);
-        es->extractKey.extractorArg.type = ExtractorsMgmt_GetArgType(step->bStep.stepName);
-        es->extractKey.extractorArg.stepArg = step->bStep.arg;
+        es->extractKey.extractorArg = step->bStep.arg;
         break;
     case REDUCE:
         es->reduce.reducer = ReducersMgmt_Get(step->bStep.stepName);
-        es->reduce.reducerArg.type = ReducersMgmt_GetArgType(step->bStep.stepName);
-        es->reduce.reducerArg.stepArg = step->bStep.arg;
+        es->reduce.reducerArg = step->bStep.arg;
         break;
     case GROUP:
         es->group.groupedRecords = NULL;
@@ -825,8 +847,11 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     	break;
     case WRITER:
         es->writer.write = WritersMgmt_Get(step->bStep.stepName);
-        es->writer.stepArg.type = WritersMgmt_GetArgType(step->bStep.stepName);
-        es->writer.stepArg.stepArg = step->bStep.arg;
+        es->writer.stepArg = step->bStep.arg;
+        break;
+    case LIMIT:
+        es->limit.stepArg = step->bStep.arg;
+        es->limit.currRecordIndex = 0;
         break;
     default:
         assert(false);
@@ -882,32 +907,16 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         ExecutionStep_Free(es->prev, ctx);
     }
     switch(es->type){
+    case LIMIT:
     case MAP:
-        if (es->map.stepArg.type && es->map.stepArg.type->free){
-            es->map.stepArg.type->free(es->map.stepArg.stepArg);
-        }
+    case FILTER:
+    case EXTRACTKEY:
+    case REDUCE:
+    case WRITER:
         break;
     case FLAT_MAP:
-        if (es->flatMap.mapStep.stepArg.type && es->flatMap.mapStep.stepArg.type->free){
-            es->flatMap.mapStep.stepArg.type->free(es->flatMap.mapStep.stepArg.stepArg);
-        }
         if(es->flatMap.pendings){
             RediStar_FreeRecord(es->flatMap.pendings);
-        }
-        break;
-    case FILTER:
-        if (es->filter.stepArg.type && es->filter.stepArg.type->free){
-            es->filter.stepArg.type->free(es->filter.stepArg.stepArg);
-        }
-        break;
-    case EXTRACTKEY:
-        if (es->extractKey.extractorArg.type && es->extractKey.extractorArg.type->free){
-            es->extractKey.extractorArg.type->free(es->extractKey.extractorArg.stepArg);
-        }
-        break;
-    case REDUCE:
-        if(es->reduce.reducerArg.type && es->reduce.reducerArg.type->free){
-            es->reduce.reducerArg.type->free(es->reduce.reducerArg.stepArg);
         }
         break;
     case REPARTITION:
@@ -938,15 +947,11 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         }
         break;
     case READER:
+        // todo : fix reader free operation
         if(es->reader.type && es->reader.type->free){
             es->reader.type->free(es->reader.r->ctx);
         }
         RS_FREE(es->reader.r);
-        break;
-    case WRITER:
-        if (es->writer.stepArg.type && es->writer.stepArg.type->free){
-            es->writer.stepArg.type->free(es->writer.stepArg.stepArg);
-        }
         break;
     default:
         assert(false);
@@ -993,6 +998,12 @@ FlatExecutionPlan* FlatExecutionPlan_New(char* name){
     return res;
 }
 
+void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
+    if (step->bStep.arg.type && step->bStep.arg.type->free){
+        step->bStep.arg.type->free(step->bStep.arg.stepArg);
+    }
+}
+
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
 	RS_FREE(fep->name);
     RS_FREE(fep->reader->reader);
@@ -1000,6 +1011,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
         RS_FREE(step->bStep.stepName);
+        FlatExecutionPlan_FreeArg(step);
     }
     array_free(fep->steps);
     RS_FREE(fep);
@@ -1012,7 +1024,10 @@ void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader, void* rea
 static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* callbackName, void* arg, enum StepType type){
     FlatExecutionStep s;
     s.type = type;
-    s.bStep.arg = arg;
+    s.bStep.arg = (ExecutionStepArg){
+        .stepArg = arg,
+        .type = FlatExecutionPlan_GetArgTypeByStepType(type, callbackName),
+    };
     if(callbackName){
         s.bStep.stepName = RS_STRDUP(callbackName);
     }else{
@@ -1048,6 +1063,15 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
 
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){
 	FlatExecutionPlan_AddBasicStep(fep, "Collect", NULL, COLLECT);
+}
+
+void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len){
+    LimitExecutionStepArg* arg = RS_ALLOC(sizeof(*arg));
+    *arg = (LimitExecutionStepArg){
+        .offset = offset,
+        .len = len,
+    };
+    FlatExecutionPlan_AddBasicStep(fep, "Limit", arg, LIMIT);
 }
 
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg){

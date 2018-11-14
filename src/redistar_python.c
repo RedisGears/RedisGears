@@ -14,6 +14,8 @@ static RedisModuleCtx* currentCtx = NULL;
 #define PYTHON_ERROR "error running python code"
 
 static PyObject* run(PyObject *cls, PyObject *args){
+    size_t len;
+    size_t offset;
     PyObject* self = PyTuple_GetItem(args, 0);
     PyObject* regexKey = PyString_FromString("regex");
     PyObject* regex = PyObject_GetAttr(self, regexKey);
@@ -63,6 +65,12 @@ static PyObject* run(PyObject *cls, PyObject *args){
             break;
         case 7:
             RSM_FlatMap(rsctx, RediStarPy_PyCallbackFlatMapper, callback);
+            break;
+        case 8:
+            len = PyInt_AsLong(callback);
+            reducer = PyTuple_GetItem(step, 2);
+            offset = PyInt_AsLong(reducer);
+            RSM_Limit(rsctx, offset, len);
             break;
         default:
             assert(false);
@@ -456,6 +464,13 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "        return self\n"
                        "    def flatMap(self, flatMapFunc):\n"
                        "        self.steps.append((7, flatMapFunc))\n"
+                       "        return self\n"
+                       "    def limit(self, len, offset=0):\n"
+                       "        if not isinstance(len, int):\n"
+                       "            raise Exception('value given to limit is not int')\n"
+                       "        if not isinstance(offset, int):\n"
+                       "            raise Exception('value given to limit is not int')\n"
+                       "        self.steps.append((8, len, offset))\n"
                        "        return self\n"
                        "    def run(self):\n"
                        "        redistar.run(self)\n"

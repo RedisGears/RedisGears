@@ -97,6 +97,11 @@ static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
     return 1;
 }
 
+static int RS_Limit(RediStarCtx* ctx, size_t offset, size_t len){
+    FlatExecutionPlan_AddLimitStep(ctx->fep, offset, len);
+    return 1;
+}
+
 static int RS_Run(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback, void* privateData){
 	ctx->ep = FlatExecutionPlan_Run(ctx->fep, callback, privateData);
 	if(!ctx->ep){
@@ -233,6 +238,7 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(Collect, registerApiCallback);
     REGISTER_API(Repartition, registerApiCallback);
     REGISTER_API(Write, registerApiCallback);
+    REGISTER_API(Limit, registerApiCallback);
     REGISTER_API(Run, registerApiCallback);
 
     REGISTER_API(GetCtxByName, registerApiCallback);

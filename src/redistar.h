@@ -149,6 +149,9 @@ int MODULE_API_FUNC(RediStar_Repartition)(RediStarCtx* ctx, char* extraxtorName,
 
 int MODULE_API_FUNC(RediStar_FlatMap)(RediStarCtx* ctx, char* name, void* arg);
 #define RSM_FlatMap(ctx, name, arg) RediStar_FlatMap(ctx, #name, arg)
+
+int MODULE_API_FUNC(RediStar_Limit)(RediStarCtx* ctx, size_t offset, size_t len);
+#define RSM_Limit(ctx, offset, len) RediStar_Limit(ctx, offset, len)
 /******************************* Execution plan runners *******************************/
 
 /*
@@ -205,6 +208,7 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(Collect);
     PROXY_MODULE_INIT_FUNCTION(Repartition);
     PROXY_MODULE_INIT_FUNCTION(FlatMap);
+    PROXY_MODULE_INIT_FUNCTION(Limit);
 
     PROXY_MODULE_INIT_FUNCTION(GetCtxByName);
     PROXY_MODULE_INIT_FUNCTION(GetCtxById);

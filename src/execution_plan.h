@@ -12,7 +12,17 @@
 #include <stdbool.h>
 
 enum StepType{
-    MAP=1, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE, COLLECT, WRITER, FLAT_MAP
+    MAP=1,
+    FILTER,
+    READER,
+    GROUP,
+    EXTRACTKEY,
+    REPARTITION,
+    REDUCE,
+    COLLECT,
+    WRITER,
+    FLAT_MAP,
+    LIMIT,
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -69,6 +79,11 @@ typedef struct CollectExecutionStep{
     size_t totalShardsCompleted;
 }CollectExecutionStep;
 
+typedef struct LimitExecutionStep{
+    ExecutionStepArg stepArg;
+    size_t currRecordIndex;
+}LimitExecutionStep;
+
 typedef struct ReaderStep{
     Reader* r;
     ArgType* type;
@@ -93,6 +108,7 @@ typedef struct ExecutionStep{
         CollectExecutionStep collect;
         ReaderStep reader;
         WriterExecutionStep writer;
+        LimitExecutionStep limit;
     };
     enum StepType type;
 }ExecutionStep;
@@ -117,7 +133,7 @@ typedef struct ExecutionPlan{
 
 typedef struct FlatBasicStep{
     char* stepName;
-    void* arg;
+    ExecutionStepArg arg;
 }FlatBasicStep;
 
 typedef struct FlatExecutionStep{
@@ -150,6 +166,7 @@ void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbac
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                   const char* reducerName, void* reducerArg);
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
+void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
