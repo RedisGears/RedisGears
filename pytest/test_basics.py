@@ -49,6 +49,17 @@ class testBasic:
         self.env.assertContains("{'value': 50, 'key': '0'}", res)
 
 
+def testFlatMap(env):
+    env.broadcast('rs.refreshcluster')
+    conn = getConnectionByEnv(env)
+    conn.execute_command('lpush', 'l', '1', '2', '3')
+    env.expect('rs.pyexecute', "starCtx('test', '*')."
+                               "flatMap(lambda x: x['value'])."
+                               "collect().run()").ok()
+    res = env.cmd('rs.getresultsblocking', 'test')
+    env.assertEqual(set(res), set(['1', '2', '3']))
+
+
 def testRepartitionAndWriteOption(env):
     env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)

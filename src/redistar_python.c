@@ -61,6 +61,9 @@ static PyObject* run(PyObject *cls, PyObject *args){
         case 6:
             RSM_Repartition(rsctx, RediStarPy_PyCallbackExtractor, callback);
             break;
+        case 7:
+            RSM_FlatMap(rsctx, RediStarPy_PyCallbackFlatMapper, callback);
+            break;
         default:
             assert(false);
         }
@@ -162,6 +165,43 @@ static Record* RediStarPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record,
     Py_INCREF(newObj);
     Py_DECREF(oldObj);
     RS_PyObjRecordSet(record, newObj);
+    PyGILState_Release(state);
+    return record;
+}
+
+static Record* RediStarPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+    PyGILState_STATE state = PyGILState_Ensure();
+    // Call Python/C API functions...
+    assert(RediStar_RecordGetType(record) == PY_RECORD);
+    PyObject* pArgs = PyTuple_New(1);
+    PyObject* callback = arg;
+    PyObject* oldObj = RS_PyObjRecordGet(record);
+    PyTuple_SetItem(pArgs, 0, oldObj);
+    PyObject* newObj = PyObject_CallObject(callback, pArgs);
+    if(!newObj){
+        PyErr_Print();
+        *err = RS_STRDUP(PYTHON_ERROR);
+        RediStar_FreeRecord(record);
+        PyGILState_Release(state);
+        return NULL;
+    }
+    if(PyList_Check(newObj)){
+        RediStar_FreeRecord(record);
+        size_t len = PyList_Size(newObj);
+        record = RediStar_ListRecordCreate(len);
+        for(size_t i = 0 ; i < len ; ++i){
+            PyObject* temp = PyList_GetItem(newObj, i);
+            Record* pyRecord = RS_PyObjRecordCreare();
+            Py_INCREF(pyRecord);
+            RS_PyObjRecordSet(pyRecord, temp);
+            RediStar_ListRecordAdd(record, pyRecord);
+        }
+        Py_DECREF(newObj);
+    }else{
+        Py_INCREF(newObj);
+        Py_DECREF(oldObj);
+        RS_PyObjRecordSet(record, newObj);
+    }
     PyGILState_Release(state);
     return record;
 }
@@ -414,6 +454,9 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "    def repartition(self, extractor):\n"
                        "        self.steps.append((6, extractor))\n"
                        "        return self\n"
+                       "    def flatMap(self, flatMapFunc):\n"
+                       "        self.steps.append((7, flatMapFunc))\n"
+                       "        return self\n"
                        "    def run(self):\n"
                        "        redistar.run(self)\n"
                        "globals()['str'] = str\n"
@@ -428,6 +471,7 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
     RSM_RegisterWriter(RediStarPy_PyCallbackWriter, pyCallbackType);
     RSM_RegisterFilter(RediStarPy_PyCallbackFilter, pyCallbackType);
     RSM_RegisterMap(RediStarPy_ToPyRecordMapper, NULL);
+    RSM_RegisterMap(RediStarPy_PyCallbackFlatMapper, pyCallbackType);
     RSM_RegisterMap(RediStarPy_PyCallbackMapper, pyCallbackType);
     RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor, pyCallbackType);
     RSM_RegisterReducer(RediStarPy_PyCallbackReducer, pyCallbackType);

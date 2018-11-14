@@ -168,6 +168,11 @@ Record* RS_ListRecordGet(Record* r, size_t index){
     assert(RS_ListRecordLen(r) > index && index >= 0);
     return r->listRecord.records[index];
 }
+
+Record* RS_ListRecordPop(Record* r){
+    return array_pop(r->listRecord.records);
+}
+
 Record* RS_StringRecordCreate(char* val){
     Record* ret = RS_ALLOC(sizeof(Record));
     ret->type = STRING_RECORD;

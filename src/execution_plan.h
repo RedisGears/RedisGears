@@ -12,7 +12,7 @@
 #include <stdbool.h>
 
 enum StepType{
-    MAP=1, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE, COLLECT, WRITER
+    MAP=1, FILTER, READER, GROUP, EXTRACTKEY, REPARTITION, REDUCE, COLLECT, WRITER, FLAT_MAP
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -32,6 +32,11 @@ typedef struct MapExecutionStep{
     RediStar_MapCallback map;
     ExecutionStepArg stepArg;
 }MapExecutionStep;
+
+typedef struct FlatMapExecutionStep{
+    MapExecutionStep mapStep;
+    Record* pendings;
+}FlatMapExecutionStep;
 
 typedef struct FilterExecutionStep{
     RediStar_FilterCallback filter;
@@ -79,6 +84,7 @@ typedef struct ExecutionStep{
     size_t stepId;
     union{
         MapExecutionStep map;
+        FlatMapExecutionStep flatMap;
         FilterExecutionStep filter;
         ExtractKeyExecutionStep extractKey;
         RepartitionExecutionStep repartion;
@@ -139,6 +145,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(char* name);
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader, void* readerArg);
 void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* writerArg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
+void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                   const char* reducerName, void* reducerArg);

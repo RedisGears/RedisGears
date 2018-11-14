@@ -46,6 +46,12 @@ Map operation receive a Record and return another Record, example (using python 
 ctx.map(lambda r : str(r)) # transform a Record into a string Record
 ```
 
+### FlatMap
+Just like map but if the result is a list it flatten it right after, example (using python api):
+```
+ctx.flatMap(lambda r : [r, r]) # pass each record twice in the execution plan
+```
+
 ### Filter
 Filter operation receive a Record and return a boolean indicating whether or not the record should continue with the execution, example (using python api)
 ```

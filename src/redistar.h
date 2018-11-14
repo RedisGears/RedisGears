@@ -90,6 +90,7 @@ Record* MODULE_API_FUNC(RediStar_ListRecordCreate)(size_t initSize);
 size_t MODULE_API_FUNC(RediStar_ListRecordLen)(Record* listRecord);
 void MODULE_API_FUNC(RediStar_ListRecordAdd)(Record* listRecord, Record* r);
 Record* MODULE_API_FUNC(RediStar_ListRecordGet)(Record* listRecord, size_t index);
+Record* MODULE_API_FUNC(RediStar_ListRecordPop)(Record* listRecord);
 Record* MODULE_API_FUNC(RediStar_StringRecordCreate)(char* val);
 char* MODULE_API_FUNC(RediStar_StringRecordGet)(Record* r);
 void MODULE_API_FUNC(RediStar_StringRecordSet)(Record* r, char* val);
@@ -145,6 +146,9 @@ int MODULE_API_FUNC(RediStar_Collect)(RediStarCtx* ctx);
 
 int MODULE_API_FUNC(RediStar_Repartition)(RediStarCtx* ctx, char* extraxtorName, void* extractorArg);
 #define RSM_Repartition(ctx, extractor, extractorArg) RediStar_Repartition(ctx, #extractor, extractorArg)
+
+int MODULE_API_FUNC(RediStar_FlatMap)(RediStarCtx* ctx, char* name, void* arg);
+#define RSM_FlatMap(ctx, name, arg) RediStar_FlatMap(ctx, #name, arg)
 /******************************* Execution plan runners *******************************/
 
 /*
@@ -200,6 +204,7 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(GroupBy);
     PROXY_MODULE_INIT_FUNCTION(Collect);
     PROXY_MODULE_INIT_FUNCTION(Repartition);
+    PROXY_MODULE_INIT_FUNCTION(FlatMap);
 
     PROXY_MODULE_INIT_FUNCTION(GetCtxByName);
     PROXY_MODULE_INIT_FUNCTION(GetCtxById);
@@ -223,6 +228,7 @@ static bool RediStar_Initialize(){
     PROXY_MODULE_INIT_FUNCTION(ListRecordLen);
     PROXY_MODULE_INIT_FUNCTION(ListRecordAdd);
     PROXY_MODULE_INIT_FUNCTION(ListRecordGet);
+    PROXY_MODULE_INIT_FUNCTION(ListRecordPop);
     PROXY_MODULE_INIT_FUNCTION(StringRecordCreate);
     PROXY_MODULE_INIT_FUNCTION(StringRecordGet);
     PROXY_MODULE_INIT_FUNCTION(StringRecordSet);

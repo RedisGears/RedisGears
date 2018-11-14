@@ -67,6 +67,11 @@ static int RS_Map(RediStarCtx* ctx, char* name, void* arg){
     return 1;
 }
 
+int RS_FlatMap(RediStarCtx* ctx, char* name, void* arg){
+    FlatExecutionPlan_AddFlatMapStep(ctx->fep, name, arg);
+    return 1;
+}
+
 static int RS_Filter(RediStarCtx* ctx, char* name, void* arg){
     FlatExecutionPlan_AddFilterStep(ctx->fep, name, arg);
     return 1;
@@ -222,6 +227,7 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(RegisterReducer, registerApiCallback);
     REGISTER_API(CreateCtx, registerApiCallback);
     REGISTER_API(Map, registerApiCallback);
+    REGISTER_API(FlatMap, registerApiCallback);
     REGISTER_API(Filter, registerApiCallback);
     REGISTER_API(GroupBy, registerApiCallback);
     REGISTER_API(Collect, registerApiCallback);
@@ -251,6 +257,7 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(ListRecordLen, registerApiCallback);
     REGISTER_API(ListRecordAdd, registerApiCallback);
     REGISTER_API(ListRecordGet, registerApiCallback);
+    REGISTER_API(ListRecordPop, registerApiCallback);
     REGISTER_API(StringRecordCreate, registerApiCallback);
     REGISTER_API(StringRecordGet, registerApiCallback);
     REGISTER_API(StringRecordSet, registerApiCallback);

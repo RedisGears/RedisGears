@@ -38,6 +38,7 @@ Record* RS_ListRecordCreate(size_t initial_size);
 size_t RS_ListRecordLen(Record* r);
 void RS_ListRecordAdd(Record* r, Record* element);
 Record* RS_ListRecordGet(Record* r, size_t index);
+Record* RS_ListRecordPop(Record* r);
 
 /** string record api **/
 Record* RS_StringRecordCreate(char* val);

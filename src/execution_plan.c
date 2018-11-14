@@ -98,6 +98,7 @@ static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWrite
     ArgType* type = NULL;
     switch(step->type){
     case MAP:
+    case FLAT_MAP:
         type = MapsMgmt_GetArgType(step->bStep.stepName);
         break;
     case FILTER:
@@ -150,6 +151,7 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(BufferReader* br){
     ArgType* type = NULL;
     switch(step.type){
     case MAP:
+    case FLAT_MAP:
         type = MapsMgmt_GetArgType(step.bStep.stepName);
         break;
     case FILTER:
@@ -257,6 +259,42 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
         }
     }
     return record;
+}
+
+static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    if(step->flatMap.pendings){
+        Record* r = RediStar_ListRecordPop(step->flatMap.pendings);
+        if(RediStar_ListRecordLen(step->flatMap.pendings) == 0){
+            RediStar_FreeRecord(step->flatMap.pendings);
+            step->flatMap.pendings = NULL;
+        }
+        return r;
+    }
+    Record* r = ExecutionPlan_MapNextRecord(ep, step, rctx, err);
+    if(r == NULL){
+        return NULL;
+    }
+    if(r == &StopRecord){
+        return r;
+    }
+    if(*err){
+        RediStar_FreeRecord(r);
+        return NULL;
+    }
+    if(RediStar_RecordGetType(r) != LIST_RECORD){
+        return r;
+    }
+    if(RediStar_ListRecordLen(r) == 0){
+        return r;
+    }
+    if(RediStar_ListRecordLen(r) == 1){
+        Record* ret;
+        ret = RediStar_ListRecordPop(r);
+        RediStar_FreeRecord(r);
+        return ret;
+    }
+    step->flatMap.pendings = r;
+    return RediStar_ListRecordPop(step->flatMap.pendings);
 }
 
 static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
@@ -508,6 +546,9 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     case MAP:
         return ExecutionPlan_MapNextRecord(ep, step, rctx, err);
         break;
+    case FLAT_MAP:
+        return ExecutionPlan_FlatMapNextRecord(ep, step, rctx, err);
+        break;
     case FILTER:
         return ExecutionPlan_FilterNextRecord(ep, step, rctx, err);
         break;
@@ -748,6 +789,12 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
         es->map.stepArg.type = MapsMgmt_GetArgType(step->bStep.stepName);
         es->map.stepArg.stepArg = step->bStep.arg;
         break;
+    case FLAT_MAP:
+        es->flatMap.mapStep.map = MapsMgmt_Get(step->bStep.stepName);
+        es->flatMap.mapStep.stepArg.type = MapsMgmt_GetArgType(step->bStep.stepName);
+        es->flatMap.mapStep.stepArg.stepArg = step->bStep.arg;
+        es->flatMap.pendings = NULL;
+        break;
     case FILTER:
         es->filter.filter = FiltersMgmt_Get(step->bStep.stepName);
         es->filter.stepArg.type = FiltersMgmt_GetArgType(step->bStep.stepName);
@@ -838,6 +885,14 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     case MAP:
         if (es->map.stepArg.type && es->map.stepArg.type->free){
             es->map.stepArg.type->free(es->map.stepArg.stepArg);
+        }
+        break;
+    case FLAT_MAP:
+        if (es->flatMap.mapStep.stepArg.type && es->flatMap.mapStep.stepArg.type->free){
+            es->flatMap.mapStep.stepArg.type->free(es->flatMap.mapStep.stepArg.stepArg);
+        }
+        if(es->flatMap.pendings){
+            RediStar_FreeRecord(es->flatMap.pendings);
         }
         break;
     case FILTER:
@@ -972,6 +1027,10 @@ void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* wri
 
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){
     FlatExecutionPlan_AddBasicStep(fep, callbackName, arg, MAP);
+}
+
+void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){
+    FlatExecutionPlan_AddBasicStep(fep, callbackName, arg, FLAT_MAP);
 }
 
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){
