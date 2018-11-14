@@ -60,6 +60,17 @@ def testFlatMap(env):
     env.assertEqual(set(res), set(['1', '2', '3']))
 
 
+def testLimit(env):
+    env.broadcast('rs.refreshcluster')
+    conn = getConnectionByEnv(env)
+    conn.execute_command('lpush', 'l', '1', '2', '3')
+    env.expect('rs.pyexecute', "starCtx('test', '*')."
+                               "flatMap(lambda x: x['value'])."
+                               "limit(1).collect().run()").ok()
+    res = env.cmd('rs.getresultsblocking', 'test')
+    env.assertEqual(len(res), 1)
+
+
 def testRepartitionAndWriteOption(env):
     env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
