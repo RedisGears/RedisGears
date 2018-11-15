@@ -856,8 +856,8 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar
         ((void**)rctx)[1] = modulePointer;
         FlatExecutionPlan_Distribute(fep, rctx);
         RedisModule_FreeThreadSafeContext(rctx);
-        dictAdd(epData.namesDict, fep->name, fep);
     }
+    dictAdd(epData.namesDict, fep->name, fep);
     return FlatExecutionPlan_RunOnly(fep, eid, callback, privateData);
 }
 
