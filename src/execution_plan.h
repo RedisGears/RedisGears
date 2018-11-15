@@ -28,11 +28,6 @@ enum StepType{
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct ExecutionPlan ExecutionPlan;
 
-typedef struct RediStarCtx{
-    FlatExecutionPlan* fep;
-    ExecutionPlan* ep;
-}RediStarCtx;
-
 typedef struct ExecutionStepArg{
     void* stepArg;
     ArgType* type;
@@ -119,7 +114,12 @@ typedef enum ExecutionPlanStatus{
     CREATED, RUNNING, WAITING_FOR_CLUSTER_RESULTS
 }ExecutionPlanStatus;
 
+#define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
+#define EXECUTION_PLAN_STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
+
 typedef struct ExecutionPlan{
+    char id[EXECUTION_PLAN_ID_LEN];
+    char idStr[EXECUTION_PLAN_STR_ID_LEN];
     ExecutionStep** steps;
     FlatExecutionPlan* fep;
     size_t totalShardsCompleted;
@@ -148,16 +148,13 @@ typedef struct FlatExecutionReader{
     void* arg;
 }FlatExecutionReader;
 
-#define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
-
 typedef struct FlatExecutionPlan{
 	char* name;
-    char id[EXECUTION_PLAN_ID_LEN];
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
 }FlatExecutionPlan;
 
-FlatExecutionPlan* FlatExecutionPlan_New(char* name);
+FlatExecutionPlan* FlatExecutionPlan_New(const char* name);
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader, void* readerArg);
 void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* writerArg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -168,7 +165,7 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);
@@ -176,7 +173,9 @@ void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx);
 
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-ExecutionPlan* ExecutionPlan_FindByName(const char* name);
+int ExecutionPlan_FlatExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+FlatExecutionPlan* ExecutionPlan_FindByName(const char* name);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
+ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 
 #endif /* SRC_EXECUTION_PLAN_H_ */

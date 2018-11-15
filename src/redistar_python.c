@@ -28,7 +28,7 @@ static PyObject* run(PyObject *cls, PyObject *args){
     Py_DECREF(regex);
 	Py_DECREF(name);
     // todo : expose execution name on python interface
-    RediStarCtx* rsctx = RSM_CreateCtx(nameStr, KeysReader, RS_STRDUP(regexStr));
+	FlatExecutionPlan* rsctx = RSM_CreateCtx(nameStr, KeysReader, RS_STRDUP(regexStr));
     RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
 
     PyObject* stepsKey = PyString_FromString("steps");
@@ -77,14 +77,17 @@ static PyObject* run(PyObject *cls, PyObject *args){
         }
     }
 
-    if(!RSM_Run(rsctx, NULL, NULL)){
-        RedisModule_ReplyWithError(currentCtx, "Execution with the given name already exists, pleas drop it first.");
-        RediStar_DropExecution(rsctx, currentCtx);
+    ExecutionPlan* ep = RSM_Run(rsctx, NULL, NULL);
+    if(!ep){
+        RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
     }else{
-        RedisModule_ReplyWithSimpleString(currentCtx, "OK");
+        // todo: we should not return the reply to the user here,
+        //       user might create multiple executions in a single script
+        //       think what to do???
+        const char* id = RediStar_GetId(ep);
+        RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
     }
 
-    RediStar_FreeCtx(rsctx);
     return PyLong_FromLong(1);
 }
 

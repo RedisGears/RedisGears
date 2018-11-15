@@ -13,7 +13,8 @@
 
 #define MODULE_API_FUNC(x) (*x)
 
-typedef struct RediStarCtx RediStarCtx;
+typedef struct ExecutionPlan ExecutionPlan;
+typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
 
 enum RecordType{
@@ -68,7 +69,7 @@ char* KeyRecordStrValueExtractor(RedisModuleCtx* rctx, Record *data, void* arg, 
 Record* CountReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err);
 
 
-typedef void (*RediStar_OnExecutionDoneCallback)(RediStarCtx* ctx, void* privateData);
+typedef void (*RediStar_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
 typedef Reader* (*RediStar_ReaderCallback)(void* arg);
 typedef void (*RediStar_WriterCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 typedef Record* (*RediStar_MapCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
@@ -126,31 +127,31 @@ int MODULE_API_FUNC(RediStar_RegisterReducer)(char* name, RediStar_ReducerCallba
  * Create an execution plan with the given reader.
  * It is possible to continue adding operation such as map, filter, group by, and so on using the return context.
  */
-RediStarCtx* MODULE_API_FUNC(RediStar_CreateCtx)(char* name, char* readerName, void* arg);
+FlatExecutionPlan* MODULE_API_FUNC(RediStar_CreateCtx)(char* name, char* readerName, void* arg);
 #define RSM_CreateCtx(name, readerName, arg) RediStar_CreateCtx(name, #readerName, arg)
 
 /******************************* Execution plan operations *******************************/
 
-int MODULE_API_FUNC(RediStar_Map)(RediStarCtx* ctx, char* name, void* arg);
+int MODULE_API_FUNC(RediStar_Map)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_Map(ctx, name, arg) RediStar_Map(ctx, #name, arg)
 
-int MODULE_API_FUNC(RediStar_Filter)(RediStarCtx* ctx, char* name, void* arg);
+int MODULE_API_FUNC(RediStar_Filter)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_Filter(ctx, name, arg) RediStar_Filter(ctx, #name, arg)
 
-int MODULE_API_FUNC(RediStar_GroupBy)(RediStarCtx* ctx, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg);
+int MODULE_API_FUNC(RediStar_GroupBy)(FlatExecutionPlan* ctx, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg);
 #define RSM_GroupBy(ctx, extractor, extractorArg, reducer, reducerArg)\
     RediStar_GroupBy(ctx, #extractor, extractorArg, #reducer, reducerArg)
 
-int MODULE_API_FUNC(RediStar_Collect)(RediStarCtx* ctx);
+int MODULE_API_FUNC(RediStar_Collect)(FlatExecutionPlan* ctx);
 #define RSM_Collect(ctx) RediStar_Collect(ctx)
 
-int MODULE_API_FUNC(RediStar_Repartition)(RediStarCtx* ctx, char* extraxtorName, void* extractorArg);
+int MODULE_API_FUNC(RediStar_Repartition)(FlatExecutionPlan* ctx, char* extraxtorName, void* extractorArg);
 #define RSM_Repartition(ctx, extractor, extractorArg) RediStar_Repartition(ctx, #extractor, extractorArg)
 
-int MODULE_API_FUNC(RediStar_FlatMap)(RediStarCtx* ctx, char* name, void* arg);
+int MODULE_API_FUNC(RediStar_FlatMap)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_FlatMap(ctx, name, arg) RediStar_FlatMap(ctx, #name, arg)
 
-int MODULE_API_FUNC(RediStar_Limit)(RediStarCtx* ctx, size_t offset, size_t len);
+int MODULE_API_FUNC(RediStar_Limit)(FlatExecutionPlan* ctx, size_t offset, size_t len);
 #define RSM_Limit(ctx, offset, len) RediStar_Limit(ctx, offset, len)
 /******************************* Execution plan runners *******************************/
 
@@ -159,24 +160,25 @@ int MODULE_API_FUNC(RediStar_Limit)(RediStarCtx* ctx, size_t offset, size_t len)
  * 1. Write in using a writer
  * 2. just run it, store the result inside the redis memory (not in the key space) and later read it.
  */
-int MODULE_API_FUNC(RediStar_Run)(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback, void* privateData);
+ExecutionPlan* MODULE_API_FUNC(RediStar_Run)(FlatExecutionPlan* ctx, RediStar_OnExecutionDoneCallback callback, void* privateData);
 #define RSM_Run(ctx, callback, privateData) RediStar_Run(ctx, callback, privateData)
 
-int MODULE_API_FUNC(RediStar_Write)(RediStarCtx* ctx, char* name, void* arg);
+int MODULE_API_FUNC(RediStar_Write)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)
 
 typedef void (*FreePrivateData)(void* privateData);
 
-bool MODULE_API_FUNC(RediStar_RegisterExecutionDoneCallback)(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback);
-void MODULE_API_FUNC(RediStar_FreeCtx)(RediStarCtx* ctx);
-bool MODULE_API_FUNC(RediStar_IsDone)(RediStarCtx* ctx);
-long long MODULE_API_FUNC(RediStar_GetRecordsLen)(RediStarCtx* ctx);
-void* MODULE_API_FUNC(RediStar_GetPrivateData)(RediStarCtx* ctx);
-void MODULE_API_FUNC(RediStar_SetPrivateData)(RediStarCtx* ctx, void* privateData, FreePrivateData freeCallback);
-Record* MODULE_API_FUNC(RediStar_GetRecord)(RediStarCtx* ctx, long long i);
-RediStarCtx* MODULE_API_FUNC(RediStar_GetCtxById)(const char* id);
-RediStarCtx* MODULE_API_FUNC(RediStar_GetCtxByName)(const char* name);
-void MODULE_API_FUNC(RediStar_DropExecution)(RediStarCtx* starCtx, RedisModuleCtx* ctx);
+bool MODULE_API_FUNC(RediStar_RegisterExecutionDoneCallback)(ExecutionPlan* ctx, RediStar_OnExecutionDoneCallback callback);
+bool MODULE_API_FUNC(RediStar_IsDone)(ExecutionPlan* ctx);
+long long MODULE_API_FUNC(RediStar_GetRecordsLen)(ExecutionPlan* ctx);
+void* MODULE_API_FUNC(RediStar_GetPrivateData)(ExecutionPlan* ctx);
+void MODULE_API_FUNC(RediStar_SetPrivateData)(ExecutionPlan* ctx, void* privateData, FreePrivateData freeCallback);
+const char* MODULE_API_FUNC(RediStar_GetId)(ExecutionPlan* ctx);
+Record* MODULE_API_FUNC(RediStar_GetRecord)(ExecutionPlan* ctx, long long i);
+ExecutionPlan* MODULE_API_FUNC(RediStar_GetExecution)(const char* id);
+FlatExecutionPlan* MODULE_API_FUNC(RediStar_GetFlatExecution)(const char* name);
+void MODULE_API_FUNC(RediStar_DropExecution)(ExecutionPlan* starCtx, RedisModuleCtx* ctx);
+void MODULE_API_FUNC(RediStar_DropFlatExecution)(FlatExecutionPlan* starCtx, RedisModuleCtx* ctx);
 
 #define REDISTAR_MODULE_INIT_FUNCTION(name) \
         if (RedisModule_GetApi("RediStar_" #name, ((void **)&RediStar_ ## name))) { \
@@ -210,9 +212,8 @@ static bool RediStar_Initialize(){
     REDISTAR_MODULE_INIT_FUNCTION(FlatMap);
     REDISTAR_MODULE_INIT_FUNCTION(Limit);
 
-    REDISTAR_MODULE_INIT_FUNCTION(GetCtxByName);
-    REDISTAR_MODULE_INIT_FUNCTION(GetCtxById);
-    REDISTAR_MODULE_INIT_FUNCTION(FreeCtx);
+    REDISTAR_MODULE_INIT_FUNCTION(GetExecution);
+    REDISTAR_MODULE_INIT_FUNCTION(GetFlatExecution);
     REDISTAR_MODULE_INIT_FUNCTION(IsDone);
     REDISTAR_MODULE_INIT_FUNCTION(GetRecordsLen);
     REDISTAR_MODULE_INIT_FUNCTION(GetRecord);
@@ -220,6 +221,7 @@ static bool RediStar_Initialize(){
     REDISTAR_MODULE_INIT_FUNCTION(GetPrivateData);
 	REDISTAR_MODULE_INIT_FUNCTION(SetPrivateData);
 	REDISTAR_MODULE_INIT_FUNCTION(DropExecution);
+	REDISTAR_MODULE_INIT_FUNCTION(GetId);
 
     REDISTAR_MODULE_INIT_FUNCTION(FreeRecord);
     REDISTAR_MODULE_INIT_FUNCTION(RecordGetType);

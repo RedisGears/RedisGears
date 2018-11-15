@@ -94,7 +94,7 @@ starCtx('test', '*').write(lambda x: redistar.saveKey(x['value'], x['key'])) # w
 RediStar support all of the operations on oss-cluster. Notice that the module needs to be loaded on all the cluster nodes. In addition, after setting up the cluster you need to run `rs.refreshcluster` on each node.
 
 ## Future plans
-* Support more operations: SortBy, LocalGroupBy (for faster groupby on oss-cluster), limit (to limit the number of results).
+* Support more operations: SortBy, LocalGroupBy (for faster groupby on oss-cluster).
 * StarQL - SQL like language for quering your data.
 * StarStreaming - Stream processing on your data.
 

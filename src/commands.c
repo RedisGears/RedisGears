@@ -61,7 +61,7 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     }
 }
 
-static void Command_ReturnResults(RediStarCtx* starCtx, RedisModuleCtx *ctx){
+static void Command_ReturnResults(ExecutionPlan* starCtx, RedisModuleCtx *ctx){
 	long long len = RediStar_GetRecordsLen(starCtx);
 	RedisModule_ReplyWithArray(ctx, len);
 	for(long long i = 0 ; i < len ; ++i){
@@ -70,7 +70,7 @@ static void Command_ReturnResults(RediStarCtx* starCtx, RedisModuleCtx *ctx){
 	}
 }
 
-static void Command_ExecutionDone(RediStarCtx* starCtx, void *privateData){
+static void Command_ExecutionDone(ExecutionPlan* starCtx, void *privateData){
 	RedisModuleBlockedClient** bc = privateData;
 	for(size_t i = 0 ; i < array_len(bc) ; ++i){
 		RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bc[i]);
@@ -85,8 +85,8 @@ int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 		return RedisModule_WrongArity(ctx);
 	}
 
-	const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-	RediStarCtx* starCtx = RediStar_GetCtxByName(name);
+	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+	ExecutionPlan* starCtx = RediStar_GetExecution(id);
 
 	if(!starCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
@@ -99,8 +99,6 @@ int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	}
 
 	Command_ReturnResults(starCtx, ctx);
-
-	RediStar_FreeCtx(starCtx);
 	return REDISMODULE_OK;
 }
 
@@ -114,8 +112,8 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 		return RedisModule_WrongArity(ctx);
 	}
 
-	const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-	RediStarCtx* starCtx = RediStar_GetCtxByName(name);
+	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+	ExecutionPlan* starCtx = RediStar_GetExecution(id);
 
 	if(!starCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
@@ -134,8 +132,6 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	}
 	RedisModule_AbortBlock(bc);
 	Command_ReturnResults(starCtx, ctx);
-
-	RediStar_FreeCtx(starCtx);
 	return REDISMODULE_OK;
 }
 
@@ -144,8 +140,8 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 		return RedisModule_WrongArity(ctx);
 	}
 
-	const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-	RediStarCtx* starCtx = RediStar_GetCtxByName(name);
+	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+	ExecutionPlan* starCtx = RediStar_GetExecution(id);
 
 	if(!starCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
@@ -158,8 +154,6 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	}
 
 	RediStar_DropExecution(starCtx, ctx);
-
-	RediStar_FreeCtx(starCtx);
 
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 

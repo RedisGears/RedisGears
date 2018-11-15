@@ -54,129 +54,107 @@ static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer, ArgT
     return ReducersMgmt_Add(name, reducer, type);
 }
 
-static RediStarCtx* RS_CreateCtx(char* name, char* readerName, void* arg){
-    RediStarCtx* res = RS_ALLOC(sizeof(*res));
-    res->fep = FlatExecutionPlan_New(name);
-    res->ep = NULL;
-    FlatExecutionPlan_SetReader(res->fep, readerName, arg);
-    return res;
+static FlatExecutionPlan* RS_CreateCtx(char* name, char* readerName, void* arg){
+    FlatExecutionPlan* fep = FlatExecutionPlan_New(name);
+    FlatExecutionPlan_SetReader(fep, readerName, arg);
+    return fep;
 }
 
-static int RS_Map(RediStarCtx* ctx, char* name, void* arg){
-    FlatExecutionPlan_AddMapStep(ctx->fep, name, arg);
+static int RS_Map(FlatExecutionPlan* fep, char* name, void* arg){
+    FlatExecutionPlan_AddMapStep(fep, name, arg);
     return 1;
 }
 
-int RS_FlatMap(RediStarCtx* ctx, char* name, void* arg){
-    FlatExecutionPlan_AddFlatMapStep(ctx->fep, name, arg);
+int RS_FlatMap(FlatExecutionPlan* fep, char* name, void* arg){
+    FlatExecutionPlan_AddFlatMapStep(fep, name, arg);
     return 1;
 }
 
-static int RS_Filter(RediStarCtx* ctx, char* name, void* arg){
-    FlatExecutionPlan_AddFilterStep(ctx->fep, name, arg);
+static int RS_Filter(FlatExecutionPlan* fep, char* name, void* arg){
+    FlatExecutionPlan_AddFilterStep(fep, name, arg);
     return 1;
 }
 
-static int RS_GroupBy(RediStarCtx* ctx, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg){
-    FlatExecutionPlan_AddGroupByStep(ctx->fep, extraxtorName, extractorArg, reducerName, reducerArg);
+static int RS_GroupBy(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg){
+    FlatExecutionPlan_AddGroupByStep(fep, extraxtorName, extractorArg, reducerName, reducerArg);
     return 1;
 }
 
-static int RS_Collect(RediStarCtx* ctx){
-	FlatExecutionPlan_AddCollectStep(ctx->fep);
+static int RS_Collect(FlatExecutionPlan* fep){
+	FlatExecutionPlan_AddCollectStep(fep);
 	return 1;
 }
 
-static int RS_Repartition(RediStarCtx* ctx, char* extraxtorName, void* extractorArg){
-    FlatExecutionPlan_AddRepartitionStep(ctx->fep, extraxtorName, extractorArg);
+static int RS_Repartition(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg){
+    FlatExecutionPlan_AddRepartitionStep(fep, extraxtorName, extractorArg);
     return 1;
 }
 
-static int RS_Write(RediStarCtx* ctx, char* name, void* arg){
-    FlatExecutionPlan_AddWriter(ctx->fep, name, arg);
+static int RS_Write(FlatExecutionPlan* fep, char* name, void* arg){
+    FlatExecutionPlan_AddWriter(fep, name, arg);
     return 1;
 }
 
-static int RS_Limit(RediStarCtx* ctx, size_t offset, size_t len){
-    FlatExecutionPlan_AddLimitStep(ctx->fep, offset, len);
+static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
+    FlatExecutionPlan_AddLimitStep(fep, offset, len);
     return 1;
 }
 
-static int RS_Run(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback, void* privateData){
-	ctx->ep = FlatExecutionPlan_Run(ctx->fep, callback, privateData);
-	if(!ctx->ep){
-	    return 0;
-	}
-	return 1;
+static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData){
+	return FlatExecutionPlan_Run(fep, NULL, callback, privateData);
 }
 
-static bool RS_RegisterExecutionDoneCallback(RediStarCtx* ctx, RediStar_OnExecutionDoneCallback callback){
-	if(ctx->ep->isDone){
+static bool RS_RegisterExecutionDoneCallback(ExecutionPlan* ep, RediStar_OnExecutionDoneCallback callback){
+	if(ep->isDone){
 		return false;
 	}
-	ctx->ep->callback = callback;
+	ep->callback = callback;
 	return true;
 }
 
-static void RS_FreeCtx(RediStarCtx* ctx){
-	RS_FREE(ctx);
+static bool RS_IsDone(ExecutionPlan* ep){
+	return ep->isDone;
 }
 
-static bool RS_IsDone(RediStarCtx* ctx){
-	return ctx->ep && ctx->ep->isDone;
+static const char* RS_GetId(ExecutionPlan* ep){
+    return ep->idStr;
 }
 
-static long long RS_GetRecordsLen(RediStarCtx* ctx){
-	assert(ctx->ep && ctx->ep->isDone);
-	return array_len(ctx->ep->results);
+static long long RS_GetRecordsLen(ExecutionPlan* ep){
+	assert(ep->isDone);
+	return array_len(ep->results);
 }
 
-static void* RS_GetPrivateData(RediStarCtx* ctx){
-	return ctx->ep->privateData;
+static void* RS_GetPrivateData(ExecutionPlan* ep){
+	return ep->privateData;
 }
 
-static void RS_SetPrivateData(RediStarCtx* ctx, void* privateData, FreePrivateData freeCallback){
-	ctx->ep->privateData = privateData;
-	ctx->ep->freeCallback = freeCallback;
+static void RS_SetPrivateData(ExecutionPlan* ep, void* privateData, FreePrivateData freeCallback){
+	ep->privateData = privateData;
+	ep->freeCallback = freeCallback;
 }
 
-static Record* RS_GetRecord(RediStarCtx* ctx, long long i){
-	assert(ctx->ep && ctx->ep->isDone);
-	assert(i >= 0 && i < array_len(ctx->ep->results));
-	return ctx->ep->results[i];
+static Record* RS_GetRecord(ExecutionPlan* ep, long long i){
+	assert(ep && ep->isDone);
+	assert(i >= 0 && i < array_len(ep->results));
+	return ep->results[i];
 }
 
-static void RS_DropExecution(RediStarCtx* starCtx, RedisModuleCtx* ctx){
-    if(starCtx->ep){
-        if(Cluster_IsClusterMode()){
-            RedisModule_SendClusterMessage(ctx, NULL, EXECUTION_PLAN_FREE_MSG, starCtx->fep->id, EXECUTION_PLAN_ID_LEN);
-        }
-        ExecutionPlan_Free(starCtx->ep, ctx);
-    }else if(starCtx->fep){
-        FlatExecutionPlan_Free(starCtx->fep);
+static void RS_DropExecution(ExecutionPlan* ep, RedisModuleCtx* ctx){
+    if(Cluster_IsClusterMode()){
+        RedisModule_SendClusterMessage(ctx, NULL, EXECUTION_PLAN_FREE_MSG, ep->id, EXECUTION_PLAN_ID_LEN);
     }
+    ExecutionPlan_Free(ep, ctx);
 }
 
-static RediStarCtx* RS_GetCtxById(const char* id){
-	ExecutionPlan* ep =	ExecutionPlan_FindById(id);
-	if(!ep){
-		return NULL;
-	}
-	RediStarCtx* res = RS_ALLOC(sizeof(*res));
-	res->fep = ep->fep;
-	res->ep = ep;
-	return res;
+static ExecutionPlan* RS_GetExecution(const char* id){
+	ExecutionPlan* ep =	ExecutionPlan_FindByStrId(id);
+	return ep;
 }
 
-static RediStarCtx* RS_GetCtxByName(const char* name){
-	ExecutionPlan* ep =	ExecutionPlan_FindByName(name);
-	if(!ep){
-		return NULL;
-	}
-	RediStarCtx* res = RS_ALLOC(sizeof(*res));
-	res->fep = ep->fep;
-	res->ep = ep;
-	return res;
+static FlatExecutionPlan* RS_GetFlatExecution(const char* name){
+	FlatExecutionPlan* fep = ExecutionPlan_FindByName(name);
+	return fep;
 }
 
 static ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize){
@@ -241,9 +219,8 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(Limit, registerApiCallback);
     REGISTER_API(Run, registerApiCallback);
 
-    REGISTER_API(GetCtxByName, registerApiCallback);
-    REGISTER_API(GetCtxById, registerApiCallback);
-    REGISTER_API(FreeCtx, registerApiCallback);
+    REGISTER_API(GetFlatExecution, registerApiCallback);
+    REGISTER_API(GetExecution, registerApiCallback);
     REGISTER_API(IsDone, registerApiCallback);
     REGISTER_API(GetRecordsLen, registerApiCallback);
     REGISTER_API(GetRecord, registerApiCallback);
@@ -251,6 +228,7 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(GetPrivateData, registerApiCallback);
 	REGISTER_API(SetPrivateData, registerApiCallback);
 	REGISTER_API(DropExecution, registerApiCallback);
+	REGISTER_API(GetId, registerApiCallback);
 
     REGISTER_API(FreeRecord, registerApiCallback);
     REGISTER_API(RecordGetType, registerApiCallback);
@@ -285,13 +263,12 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
 }
 
 static void RS_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-	RediStarCtx* starCtx = RediStar_GetCtxById(payload);
-	if(!starCtx){
+	ExecutionPlan* ep = RediStar_GetExecution(payload);
+	if(!ep){
 		// todo: write warning
 		return;
 	}
-	ExecutionPlan_Free(starCtx->ep, ctx);
-	RediStar_FreeCtx(starCtx);
+	ExecutionPlan_Free(ep, ctx);
 }
 
 ArgType* GetKeysReaderArgType();
@@ -355,6 +332,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
 		return REDISMODULE_ERR;
 	}
+
+    if (RedisModule_CreateCommand(ctx, "rs.dumpflatexecutions", ExecutionPlan_FlatExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+        return REDISMODULE_ERR;
+    }
 
     if (RedisModule_CreateCommand(ctx, "rs.getresults", Command_GetResults, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");

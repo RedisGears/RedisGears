@@ -6,7 +6,7 @@
 #include "redistar_memory.h"
 
 int Example_CommandCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    RediStarCtx* rsctx = RSM_CreateCtx("example", KeysReader, RS_STRDUP("*"));
+    FlatExecutionPlan* rsctx = RSM_CreateCtx("example", KeysReader, RS_STRDUP("*"));
     RSM_Run(rsctx, NULL, NULL);
     return REDISMODULE_OK;
 }
