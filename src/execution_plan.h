@@ -152,6 +152,7 @@ typedef struct FlatExecutionPlan{
 	char* name;
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
+    bool distributed;
 }FlatExecutionPlan;
 
 FlatExecutionPlan* FlatExecutionPlan_New(const char* name);
@@ -167,6 +168,7 @@ void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
+void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx);
 
 void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);
 void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx);
