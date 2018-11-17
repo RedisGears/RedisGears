@@ -166,6 +166,8 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
+bool FlatExecutionPlan_IsBroadcasted(FlatExecutionPlan* fep);
+bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx);

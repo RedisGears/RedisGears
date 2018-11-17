@@ -15,5 +15,6 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 int Command_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
 #endif /* SRC_COMMANDS_H_ */

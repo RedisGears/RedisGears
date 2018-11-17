@@ -236,7 +236,6 @@ void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx){
     BufferWriter_Init(&bw, buff);
     FlatExecutionPlan_Serialize(fep, &bw);
     RedisModule_SendClusterMessage(rctx, NULL, NEW_FEP_MSG_TYPE, buff->buff, buff->size);
-    fep->distributed = true;
 }
 
 static void ExecutionPlan_Distribute(ExecutionPlan* ep, RedisModuleCtx *rctx){
@@ -847,9 +846,13 @@ void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
     }
 }
 
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData){
+bool FlatExecutionPlan_IsBroadcasted(FlatExecutionPlan* fep){
+    return fep->distributed;
+}
+
+bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep){
     if(ExecutionPlan_FindByName(fep->name)){
-        return NULL;
+        return false;
     }
     if(Cluster_IsClusterMode() && !fep->distributed){
         RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
@@ -857,7 +860,18 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar
         FlatExecutionPlan_Distribute(fep, rctx);
         RedisModule_FreeThreadSafeContext(rctx);
     }
-    dictAdd(epData.namesDict, fep->name, fep);
+    if(dictAdd(epData.namesDict, fep->name, fep) != DICT_OK){
+        return false;
+    }
+    fep->distributed = true;
+    return true;
+}
+
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData){
+    if(!FlatExecutionPlan_IsBroadcasted(fep) &&
+        !FlatExecutionPlan_Broadcast(fep)){
+        return NULL;
+    }
     return FlatExecutionPlan_RunOnly(fep, eid, callback, privateData);
 }
 

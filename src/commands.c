@@ -108,7 +108,7 @@ static void Command_FreePrivateData(void* privateData){
 }
 
 int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-	if(argc < 2){
+	if(argc != 2){
 		return RedisModule_WrongArity(ctx);
 	}
 
@@ -136,7 +136,7 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 }
 
 int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-	if(argc < 2){
+	if(argc != 2){
 		return RedisModule_WrongArity(ctx);
 	}
 
@@ -158,6 +158,25 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 
 	return REDISMODULE_OK;
+}
+
+int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* name = RedisModule_StringPtrLen(argv[1], NULL);
+    FlatExecutionPlan* starCtx = RediStar_GetFlatExecution(name);
+
+    if(!starCtx){
+        RedisModule_ReplyWithError(ctx, "flat execution plan does not exits");
+        return REDISMODULE_OK;
+    }
+
+    ExecutionPlan* ep = RediStar_Run(starCtx, NULL, NULL);
+    const char* id = RediStar_GetId(ep);
+    RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
+    return REDISMODULE_OK;
 }
 
 

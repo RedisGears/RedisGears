@@ -55,47 +55,74 @@ static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer, ArgT
 }
 
 static FlatExecutionPlan* RS_CreateCtx(char* name, char* readerName, void* arg){
+    if(ExecutionPlan_FindByName(name)){
+        return NULL;
+    }
     FlatExecutionPlan* fep = FlatExecutionPlan_New(name);
     FlatExecutionPlan_SetReader(fep, readerName, arg);
     return fep;
 }
 
 static int RS_Map(FlatExecutionPlan* fep, char* name, void* arg){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     FlatExecutionPlan_AddMapStep(fep, name, arg);
     return 1;
 }
 
 int RS_FlatMap(FlatExecutionPlan* fep, char* name, void* arg){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     FlatExecutionPlan_AddFlatMapStep(fep, name, arg);
     return 1;
 }
 
 static int RS_Filter(FlatExecutionPlan* fep, char* name, void* arg){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     FlatExecutionPlan_AddFilterStep(fep, name, arg);
     return 1;
 }
 
 static int RS_GroupBy(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     FlatExecutionPlan_AddGroupByStep(fep, extraxtorName, extractorArg, reducerName, reducerArg);
     return 1;
 }
 
 static int RS_Collect(FlatExecutionPlan* fep){
-	FlatExecutionPlan_AddCollectStep(fep);
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
+    FlatExecutionPlan_AddCollectStep(fep);
 	return 1;
 }
 
 static int RS_Repartition(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     FlatExecutionPlan_AddRepartitionStep(fep, extraxtorName, extractorArg);
     return 1;
 }
 
 static int RS_Write(FlatExecutionPlan* fep, char* name, void* arg){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     FlatExecutionPlan_AddWriter(fep, name, arg);
     return 1;
 }
 
 static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     FlatExecutionPlan_AddLimitStep(fep, offset, len);
     return 1;
 }
@@ -319,7 +346,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RedisModule_RegisterClusterMessageReceiver(ctx, EXECUTION_PLAN_FREE_MSG, RS_OnDropExecutionMsgReceived);
 
     if (RedisModule_CreateCommand(ctx, "rs.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command example");
+        RedisModule_Log(ctx, "warning", "could not register command rs.example");
         return REDISMODULE_ERR;
     }
 
@@ -329,29 +356,34 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     }
 
     if (RedisModule_CreateCommand(ctx, "rs.dumpexecutions", ExecutionPlan_ExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+		RedisModule_Log(ctx, "warning", "could not register command rs.dumpexecutions");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rs.dumpflatexecutions", ExecutionPlan_FlatExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+        RedisModule_Log(ctx, "warning", "could not register command rs.dumpflatexecutions");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rs.getresults", Command_GetResults, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+		RedisModule_Log(ctx, "warning", "could not register command rs.getresults");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rs.getresultsblocking", Command_GetResultsBlocking, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+		RedisModule_Log(ctx, "warning", "could not register command rs.getresultsblocking");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rs.dropexecution", Command_DropExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+		RedisModule_Log(ctx, "warning", "could not register command rs.dropexecution");
 		return REDISMODULE_ERR;
 	}
+
+    if (RedisModule_CreateCommand(ctx, "rs.reexecute", Command_ReExecute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rs.reexecute");
+        return REDISMODULE_ERR;
+    }
 
     return REDISMODULE_OK;
 }
