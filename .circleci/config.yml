@@ -7,9 +7,6 @@ defaults:
         name: Install_Deps
         command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master
     - run:
-        name: Redis_5_upgrade
-        command: cd ../redis;git fetch;git checkout 5.0.1;make;make install
-    - run:
         name: Build
         command: make WITHPYTHON=1 
     - run:
@@ -31,7 +28,20 @@ jobs:
     environment:
       - BUILD_DIR: build-el
 
-    steps: *ci_steps
+    steps:
+      - run:
+          name: Redis_5_upgrade
+          command: cd ../redis;git fetch;git checkout 5.0.1;make;make install
+      - checkout
+      - run:
+          name: Install_Deps
+          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master
+      - run:
+          name: Build
+          command: make WITHPYTHON=1
+      - run:
+          name: Test
+          command: cd ./pytest; ./run_tests.sh
 
 workflows:
   version: 2
