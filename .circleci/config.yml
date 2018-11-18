@@ -1,0 +1,62 @@
+version: 2
+
+defaults:
+  ci_steps: &ci_steps
+    - checkout
+    - run:
+        name: Install_Deps
+        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master
+    - run:
+        name: Build
+        command: make WITHPYTHON=1 
+    - run:
+        name: Test
+        command: cd ./pytest; ./run_tests.sh
+
+jobs:
+  ubuntu:
+    docker:
+      - image: 'redislabsmodules/rmbuilder:latest'
+    environment:
+      - BUILD_DIR: build-debian
+
+    steps: *ci_steps
+  
+  centos:
+    docker:
+      - image: 'redislabsmodules/rmbuildercentos:latest'
+    environment:
+      - BUILD_DIR: build-el
+
+    steps:
+      - run:
+          name: Redis_5_upgrade
+          command: cd ../redis;git fetch;git checkout 5.0.1;make;make install
+      - checkout
+      - run:
+          name: Install_Deps
+          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master
+      - run:
+          name: Build
+          command: make WITHPYTHON=1
+      - run:
+          name: Test
+          command: cd ./pytest; ./run_tests.sh
+
+workflows:
+  version: 2
+
+  default_flow:
+    jobs:
+      - ubuntu:
+          filters:
+            branches:
+              only: /.*/
+            tags:
+              only: /.*/
+      - centos:
+          filters:
+            branches:
+              only: /.*/
+            tags:
+              only: /.*/

@@ -60,7 +60,7 @@ typedef struct Record{
 }Record;
 
 
-Record StopRecord = (Record){
+Record StopRecord = {
         .type = STOP_RECORD,
 };
 
