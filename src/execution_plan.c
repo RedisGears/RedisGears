@@ -10,7 +10,6 @@
 #include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
-#include "triggers.h"
 #include <pthread.h>
 #include <unistd.h>
 
@@ -86,6 +85,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, void* arg);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader);
 static void ExecutionPlan_AddToRunList(ExecutionPlan* ep);
+static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg);
 
 static uint64_t idHashFunction(const void *key){
     return dictGenHashFunction(key, EXECUTION_PLAN_ID_LEN);
@@ -603,7 +603,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     dictEntry* entry;
     switch(step->type){
     case READER:
-        return step->reader.r->Next(rctx, step->reader.r->ctx);
+        return step->reader.r->next(rctx, step->reader.r->ctx);
     case MAP:
         return ExecutionPlan_MapNextRecord(ep, step, rctx, err);
     case FLAT_MAP:
@@ -709,7 +709,13 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
         // todo: big big warning
         return;
     }
-    Trigger_OnKeyArriveTrigger(ctx, fep);
+    ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
+    assert(rs.r->registerTrigger);
+    rs.r->registerTrigger(fep, NULL);
+    if(rs.r->free){
+        rs.r->free(rs.r->ctx);
+    }
+    RS_FREE(rs.r);
 }
 
 static void FlatExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -888,6 +894,10 @@ bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep){
 }
 
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep){
+    ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
+    if(!rs.r->registerTrigger){
+        return 0;
+    }
     if(!FlatExecutionPlan_IsBroadcasted(fep) &&
         !FlatExecutionPlan_Broadcast(fep)){
         return 0;
@@ -895,9 +905,9 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep){
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     ((void**)ctx)[1] = modulePointer;
     RedisModule_SendClusterMessage(ctx, NULL, REGISTER_KEY_SPACE_EVENT_NOTIFICATION, fep->name, strlen(fep->name) + 1 /* +1 is for the '\0' */);
-    int ret = Trigger_OnKeyArriveTrigger(ctx, fep);
+    rs.r->registerTrigger(fep, NULL);
     RedisModule_FreeThreadSafeContext(ctx);
-    return ret;
+    return 1;
 }
 
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){

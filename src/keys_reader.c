@@ -2,7 +2,11 @@
 #include "redistar.h"
 #include "utils/arr_rm_alloc.h"
 #include "mgmt.h"
+#include "utils/adlist.h"
 #include <stdbool.h>
+
+#define ALL_KEY_REGISTRATION_INIT_SIZE 10
+list* keysRegistration = NULL;
 
 typedef struct KeysReaderCtx{
     char* match;
@@ -36,7 +40,9 @@ void RS_KeysReaderCtxDeserialize(void* ctx, BufferReader* br){
 
 void KeysReader_Free(void* ctx){
     KeysReaderCtx* krctx = ctx;
-    RS_FREE(krctx->match);
+    if(krctx->match){
+        RS_FREE(krctx->match);
+    }
     for(size_t i = 0 ; i < array_len(krctx->pendingRecords) ; ++i){
         RediStar_FreeRecord(krctx->pendingRecords[i]);
     }
@@ -205,12 +211,38 @@ Record* KeysReader_Next(RedisModuleCtx* rctx, void* ctx){
     return record;
 }
 
+static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
+    listIter *iter = listGetIterator(keysRegistration, AL_START_HEAD);
+    listNode* node = NULL;
+    while((node = listNext(iter))){
+        FlatExecutionPlan* fep = listNodeValue(node);
+        char* keyStr = RS_STRDUP(RedisModule_StringPtrLen(key, NULL));
+        if(!RediStar_Run(fep, keyStr, NULL, NULL)){
+            RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
+        }
+    }
+    return REDISMODULE_OK;
+}
+
+static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, char* regex){
+    if(!keysRegistration){
+        keysRegistration = listCreate();
+        RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
+        if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_STRING, KeysReader_OnKeyTouched) != REDISMODULE_OK){
+            // todo : print warning
+        }
+        RedisModule_FreeThreadSafeContext(ctx);
+    }
+    listAddNodeHead(keysRegistration, fep);
+}
+
 Reader* KeysReader(void* arg){
     KeysReaderCtx* ctx = RS_KeysReaderCtxCreate(arg);
     Reader* r = RS_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
-        .Next = KeysReader_Next,
+        .registerTrigger = KeysReader_RegisrterTrigger,
+        .next = KeysReader_Next,
         .free = KeysReader_Free,
         .serialize = RS_KeysReaderCtxSerialize,
         .deserialize = RS_KeysReaderCtxDeserialize,

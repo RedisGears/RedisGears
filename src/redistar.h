@@ -37,10 +37,12 @@ typedef struct ArgType ArgType;
 typedef void (*ArgFree)(void* arg);
 typedef void (*ArgSerialize)(void* arg, BufferWriter* bw);
 typedef void* (*ArgDeserialize)(BufferReader* br);
+typedef void (*RegisterTrigger)(FlatExecutionPlan* fep);
 
 typedef struct Reader{
     void* ctx;
-    Record* (*Next)(RedisModuleCtx* rctx, void* ctx);
+    void (*registerTrigger)(FlatExecutionPlan* fep, char* regex);
+    Record* (*next)(RedisModuleCtx* rctx, void* ctx);
     void (*free)(void* ctx);
     void (*serialize)(void* ctx, BufferWriter* bw);
     void (*deserialize)(void* ctx, BufferReader* br);

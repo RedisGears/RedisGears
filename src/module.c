@@ -20,7 +20,6 @@
 #endif
 #include "record.h"
 #include "commands.h"
-#include "triggers.h"
 #include <stdbool.h>
 
 #define EXECUTION_PLAN_FREE_MSG 100
@@ -129,6 +128,9 @@ static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
 }
 
 static int RS_Register(FlatExecutionPlan* fep){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
     return FlatExecutionPlan_Register(fep);
 }
 
@@ -336,7 +338,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     }
 
     Mgmt_Init();
-    Triggers_Init();
 
     RSM_RegisterReader(KeysReader);
     RSM_RegisterWriter(KeyRecordWriter, NULL);
