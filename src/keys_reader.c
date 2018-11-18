@@ -43,7 +43,7 @@ void KeysReader_Free(void* ctx){
     RS_FREE(krctx);
 }
 
-static ArgType KeysReaderType = (ArgType){
+static ArgType KeysReaderType = {
     .type = "KeysReaderType",
     .free = KeysReader_Free,
     .serialize = RS_KeysReaderCtxSerialize,
