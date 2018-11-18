@@ -20,27 +20,27 @@ class testBasic:
             conn.execute_command('set', str(i), str(i))
 
     def testBasicQuery(self):
-        id = self.env.cmd('rs.pyexecute', "starCtx('test1', '*').map(lambda x:str(x)).collect().run()")
+        id = self.env.cmd('rs.pyexecute', "starCtx('test1').map(lambda x:str(x)).collect().run()")
         res = self.env.cmd('RS.getresultsblocking', id)
         res = [yaml.load(r) for r in res]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
 
     def testBasicFilterQuery(self):
-        id = self.env.cmd('rs.pyexecute', 'starCtx("test2", "*").filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()')
+        id = self.env.cmd('rs.pyexecute', 'starCtx("test2").filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()')
         res = self.env.cmd('rs.getresultsblocking', id)
         res = [yaml.load(r) for r in res]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
 
     def testBasicMapQuery(self):
-        id = self.env.cmd('rs.pyexecute', 'starCtx("test3", "*").map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()')
+        id = self.env.cmd('rs.pyexecute', 'starCtx("test3").map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()')
         res = self.env.cmd('rs.getresultsblocking', id)
         res = [yaml.load(r) for r in res]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
 
     def testBasicGroupByQuery(self):
-        id = self.env.cmd('rs.pyexecute', 'starCtx("test4", "*").'
+        id = self.env.cmd('rs.pyexecute', 'starCtx("test4").'
                                           'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
                                           'groupby(lambda x: str(x["value"]), lambda key, vals: len(vals)).'
                                           'map(lambda x:str(x)).collect().run()')
@@ -53,7 +53,7 @@ def testFlatMap(env):
     env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
-    id = env.cmd('rs.pyexecute', "starCtx('test', '*')."
+    id = env.cmd('rs.pyexecute', "starCtx('test')."
                                  "flatMap(lambda x: x['value'])."
                                  "collect().run()")
     res = env.cmd('rs.getresultsblocking', id)
@@ -64,7 +64,7 @@ def testLimit(env):
     env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
-    id = env.cmd('rs.pyexecute', "starCtx('test', '*')."
+    id = env.cmd('rs.pyexecute', "starCtx('test')."
                                  "flatMap(lambda x: x['value'])."
                                  "limit(1).collect().run()")
     res = env.cmd('rs.getresultsblocking', id)
@@ -77,7 +77,7 @@ def testRepartitionAndWriteOption(env):
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
-    id = env.cmd('rs.pyexecute', "starCtx('test', '*')."
+    id = env.cmd('rs.pyexecute', "starCtx('test')."
                                  "repartition(lambda x: x['value'])."
                                  "write(lambda x: redistar.saveKey(x['value'], x['key']))."
                                  "map(lambda x : str(x)).collect().run()")

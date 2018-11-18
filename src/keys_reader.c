@@ -23,14 +23,15 @@ KeysReaderCtx* RS_KeysReaderCtxCreate(char* match){
     return krctx;
 }
 
-void RS_KeysReaderCtxSerialize(void* arg, BufferWriter* bw){
-    char* match = arg;
-    RediStar_BWWriteString(bw, match);
+void RS_KeysReaderCtxSerialize(void* ctx, BufferWriter* bw){
+    KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
+    RediStar_BWWriteString(bw, krctx->match);
 }
 
-void* RS_KeysReaderCtxDeserialize(BufferReader* br){
+void RS_KeysReaderCtxDeserialize(void* ctx, BufferReader* br){
+    KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     char* match = RediStar_BRReadString(br);
-    return RS_STRDUP(match);
+    krctx->match = RS_STRDUP(match);
 }
 
 void KeysReader_Free(void* ctx){
@@ -42,13 +43,6 @@ void KeysReader_Free(void* ctx){
     array_free(krctx->pendingRecords);
     RS_FREE(krctx);
 }
-
-static ArgType KeysReaderType = {
-    .type = "KeysReaderType",
-    .free = KeysReader_Free,
-    .serialize = RS_KeysReaderCtxSerialize,
-    .deserialize = RS_KeysReaderCtxDeserialize,
-};
 
 static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
     size_t len;
@@ -211,16 +205,15 @@ Record* KeysReader_Next(RedisModuleCtx* rctx, void* ctx){
     return record;
 }
 
-ArgType* GetKeysReaderArgType(){
-    return &KeysReaderType;
-}
-
 Reader* KeysReader(void* arg){
     KeysReaderCtx* ctx = RS_KeysReaderCtxCreate(arg);
     Reader* r = RS_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
         .Next = KeysReader_Next,
+        .free = KeysReader_Free,
+        .serialize = RS_KeysReaderCtxSerialize,
+        .deserialize = RS_KeysReaderCtxDeserialize,
     };
     return r;
 }

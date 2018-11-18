@@ -81,7 +81,6 @@ typedef struct LimitExecutionStep{
 
 typedef struct ReaderStep{
     Reader* r;
-    ArgType* type;
 }ReaderStep;
 
 typedef struct WriterExecutionStep{
@@ -145,7 +144,6 @@ typedef struct FlatExecutionStep{
 
 typedef struct FlatExecutionReader{
     char* reader;
-    void* arg;
 }FlatExecutionReader;
 
 typedef struct FlatExecutionPlan{
@@ -156,7 +154,7 @@ typedef struct FlatExecutionPlan{
 }FlatExecutionPlan;
 
 FlatExecutionPlan* FlatExecutionPlan_New(const char* name);
-void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader, void* readerArg);
+void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* writerArg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -168,7 +166,7 @@ void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 bool FlatExecutionPlan_IsBroadcasted(FlatExecutionPlan* fep);
 bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx);
 

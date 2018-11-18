@@ -161,11 +161,12 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 }
 
 int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc != 2){
+    if(argc != 3){
         return RedisModule_WrongArity(ctx);
     }
 
     const char* name = RedisModule_StringPtrLen(argv[1], NULL);
+    char* arg = RS_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
     FlatExecutionPlan* starCtx = RediStar_GetFlatExecution(name);
 
     if(!starCtx){
@@ -173,7 +174,7 @@ int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         return REDISMODULE_OK;
     }
 
-    ExecutionPlan* ep = RediStar_Run(starCtx, NULL, NULL);
+    ExecutionPlan* ep = RediStar_Run(starCtx, arg, NULL, NULL);
     const char* id = RediStar_GetId(ep);
     RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
     return REDISMODULE_OK;

@@ -29,9 +29,21 @@ enum RecordType{
 
 /******************************* READERS *******************************/
 
+typedef struct BufferWriter BufferWriter;
+typedef struct BufferReader BufferReader;
+
+typedef struct ArgType ArgType;
+
+typedef void (*ArgFree)(void* arg);
+typedef void (*ArgSerialize)(void* arg, BufferWriter* bw);
+typedef void* (*ArgDeserialize)(BufferReader* br);
+
 typedef struct Reader{
     void* ctx;
     Record* (*Next)(RedisModuleCtx* rctx, void* ctx);
+    void (*free)(void* ctx);
+    void (*serialize)(void* ctx, BufferWriter* bw);
+    void (*deserialize)(void* ctx, BufferReader* br);
 }Reader;
 
 Reader* KeysReader(void* arg);
@@ -40,14 +52,6 @@ Reader* KeysReader(void* arg);
 void KeyRecordWriter(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 
 /******************************* args *********************************/
-typedef struct BufferWriter BufferWriter;
-typedef struct BufferReader BufferReader;
-
-typedef void (*ArgFree)(void* arg);
-typedef void (*ArgSerialize)(void* arg, BufferWriter* bw);
-typedef void* (*ArgDeserialize)(BufferReader* br);
-
-typedef struct ArgType ArgType;
 
 ArgType* MODULE_API_FUNC(RediStar_CreateType)(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize);
 void MODULE_API_FUNC(RediStar_BWWriteLong)(BufferWriter* bw, long val);
@@ -109,14 +113,14 @@ Record* MODULE_API_FUNC(RediStar_HashSetRecordGet)(Record* r, char* key);
 char** MODULE_API_FUNC(RediStar_HashSetRecordGetAllKeys)(Record* r, size_t* len);
 void MODULE_API_FUNC(RediStar_HashSetRecordFreeKeysArray)(char** keyArr);
 
-int MODULE_API_FUNC(RediStar_RegisterReader)(char* name, RediStar_ReaderCallback reader, ArgType* type);
+int MODULE_API_FUNC(RediStar_RegisterReader)(char* name, RediStar_ReaderCallback reader);
 int MODULE_API_FUNC(RediStar_RegisterWriter)(char* name, RediStar_WriterCallback reader, ArgType* type);
 int MODULE_API_FUNC(RediStar_RegisterMap)(char* name, RediStar_MapCallback map, ArgType* type);
 int MODULE_API_FUNC(RediStar_RegisterFilter)(char* name, RediStar_FilterCallback filter, ArgType* type);
 int MODULE_API_FUNC(RediStar_RegisterGroupByExtractor)(char* name, RediStar_ExtractorCallback extractor, ArgType* type);
 int MODULE_API_FUNC(RediStar_RegisterReducer)(char* name, RediStar_ReducerCallback reducer, ArgType* type);
 
-#define RSM_RegisterReader(name, type) RediStar_RegisterReader(#name, name, type);
+#define RSM_RegisterReader(name) RediStar_RegisterReader(#name, name);
 #define RSM_RegisterMap(name, type) RediStar_RegisterMap(#name, name, type);
 #define RSM_RegisterFilter(name, type) RediStar_RegisterFilter(#name, name, type);
 #define RSM_RegisterWriter(name, type) RediStar_RegisterWriter(#name, name, type);
@@ -127,8 +131,8 @@ int MODULE_API_FUNC(RediStar_RegisterReducer)(char* name, RediStar_ReducerCallba
  * Create an execution plan with the given reader.
  * It is possible to continue adding operation such as map, filter, group by, and so on using the return context.
  */
-FlatExecutionPlan* MODULE_API_FUNC(RediStar_CreateCtx)(char* name, char* readerName, void* arg);
-#define RSM_CreateCtx(name, readerName, arg) RediStar_CreateCtx(name, #readerName, arg)
+FlatExecutionPlan* MODULE_API_FUNC(RediStar_CreateCtx)(char* name, char* readerName);
+#define RSM_CreateCtx(name, readerName) RediStar_CreateCtx(name, #readerName)
 
 /******************************* Execution plan operations *******************************/
 
@@ -160,8 +164,8 @@ int MODULE_API_FUNC(RediStar_Limit)(FlatExecutionPlan* ctx, size_t offset, size_
  * 1. Write in using a writer
  * 2. just run it, store the result inside the redis memory (not in the key space) and later read it.
  */
-ExecutionPlan* MODULE_API_FUNC(RediStar_Run)(FlatExecutionPlan* ctx, RediStar_OnExecutionDoneCallback callback, void* privateData);
-#define RSM_Run(ctx, callback, privateData) RediStar_Run(ctx, callback, privateData)
+ExecutionPlan* MODULE_API_FUNC(RediStar_Run)(FlatExecutionPlan* ctx, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData);
+#define RSM_Run(ctx, arg, callback, privateData) RediStar_Run(ctx, arg, callback, privateData)
 
 int MODULE_API_FUNC(RediStar_Write)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)

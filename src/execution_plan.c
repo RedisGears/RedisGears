@@ -81,8 +81,8 @@ ExecutionPlansData epData;
 static long long lastId = 0;
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err);
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid);
-static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader, void* readerArg);
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, void* arg);
+static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader);
 static void ExecutionPlan_AddToRunList(ExecutionPlan* ep);
 
 static uint64_t idHashFunction(const void *key){
@@ -169,11 +169,6 @@ ExecutionPlan* ExecutionPlan_FindByStrId(const char* id){
 
 static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, BufferWriter* bw){
     RediStar_BWWriteString(bw, rfep->reader);
-    ArgType* type = ReadersMgmt_GetArgType(rfep->reader);
-    if(type && type->serialize){
-        // if we do not have a type or type do not have a serializer then we assume arg is NULL
-        type->serialize(rfep->arg, bw);
-    }
 }
 
 static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWriter* bw){
@@ -197,12 +192,7 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, BufferWriter* bw
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(BufferReader* br){
     char* readerName = RediStar_BRReadString(br);
-    void* arg = NULL;
-    ArgType* type = ReadersMgmt_GetArgType(readerName);
-    if(type && type->deserialize){
-        arg = type->deserialize(br);
-    }
-    FlatExecutionReader* reader = FlatExecutionPlan_NewReader(readerName, arg);
+    FlatExecutionReader* reader = FlatExecutionPlan_NewReader(readerName);
     return reader;
 }
 
@@ -244,6 +234,8 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep, RedisModuleCtx *rctx){
     BufferWriter_Init(&bw, buff);
     RediStar_BWWriteString(&bw, ep->fep->name);
     RediStar_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution id
+    ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
+    readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
     size_t numOfNodes;
     RedisModule_ThreadSafeContextLock(rctx);
     RedisModule_SendClusterMessage(rctx, NULL, NEW_EP_MSG_TYPE, buff->buff, buff->size);
@@ -721,14 +713,23 @@ static void FlatExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender
     dictAdd(epData.namesDict, fep->name, fep);
 }
 
-static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData){
-    ExecutionPlan* ep = ExecutionPlan_New(fep, eid);
+static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
+    ExecutionPlan* ep = ExecutionPlan_New(fep, eid, arg);
     if(!ep){
         return NULL;
     }
     ep->callback = callback;
     ep->privateData = privateData;
+    return ep;
+}
+
+static void ExecutionPlan_Run(ExecutionPlan* ep){
     ExecutionPlan_AddToRunList(ep);
+}
+
+static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
+    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, arg, callback, privateData);
+    ExecutionPlan_Run(ep);
     return ep;
 }
 
@@ -745,7 +746,14 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     char* eid = RediStar_BRReadBuffer(&br, &idLen);
     assert(idLen == EXECUTION_PLAN_ID_LEN);
     FlatExecutionPlan* fep = ExecutionPlan_FindByName(fepName);
-    FlatExecutionPlan_RunOnly(fep, eid, NULL, NULL);
+    if(!fep){
+        //todo : big big big warning !!!
+        return;
+    }
+    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, NULL, NULL, NULL);
+    ExecutionStep* rs = ep->steps[array_len(ep->steps) - 1];
+    rs->reader.r->deserialize(rs->reader.r->ctx, &br);
+    ExecutionPlan_Run(ep);
 }
 
 static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -867,19 +875,18 @@ bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep){
     return true;
 }
 
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, RediStar_OnExecutionDoneCallback callback, void* privateData){
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
     if(!FlatExecutionPlan_IsBroadcasted(fep) &&
         !FlatExecutionPlan_Broadcast(fep)){
         return NULL;
     }
-    return FlatExecutionPlan_RunOnly(fep, eid, callback, privateData);
+    return FlatExecutionPlan_RunOnly(fep, eid, arg, callback, privateData);
 }
 
-static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader){
+static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg){
     RediStar_ReaderCallback callback = ReadersMgmt_Get(reader->reader);
-    ArgType* type = ReadersMgmt_GetArgType(reader->reader);
     assert(callback); // todo: handle as error in future
-    return (ReaderStep){.r = callback(reader->arg), .type = type};
+    return (ReaderStep){.r = callback(arg)};
 }
 
 static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
@@ -943,7 +950,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
     return es;
 }
 
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId){
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
     ExecutionPlan* ret = RS_ALLOC(sizeof(*ret));
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ExecutionStep* last = NULL;
@@ -956,7 +963,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId){
         }
         ret->steps = array_append(ret->steps, es);
     }
-    ReaderStep rs = ExecutionPlan_NewReader(fep->reader);
+    ReaderStep rs = ExecutionPlan_NewReader(fep->reader, arg);
     ExecutionStep* readerStep = ExecutionPlan_NewReaderExecutionStep(rs);
     if(array_len(ret->steps) > 0){
         ret->steps[array_len(ret->steps) - 1]->prev = readerStep;
@@ -1036,9 +1043,8 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         }
         break;
     case READER:
-        // todo : fix reader free operation
-        if(es->reader.type && es->reader.type->free){
-            es->reader.type->free(es->reader.r->ctx);
+        if(es->reader.r->free){
+            es->reader.r->free(es->reader.r->ctx);
         }
         RS_FREE(es->reader.r);
         break;
@@ -1061,10 +1067,9 @@ void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
     RS_FREE(ep);
 }
 
-static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader, void* readerArg){
+static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
     FlatExecutionReader* res = RS_ALLOC(sizeof(*res));
     res->reader = RS_STRDUP(reader);
-    res->arg = readerArg;
     return res;
 }
 
@@ -1098,8 +1103,8 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     RS_FREE(fep);
 }
 
-void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader, void* readerArg){
-    fep->reader = FlatExecutionPlan_NewReader(reader, readerArg);
+void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
+    fep->reader = FlatExecutionPlan_NewReader(reader);
 }
 
 static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* callbackName, void* arg, enum StepType type){

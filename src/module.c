@@ -20,6 +20,7 @@
 #endif
 #include "record.h"
 #include "commands.h"
+#include "triggers.h"
 #include <stdbool.h>
 
 #define EXECUTION_PLAN_FREE_MSG 6
@@ -30,8 +31,8 @@
         return false;\
     }
 
-static int RS_RegisterReader(char* name, RediStar_ReaderCallback reader, ArgType* type){
-    return ReadersMgmt_Add(name, reader, type);
+static int RS_RegisterReader(char* name, RediStar_ReaderCallback reader){
+    return ReadersMgmt_Add(name, reader, NULL);
 }
 
 static int RS_RegisterWriter(char* name, RediStar_WriterCallback writer, ArgType* type){
@@ -54,12 +55,12 @@ static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer, ArgT
     return ReducersMgmt_Add(name, reducer, type);
 }
 
-static FlatExecutionPlan* RS_CreateCtx(char* name, char* readerName, void* arg){
+static FlatExecutionPlan* RS_CreateCtx(char* name, char* readerName){
     if(ExecutionPlan_FindByName(name)){
         return NULL;
     }
     FlatExecutionPlan* fep = FlatExecutionPlan_New(name);
-    FlatExecutionPlan_SetReader(fep, readerName, arg);
+    FlatExecutionPlan_SetReader(fep, readerName);
     return fep;
 }
 
@@ -127,8 +128,8 @@ static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, RediStar_OnExecutionDoneCallback callback, void* privateData){
-	return FlatExecutionPlan_Run(fep, NULL, callback, privateData);
+static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
+	return FlatExecutionPlan_Run(fep, NULL, arg, callback, privateData);
 }
 
 static bool RS_RegisterExecutionDoneCallback(ExecutionPlan* ep, RediStar_OnExecutionDoneCallback callback){
@@ -330,8 +331,9 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     }
 
     Mgmt_Init();
+    Triggers_Init();
 
-    RSM_RegisterReader(KeysReader, GetKeysReaderArgType());
+    RSM_RegisterReader(KeysReader);
     RSM_RegisterWriter(KeyRecordWriter, NULL);
     RSM_RegisterMap(GetValueMapper, NULL);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);

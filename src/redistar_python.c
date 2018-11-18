@@ -2,6 +2,7 @@
 #include "redistar.h"
 #include "redistar_memory.h"
 #include "record.h"
+#include "triggers.h"
 #include <Python.h>
 #include <marshal.h>
 #include <assert.h>
@@ -13,31 +14,21 @@ static RedisModuleCtx* currentCtx = NULL;
 
 #define PYTHON_ERROR "error running python code"
 
-static PyObject* run(PyObject *cls, PyObject *args){
+static FlatExecutionPlan* createFep(PyObject* starCtx){
     size_t len;
     size_t offset;
-    PyObject* self = PyTuple_GetItem(args, 0);
-    PyObject* regexKey = PyString_FromString("regex");
-    PyObject* regex = PyObject_GetAttr(self, regexKey);
-    PyObject* nameKey = PyString_FromString("name");
-	PyObject* name = PyObject_GetAttr(self, nameKey);
-    Py_DECREF(regexKey);
-    Py_DECREF(nameKey);
-    char* regexStr = PyString_AsString(regex);
+    PyObject* name = PyObject_GetAttrString(starCtx, "name");
     char* nameStr = PyString_AsString(name);
-    Py_DECREF(regex);
-	Py_DECREF(name);
+    Py_DECREF(name);
     // todo : expose execution name on python interface
-	FlatExecutionPlan* rsctx = RSM_CreateCtx(nameStr, KeysReader, RS_STRDUP(regexStr));
+	FlatExecutionPlan* rsctx = RSM_CreateCtx(nameStr, KeysReader);
     if(!rsctx){
-        // todo : we should just return error to the script and let the user handle it!!!
-        RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
-        return PyLong_FromLong(1);
+        return NULL;
     }
-	RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
+    RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
 
     PyObject* stepsKey = PyString_FromString("steps");
-    PyObject* stepsList = PyObject_GetAttr(self, stepsKey);
+    PyObject* stepsList = PyObject_GetAttr(starCtx, stepsKey);
     Py_DECREF(stepsKey);
 
     for(size_t i = 0 ; i < PyList_Size(stepsList) ; ++i){
@@ -60,11 +51,11 @@ static PyObject* run(PyObject *cls, PyObject *args){
             RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
             break;
         case 4:
-        	RSM_Collect(rsctx);
-        	break;
+            RSM_Collect(rsctx);
+            break;
         case 5:
             RSM_Write(rsctx, RediStarPy_PyCallbackWriter, callback);
-        	break;
+            break;
         case 6:
             RSM_Repartition(rsctx, RediStarPy_PyCallbackExtractor, callback);
             break;
@@ -81,13 +72,51 @@ static PyObject* run(PyObject *cls, PyObject *args){
             assert(false);
         }
     }
+    return rsctx;
+}
 
-    ExecutionPlan* ep = RSM_Run(rsctx, NULL, NULL);
+static PyObject* registerStream(PyObject *cls, PyObject *args){
+    PyObject* starStreamCtx = PyTuple_GetItem(args, 0);
+    PyObject* starCtx = PyObject_GetAttrString(starStreamCtx, "starCtx");
+    FlatExecutionPlan* fep = createFep(starCtx);
+
+    if(!fep){
+        RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
+        return PyLong_FromLong(1);
+    }
+
+    if(Trigger_OnKeyArriveTrigger(currentCtx, fep)){
+        RedisModule_ReplyWithSimpleString(currentCtx, "OK");
+    }else{
+        RedisModule_ReplyWithError(currentCtx, "Registration Failed");
+    }
+
+    return PyLong_FromLong(1);
+}
+
+static PyObject* run(PyObject *cls, PyObject *args){
+    size_t len;
+    size_t offset;
+    PyObject* starCtx = PyTuple_GetItem(args, 0);
+    PyObject* regex = PyObject_GetAttrString(starCtx, "regex");
+    char* regexStr = PyString_AsString(regex);
+    FlatExecutionPlan* fep = createFep(starCtx);
+
+    if(!fep){
+        RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
+        return PyLong_FromLong(1);
+    }
+
+    ExecutionPlan* ep = RSM_Run(fep, regexStr, NULL, NULL);
     // todo: we should not return the reply to the user here,
     //       user might create multiple executions in a single script
     //       think what to do???
     const char* id = RediStar_GetId(ep);
     RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
+
+    Py_DECREF(regex);
+    Py_DECREF(starCtx);
+
     return PyLong_FromLong(1);
 }
 
@@ -124,6 +153,7 @@ PyMethodDef EmbMethods[] = {
     {"run", run, METH_VARARGS, "start running the execution plan"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"saveKey", saveKey, METH_VARARGS, "saving the given key to a give value"},
+    {"register", registerStream, METH_VARARGS, "register the stream"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -443,8 +473,7 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
 
     PyRun_SimpleString("import redistar\n"
                        "class starCtx:\n"
-                       "    def __init__(self, name, regex):\n"
-                       "        self.regex = regex\n"
+                       "    def __init__(self, name):\n"
     				   "        self.name = name\n"
                        "        self.steps = []\n"
                        "    def map(self, mapFunc):\n"
@@ -475,8 +504,38 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "            raise Exception('value given to limit is not int')\n"
                        "        self.steps.append((8, len, offset))\n"
                        "        return self\n"
-                       "    def run(self):\n"
+                       "    def run(self, regex='*'):\n"
+                       "        self.regex = regex\n"
                        "        redistar.run(self)\n"
+                       "class starStreamingCtx:\n"
+                       "    def __init__(self, name, type=0):\n"
+                       "        self.starCtx = starCtx(name)\n"
+                       "    def map(self, mapFunc):\n"
+                       "        self.starCtx.map(mapFunc)\n"
+                       "        return self\n"
+                       "    def filter(self, filterFunc):\n"
+                       "        self.starCtx.filter(filterFunc)\n"
+                       "        return self\n"
+                       "    def groupby(self, extractor, reducer):\n"
+                       "        self.starCtx.groupby(extractor, reducer)\n"
+                       "        return self\n"
+                       "    def collect(self):\n"
+                       "        self.starCtx.collect()\n"
+                       "        return self\n"
+                       "    def write(self, writeCallback):\n"
+                       "        self.starCtx.write(writeCallback)\n"
+                       "        return self\n"
+                       "    def repartition(self, extractor):\n"
+                       "        self.starCtx.repartition(extractor)\n"
+                       "        return self\n"
+                       "    def flatMap(self, flatMapFunc):\n"
+                       "        self.starCtx.flatMap(flatMapFunc)\n"
+                       "        return self\n"
+                       "    def limit(self, len, offset=0):\n"
+                       "        self.starCtx.limit(len, offset)\n"
+                       "        return self\n"
+                       "    def register(self):\n"
+                       "        redistar.register(self)\n"
                        "globals()['str'] = str\n"
                        "redistar._saveGlobals()\n");
 
