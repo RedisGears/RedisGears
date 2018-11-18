@@ -1,0 +1,46 @@
+version: 2
+
+defaults:
+  ci_steps: &ci_steps
+    - checkout
+    - run:
+        name: Build
+        command: make WITHPYTHON=1 
+    - run:
+        name: Test
+        command: cd ./pytest; ./run_tests.sh
+
+jobs:
+  ubuntu:
+    docker:
+      - image: 'redislabsmodules/rmbuilder:latest'
+    environment:
+      - BUILD_DIR: build-debian
+
+    steps: *ci_steps
+  
+  centos:
+    docker:
+      - image: 'redislabsmodules/rmbuildercentos:latest'
+    environment:
+      - BUILD_DIR: build-el
+
+    steps: *ci_steps
+
+workflows:
+  version: 2
+
+  default_flow:
+    jobs:
+      - ubuntu:
+          filters:
+            branches:
+              only: /.*/
+            tags:
+              only: /.*/
+      - centos:
+          filters:
+            branches:
+              only: /.*/
+            tags:
+              only: /.*/
