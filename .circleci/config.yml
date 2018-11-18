@@ -4,6 +4,9 @@ defaults:
   ci_steps: &ci_steps
     - checkout
     - run:
+        name: Install_Deps
+        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master
+    - run:
         name: Build
         command: make WITHPYTHON=1 
     - run:
