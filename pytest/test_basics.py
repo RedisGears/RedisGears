@@ -1,5 +1,6 @@
 from RLTest import Env
 import yaml
+import time
 
 
 def getConnectionByEnv(env):
@@ -91,3 +92,20 @@ def testRepartitionAndWriteOption(env):
     env.assertEqual(conn.execute_command('get', '1'), 'x')
     env.assertEqual(conn.execute_command('get', '2'), 'y')
     env.assertEqual(conn.execute_command('get', '3'), 'z')
+
+
+def testBasicStream(env):
+    env.skipOnCluster()
+    env.broadcast('rs.refreshcluster')
+    conn = getConnectionByEnv(env)
+    env.expect('rs.pyexecute', "starStreamingCtx('test')."
+                               "repartition(lambda x: x['value'])."
+                               "write(lambda x: redistar.saveKey(x['value'], x['key']))."
+                               "register()").ok()
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'y', '2')
+    conn.execute_command('set', 'z', '3')
+    res = env.cmd('rs.dumpexecutions')
+    for e in res:
+        env.cmd('rs.getresultsblocking', e[3])
+    env.assertEqual(len(conn.execute_command('keys', '*')), 6)

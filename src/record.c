@@ -278,7 +278,7 @@ RedisModuleKey* RS_KeyHandlerRecordGet(Record* r){
 }
 
 #ifdef WITHPYTHON
-Record* RS_PyObjRecordCreare(){
+Record* RS_PyObjRecordCreate(){
     Record* ret = RS_ALLOC(sizeof(Record));
     ret->type = PY_RECORD;
     ret->pyRecord.obj = NULL;
@@ -376,7 +376,7 @@ Record* RS_DeserializeRecord(BufferReader* br){
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
-        r = RS_PyObjRecordCreare();
+        r = RS_PyObjRecordCreate();
         PyObject* obj = RediStarPy_PyObjectDeserialize(br);
         r->pyRecord.obj = obj;
         break;

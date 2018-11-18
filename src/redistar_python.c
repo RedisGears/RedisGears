@@ -232,7 +232,7 @@ static Record* RediStarPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *rec
         record = RediStar_ListRecordCreate(len);
         for(size_t i = 0 ; i < len ; ++i){
             PyObject* temp = PyList_GetItem(newObj, i);
-            Record* pyRecord = RS_PyObjRecordCreare();
+            Record* pyRecord = RS_PyObjRecordCreate();
             Py_INCREF(pyRecord);
             RS_PyObjRecordSet(pyRecord, temp);
             RediStar_ListRecordAdd(record, pyRecord);
@@ -320,7 +320,7 @@ static Record* RediStarPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, siz
         PyGILState_Release(state);
         return NULL;
     }
-    Record* retRecord = RS_PyObjRecordCreare();
+    Record* retRecord = RS_PyObjRecordCreate();
     RS_PyObjRecordSet(retRecord, ret);
     RediStar_FreeRecord(records);
     PyGILState_Release(state);
@@ -328,7 +328,7 @@ static Record* RediStarPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, siz
 }
 
 static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
-    Record* res = RS_PyObjRecordCreare();
+    Record* res = RS_PyObjRecordCreate();
     Record* tempRecord;
     PyObject* obj;
     PyObject* temp;

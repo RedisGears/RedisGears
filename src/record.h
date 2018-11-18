@@ -70,7 +70,7 @@ void RS_SerializeRecord(BufferWriter* bw, Record* r);
 Record* RS_DeserializeRecord(BufferReader* br);
 
 #ifdef WITHPYTHON
-Record* RS_PyObjRecordCreare();
+Record* RS_PyObjRecordCreate();
 PyObject* RS_PyObjRecordGet(Record* r);
 void RS_PyObjRecordSet(Record* r, PyObject* obj);
 #endif
