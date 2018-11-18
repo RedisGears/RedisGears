@@ -95,7 +95,6 @@ def testRepartitionAndWriteOption(env):
 
 
 def testBasicStream(env):
-    env.skipOnCluster()
     env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     env.expect('rs.pyexecute', "starStreamingCtx('test')."
@@ -105,7 +104,14 @@ def testBasicStream(env):
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
-    res = env.cmd('rs.dumpexecutions')
+    res = []
+    while len(res) != 3:
+        res = env.cmd('rs.dumpexecutions')
     for e in res:
-        env.cmd('rs.getresultsblocking', e[3])
-    env.assertEqual(len(conn.execute_command('keys', '*')), 6)
+        env.broadcast('rs.getresultsblocking', e[3])
+    env.assertEqual(conn.get('x'), '1')
+    env.assertEqual(conn.get('y'), '2')
+    env.assertEqual(conn.get('z'), '3')
+    env.assertEqual(conn.get('1'), 'x')
+    env.assertEqual(conn.get('2'), 'y')
+    env.assertEqual(conn.get('3'), 'z')

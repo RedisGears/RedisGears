@@ -157,15 +157,12 @@ int MODULE_API_FUNC(RediStar_FlatMap)(FlatExecutionPlan* ctx, char* name, void* 
 
 int MODULE_API_FUNC(RediStar_Limit)(FlatExecutionPlan* ctx, size_t offset, size_t len);
 #define RSM_Limit(ctx, offset, len) RediStar_Limit(ctx, offset, len)
-/******************************* Execution plan runners *******************************/
 
-/*
- * There are three ways to start running an execution plan
- * 1. Write in using a writer
- * 2. just run it, store the result inside the redis memory (not in the key space) and later read it.
- */
 ExecutionPlan* MODULE_API_FUNC(RediStar_Run)(FlatExecutionPlan* ctx, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData);
 #define RSM_Run(ctx, arg, callback, privateData) RediStar_Run(ctx, arg, callback, privateData)
+
+int MODULE_API_FUNC(RediStar_Register)(FlatExecutionPlan* fep);
+#define RSM_Register(ctx) RediStar_Register(ctx)
 
 int MODULE_API_FUNC(RediStar_Write)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)
@@ -209,6 +206,7 @@ static bool RediStar_Initialize(){
     REDISTAR_MODULE_INIT_FUNCTION(Map);
     REDISTAR_MODULE_INIT_FUNCTION(Filter);
     REDISTAR_MODULE_INIT_FUNCTION(Run);
+    REDISTAR_MODULE_INIT_FUNCTION(Register);
     REDISTAR_MODULE_INIT_FUNCTION(Write);
     REDISTAR_MODULE_INIT_FUNCTION(GroupBy);
     REDISTAR_MODULE_INIT_FUNCTION(Collect);

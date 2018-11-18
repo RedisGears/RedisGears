@@ -10,6 +10,7 @@
 #include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
+#include "triggers.h"
 #include <pthread.h>
 #include <unistd.h>
 
@@ -35,6 +36,7 @@ char* stepsNames[] = {
 #define DONE_COLLECT_MSG_TYPE 3
 #define NEW_REPARTITION_MSG_TYPE 4
 #define DONE_REPARTITION_MSG_TYPE 5
+#define REGISTER_KEY_SPACE_EVENT_NOTIFICATION 6
 
 typedef struct LimitExecutionStepArg{
     size_t offset;
@@ -701,6 +703,15 @@ static void ExecutionPlan_AddToRunList(ExecutionPlan* ep){
 
 }
 
+static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    FlatExecutionPlan* fep = ExecutionPlan_FindByName(payload);
+    if(!fep){
+        // todo: big big warning
+        return;
+    }
+    Trigger_OnKeyArriveTrigger(ctx, fep);
+}
+
 static void FlatExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     Buffer buff = (Buffer){
         .buff = (char*)payload,
@@ -846,6 +857,7 @@ void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
     RedisModule_RegisterClusterMessageReceiver(ctx, DONE_COLLECT_MSG_TYPE, ExecutionPlan_CollectDoneSendingRecords);
     RedisModule_RegisterClusterMessageReceiver(ctx, NEW_REPARTITION_MSG_TYPE, ExecutionPlan_OnRepartitionRecordReceived);
     RedisModule_RegisterClusterMessageReceiver(ctx, DONE_REPARTITION_MSG_TYPE, ExecutionPlan_DoneRepartition);
+    RedisModule_RegisterClusterMessageReceiver(ctx, REGISTER_KEY_SPACE_EVENT_NOTIFICATION, FlatExecutionPlan_RegisterKeySpaceEvent);
 
     for(size_t i = 0 ; i < numberOfworkers ; ++i){
         pthread_t thread;
@@ -873,6 +885,19 @@ bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep){
     }
     fep->distributed = true;
     return true;
+}
+
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep){
+    if(!FlatExecutionPlan_IsBroadcasted(fep) &&
+        !FlatExecutionPlan_Broadcast(fep)){
+        return 0;
+    }
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    ((void**)ctx)[1] = modulePointer;
+    RedisModule_SendClusterMessage(ctx, NULL, REGISTER_KEY_SPACE_EVENT_NOTIFICATION, fep->name, strlen(fep->name) + 1 /* +1 is for the '\0' */);
+    int ret = Trigger_OnKeyArriveTrigger(ctx, fep);
+    RedisModule_FreeThreadSafeContext(ctx);
+    return ret;
 }
 
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){

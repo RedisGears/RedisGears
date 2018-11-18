@@ -2,7 +2,6 @@
 #include "redistar.h"
 #include "redistar_memory.h"
 #include "record.h"
-#include "triggers.h"
 #include <Python.h>
 #include <marshal.h>
 #include <assert.h>
@@ -85,7 +84,7 @@ static PyObject* registerStream(PyObject *cls, PyObject *args){
         return PyLong_FromLong(1);
     }
 
-    if(Trigger_OnKeyArriveTrigger(currentCtx, fep)){
+    if(RSM_Register(fep)){
         RedisModule_ReplyWithSimpleString(currentCtx, "OK");
     }else{
         RedisModule_ReplyWithError(currentCtx, "Registration Failed");

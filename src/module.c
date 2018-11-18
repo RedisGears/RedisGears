@@ -23,7 +23,7 @@
 #include "triggers.h"
 #include <stdbool.h>
 
-#define EXECUTION_PLAN_FREE_MSG 6
+#define EXECUTION_PLAN_FREE_MSG 100
 
 #define REGISTER_API(name, registerApiCallback) \
     if(registerApiCallback("RediStar_" #name, RS_ ## name)){\
@@ -126,6 +126,10 @@ static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     }
     FlatExecutionPlan_AddLimitStep(fep, offset, len);
     return 1;
+}
+
+static int RS_Register(FlatExecutionPlan* fep){
+    return FlatExecutionPlan_Register(fep);
 }
 
 static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
@@ -246,6 +250,7 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
     REGISTER_API(Write, registerApiCallback);
     REGISTER_API(Limit, registerApiCallback);
     REGISTER_API(Run, registerApiCallback);
+    REGISTER_API(Register, registerApiCallback);
 
     REGISTER_API(GetFlatExecution, registerApiCallback);
     REGISTER_API(GetExecution, registerApiCallback);
