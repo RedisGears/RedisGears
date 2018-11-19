@@ -5,7 +5,7 @@ defaults:
     - checkout
     - run:
         name: Install_Deps
-        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;apt install valgrind
+        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;apt -y install valgrind
     - run:
         name: Build
         command: make WITHPYTHON=1 
@@ -35,7 +35,7 @@ jobs:
       - checkout
       - run:
           name: Install_Deps
-          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;apt install valgrind
+          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;yum -y install valgrind
       - run:
           name: Build
           command: make WITHPYTHON=1
