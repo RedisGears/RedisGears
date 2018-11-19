@@ -289,8 +289,9 @@ static char* RediStarPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record
         retStr = ret;
     }
     char* retCStr = PyString_AsString(retStr);
-    Py_DECREF(retStr);
     *len = strlen(retCStr);
+    //Py_DECREF(retStr); todo: we should uncomment it after we will pass bool
+    //                         that will tell the extractor to free the memory!!
     PyGILState_Release(state);
     return retCStr;
 }
