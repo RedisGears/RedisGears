@@ -4,6 +4,11 @@
    obj:*libpython2.7*
 }
 {
+   <ignore_py_error1>
+   Memcheck:Addr8
+   obj:*libpython2.7*
+}
+{
    <ignore_py_error2>
    Memcheck:Value8
    obj:*libpython2.7*
