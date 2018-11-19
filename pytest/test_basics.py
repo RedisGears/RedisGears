@@ -26,6 +26,7 @@ class testBasic:
         res = [yaml.load(r) for r in res]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
+        self.env.cmd('rs.dropexecution', id)
 
     def testBasicFilterQuery(self):
         id = self.env.cmd('rs.pyexecute', 'starCtx("test2").filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()')
@@ -33,12 +34,14 @@ class testBasic:
         res = [yaml.load(r) for r in res]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
+        self.env.cmd('rs.dropexecution', id)
 
     def testBasicMapQuery(self):
         id = self.env.cmd('rs.pyexecute', 'starCtx("test3").map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()')
         res = self.env.cmd('rs.getresultsblocking', id)
         res = [yaml.load(r) for r in res]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
+        self.env.cmd('rs.dropexecution', id)
 
     def testBasicGroupByQuery(self):
         id = self.env.cmd('rs.pyexecute', 'starCtx("test4").'
@@ -48,6 +51,7 @@ class testBasic:
         res = self.env.cmd('rs.getresultsblocking', id)
         self.env.assertContains("{'value': 50, 'key': '100'}", res)
         self.env.assertContains("{'value': 50, 'key': '0'}", res)
+        self.env.cmd('rs.dropexecution', id)
 
 
 def testFlatMap(env):
@@ -59,6 +63,7 @@ def testFlatMap(env):
                                  "collect().run()")
     res = env.cmd('rs.getresultsblocking', id)
     env.assertEqual(set(res), set(['1', '2', '3']))
+    env.cmd('rs.dropexecution', id)
 
 
 def testLimit(env):
@@ -70,6 +75,7 @@ def testLimit(env):
                                  "limit(1).collect().run()")
     res = env.cmd('rs.getresultsblocking', id)
     env.assertEqual(len(res), 1)
+    env.cmd('rs.dropexecution', id)
 
 
 def testRepartitionAndWriteOption(env):
@@ -92,6 +98,7 @@ def testRepartitionAndWriteOption(env):
     env.assertEqual(conn.execute_command('get', '1'), 'x')
     env.assertEqual(conn.execute_command('get', '2'), 'y')
     env.assertEqual(conn.execute_command('get', '3'), 'z')
+    env.cmd('rs.dropexecution', id)
 
 
 def testBasicStream(env):
@@ -109,6 +116,7 @@ def testBasicStream(env):
         res = env.cmd('rs.dumpexecutions')
     for e in res:
         env.broadcast('rs.getresultsblocking', e[3])
+        env.cmd('rs.dropexecution', e[3])
     env.assertEqual(conn.get('x'), '1')
     env.assertEqual(conn.get('y'), '2')
     env.assertEqual(conn.get('z'), '3')

@@ -1,0 +1,1 @@
+added keys trigger, change reader args to be given on execution start so it will be possible to run the same flat execution with different args.

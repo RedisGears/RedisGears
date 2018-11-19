@@ -106,7 +106,7 @@ static PyObject* run(PyObject *cls, PyObject *args){
         return PyLong_FromLong(1);
     }
 
-    ExecutionPlan* ep = RSM_Run(fep, regexStr, NULL, NULL);
+    ExecutionPlan* ep = RSM_Run(fep, RS_STRDUP(regexStr), NULL, NULL);
     // todo: we should not return the reply to the user here,
     //       user might create multiple executions in a single script
     //       think what to do???

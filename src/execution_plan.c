@@ -592,6 +592,8 @@ static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* s
             step->limit.currRecordIndex < arg->offset + arg->len){
 
         ret = record;
+    }else{
+        RediStar_FreeRecord(record);
     }
     ++step->limit.currRecordIndex;
     return ret;
@@ -688,6 +690,9 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         	ep->isDone = true;
         	if(ep->callback){
         		ep->callback(ep, ep->privateData);
+        	}
+        	if(ep->freeCallback){
+        	    ep->freeCallback(ep->privateData);
         	}
         	RedisModule_ThreadSafeContextUnlock(rctx);
         }

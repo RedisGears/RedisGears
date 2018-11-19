@@ -176,7 +176,7 @@ static Record* RS_GetRecord(ExecutionPlan* ep, long long i){
 
 static void RS_DropExecution(ExecutionPlan* ep, RedisModuleCtx* ctx){
     if(Cluster_IsClusterMode()){
-        RedisModule_SendClusterMessage(ctx, NULL, EXECUTION_PLAN_FREE_MSG, ep->id, EXECUTION_PLAN_ID_LEN);
+        RedisModule_SendClusterMessage(ctx, NULL, EXECUTION_PLAN_FREE_MSG, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep, ctx);
 }
@@ -300,13 +300,11 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
 static void RS_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = RediStar_GetExecution(payload);
 	if(!ep){
-		// todo: write warning
+		printf("warning: execution not found %s !!!\r\n", payload);
 		return;
 	}
 	ExecutionPlan_Free(ep, ctx);
 }
-
-ArgType* GetKeysReaderArgType();
 
 bool apiRegistered = false;
 
