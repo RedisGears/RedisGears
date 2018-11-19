@@ -1,0 +1,36 @@
+{
+   <ignore_py_error1>
+   Memcheck:Addr4
+   obj:*libpython2.7*
+}
+{
+   <ignore_py_error2>
+   Memcheck:Value8
+   obj:*libpython2.7*
+}
+{
+   <ignore_py_error3>
+   Memcheck:Cond
+   obj:*libpython2.7*
+}
+{
+   <ignore_py_error4>
+   Memcheck:Leak
+   ...
+   obj:*libpython2.7*
+   ...
+}
+{
+   <ignore_add_basic_step_for_now>
+   Memcheck:Leak
+   ...
+   fun:FlatExecutionPlan_AddBasicStep
+   ...
+}
+{
+   <ignore_deserialization_for_now>
+   Memcheck:Leak
+   ...
+   fun:FlatExecutionPlan_DeserializeStep
+   ...
+}
