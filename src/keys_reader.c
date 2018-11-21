@@ -85,6 +85,7 @@ static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
         RediStar_HashSetRecordSet(hashSetRecord, keyCStr, valRecord);
     }
     RediStar_KeyRecordSetVal(record, hashSetRecord);
+    RedisModule_FreeCallReply(reply);
     return record;
 }
 
@@ -136,7 +137,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
         return NULL;
     }
     RedisModule_ThreadSafeContextLock(rctx);
-    RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "10000", "MATCH", readerCtx->match);
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "1000000", "MATCH", readerCtx->match);
     if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
         if(reply) RedisModule_FreeCallReply(reply);
         RedisModule_ThreadSafeContextUnlock(rctx);

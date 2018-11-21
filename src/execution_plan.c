@@ -1030,6 +1030,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->callback = NULL;
     ret->privateData = NULL;
     ret->freeCallback = NULL;
+    char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
     if(!finalId){
         char noneClusterId[REDISMODULE_NODE_ID_LEN] = {0};
         char* id;
@@ -1039,7 +1040,6 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
             memset(noneClusterId, '0', REDISMODULE_NODE_ID_LEN);
             id = noneClusterId;
         }
-        char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
         memcpy(generatedId, id, REDISMODULE_NODE_ID_LEN);
         memcpy(generatedId + REDISMODULE_NODE_ID_LEN, &lastId, sizeof(long long));
         finalId = generatedId;
