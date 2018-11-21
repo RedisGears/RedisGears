@@ -1,7 +1,7 @@
 CC=gcc
 SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
         src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
-        src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c
+        src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c
 CFLAGS=-fPIC -std=gnu99 -I./src/ -DREDISMODULE_EXPERIMENTAL_API -DVALGRIND -std=gnu99
 LFLAGS= 
 ifeq ($(DEBUG), 1)

@@ -16,6 +16,7 @@
 typedef struct ExecutionPlan ExecutionPlan;
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
+typedef struct StreamReaderCtx StreamReaderCtx;
 
 enum RecordType{
     KEY_HANDLER_RECORD = 1,
@@ -41,7 +42,7 @@ typedef void (*RegisterTrigger)(FlatExecutionPlan* fep);
 
 typedef struct Reader{
     void* ctx;
-    void (*registerTrigger)(FlatExecutionPlan* fep, char* regex);
+    void (*registerTrigger)(FlatExecutionPlan* fep, void* arg);
     Record* (*next)(RedisModuleCtx* rctx, void* ctx);
     void (*free)(void* ctx);
     void (*serialize)(void* ctx, BufferWriter* bw);
@@ -49,6 +50,10 @@ typedef struct Reader{
 }Reader;
 
 Reader* KeysReader(void* arg);
+
+// todo: use MODULE_API_FUNC
+StreamReaderCtx* StreamReader_CreateCtx(char* keyName);
+Reader* StreamReader(void* arg);
 
 /******************************* Writers *******************************/
 void KeyRecordWriter(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
@@ -163,8 +168,8 @@ int MODULE_API_FUNC(RediStar_Limit)(FlatExecutionPlan* ctx, size_t offset, size_
 ExecutionPlan* MODULE_API_FUNC(RediStar_Run)(FlatExecutionPlan* ctx, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData);
 #define RSM_Run(ctx, arg, callback, privateData) RediStar_Run(ctx, arg, callback, privateData)
 
-int MODULE_API_FUNC(RediStar_Register)(FlatExecutionPlan* fep);
-#define RSM_Register(ctx) RediStar_Register(ctx)
+int MODULE_API_FUNC(RediStar_Register)(FlatExecutionPlan* fep, char* arg);
+#define RSM_Register(ctx, arg) RediStar_Register(ctx, arg)
 
 int MODULE_API_FUNC(RediStar_Write)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_Write(ctx, name, arg) RediStar_Write(ctx, #name, arg)

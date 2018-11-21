@@ -127,11 +127,11 @@ static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RS_Register(FlatExecutionPlan* fep){
+static int RS_Register(FlatExecutionPlan* fep, char* key){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
-    return FlatExecutionPlan_Register(fep);
+    return FlatExecutionPlan_Register(fep, key);
 }
 
 static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
@@ -338,6 +338,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     Mgmt_Init();
 
     RSM_RegisterReader(KeysReader);
+    RSM_RegisterReader(StreamReader);
     RSM_RegisterWriter(KeyRecordWriter, NULL);
     RSM_RegisterMap(GetValueMapper, NULL);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);

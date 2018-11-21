@@ -18,9 +18,12 @@ static FlatExecutionPlan* createFep(PyObject* starCtx){
     size_t offset;
     PyObject* name = PyObject_GetAttrString(starCtx, "name");
     char* nameStr = PyString_AsString(name);
+    PyObject* reader = PyObject_GetAttrString(starCtx, "reader");
+    char* readerStr = PyString_AsString(reader);
     Py_DECREF(name);
     // todo : expose execution name on python interface
-	FlatExecutionPlan* rsctx = RSM_CreateCtx(nameStr, KeysReader);
+	FlatExecutionPlan* rsctx = RediStar_CreateCtx(nameStr, readerStr);
+	Py_DECREF(reader);
     if(!rsctx){
         return NULL;
     }
@@ -77,6 +80,8 @@ static FlatExecutionPlan* createFep(PyObject* starCtx){
 static PyObject* registerStream(PyObject *cls, PyObject *args){
     PyObject* starStreamCtx = PyTuple_GetItem(args, 0);
     PyObject* starCtx = PyObject_GetAttrString(starStreamCtx, "starCtx");
+    PyObject* key = PyObject_GetAttrString(starStreamCtx, "key");
+    char* keyStr = PyString_AsString(key);
     FlatExecutionPlan* fep = createFep(starCtx);
 
     if(!fep){
@@ -84,11 +89,15 @@ static PyObject* registerStream(PyObject *cls, PyObject *args){
         return PyLong_FromLong(1);
     }
 
-    if(RSM_Register(fep)){
+    if(RSM_Register(fep, keyStr)){
         RedisModule_ReplyWithSimpleString(currentCtx, "OK");
     }else{
         RedisModule_ReplyWithError(currentCtx, "Registration Failed");
     }
+
+    Py_DECREF(key);
+    Py_DECREF(starCtx);
+    Py_DECREF(starStreamCtx);
 
     return PyLong_FromLong(1);
 }
@@ -473,8 +482,9 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
 
     PyRun_SimpleString("import redistar\n"
                        "class starCtx:\n"
-                       "    def __init__(self, name):\n"
+                       "    def __init__(self, name, reader='KeysReader'):\n"
     				   "        self.name = name\n"
+                       "        self.reader = reader\n"
                        "        self.steps = []\n"
                        "    def map(self, mapFunc):\n"
                        "        self.steps.append((1, mapFunc))\n"
@@ -508,8 +518,8 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "        self.regex = regex\n"
                        "        redistar.run(self)\n"
                        "class starStreamingCtx:\n"
-                       "    def __init__(self, name, type=0):\n"
-                       "        self.starCtx = starCtx(name)\n"
+                       "    def __init__(self, name, reader='KeysReader'):\n"
+                       "        self.starCtx = starCtx(name, reader)\n"
                        "    def map(self, mapFunc):\n"
                        "        self.starCtx.map(mapFunc)\n"
                        "        return self\n"
@@ -534,7 +544,8 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "    def limit(self, len, offset=0):\n"
                        "        self.starCtx.limit(len, offset)\n"
                        "        return self\n"
-                       "    def register(self):\n"
+                       "    def register(self, key):\n"
+                       "        self.key = key\n"
                        "        redistar.register(self)\n"
                        "globals()['str'] = str\n"
                        "redistar._saveGlobals()\n");
