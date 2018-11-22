@@ -126,3 +126,26 @@ def testBasicStream(env):
     env.assertEqual(conn.get('1'), 'x')
     env.assertEqual(conn.get('2'), 'y')
     env.assertEqual(conn.get('3'), 'z')
+
+
+def testBasicStreamProcessing(env):
+    env.broadcast('rs.refreshcluster')
+    conn = getConnectionByEnv(env)
+    res = env.cmd('rs.pyexecute', "starStreamingCtx('test', 'StreamReader')."
+                                  "flatMap(lambda x: [(a[0], a[1]) for a in x.items()])."
+                                  "repartition(lambda x: x[0])."
+                                  "write(lambda x: redistar.saveKey(x[0], x[1]))."
+                                  "map(lambda x: str(x))."
+                                  "register('stream1')")
+    env.assertEqual(res, 'OK')
+    if(res != 'OK'):
+        return
+    env.cmd('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
+    res = []
+    while len(res) != 1:
+        res = env.cmd('rs.dumpexecutions')
+    for e in res:
+        env.broadcast('rs.getresultsblocking', e[3])
+        env.cmd('rs.dropexecution', e[3])
+    env.assertEqual(conn.get('f1'), 'v1')
+    env.assertEqual(conn.get('f2'), 'v2')

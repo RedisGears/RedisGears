@@ -89,12 +89,18 @@ static void StreamReader_CtxSerialize(void* ctx, BufferWriter* bw){
 
 static void StreamReader_Free(void* ctx){
     StreamReaderCtx* readerCtx = ctx;
-    RS_FREE(readerCtx->lastId);
-    RS_FREE(readerCtx->streamKeyName);
-    for(size_t i = 0 ; i < array_len(readerCtx->records) ; ++i){
-        RediStar_FreeRecord(readerCtx->records[i]);
+    if(readerCtx->lastId){
+        RS_FREE(readerCtx->lastId);
     }
-    array_free(readerCtx->records);
+    if(readerCtx->streamKeyName){
+        RS_FREE(readerCtx->streamKeyName);
+    }
+    if(readerCtx->records){
+        for(size_t i = 0 ; i < array_len(readerCtx->records) ; ++i){
+            RediStar_FreeRecord(readerCtx->records[i]);
+        }
+        array_free(readerCtx->records);
+    }
 }
 
 static Record* StreamReader_Next(RedisModuleCtx* rctx, void* ctx){

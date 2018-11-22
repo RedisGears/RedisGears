@@ -283,6 +283,7 @@ static char* RediStarPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record
     PyObject* obj = RS_PyObjRecordGet(record);
     PyTuple_SetItem(pArgs, 0, obj);
     PyObject* ret = PyObject_CallObject(extractor, pArgs);
+    Py_INCREF(obj);
     Py_DECREF(pArgs);
     if(!ret){
         PyErr_Print();
