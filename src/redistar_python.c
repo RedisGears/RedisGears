@@ -350,8 +350,8 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
     size_t len;
     switch(RediStar_RecordGetType(record)){
     case STRING_RECORD:
-        str = RediStar_StringRecordGet(record);
-        obj = PyString_FromString(str);
+        str = RediStar_StringRecordGet(record, &len);
+        obj = PyString_FromStringAndSize(str, len);
         break;
     case LONG_RECORD:
         longNum = RediStar_LongRecordGet(record);

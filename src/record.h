@@ -41,9 +41,9 @@ Record* RS_ListRecordGet(Record* r, size_t index);
 Record* RS_ListRecordPop(Record* r);
 
 /** string record api **/
-Record* RS_StringRecordCreate(char* val);
-char* RS_StringRecordGet(Record* r);
-void RS_StringRecordSet(Record* r, char* val);
+Record* RS_StringRecordCreate(char* val, size_t len);
+char* RS_StringRecordGet(Record* r, size_t* len);
+void RS_StringRecordSet(Record* r, char* val, size_t len);
 
 /** double record api **/
 Record* RS_DoubleRecordCreate(double val);

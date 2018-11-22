@@ -14,7 +14,8 @@ static bool Example_Filter(RedisModuleCtx* rctx, Record *r, void* arg, char** er
     for(size_t i = 0 ; i < len ; ++i){
         Record* val = RediStar_HashSetRecordGet(r, keys[i]);
         if(RediStar_RecordGetType(val) == STRING_RECORD){
-            char* valStr = RediStar_StringRecordGet(val);
+            size_t len;
+            char* valStr = RediStar_StringRecordGet(val, &len);
             int valInt = atol(valStr);
             if(valInt > 9999990){
                 RediStar_HashSetRecordFreeKeysArray(keys);

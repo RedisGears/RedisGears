@@ -56,7 +56,7 @@ static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
     memcpy(strVal, val, len);
     strVal[len] = '\0';
 
-    Record* strRecord = RediStar_StringRecordCreate(strVal);
+    Record* strRecord = RediStar_StringRecordCreate(strVal, len);
 
     RediStar_KeyRecordSetVal(record, strRecord);
     return record;
@@ -78,10 +78,10 @@ static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
         keyCStr[keyStrLen] = '\0';
         size_t valStrLen;
         const char* valStr = RedisModule_CallReplyStringPtr(valReply, &valStrLen);
-        char valCStr[valStrLen + 1];
+        char* valCStr = RS_ALLOC(valStrLen + 1);
         memcpy(valCStr, valStr, valStrLen);
         valCStr[valStrLen] = '\0';
-        Record* valRecord = RediStar_StringRecordCreate(RS_STRDUP(valCStr));
+        Record* valRecord = RediStar_StringRecordCreate(valCStr, valStrLen);
         RediStar_HashSetRecordSet(hashSetRecord, keyCStr, valRecord);
     }
     RediStar_KeyRecordSetVal(record, hashSetRecord);
@@ -103,7 +103,7 @@ static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
         char* str = RS_ALLOC(vaLen + 1);
         memcpy(str, val, vaLen);
         str[vaLen] = '\0';
-        Record* strRecord = RediStar_StringRecordCreate(str);
+        Record* strRecord = RediStar_StringRecordCreate(str, len);
         RedisModule_FreeString(ctx, key);
         RediStar_ListRecordAdd(listRecord, strRecord);
     }

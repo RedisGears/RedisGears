@@ -14,7 +14,7 @@ char* KeyRecordStrValueExtractor(RedisModuleCtx* rctx, Record *record, void* arg
         return NULL;
     }
     Record* strRecord = RediStar_KeyRecordGetVal(record);
-    char* str = RediStar_StringRecordGet(strRecord);
+    char* str = RediStar_StringRecordGet(strRecord, NULL);
     *len = strlen(str);
     return str;
 }

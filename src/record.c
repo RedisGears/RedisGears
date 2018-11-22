@@ -20,6 +20,7 @@ typedef struct DoubleRecord{
 }DoubleRecord;
 
 typedef struct StringRecord{
+    size_t len;
     char* str;
 }StringRecord;
 
@@ -174,21 +175,26 @@ Record* RS_ListRecordPop(Record* r){
     return array_pop(r->listRecord.records);
 }
 
-Record* RS_StringRecordCreate(char* val){
+Record* RS_StringRecordCreate(char* val, size_t len){
     Record* ret = RS_ALLOC(sizeof(Record));
     ret->type = STRING_RECORD;
     ret->stringRecord.str = val;
+    ret->stringRecord.len = len;
     return ret;
 }
 
-char* RS_StringRecordGet(Record* r){
+char* RS_StringRecordGet(Record* r, size_t* len){
     assert(r->type == STRING_RECORD);
+    if(len){
+        *len = r->stringRecord.len;
+    }
     return r->stringRecord.str;
 }
 
-void RS_StringRecordSet(Record* r, char* val){
+void RS_StringRecordSet(Record* r, char* val, size_t len){
     assert(r->type == STRING_RECORD);
     r->stringRecord.str = val;
+    r->stringRecord.len = len;
 }
 
 Record* RS_DoubleRecordCreate(double val){
@@ -303,7 +309,7 @@ void RS_SerializeRecord(BufferWriter* bw, Record* r){
     RediStar_BWWriteLong(bw, r->type);
     switch(r->type){
     case STRING_RECORD:
-        RediStar_BWWriteString(bw, r->stringRecord.str);
+        RediStar_BWWriteBuffer(bw, r->stringRecord.str, r->stringRecord.len);
         break;
     case LONG_RECORD:
         RediStar_BWWriteLong(bw, r->longRecord.num);
@@ -343,11 +349,14 @@ Record* RS_DeserializeRecord(BufferReader* br){
     enum RecordType type = RediStar_BRReadLong(br);
     Record* r;
     char* temp;
+    char* temp1;
     size_t size;
     switch(type){
     case STRING_RECORD:
-        temp = RediStar_BRReadString(br);
-        r = RS_StringRecordCreate(RS_STRDUP(temp));
+        temp = RediStar_BRReadBuffer(br, &size);
+        temp1 = RS_ALLOC(size);
+        memcpy(temp1, temp, size);
+        r = RS_StringRecordCreate(temp1, size);
         break;
     case LONG_RECORD:
         r = RS_LongRecordCreate(RediStar_BRReadLong(br));

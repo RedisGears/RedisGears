@@ -48,7 +48,7 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
         memcpy(idCStr, idStr, len);
         idCStr[len] = '\0';
         lastStreamId = idCStr;
-        Record* valRecord = RediStar_StringRecordCreate(idCStr);
+        Record* valRecord = RediStar_StringRecordCreate(idCStr, len);
         RediStar_HashSetRecordSet(r, "streamId", valRecord);
         RedisModuleCallReply *values = RedisModule_CallReplyArrayElement(element, 1);
         assert(RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY);
@@ -64,7 +64,7 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
             char* valCStr = RS_ALLOC((len + 1)* sizeof(char));
             memcpy(valCStr, valStr, len);
             valCStr[len] = '\0';
-            Record* valRecord = RediStar_StringRecordCreate(valCStr);
+            Record* valRecord = RediStar_StringRecordCreate(valCStr, len);
             RediStar_HashSetRecordSet(r, keyCStr, valRecord);
         }
         readerCtx->records = array_append(readerCtx->records, r);

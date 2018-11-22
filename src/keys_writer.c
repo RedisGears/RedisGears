@@ -8,9 +8,10 @@
 
 void KeyRecordWriter_WriteValueByType(RedisModuleCtx* rctx, Record *record, void* arg, char** err, RedisModuleKey* keyHandler){
     char* str;
+    size_t len;
     switch(RediStar_RecordGetType(record)){
     case STRING_RECORD:
-        str = RediStar_StringRecordGet(record);
+        str = RediStar_StringRecordGet(record, &len);
         RedisModuleString* redisStr = RedisModule_CreateString(rctx, str, strlen(str));
         RedisModule_StringSet(keyHandler, redisStr);
         break;

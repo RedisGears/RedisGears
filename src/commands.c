@@ -19,8 +19,8 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 #endif
     switch(RediStar_RecordGetType(record)){
     case STRING_RECORD:
-        str = RediStar_StringRecordGet(record);
-        RedisModule_ReplyWithStringBuffer(rctx, str, strlen(str));
+        str = RediStar_StringRecordGet(record, &listLen);
+        RedisModule_ReplyWithStringBuffer(rctx, str, listLen);
         break;
     case LONG_RECORD:
         RedisModule_ReplyWithLongLong(rctx, RediStar_LongRecordGet(record));

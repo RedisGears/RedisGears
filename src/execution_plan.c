@@ -644,7 +644,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
 
     while((record = ExecutionPlan_NextRecord(ep, ep->steps[0], rctx, &err))){
         if(err){
-            Record* r = RediStar_StringRecordCreate(err);
+            Record* r = RediStar_StringRecordCreate(err, strlen(err));
             ExecutionPlan_WriteResult(ep, rctx, r);
             break;
         }
@@ -655,7 +655,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
         ExecutionPlan_WriteResult(ep, rctx, record);
     }
     if(err){
-        Record* r = RediStar_StringRecordCreate(err);
+        Record* r = RediStar_StringRecordCreate(err, strlen(err));
         ExecutionPlan_WriteResult(ep, rctx, r);
     }
 
