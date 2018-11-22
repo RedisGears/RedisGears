@@ -100,6 +100,7 @@ void RS_FreeRecord(Record* record){
             temp = dictGetVal(entry);
             RS_FreeRecord(temp);
         }
+        dictReleaseIterator(iter);
         dictRelease(record->hashSetRecord.d);
         break;
 #ifdef WITHPYTHON
@@ -258,6 +259,7 @@ char** RS_HashSetRecordGetAllKeys(Record* r, size_t* len){
         ret = array_append(ret, key);
     }
     *len = array_len(ret);
+    dictReleaseIterator(iter);
     return ret;
 }
 

@@ -709,14 +709,21 @@ static void ExecutionPlan_AddToRunList(ExecutionPlan* ep){
 }
 
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-    FlatExecutionPlan* fep = ExecutionPlan_FindByName(payload);
+    Buffer buff = (Buffer){
+        .buff = (char*)payload,
+        .size = len,
+        .cap = len,
+    };
+    BufferReader br;
+    BufferReader_Init(&br, &buff);
+    FlatExecutionPlan* fep = ExecutionPlan_FindByName(RediStar_BRReadString(&br));
     if(!fep){
         // todo: big big warning
         return;
     }
     ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
     assert(rs.r->registerTrigger);
-    rs.r->registerTrigger(fep, NULL);
+    rs.r->registerTrigger(fep, RediStar_BRReadString(&br));
     if(rs.r->free){
         rs.r->free(rs.r->ctx);
     }
@@ -898,7 +905,7 @@ bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep){
     return true;
 }
 
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep){
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
     ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
     if(!rs.r->registerTrigger){
         return 0;
@@ -907,11 +914,17 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep){
         !FlatExecutionPlan_Broadcast(fep)){
         return 0;
     }
+    Buffer* buff = Buffer_Create();
+    BufferWriter bw;
+    BufferWriter_Init(&bw, buff);
+    RediStar_BWWriteString(&bw, fep->name);
+    RediStar_BWWriteString(&bw, key);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     ((void**)ctx)[1] = modulePointer;
-    RedisModule_SendClusterMessage(ctx, NULL, REGISTER_KEY_SPACE_EVENT_NOTIFICATION, fep->name, strlen(fep->name) + 1 /* +1 is for the '\0' */);
-    rs.r->registerTrigger(fep, NULL);
+    RedisModule_SendClusterMessage(ctx, NULL, REGISTER_KEY_SPACE_EVENT_NOTIFICATION, buff->buff, buff->size);
+    rs.r->registerTrigger(fep, key);
     RedisModule_FreeThreadSafeContext(ctx);
+    Buffer_Free(buff);
     return 1;
 }
 
@@ -1017,6 +1030,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->callback = NULL;
     ret->privateData = NULL;
     ret->freeCallback = NULL;
+    char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
     if(!finalId){
         char noneClusterId[REDISMODULE_NODE_ID_LEN] = {0};
         char* id;
@@ -1026,7 +1040,6 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
             memset(noneClusterId, '0', REDISMODULE_NODE_ID_LEN);
             id = noneClusterId;
         }
-        char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
         memcpy(generatedId, id, REDISMODULE_NODE_ID_LEN);
         memcpy(generatedId + REDISMODULE_NODE_ID_LEN, &lastId, sizeof(long long));
         finalId = generatedId;
