@@ -138,6 +138,9 @@ static PyObject* saveGlobals(PyObject *cls, PyObject *args){
 }
 
 static PyObject* replyToPyList(RedisModuleCallReply *reply){
+    if(!reply){
+        return Py_None;
+    }
     if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY){
         PyObject* ret = PyList_New(0);
         for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; ++i){
@@ -167,7 +170,10 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         return PyList_New(0);
     }
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    PyEval_ReleaseLock();
     RedisModule_ThreadSafeContextLock(rctx);
+    PyEval_AcquireLock();
+
     RedisModule_AutoMemory(rctx);
 
     PyObject* command = PyTuple_GetItem(args, 0);
@@ -185,7 +191,9 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
 
     PyObject* res = replyToPyList(reply);
 
-    RedisModule_FreeCallReply(reply);
+    if(reply){
+        RedisModule_FreeCallReply(reply);
+    }
     array_free(argements);
 
     RedisModule_ThreadSafeContextUnlock(rctx);

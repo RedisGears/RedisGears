@@ -86,7 +86,7 @@ def testRepartitionAndWriteOption(env):
     conn.execute_command('set', 'z', '3')
     id = env.cmd('rs.pyexecute', "starCtx('test')."
                                  "repartition(lambda x: x['value'])."
-                                 "write(lambda x: redistar.saveKey(x['value'], x['key']))."
+                                 "write(lambda x: redistar.executeCommand('set', x['value'], x['key']))."
                                  "map(lambda x : str(x)).collect().run()")
     res = env.cmd('rs.getresultsblocking', id)
     env.assertContains("'value': '1'", str(res))
@@ -106,7 +106,7 @@ def testBasicStream(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rs.pyexecute', "starStreamingCtx('test')."
                                   "repartition(lambda x: x['value'])."
-                                  "write(lambda x: redistar.saveKey(x['value'], x['key']))."
+                                  "write(lambda x: redistar.executeCommand('set', x['value'], x['key']))."
                                   "register('*')")
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
@@ -115,7 +115,7 @@ def testBasicStream(env):
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
     res = []
-    while len(res) != 3:
+    while len(res) < 3:
         res = env.cmd('rs.dumpexecutions')
     for e in res:
         env.broadcast('rs.getresultsblocking', e[3])
@@ -134,7 +134,7 @@ def testBasicStreamProcessing(env):
     res = env.cmd('rs.pyexecute', "starStreamingCtx('test', 'StreamReader')."
                                   "flatMap(lambda x: [(a[0], a[1]) for a in x.items()])."
                                   "repartition(lambda x: x[0])."
-                                  "write(lambda x: redistar.saveKey(x[0], x[1]))."
+                                  "write(lambda x: redistar.executeCommand('set', x[0], x[1]))."
                                   "map(lambda x: str(x))."
                                   "register('stream1')")
     env.assertEqual(res, 'OK')
@@ -142,7 +142,7 @@ def testBasicStreamProcessing(env):
         return
     env.cmd('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
     res = []
-    while len(res) != 1:
+    while len(res) < 1:
         res = env.cmd('rs.dumpexecutions')
     for e in res:
         env.broadcast('rs.getresultsblocking', e[3])
