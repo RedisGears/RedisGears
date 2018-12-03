@@ -2,12 +2,15 @@
 #include "redistar.h"
 #include "redistar_memory.h"
 #include "record.h"
+#include "redisdl.h"
+#include "globals.h"
 #include <Python.h>
 #include <marshal.h>
 #include <assert.h>
+#include "utils/arr_rm_alloc.h"
 
 static PyObject* pFunc;
-static PyObject* globals;
+static PyObject* pyGlobals;
 
 static RedisModuleCtx* currentCtx = NULL;
 
@@ -129,39 +132,278 @@ static PyObject* run(PyObject *cls, PyObject *args){
 }
 
 static PyObject* saveGlobals(PyObject *cls, PyObject *args){
-    globals = PyEval_GetGlobals();
-    Py_INCREF(globals);
+    pyGlobals = PyEval_GetGlobals();
+    Py_INCREF(pyGlobals);
     return PyLong_FromLong(1);
 }
 
-static PyObject* saveKey(PyObject *cls, PyObject *args){
-    if(PyTuple_Size(args) != 2){
-        return PyBool_FromLong(0);
+static PyObject* replyToPyList(RedisModuleCallReply *reply){
+    if(!reply){
+        return Py_None;
+    }
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY){
+        PyObject* ret = PyList_New(0);
+        for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; ++i){
+            RedisModuleCallReply *subReply = RedisModule_CallReplyArrayElement(reply, i);
+            PyList_Append(ret, replyToPyList(subReply));
+        }
+        return ret;
+    }
+
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING ||
+            RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        size_t len;
+        const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
+        return PyString_FromString(replyStr);
+    }
+
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER){
+        long long val = RedisModule_CallReplyInteger(reply);
+        return PyLong_FromLongLong(val);
+    }
+
+    return Py_None;
+}
+
+static PyObject* executeCommand(PyObject *cls, PyObject *args){
+    if(PyTuple_Size(args) < 1){
+        return PyList_New(0);
     }
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-    PyObject* key = PyTuple_GetItem(args, 0);
-    PyObject* val = PyTuple_GetItem(args, 1);
-    char* keyStr = PyString_AsString(key);
-    char* valStr = PyString_AsString(val);
+    PyEval_ReleaseLock();
     RedisModule_ThreadSafeContextLock(rctx);
-    RedisModuleString* keyRedisStr = RedisModule_CreateString(rctx, keyStr, strlen(keyStr));
-    RedisModuleKey* keyHandler = RedisModule_OpenKey(rctx, keyRedisStr, REDISMODULE_WRITE);
-    int type = RedisModule_KeyType(keyHandler);
-    if(type != REDISMODULE_KEYTYPE_EMPTY){
-        RedisModule_DeleteKey(keyHandler);
+    PyEval_AcquireLock();
+
+    RedisModule_AutoMemory(rctx);
+
+    PyObject* command = PyTuple_GetItem(args, 0);
+    char* commandStr = PyString_AsString(command);
+
+    RedisModuleString** argements = array_new(RedisModuleString*, 10);
+    for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
+        PyObject* argument = PyTuple_GetItem(args, i);
+        char* argumentStr = PyString_AsString(argument);
+        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentStr, strlen(argumentStr));
+        argements = array_append(argements, argumentRedisStr);
     }
-    RedisModuleString* valRedisStr = RedisModule_CreateString(rctx, valStr, strlen(valStr));
-    RedisModule_StringSet(keyHandler, valRedisStr);
+
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "v", argements, array_len(argements));
+
+    PyObject* res = replyToPyList(reply);
+
+    if(reply){
+        RedisModule_FreeCallReply(reply);
+    }
+    array_free(argements);
+
     RedisModule_ThreadSafeContextUnlock(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
-    return PyBool_FromLong(1);
+    return res;
+}
+
+typedef struct PyTensor{
+   PyObject_HEAD
+   RDL_Tensor* t;
+} PyTensor;
+
+static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
+    int ndims = RedisDL_TensorNumDims(pyt->t);
+    PyObject* dims = PyList_New(0);
+    long long len = 0;
+    long long totalElements = 1;
+    for(int i = 0 ; i < ndims ; ++i){
+        totalElements *= RedisDL_TensorDim(pyt->t, i);
+    }
+    PyObject* elements = PyList_New(0);
+    for(long long j = 0 ; j < totalElements ; ++j){
+        double val;
+        RedisDL_TensorGetValueAsDouble(pyt->t, j, &val);
+        PyObject *pyVal = PyFloat_FromDouble(val);
+        PyList_Append(dims, pyVal);
+    }
+    return dims;
+}
+
+static PyObject* tensorToFlatList(PyObject *cls, PyObject *args){
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
+    return PyTensor_ToFlatList(pyt);
+}
+
+static PyObject *PyTensor_ToStr(PyObject * pyObj){
+    PyTensor* pyt = (PyTensor*)pyObj;
+    return PyObject_Repr(PyTensor_ToFlatList(pyt));
+}
+
+static void PyTensor_Destruct(PyObject *pyObj){
+    PyTensor* pyt = (PyTensor*)pyObj;
+    RedisDL_TensorFree(pyt->t);
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
+static PyTypeObject PyTensorType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "redistar.PyTensor",       /* tp_name */
+    sizeof(PyTensor),          /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    PyTensor_Destruct,         /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_compare */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash */
+    0,                         /* tp_call */
+    PyTensor_ToStr,            /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+    "PyTensor",                /* tp_doc */
+};
+
+static size_t getDimsRecursive(PyObject *list, long long** dims){
+    if(!PyList_Check(list)){
+        return 0;
+    }
+    long long curr_dim = PyList_Size(list);
+    *dims = array_append(*dims, curr_dim);
+    return 1 + getDimsRecursive(PyList_GetItem(list, 0), dims);
+}
+
+static void getAllValues(PyObject *list, double** values){
+    if(!PyList_Check(list)){
+        double val = PyFloat_AsDouble(list);
+        *values = array_append(*values, val);
+        return;
+    }
+    for(size_t i = 0 ; i < PyList_Size(list); ++i){
+        getAllValues(PyList_GetItem(list, i), values);
+    }
+}
+
+static PyObject* createTensor(PyObject *cls, PyObject *args){
+    assert(globals.redisDLLoaded);
+    PyObject* typeName = PyTuple_GetItem(args, 0);
+    char* typeNameStr = PyString_AsString(typeName);
+    PyObject* pyDims = PyTuple_GetItem(args, 1);
+    long long* dims = array_new(long long, 10);
+    double* values = array_new(long long, 1000);
+    size_t ndims = getDimsRecursive(pyDims, &dims);
+    RDL_Tensor* t = RedisDL_TensorCreate(typeNameStr, dims, ndims);
+    getAllValues(pyDims, &values);
+    for(long long i = 0 ; i < array_len(values) ; ++i){
+        RedisDL_TensorSetValueFromDouble(t, i, values[i]);
+    }
+    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+    pyt->t = t;
+    array_free(dims);
+    array_free(values);
+    return (PyObject*)pyt;
+}
+
+typedef struct PyGraphRunner{
+   PyObject_HEAD
+   RDL_GraphRunCtx* g;
+} PyGraphRunner;
+
+static PyObject* PyGraph_ToStr(PyObject *obj){
+    return PyString_FromString("PyGraphRunner to str");
+}
+
+static void PyGraphRunner_Destruct(PyObject *pyObj){
+    PyGraphRunner* pyg = (PyGraphRunner*)pyObj;
+    RedisDL_RunCtxFree(pyg->g);
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
+static PyTypeObject PyGraphRunnerType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "redistar.PyGraphRunner",             /* tp_name */
+    sizeof(PyGraphRunner), /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    PyGraphRunner_Destruct,    /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_compare */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash */
+    0,                         /* tp_call */
+    PyGraph_ToStr,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+    "PyGraphRunner",           /* tp_doc */
+};
+
+static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
+    assert(globals.redisDLLoaded);
+    PyObject* keyName = PyTuple_GetItem(args, 0);
+    char* keyNameStr = PyString_AsString(keyName);
+
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_ThreadSafeContextLock(ctx);
+
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
+    // todo: check for type, add api for this
+    RDL_Graph *g = RedisModule_ModuleTypeGetValue(key);
+    RDL_GraphRunCtx* runCtx = RedisDL_RunCtxCreate(g);
+
+    RedisModule_FreeString(ctx, keyRedisStr);
+    RedisModule_CloseKey(key);
+    RedisModule_ThreadSafeContextUnlock(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
+
+    PyGraphRunner* pyg = PyObject_New(PyGraphRunner, &PyGraphRunnerType);
+    pyg->g = runCtx;
+
+    return (PyObject*)pyg;
+}
+
+static PyObject* graphRunnerAddInput(PyObject *cls, PyObject *args){
+    PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
+    PyObject* inputName = PyTuple_GetItem(args, 1);
+    char* inputNameStr = PyString_AsString(inputName);
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 2);
+    RedisDL_RunCtxAddInput(pyg->g, inputNameStr, pyt->t);
+    return PyLong_FromLong(1);
+}
+
+static PyObject* graphRunnerAddOutput(PyObject *cls, PyObject *args){
+    PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
+    PyObject* outputName = PyTuple_GetItem(args, 1);
+    char* outputNameStr = PyString_AsString(outputName);
+    RedisDL_RunCtxAddOutput(pyg->g, outputNameStr);
+    return PyLong_FromLong(1);
+}
+
+static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
+    PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
+    RedisDL_GraphRun(pyg->g);
+    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+    pyt->t = RedisDL_TensorGetShallowCopy(RedisDL_RunCtxOutputTensor(pyg->g, 0));
+    return (PyObject*)pyt;
 }
 
 PyMethodDef EmbMethods[] = {
     {"run", run, METH_VARARGS, "start running the execution plan"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
-    {"saveKey", saveKey, METH_VARARGS, "saving the given key to a give value"},
+    {"executeCommand", executeCommand, METH_VARARGS, "saving the given key to a give value"},
     {"register", registerStream, METH_VARARGS, "register the stream"},
+    {"createTensor", createTensor, METH_VARARGS, "creating a tensor object"},
+    {"createGraphRunner", creatGraphRunner, METH_VARARGS, "open TF graph by key name"},
+    {"graphRunnerAddInput", graphRunnerAddInput, METH_VARARGS, "add input to graph runner"},
+    {"graphRunnerAddOutput", graphRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
+    {"graphRunnerRun", graphRunnerRun, METH_VARARGS, "run graph runner"},
+    {"tensorToFlatList", tensorToFlatList, METH_VARARGS, "turning tensor into flat list"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -460,8 +702,8 @@ static void* RediStarPy_PyCallbackDeserialize(BufferReader* br){
     PyObject* callbackCode = RediStarPy_PyObjectDeserialize(br);
     PyObject* pArgs = PyTuple_New(2);
     PyTuple_SetItem(pArgs, 0, callbackCode);
-    PyTuple_SetItem(pArgs, 1, globals);
-    Py_INCREF(globals);
+    PyTuple_SetItem(pArgs, 1, pyGlobals);
+    Py_INCREF(pyGlobals);
     PyObject* callback = PyObject_CallObject(pFunc, pArgs);
     Py_DECREF(pArgs);
     PyGILState_Release(state);
@@ -479,7 +721,24 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
     Py_SetProgramName("test");  /* optional but recommended */
     Py_Initialize();
     PyEval_InitThreads();
-    Py_InitModule("redistar", EmbMethods);
+    PyTensorType.tp_new = PyType_GenericNew;
+    PyGraphRunnerType.tp_new = PyType_GenericNew;
+
+    if (PyType_Ready(&PyTensorType) < 0){
+        RedisModule_Log(ctx, "warning", "PyTensorType not ready");
+    }
+
+    if (PyType_Ready(&PyGraphRunnerType) < 0){
+        RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
+    }
+
+    PyObject* m = Py_InitModule("redistar", EmbMethods);
+
+    Py_INCREF(&PyTensorType);
+    Py_INCREF(&PyGraphRunnerType);
+
+    PyModule_AddObject(m, "PyTensor", (PyObject *)&PyTensorType);
+    PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
 
     PyRun_SimpleString("import redistar\n"
                        "class starCtx:\n"
@@ -549,6 +808,8 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "        self.key = key\n"
                        "        redistar.register(self)\n"
                        "globals()['str'] = str\n"
+                       "print 'PyTensor object : ' + str(redistar.PyTensor)\n"
+                       "print 'PyGraphRunner object : ' + str(redistar.PyGraphRunner)\n"
                        "redistar._saveGlobals()\n");
 
     PyObject* pName = PyString_FromString("types");
