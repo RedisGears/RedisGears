@@ -20,7 +20,11 @@
 #endif
 #include "record.h"
 #include "commands.h"
+#include "redisdl.h"
+#include "globals.h"
 #include <stdbool.h>
+#define __USE_GNU
+#include <dlfcn.h>
 
 #define EXECUTION_PLAN_FREE_MSG 100
 
@@ -318,21 +322,43 @@ int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, voi
 
 int moduleRegisterApi(const char *funcname, void *funcptr);
 
+void test(){
+
+}
+
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    Dl_info info;
+    dladdr(test, &info);
+    char resolved_path[PATH_MAX];
+    realpath(info.dli_fname, resolved_path);
+    printf("%s\r\n", resolved_path);
+
+    void* handler = dlopen(resolved_path, RTLD_NOW|RTLD_GLOBAL);
+    if(!handler){
+        printf("failed loading symbols: %s\r\n", dlerror());
+    }
+
     if (RedisModule_Init(ctx, "RediStar", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
     }
 
     if(!apiRegistered){
         if(!RediStar_RegisterApi(moduleRegisterApi)){
-            RedisModule_Log(ctx, "warning", "could not register RediStar api\r\n");
+            RedisModule_Log(ctx, "warning", "could not register RediStar api");
             return REDISMODULE_ERR;
         }
     }
 
     if(!RediStar_Initialize()){
-        RedisModule_Log(ctx, "warning", "could not initialize RediStar api\r\n");
+        RedisModule_Log(ctx, "warning", "could not initialize RediStar api");
         return REDISMODULE_ERR;
+    }
+
+    if(!RediDL_Initialize()){
+        RedisModule_Log(ctx, "warning", "could not initialize RediDL api, running without DL support");
+    }else{
+        RedisModule_Log(ctx, "notice", "redisdl loaded successfully");
+        globals.redisDLLoaded = true;
     }
 
     Mgmt_Init();
@@ -341,6 +367,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RSM_RegisterReader(StreamReader);
     RSM_RegisterWriter(KeyRecordWriter, NULL);
     RSM_RegisterMap(GetValueMapper, NULL);
+    RSM_RegisterFilter(Example_Filter, NULL);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
     RSM_RegisterReducer(CountReducer, NULL);
 
