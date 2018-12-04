@@ -42,6 +42,7 @@ void Cluster_Refresh(){
 
     if(!(RedisModule_GetContextFlags(ctx) & REDISMODULE_CTX_FLAGS_CLUSTER)){
         cluster->isClusterMode = false;
+        RedisModule_FreeThreadSafeContext(ctx);
         return;
     }
 

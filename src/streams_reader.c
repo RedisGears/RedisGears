@@ -101,6 +101,7 @@ static void StreamReader_Free(void* ctx){
         }
         array_free(readerCtx->records);
     }
+    RS_FREE(ctx);
 }
 
 static Record* StreamReader_Next(RedisModuleCtx* rctx, void* ctx){
@@ -139,6 +140,7 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             }
         }
     }
+    listReleaseIterator(iter);
     return REDISMODULE_OK;
 }
 

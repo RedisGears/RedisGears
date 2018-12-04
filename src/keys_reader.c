@@ -103,7 +103,7 @@ static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
         char* str = RS_ALLOC(vaLen + 1);
         memcpy(str, val, vaLen);
         str[vaLen] = '\0';
-        Record* strRecord = RediStar_StringRecordCreate(str, len);
+        Record* strRecord = RediStar_StringRecordCreate(str, vaLen);
         RedisModule_FreeString(ctx, key);
         RediStar_ListRecordAdd(listRecord, strRecord);
     }
@@ -221,6 +221,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
             RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         }
     }
+    listReleaseIterator(iter);
     return REDISMODULE_OK;
 }
 
@@ -228,7 +229,7 @@ static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
     if(!keysReaderRegistration){
         keysReaderRegistration = listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
-        if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_ALL, KeysReader_OnKeyTouched) != REDISMODULE_OK){
+        if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_STRING, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
         RedisModule_FreeThreadSafeContext(ctx);

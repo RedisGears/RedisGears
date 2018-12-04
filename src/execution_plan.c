@@ -1240,6 +1240,7 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
 		++numOfEntries;
 	}
+	dictReleaseIterator(iter);
 	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
 	return REDISMODULE_OK;
 }
