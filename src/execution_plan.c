@@ -227,7 +227,7 @@ void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx){
     BufferWriter bw;
     BufferWriter_Init(&bw, buff);
     FlatExecutionPlan_Serialize(fep, &bw);
-    RedisModule_SendClusterMessage(rctx, NULL, NEW_FEP_MSG_TYPE, buff->buff, buff->size);
+    Cluster_SendMsgM(NULL, FlatExecutionPlan_OnReceived, buff->buff, buff->size);
 }
 
 static void ExecutionPlan_Distribute(ExecutionPlan* ep, RedisModuleCtx *rctx){
@@ -240,7 +240,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep, RedisModuleCtx *rctx){
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
     size_t numOfNodes;
     RedisModule_ThreadSafeContextLock(rctx);
-    RedisModule_SendClusterMessage(rctx, NULL, NEW_EP_MSG_TYPE, buff->buff, buff->size);
+    Cluster_SendMsgM(NULL, ExecutionPlan_OnReceived, buff->buff, buff->size);
     RedisModule_ThreadSafeContextUnlock(rctx);
     Buffer_Free(buff);
 }
@@ -469,7 +469,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
             RediStar_FreeRecord(record);
 
             RedisModule_ThreadSafeContextLock(rctx);
-            RedisModule_SendClusterMessage(rctx, shardIdToSendRecord, NEW_REPARTITION_MSG_TYPE, buff->buff, buff->size);
+            Cluster_SendMsgM(shardIdToSendRecord, ExecutionPlan_OnRepartitionRecordReceived, buff->buff, buff->size);
             RedisModule_ThreadSafeContextUnlock(rctx);
 
             Buffer_Clear(buff);
@@ -480,7 +480,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
     RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
 
     RedisModule_ThreadSafeContextLock(rctx);
-	RedisModule_SendClusterMessage(rctx, NULL, DONE_REPARTITION_MSG_TYPE, buff->buff, buff->size);
+    Cluster_SendMsgM(NULL, ExecutionPlan_DoneRepartition, buff->buff, buff->size);
     RedisModule_ThreadSafeContextUnlock(rctx);
 
     Buffer_Free(buff);
@@ -530,7 +530,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			RediStar_FreeRecord(record);
 
 			RedisModule_ThreadSafeContextLock(rctx);
-			RedisModule_SendClusterMessage(rctx, ep->id, NEW_COLLECT_MSG_TYPE, buff->buff, buff->size);
+			Cluster_SendMsgM(ep->id, ExecutionPlan_CollectOnRecordReceived, buff->buff, buff->size);
 			RedisModule_ThreadSafeContextUnlock(rctx);
 
 			Buffer_Clear(buff);
@@ -553,7 +553,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 		RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
 
 		RedisModule_ThreadSafeContextLock(rctx);
-		RedisModule_SendClusterMessage(rctx, ep->id, DONE_COLLECT_MSG_TYPE, buff->buff, buff->size);
+		Cluster_SendMsgM(ep->id, ExecutionPlan_CollectDoneSendingRecords, buff->buff, buff->size);
 		RedisModule_ThreadSafeContextUnlock(rctx);
 		Buffer_Free(buff);
 		return NULL;
@@ -869,13 +869,13 @@ void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
     pthread_mutex_init(&epData.mutex, NULL);
     epData.workers = array_new(pthread_t, numberOfworkers);
 
-    RedisModule_RegisterClusterMessageReceiver(ctx, NEW_FEP_MSG_TYPE, FlatExecutionPlan_OnReceived);
-    RedisModule_RegisterClusterMessageReceiver(ctx, NEW_EP_MSG_TYPE, ExecutionPlan_OnReceived);
-    RedisModule_RegisterClusterMessageReceiver(ctx, NEW_COLLECT_MSG_TYPE, ExecutionPlan_CollectOnRecordReceived);
-    RedisModule_RegisterClusterMessageReceiver(ctx, DONE_COLLECT_MSG_TYPE, ExecutionPlan_CollectDoneSendingRecords);
-    RedisModule_RegisterClusterMessageReceiver(ctx, NEW_REPARTITION_MSG_TYPE, ExecutionPlan_OnRepartitionRecordReceived);
-    RedisModule_RegisterClusterMessageReceiver(ctx, DONE_REPARTITION_MSG_TYPE, ExecutionPlan_DoneRepartition);
-    RedisModule_RegisterClusterMessageReceiver(ctx, REGISTER_KEY_SPACE_EVENT_NOTIFICATION, FlatExecutionPlan_RegisterKeySpaceEvent);
+    Cluster_RegisterMsgReceiverM(FlatExecutionPlan_OnReceived);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_OnReceived);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectOnRecordReceived);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectDoneSendingRecords);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_OnRepartitionRecordReceived);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_DoneRepartition);
+    Cluster_RegisterMsgReceiverM(FlatExecutionPlan_RegisterKeySpaceEvent);
 
     for(size_t i = 0 ; i < numberOfworkers ; ++i){
         pthread_t thread;
@@ -921,7 +921,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
     RediStar_BWWriteString(&bw, key);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     ((void**)ctx)[1] = modulePointer;
-    RedisModule_SendClusterMessage(ctx, NULL, REGISTER_KEY_SPACE_EVENT_NOTIFICATION, buff->buff, buff->size);
+    Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
     rs.r->registerTrigger(fep, key);
     RedisModule_FreeThreadSafeContext(ctx);
     Buffer_Free(buff);

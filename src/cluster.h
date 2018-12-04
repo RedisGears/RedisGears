@@ -11,13 +11,21 @@
 #include "redismodule.h"
 #include <stdbool.h>
 
+#define RS_INNER_MSG_COMMAND "rs.innermsgcommand"
+
+void Cluster_SendMsg(char* id, char* function, char* msg, size_t len);
+#define Cluster_SendMsgM(id, function, msg, len) Cluster_SendMsg(id, #function, msg, len);
+void Cluster_RegisterMsgReceiver(char* function, RedisModuleClusterMessageReceiver receiver);
+#define Cluster_RegisterMsgReceiverM(function) Cluster_RegisterMsgReceiver(#function, function);
 bool Cluster_IsClusterMode();
 size_t Cluster_GetSize();
+void Cluster_Init();
 void Cluster_Refresh();
 char* Cluster_GetMyId();
 bool Cluster_IsMyId(char* id);
-char** Cluster_GetNodesList(size_t* len);
 char* Cluster_GetNodeIdByKey(char* key);
+int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
 
 #endif /* SRC_CLUSTER_H_ */
