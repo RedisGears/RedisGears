@@ -23,10 +23,8 @@ static FlatExecutionPlan* createFep(PyObject* starCtx){
     char* nameStr = PyString_AsString(name);
     PyObject* reader = PyObject_GetAttrString(starCtx, "reader");
     char* readerStr = PyString_AsString(reader);
-    Py_DECREF(name);
     // todo : expose execution name on python interface
 	FlatExecutionPlan* rsctx = RediStar_CreateCtx(nameStr, readerStr);
-	Py_DECREF(reader);
     if(!rsctx){
         return NULL;
     }
@@ -34,7 +32,6 @@ static FlatExecutionPlan* createFep(PyObject* starCtx){
 
     PyObject* stepsKey = PyString_FromString("steps");
     PyObject* stepsList = PyObject_GetAttr(starCtx, stepsKey);
-    Py_DECREF(stepsKey);
 
     for(size_t i = 0 ; i < PyList_Size(stepsList) ; ++i){
         PyObject* step = PyList_GetItem(stepsList, i);
@@ -98,10 +95,6 @@ static PyObject* registerStream(PyObject *cls, PyObject *args){
         RedisModule_ReplyWithError(currentCtx, "Registration Failed");
     }
 
-    Py_DECREF(key);
-    Py_DECREF(starCtx);
-    Py_DECREF(starStreamCtx);
-
     return PyLong_FromLong(1);
 }
 
@@ -124,9 +117,6 @@ static PyObject* run(PyObject *cls, PyObject *args){
     //       think what to do???
     const char* id = RediStar_GetId(ep);
     RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
-
-    Py_DECREF(regex);
-    Py_DECREF(starCtx);
 
     return PyLong_FromLong(1);
 }
@@ -692,7 +682,6 @@ static void RediStarPy_PyCallbackSerialize(void* arg, BufferWriter* bw){
     PyObject* callback = arg;
     PyObject* callbackCode = PyObject_GetAttrString(callback, "func_code");
     RediStarPy_PyObjectSerialize(callbackCode, bw);
-    Py_DECREF(callbackCode);
     PyGILState_Release(state);
     return;
 }
