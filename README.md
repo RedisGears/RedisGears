@@ -1,7 +1,7 @@
 # RedisGears
 Dynamic execution framework for your Redis data, simply:
 ```
-gearsCtx('execution-name', '*').filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run()
+gearsCtx('execution-name').filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run('*')
 ```
 RedisGears supports full python syntax and low level c api. In addition you can run it on cluster.
 
