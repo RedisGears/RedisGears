@@ -8,8 +8,8 @@
 #ifndef SRC_EXAMPLE_H_
 #define SRC_EXAMPLE_H_
 
+#include "redisgears.h"
 #include "redismodule.h"
-#include "redistar.h"
 
 int Example_CommandCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 bool Example_Filter(RedisModuleCtx* rctx, Record *r, void* arg, char** err);

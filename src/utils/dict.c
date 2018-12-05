@@ -44,7 +44,8 @@
 #include "dict.h"
 #include "redismodule.h"
 #include <assert.h>
-#include <redistar_memory.h>
+
+#include "../redisgears_memory.h"
 
 static uint64_t stringsHashFunction(const void *key){
     return dictGenHashFunction(key, strlen((char*)key));
@@ -58,11 +59,11 @@ static int stringsKeyCompare(void *privdata, const void *key1, const void *key2)
 }
 
 static void stringsKeyDestructor(void *privdata, void *key){
-    RS_FREE(key);
+    RG_FREE(key);
 }
 
 static void* stringsKeyDup(void *privdata, const void *key){
-    return RS_STRDUP((char*)key);
+    return RG_STRDUP((char*)key);
 }
 
 dictType dictTypeHeapStrings = {
@@ -134,7 +135,7 @@ static void _dictReset(dictht *ht)
 dict *dictCreate(dictType *type,
         void *privDataPtr)
 {
-    dict *d = RS_ALLOC(sizeof(*d));
+    dict *d = RG_ALLOC(sizeof(*d));
 
     _dictInit(d,type,privDataPtr);
     return d;
@@ -242,7 +243,7 @@ int dictRehash(dict *d, int n) {
 
     /* Check if we already rehashed the whole table... */
     if (d->ht[0].used == 0) {
-        RS_FREE(d->ht[0].table);
+        RG_FREE(d->ht[0].table);
         d->ht[0] = d->ht[1];
         _dictReset(&d->ht[1]);
         d->rehashidx = -1;
@@ -330,7 +331,7 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
      * system it is more likely that recently added entries are accessed
      * more frequently. */
     ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
-    entry = RS_ALLOC(sizeof(*entry));
+    entry = RG_ALLOC(sizeof(*entry));
     entry->next = ht->table[index];
     ht->table[index] = entry;
     ht->used++;
@@ -408,7 +409,7 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
                 if (!nofree) {
                     dictFreeKey(d, he);
                     dictFreeVal(d, he);
-                    RS_FREE(he);
+                    RG_FREE(he);
                 }
                 d->ht[table].used--;
                 return he;
@@ -458,7 +459,7 @@ void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
     if (he == NULL) return;
     dictFreeKey(d, he);
     dictFreeVal(d, he);
-    RS_FREE(he);
+    RG_FREE(he);
 }
 
 /* Destroy an entire dictionary */
@@ -476,13 +477,13 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
             nextHe = he->next;
             dictFreeKey(d, he);
             dictFreeVal(d, he);
-            RS_FREE(he);
+            RG_FREE(he);
             ht->used--;
             he = nextHe;
         }
     }
     /* Free the table and the allocated cache structure */
-    RS_FREE(ht->table);
+    RG_FREE(ht->table);
     /* Re-initialize the table */
     _dictReset(ht);
     return DICT_OK; /* never fails */
@@ -493,7 +494,7 @@ void dictRelease(dict *d)
 {
     _dictClear(d,&d->ht[0],NULL);
     _dictClear(d,&d->ht[1],NULL);
-    RS_FREE(d);
+    RG_FREE(d);
 }
 
 dictEntry *dictFind(dict *d, const void *key)
@@ -564,7 +565,7 @@ long long dictFingerprint(dict *d) {
 
 dictIterator *dictGetIterator(dict *d)
 {
-    dictIterator *iter = RS_ALLOC(sizeof(*iter));
+    dictIterator *iter = RG_ALLOC(sizeof(*iter));
 
     iter->d = d;
     iter->table = 0;
@@ -625,7 +626,7 @@ void dictReleaseIterator(dictIterator *iter)
         else
             assert(iter->fingerprint == dictFingerprint(iter->d));
     }
-    RS_FREE(iter);
+    RG_FREE(iter);
 }
 
 /* Return a random entry from the hash table. Useful to

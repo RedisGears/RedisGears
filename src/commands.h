@@ -9,7 +9,7 @@
 #define SRC_COMMANDS_H_
 
 
-#include "redistar.h"
+#include "redisgears.h"
 
 int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

@@ -12,16 +12,16 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 #ifdef WITHPYTHON
     PyObject* obj;
 #endif
-    switch(RediStar_RecordGetType(record)){
+    switch(RedisGears_RecordGetType(record)){
     case STRING_RECORD:
-        str = RediStar_StringRecordGet(record, &listLen);
+        str = RedisGears_StringRecordGet(record, &listLen);
         RedisModule_ReplyWithStringBuffer(rctx, str, listLen);
         break;
     case LONG_RECORD:
-        RedisModule_ReplyWithLongLong(rctx, RediStar_LongRecordGet(record));
+        RedisModule_ReplyWithLongLong(rctx, RedisGears_LongRecordGet(record));
         break;
     case DOUBLE_RECORD:
-        RedisModule_ReplyWithDouble(rctx, RediStar_DoubleRecordGet(record));
+        RedisModule_ReplyWithDouble(rctx, RedisGears_DoubleRecordGet(record));
         break;
     case KEY_HANDLER_RECORD:
         RedisModule_ReplyWithStringBuffer(rctx, "KEY HANDLER RECORD", strlen("KEY HANDLER RECORD"));
@@ -29,20 +29,20 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     case KEY_RECORD:
         RedisModule_ReplyWithArray(rctx, 2);
         size_t keyLen;
-        char* key = RediStar_KeyRecordGetKey(record, &keyLen);
+        char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
         RedisModule_ReplyWithStringBuffer(rctx, key, keyLen);
-        Command_ReturnResult(rctx, RediStar_KeyRecordGetVal(record));
+        Command_ReturnResult(rctx, RedisGears_KeyRecordGetVal(record));
         break;
     case LIST_RECORD:
-        listLen = RediStar_ListRecordLen(record);
+        listLen = RedisGears_ListRecordLen(record);
         RedisModule_ReplyWithArray(rctx, listLen);
         for(int i = 0 ; i < listLen ; ++i){
-        	Command_ReturnResult(rctx, RediStar_ListRecordGet(record, i));
+        	Command_ReturnResult(rctx, RedisGears_ListRecordGet(record, i));
         }
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
-        obj = RS_PyObjRecordGet(record);
+        obj = RG_PyObjRecordGet(record);
         if(PyObject_TypeCheck(obj, &PyBaseString_Type)) {
             str = PyString_AsString(obj);
             RedisModule_ReplyWithStringBuffer(rctx, str, strlen(str));
@@ -57,10 +57,10 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 }
 
 static void Command_ReturnResults(ExecutionPlan* starCtx, RedisModuleCtx *ctx){
-	long long len = RediStar_GetRecordsLen(starCtx);
+	long long len = RedisGears_GetRecordsLen(starCtx);
 	RedisModule_ReplyWithArray(ctx, len);
 	for(long long i = 0 ; i < len ; ++i){
-		Record* r = RediStar_GetRecord(starCtx, i);
+		Record* r = RedisGears_GetRecord(starCtx, i);
 		Command_ReturnResult(ctx, r);
 	}
 }
@@ -81,14 +81,14 @@ int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	}
 
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* starCtx = RediStar_GetExecution(id);
+	ExecutionPlan* starCtx = RedisGears_GetExecution(id);
 
 	if(!starCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
 		return REDISMODULE_OK;
 	}
 
-	if(!RediStar_IsDone(starCtx)){
+	if(!RedisGears_IsDone(starCtx)){
 		RedisModule_ReplyWithError(ctx, "execution is still running");
 		return REDISMODULE_OK;
 	}
@@ -108,7 +108,7 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	}
 
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* starCtx = RediStar_GetExecution(id);
+	ExecutionPlan* starCtx = RedisGears_GetExecution(id);
 
 	if(!starCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
@@ -116,11 +116,11 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	}
 
 	RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 1000000);
-	if(RediStar_RegisterExecutionDoneCallback(starCtx, Command_ExecutionDone)){
-		RedisModuleBlockedClient **blockClients = RediStar_GetPrivateData(starCtx);
+	if(RedisGears_RegisterExecutionDoneCallback(starCtx, Command_ExecutionDone)){
+		RedisModuleBlockedClient **blockClients = RedisGears_GetPrivateData(starCtx);
 		if(!blockClients){
 			blockClients = array_new(RedisModuleBlockedClient*, 10);
-			RediStar_SetPrivateData(starCtx, blockClients, Command_FreePrivateData);
+			RedisGears_SetPrivateData(starCtx, blockClients, Command_FreePrivateData);
 		}
 		blockClients = array_append(blockClients, bc);
 		return REDISMODULE_OK;
@@ -136,19 +136,19 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	}
 
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* starCtx = RediStar_GetExecution(id);
+	ExecutionPlan* starCtx = RedisGears_GetExecution(id);
 
 	if(!starCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
 		return REDISMODULE_OK;
 	}
 
-	if(!RediStar_IsDone(starCtx)){
+	if(!RedisGears_IsDone(starCtx)){
 		RedisModule_ReplyWithError(ctx, "can not drop a running execution");
 		return REDISMODULE_OK;
 	}
 
-	RediStar_DropExecution(starCtx, ctx);
+	RedisGears_DropExecution(starCtx, ctx);
 
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 
@@ -161,16 +161,16 @@ int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     }
 
     const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-    char* arg = RS_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
-    FlatExecutionPlan* starCtx = RediStar_GetFlatExecution(name);
+    char* arg = RG_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
+    FlatExecutionPlan* starCtx = RedisGears_GetFlatExecution(name);
 
     if(!starCtx){
         RedisModule_ReplyWithError(ctx, "flat execution plan does not exits");
         return REDISMODULE_OK;
     }
 
-    ExecutionPlan* ep = RediStar_Run(starCtx, arg, NULL, NULL);
-    const char* id = RediStar_GetId(ep);
+    ExecutionPlan* ep = RedisGears_Run(starCtx, arg, NULL, NULL);
+    const char* id = RedisGears_GetId(ep);
     RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
     return REDISMODULE_OK;
 }

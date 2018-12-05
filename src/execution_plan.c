@@ -5,13 +5,13 @@
 #include "cluster.h"
 #include <assert.h>
 #include <stdbool.h>
-#include "redistar.h"
-#include "redistar_memory.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
 #include <pthread.h>
 #include <unistd.h>
+#include "redisgears.h"
+#include "redisgears_memory.h"
 
 char* stepsNames[] = {
         "NONE",
@@ -43,19 +43,19 @@ typedef struct LimitExecutionStepArg{
 }LimitExecutionStepArg;
 
 static void FreeLimitArg(void* arg){
-    RS_FREE(arg);
+    RG_FREE(arg);
 }
 
 static void LimitArgSerialize(void* arg, BufferWriter* bw){
     LimitExecutionStepArg* limitArg = arg;
-    RediStar_BWWriteLong(bw, limitArg->offset);
-    RediStar_BWWriteLong(bw, limitArg->len);
+    RedisGears_BWWriteLong(bw, limitArg->offset);
+    RedisGears_BWWriteLong(bw, limitArg->len);
 }
 
 static void* LimitArgDeserialize(BufferReader* br){
-    LimitExecutionStepArg* limitArg = RS_ALLOC(sizeof(*limitArg));
-    limitArg->offset = RediStar_BRReadLong(br);
-    limitArg->len = RediStar_BRReadLong(br);
+    LimitExecutionStepArg* limitArg = RG_ALLOC(sizeof(*limitArg));
+    limitArg->offset = RedisGears_BRReadLong(br);
+    limitArg->len = RedisGears_BRReadLong(br);
     return limitArg;
 }
 
@@ -96,11 +96,11 @@ static int idKeyCompare(void *privdata, const void *key1, const void *key2){
 }
 
 static void idKeyDestructor(void *privdata, void *key){
-    RS_FREE(key);
+    RG_FREE(key);
 }
 
 static void* idKeyDup(void *privdata, const void *key){
-	char* ret = RS_ALLOC(EXECUTION_PLAN_ID_LEN);
+	char* ret = RG_ALLOC(EXECUTION_PLAN_ID_LEN);
 	memcpy(ret, key , EXECUTION_PLAN_ID_LEN);
     return ret;
 }
@@ -170,12 +170,12 @@ ExecutionPlan* ExecutionPlan_FindByStrId(const char* id){
 }
 
 static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, BufferWriter* bw){
-    RediStar_BWWriteString(bw, rfep->reader);
+    RedisGears_BWWriteString(bw, rfep->reader);
 }
 
 static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWriter* bw){
-    RediStar_BWWriteLong(bw, step->type);
-    RediStar_BWWriteString(bw, step->bStep.stepName);
+    RedisGears_BWWriteLong(bw, step->type);
+    RedisGears_BWWriteString(bw, step->bStep.stepName);
     ArgType* type = step->bStep.arg.type;
     if(type && type->serialize){
         type->serialize(step->bStep.arg.stepArg, bw);
@@ -183,9 +183,9 @@ static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWrite
 }
 
 static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, BufferWriter* bw){
-	RediStar_BWWriteString(bw, fep->name);
+	RedisGears_BWWriteString(bw, fep->name);
     FlatExecutionPlan_SerializeReader(fep->reader, bw);
-    RediStar_BWWriteLong(bw, array_len(fep->steps));
+    RedisGears_BWWriteLong(bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
         FlatExecutionPlan_SerializeStep(step, bw);
@@ -193,15 +193,15 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, BufferWriter* bw
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(BufferReader* br){
-    char* readerName = RediStar_BRReadString(br);
+    char* readerName = RedisGears_BRReadString(br);
     FlatExecutionReader* reader = FlatExecutionPlan_NewReader(readerName);
     return reader;
 }
 
 static FlatExecutionStep FlatExecutionPlan_DeserializeStep(BufferReader* br){
     FlatExecutionStep step;
-    step.type = RediStar_BRReadLong(br);
-    step.bStep.stepName = RS_STRDUP(RediStar_BRReadString(br));
+    step.type = RedisGears_BRReadLong(br);
+    step.bStep.stepName = RG_STRDUP(RedisGears_BRReadString(br));
     step.bStep.arg.stepArg = NULL;
     step.bStep.arg.type = FlatExecutionPlan_GetArgTypeByStepType(step.type, step.bStep.stepName);
     if(step.bStep.arg.type && step.bStep.arg.type->deserialize){
@@ -211,10 +211,10 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(BufferReader* br){
 }
 
 static FlatExecutionPlan* FlatExecutionPlan_Deserialize(BufferReader* br){
-	char* name = RediStar_BRReadString(br);
+	char* name = RedisGears_BRReadString(br);
     FlatExecutionPlan* ret = FlatExecutionPlan_New(name);
     ret->reader = FlatExecutionPlan_DeserializeReader(br);
-    long numberOfSteps = RediStar_BRReadLong(br);
+    long numberOfSteps = RedisGears_BRReadLong(br);
     for(int i = 0 ; i < numberOfSteps ; ++i){
         ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
     }
@@ -234,8 +234,8 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep, RedisModuleCtx *rctx){
     Buffer* buff = Buffer_Create();
     BufferWriter bw;
     BufferWriter_Init(&bw, buff);
-    RediStar_BWWriteString(&bw, ep->fep->name);
-    RediStar_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution id
+    RedisGears_BWWriteString(&bw, ep->fep->name);
+    RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
     size_t numOfNodes;
@@ -264,13 +264,13 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
         }
         bool filterRes = step->filter.filter(rctx, record, step->filter.stepArg.stepArg, err);
         if(*err){
-            RediStar_FreeRecord(record);
+            RedisGears_FreeRecord(record);
             return NULL;
         }
         if(filterRes){
             return record;
         }else{
-            RediStar_FreeRecord(record);
+            RedisGears_FreeRecord(record);
         }
     }
     return NULL;
@@ -285,14 +285,14 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
         return record;
     }
     if(*err){
-        RediStar_FreeRecord(record);
+        RedisGears_FreeRecord(record);
         return NULL;
     }
     if(record != NULL){
         record = step->map.map(rctx, record, step->map.stepArg.stepArg, err);
         if(*err){
             if(record){
-                RediStar_FreeRecord(record);
+                RedisGears_FreeRecord(record);
             }
             return NULL;
         }
@@ -302,9 +302,9 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
 
 static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     if(step->flatMap.pendings){
-        Record* r = RediStar_ListRecordPop(step->flatMap.pendings);
-        if(RediStar_ListRecordLen(step->flatMap.pendings) == 0){
-            RediStar_FreeRecord(step->flatMap.pendings);
+        Record* r = RedisGears_ListRecordPop(step->flatMap.pendings);
+        if(RedisGears_ListRecordLen(step->flatMap.pendings) == 0){
+            RedisGears_FreeRecord(step->flatMap.pendings);
             step->flatMap.pendings = NULL;
         }
         return r;
@@ -317,23 +317,23 @@ static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep*
         return r;
     }
     if(*err){
-        RediStar_FreeRecord(r);
+        RedisGears_FreeRecord(r);
         return NULL;
     }
-    if(RediStar_RecordGetType(r) != LIST_RECORD){
+    if(RedisGears_RecordGetType(r) != LIST_RECORD){
         return r;
     }
-    if(RediStar_ListRecordLen(r) == 0){
+    if(RedisGears_ListRecordLen(r) == 0){
         return r;
     }
-    if(RediStar_ListRecordLen(r) == 1){
+    if(RedisGears_ListRecordLen(r) == 1){
         Record* ret;
-        ret = RediStar_ListRecordPop(r);
-        RediStar_FreeRecord(r);
+        ret = RedisGears_ListRecordPop(r);
+        RedisGears_FreeRecord(r);
         return ret;
     }
     step->flatMap.pendings = r;
-    return RediStar_ListRecordPop(step->flatMap.pendings);
+    return RedisGears_ListRecordPop(step->flatMap.pendings);
 }
 
 static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
@@ -347,15 +347,15 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
     }
     char* buff = step->extractKey.extractor(rctx, record, step->extractKey.extractorArg.stepArg, &buffLen, err);
     if(*err){
-        RediStar_FreeRecord(record);
+        RedisGears_FreeRecord(record);
         return NULL;
     }
-    char* newBuff = RS_ALLOC(buffLen + 1);
+    char* newBuff = RG_ALLOC(buffLen + 1);
     memcpy(newBuff, buff, buffLen);
     newBuff[buffLen] = '\0';
-    Record* r = RediStar_KeyRecordCreate();
-    RediStar_KeyRecordSetKey(r, newBuff, buffLen);
-    RediStar_KeyRecordSetVal(r, record);
+    Record* r = RedisGears_KeyRecordCreate();
+    RedisGears_KeyRecordSetKey(r, newBuff, buffLen);
+    RedisGears_KeyRecordSetVal(r, record);
     return r;
 }
 
@@ -370,21 +370,21 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
                 dictRelease(d);
                 return record;
             }
-            assert(RediStar_RecordGetType(record) == KEY_RECORD);
+            assert(RedisGears_RecordGetType(record) == KEY_RECORD);
             size_t keyLen;
-            char* key = RediStar_KeyRecordGetKey(record, &keyLen);
+            char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
             if(*err){
-                RediStar_FreeRecord(record);
+                RedisGears_FreeRecord(record);
                 break;
             }
             dictEntry* entry = dictFind(d, key);
             Record* r = NULL;
             if(!entry){
-                r = RediStar_KeyRecordCreate();
-                RediStar_KeyRecordSetKey(r, key, keyLen);
-                RediStar_KeyRecordSetKey(record, NULL, 0);
-                Record* val  = RediStar_ListRecordCreate(GROUP_RECORD_INIT_LEN);
-                RediStar_KeyRecordSetVal(r, val);
+                r = RedisGears_KeyRecordCreate();
+                RedisGears_KeyRecordSetKey(r, key, keyLen);
+                RedisGears_KeyRecordSetKey(record, NULL, 0);
+                Record* val  = RedisGears_ListRecordCreate(GROUP_RECORD_INIT_LEN);
+                RedisGears_KeyRecordSetVal(r, val);
                 dictAdd(d, key, r);
                 if(step->group.groupedRecords == NULL){
                     step->group.groupedRecords = array_new(Record*, GROUP_RECORD_INIT_LEN);
@@ -393,10 +393,10 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
             }else{
                 r = dictGetVal(entry);
             }
-            Record* listRecord = RediStar_KeyRecordGetVal(r);
-            RediStar_ListRecordAdd(listRecord, RediStar_KeyRecordGetVal(record));
-            RediStar_KeyRecordSetVal(record, NULL);
-            RediStar_FreeRecord(record);
+            Record* listRecord = RedisGears_KeyRecordGetVal(r);
+            RedisGears_ListRecordAdd(listRecord, RedisGears_KeyRecordGetVal(record));
+            RedisGears_KeyRecordSetVal(record, NULL);
+            RedisGears_FreeRecord(record);
         }
         dictRelease(d);
     }
@@ -416,15 +416,15 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     }
     if(*err){
         if(record){
-            RediStar_FreeRecord(record);
+            RedisGears_FreeRecord(record);
         }
         return NULL;
     }
-    assert(RediStar_RecordGetType(record) == KEY_RECORD);
+    assert(RedisGears_RecordGetType(record) == KEY_RECORD);
     size_t keyLen;
-    char* key = RediStar_KeyRecordGetKey(record, &keyLen);
-    Record* r = step->reduce.reducer(rctx, key, keyLen, RediStar_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg, err);
-    RediStar_KeyRecordSetVal(record, r);
+    char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
+    Record* r = step->reduce.reducer(rctx, key, keyLen, RedisGears_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg, err);
+    RedisGears_KeyRecordSetVal(record, r);
     return record;
 }
 
@@ -452,7 +452,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
             return record;
         }
         size_t len;
-        char* key = RediStar_KeyRecordGetKey(record, &len);
+        char* key = RedisGears_KeyRecordGetKey(record, &len);
         char* shardIdToSendRecord = Cluster_GetNodeIdByKey(key);
         if(memcmp(shardIdToSendRecord, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
             // this record should stay with us, lets save it.
@@ -463,10 +463,10 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         else{
             // we need to send the record to another shard
             BufferWriter_Init(&bw, buff);
-            RediStar_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
-            RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
-            RS_SerializeRecord(&bw, record);
-            RediStar_FreeRecord(record);
+            RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+            RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
+            RG_SerializeRecord(&bw, record);
+            RedisGears_FreeRecord(record);
 
             RedisModule_ThreadSafeContextLock(rctx);
             Cluster_SendMsgM(shardIdToSendRecord, ExecutionPlan_OnRepartitionRecordReceived, buff->buff, buff->size);
@@ -476,8 +476,8 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         }
     }
     BufferWriter_Init(&bw, buff);
-    RediStar_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
-    RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
+    RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+    RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
     RedisModule_ThreadSafeContextLock(rctx);
     Cluster_SendMsgM(NULL, ExecutionPlan_DoneRepartition, buff->buff, buff->size);
@@ -524,10 +524,10 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			RedisModule_ThreadSafeContextUnlock(rctx);
 		}else{
 			BufferWriter_Init(&bw, buff);
-			RediStar_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
-			RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
-			RS_SerializeRecord(&bw, record);
-			RediStar_FreeRecord(record);
+			RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+			RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
+			RG_SerializeRecord(&bw, record);
+			RedisGears_FreeRecord(record);
 
 			RedisModule_ThreadSafeContextLock(rctx);
 			Cluster_SendMsgM(ep->id, ExecutionPlan_CollectOnRecordReceived, buff->buff, buff->size);
@@ -549,8 +549,8 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 		return &StopRecord;
 	}else{
 		BufferWriter_Init(&bw, buff);
-		RediStar_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
-		RediStar_BWWriteLong(&bw, step->stepId); // serialize step id
+		RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+		RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
 		RedisModule_ThreadSafeContextLock(rctx);
 		Cluster_SendMsgM(ep->id, ExecutionPlan_CollectDoneSendingRecords, buff->buff, buff->size);
@@ -593,7 +593,7 @@ static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* s
 
         ret = record;
     }else{
-        RediStar_FreeRecord(record);
+        RedisGears_FreeRecord(record);
     }
     ++step->limit.currRecordIndex;
     return ret;
@@ -644,7 +644,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
 
     while((record = ExecutionPlan_NextRecord(ep, ep->steps[0], rctx, &err))){
         if(err){
-            Record* r = RediStar_StringRecordCreate(err, strlen(err));
+            Record* r = RedisGears_StringRecordCreate(err, strlen(err));
             ExecutionPlan_WriteResult(ep, rctx, r);
             break;
         }
@@ -655,7 +655,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
         ExecutionPlan_WriteResult(ep, rctx, record);
     }
     if(err){
-        Record* r = RediStar_StringRecordCreate(err, strlen(err));
+        Record* r = RedisGears_StringRecordCreate(err, strlen(err));
         ExecutionPlan_WriteResult(ep, rctx, r);
     }
 
@@ -716,18 +716,18 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     };
     BufferReader br;
     BufferReader_Init(&br, &buff);
-    FlatExecutionPlan* fep = ExecutionPlan_FindByName(RediStar_BRReadString(&br));
+    FlatExecutionPlan* fep = ExecutionPlan_FindByName(RedisGears_BRReadString(&br));
     if(!fep){
         // todo: big big warning
         return;
     }
     ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
     assert(rs.r->registerTrigger);
-    rs.r->registerTrigger(fep, RediStar_BRReadString(&br));
+    rs.r->registerTrigger(fep, RedisGears_BRReadString(&br));
     if(rs.r->free){
         rs.r->free(rs.r->ctx);
     }
-    RS_FREE(rs.r);
+    RG_FREE(rs.r);
 }
 
 static void FlatExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -742,7 +742,7 @@ static void FlatExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender
     dictAdd(epData.namesDict, fep->name, fep);
 }
 
-static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
+static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
     ExecutionPlan* ep = ExecutionPlan_New(fep, eid, arg);
     if(!ep){
         return NULL;
@@ -756,7 +756,7 @@ static void ExecutionPlan_Run(ExecutionPlan* ep){
     ExecutionPlan_AddToRunList(ep);
 }
 
-static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
+static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, arg, callback, privateData);
     ExecutionPlan_Run(ep);
     return ep;
@@ -770,9 +770,9 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     };
     BufferReader br;
     BufferReader_Init(&br, &buff);
-    char* fepName = RediStar_BRReadString(&br);
+    char* fepName = RedisGears_BRReadString(&br);
     size_t idLen;
-    char* eid = RediStar_BRReadBuffer(&br, &idLen);
+    char* eid = RedisGears_BRReadBuffer(&br, &idLen);
     assert(idLen == EXECUTION_PLAN_ID_LEN);
     FlatExecutionPlan* fep = ExecutionPlan_FindByName(fepName);
     if(!fep){
@@ -793,10 +793,10 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     BufferReader br;
     BufferReader_Init(&br, &buff);
     size_t epIdLen;
-    char* epId = RediStar_BRReadBuffer(&br, &epIdLen);
-    size_t stepId = RediStar_BRReadLong(&br);
+    char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+    size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == EXECUTION_PLAN_ID_LEN);
-    Record* r = RS_DeserializeRecord(&br);
+    Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
     assert(ep->steps[stepId]->type == COLLECT);
@@ -811,8 +811,8 @@ static void ExecutionPlan_CollectDoneSendingRecords(RedisModuleCtx *ctx, const c
 	BufferReader br;
 	BufferReader_Init(&br, &buff);
 	size_t epIdLen;
-	char* epId = RediStar_BRReadBuffer(&br, &epIdLen);
-	size_t stepId = RediStar_BRReadLong(&br);
+	char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+	size_t stepId = RedisGears_BRReadLong(&br);
 	ExecutionPlan* ep = ExecutionPlan_FindById(epId);
 	assert(ep);
 	assert(ep->steps[stepId]->type == COLLECT);
@@ -831,10 +831,10 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     BufferReader br;
     BufferReader_Init(&br, &buff);
     size_t epIdLen;
-    char* epId = RediStar_BRReadBuffer(&br, &epIdLen);
-    size_t stepId = RediStar_BRReadLong(&br);
+    char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+    size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == EXECUTION_PLAN_ID_LEN);
-    Record* r = RS_DeserializeRecord(&br);
+    Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
     assert(ep->steps[stepId]->type == REPARTITION);
@@ -849,8 +849,8 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
     BufferReader br;
     BufferReader_Init(&br, &buff);
     size_t epIdLen;
-    char* epId = RediStar_BRReadBuffer(&br, &epIdLen);
-    size_t stepId = RediStar_BRReadLong(&br);
+    char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+    size_t stepId = RedisGears_BRReadLong(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
 	assert(ep);
     assert(ep->steps[stepId]->type == REPARTITION);
@@ -918,8 +918,8 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
         Buffer* buff = Buffer_Create();
         BufferWriter bw;
         BufferWriter_Init(&bw, buff);
-        RediStar_BWWriteString(&bw, fep->name);
-        RediStar_BWWriteString(&bw, key);
+        RedisGears_BWWriteString(&bw, fep->name);
+        RedisGears_BWWriteString(&bw, key);
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
         Buffer_Free(buff);
     }
@@ -927,7 +927,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
     return 1;
 }
 
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
     if(!FlatExecutionPlan_IsBroadcasted(fep) &&
         !FlatExecutionPlan_Broadcast(fep)){
         return NULL;
@@ -936,14 +936,14 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* ar
 }
 
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg){
-    RediStar_ReaderCallback callback = ReadersMgmt_Get(reader->reader);
+    RedisGears_ReaderCallback callback = ReadersMgmt_Get(reader->reader);
     assert(callback); // todo: handle as error in future
     return (ReaderStep){.r = callback(arg)};
 }
 
 static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
 #define PENDING_INITIAL_SIZE 10
-    ExecutionStep* es = RS_ALLOC(sizeof(*es));
+    ExecutionStep* es = RG_ALLOC(sizeof(*es));
     es->type = step->type;
     switch(step->type){
     case MAP:
@@ -995,7 +995,7 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
 }
 
 static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
-    ExecutionStep* es = RS_ALLOC(sizeof(*es));
+    ExecutionStep* es = RG_ALLOC(sizeof(*es));
     es->type = READER;
     es->reader = reader;
     es->prev = NULL;
@@ -1003,7 +1003,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
 }
 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
-    ExecutionPlan* ret = RS_ALLOC(sizeof(*ret));
+    ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ExecutionStep* last = NULL;
     for(int i = array_len(fep->steps) - 1 ; i >= 0 ; --i){
@@ -1064,14 +1064,14 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         break;
     case FLAT_MAP:
         if(es->flatMap.pendings){
-            RediStar_FreeRecord(es->flatMap.pendings);
+            RedisGears_FreeRecord(es->flatMap.pendings);
         }
         break;
     case REPARTITION:
     	if(es->repartion.pendings){
 			for(size_t i = 0 ; i < array_len(es->repartion.pendings) ; ++i){
 				Record* r = es->repartion.pendings[i];
-				RediStar_FreeRecord(r);
+				RedisGears_FreeRecord(r);
 			}
 			array_free(es->repartion.pendings);
 		}
@@ -1080,7 +1080,7 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     	if(es->collect.pendings){
     		for(size_t i = 0 ; i < array_len(es->collect.pendings) ; ++i){
 				Record* r = es->collect.pendings[i];
-				RediStar_FreeRecord(r);
+				RedisGears_FreeRecord(r);
 			}
 			array_free(es->collect.pendings);
     	}
@@ -1089,7 +1089,7 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         if(es->group.groupedRecords){
             for(size_t i = 0 ; i < array_len(es->group.groupedRecords) ; ++i){
                 Record* r = es->group.groupedRecords[i];
-                RediStar_FreeRecord(r);
+                RedisGears_FreeRecord(r);
             }
             array_free(es->group.groupedRecords);
         }
@@ -1098,12 +1098,12 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         if(es->reader.r->free){
             es->reader.r->free(es->reader.r->ctx);
         }
-        RS_FREE(es->reader.r);
+        RG_FREE(es->reader.r);
         break;
     default:
         assert(false);
     }
-    RS_FREE(es);
+    RG_FREE(es);
 }
 
 void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
@@ -1113,22 +1113,22 @@ void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
     array_free(ep->steps);
 
     for(int i = 0 ; i < array_len(ep->results) ; ++i){
-        RediStar_FreeRecord(ep->results[i]);
+        RedisGears_FreeRecord(ep->results[i]);
     }
     array_free(ep->results);
-    RS_FREE(ep);
+    RG_FREE(ep);
 }
 
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
-    FlatExecutionReader* res = RS_ALLOC(sizeof(*res));
-    res->reader = RS_STRDUP(reader);
+    FlatExecutionReader* res = RG_ALLOC(sizeof(*res));
+    res->reader = RG_STRDUP(reader);
     return res;
 }
 
 FlatExecutionPlan* FlatExecutionPlan_New(const char* name){
 #define STEPS_INITIAL_CAP 10
-    FlatExecutionPlan* res = RS_ALLOC(sizeof(*res));
-    res->name = RS_STRDUP(name);
+    FlatExecutionPlan* res = RG_ALLOC(sizeof(*res));
+    res->name = RG_STRDUP(name);
     res->reader = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
     res->distributed = false;
@@ -1143,16 +1143,16 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     dictDelete(epData.namesDict, fep->name);
-	RS_FREE(fep->name);
-    RS_FREE(fep->reader->reader);
-    RS_FREE(fep->reader);
+	RG_FREE(fep->name);
+    RG_FREE(fep->reader->reader);
+    RG_FREE(fep->reader);
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
-        RS_FREE(step->bStep.stepName);
+        RG_FREE(step->bStep.stepName);
         FlatExecutionPlan_FreeArg(step);
     }
     array_free(fep->steps);
-    RS_FREE(fep);
+    RG_FREE(fep);
 }
 
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
@@ -1167,7 +1167,7 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
         .type = FlatExecutionPlan_GetArgTypeByStepType(type, callbackName),
     };
     if(callbackName){
-        s.bStep.stepName = RS_STRDUP(callbackName);
+        s.bStep.stepName = RG_STRDUP(callbackName);
     }else{
         s.bStep.stepName = NULL;
     }
@@ -1204,7 +1204,7 @@ void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){
 }
 
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len){
-    LimitExecutionStepArg* arg = RS_ALLOC(sizeof(*arg));
+    LimitExecutionStepArg* arg = RG_ALLOC(sizeof(*arg));
     *arg = (LimitExecutionStepArg){
         .offset = offset,
         .len = len,

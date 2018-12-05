@@ -1,6 +1,6 @@
 #include "utils/dict.h"
-#include "redistar_memory.h"
 #include "mgmt.h"
+#include "redisgears_memory.h"
 
 #define GENERATE(apiName)\
     typedef struct apiName ## Holder{\
@@ -11,13 +11,13 @@
     void apiName ## sMgmt_Init(){\
         apiName ## dict = dictCreate(&dictTypeHeapStrings, NULL);\
     }\
-    bool apiName ## sMgmt_Add(const char* name, RediStar_ ## apiName ## Callback callback, ArgType* type){\
-        apiName ## Holder* holder = RS_ALLOC(sizeof(*holder));\
+    bool apiName ## sMgmt_Add(const char* name, RedisGears_ ## apiName ## Callback callback, ArgType* type){\
+        apiName ## Holder* holder = RG_ALLOC(sizeof(*holder));\
         holder->type = type;\
         holder->callback = callback;\
         return dictAdd(apiName ## dict, (void*)name, holder);\
     }\
-    RediStar_ ## apiName ## Callback apiName ## sMgmt_Get(const char* name){\
+    RedisGears_ ## apiName ## Callback apiName ## sMgmt_Get(const char* name){\
         dictEntry *entry = dictFind(apiName ## dict, name);\
         if(!entry){\
             return NULL;\

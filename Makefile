@@ -9,7 +9,7 @@ ifeq ($(DEBUG), 1)
     CFLAGS+=-g
 endif
 ifeq ($(WITHPYTHON), 1)
-	SOURCES+=src/redistar_python.c
+	SOURCES+=src/redisgears_python.c
 	PYTHON_CFLAGS=$(shell python-config --includes)
 	PYTHON_LFLAGS=-L$(shell python-config --configdir) -L/usr/lib $(shell python-config --libs)
 	CFLAGS+=-DWITHPYTHON
@@ -18,7 +18,7 @@ ifeq ($(WITHPYTHON), 1)
 endif
 
 all: $(SOURCES)
-	$(CC) -shared -o redistar.so $(CFLAGS) $(SOURCES) $(LFLAGS)
+	$(CC) -shared -o redisgears.so $(CFLAGS) $(SOURCES) $(LFLAGS)
 
 clean:
 	rm *.so *.o src/*.o
@@ -33,4 +33,4 @@ get_deps:
 	rm -rf deps
 	
 ramp_pack: all
-	ramp pack $(realpath ./redistar.so) -m ramp.yml -o redistar.zip
+	ramp pack $(realpath ./redisgears.so) -m ramp.yml -o redisgears.zip
