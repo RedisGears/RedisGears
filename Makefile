@@ -28,7 +28,7 @@ get_deps:
 	rm -rf libs
 	mkdir deps
 	mkdir libs
-	cd deps;git clone https://github.com/libevent/libevent.git;cd ./libevent/;libtoolize;aclocal;autoheader;autoconf;automake --add-missing;CFLAGS=-fPIC ./configure;make;
+	cd deps;git clone https://github.com/libevent/libevent.git;cd ./libevent/;git checkout release-2.1.8-stable;libtoolize;aclocal;autoheader;autoconf;automake --add-missing;CFLAGS=-fPIC ./configure;make;
 	cp ./deps/libevent/.libs/libevent.a ./libs/
 	rm -rf deps
 	
