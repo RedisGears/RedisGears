@@ -2,7 +2,9 @@
 #include "utils/arr_rm_alloc.h"
 #include "cluster.h"
 #include "record.h"
+#ifdef WITHPYTHON
 #include <Python.h>
+#endif
 
 static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     size_t listLen;

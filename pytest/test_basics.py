@@ -6,6 +6,7 @@ import time
 def getConnectionByEnv(env):
     conn = None
     if env.env == 'oss-cluster':
+        env.broadcast('rs.refreshcluster')
         conn = env.envRunner.getClusterConnection()
     else:
         conn = env.getConnection()
@@ -15,7 +16,6 @@ def getConnectionByEnv(env):
 class testBasic:
     def __init__(self):
         self.env = Env()
-        self.env.broadcast('rs.refreshcluster')
         conn = getConnectionByEnv(self.env)
         for i in range(100):
             conn.execute_command('set', str(i), str(i))
@@ -55,7 +55,6 @@ class testBasic:
 
 
 def testFlatMap(env):
-    env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
     id = env.cmd('rs.pyexecute', "starCtx('test')."
@@ -67,7 +66,6 @@ def testFlatMap(env):
 
 
 def testLimit(env):
-    env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
     id = env.cmd('rs.pyexecute', "starCtx('test')."
@@ -79,7 +77,6 @@ def testLimit(env):
 
 
 def testRepartitionAndWriteOption(env):
-    env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
@@ -102,7 +99,6 @@ def testRepartitionAndWriteOption(env):
 
 
 def testBasicStream(env):
-    env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     res = env.cmd('rs.pyexecute', "starStreamingCtx('test')."
                                   "repartition(lambda x: 'values')."
@@ -125,7 +121,6 @@ def testBasicStream(env):
 
 
 def testBasicStreamProcessing(env):
-    env.broadcast('rs.refreshcluster')
     conn = getConnectionByEnv(env)
     res = env.cmd('rs.pyexecute', "starStreamingCtx('test', 'StreamReader')."
                                   "flatMap(lambda x: [(a[0], a[1]) for a in x.items()])."

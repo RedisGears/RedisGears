@@ -25,7 +25,8 @@ bool Cluster_IsMyId(char* id);
 char* Cluster_GetNodeIdByKey(char* key);
 int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-int Command_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int Cluster_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int Cluster_ClusterSet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
 
 #endif /* SRC_CLUSTER_H_ */

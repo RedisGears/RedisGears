@@ -338,7 +338,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         printf("failed loading symbols: %s\r\n", dlerror());
     }
 
-    if (RedisModule_Init(ctx, "RediStar", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
+    if (RedisModule_Init(ctx, "rs", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
     }
 
@@ -386,7 +386,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rs.refreshcluster", Command_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rs.refreshcluster", Cluster_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rs.clusterset", Cluster_ClusterSet, "readonly", 0, 0, -1) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
         return REDISMODULE_ERR;
     }

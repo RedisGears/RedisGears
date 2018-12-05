@@ -31,3 +31,6 @@ get_deps:
 	cd deps;git clone https://github.com/libevent/libevent.git;cd ./libevent/;libtoolize;aclocal;autoheader;autoconf;automake --add-missing;CFLAGS=-fPIC ./configure;make;
 	cp ./deps/libevent/.libs/libevent.a ./libs/
 	rm -rf deps
+	
+ramp_pack: all
+	ramp pack $(realpath ./redistar.so) -m ramp.yml -o redistar.zip

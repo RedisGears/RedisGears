@@ -1,8 +1,11 @@
-echo "no cluster valgrind"
-RLTest --clear-logs --module ../redistar.so --use-valgrind --vg-suppressions ./../leakcheck.supp
-echo "cluster mode, 1 shard, valgrind"
-RLTest --clear-logs --module ../redistar.so --env oss-cluster --shards-count 1 --use-valgrind --vg-suppressions ./../leakcheck.supp
-echo "cluster mode, 2 shards, valgrind"
-RLTest --clear-logs --module ../redistar.so --env oss-cluster --shards-count 2 --use-valgrind --vg-suppressions ./../leakcheck.supp
-echo "cluster mode, 3 shards, valgrind"
-RLTest --clear-logs --module ../redistar.so --env oss-cluster --shards-count 3 --use-valgrind --vg-suppressions ./../leakcheck.supp
+env_prefix=oss
+
+if [ -n "$1" ]
+then
+ env_prefix=$1
+fi
+
+shift
+
+./run_tests.sh $env_prefix --use-valgrind --vg-suppressions ./../leakcheck.supp $@
+
