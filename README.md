@@ -80,7 +80,7 @@ ctx.collect()
 Repartition the record between the cluster nodes (this operation has meaning only on cluster with more then one node, otherwise it has no meaning and it actually do nothing). This operation receives an extractor, the repartition is perfomed by calculating the hslot on the extracted data and then move the record to the node hold this hslot.
 example (using python api):
 ```
-gearsCtx('test', '*').repartition(lambda x: x['value']) # repartition record by value
+gearsCtx('test').repartition(lambda x: x['value']) # repartition record by value
 ```
 
 ### Write
