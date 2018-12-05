@@ -180,7 +180,7 @@ static Record* RS_GetRecord(ExecutionPlan* ep, long long i){
 
 static void RS_DropExecution(ExecutionPlan* ep, RedisModuleCtx* ctx){
     if(Cluster_IsClusterMode()){
-        RedisModule_SendClusterMessage(ctx, NULL, EXECUTION_PLAN_FREE_MSG, ep->idStr, strlen(ep->idStr));
+        Cluster_SendMsgM(NULL, RS_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep, ctx);
 }
@@ -338,7 +338,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         printf("failed loading symbols: %s\r\n", dlerror());
     }
 
-    if (RedisModule_Init(ctx, "RediStar", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
+    if (RedisModule_Init(ctx, "rs", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
     }
 
@@ -363,6 +363,8 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 
     Mgmt_Init();
 
+    Cluster_Init();
+
     RSM_RegisterReader(KeysReader);
     RSM_RegisterReader(StreamReader);
     RSM_RegisterWriter(KeyRecordWriter, NULL);
@@ -377,15 +379,30 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RediStarPy_Init(ctx);
 #endif
 
-    RedisModule_RegisterClusterMessageReceiver(ctx, EXECUTION_PLAN_FREE_MSG, RS_OnDropExecutionMsgReceived);
+    Cluster_RegisterMsgReceiverM(RS_OnDropExecutionMsgReceived);
 
     if (RedisModule_CreateCommand(ctx, "rs.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rs.example");
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rs.refreshcluster", Command_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rs.refreshcluster", Cluster_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rs.clusterset", Cluster_ClusterSet, "readonly", 0, 0, -1) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rs.infocluster", Cluster_GetClusterInfo, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rs.getclusterinfo");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, RS_INNER_MSG_COMMAND, Cluster_OnMsgArrive, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command "RS_INNER_MSG_COMMAND);
         return REDISMODULE_ERR;
     }
 
