@@ -6,11 +6,11 @@
 
 char* KeyRecordStrValueExtractor(RedisModuleCtx* rctx, Record *record, void* arg, size_t* len, char** err){
     if(RedisGears_RecordGetType(record) != KEY_RECORD){
-        *err = RS_STRDUP("KeyRecordStrValue extractor works only on key records");
+        *err = RG_STRDUP("KeyRecordStrValue extractor works only on key records");
         return NULL;
     }
     if(RedisGears_RecordGetType(RedisGears_KeyRecordGetVal(record)) != STRING_RECORD){
-        *err = RS_STRDUP("KeyRecordStrValue extractor works only on key records with handler value");
+        *err = RG_STRDUP("KeyRecordStrValue extractor works only on key records with handler value");
         return NULL;
     }
     Record* strRecord = RedisGears_KeyRecordGetVal(record);

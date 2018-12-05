@@ -5,25 +5,25 @@
  *      Author: meir
  */
 
-#ifndef SRC_REDISGEARS_MEMORY_H_
-#define SRC_REDISGEARS_MEMORY_H_
+#ifndef SRC_REDISGEARG_MEMORY_H_
+#define SRC_REDISGEARG_MEMORY_H_
 
 #include "redismodule.h"
 #include "stdlib.h"
 #include <string.h>
 
 #ifdef VALGRIND
-#define RS_ALLOC malloc
-#define RS_REALLOC realloc
-#define RS_FREE free
-#define RS_STRDUP strdup
+#define RG_ALLOC malloc
+#define RG_REALLOC realloc
+#define RG_FREE free
+#define RG_STRDUP strdup
 #else
-#define RS_ALLOC RedisModule_Alloc
-#define RS_REALLOC RedisModule_Realloc
-#define RS_FREE RedisModule_Free
-#define RS_STRDUP RedisModule_Strdup
+#define RG_ALLOC RedisModule_Alloc
+#define RG_REALLOC RedisModule_Realloc
+#define RG_FREE RedisModule_Free
+#define RG_STRDUP RedisModule_Strdup
 #endif
 
 
 
-#endif /* SRC_REDISGEARS_MEMORY_H_ */
+#endif /* SRC_REDISGEARG_MEMORY_H_ */

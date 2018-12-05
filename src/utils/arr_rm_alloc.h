@@ -8,9 +8,9 @@
 #include "../redisgears_memory.h"
 
 /* Define the allcation functions before including arr.h */
-#define array_alloc_fn RS_ALLOC
-#define array_realloc_fn RS_REALLOC
-#define array_free_fn RS_FREE
+#define array_alloc_fn RG_ALLOC
+#define array_realloc_fn RG_REALLOC
+#define array_free_fn RG_FREE
 
 #include "arr.h"
 

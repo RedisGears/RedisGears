@@ -43,7 +43,7 @@ typedef struct LimitExecutionStepArg{
 }LimitExecutionStepArg;
 
 static void FreeLimitArg(void* arg){
-    RS_FREE(arg);
+    RG_FREE(arg);
 }
 
 static void LimitArgSerialize(void* arg, BufferWriter* bw){
@@ -53,7 +53,7 @@ static void LimitArgSerialize(void* arg, BufferWriter* bw){
 }
 
 static void* LimitArgDeserialize(BufferReader* br){
-    LimitExecutionStepArg* limitArg = RS_ALLOC(sizeof(*limitArg));
+    LimitExecutionStepArg* limitArg = RG_ALLOC(sizeof(*limitArg));
     limitArg->offset = RedisGears_BRReadLong(br);
     limitArg->len = RedisGears_BRReadLong(br);
     return limitArg;
@@ -96,11 +96,11 @@ static int idKeyCompare(void *privdata, const void *key1, const void *key2){
 }
 
 static void idKeyDestructor(void *privdata, void *key){
-    RS_FREE(key);
+    RG_FREE(key);
 }
 
 static void* idKeyDup(void *privdata, const void *key){
-	char* ret = RS_ALLOC(EXECUTION_PLAN_ID_LEN);
+	char* ret = RG_ALLOC(EXECUTION_PLAN_ID_LEN);
 	memcpy(ret, key , EXECUTION_PLAN_ID_LEN);
     return ret;
 }
@@ -201,7 +201,7 @@ static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(BufferReader* br
 static FlatExecutionStep FlatExecutionPlan_DeserializeStep(BufferReader* br){
     FlatExecutionStep step;
     step.type = RedisGears_BRReadLong(br);
-    step.bStep.stepName = RS_STRDUP(RedisGears_BRReadString(br));
+    step.bStep.stepName = RG_STRDUP(RedisGears_BRReadString(br));
     step.bStep.arg.stepArg = NULL;
     step.bStep.arg.type = FlatExecutionPlan_GetArgTypeByStepType(step.type, step.bStep.stepName);
     if(step.bStep.arg.type && step.bStep.arg.type->deserialize){
@@ -350,7 +350,7 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
         RedisGears_FreeRecord(record);
         return NULL;
     }
-    char* newBuff = RS_ALLOC(buffLen + 1);
+    char* newBuff = RG_ALLOC(buffLen + 1);
     memcpy(newBuff, buff, buffLen);
     newBuff[buffLen] = '\0';
     Record* r = RedisGears_KeyRecordCreate();
@@ -465,7 +465,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
             BufferWriter_Init(&bw, buff);
             RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
             RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-            RS_SerializeRecord(&bw, record);
+            RG_SerializeRecord(&bw, record);
             RedisGears_FreeRecord(record);
 
             RedisModule_ThreadSafeContextLock(rctx);
@@ -526,7 +526,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			BufferWriter_Init(&bw, buff);
 			RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
 			RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-			RS_SerializeRecord(&bw, record);
+			RG_SerializeRecord(&bw, record);
 			RedisGears_FreeRecord(record);
 
 			RedisModule_ThreadSafeContextLock(rctx);
@@ -727,7 +727,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     if(rs.r->free){
         rs.r->free(rs.r->ctx);
     }
-    RS_FREE(rs.r);
+    RG_FREE(rs.r);
 }
 
 static void FlatExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -796,7 +796,7 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == EXECUTION_PLAN_ID_LEN);
-    Record* r = RS_DeserializeRecord(&br);
+    Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
     assert(ep->steps[stepId]->type == COLLECT);
@@ -834,7 +834,7 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == EXECUTION_PLAN_ID_LEN);
-    Record* r = RS_DeserializeRecord(&br);
+    Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
     assert(ep->steps[stepId]->type == REPARTITION);
@@ -943,7 +943,7 @@ static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg
 
 static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
 #define PENDING_INITIAL_SIZE 10
-    ExecutionStep* es = RS_ALLOC(sizeof(*es));
+    ExecutionStep* es = RG_ALLOC(sizeof(*es));
     es->type = step->type;
     switch(step->type){
     case MAP:
@@ -995,7 +995,7 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
 }
 
 static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
-    ExecutionStep* es = RS_ALLOC(sizeof(*es));
+    ExecutionStep* es = RG_ALLOC(sizeof(*es));
     es->type = READER;
     es->reader = reader;
     es->prev = NULL;
@@ -1003,7 +1003,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
 }
 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
-    ExecutionPlan* ret = RS_ALLOC(sizeof(*ret));
+    ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ExecutionStep* last = NULL;
     for(int i = array_len(fep->steps) - 1 ; i >= 0 ; --i){
@@ -1098,12 +1098,12 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
         if(es->reader.r->free){
             es->reader.r->free(es->reader.r->ctx);
         }
-        RS_FREE(es->reader.r);
+        RG_FREE(es->reader.r);
         break;
     default:
         assert(false);
     }
-    RS_FREE(es);
+    RG_FREE(es);
 }
 
 void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
@@ -1116,19 +1116,19 @@ void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
         RedisGears_FreeRecord(ep->results[i]);
     }
     array_free(ep->results);
-    RS_FREE(ep);
+    RG_FREE(ep);
 }
 
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
-    FlatExecutionReader* res = RS_ALLOC(sizeof(*res));
-    res->reader = RS_STRDUP(reader);
+    FlatExecutionReader* res = RG_ALLOC(sizeof(*res));
+    res->reader = RG_STRDUP(reader);
     return res;
 }
 
 FlatExecutionPlan* FlatExecutionPlan_New(const char* name){
 #define STEPS_INITIAL_CAP 10
-    FlatExecutionPlan* res = RS_ALLOC(sizeof(*res));
-    res->name = RS_STRDUP(name);
+    FlatExecutionPlan* res = RG_ALLOC(sizeof(*res));
+    res->name = RG_STRDUP(name);
     res->reader = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
     res->distributed = false;
@@ -1143,16 +1143,16 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     dictDelete(epData.namesDict, fep->name);
-	RS_FREE(fep->name);
-    RS_FREE(fep->reader->reader);
-    RS_FREE(fep->reader);
+	RG_FREE(fep->name);
+    RG_FREE(fep->reader->reader);
+    RG_FREE(fep->reader);
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
-        RS_FREE(step->bStep.stepName);
+        RG_FREE(step->bStep.stepName);
         FlatExecutionPlan_FreeArg(step);
     }
     array_free(fep->steps);
-    RS_FREE(fep);
+    RG_FREE(fep);
 }
 
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
@@ -1167,7 +1167,7 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
         .type = FlatExecutionPlan_GetArgTypeByStepType(type, callbackName),
     };
     if(callbackName){
-        s.bStep.stepName = RS_STRDUP(callbackName);
+        s.bStep.stepName = RG_STRDUP(callbackName);
     }else{
         s.bStep.stepName = NULL;
     }
@@ -1204,7 +1204,7 @@ void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){
 }
 
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len){
-    LimitExecutionStepArg* arg = RS_ALLOC(sizeof(*arg));
+    LimitExecutionStepArg* arg = RG_ALLOC(sizeof(*arg));
     *arg = (LimitExecutionStepArg){
         .offset = offset,
         .len = len,

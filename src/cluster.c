@@ -78,23 +78,23 @@ static void FreeNode(Node* n){
     if(n->c){
         redisAsyncFree(n->c);
     }
-    RS_FREE(n->id);
-    RS_FREE(n->ip);
+    RG_FREE(n->id);
+    RG_FREE(n->ip);
     if(n->unixSocket){
-        RS_FREE(n->unixSocket);
+        RG_FREE(n->unixSocket);
     }
-    RS_FREE(n);
+    RG_FREE(n);
 }
 
 static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket){
     assert(!GetNode(id));
-    Node* n = RS_ALLOC(sizeof(*n));
+    Node* n = RG_ALLOC(sizeof(*n));
     *n = (Node){
-            .id = RS_STRDUP(id),
-            .ip = RS_STRDUP(ip),
+            .id = RG_STRDUP(id),
+            .ip = RG_STRDUP(ip),
             .port = port,
-            .password = password ? RS_STRDUP(password) : NULL,
-            .unixSocket = unixSocket ? RS_STRDUP(unixSocket) : NULL,
+            .password = password ? RG_STRDUP(password) : NULL,
+            .unixSocket = unixSocket ? RG_STRDUP(unixSocket) : NULL,
             .c = NULL,
     };
     dictAdd(CurrCluster->nodes, n->id, n);
@@ -103,7 +103,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
 
 static void Cluster_Free(){
     if(CurrCluster->isClusterMode){
-        RS_FREE(CurrCluster->myId);
+        RG_FREE(CurrCluster->myId);
         dictIterator *iter = dictGetIterator(CurrCluster->nodes);
         dictEntry *entry = NULL;
         while((entry = dictNext(iter))){
@@ -114,7 +114,7 @@ static void Cluster_Free(){
         dictRelease(CurrCluster->nodes);
     }
 
-    RS_FREE(CurrCluster);
+    RG_FREE(CurrCluster);
     CurrCluster = NULL;
 }
 
@@ -158,11 +158,11 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         Cluster_Free();
     }
 
-    CurrCluster = RS_ALLOC(sizeof(*CurrCluster));
+    CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
 
     size_t myIdLen;
     const char* myId = RedisModule_StringPtrLen(argv[6], &myIdLen);
-    CurrCluster->myId = RS_ALLOC(REDISMODULE_NODE_ID_LEN + 1);
+    CurrCluster->myId = RG_ALLOC(REDISMODULE_NODE_ID_LEN + 1);
     size_t zerosPadding = REDISMODULE_NODE_ID_LEN - myIdLen;
     memset(CurrCluster->myId, '0', zerosPadding);
     memcpy(CurrCluster->myId + zerosPadding, myId, myIdLen);
@@ -225,7 +225,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
         Cluster_Free();
     }
 
-    CurrCluster = RS_ALLOC(sizeof(*CurrCluster));
+    CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
 
     if(!(RedisModule_GetContextFlags(ctx) & REDISMODULE_CTX_FLAGS_CLUSTER)){
         CurrCluster->isClusterMode = false;
@@ -234,7 +234,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
 
     CurrCluster->isClusterMode = true;
 
-    CurrCluster->myId = RS_ALLOC(REDISMODULE_NODE_ID_LEN + 1);
+    CurrCluster->myId = RG_ALLOC(REDISMODULE_NODE_ID_LEN + 1);
     memcpy(CurrCluster->myId, RedisModule_GetMyClusterID(), REDISMODULE_NODE_ID_LEN);
     CurrCluster->myId[REDISMODULE_NODE_ID_LEN] = '\0';
     CurrCluster->nodes = dictCreate(&dictTypeHeapStrings, NULL);
@@ -288,8 +288,8 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
 static void Cluster_FreeMsg(Msg* msg){
     switch(msg->type){
     case SEND_MSG:
-        RS_FREE(msg->sendMsg.function);
-        RS_FREE(msg->sendMsg.msg);
+        RG_FREE(msg->sendMsg.function);
+        RG_FREE(msg->sendMsg.msg);
         break;
     case CLUSTER_REFRESH_MSG:
     case CLUSTER_SET_MSG:
@@ -297,13 +297,13 @@ static void Cluster_FreeMsg(Msg* msg){
     default:
         assert(false);
     }
-    RS_FREE(msg);
+    RG_FREE(msg);
 }
 
 static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
     size_t sizes[4];
     const char* args[4];
-    args[0] = RS_INNER_MSG_COMMAND;
+    args[0] = RG_INNER_MSG_COMMAND;
     sizes[0] = strlen(args[0]);
     args[1] = CurrCluster->myId;
     sizes[1] = strlen(args[1]);
@@ -388,14 +388,14 @@ void Cluster_RegisterMsgReceiver(char* function, RedisModuleClusterMessageReceiv
 }
 
 void Cluster_SendClusterRefresh(RedisModuleCtx *ctx){
-    Msg* msgStruct = RS_ALLOC(sizeof(*msgStruct));
+    Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
     msgStruct->clusterRefresh.bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 2000000);
     msgStruct->type = CLUSTER_REFRESH_MSG;
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
 
 void Cluster_SendClusterSet(RedisModuleCtx *ctx, RedisModuleString** argv, int argc){
-    Msg* msgStruct = RS_ALLOC(sizeof(*msgStruct));
+    Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
     msgStruct->clusterSet.bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 2000000);
     msgStruct->clusterSet.argv = argv;
     msgStruct->clusterSet.argc = argc;
@@ -404,15 +404,15 @@ void Cluster_SendClusterSet(RedisModuleCtx *ctx, RedisModuleString** argv, int a
 }
 
 void Cluster_SendMsg(char* id, char* function, char* msg, size_t len){
-    Msg* msgStruct = RS_ALLOC(sizeof(*msgStruct));
+    Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
     if(id){
         memcpy(msgStruct->sendMsg.idToSend, id, REDISMODULE_NODE_ID_LEN);
         msgStruct->sendMsg.idToSend[REDISMODULE_NODE_ID_LEN] = '\0';
     }else{
         msgStruct->sendMsg.idToSend[0] = '\0';
     }
-    msgStruct->sendMsg.function = RS_STRDUP(function);
-    msgStruct->sendMsg.msg = RS_ALLOC(len);
+    msgStruct->sendMsg.function = RG_STRDUP(function);
+    msgStruct->sendMsg.msg = RG_ALLOC(len);
     memcpy(msgStruct->sendMsg.msg, msg, len);
     msgStruct->sendMsg.msgLen = len;
     msgStruct->type = SEND_MSG;

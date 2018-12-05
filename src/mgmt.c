@@ -12,7 +12,7 @@
         apiName ## dict = dictCreate(&dictTypeHeapStrings, NULL);\
     }\
     bool apiName ## sMgmt_Add(const char* name, RedisGears_ ## apiName ## Callback callback, ArgType* type){\
-        apiName ## Holder* holder = RS_ALLOC(sizeof(*holder));\
+        apiName ## Holder* holder = RG_ALLOC(sizeof(*holder));\
         holder->type = type;\
         holder->callback = callback;\
         return dictAdd(apiName ## dict, (void*)name, holder);\

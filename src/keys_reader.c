@@ -14,9 +14,9 @@ typedef struct KeysReaderCtx{
     Record** pendingRecords;
 }KeysReaderCtx;
 
-static KeysReaderCtx* RS_KeysReaderCtxCreate(char* match){
+static KeysReaderCtx* RG_KeysReaderCtxCreate(char* match){
 #define PENDING_KEYS_INIT_CAP 10
-    KeysReaderCtx* krctx = RS_ALLOC(sizeof(*krctx));
+    KeysReaderCtx* krctx = RG_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
         .match = match,
         .cursorIndex = 0,
@@ -26,33 +26,33 @@ static KeysReaderCtx* RS_KeysReaderCtxCreate(char* match){
     return krctx;
 }
 
-static void RS_KeysReaderCtxSerialize(void* ctx, BufferWriter* bw){
+static void RG_KeysReaderCtxSerialize(void* ctx, BufferWriter* bw){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     RedisGears_BWWriteString(bw, krctx->match);
 }
 
-static void RS_KeysReaderCtxDeserialize(void* ctx, BufferReader* br){
+static void RG_KeysReaderCtxDeserialize(void* ctx, BufferReader* br){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     char* match = RedisGears_BRReadString(br);
-    krctx->match = RS_STRDUP(match);
+    krctx->match = RG_STRDUP(match);
 }
 
 static void KeysReader_Free(void* ctx){
     KeysReaderCtx* krctx = ctx;
     if(krctx->match){
-        RS_FREE(krctx->match);
+        RG_FREE(krctx->match);
     }
     for(size_t i = 0 ; i < array_len(krctx->pendingRecords) ; ++i){
         RedisGears_FreeRecord(krctx->pendingRecords[i]);
     }
     array_free(krctx->pendingRecords);
-    RS_FREE(krctx);
+    RG_FREE(krctx);
 }
 
 static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
     size_t len;
     char* val = RedisModule_StringDMA(handler, &len, REDISMODULE_READ);
-    char* strVal = RS_ALLOC(len + 1);
+    char* strVal = RG_ALLOC(len + 1);
     memcpy(strVal, val, len);
     strVal[len] = '\0';
 
@@ -78,7 +78,7 @@ static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
         keyCStr[keyStrLen] = '\0';
         size_t valStrLen;
         const char* valStr = RedisModule_CallReplyStringPtr(valReply, &valStrLen);
-        char* valCStr = RS_ALLOC(valStrLen + 1);
+        char* valCStr = RG_ALLOC(valStrLen + 1);
         memcpy(valCStr, valStr, valStrLen);
         valCStr[valStrLen] = '\0';
         Record* valRecord = RedisGears_StringRecordCreate(valCStr, valStrLen);
@@ -100,7 +100,7 @@ static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
         RedisModuleString* key = RedisModule_CreateStringFromCallReply(r);
         size_t vaLen;
         const char* val = RedisModule_StringPtrLen(key, &vaLen);
-        char* str = RS_ALLOC(vaLen + 1);
+        char* str = RG_ALLOC(vaLen + 1);
         memcpy(str, val, vaLen);
         str[vaLen] = '\0';
         Record* strRecord = RedisGears_StringRecordCreate(str, vaLen);
@@ -187,7 +187,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
 
         Record* record = RedisGears_KeyRecordCreate();
 
-        char* keyCStr = RS_ALLOC(keyLen + 1);
+        char* keyCStr = RG_ALLOC(keyLen + 1);
         memcpy(keyCStr, keyStr, keyLen);
         keyCStr[keyLen] = '\0';
 
@@ -216,7 +216,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
     listNode* node = NULL;
     while((node = listNext(iter))){
         FlatExecutionPlan* fep = listNodeValue(node);
-        char* keyStr = RS_STRDUP(RedisModule_StringPtrLen(key, NULL));
+        char* keyStr = RG_STRDUP(RedisModule_StringPtrLen(key, NULL));
         if(!RedisGears_Run(fep, keyStr, NULL, NULL)){
             RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         }
@@ -238,15 +238,15 @@ static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
 }
 
 Reader* KeysReader(void* arg){
-    KeysReaderCtx* ctx = RS_KeysReaderCtxCreate(arg);
-    Reader* r = RS_ALLOC(sizeof(*r));
+    KeysReaderCtx* ctx = RG_KeysReaderCtxCreate(arg);
+    Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .next = KeysReader_Next,
         .free = KeysReader_Free,
-        .serialize = RS_KeysReaderCtxSerialize,
-        .deserialize = RS_KeysReaderCtxDeserialize,
+        .serialize = RG_KeysReaderCtxSerialize,
+        .deserialize = RG_KeysReaderCtxDeserialize,
     };
     return r;
 }

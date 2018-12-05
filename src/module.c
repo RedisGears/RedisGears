@@ -29,36 +29,36 @@
 #define EXECUTION_PLAN_FREE_MSG 100
 
 #define REGISTER_API(name, registerApiCallback) \
-    if(registerApiCallback("RedisGears_" #name, RS_ ## name)){\
+    if(registerApiCallback("RedisGears_" #name, RG_ ## name)){\
         printf("could not register RedisGears_" #name "\r\n");\
         return false;\
     }
 
-static int RS_RegisterReader(char* name, RedisGears_ReaderCallback reader){
+static int RG_RegisterReader(char* name, RedisGears_ReaderCallback reader){
     return ReadersMgmt_Add(name, reader, NULL);
 }
 
-static int RS_RegisterWriter(char* name, RedisGears_WriterCallback writer, ArgType* type){
+static int RG_RegisterWriter(char* name, RedisGears_WriterCallback writer, ArgType* type){
     return WritersMgmt_Add(name, writer, type);
 }
 
-static int RS_RegisterMap(char* name, RedisGears_MapCallback map, ArgType* type){
+static int RG_RegisterMap(char* name, RedisGears_MapCallback map, ArgType* type){
     return MapsMgmt_Add(name, map, type);
 }
 
-static int RS_RegisterFilter(char* name, RedisGears_FilterCallback filter, ArgType* type){
+static int RG_RegisterFilter(char* name, RedisGears_FilterCallback filter, ArgType* type){
     return FiltersMgmt_Add(name, filter, type);
 }
 
-static int RS_RegisterGroupByExtractor(char* name, RedisGears_ExtractorCallback extractor, ArgType* type){
+static int RG_RegisterGroupByExtractor(char* name, RedisGears_ExtractorCallback extractor, ArgType* type){
     return ExtractorsMgmt_Add(name, extractor, type);
 }
 
-static int RS_RegisterReducer(char* name, RedisGears_ReducerCallback reducer, ArgType* type){
+static int RG_RegisterReducer(char* name, RedisGears_ReducerCallback reducer, ArgType* type){
     return ReducersMgmt_Add(name, reducer, type);
 }
 
-static FlatExecutionPlan* RS_CreateCtx(char* name, char* readerName){
+static FlatExecutionPlan* RG_CreateCtx(char* name, char* readerName){
     if(ExecutionPlan_FindByName(name)){
         return NULL;
     }
@@ -67,7 +67,7 @@ static FlatExecutionPlan* RS_CreateCtx(char* name, char* readerName){
     return fep;
 }
 
-static int RS_Map(FlatExecutionPlan* fep, char* name, void* arg){
+static int RG_Map(FlatExecutionPlan* fep, char* name, void* arg){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -75,7 +75,7 @@ static int RS_Map(FlatExecutionPlan* fep, char* name, void* arg){
     return 1;
 }
 
-int RS_FlatMap(FlatExecutionPlan* fep, char* name, void* arg){
+int RG_FlatMap(FlatExecutionPlan* fep, char* name, void* arg){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -83,7 +83,7 @@ int RS_FlatMap(FlatExecutionPlan* fep, char* name, void* arg){
     return 1;
 }
 
-static int RS_Filter(FlatExecutionPlan* fep, char* name, void* arg){
+static int RG_Filter(FlatExecutionPlan* fep, char* name, void* arg){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -91,7 +91,7 @@ static int RS_Filter(FlatExecutionPlan* fep, char* name, void* arg){
     return 1;
 }
 
-static int RS_GroupBy(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg){
+static int RG_GroupBy(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -99,7 +99,7 @@ static int RS_GroupBy(FlatExecutionPlan* fep, char* extraxtorName, void* extract
     return 1;
 }
 
-static int RS_Collect(FlatExecutionPlan* fep){
+static int RG_Collect(FlatExecutionPlan* fep){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -107,7 +107,7 @@ static int RS_Collect(FlatExecutionPlan* fep){
 	return 1;
 }
 
-static int RS_Repartition(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg){
+static int RG_Repartition(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -115,7 +115,7 @@ static int RS_Repartition(FlatExecutionPlan* fep, char* extraxtorName, void* ext
     return 1;
 }
 
-static int RS_Write(FlatExecutionPlan* fep, char* name, void* arg){
+static int RG_Write(FlatExecutionPlan* fep, char* name, void* arg){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -123,7 +123,7 @@ static int RS_Write(FlatExecutionPlan* fep, char* name, void* arg){
     return 1;
 }
 
-static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
+static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
@@ -131,18 +131,18 @@ static int RS_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RS_Register(FlatExecutionPlan* fep, char* key){
+static int RG_Register(FlatExecutionPlan* fep, char* key){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
     return FlatExecutionPlan_Register(fep, key);
 }
 
-static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
 	return FlatExecutionPlan_Run(fep, NULL, arg, callback, privateData);
 }
 
-static bool RS_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback){
+static bool RG_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback){
 	if(ep->isDone){
 		return false;
 	}
@@ -150,55 +150,55 @@ static bool RS_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExe
 	return true;
 }
 
-static bool RS_IsDone(ExecutionPlan* ep){
+static bool RG_IsDone(ExecutionPlan* ep){
 	return ep->isDone;
 }
 
-static const char* RS_GetId(ExecutionPlan* ep){
+static const char* RG_GetId(ExecutionPlan* ep){
     return ep->idStr;
 }
 
-static long long RS_GetRecordsLen(ExecutionPlan* ep){
+static long long RG_GetRecordsLen(ExecutionPlan* ep){
 	assert(ep->isDone);
 	return array_len(ep->results);
 }
 
-static void* RS_GetPrivateData(ExecutionPlan* ep){
+static void* RG_GetPrivateData(ExecutionPlan* ep){
 	return ep->privateData;
 }
 
-static void RS_SetPrivateData(ExecutionPlan* ep, void* privateData, FreePrivateData freeCallback){
+static void RG_SetPrivateData(ExecutionPlan* ep, void* privateData, FreePrivateData freeCallback){
 	ep->privateData = privateData;
 	ep->freeCallback = freeCallback;
 }
 
-static Record* RS_GetRecord(ExecutionPlan* ep, long long i){
+static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
 	assert(ep && ep->isDone);
 	assert(i >= 0 && i < array_len(ep->results));
 	return ep->results[i];
 }
 
-static void RS_DropExecution(ExecutionPlan* ep, RedisModuleCtx* ctx){
+static void RG_DropExecution(ExecutionPlan* ep, RedisModuleCtx* ctx){
     if(Cluster_IsClusterMode()){
-        Cluster_SendMsgM(NULL, RS_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
+        Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep, ctx);
 }
 
-static ExecutionPlan* RS_GetExecution(const char* id){
+static ExecutionPlan* RG_GetExecution(const char* id){
 	ExecutionPlan* ep =	ExecutionPlan_FindByStrId(id);
 	return ep;
 }
 
-static FlatExecutionPlan* RS_GetFlatExecution(const char* name){
+static FlatExecutionPlan* RG_GetFlatExecution(const char* name){
 	FlatExecutionPlan* fep = ExecutionPlan_FindByName(name);
 	return fep;
 }
 
-static ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize){
-    ArgType* ret = RS_ALLOC(sizeof(*ret));
+static ArgType* RG_CreateType(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize){
+    ArgType* ret = RG_ALLOC(sizeof(*ret));
     *ret = (ArgType){
-        .type = RS_STRDUP(name),
+        .type = RG_STRDUP(name),
         .free = free,
         .serialize = serialize,
         .deserialize = deserialize,
@@ -206,27 +206,27 @@ static ArgType* RS_CreateType(char* name, ArgFree free, ArgSerialize serialize, 
     return ret;
 }
 
-static void RS_BWWriteLong(BufferWriter* bw, long val){
+static void RG_BWWriteLong(BufferWriter* bw, long val){
     BufferWriter_WriteLong(bw, val);
 }
 
-static void RS_BWWriteString(BufferWriter* bw, char* str){
+static void RG_BWWriteString(BufferWriter* bw, char* str){
     BufferWriter_WriteString(bw, str);
 }
 
-static void RS_BWWriteBuffer(BufferWriter* bw, char* buff, size_t len){
+static void RG_BWWriteBuffer(BufferWriter* bw, char* buff, size_t len){
     BufferWriter_WriteBuff(bw, buff, len);
 }
 
-static long RS_BRReadLong(BufferReader* br){
+static long RG_BRReadLong(BufferReader* br){
     return BufferReader_ReadLong(br);
 }
 
-static char* RS_BRReadString(BufferReader* br){
+static char* RG_BRReadString(BufferReader* br){
     return BufferReader_ReadString(br);
 }
 
-static char* RS_BRReadBuffer(BufferReader* br, size_t* len){
+static char* RG_BRReadBuffer(BufferReader* br, size_t* len){
     return BufferReader_ReadBuff(br, len);
 }
 
@@ -301,7 +301,7 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     return true;
 }
 
-static void RS_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+static void RG_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = RedisGears_GetExecution(payload);
 	if(!ep){
 		printf("warning: execution not found %s !!!\r\n", payload);
@@ -379,7 +379,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RedisGearsPy_Init(ctx);
 #endif
 
-    Cluster_RegisterMsgReceiverM(RS_OnDropExecutionMsgReceived);
+    Cluster_RegisterMsgReceiverM(RG_OnDropExecutionMsgReceived);
 
     if (RedisModule_CreateCommand(ctx, "rg.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.example");
@@ -401,8 +401,8 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, RS_INNER_MSG_COMMAND, Cluster_OnMsgArrive, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command "RS_INNER_MSG_COMMAND);
+    if (RedisModule_CreateCommand(ctx, RG_INNER_MSG_COMMAND, Cluster_OnMsgArrive, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_MSG_COMMAND);
         return REDISMODULE_ERR;
     }
 

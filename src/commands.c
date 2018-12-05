@@ -42,7 +42,7 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
-        obj = RS_PyObjRecordGet(record);
+        obj = RG_PyObjRecordGet(record);
         if(PyObject_TypeCheck(obj, &PyBaseString_Type)) {
             str = PyString_AsString(obj);
             RedisModule_ReplyWithStringBuffer(rctx, str, strlen(str));
@@ -161,7 +161,7 @@ int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     }
 
     const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-    char* arg = RS_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
+    char* arg = RG_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
     FlatExecutionPlan* starCtx = RedisGears_GetFlatExecution(name);
 
     if(!starCtx){

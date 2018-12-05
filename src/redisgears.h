@@ -5,8 +5,8 @@
  *      Author: meir
  */
 
-#ifndef SRC_REDISGEARS_H_
-#define SRC_REDISGEARS_H_
+#ifndef SRC_REDISGEARG_H_
+#define SRC_REDISGEARG_H_
 
 #include <stdbool.h>
 #include "redismodule.h"
@@ -264,4 +264,4 @@ static bool RedisGears_Initialize(){
     return true;
 }
 
-#endif /* SRC_REDISGEARS_H_ */
+#endif /* SRC_REDISGEARG_H_ */

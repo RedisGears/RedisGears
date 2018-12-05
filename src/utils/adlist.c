@@ -42,7 +42,7 @@ list *listCreate(void)
 {
     struct list *list;
 
-    if ((list = RS_ALLOC(sizeof(*list))) == NULL)
+    if ((list = RG_ALLOC(sizeof(*list))) == NULL)
         return NULL;
     list->head = list->tail = NULL;
     list->len = 0;
@@ -63,7 +63,7 @@ void listEmpty(list *list)
     while(len--) {
         next = current->next;
         if (list->free) list->free(current->value);
-        RS_FREE(current);
+        RG_FREE(current);
         current = next;
     }
     list->head = list->tail = NULL;
@@ -76,7 +76,7 @@ void listEmpty(list *list)
 void listRelease(list *list)
 {
     listEmpty(list);
-    RS_FREE(list);
+    RG_FREE(list);
 }
 
 /* Add a new node to the list, to head, containing the specified 'value'
@@ -89,7 +89,7 @@ list *listAddNodeHead(list *list, void *value)
 {
     listNode *node;
 
-    if ((node = RS_ALLOC(sizeof(*node))) == NULL)
+    if ((node = RG_ALLOC(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
     if (list->len == 0) {
@@ -115,7 +115,7 @@ list *listAddNodeTail(list *list, void *value)
 {
     listNode *node;
 
-    if ((node = RS_ALLOC(sizeof(*node))) == NULL)
+    if ((node = RG_ALLOC(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
     if (list->len == 0) {
@@ -134,7 +134,7 @@ list *listAddNodeTail(list *list, void *value)
 list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
     listNode *node;
 
-    if ((node = RS_ALLOC(sizeof(*node))) == NULL)
+    if ((node = RG_ALLOC(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
     if (after) {
@@ -175,7 +175,7 @@ void listDelNode(list *list, listNode *node)
     else
         list->tail = node->prev;
     if (list->free) list->free(node->value);
-    RS_FREE(node);
+    RG_FREE(node);
     list->len--;
 }
 
@@ -187,7 +187,7 @@ listIter *listGetIterator(list *list, int direction)
 {
     listIter *iter;
 
-    if ((iter = RS_ALLOC(sizeof(*iter))) == NULL) return NULL;
+    if ((iter = RG_ALLOC(sizeof(*iter))) == NULL) return NULL;
     if (direction == AL_START_HEAD)
         iter->next = list->head;
     else
@@ -198,7 +198,7 @@ listIter *listGetIterator(list *list, int direction)
 
 /* Release the iterator memory */
 void listReleaseIterator(listIter *iter) {
-    RS_FREE(iter);
+    RG_FREE(iter);
 }
 
 /* Create an iterator in the list private iterator structure */

@@ -11,22 +11,22 @@
 
 
 Buffer* Buffer_New(size_t initialCap){
-    Buffer* ret = RS_ALLOC(sizeof(*ret));
+    Buffer* ret = RG_ALLOC(sizeof(*ret));
     ret->cap = initialCap;
     ret->size = 0;
-    ret->buff = RS_ALLOC(initialCap * sizeof(char));
+    ret->buff = RG_ALLOC(initialCap * sizeof(char));
     return ret;
 }
 
 void Buffer_Free(Buffer* buff){
-    RS_FREE(buff->buff);
-    RS_FREE(buff);
+    RG_FREE(buff->buff);
+    RG_FREE(buff);
 }
 
 void Buffer_Add(Buffer* buff, char* data, size_t len){
     if (buff->size + len >= buff->cap){
         buff->cap = buff->size + len;
-        buff->buff = RS_REALLOC(buff->buff, buff->cap);
+        buff->buff = RG_REALLOC(buff->buff, buff->cap);
     }
     memcpy(buff->buff + buff->size, data, len);
     buff->size += len;

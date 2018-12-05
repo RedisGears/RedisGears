@@ -5,8 +5,8 @@
  *      Author: meir
  */
 
-#ifndef SRC_REDISGEARS_PYTHON_H_
-#define SRC_REDISGEARS_PYTHON_H_
+#ifndef SRC_REDISGEARG_PYTHON_H_
+#define SRC_REDISGEARG_PYTHON_H_
 
 #include "redismodule.h"
 #include <Python.h>
@@ -19,4 +19,4 @@ void* RedisGearsPy_PyObjectDeserialize(BufferReader* br);
 int RedisGearsPy_Init(RedisModuleCtx *ctx);
 
 
-#endif /* SRC_REDISGEARS_PYTHON_H_ */
+#endif /* SRC_REDISGEARG_PYTHON_H_ */
