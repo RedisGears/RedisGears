@@ -8,8 +8,8 @@
 #ifndef SRC_EXECUTION_PLAN_H_
 #define SRC_EXECUTION_PLAN_H_
 
-#include "redistar.h"
 #include <stdbool.h>
+#include "redisgears.h"
 
 enum StepType{
     MAP=1,
@@ -34,7 +34,7 @@ typedef struct ExecutionStepArg{
 }ExecutionStepArg;
 
 typedef struct MapExecutionStep{
-    RediStar_MapCallback map;
+    RedisGears_MapCallback map;
     ExecutionStepArg stepArg;
 }MapExecutionStep;
 
@@ -44,12 +44,12 @@ typedef struct FlatMapExecutionStep{
 }FlatMapExecutionStep;
 
 typedef struct FilterExecutionStep{
-    RediStar_FilterCallback filter;
+    RedisGears_FilterCallback filter;
     ExecutionStepArg stepArg;
 }FilterExecutionStep;
 
 typedef struct ExtractKeyExecutionStep{
-    RediStar_ExtractorCallback extractor;
+    RedisGears_ExtractorCallback extractor;
     ExecutionStepArg extractorArg;
 }ExtractKeyExecutionStep;
 
@@ -58,7 +58,7 @@ typedef struct GroupExecutionStep{
 }GroupExecutionStep;
 
 typedef struct ReduceExecutionStep{
-    RediStar_ReducerCallback reducer;
+    RedisGears_ReducerCallback reducer;
     ExecutionStepArg reducerArg;
 }ReduceExecutionStep;
 
@@ -84,7 +84,7 @@ typedef struct ReaderStep{
 }ReaderStep;
 
 typedef struct WriterExecutionStep{
-    RediStar_WriterCallback write;
+    RedisGears_WriterCallback write;
     ExecutionStepArg stepArg;
 }WriterExecutionStep;
 
@@ -125,7 +125,7 @@ typedef struct ExecutionPlan{
     Record** results;
     ExecutionPlanStatus status;
     bool isDone;
-    RediStar_OnExecutionDoneCallback callback;
+    RedisGears_OnExecutionDoneCallback callback;
     void* privateData;
     FreePrivateData freeCallback;
 }ExecutionPlan;
@@ -167,7 +167,7 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
 bool FlatExecutionPlan_IsBroadcasted(FlatExecutionPlan* fep);
 bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep);
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx);
 

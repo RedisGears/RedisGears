@@ -44,7 +44,8 @@
 #include "dict.h"
 #include "redismodule.h"
 #include <assert.h>
-#include <redistar_memory.h>
+
+#include "../redisgears_memory.h"
 
 static uint64_t stringsHashFunction(const void *key){
     return dictGenHashFunction(key, strlen((char*)key));

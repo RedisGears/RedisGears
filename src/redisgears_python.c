@@ -1,12 +1,12 @@
-#include "redistar_python.h"
-#include "redistar.h"
-#include "redistar_memory.h"
 #include "record.h"
 #include "redisdl.h"
 #include "globals.h"
 #include <Python.h>
 #include <marshal.h>
 #include <assert.h>
+#include <redisgears.h>
+#include <redisgears_memory.h>
+#include <redisgears_python.h>
 #include "utils/arr_rm_alloc.h"
 
 static PyObject* pFunc;
@@ -16,22 +16,22 @@ static RedisModuleCtx* currentCtx = NULL;
 
 #define PYTHON_ERROR "error running python code"
 
-static FlatExecutionPlan* createFep(PyObject* starCtx){
+static FlatExecutionPlan* createFep(PyObject* gearsCtx){
     size_t len;
     size_t offset;
-    PyObject* name = PyObject_GetAttrString(starCtx, "name");
+    PyObject* name = PyObject_GetAttrString(gearsCtx, "name");
     char* nameStr = PyString_AsString(name);
-    PyObject* reader = PyObject_GetAttrString(starCtx, "reader");
+    PyObject* reader = PyObject_GetAttrString(gearsCtx, "reader");
     char* readerStr = PyString_AsString(reader);
     // todo : expose execution name on python interface
-	FlatExecutionPlan* rsctx = RediStar_CreateCtx(nameStr, readerStr);
+	FlatExecutionPlan* rsctx = RedisGears_CreateCtx(nameStr, readerStr);
     if(!rsctx){
         return NULL;
     }
-    RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
+    RSM_Map(rsctx, RedisGearsPy_ToPyRecordMapper, NULL);
 
     PyObject* stepsKey = PyString_FromString("steps");
-    PyObject* stepsList = PyObject_GetAttr(starCtx, stepsKey);
+    PyObject* stepsList = PyObject_GetAttr(gearsCtx, stepsKey);
 
     for(size_t i = 0 ; i < PyList_Size(stepsList) ; ++i){
         PyObject* step = PyList_GetItem(stepsList, i);
@@ -41,28 +41,28 @@ static FlatExecutionPlan* createFep(PyObject* starCtx){
         long type = PyLong_AsLong(stepType);
         switch(type){
         case 1: // mapping step
-            RSM_Map(rsctx, RediStarPy_PyCallbackMapper, callback);
+            RSM_Map(rsctx, RedisGearsPy_PyCallbackMapper, callback);
             break;
         case 2: // filter step
-            RSM_Filter(rsctx, RediStarPy_PyCallbackFilter, callback);
+            RSM_Filter(rsctx, RedisGearsPy_PyCallbackFilter, callback);
             break;
         case 3: // groupby step
             reducer = PyTuple_GetItem(step, 2);
             Py_INCREF(reducer);
-            RSM_GroupBy(rsctx, RediStarPy_PyCallbackExtractor, callback, RediStarPy_PyCallbackReducer, reducer);
-            RSM_Map(rsctx, RediStarPy_ToPyRecordMapper, NULL);
+            RSM_GroupBy(rsctx, RedisGearsPy_PyCallbackExtractor, callback, RedisGearsPy_PyCallbackReducer, reducer);
+            RSM_Map(rsctx, RedisGearsPy_ToPyRecordMapper, NULL);
             break;
         case 4:
             RSM_Collect(rsctx);
             break;
         case 5:
-            RSM_Write(rsctx, RediStarPy_PyCallbackWriter, callback);
+            RSM_Write(rsctx, RedisGearsPy_PyCallbackWriter, callback);
             break;
         case 6:
-            RSM_Repartition(rsctx, RediStarPy_PyCallbackExtractor, callback);
+            RSM_Repartition(rsctx, RedisGearsPy_PyCallbackExtractor, callback);
             break;
         case 7:
-            RSM_FlatMap(rsctx, RediStarPy_PyCallbackFlatMapper, callback);
+            RSM_FlatMap(rsctx, RedisGearsPy_PyCallbackFlatMapper, callback);
             break;
         case 8:
             len = PyInt_AsLong(callback);
@@ -79,10 +79,10 @@ static FlatExecutionPlan* createFep(PyObject* starCtx){
 
 static PyObject* registerStream(PyObject *cls, PyObject *args){
     PyObject* starStreamCtx = PyTuple_GetItem(args, 0);
-    PyObject* starCtx = PyObject_GetAttrString(starStreamCtx, "starCtx");
+    PyObject* gearsCtx = PyObject_GetAttrString(starStreamCtx, "gearsCtx");
     PyObject* key = PyObject_GetAttrString(starStreamCtx, "key");
     char* keyStr = PyString_AsString(key);
-    FlatExecutionPlan* fep = createFep(starCtx);
+    FlatExecutionPlan* fep = createFep(gearsCtx);
 
     if(!fep){
         RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
@@ -101,10 +101,10 @@ static PyObject* registerStream(PyObject *cls, PyObject *args){
 static PyObject* run(PyObject *cls, PyObject *args){
     size_t len;
     size_t offset;
-    PyObject* starCtx = PyTuple_GetItem(args, 0);
-    PyObject* regex = PyObject_GetAttrString(starCtx, "regex");
+    PyObject* gearsCtx = PyTuple_GetItem(args, 0);
+    PyObject* regex = PyObject_GetAttrString(gearsCtx, "regex");
     char* regexStr = PyString_AsString(regex);
-    FlatExecutionPlan* fep = createFep(starCtx);
+    FlatExecutionPlan* fep = createFep(gearsCtx);
 
     if(!fep){
         RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
@@ -115,7 +115,7 @@ static PyObject* run(PyObject *cls, PyObject *args){
     // todo: we should not return the reply to the user here,
     //       user might create multiple executions in a single script
     //       think what to do???
-    const char* id = RediStar_GetId(ep);
+    const char* id = RedisGears_GetId(ep);
     RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
 
     return PyLong_FromLong(1);
@@ -232,7 +232,7 @@ static void PyTensor_Destruct(PyObject *pyObj){
 
 static PyTypeObject PyTensorType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "redistar.PyTensor",       /* tp_name */
+    "redisgears.PyTensor",       /* tp_name */
     sizeof(PyTensor),          /* tp_basicsize */
     0,                         /* tp_itemsize */
     PyTensor_Destruct,         /* tp_dealloc */
@@ -311,7 +311,7 @@ static void PyGraphRunner_Destruct(PyObject *pyObj){
 
 static PyTypeObject PyGraphRunnerType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "redistar.PyGraphRunner",             /* tp_name */
+    "redisgears.PyGraphRunner",             /* tp_name */
     sizeof(PyGraphRunner), /* tp_basicsize */
     0,                         /* tp_itemsize */
     PyGraphRunner_Destruct,    /* tp_dealloc */
@@ -397,7 +397,7 @@ PyMethodDef EmbMethods[] = {
     {NULL, NULL, 0, NULL}
 };
 
-static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc != 2){
         return RedisModule_WrongArity(ctx);
     }
@@ -415,10 +415,10 @@ static int RediStarPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     return REDISMODULE_OK;
 }
 
-void RediStarPy_PyCallbackWriter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+void RedisGearsPy_PyCallbackWriter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
-    assert(RediStar_RecordGetType(record) == PY_RECORD);
+    assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
     PyObject* obj = RS_PyObjRecordGet(record);
@@ -427,10 +427,10 @@ void RediStarPy_PyCallbackWriter(RedisModuleCtx* rctx, Record *record, void* arg
     PyGILState_Release(state);
 }
 
-static Record* RediStarPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
-    assert(RediStar_RecordGetType(record) == PY_RECORD);
+    assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
     PyObject* oldObj = RS_PyObjRecordGet(record);
@@ -439,7 +439,7 @@ static Record* RediStarPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record,
     if(!newObj){
         PyErr_Print();
         *err = RS_STRDUP(PYTHON_ERROR);
-        RediStar_FreeRecord(record);
+        RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
     }
@@ -450,10 +450,10 @@ static Record* RediStarPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record,
     return record;
 }
 
-static Record* RediStarPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
-    assert(RediStar_RecordGetType(record) == PY_RECORD);
+    assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
     PyObject* oldObj = RS_PyObjRecordGet(record);
@@ -462,20 +462,20 @@ static Record* RediStarPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *rec
     if(!newObj){
         PyErr_Print();
         *err = RS_STRDUP(PYTHON_ERROR);
-        RediStar_FreeRecord(record);
+        RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
     }
     if(PyList_Check(newObj)){
-        RediStar_FreeRecord(record);
+        RedisGears_FreeRecord(record);
         size_t len = PyList_Size(newObj);
-        record = RediStar_ListRecordCreate(len);
+        record = RedisGears_ListRecordCreate(len);
         for(size_t i = 0 ; i < len ; ++i){
             PyObject* temp = PyList_GetItem(newObj, i);
             Record* pyRecord = RS_PyObjRecordCreate();
             Py_INCREF(pyRecord);
             RS_PyObjRecordSet(pyRecord, temp);
-            RediStar_ListRecordAdd(record, pyRecord);
+            RedisGears_ListRecordAdd(record, pyRecord);
         }
         Py_DECREF(newObj);
     }else{
@@ -487,9 +487,9 @@ static Record* RediStarPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *rec
     return record;
 }
 
-static bool RediStarPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static bool RedisGearsPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    assert(RediStar_RecordGetType(record) == PY_RECORD);
+    assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
     PyObject* obj = RS_PyObjRecordGet(record);
@@ -507,9 +507,9 @@ static bool RediStarPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, vo
     return ret1;
 }
 
-static char* RediStarPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record, void* arg, size_t* len, char** err){
+static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record, void* arg, size_t* len, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    assert(RediStar_RecordGetType(record) == PY_RECORD);
+    assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* extractor = arg;
     PyObject* pArgs = PyTuple_New(1);
     PyObject* obj = RS_PyObjRecordGet(record);
@@ -538,13 +538,13 @@ static char* RediStarPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record
     return retCStr;
 }
 
-static Record* RediStarPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    assert(RediStar_RecordGetType(records) == LIST_RECORD);
+    assert(RedisGears_RecordGetType(records) == LIST_RECORD);
     PyObject* obj = PyList_New(0);
-    for(size_t i = 0 ; i < RediStar_ListRecordLen(records) ; ++i){
-        Record* r = RediStar_ListRecordGet(records, i);
-        assert(RediStar_RecordGetType(r) == PY_RECORD);
+    for(size_t i = 0 ; i < RedisGears_ListRecordLen(records) ; ++i){
+        Record* r = RedisGears_ListRecordGet(records, i);
+        assert(RedisGears_RecordGetType(r) == PY_RECORD);
         PyObject* element = RS_PyObjRecordGet(r);
         PyList_Append(obj, element);
     }
@@ -557,19 +557,19 @@ static Record* RediStarPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, siz
     Py_DECREF(pArgs);
     if(!ret){
         PyErr_Print();
-        RediStar_FreeRecord(records);
+        RedisGears_FreeRecord(records);
         *err = RS_STRDUP(PYTHON_ERROR);
         PyGILState_Release(state);
         return NULL;
     }
     Record* retRecord = RS_PyObjRecordCreate();
     RS_PyObjRecordSet(retRecord, ret);
-    RediStar_FreeRecord(records);
+    RedisGears_FreeRecord(records);
     PyGILState_Release(state);
     return retRecord;
 }
 
-static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
+static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     Record* res = RS_PyObjRecordCreate();
     Record* tempRecord;
     PyObject* obj;
@@ -580,54 +580,54 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
     char* key;
     char** keys;
     size_t len;
-    switch(RediStar_RecordGetType(record)){
+    switch(RedisGears_RecordGetType(record)){
     case STRING_RECORD:
-        str = RediStar_StringRecordGet(record, &len);
+        str = RedisGears_StringRecordGet(record, &len);
         obj = PyString_FromStringAndSize(str, len);
         break;
     case LONG_RECORD:
-        longNum = RediStar_LongRecordGet(record);
+        longNum = RedisGears_LongRecordGet(record);
         obj = PyLong_FromLong(longNum);
         break;
     case DOUBLE_RECORD:
-        doubleNum = RediStar_DoubleRecordGet(record);
+        doubleNum = RedisGears_DoubleRecordGet(record);
         obj = PyLong_FromDouble(doubleNum);
         break;
     case KEY_RECORD:
-        key = RediStar_KeyRecordGetKey(record, NULL);
+        key = RedisGears_KeyRecordGetKey(record, NULL);
         obj = PyDict_New();
         temp = PyString_FromString(key);
         PyDict_SetItemString(obj, "key", temp);
 
-        tempRecord = RediStarPy_ToPyRecordMapperInternal(RediStar_KeyRecordGetVal(record), arg);
-        assert(RediStar_RecordGetType(tempRecord) == PY_RECORD);
+        tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_KeyRecordGetVal(record), arg);
+        assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
         PyDict_SetItemString(obj, "value", RS_PyObjRecordGet(tempRecord));
-        RediStar_FreeRecord(tempRecord);
+        RedisGears_FreeRecord(tempRecord);
 
         break;
     case LIST_RECORD:
-        len = RediStar_ListRecordLen(record);
+        len = RedisGears_ListRecordLen(record);
         obj = PyList_New(0);
         for(size_t i = 0 ; i < len ; ++i){
-            tempRecord = RediStarPy_ToPyRecordMapperInternal(RediStar_ListRecordGet(record, i), arg);
-            assert(RediStar_RecordGetType(tempRecord) == PY_RECORD);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_ListRecordGet(record, i), arg);
+            assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
             PyList_Append(obj, RS_PyObjRecordGet(tempRecord));
-            RediStar_FreeRecord(tempRecord);
+            RedisGears_FreeRecord(tempRecord);
         }
         break;
     case HASH_SET_RECORD:
-        keys = RediStar_HashSetRecordGetAllKeys(record, &len);
+        keys = RedisGears_HashSetRecordGetAllKeys(record, &len);
         obj = PyDict_New();
         for(size_t i = 0 ; i < len ; ++i){
             key = keys[i];
             temp = PyString_FromString(key);
-            tempRecord = RediStar_HashSetRecordGet(record, key);
-            tempRecord = RediStarPy_ToPyRecordMapperInternal(tempRecord, arg);
-            assert(RediStar_RecordGetType(tempRecord) == PY_RECORD);
+            tempRecord = RedisGears_HashSetRecordGet(record, key);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
+            assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
             PyDict_SetItem(obj, temp, RS_PyObjRecordGet(tempRecord));
-            RediStar_FreeRecord(tempRecord);
+            RedisGears_FreeRecord(tempRecord);
         }
-        RediStar_HashSetRecordFreeKeysArray(keys);
+        RedisGears_HashSetRecordFreeKeysArray(keys);
         break;
     case PY_RECORD:
         obj = RS_PyObjRecordGet(record);
@@ -639,20 +639,20 @@ static Record* RediStarPy_ToPyRecordMapperInternal(Record *record, void* arg){
     return res;
 }
 
-static Record* RediStarPy_ToPyRecordMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static Record* RedisGearsPy_ToPyRecordMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    Record* res = RediStarPy_ToPyRecordMapperInternal(record, arg);
-    RediStar_FreeRecord(record);
+    Record* res = RedisGearsPy_ToPyRecordMapperInternal(record, arg);
+    RedisGears_FreeRecord(record);
     PyGILState_Release(state);
     return res;
 }
 
-static void RediStarPy_PyObjectFree(void* arg){
+static void RedisGearsPy_PyObjectFree(void* arg){
     PyObject* obj = arg;
     Py_DECREF(obj);
 }
 
-void RediStarPy_PyObjectSerialize(void* arg, BufferWriter* bw){
+void RedisGearsPy_PyObjectSerialize(void* arg, BufferWriter* bw){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* obj = arg;
     PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
@@ -662,33 +662,33 @@ void RediStarPy_PyObjectSerialize(void* arg, BufferWriter* bw){
     }
     size_t len = PyString_Size(objStr);
     char* objStrCstr  = PyString_AsString(objStr);
-    RediStar_BWWriteBuffer(bw, objStrCstr, len);
+    RedisGears_BWWriteBuffer(bw, objStrCstr, len);
     Py_DECREF(objStr);
     PyGILState_Release(state);
     return;
 }
 
-void* RediStarPy_PyObjectDeserialize(BufferReader* br){
+void* RedisGearsPy_PyObjectDeserialize(BufferReader* br){
     PyGILState_STATE state = PyGILState_Ensure();
     size_t len;
-    char* data = RediStar_BRReadBuffer(br, &len);
+    char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject* obj = PyMarshal_ReadObjectFromString(data, len);
     PyGILState_Release(state);
     return obj;
 }
 
-static void RediStarPy_PyCallbackSerialize(void* arg, BufferWriter* bw){
+static void RedisGearsPy_PyCallbackSerialize(void* arg, BufferWriter* bw){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* callback = arg;
     PyObject* callbackCode = PyObject_GetAttrString(callback, "func_code");
-    RediStarPy_PyObjectSerialize(callbackCode, bw);
+    RedisGearsPy_PyObjectSerialize(callbackCode, bw);
     PyGILState_Release(state);
     return;
 }
 
-static void* RediStarPy_PyCallbackDeserialize(BufferReader* br){
+static void* RedisGearsPy_PyCallbackDeserialize(BufferReader* br){
     PyGILState_STATE state = PyGILState_Ensure();
-    PyObject* callbackCode = RediStarPy_PyObjectDeserialize(br);
+    PyObject* callbackCode = RedisGearsPy_PyObjectDeserialize(br);
     PyObject* pArgs = PyTuple_New(2);
     PyTuple_SetItem(pArgs, 0, callbackCode);
     PyTuple_SetItem(pArgs, 1, pyGlobals);
@@ -703,10 +703,10 @@ static void* RediStarPy_PyCallbackDeserialize(BufferReader* br){
 //
 //    def filter(record):
 //        return record.val == 'meir'
-//    ctx = starCtx('*')
+//    ctx = gearsCtx('*')
 //    ctx.filter(filter)\n
 //    ctx.returnResults()
-int RediStarPy_Init(RedisModuleCtx *ctx){
+int RedisGearsPy_Init(RedisModuleCtx *ctx){
     Py_SetProgramName("test");  /* optional but recommended */
     Py_Initialize();
     PyEval_InitThreads();
@@ -721,7 +721,7 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
     }
 
-    PyObject* m = Py_InitModule("redistar", EmbMethods);
+    PyObject* m = Py_InitModule("redisgears", EmbMethods);
 
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
@@ -729,8 +729,8 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
     PyModule_AddObject(m, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
 
-    PyRun_SimpleString("import redistar\n"
-                       "class starCtx:\n"
+    PyRun_SimpleString("import redisgears\n"
+                       "class gearsCtx:\n"
                        "    def __init__(self, name, reader='KeysReader'):\n"
     				   "        self.name = name\n"
                        "        self.reader = reader\n"
@@ -765,58 +765,58 @@ int RediStarPy_Init(RedisModuleCtx *ctx){
                        "        return self\n"
                        "    def run(self, regex='*'):\n"
                        "        self.regex = regex\n"
-                       "        redistar.run(self)\n"
-                       "class starStreamingCtx:\n"
+                       "        redisgears.run(self)\n"
+                       "class gearsStreamingCtx:\n"
                        "    def __init__(self, name, reader='KeysReader'):\n"
-                       "        self.starCtx = starCtx(name, reader)\n"
+                       "        self.gearsCtx = gearsCtx(name, reader)\n"
                        "    def map(self, mapFunc):\n"
-                       "        self.starCtx.map(mapFunc)\n"
+                       "        self.gearsCtx.map(mapFunc)\n"
                        "        return self\n"
                        "    def filter(self, filterFunc):\n"
-                       "        self.starCtx.filter(filterFunc)\n"
+                       "        self.gearsCtx.filter(filterFunc)\n"
                        "        return self\n"
                        "    def groupby(self, extractor, reducer):\n"
-                       "        self.starCtx.groupby(extractor, reducer)\n"
+                       "        self.gearsCtx.groupby(extractor, reducer)\n"
                        "        return self\n"
                        "    def collect(self):\n"
-                       "        self.starCtx.collect()\n"
+                       "        self.gearsCtx.collect()\n"
                        "        return self\n"
                        "    def write(self, writeCallback):\n"
-                       "        self.starCtx.write(writeCallback)\n"
+                       "        self.gearsCtx.write(writeCallback)\n"
                        "        return self\n"
                        "    def repartition(self, extractor):\n"
-                       "        self.starCtx.repartition(extractor)\n"
+                       "        self.gearsCtx.repartition(extractor)\n"
                        "        return self\n"
                        "    def flatMap(self, flatMapFunc):\n"
-                       "        self.starCtx.flatMap(flatMapFunc)\n"
+                       "        self.gearsCtx.flatMap(flatMapFunc)\n"
                        "        return self\n"
                        "    def limit(self, len, offset=0):\n"
-                       "        self.starCtx.limit(len, offset)\n"
+                       "        self.gearsCtx.limit(len, offset)\n"
                        "        return self\n"
                        "    def register(self, key):\n"
                        "        self.key = key\n"
-                       "        redistar.register(self)\n"
+                       "        redisgears.register(self)\n"
                        "globals()['str'] = str\n"
-                       "print 'PyTensor object : ' + str(redistar.PyTensor)\n"
-                       "print 'PyGraphRunner object : ' + str(redistar.PyGraphRunner)\n"
-                       "redistar._saveGlobals()\n");
+                       "print 'PyTensor object : ' + str(redisgears.PyTensor)\n"
+                       "print 'PyGraphRunner object : ' + str(redisgears.PyGraphRunner)\n"
+                       "redisgears._saveGlobals()\n");
 
     PyObject* pName = PyString_FromString("types");
     PyObject* pModule = PyImport_Import(pName);
     pFunc = PyObject_GetAttrString(pModule, "FunctionType");
 
-    ArgType* pyCallbackType = RediStar_CreateType("PyObjectType", RediStarPy_PyObjectFree, RediStarPy_PyCallbackSerialize, RediStarPy_PyCallbackDeserialize);
+    ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
 
-    RSM_RegisterWriter(RediStarPy_PyCallbackWriter, pyCallbackType);
-    RSM_RegisterFilter(RediStarPy_PyCallbackFilter, pyCallbackType);
-    RSM_RegisterMap(RediStarPy_ToPyRecordMapper, NULL);
-    RSM_RegisterMap(RediStarPy_PyCallbackFlatMapper, pyCallbackType);
-    RSM_RegisterMap(RediStarPy_PyCallbackMapper, pyCallbackType);
-    RSM_RegisterGroupByExtractor(RediStarPy_PyCallbackExtractor, pyCallbackType);
-    RSM_RegisterReducer(RediStarPy_PyCallbackReducer, pyCallbackType);
+    RSM_RegisterWriter(RedisGearsPy_PyCallbackWriter, pyCallbackType);
+    RSM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);
+    RSM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
+    RSM_RegisterMap(RedisGearsPy_PyCallbackFlatMapper, pyCallbackType);
+    RSM_RegisterMap(RedisGearsPy_PyCallbackMapper, pyCallbackType);
+    RSM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
+    RSM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
 
-    if (RedisModule_CreateCommand(ctx, "rs.pyexecute", RediStarPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command example");
+    if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
         return REDISMODULE_ERR;
     }
 

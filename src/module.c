@@ -5,18 +5,18 @@
  *      Author: meir
  */
 
-#include "redistar.h"
 #include "redismodule.h"
 #include "version.h"
 #include "mgmt.h"
 #include "execution_plan.h"
 #include "example.h"
 #include "cluster.h"
+#include "redisgears.h"
+#include "redisgears_memory.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/buffer.h"
-#include "redistar_memory.h"
 #ifdef WITHPYTHON
-#include "redistar_python.h"
+#include "redisgears_python.h"
 #endif
 #include "record.h"
 #include "commands.h"
@@ -29,32 +29,32 @@
 #define EXECUTION_PLAN_FREE_MSG 100
 
 #define REGISTER_API(name, registerApiCallback) \
-    if(registerApiCallback("RediStar_" #name, RS_ ## name)){\
-        printf("could not register RediStar_" #name "\r\n");\
+    if(registerApiCallback("RedisGears_" #name, RS_ ## name)){\
+        printf("could not register RedisGears_" #name "\r\n");\
         return false;\
     }
 
-static int RS_RegisterReader(char* name, RediStar_ReaderCallback reader){
+static int RS_RegisterReader(char* name, RedisGears_ReaderCallback reader){
     return ReadersMgmt_Add(name, reader, NULL);
 }
 
-static int RS_RegisterWriter(char* name, RediStar_WriterCallback writer, ArgType* type){
+static int RS_RegisterWriter(char* name, RedisGears_WriterCallback writer, ArgType* type){
     return WritersMgmt_Add(name, writer, type);
 }
 
-static int RS_RegisterMap(char* name, RediStar_MapCallback map, ArgType* type){
+static int RS_RegisterMap(char* name, RedisGears_MapCallback map, ArgType* type){
     return MapsMgmt_Add(name, map, type);
 }
 
-static int RS_RegisterFilter(char* name, RediStar_FilterCallback filter, ArgType* type){
+static int RS_RegisterFilter(char* name, RedisGears_FilterCallback filter, ArgType* type){
     return FiltersMgmt_Add(name, filter, type);
 }
 
-static int RS_RegisterGroupByExtractor(char* name, RediStar_ExtractorCallback extractor, ArgType* type){
+static int RS_RegisterGroupByExtractor(char* name, RedisGears_ExtractorCallback extractor, ArgType* type){
     return ExtractorsMgmt_Add(name, extractor, type);
 }
 
-static int RS_RegisterReducer(char* name, RediStar_ReducerCallback reducer, ArgType* type){
+static int RS_RegisterReducer(char* name, RedisGears_ReducerCallback reducer, ArgType* type){
     return ReducersMgmt_Add(name, reducer, type);
 }
 
@@ -138,11 +138,11 @@ static int RS_Register(FlatExecutionPlan* fep, char* key){
     return FlatExecutionPlan_Register(fep, key);
 }
 
-static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, void* arg, RediStar_OnExecutionDoneCallback callback, void* privateData){
+static ExecutionPlan* RS_Run(FlatExecutionPlan* fep, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
 	return FlatExecutionPlan_Run(fep, NULL, arg, callback, privateData);
 }
 
-static bool RS_RegisterExecutionDoneCallback(ExecutionPlan* ep, RediStar_OnExecutionDoneCallback callback){
+static bool RS_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback){
 	if(ep->isDone){
 		return false;
 	}
@@ -231,7 +231,7 @@ static char* RS_BRReadBuffer(BufferReader* br, size_t* len){
 }
 
 
-static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)){
+static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)){
     REGISTER_API(CreateType, registerApiCallback);
     REGISTER_API(BWWriteLong, registerApiCallback);
     REGISTER_API(BWWriteString, registerApiCallback);
@@ -302,7 +302,7 @@ static bool RediStar_RegisterApi(int (*registerApiCallback)(const char *funcname
 }
 
 static void RS_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-	ExecutionPlan* ep = RediStar_GetExecution(payload);
+	ExecutionPlan* ep = RedisGears_GetExecution(payload);
 	if(!ep){
 		printf("warning: execution not found %s !!!\r\n", payload);
 		return;
@@ -313,7 +313,7 @@ static void RS_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sende
 bool apiRegistered = false;
 
 int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)) {
-	if(!RediStar_RegisterApi(registerApiCallback)){
+	if(!RedisGears_RegisterApi(registerApiCallback)){
 		return REDISMODULE_ERR;
 	}
 	apiRegistered = true;
@@ -338,19 +338,19 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         printf("failed loading symbols: %s\r\n", dlerror());
     }
 
-    if (RedisModule_Init(ctx, "rs", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
+    if (RedisModule_Init(ctx, "rg", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
     }
 
     if(!apiRegistered){
-        if(!RediStar_RegisterApi(moduleRegisterApi)){
-            RedisModule_Log(ctx, "warning", "could not register RediStar api");
+        if(!RedisGears_RegisterApi(moduleRegisterApi)){
+            RedisModule_Log(ctx, "warning", "could not register RedisGears api");
             return REDISMODULE_ERR;
         }
     }
 
-    if(!RediStar_Initialize()){
-        RedisModule_Log(ctx, "warning", "could not initialize RediStar api");
+    if(!RedisGears_Initialize()){
+        RedisModule_Log(ctx, "warning", "could not initialize RedisGears api");
         return REDISMODULE_ERR;
     }
 
@@ -376,28 +376,28 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     ExecutionPlan_Initialize(ctx, 1);
 
 #ifdef WITHPYTHON
-    RediStarPy_Init(ctx);
+    RedisGearsPy_Init(ctx);
 #endif
 
     Cluster_RegisterMsgReceiverM(RS_OnDropExecutionMsgReceived);
 
-    if (RedisModule_CreateCommand(ctx, "rs.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rs.example");
+    if (RedisModule_CreateCommand(ctx, "rg.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.example");
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rs.refreshcluster", Cluster_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+    if (RedisModule_CreateCommand(ctx, "rg.refreshcluster", Cluster_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.refreshcluster");
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rs.clusterset", Cluster_ClusterSet, "readonly", 0, 0, -1) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rs.refreshcluster");
+    if (RedisModule_CreateCommand(ctx, "rg.clusterset", Cluster_ClusterSet, "readonly", 0, 0, -1) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.refreshcluster");
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rs.infocluster", Cluster_GetClusterInfo, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rs.getclusterinfo");
+    if (RedisModule_CreateCommand(ctx, "rg.infocluster", Cluster_GetClusterInfo, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.getclusterinfo");
         return REDISMODULE_ERR;
     }
 
@@ -406,33 +406,33 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rs.dumpexecutions", ExecutionPlan_ExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.dumpexecutions");
+    if (RedisModule_CreateCommand(ctx, "rg.dumpexecutions", ExecutionPlan_ExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rg.dumpexecutions");
 		return REDISMODULE_ERR;
 	}
 
-    if (RedisModule_CreateCommand(ctx, "rs.dumpflatexecutions", ExecutionPlan_FlatExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rs.dumpflatexecutions");
+    if (RedisModule_CreateCommand(ctx, "rg.dumpflatexecutions", ExecutionPlan_FlatExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.dumpflatexecutions");
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rs.getresults", Command_GetResults, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.getresults");
+    if (RedisModule_CreateCommand(ctx, "rg.getresults", Command_GetResults, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rg.getresults");
 		return REDISMODULE_ERR;
 	}
 
-    if (RedisModule_CreateCommand(ctx, "rs.getresultsblocking", Command_GetResultsBlocking, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.getresultsblocking");
+    if (RedisModule_CreateCommand(ctx, "rg.getresultsblocking", Command_GetResultsBlocking, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rg.getresultsblocking");
 		return REDISMODULE_ERR;
 	}
 
-    if (RedisModule_CreateCommand(ctx, "rs.dropexecution", Command_DropExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rs.dropexecution");
+    if (RedisModule_CreateCommand(ctx, "rg.dropexecution", Command_DropExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rg.dropexecution");
 		return REDISMODULE_ERR;
 	}
 
-    if (RedisModule_CreateCommand(ctx, "rs.reexecute", Command_ReExecute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rs.reexecute");
+    if (RedisModule_CreateCommand(ctx, "rg.reexecute", Command_ReExecute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.reexecute");
         return REDISMODULE_ERR;
     }
 

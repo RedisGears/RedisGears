@@ -8,7 +8,7 @@
 #ifndef SRC_RECORD_H_
 #define SRC_RECORD_H_
 
-#include "redistar.h"
+#include "redisgears.h"
 #include "utils/buffer.h"
 #ifdef WITHPYTHON
 #include <Python.h>

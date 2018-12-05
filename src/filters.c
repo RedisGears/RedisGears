@@ -1,4 +1,5 @@
 #include "redismodule.h"
-#include "redistar.h"
-#include "redistar_memory.h"
 #include <assert.h>
+
+#include "redisgears.h"
+#include "redisgears_memory.h"

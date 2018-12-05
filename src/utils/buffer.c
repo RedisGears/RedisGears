@@ -5,9 +5,9 @@
  *      Author: meir
  */
 
-#include <redistar_memory.h>
 #include "buffer.h"
 #include <string.h>
+#include "../redisgears_memory.h"
 
 
 Buffer* Buffer_New(size_t initialCap){

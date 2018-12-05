@@ -1,10 +1,11 @@
-#include "redistar.h"
-#include "redistar_memory.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/dict.h"
 #include "record.h"
+
+#include "redisgears.h"
+#include "redisgears_memory.h"
 #ifdef WITHPYTHON
-#include "redistar_python.h"
+#include "redisgears_python.h"
 #endif
 
 typedef struct KeysHandlerRecord{
@@ -78,7 +79,7 @@ void RS_FreeRecord(Record* record){
     case DOUBLE_RECORD:
         break;
     case LIST_RECORD:
-        for(size_t i = 0 ; i < RediStar_ListRecordLen(record) ; ++i){
+        for(size_t i = 0 ; i < RedisGears_ListRecordLen(record) ; ++i){
             RS_FreeRecord(record->listRecord.records[i]);
         }
         array_free(record->listRecord.records);
@@ -306,30 +307,30 @@ void RS_PyObjRecordSet(Record* r, PyObject* obj){
 #endif
 
 void RS_SerializeRecord(BufferWriter* bw, Record* r){
-    RediStar_BWWriteLong(bw, r->type);
+    RedisGears_BWWriteLong(bw, r->type);
     switch(r->type){
     case STRING_RECORD:
-        RediStar_BWWriteBuffer(bw, r->stringRecord.str, r->stringRecord.len);
+        RedisGears_BWWriteBuffer(bw, r->stringRecord.str, r->stringRecord.len);
         break;
     case LONG_RECORD:
-        RediStar_BWWriteLong(bw, r->longRecord.num);
+        RedisGears_BWWriteLong(bw, r->longRecord.num);
         break;
     case DOUBLE_RECORD:
-        RediStar_BWWriteLong(bw, (long)r->doubleRecord.num);
+        RedisGears_BWWriteLong(bw, (long)r->doubleRecord.num);
         break;
     case LIST_RECORD:
-        RediStar_BWWriteLong(bw, RediStar_ListRecordLen(r));
-        for(size_t i = 0 ; i < RediStar_ListRecordLen(r) ; ++i){
+        RedisGears_BWWriteLong(bw, RedisGears_ListRecordLen(r));
+        for(size_t i = 0 ; i < RedisGears_ListRecordLen(r) ; ++i){
             RS_SerializeRecord(bw, r->listRecord.records[i]);
         }
         break;
     case KEY_RECORD:
-        RediStar_BWWriteString(bw, r->keyRecord.key);
+        RedisGears_BWWriteString(bw, r->keyRecord.key);
         if(r->keyRecord.record){
-            RediStar_BWWriteLong(bw, 1); // value exists
+            RedisGears_BWWriteLong(bw, 1); // value exists
             RS_SerializeRecord(bw, r->keyRecord.record);
         }else{
-            RediStar_BWWriteLong(bw, 0); // value missing
+            RedisGears_BWWriteLong(bw, 0); // value missing
         }
         break;
     case KEY_HANDLER_RECORD:
@@ -337,7 +338,7 @@ void RS_SerializeRecord(BufferWriter* bw, Record* r){
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
-        RediStarPy_PyObjectSerialize(r->pyRecord.obj, bw);
+        RedisGearsPy_PyObjectSerialize(r->pyRecord.obj, bw);
         break;
 #endif
     default:
@@ -346,40 +347,40 @@ void RS_SerializeRecord(BufferWriter* bw, Record* r){
 }
 
 Record* RS_DeserializeRecord(BufferReader* br){
-    enum RecordType type = RediStar_BRReadLong(br);
+    enum RecordType type = RedisGears_BRReadLong(br);
     Record* r;
     char* temp;
     char* temp1;
     size_t size;
     switch(type){
     case STRING_RECORD:
-        temp = RediStar_BRReadBuffer(br, &size);
+        temp = RedisGears_BRReadBuffer(br, &size);
         temp1 = RS_ALLOC(size);
         memcpy(temp1, temp, size);
         r = RS_StringRecordCreate(temp1, size);
         break;
     case LONG_RECORD:
-        r = RS_LongRecordCreate(RediStar_BRReadLong(br));
+        r = RS_LongRecordCreate(RedisGears_BRReadLong(br));
         break;
     case DOUBLE_RECORD:
-        r = RS_DoubleRecordCreate((double)RediStar_BRReadLong(br));
+        r = RS_DoubleRecordCreate((double)RedisGears_BRReadLong(br));
         break;
     case LIST_RECORD:
-        size = (size_t)RediStar_BRReadLong(br);
+        size = (size_t)RedisGears_BRReadLong(br);
         r = RS_ListRecordCreate(size);
         for(size_t i = 0 ; i < size ; ++i){
             RS_ListRecordAdd(r, RS_DeserializeRecord(br));
         }
         break;
     case KEY_RECORD:
-        r = RediStar_KeyRecordCreate();
-        char* key = RS_STRDUP(RediStar_BRReadString(br));
+        r = RedisGears_KeyRecordCreate();
+        char* key = RS_STRDUP(RedisGears_BRReadString(br));
         RS_KeyRecordSetKey(r, key, strlen(key));
-        bool isValExists = (bool)RediStar_BRReadLong(br);
+        bool isValExists = (bool)RedisGears_BRReadLong(br);
         if(isValExists){
-            RediStar_KeyRecordSetVal(r, RS_DeserializeRecord(br));
+            RedisGears_KeyRecordSetVal(r, RS_DeserializeRecord(br));
         }else{
-            RediStar_KeyRecordSetVal(r, NULL);
+            RedisGears_KeyRecordSetVal(r, NULL);
         }
         break;
     case KEY_HANDLER_RECORD:
@@ -388,7 +389,7 @@ Record* RS_DeserializeRecord(BufferReader* br){
 #ifdef WITHPYTHON
     case PY_RECORD:
         r = RS_PyObjRecordCreate();
-        PyObject* obj = RediStarPy_PyObjectDeserialize(br);
+        PyObject* obj = RedisGearsPy_PyObjectDeserialize(br);
         r->pyRecord.obj = obj;
         break;
 #endif

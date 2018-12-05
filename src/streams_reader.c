@@ -1,8 +1,8 @@
-#include <redistar_memory.h>
-#include "redistar.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/adlist.h"
 #include <stdbool.h>
+#include "redisgears.h"
+#include "redisgears_memory.h"
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 list* streamsRegistration = NULL;
@@ -37,7 +37,7 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
     RedisModuleCallReply *elements = RedisModule_CallReplyArrayElement(streamReply, 1);
     assert(RedisModule_CallReplyType(elements) == REDISMODULE_REPLY_ARRAY);
     for(size_t i = 0 ; i < RedisModule_CallReplyLength(elements) ; ++i){
-        Record* r = RediStar_HashSetRecordCreate();
+        Record* r = RedisGears_HashSetRecordCreate();
         RedisModuleCallReply *element = RedisModule_CallReplyArrayElement(elements, i);
         assert(RedisModule_CallReplyType(element) == REDISMODULE_REPLY_ARRAY);
         RedisModuleCallReply *id = RedisModule_CallReplyArrayElement(element, 0);
@@ -48,8 +48,8 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
         memcpy(idCStr, idStr, len);
         idCStr[len] = '\0';
         lastStreamId = idCStr;
-        Record* valRecord = RediStar_StringRecordCreate(idCStr, len);
-        RediStar_HashSetRecordSet(r, "streamId", valRecord);
+        Record* valRecord = RedisGears_StringRecordCreate(idCStr, len);
+        RedisGears_HashSetRecordSet(r, "streamId", valRecord);
         RedisModuleCallReply *values = RedisModule_CallReplyArrayElement(element, 1);
         assert(RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY);
         assert(RedisModule_CallReplyLength(values) % 2 == 0);
@@ -64,8 +64,8 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
             char* valCStr = RS_ALLOC((len + 1)* sizeof(char));
             memcpy(valCStr, valStr, len);
             valCStr[len] = '\0';
-            Record* valRecord = RediStar_StringRecordCreate(valCStr, len);
-            RediStar_HashSetRecordSet(r, keyCStr, valRecord);
+            Record* valRecord = RedisGears_StringRecordCreate(valCStr, len);
+            RedisGears_HashSetRecordSet(r, keyCStr, valRecord);
         }
         readerCtx->records = array_append(readerCtx->records, r);
     }
@@ -76,15 +76,15 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
 
 static void StreamReader_CtxDeserialize(void* ctx, BufferReader* br){
     StreamReaderCtx* readerCtx = ctx;
-    readerCtx->streamKeyName = RS_STRDUP(RediStar_BRReadString(br));
-    readerCtx->lastId = RS_STRDUP(RediStar_BRReadString(br));
+    readerCtx->streamKeyName = RS_STRDUP(RedisGears_BRReadString(br));
+    readerCtx->lastId = RS_STRDUP(RedisGears_BRReadString(br));
     readerCtx->records = array_new(Record*, 1);
 }
 
 static void StreamReader_CtxSerialize(void* ctx, BufferWriter* bw){
     StreamReaderCtx* readerCtx = ctx;
-    RediStar_BWWriteString(bw, readerCtx->streamKeyName);
-    RediStar_BWWriteString(bw, readerCtx->lastId);
+    RedisGears_BWWriteString(bw, readerCtx->streamKeyName);
+    RedisGears_BWWriteString(bw, readerCtx->lastId);
 }
 
 static void StreamReader_Free(void* ctx){
@@ -97,7 +97,7 @@ static void StreamReader_Free(void* ctx){
     }
     if(readerCtx->records){
         for(size_t i = 0 ; i < array_len(readerCtx->records) ; ++i){
-            RediStar_FreeRecord(readerCtx->records[i]);
+            RedisGears_FreeRecord(readerCtx->records[i]);
         }
         array_free(readerCtx->records);
     }
@@ -134,7 +134,7 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             if(lastStreamId){
                 RS_FREE(srctx->lastId);
                 srctx->lastId = RS_STRDUP(lastStreamId);
-                if(!RediStar_Run(srctx->fep, readerCtx, NULL, NULL)){
+                if(!RedisGears_Run(srctx->fep, readerCtx, NULL, NULL)){
                     RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
                 }
             }

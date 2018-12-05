@@ -11,7 +11,7 @@
 #include "redismodule.h"
 #include <stdbool.h>
 
-#define RS_INNER_MSG_COMMAND "rs.innermsgcommand"
+#define RS_INNER_MSG_COMMAND "rg.innermsgcommand"
 
 void Cluster_SendMsg(char* id, char* function, char* msg, size_t len);
 #define Cluster_SendMsgM(id, function, msg, len) Cluster_SendMsg(id, #function, msg, len);

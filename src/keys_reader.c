@@ -1,8 +1,8 @@
-#include <redistar_memory.h>
-#include "redistar.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/adlist.h"
 #include <stdbool.h>
+#include "redisgears.h"
+#include "redisgears_memory.h"
 
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
 list* keysReaderRegistration = NULL;
@@ -28,12 +28,12 @@ static KeysReaderCtx* RS_KeysReaderCtxCreate(char* match){
 
 static void RS_KeysReaderCtxSerialize(void* ctx, BufferWriter* bw){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
-    RediStar_BWWriteString(bw, krctx->match);
+    RedisGears_BWWriteString(bw, krctx->match);
 }
 
 static void RS_KeysReaderCtxDeserialize(void* ctx, BufferReader* br){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
-    char* match = RediStar_BRReadString(br);
+    char* match = RedisGears_BRReadString(br);
     krctx->match = RS_STRDUP(match);
 }
 
@@ -43,7 +43,7 @@ static void KeysReader_Free(void* ctx){
         RS_FREE(krctx->match);
     }
     for(size_t i = 0 ; i < array_len(krctx->pendingRecords) ; ++i){
-        RediStar_FreeRecord(krctx->pendingRecords[i]);
+        RedisGears_FreeRecord(krctx->pendingRecords[i]);
     }
     array_free(krctx->pendingRecords);
     RS_FREE(krctx);
@@ -56,18 +56,18 @@ static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
     memcpy(strVal, val, len);
     strVal[len] = '\0';
 
-    Record* strRecord = RediStar_StringRecordCreate(strVal, len);
+    Record* strRecord = RedisGears_StringRecordCreate(strVal, len);
 
-    RediStar_KeyRecordSetVal(record, strRecord);
+    RedisGears_KeyRecordSetVal(record, strRecord);
     return record;
 }
 
 static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
-    RedisModuleCallReply *reply = RedisModule_Call(ctx, "HGETALL", "c", RediStar_KeyRecordGetKey(record, NULL));
+    RedisModuleCallReply *reply = RedisModule_Call(ctx, "HGETALL", "c", RedisGears_KeyRecordGetKey(record, NULL));
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
     size_t len = RedisModule_CallReplyLength(reply);
     assert(len % 2 == 0);
-    Record *hashSetRecord = RediStar_HashSetRecordCreate();
+    Record *hashSetRecord = RedisGears_HashSetRecordCreate();
     for(int i = 0 ; i < len ; i+=2){
         RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(reply, i);
         RedisModuleCallReply *valReply = RedisModule_CallReplyArrayElement(reply, i + 1);
@@ -81,19 +81,19 @@ static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
         char* valCStr = RS_ALLOC(valStrLen + 1);
         memcpy(valCStr, valStr, valStrLen);
         valCStr[valStrLen] = '\0';
-        Record* valRecord = RediStar_StringRecordCreate(valCStr, valStrLen);
-        RediStar_HashSetRecordSet(hashSetRecord, keyCStr, valRecord);
+        Record* valRecord = RedisGears_StringRecordCreate(valCStr, valStrLen);
+        RedisGears_HashSetRecordSet(hashSetRecord, keyCStr, valRecord);
     }
-    RediStar_KeyRecordSetVal(record, hashSetRecord);
+    RedisGears_KeyRecordSetVal(record, hashSetRecord);
     RedisModule_FreeCallReply(reply);
     return record;
 }
 
 static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
-    RedisModuleCallReply *reply = RedisModule_Call(ctx, "lrange", "cll", RediStar_KeyRecordGetKey(record, NULL), 0, -1);
+    RedisModuleCallReply *reply = RedisModule_Call(ctx, "lrange", "cll", RedisGears_KeyRecordGetKey(record, NULL), 0, -1);
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
     size_t len = RedisModule_CallReplyLength(reply);
-    Record *listRecord = RediStar_ListRecordCreate(10);
+    Record *listRecord = RedisGears_ListRecordCreate(10);
     for(int i = 0 ; i < len ; ++i){
         RedisModuleCallReply *r = RedisModule_CallReplyArrayElement(reply, i);
         assert(RedisModule_CallReplyType(r) == REDISMODULE_REPLY_STRING);
@@ -103,12 +103,12 @@ static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
         char* str = RS_ALLOC(vaLen + 1);
         memcpy(str, val, vaLen);
         str[vaLen] = '\0';
-        Record* strRecord = RediStar_StringRecordCreate(str, vaLen);
+        Record* strRecord = RedisGears_StringRecordCreate(str, vaLen);
         RedisModule_FreeString(ctx, key);
-        RediStar_ListRecordAdd(listRecord, strRecord);
+        RedisGears_ListRecordAdd(listRecord, strRecord);
     }
     RedisModule_FreeCallReply(reply);
-    RediStar_KeyRecordSetVal(record, listRecord);
+    RedisGears_KeyRecordSetVal(record, listRecord);
     return record;
 }
 
@@ -185,13 +185,13 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
         size_t keyLen;
         const char* keyStr = RedisModule_StringPtrLen(key, &keyLen);
 
-        Record* record = RediStar_KeyRecordCreate();
+        Record* record = RedisGears_KeyRecordCreate();
 
         char* keyCStr = RS_ALLOC(keyLen + 1);
         memcpy(keyCStr, keyStr, keyLen);
         keyCStr[keyLen] = '\0';
 
-        RediStar_KeyRecordSetKey(record, keyCStr, keyLen);
+        RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
 
         ValueToRecordMapper(rctx, record, keyHandler);
 
@@ -217,7 +217,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
     while((node = listNext(iter))){
         FlatExecutionPlan* fep = listNodeValue(node);
         char* keyStr = RS_STRDUP(RedisModule_StringPtrLen(key, NULL));
-        if(!RediStar_Run(fep, keyStr, NULL, NULL)){
+        if(!RedisGears_Run(fep, keyStr, NULL, NULL)){
             RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         }
     }

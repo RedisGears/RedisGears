@@ -5,8 +5,8 @@
  *      Author: meir
  */
 
-#ifndef SRC_REDISTAR_MEMORY_H_
-#define SRC_REDISTAR_MEMORY_H_
+#ifndef SRC_REDISGEARS_MEMORY_H_
+#define SRC_REDISGEARS_MEMORY_H_
 
 #include "redismodule.h"
 #include "stdlib.h"
@@ -26,4 +26,4 @@
 
 
 
-#endif /* SRC_REDISTAR_MEMORY_H_ */
+#endif /* SRC_REDISGEARS_MEMORY_H_ */

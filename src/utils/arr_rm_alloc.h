@@ -5,7 +5,7 @@
  * friends. This file should not be included alongside arr.h, and should not be included from .h
  * files in general */
 
-#include "../redistar_memory.h"
+#include "../redisgears_memory.h"
 
 /* Define the allcation functions before including arr.h */
 #define array_alloc_fn RS_ALLOC

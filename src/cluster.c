@@ -1,12 +1,13 @@
 #include "cluster.h"
 #include "redismodule.h"
-#include "redistar_memory.h"
 #include "utils/dict.h"
 #include <assert.h>
 #include <event2/event.h>
 #include <async.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <redisgears_memory.h>
+
 #include <libevent.h>
 
 #define MAX_SLOT 16384
