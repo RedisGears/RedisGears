@@ -914,17 +914,16 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
         !FlatExecutionPlan_Broadcast(fep)){
         return 0;
     }
-    Buffer* buff = Buffer_Create();
-    BufferWriter bw;
-    BufferWriter_Init(&bw, buff);
-    RediStar_BWWriteString(&bw, fep->name);
-    RediStar_BWWriteString(&bw, key);
-    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
-    ((void**)ctx)[1] = modulePointer;
-    Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
+    if(Cluster_IsClusterMode()){
+        Buffer* buff = Buffer_Create();
+        BufferWriter bw;
+        BufferWriter_Init(&bw, buff);
+        RediStar_BWWriteString(&bw, fep->name);
+        RediStar_BWWriteString(&bw, key);
+        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
+        Buffer_Free(buff);
+    }
     rs.r->registerTrigger(fep, key);
-    RedisModule_FreeThreadSafeContext(ctx);
-    Buffer_Free(buff);
     return 1;
 }
 

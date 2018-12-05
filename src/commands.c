@@ -4,13 +4,6 @@
 #include "record.h"
 #include <Python.h>
 
-/* this cluster refresh is a hack for now, we should come up with a better solution!! */
-int Command_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    Cluster_Refresh();
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    return REDISMODULE_OK;
-}
-
 static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     size_t listLen;
     char* str;

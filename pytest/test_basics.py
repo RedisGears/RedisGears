@@ -111,6 +111,7 @@ def testBasicStream(env):
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
         return
+    time.sleep(0.5)  # make sure the execution reached to all shards
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
@@ -135,6 +136,7 @@ def testBasicStreamProcessing(env):
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
         return
+    time.sleep(0.5)  # make sure the execution reached to all shards
     env.cmd('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
     res = []
     while len(res) < 1:

@@ -20,12 +20,12 @@ void Cluster_RegisterMsgReceiver(char* function, RedisModuleClusterMessageReceiv
 bool Cluster_IsClusterMode();
 size_t Cluster_GetSize();
 void Cluster_Init();
-void Cluster_Refresh();
 char* Cluster_GetMyId();
 bool Cluster_IsMyId(char* id);
 char* Cluster_GetNodeIdByKey(char* key);
 int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int Command_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
 
 #endif /* SRC_CLUSTER_H_ */
