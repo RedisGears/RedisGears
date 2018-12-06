@@ -1,12 +1,18 @@
 CC=gcc
+SRC := src
+OBJ := obj
+
+$(shell mkdir -p $(OBJ))
+$(shell mkdir -p $(OBJ)/utils)
+
 SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
-        src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
+       	src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
         src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
         src/globals.c
-CFLAGS=-fPIC -std=gnu99 -O0 -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DVALGRIND -std=gnu99
+CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -std=gnu99
 LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
 ifeq ($(DEBUG), 1)
-    CFLAGS+=-g
+    CFLAGS+=-g -O0 -DVALGRIND
 endif
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redisgears_python.c
@@ -17,11 +23,21 @@ ifeq ($(WITHPYTHON), 1)
     LFLAGS+=$(PYTHON_LFLAGS)
 endif
 
-all: $(SOURCES)
-	$(CC) -shared -o redisgears.so $(CFLAGS) $(SOURCES) $(LFLAGS)
+OBJECTS=$(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
+
+$(OBJ)/%.o: $(SRC)/%.c
+	$(CC) -I$(SRC) $(CFLAGS) -c $< -o $@
+
+all: redisgears.so
+	
+redisgears.so: $(OBJECTS)
+	$(CC) -shared -o redisgears.so $(OBJECTS) $(LFLAGS)
+	
+static: $(OBJECTS)
+	ar rcs redisgears.a $(OBJECTS)
 
 clean:
-	rm *.so *.o src/*.o
+	rm *.so *.a obj/*.o obj/utils/*.o
 	
 get_deps:
 	rm -rf deps
