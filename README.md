@@ -10,6 +10,7 @@ Install [redis 5.0](https://redis.io/) on you machine
 
 Clone the git repository and run:
 ```
+make get_deps
 make WITHPYTHON=1
 ```
 
