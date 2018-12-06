@@ -14,7 +14,7 @@ make get_deps
 make WITHPYTHON=1
 ```
 
-Notice that RedisGears dynamicly liked with your local python installation, it is possible to run without python support by just typing `make`.
+Notice that RedisGears dynamicly linked with your local python installation, it is possible to run without python support by just typing `make`.
 
 run: `redis-server --loadmodule ./redisgears.so`
 
