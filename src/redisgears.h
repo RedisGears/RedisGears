@@ -82,7 +82,7 @@ Record* CountReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *rec
 
 typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
 typedef Reader* (*RedisGears_ReaderCallback)(void* arg);
-typedef void (*RedisGears_WriterCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
+typedef void (*RedisGears_ForEachCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 typedef Record* (*RedisGears_MapCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 typedef bool (*RedisGears_FilterCallback)(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 typedef char* (*RedisGears_ExtractorCallback)(RedisModuleCtx* rctx, Record *data, void* arg, size_t* len, char** err);
@@ -121,7 +121,7 @@ char** MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r, size_t* le
 void MODULE_API_FUNC(RedisGears_HashSetRecordFreeKeysArray)(char** keyArr);
 
 int MODULE_API_FUNC(RedisGears_RegisterReader)(char* name, RedisGears_ReaderCallback reader);
-int MODULE_API_FUNC(RedisGears_RegisterWriter)(char* name, RedisGears_WriterCallback reader, ArgType* type);
+int MODULE_API_FUNC(RedisGears_RegisterForEach)(char* name, RedisGears_ForEachCallback reader, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterMap)(char* name, RedisGears_MapCallback map, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterFilter)(char* name, RedisGears_FilterCallback filter, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterGroupByExtractor)(char* name, RedisGears_ExtractorCallback extractor, ArgType* type);
@@ -130,7 +130,7 @@ int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCa
 #define RSM_RegisterReader(name) RedisGears_RegisterReader(#name, name);
 #define RSM_RegisterMap(name, type) RedisGears_RegisterMap(#name, name, type);
 #define RSM_RegisterFilter(name, type) RedisGears_RegisterFilter(#name, name, type);
-#define RSM_RegisterWriter(name, type) RedisGears_RegisterWriter(#name, name, type);
+#define RSM_RegisterForEach(name, type) RedisGears_RegisterForEach(#name, name, type);
 #define RSM_RegisterGroupByExtractor(name, type) RedisGears_RegisterGroupByExtractor(#name, name, type);
 #define RSM_RegisterReducer(name, type) RedisGears_RegisterReducer(#name, name, type);
 
@@ -171,8 +171,8 @@ ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, void* arg
 int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, char* arg);
 #define RSM_Register(ctx, arg) RedisGears_Register(ctx, arg)
 
-int MODULE_API_FUNC(RedisGears_Write)(FlatExecutionPlan* ctx, char* name, void* arg);
-#define RSM_Write(ctx, name, arg) RedisGears_Write(ctx, #name, arg)
+int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void* arg);
+#define RSM_ForEach(ctx, name, arg) RedisGears_ForEach(ctx, #name, arg)
 
 typedef void (*FreePrivateData)(void* privateData);
 
@@ -204,7 +204,7 @@ static bool RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(BRReadBuffer);
 
     REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterReader);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterWriter);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterForEach);
     REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterMap);
     REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterFilter);
     REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterGroupByExtractor);
@@ -214,7 +214,7 @@ static bool RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(Filter);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Run);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Register);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Write);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(ForEach);
     REDISLAMBDA_MODULE_INIT_FUNCTION(GroupBy);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Collect);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Repartition);

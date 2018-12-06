@@ -38,7 +38,7 @@
 GENERATE(Filter)
 GENERATE(Map)
 GENERATE(Reader)
-GENERATE(Writer)
+GENERATE(ForEach)
 GENERATE(Extractor)
 GENERATE(Reducer)
 
@@ -46,7 +46,7 @@ void Mgmt_Init(){
     FiltersMgmt_Init();
     MapsMgmt_Init();
     ReadersMgmt_Init();
-    WritersMgmt_Init();
+    ForEachsMgmt_Init();
     ExtractorsMgmt_Init();
     ReducersMgmt_Init();
 }

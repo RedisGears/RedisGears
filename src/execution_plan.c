@@ -125,8 +125,8 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
         return ExtractorsMgmt_GetArgType(name);
     case REDUCE:
         return ReducersMgmt_GetArgType(name);
-    case WRITER:
-        return WritersMgmt_GetArgType(name);
+    case FOREACH:
+        return ForEachsMgmt_GetArgType(name);
     case READER:
         // todo: fix reader args handling for now we free the reader on execution plan itself
         return NULL;
@@ -569,7 +569,7 @@ static Record* ExecutionPlan_WriteNextRecord(ExecutionPlan* ep, ExecutionStep* s
         return record;
     }
     if(record){
-        step->writer.write(rctx, record, step->writer.stepArg.stepArg, err);
+        step->forEach.forEach(rctx, record, step->forEach.stepArg.stepArg, err);
     }
     return record;
 }
@@ -622,7 +622,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
         return ExecutionPlan_RepartitionNextRecord(ep, step, rctx, err);
     case COLLECT:
     	return ExecutionPlan_CollectNextRecord(ep, step, rctx, err);
-    case WRITER:
+    case FOREACH:
         return ExecutionPlan_WriteNextRecord(ep, step, rctx, err);
     case LIMIT:
         return ExecutionPlan_LimitNextRecord(ep, step, rctx, err);
@@ -980,9 +980,9 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     	es->collect.stoped = false;
     	es->collect.pendings = array_new(Record*, PENDING_INITIAL_SIZE);
     	break;
-    case WRITER:
-        es->writer.write = WritersMgmt_Get(step->bStep.stepName);
-        es->writer.stepArg = step->bStep.arg;
+    case FOREACH:
+        es->forEach.forEach = ForEachsMgmt_Get(step->bStep.stepName);
+        es->forEach.stepArg = step->bStep.arg;
         break;
     case LIMIT:
         es->limit.stepArg = step->bStep.arg;
@@ -1060,7 +1060,7 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     case FILTER:
     case EXTRACTKEY:
     case REDUCE:
-    case WRITER:
+    case FOREACH:
         break;
     case FLAT_MAP:
         if(es->flatMap.pendings){
@@ -1174,8 +1174,8 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
     fep->steps = array_append(fep->steps, s);
 }
 
-void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* writerArg){
-    FlatExecutionPlan_AddBasicStep(fep, writer, writerArg, WRITER);
+void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* writer, void* writerArg){
+    FlatExecutionPlan_AddBasicStep(fep, writer, writerArg, FOREACH);
 }
 
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){

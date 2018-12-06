@@ -83,7 +83,7 @@ def testRepartitionAndWriteOption(env):
     conn.execute_command('set', 'z', '3')
     id = env.cmd('rg.pyexecute', "gearsCtx('test')."
                                  "repartition(lambda x: x['value'])."
-                                 "write(lambda x: redisgears.executeCommand('set', x['value'], x['key']))."
+                                 "forEach(lambda x: redisgears.executeCommand('set', x['value'], x['key']))."
                                  "map(lambda x : str(x)).collect().run()")
     res = env.cmd('rg.getresultsblocking', id)
     env.assertContains("'value': '1'", str(res))
@@ -102,7 +102,7 @@ def testBasicStream(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rg.pyexecute', "gearsStreamingCtx('test')."
                                   "repartition(lambda x: 'values')."
-                                  "write(lambda x: redisgears.executeCommand('lpush', 'values', x['value']))."
+                                  "forEach(lambda x: redisgears.executeCommand('lpush', 'values', x['value']))."
                                   "register('*')")
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
@@ -125,7 +125,7 @@ def testBasicStreamProcessing(env):
     res = env.cmd('rg.pyexecute', "gearsStreamingCtx('test', 'StreamReader')."
                                   "flatMap(lambda x: [(a[0], a[1]) for a in x.items()])."
                                   "repartition(lambda x: x[0])."
-                                  "write(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
+                                  "forEach(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
                                   "map(lambda x: str(x))."
                                   "register('stream1')")
     env.assertEqual(res, 'OK')

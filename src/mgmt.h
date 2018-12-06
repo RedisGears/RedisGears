@@ -31,9 +31,9 @@ bool ReadersMgmt_Add(const char* name, RedisGears_ReaderCallback callback, ArgTy
 RedisGears_ReaderCallback ReadersMgmt_Get(const char* name);
 ArgType* ReadersMgmt_GetArgType(const char* name);
 
-bool WritersMgmt_Add(const char* name, RedisGears_WriterCallback callback, ArgType* type);
-RedisGears_WriterCallback WritersMgmt_Get(const char* name);
-ArgType* WritersMgmt_GetArgType(const char* name);
+bool ForEachsMgmt_Add(const char* name, RedisGears_ForEachCallback callback, ArgType* type);
+RedisGears_ForEachCallback ForEachsMgmt_Get(const char* name);
+ArgType* ForEachsMgmt_GetArgType(const char* name);
 
 bool ExtractorsMgmt_Add(const char* name, RedisGears_ExtractorCallback callback, ArgType* type);
 RedisGears_ExtractorCallback ExtractorsMgmt_Get(const char* name);

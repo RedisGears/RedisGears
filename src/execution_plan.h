@@ -20,7 +20,7 @@ enum StepType{
     REPARTITION,
     REDUCE,
     COLLECT,
-    WRITER,
+    FOREACH,
     FLAT_MAP,
     LIMIT,
 };
@@ -83,10 +83,10 @@ typedef struct ReaderStep{
     Reader* r;
 }ReaderStep;
 
-typedef struct WriterExecutionStep{
-    RedisGears_WriterCallback write;
+typedef struct ForEachExecutionStep{
+    RedisGears_ForEachCallback forEach;
     ExecutionStepArg stepArg;
-}WriterExecutionStep;
+}ForEachExecutionStep;
 
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
@@ -101,7 +101,7 @@ typedef struct ExecutionStep{
         ReduceExecutionStep reduce;
         CollectExecutionStep collect;
         ReaderStep reader;
-        WriterExecutionStep writer;
+        ForEachExecutionStep forEach;
         LimitExecutionStep limit;
     };
     enum StepType type;
@@ -155,7 +155,7 @@ typedef struct FlatExecutionPlan{
 
 FlatExecutionPlan* FlatExecutionPlan_New(const char* name);
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
-void FlatExecutionPlan_AddWriter(FlatExecutionPlan* fep, char* writer, void* writerArg);
+void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* writer, void* writerArg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);

@@ -56,7 +56,7 @@ static FlatExecutionPlan* createFep(PyObject* gearsCtx){
             RSM_Collect(rsctx);
             break;
         case 5:
-            RSM_Write(rsctx, RedisGearsPy_PyCallbackWriter, callback);
+            RSM_ForEach(rsctx, RedisGearsPy_PyCallbackForEach, callback);
             break;
         case 6:
             RSM_Repartition(rsctx, RedisGearsPy_PyCallbackExtractor, callback);
@@ -415,7 +415,7 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
-void RedisGearsPy_PyCallbackWriter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
@@ -747,8 +747,8 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     				   "    def collect(self):\n"
 					   "        self.steps.append((4, None))\n"
 					   "        return self\n"
-                       "    def write(self, writeCallback):\n"
-                       "        self.steps.append((5, writeCallback))\n"
+                       "    def forEach(self, forEachCallback):\n"
+                       "        self.steps.append((5, forEachCallback))\n"
                        "        return self\n"
                        "    def repartition(self, extractor):\n"
                        "        self.steps.append((6, extractor))\n"
@@ -781,8 +781,8 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
                        "    def collect(self):\n"
                        "        self.gearsCtx.collect()\n"
                        "        return self\n"
-                       "    def write(self, writeCallback):\n"
-                       "        self.gearsCtx.write(writeCallback)\n"
+                       "    def forEach(self, forEachCallback):\n"
+                       "        self.gearsCtx.forEach(forEachCallback)\n"
                        "        return self\n"
                        "    def repartition(self, extractor):\n"
                        "        self.gearsCtx.repartition(extractor)\n"
@@ -807,7 +807,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
 
-    RSM_RegisterWriter(RedisGearsPy_PyCallbackWriter, pyCallbackType);
+    RSM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
     RSM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);
     RSM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
     RSM_RegisterMap(RedisGearsPy_PyCallbackFlatMapper, pyCallbackType);

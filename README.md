@@ -84,11 +84,11 @@ example (using python api):
 gearsCtx('test').repartition(lambda x: x['value']) # repartition record by value
 ```
 
-### Write
-Write is similar to map but it does not return any value, the write operation goal is to write results to the redis. After performing the write operation the execution plan will continue with the same records. Notice, on cluster, it is possible to write keys to shards that does not hold the keys hslot, its the user responsability to make sure this does not happened using repartition.
+### ForEach
+ForEach is similar to map but it does not return any value, using ForEach it is possible for example to write results back to redis. After performing the ForEach operation the execution plan will continue with the same records.
 example (using python api):
 ```
-gearsCtx('test').write(lambda x: redistar.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
+gearsCtx('test').forEach(lambda x: redistar.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
 ```
 
 # Cluster Support

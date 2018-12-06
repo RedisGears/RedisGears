@@ -36,8 +36,8 @@ static int RG_RegisterReader(char* name, RedisGears_ReaderCallback reader){
     return ReadersMgmt_Add(name, reader, NULL);
 }
 
-static int RG_RegisterWriter(char* name, RedisGears_WriterCallback writer, ArgType* type){
-    return WritersMgmt_Add(name, writer, type);
+static int RG_RegisterForEach(char* name, RedisGears_ForEachCallback writer, ArgType* type){
+    return ForEachsMgmt_Add(name, writer, type);
 }
 
 static int RG_RegisterMap(char* name, RedisGears_MapCallback map, ArgType* type){
@@ -113,11 +113,11 @@ static int RG_Repartition(FlatExecutionPlan* fep, char* extraxtorName, void* ext
     return 1;
 }
 
-static int RG_Write(FlatExecutionPlan* fep, char* name, void* arg){
+static int RG_ForEach(FlatExecutionPlan* fep, char* name, void* arg){
     if(FlatExecutionPlan_IsBroadcasted(fep)){
         return 0;
     }
-    FlatExecutionPlan_AddWriter(fep, name, arg);
+    FlatExecutionPlan_AddForEachStep(fep, name, arg);
     return 1;
 }
 
@@ -239,7 +239,7 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(BRReadBuffer, registerApiCallback);
 
     REGISTER_API(RegisterReader, registerApiCallback);
-    REGISTER_API(RegisterWriter, registerApiCallback);
+    REGISTER_API(RegisterForEach, registerApiCallback);
     REGISTER_API(RegisterMap, registerApiCallback);
     REGISTER_API(RegisterFilter, registerApiCallback);
     REGISTER_API(RegisterGroupByExtractor, registerApiCallback);
@@ -251,7 +251,7 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(GroupBy, registerApiCallback);
     REGISTER_API(Collect, registerApiCallback);
     REGISTER_API(Repartition, registerApiCallback);
-    REGISTER_API(Write, registerApiCallback);
+    REGISTER_API(ForEach, registerApiCallback);
     REGISTER_API(Limit, registerApiCallback);
     REGISTER_API(Run, registerApiCallback);
     REGISTER_API(Register, registerApiCallback);
@@ -346,7 +346,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     RSM_RegisterReader(KeysReader);
     RSM_RegisterReader(StreamReader);
-    RSM_RegisterWriter(KeyRecordWriter, NULL);
+    RSM_RegisterForEach(KeyRecordWriter, NULL);
     RSM_RegisterMap(GetValueMapper, NULL);
     RSM_RegisterFilter(Example_Filter, NULL);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
