@@ -11,7 +11,7 @@
 #define __USE_GNU
 #include <dlfcn.h>
 
-int RedisModule_OnLoadInternal(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
 void test(){
 
@@ -33,6 +33,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
-    return RedisModule_OnLoadInternal(ctx, argv, argc);
+    return RedisGears_OnLoad(ctx, argv, argc);
 }
 

@@ -320,7 +320,7 @@ int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, voi
 
 int moduleRegisterApi(const char *funcname, void *funcptr);
 
-int RedisModule_OnLoadInternal(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if(!apiRegistered){
         if(!RedisGears_RegisterApi(moduleRegisterApi)){
             RedisModule_Log(ctx, "warning", "could not register RedisGears api");
