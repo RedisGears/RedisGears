@@ -6,6 +6,8 @@ gearsCtx('execution-name').filter(filter_function).map(map_function).groupby(key
 RedisGears supports full python syntax and low level c api. In addition you can run it on cluster.
 
 # Quick Start
+
+## Install
 Install [redis 5.0](https://redis.io/) on you machine
 
 Clone the git repository and run:
@@ -16,12 +18,14 @@ make WITHPYTHON=1
 
 Notice that RedisGears dynamicly linked with your local python installation, it is possible to run without python support by just typing `make`.
 
+## Run
 run: `redis-server --loadmodule ./redisgears.so`
 
 Add some keys to your redis server and then run:
 ```
-rg.pyexecute "gearsCtx('test').map(lambda x:str(x)).run('*')"
-rg.getresultsblocking test
+127.0.0.1:6379> RG.PYEXECUTE "gearsCtx('test').map(lambda x:str(x)).run('*')"
+"0000000000000000000000000000000000000000-0"
+127.0.0.1:6379> RG.getresultsblocking 0000000000000000000000000000000000000000-0
 ```
 You will get all of your keys and values in redis.
 
