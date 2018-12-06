@@ -118,15 +118,35 @@ static void Cluster_Free(){
     CurrCluster = NULL;
 }
 
+static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int status);
+static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status);
+
+static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
+//    printf("response arrived : %s:%d\r\n", c->c.tcp.host, c->c.tcp.port);
+}
+
+static void Cluster_ConnectToShard(Node* n){
+    n->c = redisAsyncConnect(n->ip, n->port);
+    if (n->c->err) {
+        /* Let *c leak for now... */
+        printf("Error: %s\n", n->c->errstr);
+        //todo: handle this!!!
+    }
+    if(n->password){
+        redisAsyncCommand(n->c, OnResponseArrived, NULL, "AUTH %s", n->password);
+    }
+    n->c->data = n;
+    redisLibeventAttach(n->c, main_base);
+    redisAsyncSetConnectCallback(n->c, Cluster_ConnectCallback);
+    redisAsyncSetDisconnectCallback(n->c, Cluster_DisconnectCallback);
+}
+
 static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int status){
-    printf("disconnected : %s:%d, status : %d\r\n", c->c.tcp.host, c->c.tcp.port, status);
+    printf("disconnected : %s:%d, status : %d, will try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
+    Cluster_ConnectToShard((Node*)c->data);
 }
 static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status){
     printf("connected : %s:%d\r\n", c->c.tcp.host, c->c.tcp.port);
-}
-
-void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
-//    printf("response arrived : %s:%d\r\n", c->c.tcp.host, c->c.tcp.port);
 }
 
 static void Cluster_ConnectToShards(){
@@ -137,18 +157,7 @@ static void Cluster_ConnectToShards(){
         if(strcmp(n->id, CurrCluster->myId) == 0){
             continue;
         }
-        n->c = redisAsyncConnect(n->ip, n->port);
-        if (n->c->err) {
-            /* Let *c leak for now... */
-            printf("Error: %s\n", n->c->errstr);
-            //todo: handle this!!!
-        }
-        if(n->password){
-            redisAsyncCommand(n->c, OnResponseArrived, NULL, "AUTH %s", n->password);
-        }
-        redisLibeventAttach(n->c, main_base);
-        redisAsyncSetConnectCallback(n->c, Cluster_ConnectCallback);
-        redisAsyncSetDisconnectCallback(n->c, Cluster_DisconnectCallback);
+        Cluster_ConnectToShard(n);
     }
     dictReleaseIterator(iter);
 }
