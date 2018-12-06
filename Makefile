@@ -30,14 +30,14 @@ $(OBJ)/%.o: $(SRC)/%.c
 
 all: redisgears.so
 	
-redisgears.so: $(OBJECTS)
-	$(CC) -shared -o redisgears.so $(OBJECTS) $(LFLAGS)
+redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
+	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
 	
 static: $(OBJECTS)
 	ar rcs redisgears.a $(OBJECTS)
 
 clean:
-	rm *.so *.a obj/*.o obj/utils/*.o
+	rm -f *.so *.a obj/*.o obj/utils/*.o
 	
 get_deps:
 	rm -rf deps
