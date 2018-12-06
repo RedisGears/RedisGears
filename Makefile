@@ -34,10 +34,10 @@ redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
 	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
 	
 static: $(OBJECTS)
-	ar rcs redisgears.a $(OBJECTS)
+	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
 
 clean:
-	rm -f *.so *.a obj/*.o obj/utils/*.o
+	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o redisgears.zip
 	
 get_deps:
 	rm -rf deps
