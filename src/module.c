@@ -44,6 +44,10 @@ static int RG_RegisterMap(char* name, RedisGears_MapCallback map, ArgType* type)
     return MapsMgmt_Add(name, map, type);
 }
 
+static int RG_RegisterAccumulator(char* name, RedisGears_AccumulateCallback accumulator, ArgType* type){
+    return AccumulatesMgmt_Add(name, accumulator, type);
+}
+
 static int RG_RegisterFilter(char* name, RedisGears_FilterCallback filter, ArgType* type){
     return FiltersMgmt_Add(name, filter, type);
 }
@@ -118,6 +122,14 @@ static int RG_ForEach(FlatExecutionPlan* fep, char* name, void* arg){
         return 0;
     }
     FlatExecutionPlan_AddForEachStep(fep, name, arg);
+    return 1;
+}
+
+static int RG_Accumulate(FlatExecutionPlan* fep, char* name, void* arg){
+    if(FlatExecutionPlan_IsBroadcasted(fep)){
+        return 0;
+    }
+    FlatExecutionPlan_AddAccumulateStep(fep, name, arg);
     return 1;
 }
 
@@ -241,11 +253,13 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(RegisterReader, registerApiCallback);
     REGISTER_API(RegisterForEach, registerApiCallback);
     REGISTER_API(RegisterMap, registerApiCallback);
+    REGISTER_API(RegisterAccumulator, registerApiCallback);
     REGISTER_API(RegisterFilter, registerApiCallback);
     REGISTER_API(RegisterGroupByExtractor, registerApiCallback);
     REGISTER_API(RegisterReducer, registerApiCallback);
     REGISTER_API(CreateCtx, registerApiCallback);
     REGISTER_API(Map, registerApiCallback);
+    REGISTER_API(Accumulate, registerApiCallback);
     REGISTER_API(FlatMap, registerApiCallback);
     REGISTER_API(Filter, registerApiCallback);
     REGISTER_API(GroupBy, registerApiCallback);

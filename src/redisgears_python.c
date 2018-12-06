@@ -70,6 +70,9 @@ static FlatExecutionPlan* createFep(PyObject* gearsCtx){
             offset = PyInt_AsLong(reducer);
             RSM_Limit(rsctx, offset, len);
             break;
+        case 9:
+            RSM_Accumulate(rsctx, RedisGearsPy_PyCallbackAccumulate, callback);
+            break;
         default:
             assert(false);
         }
@@ -427,6 +430,37 @@ void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* 
     PyGILState_Release(state);
 }
 
+static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *accumulate, Record *r, void* arg, char** err){
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* pArgs = PyTuple_New(2);
+    PyObject* callback = arg;
+    PyObject* currObj = RG_PyObjRecordGet(r);
+    PyObject* oldAccumulateObj = Py_None;
+    if(!accumulate){
+        accumulate = RG_PyObjRecordCreate();
+    }else{
+        oldAccumulateObj = RG_PyObjRecordGet(accumulate);
+    }
+    PyTuple_SetItem(pArgs, 0, oldAccumulateObj);
+    PyTuple_SetItem(pArgs, 1, currObj);
+    PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
+    if(!newAccumulateObj){
+        PyErr_Print();
+        *err = RG_STRDUP(PYTHON_ERROR);
+        RedisGears_FreeRecord(r);
+        PyGILState_Release(state);
+        return NULL;
+    }
+    Py_INCREF(newAccumulateObj);
+    if(oldAccumulateObj != Py_None){
+        Py_DECREF(oldAccumulateObj);
+    }
+    RG_PyObjRecordSet(accumulate, newAccumulateObj);
+    RedisGears_FreeRecord(r);
+    PyGILState_Release(state);
+    return accumulate;
+}
+
 static Record* RedisGearsPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
@@ -756,6 +790,9 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
                        "    def flatMap(self, flatMapFunc):\n"
                        "        self.steps.append((7, flatMapFunc))\n"
                        "        return self\n"
+                       "    def accumulate(self, accumulateFunc):\n"
+                       "        self.steps.append((9, accumulateFunc))\n"
+                       "        return self\n"
                        "    def limit(self, len, offset=0):\n"
                        "        if not isinstance(len, int):\n"
                        "            raise Exception('value given to limit is not int')\n"
@@ -790,6 +827,9 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
                        "    def flatMap(self, flatMapFunc):\n"
                        "        self.gearsCtx.flatMap(flatMapFunc)\n"
                        "        return self\n"
+                       "    def accumulate(self, accumulateFunc):\n"
+                       "        self.gearsCtx.flatMap(accumulateFunc)\n"
+                       "        return self\n"
                        "    def limit(self, len, offset=0):\n"
                        "        self.gearsCtx.limit(len, offset)\n"
                        "        return self\n"
@@ -812,6 +852,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RSM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
     RSM_RegisterMap(RedisGearsPy_PyCallbackFlatMapper, pyCallbackType);
     RSM_RegisterMap(RedisGearsPy_PyCallbackMapper, pyCallbackType);
+    RSM_RegisterAccumulator(RedisGearsPy_PyCallbackAccumulate, pyCallbackType);
     RSM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
     RSM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
 

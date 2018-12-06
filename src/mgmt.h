@@ -43,6 +43,10 @@ bool ReducersMgmt_Add(const char* name, RedisGears_ReducerCallback callback, Arg
 RedisGears_ReducerCallback ReducersMgmt_Get(const char* name);
 ArgType* ReducersMgmt_GetArgType(const char* name);
 
+bool AccumulatesMgmt_Add(const char* name, RedisGears_AccumulateCallback callback, ArgType* type);
+RedisGears_AccumulateCallback AccumulatesMgmt_Get(const char* name);
+ArgType* AccumulatesMgmt_GetArgType(const char* name);
+
 void Mgmt_Init();
 
 

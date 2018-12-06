@@ -23,6 +23,7 @@ enum StepType{
     FOREACH,
     FLAT_MAP,
     LIMIT,
+    ACCUMULATE,
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -88,6 +89,11 @@ typedef struct ForEachExecutionStep{
     ExecutionStepArg stepArg;
 }ForEachExecutionStep;
 
+typedef struct AccumulateExecutionStep{
+    RedisGears_AccumulateCallback accumulate;
+    ExecutionStepArg stepArg;
+}AccumulateExecutionStep;
+
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
     size_t stepId;
@@ -103,6 +109,7 @@ typedef struct ExecutionStep{
         ReaderStep reader;
         ForEachExecutionStep forEach;
         LimitExecutionStep limit;
+        AccumulateExecutionStep accumulate;
     };
     enum StepType type;
 }ExecutionStep;
@@ -135,9 +142,15 @@ typedef struct FlatBasicStep{
     ExecutionStepArg arg;
 }FlatBasicStep;
 
+typedef struct FlatAccumulatorStep{
+    FlatBasicStep ctr;
+    FlatBasicStep accumulator;
+}FlatAccumulatorStep;
+
 typedef struct FlatExecutionStep{
     union{
         FlatBasicStep bStep;
+        FlatAccumulatorStep aStep;
     };
     enum StepType type;
 }FlatExecutionStep;
@@ -155,7 +168,8 @@ typedef struct FlatExecutionPlan{
 
 FlatExecutionPlan* FlatExecutionPlan_New(const char* name);
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
-void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* writer, void* writerArg);
+void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
+void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);

@@ -53,6 +53,17 @@ class testBasic:
         self.env.assertContains("{'value': 50, 'key': '0'}", res)
         self.env.cmd('rg.dropexecution', id)
 
+    def testBasicAccumulate(self):
+        id = self.env.cmd('rg.pyexecute', 'gearsCtx("test5").'
+                                          'map(lambda x: int(x["value"])).'
+                                          'accumulate(lambda a,x: x + (a if a else 0)).'
+                                          'collect().'
+                                          'accumulate(lambda a,x: x + (a if a else 0)).'
+                                          'map(lambda x:str(x)).run()')
+        res = self.env.cmd('rg.getresultsblocking', id)
+        self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
+        self.env.cmd('rg.dropexecution', id)
+
 
 def testFlatMap(env):
     conn = getConnectionByEnv(env)

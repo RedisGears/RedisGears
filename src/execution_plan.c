@@ -127,6 +127,8 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
         return ReducersMgmt_GetArgType(name);
     case FOREACH:
         return ForEachsMgmt_GetArgType(name);
+    case ACCUMULATE:
+        return AccumulatesMgmt_GetArgType(name);
     case READER:
         // todo: fix reader args handling for now we free the reader on execution plan itself
         return NULL;
@@ -599,6 +601,27 @@ static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* s
     return ret;
 }
 
+static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+    Record* r = NULL;
+    Record* accumulator = NULL;
+    while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
+        if(r == &StopRecord){
+            if(accumulator){
+                RedisGears_FreeRecord(accumulator);
+            }
+            return r;
+        }
+        if(*err){
+            if(accumulator){
+                RedisGears_FreeRecord(accumulator);
+            }
+            return r;
+        }
+        accumulator = step->accumulate.accumulate(rctx, accumulator, r, step->accumulate.stepArg.stepArg, err);
+    }
+    return accumulator;
+}
+
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = NULL;
     Record* r;
@@ -626,6 +649,8 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
         return ExecutionPlan_WriteNextRecord(ep, step, rctx, err);
     case LIMIT:
         return ExecutionPlan_LimitNextRecord(ep, step, rctx, err);
+    case ACCUMULATE:
+        return ExecutionPlan_AccumulateNextRecord(ep, step, rctx, err);
     default:
         assert(false);
         return NULL;
@@ -988,6 +1013,10 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
         es->limit.stepArg = step->bStep.arg;
         es->limit.currRecordIndex = 0;
         break;
+    case ACCUMULATE:
+        es->accumulate.stepArg = step->bStep.arg;
+        es->accumulate.accumulate = AccumulatesMgmt_Get(step->bStep.stepName);
+        break;
     default:
         assert(false);
     }
@@ -1061,6 +1090,7 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     case EXTRACTKEY:
     case REDUCE:
     case FOREACH:
+    case ACCUMULATE:
         break;
     case FLAT_MAP:
         if(es->flatMap.pendings){
@@ -1174,8 +1204,12 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
     fep->steps = array_append(fep->steps, s);
 }
 
-void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* writer, void* writerArg){
-    FlatExecutionPlan_AddBasicStep(fep, writer, writerArg, FOREACH);
+void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){
+    FlatExecutionPlan_AddBasicStep(fep, forEach, writerArg, FOREACH);
+}
+
+void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg){
+    FlatExecutionPlan_AddBasicStep(fep, accumulator, arg, ACCUMULATE);
 }
 
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){

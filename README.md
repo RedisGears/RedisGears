@@ -95,6 +95,13 @@ example (using python api):
 gearsCtx('test').forEach(lambda x: redistar.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
 ```
 
+### Accumulate
+Accumulate is a many to one mapper, it allows you to accumulate the data to a single record.
+example (using python api):
+```
+gearsCtx('test').map(lambda x:int(x['value'])).accumulate(lambda a,x: a + x if a is not None else x) # will sum all the values
+```
+
 # Cluster Support
 RedisGears support all of the operations on oss-cluster. Notice that the module needs to be loaded on all the cluster nodes. In addition, after setting up the cluster you need to run `rs.refreshcluster` on each node.
 
