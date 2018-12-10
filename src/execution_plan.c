@@ -46,6 +46,14 @@ static void FreeLimitArg(void* arg){
     RG_FREE(arg);
 }
 
+static void* DupLimitArg(void* arg){
+    LimitExecutionStepArg* limitArg = arg;
+    LimitExecutionStepArg* ret = RG_ALLOC(sizeof(*ret));
+    ret->len = limitArg->len;
+    ret->offset = limitArg->offset;
+    return ret;
+}
+
 static void LimitArgSerialize(void* arg, BufferWriter* bw){
     LimitExecutionStepArg* limitArg = arg;
     RedisGears_BWWriteLong(bw, limitArg->offset);
@@ -61,18 +69,14 @@ static void* LimitArgDeserialize(BufferReader* br){
 
 static ArgType LimitArgType = {
         .free = FreeLimitArg,
+        .dup = DupLimitArg,
         .serialize = LimitArgSerialize,
         .deserialize = LimitArgDeserialize,
 };
 
-// this is an hack so redis will not crash, we should try to
-// avoid this as soon as possible.
-static void* modulePointer;
-
 typedef struct ExecutionPlansData{
     list* executionPlansToRun;
     dict* epDict;
-    dict* namesDict;
     pthread_mutex_t mutex;
     pthread_t* workers;
 }ExecutionPlansData;
@@ -139,14 +143,6 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
     }
 }
 
-FlatExecutionPlan* ExecutionPlan_FindByName(const char* name){
-	dictEntry *entry = dictFind(epData.namesDict, name);
-	if(!entry){
-		return NULL;
-	}
-	return dictGetVal(entry);
-}
-
 ExecutionPlan* ExecutionPlan_FindById(const char* id){
     dictEntry *entry = dictFind(epData.epDict, id);
     if(!entry){
@@ -185,7 +181,6 @@ static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, BufferWrite
 }
 
 static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, BufferWriter* bw){
-	RedisGears_BWWriteString(bw, fep->name);
     FlatExecutionPlan_SerializeReader(fep->reader, bw);
     RedisGears_BWWriteLong(bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
@@ -213,37 +208,24 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(BufferReader* br){
 }
 
 static FlatExecutionPlan* FlatExecutionPlan_Deserialize(BufferReader* br){
-	char* name = RedisGears_BRReadString(br);
-    FlatExecutionPlan* ret = FlatExecutionPlan_New(name);
+    FlatExecutionPlan* ret = FlatExecutionPlan_New();
     ret->reader = FlatExecutionPlan_DeserializeReader(br);
     long numberOfSteps = RedisGears_BRReadLong(br);
     for(int i = 0 ; i < numberOfSteps ; ++i){
         ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
     }
-    ret->distributed = true;
     return ret;
 }
 
-void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx){
+static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Buffer* buff = Buffer_Create();
     BufferWriter bw;
     BufferWriter_Init(&bw, buff);
-    FlatExecutionPlan_Serialize(fep, &bw);
-    Cluster_SendMsgM(NULL, FlatExecutionPlan_OnReceived, buff->buff, buff->size);
-}
-
-static void ExecutionPlan_Distribute(ExecutionPlan* ep, RedisModuleCtx *rctx){
-    Buffer* buff = Buffer_Create();
-    BufferWriter bw;
-    BufferWriter_Init(&bw, buff);
-    RedisGears_BWWriteString(&bw, ep->fep->name);
+    FlatExecutionPlan_Serialize(ep->fep, &bw);
     RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
-    size_t numOfNodes;
-    RedisModule_ThreadSafeContextLock(rctx);
     Cluster_SendMsgM(NULL, ExecutionPlan_OnReceived, buff->buff, buff->size);
-    RedisModule_ThreadSafeContextUnlock(rctx);
     Buffer_Free(buff);
 }
 
@@ -700,11 +682,10 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         listDelNode(epData.executionPlansToRun, node);
         pthread_mutex_unlock(&epData.mutex);
         RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-		((void**)rctx)[1] = modulePointer;
         if(ep->status == CREATED){
             if(Cluster_IsClusterMode()){
                 if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
-                   ExecutionPlan_Distribute(ep, rctx);
+                   ExecutionPlan_Distribute(ep);
                 }
             }
             ep->status = RUNNING;
@@ -741,7 +722,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     };
     BufferReader br;
     BufferReader_Init(&br, &buff);
-    FlatExecutionPlan* fep = ExecutionPlan_FindByName(RedisGears_BRReadString(&br));
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
     if(!fep){
         // todo: big big warning
         return;
@@ -753,18 +734,6 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
         rs.r->free(rs.r->ctx);
     }
     RG_FREE(rs.r);
-}
-
-static void FlatExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-    Buffer buff = (Buffer){
-        .buff = (char*)payload,
-        .size = len,
-        .cap = len,
-    };
-    BufferReader br;
-    BufferReader_Init(&br, &buff);
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
-    dictAdd(epData.namesDict, fep->name, fep);
 }
 
 static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
@@ -795,18 +764,14 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     };
     BufferReader br;
     BufferReader_Init(&br, &buff);
-    char* fepName = RedisGears_BRReadString(&br);
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
     assert(idLen == EXECUTION_PLAN_ID_LEN);
-    FlatExecutionPlan* fep = ExecutionPlan_FindByName(fepName);
-    if(!fep){
-        //todo : big big big warning !!!
-        return;
-    }
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, NULL, NULL, NULL);
     ExecutionStep* rs = ep->steps[array_len(ep->steps) - 1];
     rs->reader.r->deserialize(rs->reader.r->ctx, &br);
+    FlatExecutionPlan_Free(fep);
     ExecutionPlan_Run(ep);
 }
 
@@ -866,6 +831,35 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     ep->steps[stepId]->repartion.pendings = array_append(ep->steps[stepId]->repartion.pendings, r);
 }
 
+static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* callbackName, void* arg, enum StepType type){
+    FlatExecutionStep s;
+    s.type = type;
+    s.bStep.arg = (ExecutionStepArg){
+        .stepArg = arg,
+        .type = FlatExecutionPlan_GetArgTypeByStepType(type, callbackName),
+    };
+    if(callbackName){
+        s.bStep.stepName = RG_STRDUP(callbackName);
+    }else{
+        s.bStep.stepName = NULL;
+    }
+    fep->steps = array_append(fep->steps, s);
+}
+
+static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
+    FlatExecutionPlan* ret = FlatExecutionPlan_New();
+    FlatExecutionPlan_SetReader(ret, fep->reader->reader);
+    for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
+        FlatExecutionStep* s = fep->steps + i;
+        void* arg = NULL;
+        if(s->bStep.arg.type){
+            arg = s->bStep.arg.type->dup(s->bStep.arg.stepArg);
+        }
+        FlatExecutionPlan_AddBasicStep(ret, s->bStep.stepName, arg, s->type);
+    }
+    return ret;
+}
+
 static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     Buffer buff;
     buff.buff = (char*)payload;
@@ -887,14 +881,11 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 }
 
 void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
-    modulePointer = ((void**)ctx)[1];
     epData.executionPlansToRun = listCreate();
     epData.epDict = dictCreate(&dictTypeHeapIds, NULL);
-    epData.namesDict = dictCreate(&dictTypeHeapStrings, NULL);
     pthread_mutex_init(&epData.mutex, NULL);
     epData.workers = array_new(pthread_t, numberOfworkers);
 
-    Cluster_RegisterMsgReceiverM(FlatExecutionPlan_OnReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_OnReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectOnRecordReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectDoneSendingRecords);
@@ -909,54 +900,25 @@ void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
     }
 }
 
-bool FlatExecutionPlan_IsBroadcasted(FlatExecutionPlan* fep){
-    return fep->distributed;
-}
-
-bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep){
-    if(ExecutionPlan_FindByName(fep->name)){
-        return false;
-    }
-    if(Cluster_IsClusterMode() && !fep->distributed){
-        RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-        ((void**)rctx)[1] = modulePointer;
-        FlatExecutionPlan_Distribute(fep, rctx);
-        RedisModule_FreeThreadSafeContext(rctx);
-    }
-    if(dictAdd(epData.namesDict, fep->name, fep) != DICT_OK){
-        return false;
-    }
-    fep->distributed = true;
-    return true;
-}
-
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
     ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
     if(!rs.r->registerTrigger){
-        return 0;
-    }
-    if(!FlatExecutionPlan_IsBroadcasted(fep) &&
-        !FlatExecutionPlan_Broadcast(fep)){
         return 0;
     }
     if(Cluster_IsClusterMode()){
         Buffer* buff = Buffer_Create();
         BufferWriter bw;
         BufferWriter_Init(&bw, buff);
-        RedisGears_BWWriteString(&bw, fep->name);
+        FlatExecutionPlan_Serialize(fep, &bw);
         RedisGears_BWWriteString(&bw, key);
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
         Buffer_Free(buff);
     }
-    rs.r->registerTrigger(fep, key);
+    rs.r->registerTrigger(FlatExecutionPlan_Duplicate(fep), key);
     return 1;
 }
 
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    if(!FlatExecutionPlan_IsBroadcasted(fep) &&
-        !FlatExecutionPlan_Broadcast(fep)){
-        return NULL;
-    }
     return FlatExecutionPlan_RunOnly(fep, eid, arg, callback, privateData);
 }
 
@@ -1033,6 +995,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
+    fep = FlatExecutionPlan_Duplicate(fep);
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ExecutionStep* last = NULL;
     for(int i = array_len(fep->steps) - 1 ; i >= 0 ; --i){
@@ -1079,9 +1042,9 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     return ret;
 }
 
-void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
+static void ExecutionStep_Free(ExecutionStep* es){
     if(es->prev){
-        ExecutionStep_Free(es->prev, ctx);
+        ExecutionStep_Free(es->prev);
     }
     switch(es->type){
     case LIMIT:
@@ -1136,10 +1099,11 @@ void ExecutionStep_Free(ExecutionStep* es, RedisModuleCtx *ctx){
     RG_FREE(es);
 }
 
-void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx){
+void ExecutionPlan_Free(ExecutionPlan* ep){
+    FlatExecutionPlan_Free(ep->fep);
     dictDelete(epData.epDict, ep->id);
 
-    ExecutionStep_Free(ep->steps[0], ctx);
+    ExecutionStep_Free(ep->steps[0]);
     array_free(ep->steps);
 
     for(int i = 0 ; i < array_len(ep->results) ; ++i){
@@ -1155,13 +1119,11 @@ static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
     return res;
 }
 
-FlatExecutionPlan* FlatExecutionPlan_New(const char* name){
+FlatExecutionPlan* FlatExecutionPlan_New(){
 #define STEPS_INITIAL_CAP 10
     FlatExecutionPlan* res = RG_ALLOC(sizeof(*res));
-    res->name = RG_STRDUP(name);
     res->reader = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
-    res->distributed = false;
     return res;
 }
 
@@ -1172,8 +1134,6 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
 }
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
-    dictDelete(epData.namesDict, fep->name);
-	RG_FREE(fep->name);
     RG_FREE(fep->reader->reader);
     RG_FREE(fep->reader);
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
@@ -1187,21 +1147,6 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
 
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
     fep->reader = FlatExecutionPlan_NewReader(reader);
-}
-
-static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* callbackName, void* arg, enum StepType type){
-    FlatExecutionStep s;
-    s.type = type;
-    s.bStep.arg = (ExecutionStepArg){
-        .stepArg = arg,
-        .type = FlatExecutionPlan_GetArgTypeByStepType(type, callbackName),
-    };
-    if(callbackName){
-        s.bStep.stepName = RG_STRDUP(callbackName);
-    }else{
-        s.bStep.stepName = NULL;
-    }
-    fep->steps = array_append(fep->steps, s);
 }
 
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){
@@ -1259,9 +1204,7 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 	size_t numOfEntries = 0;
 	while((entry = dictNext(iter)) != NULL){
 		ExecutionPlan* ep = dictGetVal(entry);
-		RedisModule_ReplyWithArray(ctx, 6);
-		RedisModule_ReplyWithStringBuffer(ctx, "flatExecutionName", strlen("flatExecutionName"));
-		RedisModule_ReplyWithStringBuffer(ctx, ep->fep->name, strlen(ep->fep->name));
+		RedisModule_ReplyWithArray(ctx, 4);
 		RedisModule_ReplyWithStringBuffer(ctx, "executionId", strlen("executionId"));
 		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
 		RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
@@ -1276,53 +1219,4 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 	dictReleaseIterator(iter);
 	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
 	return REDISMODULE_OK;
-}
-
-static void ExecutionPlan_FlatExecutionDump(RedisModuleCtx *ctx, FlatExecutionPlan* fep){
-    RedisModule_ReplyWithArray(ctx, 6);
-    RedisModule_ReplyWithStringBuffer(ctx, "flatExecutionName", strlen("flatExecutionName"));
-    RedisModule_ReplyWithStringBuffer(ctx, fep->name, strlen(fep->name));
-    RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
-    RedisModule_ReplyWithStringBuffer(ctx, fep->reader->reader, strlen(fep->reader->reader));
-    RedisModule_ReplyWithStringBuffer(ctx, "steps", strlen("steps"));
-    RedisModule_ReplyWithArray(ctx, array_len(fep->steps));
-    for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
-        RedisModule_ReplyWithArray(ctx, 4);
-        FlatExecutionStep* step = fep->steps + i;
-        RedisModule_ReplyWithStringBuffer(ctx, "type", strlen("type"));
-        RedisModule_ReplyWithStringBuffer(ctx, stepsNames[step->type], strlen(stepsNames[step->type]));
-        RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
-        RedisModule_ReplyWithStringBuffer(ctx, step->bStep.stepName, strlen(step->bStep.stepName));
-    }
-}
-
-static void ExecutionPlan_FlatExecutionDumpByName(RedisModuleCtx *ctx, const char* name){
-    FlatExecutionPlan* fep = ExecutionPlan_FindByName(name);
-    if(!fep){
-        RedisModule_ReplyWithError(ctx, "flat execution do not exists");
-    }else{
-        ExecutionPlan_FlatExecutionDump(ctx, fep);
-    }
-}
-
-int ExecutionPlan_FlatExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc > 2){
-        return RedisModule_WrongArity(ctx);
-    }
-    if(argc == 2){
-        const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-        ExecutionPlan_FlatExecutionDumpByName(ctx, name);
-        return REDISMODULE_OK;
-    }
-    dictIterator *iter = dictGetIterator(epData.namesDict);
-    dictEntry *entry = NULL;
-    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
-    size_t numOfEntries = 0;
-    while((entry = dictNext(iter)) != NULL){
-        FlatExecutionPlan* fep = dictGetVal(entry);
-        ExecutionPlan_FlatExecutionDump(ctx, fep);
-        ++numOfEntries;
-    }
-    RedisModule_ReplySetArrayLength(ctx, numOfEntries);
-    return REDISMODULE_OK;
 }

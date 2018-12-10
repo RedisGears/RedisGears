@@ -15,6 +15,7 @@
 typedef struct ArgType{
     char* type;
     ArgFree free;
+    ArgDuplicate dup;
     ArgSerialize serialize;
     ArgDeserialize deserialize;
 }ArgType;

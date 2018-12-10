@@ -24,8 +24,6 @@ run: `redis-server --loadmodule ./redisgears.so`
 Add some keys to your redis server and then run:
 ```
 127.0.0.1:6379> RG.PYEXECUTE "gearsCtx('test').map(lambda x:str(x)).run('*')"
-"0000000000000000000000000000000000000000-0"
-127.0.0.1:6379> RG.getresultsblocking 0000000000000000000000000000000000000000-0
 ```
 You will get all of your keys and values in redis.
 

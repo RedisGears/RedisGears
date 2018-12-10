@@ -21,7 +21,7 @@ class testBasic:
             conn.execute_command('set', str(i), str(i))
 
     def testBasicQuery(self):
-        id = self.env.cmd('rg.pyexecute', "gearsCtx('test1').map(lambda x:str(x)).collect().run()")
+        id = self.env.cmd('rg.pyexecute', "gearsCtx().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res]
         for i in range(100):
@@ -29,7 +29,7 @@ class testBasic:
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicFilterQuery(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx("test2").filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()')
+        id = self.env.cmd('rg.pyexecute', 'gearsCtx().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res]
         for i in range(50, 100):
@@ -37,29 +37,29 @@ class testBasic:
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicMapQuery(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx("test3").map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()')
+        id = self.env.cmd('rg.pyexecute', 'gearsCtx().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicGroupByQuery(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx("test4").'
+        id = self.env.cmd('rg.pyexecute', 'gearsCtx().'
                                           'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
                                           'groupby(lambda x: str(x["value"]), lambda key, vals: len(vals)).'
-                                          'map(lambda x:str(x)).collect().run()')
+                                          'map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         self.env.assertContains("{'value': 50, 'key': '100'}", res)
         self.env.assertContains("{'value': 50, 'key': '0'}", res)
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicAccumulate(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx("test5").'
+        id = self.env.cmd('rg.pyexecute', 'gearsCtx().'
                                           'map(lambda x: int(x["value"])).'
                                           'accumulate(lambda a,x: x + (a if a else 0)).'
                                           'collect().'
                                           'accumulate(lambda a,x: x + (a if a else 0)).'
-                                          'map(lambda x:str(x)).run()')
+                                          'map(lambda x:str(x)).run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
         self.env.cmd('rg.dropexecution', id)
@@ -68,9 +68,9 @@ class testBasic:
 def testFlatMap(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
-    id = env.cmd('rg.pyexecute', "gearsCtx('test')."
-                                 "flatMap(lambda x: x['value'])."
-                                 "collect().run()")
+    id = env.cmd('rg.pyexecute', "gearsCtx()."
+                                 "flatmap(lambda x: x['value'])."
+                                 "collect().run()", 'UNBLOCKING')
     res = env.cmd('rg.getresultsblocking', id)
     env.assertEqual(set(res), set(['1', '2', '3']))
     env.cmd('rg.dropexecution', id)
@@ -79,9 +79,9 @@ def testFlatMap(env):
 def testLimit(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
-    id = env.cmd('rg.pyexecute', "gearsCtx('test')."
-                                 "flatMap(lambda x: x['value'])."
-                                 "limit(1).collect().run()")
+    id = env.cmd('rg.pyexecute', "gearsCtx()."
+                                 "flatmap(lambda x: x['value'])."
+                                 "limit(1).collect().run()", 'UNBLOCKING')
     res = env.cmd('rg.getresultsblocking', id)
     env.assertEqual(len(res), 1)
     env.cmd('rg.dropexecution', id)
@@ -92,10 +92,10 @@ def testRepartitionAndWriteOption(env):
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
-    id = env.cmd('rg.pyexecute', "gearsCtx('test')."
+    id = env.cmd('rg.pyexecute', "gearsCtx()."
                                  "repartition(lambda x: x['value'])."
-                                 "forEach(lambda x: redisgears.executeCommand('set', x['value'], x['key']))."
-                                 "map(lambda x : str(x)).collect().run()")
+                                 "foreach(lambda x: redisgears.executeCommand('set', x['value'], x['key']))."
+                                 "map(lambda x : str(x)).collect().run()", 'UNBLOCKING')
     res = env.cmd('rg.getresultsblocking', id)
     env.assertContains("'value': '1'", str(res))
     env.assertContains("'key': 'x'", str(res))
@@ -111,10 +111,10 @@ def testRepartitionAndWriteOption(env):
 
 def testBasicStream(env):
     conn = getConnectionByEnv(env)
-    res = env.cmd('rg.pyexecute', "gearsStreamingCtx('test')."
+    res = env.cmd('rg.pyexecute', "gearsCtx()."
                                   "repartition(lambda x: 'values')."
-                                  "forEach(lambda x: redisgears.executeCommand('lpush', 'values', x['value']))."
-                                  "register('*')")
+                                  "foreach(lambda x: redisgears.executeCommand('lpush', 'values', x['value']))."
+                                  "register('*')", 'UNBLOCKING')
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
         return
@@ -126,19 +126,19 @@ def testBasicStream(env):
     while len(res) < 3:
         res = env.cmd('rg.dumpexecutions')
     for e in res:
-        env.broadcast('rg.getresultsblocking', e[3])
-        env.cmd('rg.dropexecution', e[3])
+        env.broadcast('rg.getresultsblocking', e[1])
+        env.cmd('rg.dropexecution', e[1])
     env.assertEqual(set(conn.lrange('values', '0', '-1')), set(['1', '2', '3']))
 
 
 def testBasicStreamProcessing(env):
     conn = getConnectionByEnv(env)
-    res = env.cmd('rg.pyexecute', "gearsStreamingCtx('test', 'StreamReader')."
-                                  "flatMap(lambda x: [(a[0], a[1]) for a in x.items()])."
+    res = env.cmd('rg.pyexecute', "gearsCtx('StreamReader')."
+                                  "flatmap(lambda x: [(a[0], a[1]) for a in x.items()])."
                                   "repartition(lambda x: x[0])."
-                                  "forEach(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
+                                  "foreach(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
                                   "map(lambda x: str(x))."
-                                  "register('stream1')")
+                                  "register('stream1')", 'UNBLOCKING')
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
         return
@@ -148,7 +148,7 @@ def testBasicStreamProcessing(env):
     while len(res) < 1:
         res = env.cmd('rg.dumpexecutions')
     for e in res:
-        env.broadcast('rg.getresultsblocking', e[3])
-        env.cmd('rg.dropexecution', e[3])
+        env.broadcast('rg.getresultsblocking', e[1])
+        env.cmd('rg.dropexecution', e[1])
     env.assertEqual(conn.get('f1'), 'v1')
     env.assertEqual(conn.get('f2'), 'v2')
