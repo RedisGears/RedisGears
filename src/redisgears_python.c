@@ -16,114 +16,218 @@ static RedisModuleCtx* currentCtx = NULL;
 
 #define PYTHON_ERROR "error running python code"
 
-static FlatExecutionPlan* createFep(PyObject* gearsCtx){
-    size_t len;
-    size_t offset;
-    PyObject* reader = PyObject_GetAttrString(gearsCtx, "reader");
-    char* readerStr = PyString_AsString(reader);
-    // todo : expose execution name on python interface
-	FlatExecutionPlan* rsctx = RedisGears_CreateCtx(readerStr);
-    if(!rsctx){
-        return NULL;
-    }
-    RSM_Map(rsctx, RedisGearsPy_ToPyRecordMapper, NULL);
+typedef struct PyFlatExecution{
+   PyObject_HEAD
+   FlatExecutionPlan* fep;
+} PyFlatExecution;
 
-    PyObject* stepsKey = PyString_FromString("steps");
-    PyObject* stepsList = PyObject_GetAttr(gearsCtx, stepsKey);
-
-    for(size_t i = 0 ; i < PyList_Size(stepsList) ; ++i){
-        PyObject* step = PyList_GetItem(stepsList, i);
-        PyObject* stepType = PyTuple_GetItem(step, 0);
-        PyObject* callback = PyTuple_GetItem(step, 1);
-        PyObject* reducer = NULL;
-        long type = PyLong_AsLong(stepType);
-        switch(type){
-        case 1: // mapping step
-            RSM_Map(rsctx, RedisGearsPy_PyCallbackMapper, callback);
-            break;
-        case 2: // filter step
-            RSM_Filter(rsctx, RedisGearsPy_PyCallbackFilter, callback);
-            break;
-        case 3: // groupby step
-            reducer = PyTuple_GetItem(step, 2);
-            Py_INCREF(reducer);
-            RSM_GroupBy(rsctx, RedisGearsPy_PyCallbackExtractor, callback, RedisGearsPy_PyCallbackReducer, reducer);
-            RSM_Map(rsctx, RedisGearsPy_ToPyRecordMapper, NULL);
-            break;
-        case 4:
-            RSM_Collect(rsctx);
-            break;
-        case 5:
-            RSM_ForEach(rsctx, RedisGearsPy_PyCallbackForEach, callback);
-            break;
-        case 6:
-            RSM_Repartition(rsctx, RedisGearsPy_PyCallbackExtractor, callback);
-            break;
-        case 7:
-            RSM_FlatMap(rsctx, RedisGearsPy_PyCallbackFlatMapper, callback);
-            break;
-        case 8:
-            len = PyInt_AsLong(callback);
-            reducer = PyTuple_GetItem(step, 2);
-            offset = PyInt_AsLong(reducer);
-            RSM_Limit(rsctx, offset, len);
-            break;
-        case 9:
-            RSM_Accumulate(rsctx, RedisGearsPy_PyCallbackAccumulate, callback);
-            break;
-        default:
-            assert(false);
-        }
+static PyObject* map(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 1){
+        //todo: print error
+        return Py_None;
     }
-    return rsctx;
+    PyObject* callback = PyTuple_GetItem(args, 0);
+    Py_INCREF(callback);
+    RSM_Map(pfep->fep, RedisGearsPy_PyCallbackMapper, callback);
+    Py_INCREF(self);
+    return self;
 }
 
-static PyObject* registerStream(PyObject *cls, PyObject *args){
-    PyObject* starStreamCtx = PyTuple_GetItem(args, 0);
-    PyObject* gearsCtx = PyObject_GetAttrString(starStreamCtx, "gearsCtx");
-    PyObject* key = PyObject_GetAttrString(starStreamCtx, "key");
-    char* keyStr = PyString_AsString(key);
-    FlatExecutionPlan* fep = createFep(gearsCtx);
-
-    if(!fep){
-        RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
-        return PyLong_FromLong(1);
+static PyObject* filter(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 1){
+        //todo: print error
+        return Py_None;
     }
+    PyObject* callback = PyTuple_GetItem(args, 0);
+    Py_INCREF(callback);
+    RSM_Filter(pfep->fep, RedisGearsPy_PyCallbackFilter, callback);
+    Py_INCREF(self);
+    return self;
+}
 
-    if(RSM_Register(fep, keyStr)){
+static PyObject* groupby(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 2){
+        //todo: print error
+        return Py_None;
+    }
+    PyObject* extractor = PyTuple_GetItem(args, 0);
+    PyObject* reducer = PyTuple_GetItem(args, 1);
+    Py_INCREF(extractor);
+    Py_INCREF(reducer);
+    RSM_GroupBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackReducer, reducer);
+    RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* collect(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    RSM_Collect(pfep->fep);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* foreach(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 1){
+        //todo: print error
+        return Py_None;
+    }
+    PyObject* callback = PyTuple_GetItem(args, 0);
+    Py_INCREF(callback);
+    RSM_ForEach(pfep->fep, RedisGearsPy_PyCallbackForEach, callback);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* repartition(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 1){
+        //todo: print error
+        return Py_None;
+    }
+    PyObject* callback = PyTuple_GetItem(args, 0);
+    Py_INCREF(callback);
+    RSM_Repartition(pfep->fep, RedisGearsPy_PyCallbackExtractor, callback);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* flatmap(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 1){
+        //todo: print error
+        return Py_None;
+    }
+    PyObject* callback = PyTuple_GetItem(args, 0);
+    Py_INCREF(callback);
+    RSM_FlatMap(pfep->fep, RedisGearsPy_PyCallbackFlatMapper, callback);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* limit(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) < 1){
+        //todo: print error
+        return Py_None;
+    }
+    PyObject* len = PyTuple_GetItem(args, 0);
+    long lenLong = PyInt_AsLong(len);
+    long offsetLong = 0;
+    if(PyTuple_Size(args) > 1){
+        PyObject* offset= PyTuple_GetItem(args, 1);
+        offsetLong = PyInt_AsLong(offset);
+    }
+    RSM_Limit(pfep->fep, (size_t)offsetLong, (size_t)lenLong);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* accumulate(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 1){
+        //todo: print error
+        return Py_None;
+    }
+    PyObject* callback = PyTuple_GetItem(args, 0);
+    Py_INCREF(callback);
+    RSM_Accumulate(pfep->fep, RedisGearsPy_PyCallbackAccumulate, callback);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* run(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    char* regexStr = "*";
+    if(PyTuple_Size(args) > 0){
+        PyObject* regex = PyTuple_GetItem(args, 0);
+        regexStr = PyString_AsString(regex);
+    }
+    ExecutionPlan* ep = RSM_Run(pfep->fep, RG_STRDUP(regexStr), NULL, NULL);
+    const char* id = RedisGears_GetId(ep);
+    RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
+    return Py_None;
+}
+
+static PyObject* registerExecution(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    PyObject* regex = PyTuple_GetItem(args, 0);
+    char* regexStr = "*";
+    if(regex){
+        regexStr = PyString_AsString(regex);
+    }
+    int status = RSM_Register(pfep->fep, regexStr);
+    if(status){
         RedisModule_ReplyWithSimpleString(currentCtx, "OK");
     }else{
         RedisModule_ReplyWithError(currentCtx, "Registration Failed");
     }
-
-    RedisGears_FreeFlatExecution(fep);
-
-    return PyLong_FromLong(1);
+    return Py_None;
 }
 
-static PyObject* run(PyObject *cls, PyObject *args){
-    size_t len;
-    size_t offset;
-    PyObject* gearsCtx = PyTuple_GetItem(args, 0);
-    PyObject* regex = PyObject_GetAttrString(gearsCtx, "regex");
-    char* regexStr = PyString_AsString(regex);
-    FlatExecutionPlan* fep = createFep(gearsCtx);
+PyMethodDef PyFlatExecutionMethods[] = {
+    {"map", map, METH_VARARGS, "map operation on each record"},
+    {"filter", filter, METH_VARARGS, "filter operation on each record"},
+    {"groupby", groupby, METH_VARARGS, "groupby operation on each record"},
+    {"collect", collect, METH_VARARGS, "collect all the records to the initiator"},
+    {"foreach", foreach, METH_VARARGS, "collect all the records to the initiator"},
+    {"repartition", repartition, METH_VARARGS, "repartition the records according to the extracted data"},
+    {"flatmap", flatmap, METH_VARARGS, "flat map a the records"},
+    {"limit", limit, METH_VARARGS, "limit the results to a give size and offset"},
+    {"accumulate", accumulate, METH_VARARGS, "accumulate the records to a single record"},
+    {"run", run, METH_VARARGS, "start the execution"},
+    {"register", registerExecution, METH_VARARGS, "register the execution on key space notification"},
+    {NULL, NULL, 0, NULL}
+};
 
-    if(!fep){
-        RedisModule_ReplyWithError(currentCtx, "Flat  Execution with the given name already exists, pleas drop it first.");
-        return PyLong_FromLong(1);
+static PyObject *PyFlatExecution_ToStr(PyObject * pyObj){
+    return PyString_FromString("PyFlatExecution");
+}
+
+static void PyFlatExecution_Destruct(PyObject *pyObj){
+    PyFlatExecution* pfep = (PyFlatExecution*)pyObj;
+    RedisGears_FreeFlatExecution(pfep->fep);
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
+static PyTypeObject PyFlatExecutionType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "redisgears.PyFlatExecution",       /* tp_name */
+    sizeof(PyFlatExecution),          /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    PyFlatExecution_Destruct,  /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_compare */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash */
+    0,                         /* tp_call */
+    PyFlatExecution_ToStr,     /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+    "PyFlatExecution",         /* tp_doc */
+};
+
+static PyObject* gearsCtx(PyObject *cls, PyObject *args){
+    char* readerStr = "KeysReader"; // default reader
+    if(PyTuple_Size(args) > 0){
+        PyObject* reader = PyTuple_GetItem(args, 0);
+        readerStr = PyString_AsString(reader);
     }
-
-    ExecutionPlan* ep = RSM_Run(fep, RG_STRDUP(regexStr), NULL, NULL);
-    // todo: we should not return the reply to the user here,
-    //       user might create multiple executions in a single script
-    //       think what to do???
-    const char* id = RedisGears_GetId(ep);
-    RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
-
-    RedisGears_FreeFlatExecution(fep);
-
-    return PyLong_FromLong(1);
+    PyFlatExecution* pyfep = PyObject_New(PyFlatExecution, &PyFlatExecutionType);
+    pyfep->fep = RedisGears_CreateCtx(readerStr);
+    RSM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+    return (PyObject*)pyfep;
 }
 
 static PyObject* saveGlobals(PyObject *cls, PyObject *args){
@@ -389,10 +493,9 @@ static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
 }
 
 PyMethodDef EmbMethods[] = {
-    {"run", run, METH_VARARGS, "start running the execution plan"},
+    {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "saving the given key to a give value"},
-    {"register", registerStream, METH_VARARGS, "register the stream"},
     {"createTensor", createTensor, METH_VARARGS, "creating a tensor object"},
     {"createGraphRunner", creatGraphRunner, METH_VARARGS, "open TF graph by key name"},
     {"graphRunnerAddInput", graphRunnerAddInput, METH_VARARGS, "add input to graph runner"},
@@ -411,8 +514,10 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
     currentCtx = ctx;
 
     PyGILState_STATE state = PyGILState_Ensure();
-    if(PyRun_SimpleString(script)){
+    if(PyRun_SimpleString(script) == -1){
+        PyErr_Print();
         RedisModule_ReplyWithError(ctx, "failed running the given script");
+        PyGILState_Release(state);
         return REDISMODULE_OK;
     }
     PyGILState_Release(state);
@@ -758,6 +863,9 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyEval_InitThreads();
     PyTensorType.tp_new = PyType_GenericNew;
     PyGraphRunnerType.tp_new = PyType_GenericNew;
+    PyFlatExecutionType.tp_new = PyType_GenericNew;
+
+    PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
 
     if (PyType_Ready(&PyTensorType) < 0){
         RedisModule_Log(ctx, "warning", "PyTensorType not ready");
@@ -767,90 +875,23 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
     }
 
+    if (PyType_Ready(&PyFlatExecutionType) < 0){
+        RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
+    }
+
     PyObject* m = Py_InitModule("redisgears", EmbMethods);
 
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
+    Py_INCREF(&PyFlatExecutionType);
 
     PyModule_AddObject(m, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
+    PyModule_AddObject(m, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
 
     PyRun_SimpleString("import redisgears\n"
-                       "class gearsCtx:\n"
-                       "    def __init__(self, name, reader='KeysReader'):\n"
-    				   "        self.name = name\n"
-                       "        self.reader = reader\n"
-                       "        self.steps = []\n"
-                       "    def map(self, mapFunc):\n"
-                       "        self.steps.append((1, mapFunc))\n"
-                       "        return self\n"
-                       "    def filter(self, filterFunc):\n"
-                       "        self.steps.append((2, filterFunc))\n"
-                       "        return self\n"
-                       "    def groupby(self, extractor, reducer):\n"
-                       "        self.steps.append((3, extractor, reducer))\n"
-                       "        return self\n"
-    				   "    def collect(self):\n"
-					   "        self.steps.append((4, None))\n"
-					   "        return self\n"
-                       "    def forEach(self, forEachCallback):\n"
-                       "        self.steps.append((5, forEachCallback))\n"
-                       "        return self\n"
-                       "    def repartition(self, extractor):\n"
-                       "        self.steps.append((6, extractor))\n"
-                       "        return self\n"
-                       "    def flatMap(self, flatMapFunc):\n"
-                       "        self.steps.append((7, flatMapFunc))\n"
-                       "        return self\n"
-                       "    def accumulate(self, accumulateFunc):\n"
-                       "        self.steps.append((9, accumulateFunc))\n"
-                       "        return self\n"
-                       "    def limit(self, len, offset=0):\n"
-                       "        if not isinstance(len, int):\n"
-                       "            raise Exception('value given to limit is not int')\n"
-                       "        if not isinstance(offset, int):\n"
-                       "            raise Exception('value given to limit is not int')\n"
-                       "        self.steps.append((8, len, offset))\n"
-                       "        return self\n"
-                       "    def run(self, regex='*'):\n"
-                       "        self.regex = regex\n"
-                       "        redisgears.run(self)\n"
-                       "class gearsStreamingCtx:\n"
-                       "    def __init__(self, name, reader='KeysReader'):\n"
-                       "        self.gearsCtx = gearsCtx(name, reader)\n"
-                       "    def map(self, mapFunc):\n"
-                       "        self.gearsCtx.map(mapFunc)\n"
-                       "        return self\n"
-                       "    def filter(self, filterFunc):\n"
-                       "        self.gearsCtx.filter(filterFunc)\n"
-                       "        return self\n"
-                       "    def groupby(self, extractor, reducer):\n"
-                       "        self.gearsCtx.groupby(extractor, reducer)\n"
-                       "        return self\n"
-                       "    def collect(self):\n"
-                       "        self.gearsCtx.collect()\n"
-                       "        return self\n"
-                       "    def forEach(self, forEachCallback):\n"
-                       "        self.gearsCtx.forEach(forEachCallback)\n"
-                       "        return self\n"
-                       "    def repartition(self, extractor):\n"
-                       "        self.gearsCtx.repartition(extractor)\n"
-                       "        return self\n"
-                       "    def flatMap(self, flatMapFunc):\n"
-                       "        self.gearsCtx.flatMap(flatMapFunc)\n"
-                       "        return self\n"
-                       "    def accumulate(self, accumulateFunc):\n"
-                       "        self.gearsCtx.flatMap(accumulateFunc)\n"
-                       "        return self\n"
-                       "    def limit(self, len, offset=0):\n"
-                       "        self.gearsCtx.limit(len, offset)\n"
-                       "        return self\n"
-                       "    def register(self, key):\n"
-                       "        self.key = key\n"
-                       "        redisgears.register(self)\n"
+                       "from redisgears import gearsCtx\n"
                        "globals()['str'] = str\n"
-                       "print 'PyTensor object : ' + str(redisgears.PyTensor)\n"
-                       "print 'PyGraphRunner object : ' + str(redisgears.PyGraphRunner)\n"
                        "redisgears._saveGlobals()\n");
 
     PyObject* pName = PyString_FromString("types");
