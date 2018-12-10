@@ -1,7 +1,7 @@
 # RedisGears
 Dynamic execution framework for your Redis data, simply:
 ```
-gearsCtx('execution-name').filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run('*')
+gearsCtx().filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run('*')
 ```
 RedisGears supports full python syntax and low level c api. In addition you can run it on cluster.
 
@@ -23,7 +23,7 @@ run: `redis-server --loadmodule ./redisgears.so`
 
 Add some keys to your redis server and then run:
 ```
-127.0.0.1:6379> RG.PYEXECUTE "gearsCtx('test').map(lambda x:str(x)).run('*')"
+127.0.0.1:6379> RG.PYEXECUTE "gearsCtx().map(lambda x:str(x)).run('*')"
 ```
 You will get all of your keys and values in redis.
 
@@ -35,7 +35,7 @@ RedisGears end goal is to allow the user building Execution Plans and run them. 
 Record is the most basic object in RedisGears. A Record go through the entire execution plan and in the end returned to the user as a result.
 
 ## Reader
-The reader is the first component on each execution, The reader responsable for suppling Record to the other components in the execution plan. RedisGears comes with a default reader that reads keys from redis. Using python it is possible to use the default reader with the flowing syntax: `gearsCtx(<execution name>)`, this line will return a gears context (which is basicly saves the exectution plan) with the default reader that reads the keys with the given prefix. The default reader will return Records in the following format:
+The reader is the first component on each execution, The reader responsable for suppling Record to the other components in the execution plan. RedisGears comes with a default reader that reads keys from redis. Using python it is possible to use the default reader with the flowing syntax: `gearsCtx()`, this line will return a gears context (which is basicly saves the exectution plan) with the default reader that reads the keys with the given prefix. The default reader will return Records in the following format:
 ```
 {'key':< key as string >, 'value': < value (value type is depend on the key content) >}
 ```
@@ -83,21 +83,21 @@ ctx.collect()
 Repartition the record between the cluster nodes (this operation has meaning only on cluster with more then one node, otherwise it has no meaning and it actually do nothing). This operation receives an extractor, the repartition is perfomed by calculating the hslot on the extracted data and then move the record to the node hold this hslot.
 example (using python api):
 ```
-gearsCtx('test').repartition(lambda x: x['value']) # repartition record by value
+gearsCtx().repartition(lambda x: x['value']) # repartition record by value
 ```
 
 ### ForEach
 ForEach is similar to map but it does not return any value, using ForEach it is possible for example to write results back to redis. After performing the ForEach operation the execution plan will continue with the same records.
 example (using python api):
 ```
-gearsCtx('test').forEach(lambda x: redistar.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
+gearsCtx().forEach(lambda x: redistar.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
 ```
 
 ### Accumulate
 Accumulate is a many to one mapper, it allows you to accumulate the data to a single record.
 example (using python api):
 ```
-gearsCtx('test').map(lambda x:int(x['value'])).accumulate(lambda a,x: a + x if a is not None else x) # will sum all the values
+gearsCtx().map(lambda x:int(x['value'])).accumulate(lambda a,x: a + x if a is not None else x) # will sum all the values
 ```
 
 # Cluster Support
