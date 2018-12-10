@@ -29,9 +29,10 @@ bool Example_Filter(RedisModuleCtx* rctx, Record *r, void* arg, char** err){
 }
 
 int Example_CommandCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    FlatExecutionPlan* rsctx = RSM_CreateCtx("example", KeysReader);
+    FlatExecutionPlan* rsctx = RSM_CreateCtx(KeysReader);
     RSM_Filter(rsctx, Example_Filter, NULL);
     ExecutionPlan* ep = RSM_Run(rsctx, RG_STRDUP("*"), NULL, NULL);
     RedisModule_ReplyWithStringBuffer(ctx, RedisGears_GetId(ep), strlen(RedisGears_GetId(ep)));
+    RedisGears_FreeFlatExecution(rsctx);
     return REDISMODULE_OK;
 }

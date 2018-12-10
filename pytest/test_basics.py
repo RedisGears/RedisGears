@@ -126,8 +126,8 @@ def testBasicStream(env):
     while len(res) < 3:
         res = env.cmd('rg.dumpexecutions')
     for e in res:
-        env.broadcast('rg.getresultsblocking', e[3])
-        env.cmd('rg.dropexecution', e[3])
+        env.broadcast('rg.getresultsblocking', e[1])
+        env.cmd('rg.dropexecution', e[1])
     env.assertEqual(set(conn.lrange('values', '0', '-1')), set(['1', '2', '3']))
 
 
@@ -148,7 +148,7 @@ def testBasicStreamProcessing(env):
     while len(res) < 1:
         res = env.cmd('rg.dumpexecutions')
     for e in res:
-        env.broadcast('rg.getresultsblocking', e[3])
-        env.cmd('rg.dropexecution', e[3])
+        env.broadcast('rg.getresultsblocking', e[1])
+        env.cmd('rg.dropexecution', e[1])
     env.assertEqual(conn.get('f1'), 'v1')
     env.assertEqual(conn.get('f2'), 'v2')

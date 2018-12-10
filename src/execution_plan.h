@@ -148,10 +148,7 @@ typedef struct FlatAccumulatorStep{
 }FlatAccumulatorStep;
 
 typedef struct FlatExecutionStep{
-    union{
-        FlatBasicStep bStep;
-        FlatAccumulatorStep aStep;
-    };
+    FlatBasicStep bStep;
     enum StepType type;
 }FlatExecutionStep;
 
@@ -160,13 +157,11 @@ typedef struct FlatExecutionReader{
 }FlatExecutionReader;
 
 typedef struct FlatExecutionPlan{
-	char* name;
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
-    bool distributed;
 }FlatExecutionPlan;
 
-FlatExecutionPlan* FlatExecutionPlan_New(const char* name);
+FlatExecutionPlan* FlatExecutionPlan_New();
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
@@ -178,20 +173,15 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-bool FlatExecutionPlan_IsBroadcasted(FlatExecutionPlan* fep);
-bool FlatExecutionPlan_Broadcast(FlatExecutionPlan* fep);
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
-void FlatExecutionPlan_Distribute(FlatExecutionPlan* fep, RedisModuleCtx *rctx);
 
 void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);
-void ExecutionPlan_Free(ExecutionPlan* ep, RedisModuleCtx *ctx);
+void ExecutionPlan_Free(ExecutionPlan* ep);
 
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-int ExecutionPlan_FlatExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-FlatExecutionPlan* ExecutionPlan_FindByName(const char* name);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 

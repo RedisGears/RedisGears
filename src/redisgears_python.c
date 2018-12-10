@@ -19,12 +19,10 @@ static RedisModuleCtx* currentCtx = NULL;
 static FlatExecutionPlan* createFep(PyObject* gearsCtx){
     size_t len;
     size_t offset;
-    PyObject* name = PyObject_GetAttrString(gearsCtx, "name");
-    char* nameStr = PyString_AsString(name);
     PyObject* reader = PyObject_GetAttrString(gearsCtx, "reader");
     char* readerStr = PyString_AsString(reader);
     // todo : expose execution name on python interface
-	FlatExecutionPlan* rsctx = RedisGears_CreateCtx(nameStr, readerStr);
+	FlatExecutionPlan* rsctx = RedisGears_CreateCtx(readerStr);
     if(!rsctx){
         return NULL;
     }
@@ -98,6 +96,8 @@ static PyObject* registerStream(PyObject *cls, PyObject *args){
         RedisModule_ReplyWithError(currentCtx, "Registration Failed");
     }
 
+    RedisGears_FreeFlatExecution(fep);
+
     return PyLong_FromLong(1);
 }
 
@@ -120,6 +120,8 @@ static PyObject* run(PyObject *cls, PyObject *args){
     //       think what to do???
     const char* id = RedisGears_GetId(ep);
     RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
+
+    RedisGears_FreeFlatExecution(fep);
 
     return PyLong_FromLong(1);
 }
@@ -681,9 +683,19 @@ static Record* RedisGearsPy_ToPyRecordMapper(RedisModuleCtx* rctx, Record *recor
     return res;
 }
 
+static void* RedisGearsPy_PyObjectDup(void* arg){
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* obj = arg;
+    Py_INCREF(obj);
+    PyGILState_Release(state);
+    return arg;
+}
+
 static void RedisGearsPy_PyObjectFree(void* arg){
+    PyGILState_STATE state = PyGILState_Ensure();
     PyObject* obj = arg;
     Py_DECREF(obj);
+    PyGILState_Release(state);
 }
 
 void RedisGearsPy_PyObjectSerialize(void* arg, BufferWriter* bw){
@@ -845,7 +857,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyObject* pModule = PyImport_Import(pName);
     pFunc = PyObject_GetAttrString(pModule, "FunctionType");
 
-    ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
+    ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
 
     RSM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
     RSM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);

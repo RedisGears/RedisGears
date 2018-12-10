@@ -36,6 +36,7 @@ typedef struct BufferReader BufferReader;
 typedef struct ArgType ArgType;
 
 typedef void (*ArgFree)(void* arg);
+typedef void* (*ArgDuplicate)(void* arg);
 typedef void (*ArgSerialize)(void* arg, BufferWriter* bw);
 typedef void* (*ArgDeserialize)(BufferReader* br);
 typedef void (*RegisterTrigger)(FlatExecutionPlan* fep);
@@ -60,7 +61,7 @@ void KeyRecordWriter(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 
 /******************************* args *********************************/
 
-ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgSerialize serialize, ArgDeserialize deserialize);
+ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize);
 void MODULE_API_FUNC(RedisGears_BWWriteLong)(BufferWriter* bw, long val);
 void MODULE_API_FUNC(RedisGears_BWWriteString)(BufferWriter* bw, char* str);
 void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(BufferWriter* bw, char* buff, size_t len);
@@ -141,8 +142,8 @@ int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCa
  * Create an execution plan with the given reader.
  * It is possible to continue adding operation such as map, filter, group by, and so on using the return context.
  */
-FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* name, char* readerName);
-#define RSM_CreateCtx(name, readerName) RedisGears_CreateCtx(name, #readerName)
+FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* readerName);
+#define RSM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
 
 /******************************* Execution plan operations *******************************/
 
@@ -190,9 +191,8 @@ void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionPlan* ctx, void* privat
 const char* MODULE_API_FUNC(RedisGears_GetId)(ExecutionPlan* ctx);
 Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
-FlatExecutionPlan* MODULE_API_FUNC(RedisGears_GetFlatExecution)(const char* name);
-void MODULE_API_FUNC(RedisGears_DropExecution)(ExecutionPlan* starCtx, RedisModuleCtx* ctx);
-void MODULE_API_FUNC(RedisGears_DropFlatExecution)(FlatExecutionPlan* starCtx, RedisModuleCtx* ctx);
+void MODULE_API_FUNC(RedisGears_DropExecution)(ExecutionPlan* starCtx);
+void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* starCtx);
 
 #define REDISLAMBDA_MODULE_INIT_FUNCTION(name) \
         if (RedisModule_GetApi("RedisGears_" #name, ((void **)&RedisGears_ ## name))) { \
@@ -228,9 +228,9 @@ static bool RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(Repartition);
     REDISLAMBDA_MODULE_INIT_FUNCTION(FlatMap);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Limit);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(FreeFlatExecution);
 
     REDISLAMBDA_MODULE_INIT_FUNCTION(GetExecution);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetFlatExecution);
     REDISLAMBDA_MODULE_INIT_FUNCTION(IsDone);
     REDISLAMBDA_MODULE_INIT_FUNCTION(GetRecordsLen);
     REDISLAMBDA_MODULE_INIT_FUNCTION(GetRecord);

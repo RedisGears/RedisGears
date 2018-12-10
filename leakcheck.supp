@@ -26,23 +26,16 @@
    ...
 }
 {
-   <ignore_add_basic_step_for_now>
-   Memcheck:Leak
-   ...
-   fun:FlatExecutionPlan_AddBasicStep
-   ...
-}
-{
-   <ignore_deserialization_for_now>
-   Memcheck:Leak
-   ...
-   fun:FlatExecutionPlan_DeserializeStep
-   ...
-}
-{
    <ignore_libevent_issues>
    Memcheck:Leak
    ...
    fun:redisLibeventAttach
+   ...
+}
+{
+   <ignore_FlatExecutionPlan_RegisterKeySpaceEvent_for_now>
+   Memcheck:Leak
+   ...
+   fun:FlatExecutionPlan_RegisterKeySpaceEvent
    ...
 }

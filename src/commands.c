@@ -148,7 +148,7 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 		return REDISMODULE_OK;
 	}
 
-	RedisGears_DropExecution(starCtx, ctx);
+	RedisGears_DropExecution(starCtx);
 
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 
@@ -156,23 +156,25 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 }
 
 int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc != 3){
-        return RedisModule_WrongArity(ctx);
-    }
-
-    const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-    char* arg = RG_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
-    FlatExecutionPlan* starCtx = RedisGears_GetFlatExecution(name);
-
-    if(!starCtx){
-        RedisModule_ReplyWithError(ctx, "flat execution plan does not exits");
-        return REDISMODULE_OK;
-    }
-
-    ExecutionPlan* ep = RedisGears_Run(starCtx, arg, NULL, NULL);
-    const char* id = RedisGears_GetId(ep);
-    RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
     return REDISMODULE_OK;
+    // todo : implement by opening redis key
+//    if(argc != 3){
+//        return RedisModule_WrongArity(ctx);
+//    }
+//
+//    const char* name = RedisModule_StringPtrLen(argv[1], NULL);
+//    char* arg = RG_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
+//    FlatExecutionPlan* starCtx = RedisGears_GetFlatExecution(name);
+//
+//    if(!starCtx){
+//        RedisModule_ReplyWithError(ctx, "flat execution plan does not exits");
+//        return REDISMODULE_OK;
+//    }
+//
+//    ExecutionPlan* ep = RedisGears_Run(starCtx, arg, NULL, NULL);
+//    const char* id = RedisGears_GetId(ep);
+//    RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
+//    return REDISMODULE_OK;
 }
 
 
