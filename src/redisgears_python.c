@@ -1,6 +1,7 @@
 #include "record.h"
 #include "redisdl.h"
 #include "globals.h"
+#include "commands.h"
 #include <Python.h>
 #include <marshal.h>
 #include <assert.h>
@@ -13,6 +14,7 @@ static PyObject* pFunc;
 static PyObject* pyGlobals;
 
 static RedisModuleCtx* currentCtx = NULL;
+static bool blockingExecute = true;
 
 #define PYTHON_ERROR "error running python code"
 
@@ -140,6 +142,15 @@ static PyObject* accumulate(PyObject *self, PyObject *args){
     return self;
 }
 
+static void onDone(ExecutionPlan* ep, void* privateData){
+    RedisModuleBlockedClient *bc = privateData;
+    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
+    Command_ReturnResults(ep, rctx);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisGears_DropExecution(ep);
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
 static PyObject* run(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     char* regexStr = "*";
@@ -148,8 +159,14 @@ static PyObject* run(PyObject *self, PyObject *args){
         regexStr = PyString_AsString(regex);
     }
     ExecutionPlan* ep = RSM_Run(pfep->fep, RG_STRDUP(regexStr), NULL, NULL);
-    const char* id = RedisGears_GetId(ep);
-    RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
+    if(!blockingExecute){
+        const char* id = RedisGears_GetId(ep);
+        RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
+    }else{
+        RedisModuleBlockedClient *bc = RedisModule_BlockClient(currentCtx, NULL, NULL, NULL, 1000000);
+        RedisGears_RegisterExecutionDoneCallback(ep, onDone);
+        RedisGears_SetPrivateData(ep, bc, NULL);
+    }
     return Py_None;
 }
 
@@ -506,12 +523,19 @@ PyMethodDef EmbMethods[] = {
 };
 
 static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc != 2){
+    if(argc < 2 || argc > 3){
         return RedisModule_WrongArity(ctx);
     }
 
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
     currentCtx = ctx;
+    if(argc == 3){
+        const char* block = RedisModule_StringPtrLen(argv[2], NULL);
+        if(strcasecmp(block, "UNBLOCKING") == 0){
+            blockingExecute = false;
+        }
+    }
+
 
     PyGILState_STATE state = PyGILState_Ensure();
     if(PyRun_SimpleString(script) == -1){
@@ -521,6 +545,8 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
         return REDISMODULE_OK;
     }
     PyGILState_Release(state);
+
+    blockingExecute = true;
 
     return REDISMODULE_OK;
 }

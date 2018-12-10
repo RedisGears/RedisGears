@@ -56,7 +56,7 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     }
 }
 
-static void Command_ReturnResults(ExecutionPlan* starCtx, RedisModuleCtx *ctx){
+void Command_ReturnResults(ExecutionPlan* starCtx, RedisModuleCtx *ctx){
 	long long len = RedisGears_GetRecordsLen(starCtx);
 	RedisModule_ReplyWithArray(ctx, len);
 	for(long long i = 0 ; i < len ; ++i){
