@@ -229,17 +229,6 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Buffer_Free(buff);
 }
 
-// not removing yet, we might use it in future
-// todo: check if needed
-//static void ExecutionPlan_WriteResults(ExecutionPlan* ep, RedisModuleCtx* rctx){
-//    ep->writerStep.w->Start(rctx, ep->writerStep.w->ctx);
-//    for(size_t i = 0 ; i < array_len(ep->results) ; ++i){
-//        Record* r = ep->results[i];
-//        ep->writerStep.w->Write(rctx, ep->writerStep.w->ctx, r);
-//    }
-//    ep->writerStep.w->Done(rctx, ep->writerStep.w->ctx);
-//}
-
 static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = NULL;
     while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
@@ -694,11 +683,13 @@ static void* ExecutionPlan_ThreadMain(void *arg){
         if(isDone){
         	RedisModule_ThreadSafeContextLock(rctx);
         	ep->isDone = true;
+        	FreePrivateData freeC = ep->freeCallback;
+        	void* pd = ep->privateData;
         	if(ep->callback){
         		ep->callback(ep, ep->privateData);
         	}
-        	if(ep->freeCallback){
-        	    ep->freeCallback(ep->privateData);
+        	if(freeC){
+        	    freeC(pd);
         	}
         	RedisModule_ThreadSafeContextUnlock(rctx);
         }
