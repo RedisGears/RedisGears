@@ -640,7 +640,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *r
         for(size_t i = 0 ; i < len ; ++i){
             PyObject* temp = PyList_GetItem(newObj, i);
             Record* pyRecord = RG_PyObjRecordCreate();
-            Py_INCREF(pyRecord);
+            Py_INCREF(temp);
             RG_PyObjRecordSet(pyRecord, temp);
             RedisGears_ListRecordAdd(record, pyRecord);
         }

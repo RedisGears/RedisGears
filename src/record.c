@@ -66,6 +66,23 @@ Record StopRecord = {
         .type = STOP_RECORD,
 };
 
+//#define INITAIL_POOL_SIZE 1000
+//Record** RecordsPool = NULL;
+//
+//static Record* RecordsPool_Get(){
+//   if(!RecordsPool || array_len(RecordsPool) == 0){
+//       return RG_ALLOC(sizeof(Record));
+//   }
+//   return array_pop(RecordsPool);
+//}
+//
+//static void RecordsPool_Return(Record* r){
+//    if(!RecordsPool){
+//        RecordsPool = array_new(Record*, INITAIL_POOL_SIZE);
+//    }
+//    RecordsPool = array_append(RecordsPool, r);
+//}
+
 
 void RG_FreeRecord(Record* record){
     dictIterator *iter;
@@ -239,11 +256,11 @@ Record* RG_HashSetRecordCreate(){
 
 int RG_HashSetRecordSet(Record* r, char* key, Record* val){
     assert(r->type == HASH_SET_RECORD);
-    Record* oldVal = RG_HashSetRecordGet(r, key);
-    if(oldVal){
-        RG_FreeRecord(oldVal);
-        dictDelete(r->hashSetRecord.d, key);
-    }
+//    Record* oldVal = RG_HashSetRecordGet(r, key);
+//    if(oldVal){
+//        RG_FreeRecord(oldVal);
+//        dictDelete(r->hashSetRecord.d, key);
+//    }
     return dictAdd(r->hashSetRecord.d, key, val) == DICT_OK;
 }
 

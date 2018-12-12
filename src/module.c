@@ -300,6 +300,7 @@ int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, voi
 }
 
 int moduleRegisterApi(const char *funcname, void *funcptr);
+void KeysReader_Init();
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if(!apiRegistered){
@@ -325,11 +326,13 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     Cluster_Init();
 
+    KeysReader_Init();
+
     RSM_RegisterReader(KeysReader);
     RSM_RegisterReader(StreamReader);
     RSM_RegisterForEach(KeyRecordWriter, NULL);
     RSM_RegisterMap(GetValueMapper, NULL);
-    RSM_RegisterFilter(Example_Filter, NULL);
+    RSM_RegisterAccumulator(Example_Accumulate, NULL);
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
     RSM_RegisterReducer(CountReducer, NULL);
 
