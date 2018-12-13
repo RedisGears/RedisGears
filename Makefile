@@ -13,6 +13,8 @@ CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -std=gnu99
 LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
 ifeq ($(DEBUG), 1)
     CFLAGS+=-g -O0 -DVALGRIND
+else
+	CFLAGS+=-O2 -Wno-unused-result
 endif
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redisgears_python.c
