@@ -328,6 +328,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     KeysReader_Init();
 
+    RecordPool_Init();
+
     RSM_RegisterReader(KeysReader);
     RSM_RegisterReader(StreamReader);
     RSM_RegisterForEach(KeyRecordWriter, NULL);

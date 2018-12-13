@@ -46,6 +46,7 @@ typedef struct HashSetRecord{
 }HashSetRecord;
 
 typedef struct Record{
+    struct Record* next;
     union{
         KeysHandlerRecord keyHandlerRecord;
         LongRecord longRecord;
@@ -66,23 +67,31 @@ Record StopRecord = {
         .type = STOP_RECORD,
 };
 
-//#define INITAIL_POOL_SIZE 1000
-//Record** RecordsPool = NULL;
-//
-//static Record* RecordsPool_Get(){
-//   if(!RecordsPool || array_len(RecordsPool) == 0){
-//       return RG_ALLOC(sizeof(Record));
-//   }
-//   return array_pop(RecordsPool);
-//}
-//
-//static void RecordsPool_Return(Record* r){
-//    if(!RecordsPool){
-//        RecordsPool = array_new(Record*, INITAIL_POOL_SIZE);
-//    }
-//    RecordsPool = array_append(RecordsPool, r);
-//}
+#define INITAIL_POOL_SIZE 10000
+Record* RecordsPool = NULL;
+Record* FreeRecords;
 
+static Record* RecordsPool_Get(){
+    Record* ret = FreeRecords;
+    FreeRecords = FreeRecords->next;
+    return ret;
+}
+
+static void RecordsPool_Return(Record* r){
+    r->next = FreeRecords;
+    FreeRecords = r;
+}
+
+void RecordPool_Init(){
+    RecordsPool = RG_ALLOC(sizeof(Record) * INITAIL_POOL_SIZE);
+    Record* r = NULL;
+    for(int i = 0 ; i < INITAIL_POOL_SIZE - 1 ; ++i){
+        r = RecordsPool + i;
+        r->next = (r + 1);
+    }
+    r->next = NULL;
+    FreeRecords = RecordsPool;
+}
 
 void RG_FreeRecord(Record* record){
     dictIterator *iter;
@@ -102,9 +111,9 @@ void RG_FreeRecord(Record* record){
         array_free(record->listRecord.records);
         break;
     case KEY_RECORD:
-        if(record->keyRecord.key){
-            RG_FREE(record->keyRecord.key);
-        }
+//        if(record->keyRecord.key){
+//            RG_FREE(record->keyRecord.key);
+//        }
         if(record->keyRecord.record){
             RG_FreeRecord(record->keyRecord.record);
         }
@@ -113,14 +122,14 @@ void RG_FreeRecord(Record* record){
         RedisModule_CloseKey(record->keyHandlerRecord.keyHandler);
         break;
     case HASH_SET_RECORD:
-        iter = dictGetIterator(record->hashSetRecord.d);
-        entry = NULL;
-        while((entry = dictNext(iter))){
-            temp = dictGetVal(entry);
-            RG_FreeRecord(temp);
-        }
-        dictReleaseIterator(iter);
-        dictRelease(record->hashSetRecord.d);
+//        iter = dictGetIterator(record->hashSetRecord.d);
+//        entry = NULL;
+//        while((entry = dictNext(iter))){
+//            temp = dictGetVal(entry);
+//            RG_FreeRecord(temp);
+//        }
+//        dictReleaseIterator(iter);
+//        dictRelease(record->hashSetRecord.d);
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
@@ -130,14 +139,14 @@ void RG_FreeRecord(Record* record){
     default:
         assert(false);
     }
-    RG_FREE(record);
+    RecordsPool_Return(record);
 }
 
 enum RecordType RG_RecordGetType(Record* r){
     return r->type;
 }
 Record* RG_KeyRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = KEY_RECORD;
     ret->keyRecord.key = NULL;
     ret->keyRecord.len = 0;
@@ -167,7 +176,7 @@ char* RG_KeyRecordGetKey(Record* r, size_t* len){
     return r->keyRecord.key;
 }
 Record* RG_ListRecordCreate(size_t initSize){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = LIST_RECORD;
     ret->listRecord.records = array_new(Record*, initSize);
     return ret;
@@ -194,7 +203,7 @@ Record* RG_ListRecordPop(Record* r){
 }
 
 Record* RG_StringRecordCreate(char* val, size_t len){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = STRING_RECORD;
     ret->stringRecord.str = val;
     ret->stringRecord.len = len;
@@ -216,7 +225,7 @@ void RG_StringRecordSet(Record* r, char* val, size_t len){
 }
 
 Record* RG_DoubleRecordCreate(double val){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = DOUBLE_RECORD;
     ret->doubleRecord.num = val;
     return ret;
@@ -233,7 +242,7 @@ void RG_DoubleRecordSet(Record* r, double val){
 }
 
 Record* RG_LongRecordCreate(long val){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = LONG_RECORD;
     ret->longRecord.num = val;
     return ret;
@@ -248,7 +257,7 @@ void RG_LongRecordSet(Record* r, long val){
 }
 
 Record* RG_HashSetRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = HASH_SET_RECORD;
     ret->hashSetRecord.d = dictCreate(&dictTypeHeapStrings, NULL);
     return ret;
@@ -292,7 +301,7 @@ void RG_HashSetRecordFreeKeysArray(char** keyArr){
 }
 
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = KEY_HANDLER_RECORD;
     ret->keyHandlerRecord.keyHandler = handler;
     return ret;
@@ -305,7 +314,7 @@ RedisModuleKey* RG_KeyHandlerRecordGet(Record* r){
 
 #ifdef WITHPYTHON
 Record* RG_PyObjRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordsPool_Get();
     ret->type = PY_RECORD;
     ret->pyRecord.obj = NULL;
     return ret;

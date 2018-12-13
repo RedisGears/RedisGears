@@ -23,6 +23,8 @@ enum AdditionalRecordTypes{
 
 extern Record StopRecord;
 
+void RecordPool_Init();
+
 void RG_FreeRecord(Record* record);
 enum RecordType RG_RecordGetType(Record* r);
 

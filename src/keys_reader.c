@@ -62,6 +62,16 @@ static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
     return record;
 }
 
+typedef struct gearsObject {
+    unsigned type:4;
+    unsigned encoding:4;
+    unsigned lru:24; /* LRU time (relative to global lru_clock) or
+                            * LFU data (least significant 8 bits frequency
+                            * and most significant 16 bits access time). */
+    int refcount;
+    void *ptr;
+} gobj;
+
 typedef struct {
     double min, max;
     int minex, maxex; /* are min or max exclusive? */
@@ -102,34 +112,36 @@ void hashTypeCurrentObject(void *hi, int what, char **vstr, unsigned int *vlen, 
 void hashTypeReleaseIterator(void *hi);
 
 static Record* ValueToHashSetMapper(Record *record, RedisModuleKey* handler){
-    void* iter = hashTypeInitIterator(((struct GearsModuleKey*)handler)->value);
+
+//    void* iter = hashTypeInitIterator(((struct GearsModuleKey*)handler)->value);
     Record *hashSetRecord = RedisGears_HashSetRecordCreate();
-    while(hashTypeNext(iter) == C_OK){
-        unsigned int keyLen;
-        long long keyAsNumber;
-        char* key;
-        hashTypeCurrentObject(iter, OBJ_HASH_KEY, &key, &keyLen, &keyAsNumber);
-        assert(key);
-        unsigned int valueLen;
-        long long valueAsNumber;
-        char* value;
-        hashTypeCurrentObject(iter, OBJ_HASH_VALUE, &value, &valueLen, &valueAsNumber);
-        Record* valRecord = NULL;
-        if(value){
-            char* valStr = RG_ALLOC(sizeof(char) * (valueLen + 1));
-            memcpy(valStr, value, valueLen);
-            valStr[valueLen] = '\0';
-            valRecord = RedisGears_StringRecordCreate(valStr, valueLen);
-        }else{
-            valRecord = RedisGears_LongRecordCreate(valueAsNumber);
-        }
-        char keyStr[sizeof(char) * (keyLen + 1)];
-        memcpy(keyStr, key, keyLen);
-        keyStr[keyLen] = '\0';
-        RedisGears_HashSetRecordSet(hashSetRecord, keyStr, valRecord);
-    }
+    ((void**)hashSetRecord)[0] = ((gobj*)(((struct GearsModuleKey*)handler)->value))->ptr;
+//    while(hashTypeNext(iter) == C_OK){
+//        unsigned int keyLen;
+//        long long keyAsNumber;
+//        char* key;
+//        hashTypeCurrentObject(iter, OBJ_HASH_KEY, &key, &keyLen, &keyAsNumber);
+//        assert(key);
+//        unsigned int valueLen;
+//        long long valueAsNumber;
+//        char* value;
+//        hashTypeCurrentObject(iter, OBJ_HASH_VALUE, &value, &valueLen, &valueAsNumber);
+//        Record* valRecord = NULL;
+//        if(value){
+//            char* valStr = RG_ALLOC(sizeof(char) * (valueLen + 1));
+//            memcpy(valStr, value, valueLen);
+//            valStr[valueLen] = '\0';
+//            valRecord = RedisGears_StringRecordCreate(valStr, valueLen);
+//        }else{
+//            valRecord = RedisGears_LongRecordCreate(valueAsNumber);
+//        }
+//        char keyStr[sizeof(char) * (keyLen + 1)];
+//        memcpy(keyStr, key, keyLen);
+//        keyStr[keyLen] = '\0';
+//        RedisGears_HashSetRecordSet(hashSetRecord, keyStr, valRecord);
+//    }
     RedisGears_KeyRecordSetVal(record, hashSetRecord);
-    hashTypeReleaseIterator(iter);
+//    hashTypeReleaseIterator(iter);
     return record;
 }
 
@@ -174,7 +186,7 @@ static Record* ValueToRecordMapper(RedisModuleCtx* rctx, Record* record, RedisMo
 }
 
 static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
-#define BETCH_SIZE 50
+#define BETCH_SIZE 1000
     if(readerCtx->pendings && array_len(readerCtx->pendings) > 0){
         return array_pop(readerCtx->pendings);
     }
@@ -187,13 +199,12 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     while((entry = dictNext(readerCtx->iter))){
         const char* key = dictGetKey(entry);
         size_t keyLen = strlen(key);
-        RedisModuleString* keyRedisStr = RedisModule_CreateString(rctx, key, keyLen);
         void* value = dictGetVal(entry);
 
         struct GearsModuleKey keyHandler = {
                 .ctx = rctx,
                 .db = db,
-                .key = keyRedisStr,
+                .key = NULL,
                 .value = value,
                 .iter = NULL,
                 .mode = REDISMODULE_READ | REDISMODULE_WRITE
@@ -201,11 +212,9 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
 
         Record* record = RedisGears_KeyRecordCreate();
 
-        RedisGears_KeyRecordSetKey(record, RG_STRDUP(key), keyLen);
+        RedisGears_KeyRecordSetKey(record, (char*)key, keyLen);
 
         ValueToRecordMapper(rctx, record, (RedisModuleKey*)&keyHandler);
-
-        RedisModule_FreeString(rctx, keyRedisStr);
 
         readerCtx->pendings = array_append(readerCtx->pendings, record);
 
