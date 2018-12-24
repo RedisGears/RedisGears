@@ -26,8 +26,8 @@
 
 #define EXECUTION_PLAN_FREE_MSG 100
 
-#define REGISTER_API(name, registerApiCallback) \
-    if(registerApiCallback("RedisGears_" #name, RG_ ## name)){\
+#define REGISTER_API(name, ctx) \
+    if(RedisModule_ExportSharedAPI(ctx, "RedisGears_" #name, RG_ ## name)){\
         printf("could not register RedisGears_" #name "\r\n");\
         return false;\
     }
@@ -208,74 +208,74 @@ static char* RG_BRReadBuffer(BufferReader* br, size_t* len){
 }
 
 
-static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)){
-    REGISTER_API(CreateType, registerApiCallback);
-    REGISTER_API(BWWriteLong, registerApiCallback);
-    REGISTER_API(BWWriteString, registerApiCallback);
-    REGISTER_API(BWWriteBuffer, registerApiCallback);
-    REGISTER_API(BRReadLong, registerApiCallback);
-    REGISTER_API(BRReadString, registerApiCallback);
-    REGISTER_API(BRReadBuffer, registerApiCallback);
+static bool RedisGears_RegisterApi(RedisModuleCtx* ctx){
+    REGISTER_API(CreateType, ctx);
+    REGISTER_API(BWWriteLong, ctx);
+    REGISTER_API(BWWriteString, ctx);
+    REGISTER_API(BWWriteBuffer, ctx);
+    REGISTER_API(BRReadLong, ctx);
+    REGISTER_API(BRReadString, ctx);
+    REGISTER_API(BRReadBuffer, ctx);
 
-    REGISTER_API(RegisterReader, registerApiCallback);
-    REGISTER_API(RegisterForEach, registerApiCallback);
-    REGISTER_API(RegisterMap, registerApiCallback);
-    REGISTER_API(RegisterAccumulator, registerApiCallback);
-    REGISTER_API(RegisterFilter, registerApiCallback);
-    REGISTER_API(RegisterGroupByExtractor, registerApiCallback);
-    REGISTER_API(RegisterReducer, registerApiCallback);
-    REGISTER_API(CreateCtx, registerApiCallback);
-    REGISTER_API(Map, registerApiCallback);
-    REGISTER_API(Accumulate, registerApiCallback);
-    REGISTER_API(FlatMap, registerApiCallback);
-    REGISTER_API(Filter, registerApiCallback);
-    REGISTER_API(GroupBy, registerApiCallback);
-    REGISTER_API(Collect, registerApiCallback);
-    REGISTER_API(Repartition, registerApiCallback);
-    REGISTER_API(ForEach, registerApiCallback);
-    REGISTER_API(Limit, registerApiCallback);
-    REGISTER_API(Run, registerApiCallback);
-    REGISTER_API(Register, registerApiCallback);
-    REGISTER_API(FreeFlatExecution, registerApiCallback);
+    REGISTER_API(RegisterReader, ctx);
+    REGISTER_API(RegisterForEach, ctx);
+    REGISTER_API(RegisterMap, ctx);
+    REGISTER_API(RegisterAccumulator, ctx);
+    REGISTER_API(RegisterFilter, ctx);
+    REGISTER_API(RegisterGroupByExtractor, ctx);
+    REGISTER_API(RegisterReducer, ctx);
+    REGISTER_API(CreateCtx, ctx);
+    REGISTER_API(Map, ctx);
+    REGISTER_API(Accumulate, ctx);
+    REGISTER_API(FlatMap, ctx);
+    REGISTER_API(Filter, ctx);
+    REGISTER_API(GroupBy, ctx);
+    REGISTER_API(Collect, ctx);
+    REGISTER_API(Repartition, ctx);
+    REGISTER_API(ForEach, ctx);
+    REGISTER_API(Limit, ctx);
+    REGISTER_API(Run, ctx);
+    REGISTER_API(Register, ctx);
+    REGISTER_API(FreeFlatExecution, ctx);
 
-    REGISTER_API(GetExecution, registerApiCallback);
-    REGISTER_API(IsDone, registerApiCallback);
-    REGISTER_API(GetRecordsLen, registerApiCallback);
-    REGISTER_API(GetRecord, registerApiCallback);
-    REGISTER_API(RegisterExecutionDoneCallback, registerApiCallback);
-    REGISTER_API(GetPrivateData, registerApiCallback);
-	REGISTER_API(SetPrivateData, registerApiCallback);
-	REGISTER_API(DropExecution, registerApiCallback);
-	REGISTER_API(GetId, registerApiCallback);
+    REGISTER_API(GetExecution, ctx);
+    REGISTER_API(IsDone, ctx);
+    REGISTER_API(GetRecordsLen, ctx);
+    REGISTER_API(GetRecord, ctx);
+    REGISTER_API(RegisterExecutionDoneCallback, ctx);
+    REGISTER_API(GetPrivateData, ctx);
+	REGISTER_API(SetPrivateData, ctx);
+	REGISTER_API(DropExecution, ctx);
+	REGISTER_API(GetId, ctx);
 
-    REGISTER_API(FreeRecord, registerApiCallback);
-    REGISTER_API(RecordGetType, registerApiCallback);
-    REGISTER_API(KeyRecordCreate, registerApiCallback);
-    REGISTER_API(KeyRecordSetKey, registerApiCallback);
-    REGISTER_API(KeyRecordSetVal, registerApiCallback);
-    REGISTER_API(KeyRecordGetVal, registerApiCallback);
-    REGISTER_API(KeyRecordGetKey, registerApiCallback);
-    REGISTER_API(ListRecordCreate, registerApiCallback);
-    REGISTER_API(ListRecordLen, registerApiCallback);
-    REGISTER_API(ListRecordAdd, registerApiCallback);
-    REGISTER_API(ListRecordGet, registerApiCallback);
-    REGISTER_API(ListRecordPop, registerApiCallback);
-    REGISTER_API(StringRecordCreate, registerApiCallback);
-    REGISTER_API(StringRecordGet, registerApiCallback);
-    REGISTER_API(StringRecordSet, registerApiCallback);
-    REGISTER_API(DoubleRecordCreate, registerApiCallback);
-    REGISTER_API(DoubleRecordGet, registerApiCallback);
-    REGISTER_API(DoubleRecordSet, registerApiCallback);
-    REGISTER_API(LongRecordCreate, registerApiCallback);
-    REGISTER_API(LongRecordGet, registerApiCallback);
-    REGISTER_API(LongRecordSet, registerApiCallback);
-    REGISTER_API(KeyHandlerRecordCreate, registerApiCallback);
-    REGISTER_API(KeyHandlerRecordGet, registerApiCallback);
-    REGISTER_API(HashSetRecordCreate, registerApiCallback);
-    REGISTER_API(HashSetRecordSet, registerApiCallback);
-    REGISTER_API(HashSetRecordGet, registerApiCallback);
-    REGISTER_API(HashSetRecordGetAllKeys, registerApiCallback);
-    REGISTER_API(HashSetRecordFreeKeysArray, registerApiCallback);
+    REGISTER_API(FreeRecord, ctx);
+    REGISTER_API(RecordGetType, ctx);
+    REGISTER_API(KeyRecordCreate, ctx);
+    REGISTER_API(KeyRecordSetKey, ctx);
+    REGISTER_API(KeyRecordSetVal, ctx);
+    REGISTER_API(KeyRecordGetVal, ctx);
+    REGISTER_API(KeyRecordGetKey, ctx);
+    REGISTER_API(ListRecordCreate, ctx);
+    REGISTER_API(ListRecordLen, ctx);
+    REGISTER_API(ListRecordAdd, ctx);
+    REGISTER_API(ListRecordGet, ctx);
+    REGISTER_API(ListRecordPop, ctx);
+    REGISTER_API(StringRecordCreate, ctx);
+    REGISTER_API(StringRecordGet, ctx);
+    REGISTER_API(StringRecordSet, ctx);
+    REGISTER_API(DoubleRecordCreate, ctx);
+    REGISTER_API(DoubleRecordGet, ctx);
+    REGISTER_API(DoubleRecordSet, ctx);
+    REGISTER_API(LongRecordCreate, ctx);
+    REGISTER_API(LongRecordGet, ctx);
+    REGISTER_API(LongRecordSet, ctx);
+    REGISTER_API(KeyHandlerRecordCreate, ctx);
+    REGISTER_API(KeyHandlerRecordGet, ctx);
+    REGISTER_API(HashSetRecordCreate, ctx);
+    REGISTER_API(HashSetRecordSet, ctx);
+    REGISTER_API(HashSetRecordGet, ctx);
+    REGISTER_API(HashSetRecordGetAllKeys, ctx);
+    REGISTER_API(HashSetRecordFreeKeysArray, ctx);
 
     return true;
 }
@@ -289,27 +289,13 @@ static void RG_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sende
 	ExecutionPlan_Free(ep);
 }
 
-bool apiRegistered = false;
-
-int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)) {
-	if(!RedisGears_RegisterApi(registerApiCallback)){
-		return REDISMODULE_ERR;
-	}
-	apiRegistered = true;
-	return REDISMODULE_OK;
-}
-
-int moduleRegisterApi(const char *funcname, void *funcptr);
-
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    if(!apiRegistered){
-        if(!RedisGears_RegisterApi(moduleRegisterApi)){
-            RedisModule_Log(ctx, "warning", "could not register RedisGears api");
-            return REDISMODULE_ERR;
-        }
+    if(!RedisGears_RegisterApi(ctx)){
+        RedisModule_Log(ctx, "warning", "could not register RedisGears api");
+        return REDISMODULE_ERR;
     }
 
-    if(!RedisGears_Initialize()){
+    if(!RedisGears_Initialize(ctx)){
         RedisModule_Log(ctx, "warning", "could not initialize RedisGears api");
         return REDISMODULE_ERR;
     }
