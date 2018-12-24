@@ -67,30 +67,31 @@ Record StopRecord = {
         .type = STOP_RECORD,
 };
 
-#define INITAIL_POOL_SIZE 10000
+#define INITAIL_POOL_SIZE 1000000
 Record* RecordsPool = NULL;
 Record* FreeRecords;
 
 static Record* RecordsPool_Get(){
-    Record* ret = FreeRecords;
-    FreeRecords = FreeRecords->next;
-    return ret;
+//    Record* ret = FreeRecords;
+//    FreeRecords = FreeRecords->next;
+    return RG_ALLOC(sizeof(Record));
 }
 
 static void RecordsPool_Return(Record* r){
-    r->next = FreeRecords;
-    FreeRecords = r;
+//    r->next = FreeRecords;
+//    FreeRecords = r;
+    RG_FREE(r);
 }
 
 void RecordPool_Init(){
-    RecordsPool = RG_ALLOC(sizeof(Record) * INITAIL_POOL_SIZE);
-    Record* r = NULL;
-    for(int i = 0 ; i < INITAIL_POOL_SIZE - 1 ; ++i){
-        r = RecordsPool + i;
-        r->next = (r + 1);
-    }
-    r->next = NULL;
-    FreeRecords = RecordsPool;
+//    RecordsPool = RG_ALLOC(sizeof(Record) * INITAIL_POOL_SIZE);
+//    Record* r = NULL;
+//    for(int i = 0 ; i < INITAIL_POOL_SIZE - 1 ; ++i){
+//        r = RecordsPool + i;
+//        r->next = (r + 1);
+//    }
+//    r->next = NULL;
+//    FreeRecords = RecordsPool;
 }
 
 void RG_FreeRecord(Record* record){
@@ -111,9 +112,9 @@ void RG_FreeRecord(Record* record){
         array_free(record->listRecord.records);
         break;
     case KEY_RECORD:
-//        if(record->keyRecord.key){
-//            RG_FREE(record->keyRecord.key);
-//        }
+        if(record->keyRecord.key){
+            RG_FREE(record->keyRecord.key);
+        }
         if(record->keyRecord.record){
             RG_FreeRecord(record->keyRecord.record);
         }
@@ -122,14 +123,14 @@ void RG_FreeRecord(Record* record){
         RedisModule_CloseKey(record->keyHandlerRecord.keyHandler);
         break;
     case HASH_SET_RECORD:
-//        iter = dictGetIterator(record->hashSetRecord.d);
-//        entry = NULL;
-//        while((entry = dictNext(iter))){
-//            temp = dictGetVal(entry);
-//            RG_FreeRecord(temp);
-//        }
-//        dictReleaseIterator(iter);
-//        dictRelease(record->hashSetRecord.d);
+        iter = dictGetIterator(record->hashSetRecord.d);
+        entry = NULL;
+        while((entry = dictNext(iter))){
+            temp = dictGetVal(entry);
+            RG_FreeRecord(temp);
+        }
+        dictReleaseIterator(iter);
+        dictRelease(record->hashSetRecord.d);
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:

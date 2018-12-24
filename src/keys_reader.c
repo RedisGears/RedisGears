@@ -46,6 +46,12 @@ static void KeysReader_Free(void* ctx){
     if(krctx->iter){
         dictReleaseIterator(krctx->iter);
     }
+    if(krctx->pendings){
+        for(int i = 0 ; i < array_len(krctx->pendings) ; ++i){
+            RedisGears_FreeRecord(krctx->pendings[i]);
+        }
+        array_free(krctx->pendings);
+    }
     RG_FREE(krctx);
 }
 
@@ -113,35 +119,35 @@ void hashTypeReleaseIterator(void *hi);
 
 static Record* ValueToHashSetMapper(Record *record, RedisModuleKey* handler){
 
-//    void* iter = hashTypeInitIterator(((struct GearsModuleKey*)handler)->value);
+    void* iter = hashTypeInitIterator(((struct GearsModuleKey*)handler)->value);
     Record *hashSetRecord = RedisGears_HashSetRecordCreate();
-    ((void**)hashSetRecord)[0] = ((gobj*)(((struct GearsModuleKey*)handler)->value))->ptr;
-//    while(hashTypeNext(iter) == C_OK){
-//        unsigned int keyLen;
-//        long long keyAsNumber;
-//        char* key;
-//        hashTypeCurrentObject(iter, OBJ_HASH_KEY, &key, &keyLen, &keyAsNumber);
-//        assert(key);
-//        unsigned int valueLen;
-//        long long valueAsNumber;
-//        char* value;
-//        hashTypeCurrentObject(iter, OBJ_HASH_VALUE, &value, &valueLen, &valueAsNumber);
-//        Record* valRecord = NULL;
-//        if(value){
-//            char* valStr = RG_ALLOC(sizeof(char) * (valueLen + 1));
-//            memcpy(valStr, value, valueLen);
-//            valStr[valueLen] = '\0';
-//            valRecord = RedisGears_StringRecordCreate(valStr, valueLen);
-//        }else{
-//            valRecord = RedisGears_LongRecordCreate(valueAsNumber);
-//        }
-//        char keyStr[sizeof(char) * (keyLen + 1)];
-//        memcpy(keyStr, key, keyLen);
-//        keyStr[keyLen] = '\0';
-//        RedisGears_HashSetRecordSet(hashSetRecord, keyStr, valRecord);
-//    }
+//    ((void**)hashSetRecord)[0] = ((gobj*)(((struct GearsModuleKey*)handler)->value))->ptr;
+    while(hashTypeNext(iter) == C_OK){
+        unsigned int keyLen;
+        long long keyAsNumber;
+        char* key;
+        hashTypeCurrentObject(iter, OBJ_HASH_KEY, &key, &keyLen, &keyAsNumber);
+        assert(key);
+        unsigned int valueLen;
+        long long valueAsNumber;
+        char* value;
+        hashTypeCurrentObject(iter, OBJ_HASH_VALUE, &value, &valueLen, &valueAsNumber);
+        Record* valRecord = NULL;
+        if(value){
+            char* valStr = RG_ALLOC(sizeof(char) * (valueLen + 1));
+            memcpy(valStr, value, valueLen);
+            valStr[valueLen] = '\0';
+            valRecord = RedisGears_StringRecordCreate(valStr, valueLen);
+        }else{
+            valRecord = RedisGears_LongRecordCreate(valueAsNumber);
+        }
+        char keyStr[sizeof(char) * (keyLen + 1)];
+        memcpy(keyStr, key, keyLen);
+        keyStr[keyLen] = '\0';
+        RedisGears_HashSetRecordSet(hashSetRecord, keyStr, valRecord);
+    }
     RedisGears_KeyRecordSetVal(record, hashSetRecord);
-//    hashTypeReleaseIterator(iter);
+    hashTypeReleaseIterator(iter);
     return record;
 }
 
@@ -212,7 +218,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
 
         Record* record = RedisGears_KeyRecordCreate();
 
-        RedisGears_KeyRecordSetKey(record, (char*)key, keyLen);
+        RedisGears_KeyRecordSetKey(record, RG_STRDUP(key), keyLen);
 
         ValueToRecordMapper(rctx, record, (RedisModuleKey*)&keyHandler);
 

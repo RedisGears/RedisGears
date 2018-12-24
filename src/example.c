@@ -33,5 +33,6 @@ int Example_CommandCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int a
     RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 1000000);
     RedisGears_RegisterExecutionDoneCallback(ep, onDone);
     RedisGears_SetPrivateData(ep, bc, NULL);
+    RedisGears_FreeFlatExecution(rsctx);
     return REDISMODULE_OK;
 }
