@@ -18,8 +18,8 @@ else
 endif
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redisgears_python.c
-	PYTHON_CFLAGS=$(shell python-config --includes)
-	PYTHON_LFLAGS=-L$(shell python-config --configdir) -L/usr/lib $(shell python-config --libs)
+	PYTHON_CFLAGS=-I/home/meir/work/cpython/Include/ -I/home/meir/work/cpython/
+	PYTHON_LFLAGS=-L/home/meir/work/cpython/ -Wl,-Bstatic -lpython2.7 -lutil -Wl,-Bdynamic
 	CFLAGS+=-DWITHPYTHON
     CFLAGS+=$(PYTHON_CFLAGS)
     LFLAGS+=$(PYTHON_LFLAGS)
