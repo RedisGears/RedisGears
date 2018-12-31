@@ -1,8 +1,8 @@
+#include <Python.h>
 #include "record.h"
 #include "redisdl.h"
 #include "globals.h"
 #include "commands.h"
-#include <Python.h>
 #include <marshal.h>
 #include <assert.h>
 #include <redisgears.h>
@@ -887,14 +887,14 @@ static void* RedisGearsPy_PyCallbackDeserialize(BufferReader* br){
     return callback;
 }
 
-//  Script example
-//
-//    def filter(record):
-//        return record.val == 'meir'
-//    ctx = gearsCtx('*')
-//    ctx.filter(filter)\n
-//    ctx.returnResults()
+void Py_SetAllocFunction(void *(*alloc)(size_t));
+void Py_SetReallocFunction(void *(*realloc)(void *, size_t));
+void Py_SetFreeFunction(void (*free)(void *));
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
+	Py_SetAllocFunction(RG_ALLOC);
+	Py_SetReallocFunction(RG_REALLOC);
+	Py_SetFreeFunction(RG_FREE);
     Py_SetProgramName("/home/meir/work/cpython/python");
     Py_Initialize();
     PyEval_InitThreads();
