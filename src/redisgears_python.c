@@ -895,7 +895,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RG_ALLOC);
 	Py_SetReallocFunction(RG_REALLOC);
 	Py_SetFreeFunction(RG_FREE);
-    Py_SetProgramName("/home/meir/work/cpython/python");
+    Py_SetProgramName("/usr/bin/python");
     Py_Initialize();
     PyEval_InitThreads();
     PyTensorType.tp_new = PyType_GenericNew;

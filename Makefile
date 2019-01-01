@@ -18,8 +18,8 @@ else
 endif
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redisgears_python.c
-	PYTHON_CFLAGS=-I/home/meir/work/cpython/Include/ -I/home/meir/work/cpython/
-	PYTHON_LFLAGS=-L/home/meir/work/cpython/ -Wl,-Bstatic -lpython2.7 -lutil -Wl,-Bdynamic
+	PYTHON_CFLAGS=-I./src/deps/cpython/Include/ -I./src/deps/cpython/
+	PYTHON_LFLAGS=-L./src/deps/cpython/ -Wl,-Bstatic -lpython2.7 -lutil -Wl,-Bdynamic
 	CFLAGS+=-DWITHPYTHON
     CFLAGS+=$(PYTHON_CFLAGS)
     LFLAGS+=$(PYTHON_LFLAGS)
@@ -31,7 +31,13 @@ $(OBJ)/%.o: $(SRC)/%.c
 	$(CC) -I$(SRC) $(CFLAGS) -c $< -o $@
 
 all: redisgears.so
-	
+
+python:
+	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc;make
+
+python_clean:
+	cd src/deps/cpython;make clean
+
 redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
 	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
 	
@@ -41,7 +47,7 @@ static: $(OBJECTS)
 clean:
 	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o redisgears.zip
 	
-get_deps:
+get_deps: python
 	rm -rf deps
 	rm -rf libs
 	mkdir deps

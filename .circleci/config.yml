@@ -4,6 +4,9 @@ defaults:
   ci_steps: &ci_steps
     - checkout
     - run:
+        name: Submodule checkout
+        command: git submodule update --init --recursive
+    - run:
         name: Install_Deps
         command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;apt -y install valgrind
     - run:
@@ -33,6 +36,9 @@ jobs:
           name: Redis_5_upgrade
           command: cd ../redis;git fetch;git checkout 5.0.1;make;make install
       - checkout
+      - run:
+          name: Submodule checkout
+          command: git submodule update --init --recursive
       - run:
           name: Install_Deps
           command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;yum -y install valgrind
