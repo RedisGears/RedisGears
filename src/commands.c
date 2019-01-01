@@ -58,6 +58,12 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 
 void Command_ReturnResults(ExecutionPlan* starCtx, RedisModuleCtx *ctx){
 	long long len = RedisGears_GetRecordsLen(starCtx);
+	RedisModule_ReplyWithArray(ctx, 2);
+	RedisModule_ReplyWithArray(ctx, 4);
+	RedisModule_ReplyWithStringBuffer(ctx, "TotalExecutionDuration", strlen("TotalExecutionDuration"));
+	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetTotalDuration(starCtx));
+	RedisModule_ReplyWithStringBuffer(ctx, "TotalReadDuration", strlen("TotalReadDuration"));
+	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetReadDuration(starCtx));
 	RedisModule_ReplyWithArray(ctx, len);
 	for(long long i = 0 ; i < len ; ++i){
 		Record* r = RedisGears_GetRecord(starCtx, i);

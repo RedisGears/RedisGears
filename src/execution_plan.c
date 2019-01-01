@@ -10,6 +10,7 @@
 #include "utils/buffer.h"
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
 
@@ -251,15 +252,21 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
 
 static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err);
-    if(record == NULL){
-        return NULL;
+
+    struct timespec start;
+	struct timespec end;
+	clock_gettime(CLOCK_REALTIME, &start);
+
+	if(record == NULL){
+        goto end;
     }
     if(record == &StopRecord){
-        return record;
+    	goto end;
     }
     if(*err){
         RedisGears_FreeRecord(record);
-        return NULL;
+        record = NULL;
+        goto end;
     }
     if(record != NULL){
         record = step->map.map(rctx, record, step->map.stepArg.stepArg, err);
@@ -270,65 +277,93 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
             return NULL;
         }
     }
+end:
+	clock_gettime(CLOCK_REALTIME, &end);
+	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
+							 (end.tv_nsec - start.tv_nsec);
+	step->executionDuration += readDuration;
     return record;
 }
 
 static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
-    if(step->flatMap.pendings){
-        Record* r = RedisGears_ListRecordPop(step->flatMap.pendings);
+	Record* r = NULL;
+	struct timespec start;
+	struct timespec end;
+	if(step->flatMap.pendings){
+		clock_gettime(CLOCK_REALTIME, &start);
+        r = RedisGears_ListRecordPop(step->flatMap.pendings);
         if(RedisGears_ListRecordLen(step->flatMap.pendings) == 0){
             RedisGears_FreeRecord(step->flatMap.pendings);
             step->flatMap.pendings = NULL;
         }
-        return r;
+        goto end;
     }
-    Record* r = ExecutionPlan_MapNextRecord(ep, step, rctx, err);
+    r = ExecutionPlan_MapNextRecord(ep, step, rctx, err);
+    clock_gettime(CLOCK_REALTIME, &start);
     if(r == NULL){
-        return NULL;
+    	goto end;
     }
     if(r == &StopRecord){
-        return r;
+    	goto end;
     }
     if(*err){
         RedisGears_FreeRecord(r);
-        return NULL;
+        r = NULL;
+        goto end;
     }
     if(RedisGears_RecordGetType(r) != LIST_RECORD){
-        return r;
+    	goto end;
     }
     if(RedisGears_ListRecordLen(r) == 0){
-        return r;
+    	goto end;
     }
     if(RedisGears_ListRecordLen(r) == 1){
         Record* ret;
         ret = RedisGears_ListRecordPop(r);
         RedisGears_FreeRecord(r);
-        return ret;
+        r = ret;
+        goto end;
     }
     step->flatMap.pendings = r;
-    return RedisGears_ListRecordPop(step->flatMap.pendings);
+    r = RedisGears_ListRecordPop(step->flatMap.pendings);
+end:
+	clock_gettime(CLOCK_REALTIME, &end);
+	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
+							 (end.tv_nsec - start.tv_nsec);
+	step->executionDuration += readDuration;
+    return r;
 }
 
 static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     size_t buffLen;
+    Record* r = NULL;
+    struct timespec start;
+	struct timespec end;
     Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err);
+    clock_gettime(CLOCK_REALTIME, &start);
     if(record == NULL){
-        return NULL;
+        goto end;
     }
     if(record == &StopRecord){
-        return record;
+    	r = record;
+    	goto end;
     }
     char* buff = step->extractKey.extractor(rctx, record, step->extractKey.extractorArg.stepArg, &buffLen, err);
     if(*err){
         RedisGears_FreeRecord(record);
-        return NULL;
+        goto end;
     }
     char* newBuff = RG_ALLOC(buffLen + 1);
     memcpy(newBuff, buff, buffLen);
     newBuff[buffLen] = '\0';
-    Record* r = RedisGears_KeyRecordCreate();
+    r = RedisGears_KeyRecordCreate();
     RedisGears_KeyRecordSetKey(r, newBuff, buffLen);
     RedisGears_KeyRecordSetVal(r, record);
+end:
+	clock_gettime(CLOCK_REALTIME, &end);
+	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
+							 (end.tv_nsec - start.tv_nsec);
+	step->executionDuration += readDuration;
     return r;
 }
 
@@ -594,38 +629,56 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
 }
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
-    Record* record = NULL;
     Record* r;
-    dictEntry* entry;
+    struct timespec start;
+	struct timespec end;
     switch(step->type){
     case READER:
-        return step->reader.r->next(rctx, step->reader.r->ctx);
+    	clock_gettime(CLOCK_REALTIME, &start);
+        r = step->reader.r->next(rctx, step->reader.r->ctx);
+        clock_gettime(CLOCK_REALTIME, &end);
+		long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
+								 (end.tv_nsec - start.tv_nsec);
+		step->executionDuration += readDuration;
+        break;
     case MAP:
-        return ExecutionPlan_MapNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_MapNextRecord(ep, step, rctx, err);
+    	break;
     case FLAT_MAP:
-        return ExecutionPlan_FlatMapNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_FlatMapNextRecord(ep, step, rctx, err);
+    	break;
     case FILTER:
-        return ExecutionPlan_FilterNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_FilterNextRecord(ep, step, rctx, err);
+    	break;
     case EXTRACTKEY:
-        return ExecutionPlan_ExtractKeyNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_ExtractKeyNextRecord(ep, step, rctx, err);
+    	break;
     case GROUP:
-        return ExecutionPlan_GroupNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_GroupNextRecord(ep, step, rctx, err);
+    	break;
     case REDUCE:
-        return ExecutionPlan_ReduceNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_ReduceNextRecord(ep, step, rctx, err);
+    	break;
     case REPARTITION:
-        return ExecutionPlan_RepartitionNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_RepartitionNextRecord(ep, step, rctx, err);
+    	break;
     case COLLECT:
-    	return ExecutionPlan_CollectNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_CollectNextRecord(ep, step, rctx, err);
+    	break;
     case FOREACH:
-        return ExecutionPlan_WriteNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_WriteNextRecord(ep, step, rctx, err);
+    	break;
     case LIMIT:
-        return ExecutionPlan_LimitNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_LimitNextRecord(ep, step, rctx, err);
+    	break;
     case ACCUMULATE:
-        return ExecutionPlan_AccumulateNextRecord(ep, step, rctx, err);
+    	r = ExecutionPlan_AccumulateNextRecord(ep, step, rctx, err);
+    	break;
     default:
         assert(false);
         return NULL;
     }
+    return r;
 }
 
 static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
@@ -679,7 +732,18 @@ static void* ExecutionPlan_ThreadMain(void *arg){
             }
             ep->status = RUNNING;
         }
+
+        struct timespec start;
+       	struct timespec end;
+       	clock_gettime(CLOCK_REALTIME, &start);
+
         bool isDone = ExecutionPlan_Execute(ep, rctx);
+
+        clock_gettime(CLOCK_REALTIME, &end);
+		long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
+								 (end.tv_nsec - start.tv_nsec);
+		ep->executionDuration += readDuration;
+
         if(isDone){
         	RedisModule_ThreadSafeContextLock(rctx);
         	ep->isDone = true;
@@ -973,6 +1037,7 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     default:
         assert(false);
     }
+    es->executionDuration = 0;
     return es;
 }
 
@@ -988,6 +1053,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
     fep = FlatExecutionPlan_Duplicate(fep);
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
+    ret->executionDuration = 0;
     ExecutionStep* last = NULL;
     for(int i = array_len(fep->steps) - 1 ; i >= 0 ; --i){
         FlatExecutionStep* s = fep->steps + i;
@@ -1210,4 +1276,12 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 	dictReleaseIterator(iter);
 	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
 	return REDISMODULE_OK;
+}
+
+long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep){
+	return ep->executionDuration;
+}
+
+long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep){
+	return ep->steps[array_len(ep->steps) - 1]->executionDuration;
 }

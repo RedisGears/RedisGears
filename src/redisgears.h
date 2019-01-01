@@ -192,6 +192,8 @@ const char* MODULE_API_FUNC(RedisGears_GetId)(ExecutionPlan* ctx);
 Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
 void MODULE_API_FUNC(RedisGears_DropExecution)(ExecutionPlan* starCtx);
+long long MODULE_API_FUNC(RedisGears_GetTotalDuration)(ExecutionPlan* starCtx);
+long long MODULE_API_FUNC(RedisGears_GetReadDuration)(ExecutionPlan* starCtx);
 void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* starCtx);
 
 #define REDISLAMBDA_MODULE_INIT_FUNCTION(name) \
@@ -268,6 +270,9 @@ static bool RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordGet);
     REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordGetAllKeys);
     REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordFreeKeysArray);
+
+    REDISLAMBDA_MODULE_INIT_FUNCTION(GetTotalDuration);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(GetReadDuration);
 
     return true;
 }
