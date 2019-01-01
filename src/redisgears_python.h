@@ -8,8 +8,8 @@
 #ifndef SRC_REDISGEARG_PYTHON_H_
 #define SRC_REDISGEARG_PYTHON_H_
 
-#include "redismodule.h"
 #include <Python.h>
+#include "redismodule.h"
 #include "redisgears.h"
 
 extern PyMethodDef EmbMethods[];

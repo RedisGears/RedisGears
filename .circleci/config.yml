@@ -4,6 +4,9 @@ defaults:
   ci_steps: &ci_steps
     - checkout
     - run:
+        name: Submodule checkout
+        command: git submodule update --init --recursive
+    - run:
         name: Install_Deps
         command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;apt -y install valgrind
     - run:
@@ -34,6 +37,9 @@ jobs:
           command: cd ../redis;git fetch;git checkout 5.0.1;make;make install
       - checkout
       - run:
+          name: Submodule checkout
+          command: git submodule update --init --recursive
+      - run:
           name: Install_Deps
           command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;yum -y install valgrind
       - run:
@@ -41,7 +47,7 @@ jobs:
           command: make get_deps;make WITHPYTHON=1
       - run:
           name: Test
-          command: cd ./pytest; ./run_tests.sh
+          command: export PYTHONPATH="/usr/lib64/python27.zip:/usr/lib64/python2.7:/usr/lib64/python2.7/plat-linux2:/usr/lib64/python2.7/lib-tk:/usr/lib64/python2.7/lib-old:/usr/lib64/python2.7/lib-dynload:/usr/lib64/python2.7/site-packages:/usr/lib/python2.7/site-packages";export PYTHONHOME=/usr/bin/;cd ./pytest; ./run_tests.sh
 
 workflows:
   version: 2

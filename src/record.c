@@ -107,7 +107,11 @@ void RG_FreeRecord(Record* record){
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
-        Py_DECREF(record->pyRecord.obj);
+    	if(record->pyRecord.obj){
+    		PyGILState_STATE state = PyGILState_Ensure();
+    		Py_DECREF(record->pyRecord.obj);
+    		PyGILState_Release(state);
+    	}
         break;
 #endif
     default:
@@ -301,7 +305,6 @@ PyObject* RG_PyObjRecordGet(Record* r){
 
 void RG_PyObjRecordSet(Record* r, PyObject* obj){
     assert(r->type == PY_RECORD);
-    Py_INCREF(obj);
     r->pyRecord.obj = obj;
 }
 #endif

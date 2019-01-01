@@ -5,6 +5,10 @@
  *      Author: meir
  */
 
+
+#ifdef WITHPYTHON
+#include "redisgears_python.h"
+#endif
 #include "redismodule.h"
 #include "version.h"
 #include "mgmt.h"
@@ -15,9 +19,6 @@
 #include "redisgears_memory.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/buffer.h"
-#ifdef WITHPYTHON
-#include "redisgears_python.h"
-#endif
 #include "record.h"
 #include "commands.h"
 #include "redisdl.h"
