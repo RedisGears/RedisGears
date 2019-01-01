@@ -19,7 +19,7 @@ endif
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redisgears_python.c
 	PYTHON_CFLAGS=-I./src/deps/cpython/Include/ -I./src/deps/cpython/
-	PYTHON_LFLAGS=-L./src/deps/cpython/ -Wl,-Bstatic -lpython2.7 -lutil -Wl,-Bdynamic
+	PYTHON_LFLAGS=-L./src/deps/cpython/ -Wl,-Bstatic -lpython2.7 -Wl,-Bdynamic -lutil
 	CFLAGS+=-DWITHPYTHON
     CFLAGS+=$(PYTHON_CFLAGS)
     LFLAGS+=$(PYTHON_LFLAGS)
@@ -34,6 +34,8 @@ all: redisgears.so
 
 python:
 	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc;make
+	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata.py /usr/lib/python2.7/
+	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata_nd.py /usr/lib/python2.7/
 
 python_clean:
 	cd src/deps/cpython;make clean
