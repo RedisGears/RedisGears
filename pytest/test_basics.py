@@ -23,7 +23,7 @@ class testBasic:
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "gearsCtx().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res]
+        res = [yaml.load(r) for r in res[1]]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -31,7 +31,7 @@ class testBasic:
     def testBasicFilterQuery(self):
         id = self.env.cmd('rg.pyexecute', 'gearsCtx().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res]
+        res = [yaml.load(r) for r in res[1]]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -39,7 +39,7 @@ class testBasic:
     def testBasicMapQuery(self):
         id = self.env.cmd('rg.pyexecute', 'gearsCtx().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res]
+        res = [yaml.load(r) for r in res[1]]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 
@@ -49,8 +49,8 @@ class testBasic:
                                           'groupby(lambda x: str(x["value"]), lambda key, vals: len(vals)).'
                                           'map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        self.env.assertContains("{'value': 50, 'key': '100'}", res)
-        self.env.assertContains("{'value': 50, 'key': '0'}", res)
+        self.env.assertContains("{'value': 50, 'key': '100'}", res[1])
+        self.env.assertContains("{'value': 50, 'key': '0'}", res[1])
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicAccumulate(self):
@@ -60,7 +60,7 @@ class testBasic:
                                           'collect().'
                                           'accumulate(lambda a,x: x + (a if a else 0)).'
                                           'map(lambda x:str(x)).run()', 'UNBLOCKING')
-        res = self.env.cmd('rg.getresultsblocking', id)
+        res = self.env.cmd('rg.getresultsblocking', id)[1]
         self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
         self.env.cmd('rg.dropexecution', id)
 
@@ -72,7 +72,7 @@ def testFlatMap(env):
                                  "flatmap(lambda x: x['value'])."
                                  "collect().run()", 'UNBLOCKING')
     res = env.cmd('rg.getresultsblocking', id)
-    env.assertEqual(set(res), set(['1', '2', '3']))
+    env.assertEqual(set(res[1]), set(['1', '2', '3']))
     env.cmd('rg.dropexecution', id)
 
 
@@ -83,7 +83,7 @@ def testLimit(env):
                                  "flatmap(lambda x: x['value'])."
                                  "limit(1).collect().run()", 'UNBLOCKING')
     res = env.cmd('rg.getresultsblocking', id)
-    env.assertEqual(len(res), 1)
+    env.assertEqual(len(res[1]), 1)
     env.cmd('rg.dropexecution', id)
 
 
@@ -96,7 +96,7 @@ def testRepartitionAndWriteOption(env):
                                  "repartition(lambda x: x['value'])."
                                  "foreach(lambda x: redisgears.executeCommand('set', x['value'], x['key']))."
                                  "map(lambda x : str(x)).collect().run()", 'UNBLOCKING')
-    res = env.cmd('rg.getresultsblocking', id)
+    res = env.cmd('rg.getresultsblocking', id)[1]
     env.assertContains("'value': '1'", str(res))
     env.assertContains("'key': 'x'", str(res))
     env.assertContains("'value': '2'", str(res))
