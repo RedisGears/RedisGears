@@ -567,8 +567,11 @@ void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* 
     PyObject* obj = RG_PyObjRecordGet(record);
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
-    PyObject_CallObject(callback, pArgs);
+    PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
+    if(ret != Py_None){
+    	Py_DECREF(ret);
+    }
     PyGILState_Release(state);
 }
 
@@ -706,11 +709,14 @@ static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *reco
     }
     char* retCStr = PyString_AsString(retStr);
     *len = strlen(retCStr);
+    char* retValue = RG_ALLOC(*len + 1);
+    memcpy(retValue, retCStr, *len);
+    retValue[*len] = '\0';
     Py_DECREF(retStr);
     //Py_DECREF(retStr); todo: we should uncomment it after we will pass bool
     //                         that will tell the extractor to free the memory!!
     PyGILState_Release(state);
-    return retCStr;
+    return retValue;
 }
 
 static Record* RedisGearsPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
@@ -991,6 +997,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyObject* pName = PyString_FromString("types");
     PyObject* pModule = PyImport_Import(pName);
     pFunc = PyObject_GetAttrString(pModule, "FunctionType");
+    Py_DECREF(pName);
 
     ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
 

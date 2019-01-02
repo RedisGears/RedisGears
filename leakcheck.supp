@@ -39,3 +39,17 @@
    fun:FlatExecutionPlan_RegisterKeySpaceEvent
    ...
 }
+{  
+   <ignore_FlatExecutionPlan_Register_for_now>
+   Memcheck:Leak
+   ...
+   fun:FlatExecutionPlan_Register
+   ...
+}
+{
+   <ignore_compiler_visit_expr_for_now>
+   Memcheck:Leak
+   ...
+   fun:compiler_visit_expr
+   ...
+}
