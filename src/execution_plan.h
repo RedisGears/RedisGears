@@ -112,6 +112,7 @@ typedef struct ExecutionStep{
         AccumulateExecutionStep accumulate;
     };
     enum StepType type;
+    long long executionDuration;
 }ExecutionStep;
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -135,6 +136,7 @@ typedef struct ExecutionPlan{
     RedisGears_OnExecutionDoneCallback callback;
     void* privateData;
     FreePrivateData freeCallback;
+    long long executionDuration;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -175,6 +177,8 @@ void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
+long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);

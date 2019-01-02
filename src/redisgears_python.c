@@ -891,10 +891,67 @@ void Py_SetAllocFunction(void *(*alloc)(size_t));
 void Py_SetReallocFunction(void *(*realloc)(void *, size_t));
 void Py_SetFreeFunction(void (*free)(void *));
 
+long long totalAllocated = 0;
+long long currAllocated = 0;
+long long peakAllocated = 0;
+
+typedef struct pymem{
+	size_t size;
+	char data[];
+}pymem;
+
+static void* RedisGearsPy_Alloc(size_t size){
+	pymem* m = RG_ALLOC(sizeof(pymem) + size);
+	m->size = size;
+	totalAllocated += size;
+	currAllocated += size;
+	if(currAllocated > peakAllocated){
+		peakAllocated = currAllocated;
+	}
+	return m->data;
+}
+
+static void* RedisGearsPy_Relloc(void * p, size_t size){
+	if(!p){
+		return RedisGearsPy_Alloc(size);
+	}
+	pymem* m = p - sizeof(size_t);
+	currAllocated -= m->size;
+	totalAllocated -= m->size;
+	m = RG_REALLOC(m, sizeof(pymem) + size);
+	m->size = size;
+	currAllocated += size;
+	totalAllocated += size;
+	if(currAllocated > peakAllocated){
+		peakAllocated = currAllocated;
+	}
+	return m->data;
+}
+
+static void RedisGearsPy_Free(void * p){
+	if(!p){
+		return;
+	}
+	pymem* m = p - sizeof(size_t);
+	currAllocated -= m->size;
+	RG_FREE(m);
+}
+
+static int RedisGearsPy_Stats(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+	RedisModule_ReplyWithArray(ctx, 6);
+	RedisModule_ReplyWithStringBuffer(ctx, "TotalAllocated", strlen("TotalAllocated"));
+	RedisModule_ReplyWithLongLong(ctx, totalAllocated);
+	RedisModule_ReplyWithStringBuffer(ctx, "PeakAllocated", strlen("PeakAllocated"));
+	RedisModule_ReplyWithLongLong(ctx, peakAllocated);
+	RedisModule_ReplyWithStringBuffer(ctx, "CurrAllocated", strlen("CurrAllocated"));
+	RedisModule_ReplyWithLongLong(ctx, currAllocated);
+	return REDISMODULE_OK;
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
-	Py_SetAllocFunction(RG_ALLOC);
-	Py_SetReallocFunction(RG_REALLOC);
-	Py_SetFreeFunction(RG_FREE);
+	Py_SetAllocFunction(RedisGearsPy_Alloc);
+	Py_SetReallocFunction(RedisGearsPy_Relloc);
+	Py_SetFreeFunction(RedisGearsPy_Free);
     Py_SetProgramName("/usr/bin/python");
     Py_Initialize();
     PyEval_InitThreads();
@@ -955,6 +1012,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 		RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
 		return REDISMODULE_ERR;
 	}
+
+    if (RedisModule_CreateCommand(ctx, "rg.pystats", RedisGearsPy_Stats, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    	RedisModule_Log(ctx, "warning", "could not register command rg.pystats");
+		return REDISMODULE_ERR;
+    }
 
     PyEval_ReleaseLock();
 

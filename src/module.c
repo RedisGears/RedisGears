@@ -208,6 +208,14 @@ static char* RG_BRReadBuffer(BufferReader* br, size_t* len){
     return BufferReader_ReadBuff(br, len);
 }
 
+static long long RG_GetTotalDuration(ExecutionPlan* ep){
+    return FlatExecutionPlan_GetExecutionDuration(ep);
+}
+
+static long long RG_GetReadDuration(ExecutionPlan* ep){
+	return FlatExecutionPlan_GetReadDuration(ep);
+}
+
 
 static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)){
     REGISTER_API(CreateType, registerApiCallback);
@@ -277,6 +285,9 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(HashSetRecordGet, registerApiCallback);
     REGISTER_API(HashSetRecordGetAllKeys, registerApiCallback);
     REGISTER_API(HashSetRecordFreeKeysArray, registerApiCallback);
+
+    REGISTER_API(GetTotalDuration, registerApiCallback);
+    REGISTER_API(GetReadDuration, registerApiCallback);
 
     return true;
 }
