@@ -90,6 +90,8 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, void*
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader);
 static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep);
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg);
+static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len);
+static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len);
 
 static uint64_t idHashFunction(const void *key){
     return dictGenHashFunction(key, EXECUTION_PLAN_ID_LEN);
@@ -281,6 +283,14 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(BufferReader* br){
         ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
     }
     return ret;
+}
+
+static void ExecutionPlan_SendRunRequest(ExecutionPlan* ep){
+	Cluster_SendMsgM(NULL, ExecutionPlan_NotifyRun, ep->id, EXECUTION_PLAN_ID_LEN);
+}
+
+static void ExecutionPlan_SendRecievedNotification(ExecutionPlan* ep){
+	Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyReceived, ep->id, EXECUTION_PLAN_ID_LEN);
 }
 
 static void ExecutionPlan_Distribute(ExecutionPlan* ep){
@@ -835,13 +845,26 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
 static void ExecutionPlan_Main(ExecutionPlan* ep){
 	assert(!ep->isDone);
 	ep->sentRunRequest = false;
-	RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
 	if(ep->status == CREATED){
 		if(Cluster_IsClusterMode()){
 			if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
-			   ExecutionPlan_Distribute(ep);
+				ExecutionPlan_Distribute(ep);
+				ep->status = WAITING_FOR_RECIEVED_NOTIFICATION;
+			}else{
+				ExecutionPlan_SendRecievedNotification(ep);
+				ep->status = WAITING_FOR_RUN_NOTIFICATION;
 			}
+			return;
 		}
+		ep->status = RUNNING;
+	}
+
+	if(ep->status == WAITING_FOR_RECIEVED_NOTIFICATION){
+		ExecutionPlan_SendRunRequest(ep);
+		ep->status = RUNNING;
+	}
+
+	if(ep->status == WAITING_FOR_RUN_NOTIFICATION){
 		ep->status = RUNNING;
 	}
 
@@ -849,6 +872,7 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 	struct timespec end;
 	clock_gettime(CLOCK_REALTIME, &start);
 
+	RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
 	bool isDone = ExecutionPlan_Execute(ep, rctx);
 
 	clock_gettime(CLOCK_REALTIME, &end);
@@ -925,6 +949,21 @@ static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* ei
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, arg, callback, privateData);
     ExecutionPlan_Run(ep);
     return ep;
+}
+
+static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
+	assert(ep);
+	++ep->totalShardsRecieved;
+	if((Cluster_GetSize() - 1) == ep->totalShardsRecieved){ // no need to wait to myself
+		ExecutionPlan_Run(ep);
+	}
+}
+
+static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
+	assert(ep);
+	ExecutionPlan_Run(ep);
 }
 
 static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1132,6 +1171,8 @@ void ExecutionPlan_Initialize(size_t numberOfworkers){
     epData.workers = array_new(WorkerData*, numberOfworkers);
 
     Cluster_RegisterMsgReceiverM(ExecutionPlan_OnReceived);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_NotifyReceived);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_NotifyRun);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectOnRecordReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectDoneSendingRecords);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_OnRepartitionRecordReceived);
@@ -1272,7 +1313,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     }
     ret->steps = array_append(ret->steps, readerStep);
     ret->fep = fep;
-    ret->totalShardsCompleted = 0;
+    ret->totalShardsRecieved = 0;
     ret->results = array_new(Record*, 100);
     ret->status = CREATED;
     ret->isDone = false;
