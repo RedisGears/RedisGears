@@ -49,6 +49,22 @@ static PyObject* filter(PyObject *self, PyObject *args){
     return self;
 }
 
+static PyObject* accumulateby(PyObject *self, PyObject *args){
+	PyFlatExecution* pfep = (PyFlatExecution*)self;
+	if(PyTuple_Size(args) != 2){
+		//todo: print error
+		return Py_None;
+	}
+	PyObject* extractor = PyTuple_GetItem(args, 0);
+	PyObject* accumulator = PyTuple_GetItem(args, 1);
+	Py_INCREF(extractor);
+	Py_INCREF(accumulator);
+	RSM_AccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
+	RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+	Py_INCREF(self);
+	return self;
+}
+
 static PyObject* groupby(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 2){
@@ -189,7 +205,8 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
 PyMethodDef PyFlatExecutionMethods[] = {
     {"map", map, METH_VARARGS, "map operation on each record"},
     {"filter", filter, METH_VARARGS, "filter operation on each record"},
-    {"groupby", groupby, METH_VARARGS, "groupby operation on each record"},
+    {"batchgroupby", groupby, METH_VARARGS, "batch groupby operation on each record"},
+	{"groupby", accumulateby, METH_VARARGS, "groupby operation on each record"},
     {"collect", collect, METH_VARARGS, "collect all the records to the initiator"},
     {"foreach", foreach, METH_VARARGS, "collect all the records to the initiator"},
     {"repartition", repartition, METH_VARARGS, "repartition the records according to the extracted data"},
@@ -573,6 +590,37 @@ void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* 
     	Py_DECREF(ret);
     }
     PyGILState_Release(state);
+}
+
+static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char* key, Record *accumulate, Record *r, void* arg, char** err){
+	PyGILState_STATE state = PyGILState_Ensure();
+	PyObject* pArgs = PyTuple_New(3);
+	PyObject* callback = arg;
+	PyObject* currObj = RG_PyObjRecordGet(r);
+	PyObject* keyPyStr = PyString_FromString(key);
+	RG_PyObjRecordSet(r, NULL);
+	PyObject* oldAccumulateObj = Py_None;
+	if(!accumulate){
+		accumulate = RG_PyObjRecordCreate();
+	}else{
+		oldAccumulateObj = RG_PyObjRecordGet(accumulate);
+	}
+	PyTuple_SetItem(pArgs, 0, keyPyStr);
+	PyTuple_SetItem(pArgs, 1, oldAccumulateObj);
+	PyTuple_SetItem(pArgs, 2, currObj);
+	PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
+	Py_DECREF(pArgs);
+	if(!newAccumulateObj){
+		PyErr_Print();
+		*err = RG_STRDUP(PYTHON_ERROR);
+		RedisGears_FreeRecord(r);
+		PyGILState_Release(state);
+		return NULL;
+	}
+	RG_PyObjRecordSet(accumulate, newAccumulateObj);
+	RedisGears_FreeRecord(r);
+	PyGILState_Release(state);
+	return accumulate;
 }
 
 static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *accumulate, Record *r, void* arg, char** err){
@@ -1007,6 +1055,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RSM_RegisterMap(RedisGearsPy_PyCallbackFlatMapper, pyCallbackType);
     RSM_RegisterMap(RedisGearsPy_PyCallbackMapper, pyCallbackType);
     RSM_RegisterAccumulator(RedisGearsPy_PyCallbackAccumulate, pyCallbackType);
+    RSM_RegisterAccumulatorByKey(RedisGearsPy_PyCallbackAccumulateByKey, pyCallbackType);
     RSM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
     RSM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
 

@@ -46,7 +46,7 @@ class testBasic:
     def testBasicGroupByQuery(self):
         id = self.env.cmd('rg.pyexecute', 'gearsCtx().'
                                           'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
-                                          'groupby(lambda x: str(x["value"]), lambda key, vals: len(vals)).'
+                                          'groupby(lambda x: str(x["value"]), lambda key, a, vals: 1 + (a if a else 0)).'
                                           'map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         self.env.assertContains("{'value': 50, 'key': '100'}", res[1])

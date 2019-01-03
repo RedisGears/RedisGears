@@ -25,6 +25,7 @@ enum StepType{
     FLAT_MAP,
     LIMIT,
     ACCUMULATE,
+	ACCUMULATE_BY_KEY,
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -96,7 +97,15 @@ typedef struct AccumulateExecutionStep{
     RedisGears_AccumulateCallback accumulate;
     ExecutionStepArg stepArg;
     Record* accumulator;
+    bool isDone;
 }AccumulateExecutionStep;
+
+typedef struct AccumulateByKeyExecutionStep{
+    RedisGears_AccumulateByKeyCallback accumulate;
+    ExecutionStepArg stepArg;
+    dict* accumulators;
+    dictIterator *iter;
+}AccumulateByKeyExecutionStep;
 
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
@@ -114,6 +123,7 @@ typedef struct ExecutionStep{
         ForEachExecutionStep forEach;
         LimitExecutionStep limit;
         AccumulateExecutionStep accumulate;
+        AccumulateByKeyExecutionStep accumulateByKey;
     };
     enum StepType type;
     long long executionDuration;
@@ -183,7 +193,9 @@ void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackNa
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
-                                  const char* reducerName, void* reducerArg);
+                                      const char* reducerName, void* reducerArg);
+void FlatExecutionPlan_AddAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
+                                              const char* accumulateName, void* accumulateArg);
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);

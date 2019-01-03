@@ -197,6 +197,8 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
         return ForEachsMgmt_GetArgType(name);
     case ACCUMULATE:
         return AccumulatesMgmt_GetArgType(name);
+    case ACCUMULATE_BY_KEY:
+    	return AccumulateByKeysMgmt_GetArgType(name);
     case READER:
         // todo: fix reader args handling for now we free the reader on execution plan itself
         return NULL;
@@ -678,6 +680,9 @@ static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* s
 
 static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* r = NULL;
+    if(step->accumulate.isDone){
+    	return NULL;
+    }
     while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
         if(r == &StopRecord){
             return r;
@@ -689,7 +694,56 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
     }
     r = step->accumulate.accumulator;
     step->accumulate.accumulator = NULL;
+    step->accumulate.isDone = true;
     return r;
+}
+
+static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+	Record* r = NULL;
+	while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
+		if(r == &StopRecord){
+			return r;
+		}
+		if(*err){
+			return r;
+		}
+		assert(RedisGears_RecordGetType(r) == KEY_RECORD);
+		char* key = RedisGears_KeyRecordGetKey(r, NULL);
+		Record* val = RedisGears_KeyRecordGetVal(r);
+		RedisGears_KeyRecordSetVal(r, NULL);
+		Record* accumulator = NULL;
+		dictEntry *entry = dictFind(step->accumulateByKey.accumulators, key);
+		Record* keyRecord = NULL;
+		if(entry){
+			keyRecord = dictGetVal(entry);
+			accumulator = RedisGears_KeyRecordGetVal(keyRecord);
+		}
+		accumulator = step->accumulateByKey.accumulate(rctx, key, accumulator, val, step->accumulate.stepArg.stepArg, err);
+		if(*err){
+			RedisGears_FreeRecord(accumulator);
+			RedisGears_FreeRecord(r);
+			return NULL;
+		}
+		if(!keyRecord){
+			keyRecord = RedisGears_KeyRecordCreate();
+			RedisGears_KeyRecordSetKey(keyRecord, RG_STRDUP(key), strlen(key));
+			dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
+		}
+		RedisGears_KeyRecordSetVal(keyRecord, accumulator);
+		RedisGears_FreeRecord(r);
+	}
+	if(!step->accumulateByKey.iter){
+		step->accumulateByKey.iter = dictGetIterator(step->accumulateByKey.accumulators);
+	}
+	dictEntry *entry = dictNext(step->accumulateByKey.iter);
+	if(!entry){
+		dictReleaseIterator(step->accumulateByKey.iter);
+		dictRelease(step->accumulateByKey.accumulators);
+		step->accumulateByKey.iter = NULL;
+		step->accumulateByKey.accumulators = NULL;
+		return NULL;
+	}
+	return dictGetVal(entry);
 }
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
@@ -738,6 +792,9 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     case ACCUMULATE:
     	r = ExecutionPlan_AccumulateNextRecord(ep, step, rctx, err);
     	break;
+    case ACCUMULATE_BY_KEY:
+    	r = ExecutionPlan_AccumulateByKeyNextRecord(ep, step, rctx, err);
+		break;
     default:
         assert(false);
         return NULL;
@@ -1169,7 +1226,14 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
         es->accumulate.stepArg = step->bStep.arg;
         es->accumulate.accumulate = AccumulatesMgmt_Get(step->bStep.stepName);
         es->accumulate.accumulator = NULL;
+        es->accumulate.isDone = false;
         break;
+    case ACCUMULATE_BY_KEY:
+    	es->accumulateByKey.stepArg = step->bStep.arg;
+		es->accumulateByKey.accumulate = AccumulateByKeysMgmt_Get(step->bStep.stepName);
+		es->accumulateByKey.accumulators = dictCreate(&dictTypeHeapStrings, NULL);
+		es->accumulateByKey.iter = NULL;
+		break;
     default:
         assert(false);
     }
@@ -1238,6 +1302,8 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
 }
 
 static void ExecutionStep_Free(ExecutionStep* es){
+	dictIterator * iter = NULL;
+	dictEntry *entry = NULL;
     if(es->prev){
         ExecutionStep_Free(es->prev);
     }
@@ -1293,6 +1359,21 @@ static void ExecutionStep_Free(ExecutionStep* es){
     		RedisGears_FreeRecord(es->accumulate.accumulator);
     	}
     	break;
+    case ACCUMULATE_BY_KEY:
+    	if(es->accumulateByKey.accumulators){
+			if(es->accumulateByKey.iter){
+				iter = es->accumulateByKey.iter;
+			}else{
+				iter = dictGetIterator(es->accumulateByKey.accumulators);
+			}
+			while((entry = dictNext(iter))){
+				Record* r = dictGetVal(entry);
+				RedisGears_FreeRecord(r);
+			}
+			dictReleaseIterator(iter);
+			dictRelease(es->accumulateByKey.accumulators);
+    	}
+		break;
 	default:
         assert(false);
     }
@@ -1376,6 +1457,14 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
     FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
     FlatExecutionPlan_AddBasicStep(fep, "Group", NULL, GROUP);
     FlatExecutionPlan_AddBasicStep(fep, reducerName, reducerArg, REDUCE);
+}
+
+void FlatExecutionPlan_AddAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
+                                           const char* accumulateName, void* accumulateArg){
+    FlatExecutionStep extractKey;
+    FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
+    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
+    FlatExecutionPlan_AddBasicStep(fep, accumulateName, accumulateArg, ACCUMULATE_BY_KEY);
 }
 
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){

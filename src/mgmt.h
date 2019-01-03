@@ -48,6 +48,10 @@ bool AccumulatesMgmt_Add(const char* name, RedisGears_AccumulateCallback callbac
 RedisGears_AccumulateCallback AccumulatesMgmt_Get(const char* name);
 ArgType* AccumulatesMgmt_GetArgType(const char* name);
 
+bool AccumulateByKeysMgmt_Add(const char* name, RedisGears_AccumulateByKeyCallback callback, ArgType* type);
+RedisGears_AccumulateByKeyCallback AccumulateByKeysMgmt_Get(const char* name);
+ArgType* AccumulateByKeysMgmt_GetArgType(const char* name);
+
 void Mgmt_Init();
 
 

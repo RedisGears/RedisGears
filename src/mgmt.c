@@ -42,6 +42,7 @@ GENERATE(ForEach)
 GENERATE(Extractor)
 GENERATE(Reducer)
 GENERATE(Accumulate)
+GENERATE(AccumulateByKey)
 
 void Mgmt_Init(){
     FiltersMgmt_Init();
@@ -51,4 +52,5 @@ void Mgmt_Init(){
     ExtractorsMgmt_Init();
     ReducersMgmt_Init();
     AccumulatesMgmt_Init();
+    AccumulateByKeysMgmt_Init();
 }
