@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include "redisgears.h"
+#include "utils/dict.h"
 
 enum StepType{
     MAP=1,
@@ -24,6 +25,7 @@ enum StepType{
     FLAT_MAP,
     LIMIT,
     ACCUMULATE,
+	ACCUMULATE_BY_KEY,
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -56,6 +58,8 @@ typedef struct ExtractKeyExecutionStep{
 
 typedef struct GroupExecutionStep{
     Record** groupedRecords;
+    dict* d;
+    bool isGrouped;
 }GroupExecutionStep;
 
 typedef struct ReduceExecutionStep{
@@ -92,7 +96,16 @@ typedef struct ForEachExecutionStep{
 typedef struct AccumulateExecutionStep{
     RedisGears_AccumulateCallback accumulate;
     ExecutionStepArg stepArg;
+    Record* accumulator;
+    bool isDone;
 }AccumulateExecutionStep;
+
+typedef struct AccumulateByKeyExecutionStep{
+    RedisGears_AccumulateByKeyCallback accumulate;
+    ExecutionStepArg stepArg;
+    dict* accumulators;
+    dictIterator *iter;
+}AccumulateByKeyExecutionStep;
 
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
@@ -110,6 +123,7 @@ typedef struct ExecutionStep{
         ForEachExecutionStep forEach;
         LimitExecutionStep limit;
         AccumulateExecutionStep accumulate;
+        AccumulateByKeyExecutionStep accumulateByKey;
     };
     enum StepType type;
     long long executionDuration;
@@ -118,11 +132,17 @@ typedef struct ExecutionStep{
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 
 typedef enum ExecutionPlanStatus{
-    CREATED, RUNNING, WAITING_FOR_CLUSTER_RESULTS
+    CREATED, RUNNING
 }ExecutionPlanStatus;
 
 #define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
 #define EXECUTION_PLAN_STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
+
+typedef struct WorkerData{
+	struct event_base* eb;
+	int notifyPipe[2];
+	pthread_t thread;
+}WorkerData;
 
 typedef struct ExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
@@ -133,10 +153,12 @@ typedef struct ExecutionPlan{
     Record** results;
     ExecutionPlanStatus status;
     bool isDone;
+    bool sentRunRequest;
     RedisGears_OnExecutionDoneCallback callback;
     void* privateData;
     FreePrivateData freeCallback;
     long long executionDuration;
+    WorkerData* assignWorker;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -171,7 +193,9 @@ void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackNa
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
-                                  const char* reducerName, void* reducerArg);
+                                      const char* reducerName, void* reducerArg);
+void FlatExecutionPlan_AddAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
+                                              const char* accumulateName, void* accumulateArg);
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
@@ -181,7 +205,7 @@ long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
-void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers);
+void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_Free(ExecutionPlan* ep);
 
 

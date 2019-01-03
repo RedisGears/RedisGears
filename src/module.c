@@ -49,6 +49,10 @@ static int RG_RegisterAccumulator(char* name, RedisGears_AccumulateCallback accu
     return AccumulatesMgmt_Add(name, accumulator, type);
 }
 
+static int RG_RegisterAccumulatorByKey(char* name, RedisGears_AccumulateByKeyCallback accumulator, ArgType* type){
+	return AccumulateByKeysMgmt_Add(name, accumulator, type);
+}
+
 static int RG_RegisterFilter(char* name, RedisGears_FilterCallback filter, ArgType* type){
     return FiltersMgmt_Add(name, filter, type);
 }
@@ -85,6 +89,11 @@ static int RG_Filter(FlatExecutionPlan* fep, char* name, void* arg){
 static int RG_GroupBy(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg, char* reducerName, void* reducerArg){
     FlatExecutionPlan_AddGroupByStep(fep, extraxtorName, extractorArg, reducerName, reducerArg);
     return 1;
+}
+
+static int RG_AccumulateBy(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg, char* accumulatorName, void* accumulatorArg){
+	FlatExecutionPlan_AddAccumulateByKeyStep(fep, extraxtorName, extractorArg, accumulatorName, accumulatorArg);
+	return 1;
 }
 
 static int RG_Collect(FlatExecutionPlan* fep){
@@ -230,12 +239,14 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(RegisterForEach, registerApiCallback);
     REGISTER_API(RegisterMap, registerApiCallback);
     REGISTER_API(RegisterAccumulator, registerApiCallback);
+    REGISTER_API(RegisterAccumulatorByKey, registerApiCallback);
     REGISTER_API(RegisterFilter, registerApiCallback);
     REGISTER_API(RegisterGroupByExtractor, registerApiCallback);
     REGISTER_API(RegisterReducer, registerApiCallback);
     REGISTER_API(CreateCtx, registerApiCallback);
     REGISTER_API(Map, registerApiCallback);
     REGISTER_API(Accumulate, registerApiCallback);
+    REGISTER_API(AccumulateBy, registerApiCallback);
     REGISTER_API(FlatMap, registerApiCallback);
     REGISTER_API(Filter, registerApiCallback);
     REGISTER_API(GroupBy, registerApiCallback);
@@ -345,7 +356,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
     RSM_RegisterReducer(CountReducer, NULL);
 
-    ExecutionPlan_Initialize(ctx, 1);
+    ExecutionPlan_Initialize(1);
 
 #ifdef WITHPYTHON
     RedisGearsPy_Init(ctx);

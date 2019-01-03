@@ -5,7 +5,6 @@
 #include "cluster.h"
 #include <assert.h>
 #include <stdbool.h>
-#include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
 #include <pthread.h>
@@ -13,6 +12,7 @@
 #include <time.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include <event2/event.h>
 
 char* stepsNames[] = {
         "NONE",
@@ -76,10 +76,9 @@ static ArgType LimitArgType = {
 };
 
 typedef struct ExecutionPlansData{
-    list* executionPlansToRun;
     dict* epDict;
     pthread_mutex_t mutex;
-    pthread_t* workers;
+    WorkerData** workers;
 }ExecutionPlansData;
 
 ExecutionPlansData epData;
@@ -89,7 +88,7 @@ static long long lastId = 0;
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err);
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, void* arg);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader);
-static void ExecutionPlan_AddToRunList(ExecutionPlan* ep);
+static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep);
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg);
 
 static uint64_t idHashFunction(const void *key){
@@ -119,6 +118,70 @@ dictType dictTypeHeapIds = {
         .valDestructor = NULL,
 };
 
+typedef enum MsgType{
+    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG
+}MsgType;
+
+typedef struct RunWorkerMsg{
+	ExecutionPlan* ep;
+}RunWorkerMsg;
+
+typedef struct ShardCompletedWorkerMsg{
+	ExecutionPlan* ep;
+	size_t stepId;
+	enum StepType stepType;
+}ShardCompletedWorkerMsg;
+
+typedef struct AddRecordWorkerMsg{
+	ExecutionPlan* ep;
+	Record* record;
+	size_t stepId;
+	enum StepType stepType;
+}AddRecordWorkerMsg;
+
+typedef struct WorkerMsg{
+    union{
+    	RunWorkerMsg runWM;
+    	AddRecordWorkerMsg addRecordWM;
+    	ShardCompletedWorkerMsg shardCompletedWM;
+    };
+    MsgType type;
+}WorkerMsg;
+
+static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
+	write(wd->notifyPipe[1], &msg, sizeof(WorkerMsg*));
+}
+
+static void ExectuionPlan_WorkerMsgFree(WorkerMsg* msg){
+	RG_FREE(msg);
+}
+
+static WorkerMsg* ExectuionPlan_WorkerMsgCreateRun(ExecutionPlan* ep){
+	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
+	ret->type = RUN_MSG;
+	ret->runWM.ep = ep;
+	return ret;
+}
+
+static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
+	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
+	ret->type = ADD_RECORD_MSG;
+	ret->addRecordWM.ep = ep;
+	ret->addRecordWM.record = r;
+	ret->addRecordWM.stepId = stepId;
+	ret->addRecordWM.stepType = stepType;
+	return ret;
+}
+
+static WorkerMsg* ExectuionPlan_WorkerMsgCreateShardCompleted(ExecutionPlan* ep, size_t stepId, enum StepType stepType){
+	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
+	ret->type = SHARD_COMPLETED_MSG;
+	ret->shardCompletedWM.ep = ep;
+	ret->shardCompletedWM.stepId = stepId;
+	ret->shardCompletedWM.stepType = stepType;
+	return ret;
+}
+
 static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const char* name){
     switch(type){
     case MAP:
@@ -134,6 +197,8 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
         return ForEachsMgmt_GetArgType(name);
     case ACCUMULATE:
         return AccumulatesMgmt_GetArgType(name);
+    case ACCUMULATE_BY_KEY:
+    	return AccumulateByKeysMgmt_GetArgType(name);
     case READER:
         // todo: fix reader args handling for now we free the reader on execution plan itself
         return NULL;
@@ -353,11 +418,8 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
         RedisGears_FreeRecord(record);
         goto end;
     }
-    char* newBuff = RG_ALLOC(buffLen + 1);
-    memcpy(newBuff, buff, buffLen);
-    newBuff[buffLen] = '\0';
     r = RedisGears_KeyRecordCreate();
-    RedisGears_KeyRecordSetKey(r, newBuff, buffLen);
+    RedisGears_KeyRecordSetKey(r, buff, buffLen);
     RedisGears_KeyRecordSetVal(r, record);
 end:
 	clock_gettime(CLOCK_REALTIME, &end);
@@ -369,13 +431,10 @@ end:
 
 static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
 #define GROUP_RECORD_INIT_LEN 10
-    dict* d = NULL;
     Record* record = NULL;
-    if(step->group.groupedRecords == NULL){
-        d = dictCreate(&dictTypeHeapStrings, NULL);
+    if(!step->group.isGrouped){
         while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
             if(record == &StopRecord){
-                dictRelease(d);
                 return record;
             }
             assert(RedisGears_RecordGetType(record) == KEY_RECORD);
@@ -385,7 +444,7 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
                 RedisGears_FreeRecord(record);
                 break;
             }
-            dictEntry* entry = dictFind(d, key);
+            dictEntry* entry = dictFind(step->group.d, key);
             Record* r = NULL;
             if(!entry){
                 r = RedisGears_KeyRecordCreate();
@@ -393,10 +452,7 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
                 RedisGears_KeyRecordSetKey(record, NULL, 0);
                 Record* val  = RedisGears_ListRecordCreate(GROUP_RECORD_INIT_LEN);
                 RedisGears_KeyRecordSetVal(r, val);
-                dictAdd(d, key, r);
-                if(step->group.groupedRecords == NULL){
-                    step->group.groupedRecords = array_new(Record*, GROUP_RECORD_INIT_LEN);
-                }
+                dictAdd(step->group.d, key, r);
                 step->group.groupedRecords = array_append(step->group.groupedRecords, r);
             }else{
                 r = dictGetVal(entry);
@@ -406,9 +462,8 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
             RedisGears_KeyRecordSetVal(record, NULL);
             RedisGears_FreeRecord(record);
         }
-        dictRelease(d);
     }
-    if(!step->group.groupedRecords || array_len(step->group.groupedRecords) == 0){
+    if(array_len(step->group.groupedRecords) == 0){
         return NULL;
     }
     return array_pop(step->group.groupedRecords);
@@ -447,7 +502,10 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         if(array_len(step->repartion.pendings) > 0){
             return array_pop(step->repartion.pendings);
         }
-        return NULL;
+        if((Cluster_GetSize() - 1) == step->repartion.totalShardsCompleted){
+			return NULL; // we are done!!
+		}
+        return &StopRecord;
     }
     buff = Buffer_Create();
     while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx, err)) != NULL){
@@ -463,10 +521,9 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         char* key = RedisGears_KeyRecordGetKey(record, &len);
         char* shardIdToSendRecord = Cluster_GetNodeIdByKey(key);
         if(memcmp(shardIdToSendRecord, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
-            // this record should stay with us, lets save it.
-            RedisModule_ThreadSafeContextLock(rctx);
-            step->repartion.pendings = array_append(step->repartion.pendings, record);
-            RedisModule_ThreadSafeContextUnlock(rctx);
+            // this record should stay with us, lets return it.
+        	Buffer_Free(buff);
+        	return record;
         }
         else{
             // we need to send the record to another shard
@@ -496,7 +553,13 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
     	return record;
 	}
     step->repartion.stoped = true;
-    return &StopRecord;
+    if(array_len(step->repartion.pendings) > 0){
+		return array_pop(step->repartion.pendings);
+	}
+	if((Cluster_GetSize() - 1) == step->repartion.totalShardsCompleted){
+		return NULL; // we are done!!
+	}
+	return &StopRecord;
 }
 
 static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
@@ -512,7 +575,10 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 		if(array_len(step->collect.pendings) > 0){
 			return array_pop(step->collect.pendings);
 		}
-		return NULL;
+		if((Cluster_GetSize() - 1) == step->collect.totalShardsCompleted){
+			return NULL; // we are done!!
+		}
+		return &StopRecord;
 	}
 
 	buff = Buffer_Create();
@@ -527,9 +593,8 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			return record;
 		}
 		if(Cluster_IsMyId(ep->id)){
-			RedisModule_ThreadSafeContextLock(rctx);
-			step->collect.pendings = array_append(step->collect.pendings, record);
-			RedisModule_ThreadSafeContextUnlock(rctx);
+			Buffer_Free(buff);
+			return record; // record should stay here, just return it.
 		}else{
 			BufferWriter_Init(&bw, buff);
 			RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
@@ -554,7 +619,13 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 
 	if(Cluster_IsMyId(ep->id)){
 		Buffer_Free(buff);
-		return &StopRecord;
+		if(array_len(step->collect.pendings) > 0){
+			return array_pop(step->collect.pendings);
+		}
+		if((Cluster_GetSize() - 1) == step->collect.totalShardsCompleted){
+			return NULL; // we are done!!
+		}
+		return &StopRecord; // now we should wait for record to arrive from the other shards
 	}else{
 		BufferWriter_Init(&bw, buff);
 		RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
@@ -609,23 +680,70 @@ static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* s
 
 static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
     Record* r = NULL;
-    Record* accumulator = NULL;
+    if(step->accumulate.isDone){
+    	return NULL;
+    }
     while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
         if(r == &StopRecord){
-            if(accumulator){
-                RedisGears_FreeRecord(accumulator);
-            }
             return r;
         }
         if(*err){
-            if(accumulator){
-                RedisGears_FreeRecord(accumulator);
-            }
             return r;
         }
-        accumulator = step->accumulate.accumulate(rctx, accumulator, r, step->accumulate.stepArg.stepArg, err);
+        step->accumulate.accumulator = step->accumulate.accumulate(rctx, step->accumulate.accumulator, r, step->accumulate.stepArg.stepArg, err);
     }
-    return accumulator;
+    r = step->accumulate.accumulator;
+    step->accumulate.accumulator = NULL;
+    step->accumulate.isDone = true;
+    return r;
+}
+
+static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
+	Record* r = NULL;
+	while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
+		if(r == &StopRecord){
+			return r;
+		}
+		if(*err){
+			return r;
+		}
+		assert(RedisGears_RecordGetType(r) == KEY_RECORD);
+		char* key = RedisGears_KeyRecordGetKey(r, NULL);
+		Record* val = RedisGears_KeyRecordGetVal(r);
+		RedisGears_KeyRecordSetVal(r, NULL);
+		Record* accumulator = NULL;
+		dictEntry *entry = dictFind(step->accumulateByKey.accumulators, key);
+		Record* keyRecord = NULL;
+		if(entry){
+			keyRecord = dictGetVal(entry);
+			accumulator = RedisGears_KeyRecordGetVal(keyRecord);
+		}
+		accumulator = step->accumulateByKey.accumulate(rctx, key, accumulator, val, step->accumulate.stepArg.stepArg, err);
+		if(*err){
+			RedisGears_FreeRecord(accumulator);
+			RedisGears_FreeRecord(r);
+			return NULL;
+		}
+		if(!keyRecord){
+			keyRecord = RedisGears_KeyRecordCreate();
+			RedisGears_KeyRecordSetKey(keyRecord, RG_STRDUP(key), strlen(key));
+			dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
+		}
+		RedisGears_KeyRecordSetVal(keyRecord, accumulator);
+		RedisGears_FreeRecord(r);
+	}
+	if(!step->accumulateByKey.iter){
+		step->accumulateByKey.iter = dictGetIterator(step->accumulateByKey.accumulators);
+	}
+	dictEntry *entry = dictNext(step->accumulateByKey.iter);
+	if(!entry){
+		dictReleaseIterator(step->accumulateByKey.iter);
+		dictRelease(step->accumulateByKey.accumulators);
+		step->accumulateByKey.iter = NULL;
+		step->accumulateByKey.accumulators = NULL;
+		return NULL;
+	}
+	return dictGetVal(entry);
 }
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
@@ -674,6 +792,9 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     case ACCUMULATE:
     	r = ExecutionPlan_AccumulateNextRecord(ep, step, rctx, err);
     	break;
+    case ACCUMULATE_BY_KEY:
+    	r = ExecutionPlan_AccumulateByKeyNextRecord(ep, step, rctx, err);
+		break;
     default:
         assert(false);
         return NULL;
@@ -711,62 +832,53 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     return true;
 }
 
-static void* ExecutionPlan_ThreadMain(void *arg){
-    while(true){
-        pthread_mutex_lock(&epData.mutex);
-        listNode *node = listFirst(epData.executionPlansToRun);
-        if(!node){
-            pthread_mutex_unlock(&epData.mutex);
-            usleep(10000);
-            continue;
-        }
-        ExecutionPlan* ep = node->value;
-        listDelNode(epData.executionPlansToRun, node);
-        pthread_mutex_unlock(&epData.mutex);
-        RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-        if(ep->status == CREATED){
-            if(Cluster_IsClusterMode()){
-                if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
-                   ExecutionPlan_Distribute(ep);
-                }
-            }
-            ep->status = RUNNING;
-        }
+static void ExecutionPlan_Main(ExecutionPlan* ep){
+	assert(!ep->isDone);
+	ep->sentRunRequest = false;
+	RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+	if(ep->status == CREATED){
+		if(Cluster_IsClusterMode()){
+			if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+			   ExecutionPlan_Distribute(ep);
+			}
+		}
+		ep->status = RUNNING;
+	}
 
-        struct timespec start;
-       	struct timespec end;
-       	clock_gettime(CLOCK_REALTIME, &start);
+	struct timespec start;
+	struct timespec end;
+	clock_gettime(CLOCK_REALTIME, &start);
 
-        bool isDone = ExecutionPlan_Execute(ep, rctx);
+	bool isDone = ExecutionPlan_Execute(ep, rctx);
 
-        clock_gettime(CLOCK_REALTIME, &end);
-		long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
-								 (end.tv_nsec - start.tv_nsec);
-		ep->executionDuration += readDuration;
+	clock_gettime(CLOCK_REALTIME, &end);
+	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
+							 (end.tv_nsec - start.tv_nsec);
+	ep->executionDuration += readDuration;
 
-        if(isDone){
-        	RedisModule_ThreadSafeContextLock(rctx);
-        	ep->isDone = true;
-        	FreePrivateData freeC = ep->freeCallback;
-        	void* pd = ep->privateData;
-        	if(ep->callback){
-        		ep->callback(ep, ep->privateData);
-        	}
-        	if(freeC){
-        	    freeC(pd);
-        	}
-        	RedisModule_ThreadSafeContextUnlock(rctx);
-        }
-        RedisModule_FreeThreadSafeContext(rctx);
-    }
-    return NULL;
+	if(isDone){
+		RedisModule_ThreadSafeContextLock(rctx);
+		ep->isDone = true;
+		FreePrivateData freeC = ep->freeCallback;
+		void* pd = ep->privateData;
+		if(ep->callback){
+			ep->callback(ep, ep->privateData);
+		}
+		if(freeC){
+			freeC(pd);
+		}
+		RedisModule_ThreadSafeContextUnlock(rctx);
+	}
+	RedisModule_FreeThreadSafeContext(rctx);
 }
 
-static void ExecutionPlan_AddToRunList(ExecutionPlan* ep){
-    pthread_mutex_lock(&epData.mutex);
-    listAddNodeTail(epData.executionPlansToRun, ep);
-    pthread_mutex_unlock(&epData.mutex);
-
+static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
+	if(ep->sentRunRequest){
+		return;
+	}
+	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateRun(ep);
+	ep->sentRunRequest = true;
+	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -801,8 +913,12 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     return ep;
 }
 
+static int currAssignWorker = 0;
+
 static void ExecutionPlan_Run(ExecutionPlan* ep){
-    ExecutionPlan_AddToRunList(ep);
+	WorkerData* wd = epData.workers[currAssignWorker];
+	ep->assignWorker = wd;
+    ExecutionPlan_RegisterForRun(ep);
 }
 
 static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
@@ -844,8 +960,8 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
-    assert(ep->steps[stepId]->type == COLLECT);
-	ep->steps[stepId]->collect.pendings = array_append(ep->steps[stepId]->collect.pendings, r);
+    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, COLLECT);
+	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
 static void ExecutionPlan_CollectDoneSendingRecords(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -860,12 +976,8 @@ static void ExecutionPlan_CollectDoneSendingRecords(RedisModuleCtx *ctx, const c
 	size_t stepId = RedisGears_BRReadLong(&br);
 	ExecutionPlan* ep = ExecutionPlan_FindById(epId);
 	assert(ep);
-	assert(ep->steps[stepId]->type == COLLECT);
-	++ep->steps[stepId]->collect.totalShardsCompleted;
-	assert(Cluster_GetSize() - 1 >= ep->steps[stepId]->collect.totalShardsCompleted);
-	if((Cluster_GetSize() - 1) == ep->steps[stepId]->collect.totalShardsCompleted){ // no need to wait to myself
-		ExecutionPlan_AddToRunList(ep);
-	}
+	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, COLLECT);
+	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
 static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -882,8 +994,8 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
-    assert(ep->steps[stepId]->type == REPARTITION);
-    ep->steps[stepId]->repartion.pendings = array_append(ep->steps[stepId]->repartion.pendings, r);
+    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, REPARTITION);
+    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
 static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* callbackName, void* arg, enum StepType type){
@@ -927,19 +1039,97 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
     size_t stepId = RedisGears_BRReadLong(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
 	assert(ep);
-    assert(ep->steps[stepId]->type == REPARTITION);
-    ++ep->steps[stepId]->repartion.totalShardsCompleted;
-    assert(Cluster_GetSize() - 1 >= ep->steps[stepId]->repartion.totalShardsCompleted);
-    if((Cluster_GetSize() - 1) == ep->steps[stepId]->repartion.totalShardsCompleted){ // no need to wait to myself
-        ExecutionPlan_AddToRunList(ep);
-    }
+	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, REPARTITION);
+	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
-void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
-    epData.executionPlansToRun = listCreate();
+static void ExecutionPlan_StepDone(ExecutionPlan* ep, size_t stepId, enum StepType stepType){
+	size_t totalShardsCompleted;
+	switch(stepType){
+	case REPARTITION:
+		assert(ep->steps[stepId]->type == REPARTITION);
+		totalShardsCompleted = ++ep->steps[stepId]->repartion.totalShardsCompleted;
+		break;
+	case COLLECT:
+		assert(ep->steps[stepId]->type == COLLECT);
+		totalShardsCompleted = ++ep->steps[stepId]->collect.totalShardsCompleted;
+		break;
+	default:
+		assert(false);
+	}
+
+	assert(Cluster_GetSize() - 1 >= totalShardsCompleted);
+	if((Cluster_GetSize() - 1) == totalShardsCompleted){ // no need to wait to myself
+		ExecutionPlan_RegisterForRun(ep);
+	}
+}
+
+static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
+#define MAX_PENDING_TO_START_RUNNING 10000
+	Record*** pendings = NULL;
+	switch(stepType){
+	case REPARTITION:
+		assert(ep->steps[stepId]->type == REPARTITION);
+		pendings = &(ep->steps[stepId]->repartion.pendings);
+		break;
+	case COLLECT:
+		assert(ep->steps[stepId]->type == COLLECT);
+		pendings = &(ep->steps[stepId]->collect.pendings);
+		break;
+	default:
+		assert(false);
+	}
+	*pendings = array_append(*pendings, r);
+	if(array_len(*pendings) >= MAX_PENDING_TO_START_RUNNING){
+		ExecutionPlan_RegisterForRun(ep);
+	}
+}
+
+static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
+	WorkerMsg* msg;
+	read(s, &msg, sizeof(WorkerMsg*));
+	switch(msg->type){
+	case RUN_MSG:
+		ExecutionPlan_Main(msg->runWM.ep);
+		break;
+	case ADD_RECORD_MSG:
+		ExecutionPlan_AddStepRecord(msg->addRecordWM.ep, msg->addRecordWM.stepId, msg->addRecordWM.record, msg->addRecordWM.stepType);
+		break;
+	case SHARD_COMPLETED_MSG:
+		ExecutionPlan_StepDone(msg->shardCompletedWM.ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
+		break;
+	default:
+		assert(false);
+	}
+	ExectuionPlan_WorkerMsgFree(msg);
+}
+
+static void* ExecutionPlan_MessageThreadMain(void *arg){
+	WorkerData* wd = arg;
+    event_base_loop(wd->eb, 0);
+    return NULL;
+}
+
+static WorkerData* ExecutionPlan_StartThread(){
+	WorkerData* wd = RG_ALLOC(sizeof(WorkerData));
+    pipe(wd->notifyPipe);
+    wd->eb = (struct event_base*)event_base_new();
+    struct event *readEvent = event_new(wd->eb,
+    									wd->notifyPipe[0],
+                                        EV_READ | EV_PERSIST,
+										ExecutionPlan_MsgArrive,
+                                        NULL);
+    event_base_set(wd->eb, readEvent);
+    event_add(readEvent, 0);
+
+    pthread_create(&wd->thread, NULL, ExecutionPlan_MessageThreadMain, wd);
+    return wd;
+}
+
+void ExecutionPlan_Initialize(size_t numberOfworkers){
     epData.epDict = dictCreate(&dictTypeHeapIds, NULL);
     pthread_mutex_init(&epData.mutex, NULL);
-    epData.workers = array_new(pthread_t, numberOfworkers);
+    epData.workers = array_new(WorkerData*, numberOfworkers);
 
     Cluster_RegisterMsgReceiverM(ExecutionPlan_OnReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectOnRecordReceived);
@@ -949,9 +1139,8 @@ void ExecutionPlan_Initialize(RedisModuleCtx *ctx, size_t numberOfworkers){
     Cluster_RegisterMsgReceiverM(FlatExecutionPlan_RegisterKeySpaceEvent);
 
     for(size_t i = 0 ; i < numberOfworkers ; ++i){
-        pthread_t thread;
-        epData.workers = array_append(epData.workers, thread);
-        pthread_create(epData.workers + i, NULL, ExecutionPlan_ThreadMain, NULL);
+    	WorkerData* wd = ExecutionPlan_StartThread();
+        epData.workers = array_append(epData.workers, wd);
     }
 }
 
@@ -1010,7 +1199,10 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
         es->reduce.reducerArg = step->bStep.arg;
         break;
     case GROUP:
-        es->group.groupedRecords = NULL;
+#define GROUP_RECORD_INIT_LEN 10
+        es->group.groupedRecords = array_new(Record*, GROUP_RECORD_INIT_LEN);;
+        es->group.d = dictCreate(&dictTypeHeapStrings, NULL);
+        es->group.isGrouped = false;
         break;
     case REPARTITION:
         es->repartion.stoped = false;
@@ -1033,7 +1225,15 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     case ACCUMULATE:
         es->accumulate.stepArg = step->bStep.arg;
         es->accumulate.accumulate = AccumulatesMgmt_Get(step->bStep.stepName);
+        es->accumulate.accumulator = NULL;
+        es->accumulate.isDone = false;
         break;
+    case ACCUMULATE_BY_KEY:
+    	es->accumulateByKey.stepArg = step->bStep.arg;
+		es->accumulateByKey.accumulate = AccumulateByKeysMgmt_Get(step->bStep.stepName);
+		es->accumulateByKey.accumulators = dictCreate(&dictTypeHeapStrings, NULL);
+		es->accumulateByKey.iter = NULL;
+		break;
     default:
         assert(false);
     }
@@ -1046,6 +1246,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
     es->type = READER;
     es->reader = reader;
     es->prev = NULL;
+    es->executionDuration = 0;
     return es;
 }
 
@@ -1075,6 +1276,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->results = array_new(Record*, 100);
     ret->status = CREATED;
     ret->isDone = false;
+    ret->sentRunRequest = false;
     ret->callback = NULL;
     ret->privateData = NULL;
     ret->freeCallback = NULL;
@@ -1100,6 +1302,8 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
 }
 
 static void ExecutionStep_Free(ExecutionStep* es){
+	dictIterator * iter = NULL;
+	dictEntry *entry = NULL;
     if(es->prev){
         ExecutionStep_Free(es->prev);
     }
@@ -1110,7 +1314,6 @@ static void ExecutionStep_Free(ExecutionStep* es){
     case EXTRACTKEY:
     case REDUCE:
     case FOREACH:
-    case ACCUMULATE:
         break;
     case FLAT_MAP:
         if(es->flatMap.pendings){
@@ -1142,6 +1345,7 @@ static void ExecutionStep_Free(ExecutionStep* es){
                 RedisGears_FreeRecord(r);
             }
             array_free(es->group.groupedRecords);
+            dictRelease(es->group.d);
         }
         break;
     case READER:
@@ -1150,7 +1354,27 @@ static void ExecutionStep_Free(ExecutionStep* es){
         }
         RG_FREE(es->reader.r);
         break;
-    default:
+    case ACCUMULATE:
+    	if(es->accumulate.accumulator){
+    		RedisGears_FreeRecord(es->accumulate.accumulator);
+    	}
+    	break;
+    case ACCUMULATE_BY_KEY:
+    	if(es->accumulateByKey.accumulators){
+			if(es->accumulateByKey.iter){
+				iter = es->accumulateByKey.iter;
+			}else{
+				iter = dictGetIterator(es->accumulateByKey.accumulators);
+			}
+			while((entry = dictNext(iter))){
+				Record* r = dictGetVal(entry);
+				RedisGears_FreeRecord(r);
+			}
+			dictReleaseIterator(iter);
+			dictRelease(es->accumulateByKey.accumulators);
+    	}
+		break;
+	default:
         assert(false);
     }
     RG_FREE(es);
@@ -1233,6 +1457,14 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
     FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
     FlatExecutionPlan_AddBasicStep(fep, "Group", NULL, GROUP);
     FlatExecutionPlan_AddBasicStep(fep, reducerName, reducerArg, REDUCE);
+}
+
+void FlatExecutionPlan_AddAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
+                                           const char* accumulateName, void* accumulateArg){
+    FlatExecutionStep extractKey;
+    FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
+    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
+    FlatExecutionPlan_AddBasicStep(fep, accumulateName, accumulateArg, ACCUMULATE_BY_KEY);
 }
 
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){

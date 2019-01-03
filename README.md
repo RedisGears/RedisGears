@@ -68,9 +68,17 @@ ctx.filter(lambda r : int(r['value']) > 50) # continue with the record if its va
 ```
 
 ### Groupby
-Groupby operation receive extractor and reducer. The extractor is a function that receive a Record and return a string by which the group operation need to be performed. The reducer is a function that receive key and list of records that grouped together by this key, the reducer return a new Record which is the reduce operation on all the Record in the same group. example (using python api)
+Groupby operation receive extractor and reducer. The extractor is a function that receive a Record and return a string by which the group operation need to be performed. The reducer is a function that receive key, accumulator and record, the reducer return a new Record which is the accumulation on all records arrive untill now. example (using python api)
 ```
-ctx.groupby(lambda r : r[value], lambda key,vals: len(vals)) # count how many times each value appeared
+ctx.groupby(lambda r : r[value], lambda key,a, r: 1 + (a if a else 0)) # count how many times each value appeared
+```
+
+### batchgroupby
+BatchGroupby operation receive extractor and reducer. The extractor is a function that receive a Record and return a string by which the group operation need to be performed. The reducer is a function that receive key and list of records that grouped together by this key, the reducer return a new Record which is the reduce operation on all the Record in the same group.
+It is recommended to use groupby and not batchgroupby. The only reason to use batchgroupby is if you want the reducer to recieve all the records in the group as a list. Notice that in this case the process memory consumption might grow a lot. example (using python api).
+example (using python api)
+```
+ctx.batchgroupby(lambda r : r[value], lambda key, vals: len(vals)) # count how many times each value appeared
 ```
 
 ### Collect
