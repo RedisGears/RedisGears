@@ -8,7 +8,7 @@ $(shell mkdir -p $(OBJ)/utils)
 SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
        	src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
         src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
-        src/globals.c
+        src/globals.c src/config.c
 CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -std=gnu99
 LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
 ifeq ($(DEBUG), 1)
@@ -19,7 +19,7 @@ endif
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redisgears_python.c
 	PYTHON_CFLAGS=-I./src/deps/cpython/Include/ -I./src/deps/cpython/
-	PYTHON_LFLAGS=-L./src/deps/cpython/ -Wl,-Bstatic -lpython2.7 -Wl,-Bdynamic -lutil
+	PYTHON_LFLAGS=-L./src/deps/cpython/ -Wl,--whole-archive -Wl,-Bstatic -lpython2.7 -Wl,-Bdynamic -Wl,--no-whole-archive -lutil
 	CFLAGS+=-DWITHPYTHON
     CFLAGS+=$(PYTHON_CFLAGS)
     LFLAGS+=$(PYTHON_LFLAGS)
@@ -33,7 +33,7 @@ $(OBJ)/%.o: $(SRC)/%.c
 all: redisgears.so
 
 python:
-	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc;make
+	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE" ./configure --without-pymalloc;make
 	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata.py /usr/lib/python2.7/
 	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata_nd.py /usr/lib/python2.7/
 
