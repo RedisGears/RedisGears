@@ -22,6 +22,7 @@
 #include "record.h"
 #include "commands.h"
 #include "redisdl.h"
+#include "config.h"
 #include "globals.h"
 #include <stdbool.h>
 
@@ -335,6 +336,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if(!RedisGears_Initialize()){
         RedisModule_Log(ctx, "warning", "could not initialize RedisGears api");
         return REDISMODULE_ERR;
+    }
+
+    if(!GearsConfig_Init(ctx, argv, argc)){
+    	RedisModule_Log(ctx, "warning", "could not initialize gears config");
+	return REDISMODULE_ERR;
     }
 
     if(!RediDL_Initialize()){

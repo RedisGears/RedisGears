@@ -3,6 +3,7 @@
 #include "redisdl.h"
 #include "globals.h"
 #include "commands.h"
+#include "config.h"
 #include <marshal.h>
 #include <assert.h>
 #include <redisgears.h>
@@ -303,9 +304,9 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         return PyList_New(0);
     }
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-    PyEval_ReleaseLock();
+    PyThreadState *_save = PyEval_SaveThread();
     RedisModule_ThreadSafeContextLock(rctx);
-    PyEval_AcquireLock();
+    PyEval_RestoreThread(_save);
 
     RedisModule_AutoMemory(rctx);
 
@@ -1006,7 +1007,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RedisGearsPy_Alloc);
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
-    Py_SetProgramName("/usr/bin/python");
+    Py_SetProgramName((char*)GearsCOnfig_GetPythonHomeDir());
     Py_Initialize();
     PyEval_InitThreads();
     PyTensorType.tp_new = PyType_GenericNew;

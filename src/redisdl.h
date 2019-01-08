@@ -1,10 +1,3 @@
-/*
- * redisdl.h
- *
- *  Created on: 2 Dec 2018
- *      Author: root
- */
-
 #ifndef SRC_REDISDL_H_
 #define SRC_REDISDL_H_
 
@@ -19,8 +12,12 @@ typedef struct RDL_Graph RDL_Graph;
 
 typedef struct RDL_GraphRunCtx RDL_GraphRunCtx;
 
+typedef enum RDL_Backend RDL_Backend;
+
 RDL_Tensor* MODULE_API_FUNC(RedisDL_TensorCreate)(const char* dataTypeStr, long long* dims, int ndims);
+size_t MODULE_API_FUNC(RedisDL_TensorLength)(RDL_Tensor* t);
 size_t MODULE_API_FUNC(RedisDL_TensorGetDataSize)(const char* dataTypeStr);
+size_t MODULE_API_FUNC(RedisDL_TensorDataType)(RDL_Tensor* t);
 void MODULE_API_FUNC(RedisDL_TensorFree)(RDL_Tensor* t);
 int MODULE_API_FUNC(RedisDL_TensorSetData)(RDL_Tensor* tensor, const char* data, size_t len);
 int MODULE_API_FUNC(RedisDL_TensorSetValueFromLongLong)(RDL_Tensor* tensor, long long i, long long val);
@@ -33,7 +30,7 @@ long long MODULE_API_FUNC(RedisDL_TensorDim)(RDL_Tensor* t, int dim);
 size_t MODULE_API_FUNC(RedisDL_TensorByteSize)(RDL_Tensor* t);
 char* MODULE_API_FUNC(RedisDL_TensorData)(RDL_Tensor* t);
 
-RDL_Graph* MODULE_API_FUNC(RedisDL_GraphCreate)(const char* prefix, const char* graphdef, size_t graphlen);
+RDL_Graph* MODULE_API_FUNC(RedisDL_GraphCreate)(const char* prefix, RDL_Backend backend, const char* graphdef, size_t graphlen);
 void MODULE_API_FUNC(RedisDL_GraphFree)(RDL_Graph* graph);
 RDL_GraphRunCtx* MODULE_API_FUNC(RedisDL_RunCtxCreate)(RDL_Graph* graph);
 int MODULE_API_FUNC(RedisDL_RunCtxAddInput)(RDL_GraphRunCtx* gctx, const char* inputName, RDL_Tensor* inputTensor);
@@ -44,39 +41,40 @@ void MODULE_API_FUNC(RedisDL_RunCtxFree)(RDL_GraphRunCtx* gctx);
 int MODULE_API_FUNC(RedisDL_GraphRun)(RDL_GraphRunCtx* gctx);
 RDL_Graph* MODULE_API_FUNC(RedisDL_GraphGetShallowCopy)(RDL_Graph* graph);
 
-#define REDISDL_MODULE_INIT_FUNCTION(name) \
+#define REDIDL_MODULE_INIT_FUNCTION(name) \
   if (RedisModule_GetApi("RedisDL_" #name, ((void **)&RedisDL_ ## name))) { \
     printf("could not initialize RedisDL_" #name "\r\n");\
     return false; \
   }
 
 static bool RediDL_Initialize(){
-  REDISDL_MODULE_INIT_FUNCTION(TensorCreate);
-  REDISDL_MODULE_INIT_FUNCTION(TensorGetDataSize);
-  REDISDL_MODULE_INIT_FUNCTION(TensorFree);
-  REDISDL_MODULE_INIT_FUNCTION(TensorSetData);
-  REDISDL_MODULE_INIT_FUNCTION(TensorSetValueFromLongLong);
-  REDISDL_MODULE_INIT_FUNCTION(TensorSetValueFromDouble);
-  REDISDL_MODULE_INIT_FUNCTION(TensorGetValueAsDouble);
-  REDISDL_MODULE_INIT_FUNCTION(TensorGetValueAsLongLong);
-  REDISDL_MODULE_INIT_FUNCTION(TensorGetShallowCopy);
-  REDISDL_MODULE_INIT_FUNCTION(TensorNumDims);
-  REDISDL_MODULE_INIT_FUNCTION(TensorDim);
-  REDISDL_MODULE_INIT_FUNCTION(TensorByteSize);
-  REDISDL_MODULE_INIT_FUNCTION(TensorData);
+  REDIDL_MODULE_INIT_FUNCTION(TensorCreate);
+  REDIDL_MODULE_INIT_FUNCTION(TensorLength);
+  REDIDL_MODULE_INIT_FUNCTION(TensorGetDataSize);
+  REDIDL_MODULE_INIT_FUNCTION(TensorDataType);
+  REDIDL_MODULE_INIT_FUNCTION(TensorFree);
+  REDIDL_MODULE_INIT_FUNCTION(TensorSetData);
+  REDIDL_MODULE_INIT_FUNCTION(TensorSetValueFromLongLong);
+  REDIDL_MODULE_INIT_FUNCTION(TensorSetValueFromDouble);
+  REDIDL_MODULE_INIT_FUNCTION(TensorGetValueAsDouble);
+  REDIDL_MODULE_INIT_FUNCTION(TensorGetValueAsLongLong);
+  REDIDL_MODULE_INIT_FUNCTION(TensorGetShallowCopy);
+  REDIDL_MODULE_INIT_FUNCTION(TensorNumDims);
+  REDIDL_MODULE_INIT_FUNCTION(TensorDim);
+  REDIDL_MODULE_INIT_FUNCTION(TensorByteSize);
+  REDIDL_MODULE_INIT_FUNCTION(TensorData);
 
-  REDISDL_MODULE_INIT_FUNCTION(GraphCreate);
-  REDISDL_MODULE_INIT_FUNCTION(GraphFree);
-  REDISDL_MODULE_INIT_FUNCTION(RunCtxCreate);
-  REDISDL_MODULE_INIT_FUNCTION(RunCtxAddInput);
-  REDISDL_MODULE_INIT_FUNCTION(RunCtxAddOutput);
-  REDISDL_MODULE_INIT_FUNCTION(RunCtxNumOutputs);
-  REDISDL_MODULE_INIT_FUNCTION(RunCtxOutputTensor);
-  REDISDL_MODULE_INIT_FUNCTION(RunCtxFree);
-  REDISDL_MODULE_INIT_FUNCTION(GraphRun);
-  REDISDL_MODULE_INIT_FUNCTION(GraphGetShallowCopy);
+  REDIDL_MODULE_INIT_FUNCTION(GraphCreate);
+  REDIDL_MODULE_INIT_FUNCTION(GraphFree);
+  REDIDL_MODULE_INIT_FUNCTION(RunCtxCreate);
+  REDIDL_MODULE_INIT_FUNCTION(RunCtxAddInput);
+  REDIDL_MODULE_INIT_FUNCTION(RunCtxAddOutput);
+  REDIDL_MODULE_INIT_FUNCTION(RunCtxNumOutputs);
+  REDIDL_MODULE_INIT_FUNCTION(RunCtxOutputTensor);
+  REDIDL_MODULE_INIT_FUNCTION(RunCtxFree);
+  REDIDL_MODULE_INIT_FUNCTION(GraphRun);
+  REDIDL_MODULE_INIT_FUNCTION(GraphGetShallowCopy);
   return true;
 }
-
 
 #endif /* SRC_REDISDL_H_ */
