@@ -1,17 +1,33 @@
+#include "keys_reader.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/adlist.h"
 #include <stdbool.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "redisearch_api.h"
+#include "globals.h"
+
+#define KEYS_NAME_FIELD "key_name"
+#define KEYS_SPEC_NAME "keys_spec"
 
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
 list* keysReaderRegistration = NULL;
+
+IndexSpec* keyIdx = NULL;
+
+RedisModuleDict *keysDict = NULL;
+
+static Record* KeysReader_Next(RedisModuleCtx* rctx, void* ctx);
+
+static Record* (*KeysReader_NextCallback)(RedisModuleCtx* rctx, void* ctx) = KeysReader_Next;
 
 typedef struct KeysReaderCtx{
     char* match;
     long long cursorIndex;
     bool isDone;
     Record** pendingRecords;
+    ResultsIterator* iter;
+    RedisModuleDictIter* iter1;
 }KeysReaderCtx;
 
 static KeysReaderCtx* RG_KeysReaderCtxCreate(char* match){
@@ -22,6 +38,8 @@ static KeysReaderCtx* RG_KeysReaderCtxCreate(char* match){
         .cursorIndex = 0,
         .isDone = false,
         .pendingRecords = array_new(Record*, PENDING_KEYS_INIT_CAP),
+		.iter = NULL,
+		.iter1 = NULL,
     };
     return krctx;
 }
@@ -205,6 +223,53 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     return array_pop(readerCtx->pendingRecords);
 }
 
+static Record* KeysReader_IndexNext(RedisModuleCtx* rctx, void* ctx){
+	KeysReaderCtx* readerCtx = ctx;
+//	if(!readerCtx->iter){
+//		size_t matchLen = strlen(readerCtx->match);
+//		char match[matchLen + 1];
+//		memcpy(match, readerCtx->match, matchLen);
+//		match[matchLen] = '\0';
+//		int searchType = EXECT_SEARCH;
+//		if(match[matchLen - 1] == '*'){
+//			match[matchLen - 1] = '\0';
+//			searchType = PREFIX_SEARCH;
+//		}
+//		QueryNode* node = RediSearch_CreateTagNode(keyIdx, KEYS_NAME_FIELD, match, searchType);
+//		readerCtx->iter = RediSearch_GetResultsIterator(keyIdx, node);
+//	}
+//	const char* key = RediSearch_ResultsIteratorNext(keyIdx, readerCtx->iter);
+//	if(key == NULL){
+//		return NULL;
+//	}
+//	RedisModule_ThreadSafeContextLock(rctx);
+//	RedisModuleString* keyRedisStr = RedisModule_CreateString(rctx, key, strlen(key));
+//	RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, keyRedisStr, REDISMODULE_READ);
+//	if(!keyHandler){
+//		// todo: handle this, currently its a poc for peformance check so its ok no to consider this
+//	}
+//
+//	Record* record = RedisGears_KeyRecordCreate();
+//	RedisGears_KeyRecordSetKey(record, RG_STRDUP(key), strlen(key));
+//	ValueToRecordMapper(rctx, record, keyHandler);
+//
+//	RedisModule_FreeString(rctx, keyRedisStr);
+//	RedisModule_CloseKey(keyHandler);
+//	RedisModule_ThreadSafeContextUnlock(rctx);
+
+	if(!readerCtx->iter1){
+		readerCtx->iter1 = RedisModule_DictIteratorStartC(keysDict, "^", NULL, 0);
+	}
+
+	Record* r;
+	const char* key = RedisModule_DictNextC(readerCtx->iter1, NULL, (void**)&r);
+	if(key == NULL){
+		return NULL;
+	}
+
+	return r;
+}
+
 static Record* KeysReader_Next(RedisModuleCtx* rctx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
     Record* record = KeysReader_NextKey(rctx, readerCtx);
@@ -237,13 +302,82 @@ static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
     listAddNodeHead(keysReaderRegistration, fep);
 }
 
+static int KeysReader_IndexAllKeysCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+//	if(!globals.rediSearchLoaded){
+//		if(RediSearch_Initialize() != REDISMODULE_OK){
+//			RedisModule_ReplyWithError(ctx, "failed to initialize redisearch module");
+//			return REDISMODULE_OK;
+//		}
+//	}
+//	if(keyIdx){
+//		RedisModule_ReplyWithError(ctx, "keys index already created");
+//		return REDISMODULE_OK;
+//	}
+//
+//	RediSearch_Field keyNameField = {
+//			.fieldName = KEYS_NAME_FIELD,
+//			.fieldType = INDEX_TYPE_TAG,
+//	};
+//	keyIdx = RediSearch_CreateIndexSpec(KEYS_SPEC_NAME, &keyNameField, 1);
+//
+//	Reader* reader = KeysReader(RG_STRDUP("*"));
+//	Record* r = NULL;
+//	RedisModule_ThreadSafeContextUnlock(ctx);
+//	while((r = reader->next(ctx, reader->ctx))){
+//		const char* keyName = RedisGears_KeyRecordGetKey(r, NULL);
+//		RediSearch_FieldVal val = {
+//				.fieldName = KEYS_NAME_FIELD,
+//				.val.str = keyName,
+//		};
+//		RediSearch_IndexSpecAddDocument(keyIdx, keyName, &val, 1);
+//		RedisGears_FreeRecord(r);
+//	}
+//	RedisModule_ThreadSafeContextLock(ctx);
+//	reader->free(reader->ctx);
+//	RG_FREE(reader);
+//
+//	KeysReader_NextCallback = KeysReader_IndexNext;
+
+	if(keysDict){
+		RedisModule_ReplyWithError(ctx, "keys index already created");
+		return REDISMODULE_OK;
+	}
+
+	keysDict = RedisModule_CreateDict(ctx);
+
+	Reader* reader = KeysReader(RG_STRDUP("*"));
+	Record* r = NULL;
+	RedisModule_ThreadSafeContextUnlock(ctx);
+	while((r = reader->next(ctx, reader->ctx))){
+		const char* keyName = RedisGears_KeyRecordGetKey(r, NULL);
+		RedisModule_DictSetC(keysDict, (char*)keyName, strlen(keyName), r);
+	}
+	RedisModule_ThreadSafeContextLock(ctx);
+	reader->free(reader->ctx);
+	RG_FREE(reader);
+
+	KeysReader_NextCallback = KeysReader_IndexNext;
+
+	RedisModule_ReplyWithSimpleString(ctx, "OK");
+
+	return REDISMODULE_OK;
+}
+
+bool KeysReader_Initialize(RedisModuleCtx* ctx){
+	if (RedisModule_CreateCommand(ctx, "rg.redisearchkeysindex", KeysReader_IndexAllKeysCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rg.redisearchkeysindex");
+		return false;
+	}
+	return true;
+}
+
 Reader* KeysReader(void* arg){
     KeysReaderCtx* ctx = RG_KeysReaderCtxCreate(arg);
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
         .registerTrigger = KeysReader_RegisrterTrigger,
-        .next = KeysReader_Next,
+        .next = KeysReader_NextCallback,
         .free = KeysReader_Free,
         .serialize = RG_KeysReaderCtxSerialize,
         .deserialize = RG_KeysReaderCtxDeserialize,
