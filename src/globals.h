@@ -12,6 +12,7 @@
 
 typedef struct Globals{
     bool redisDLLoaded;
+    bool rediSearchLoaded;
 }Globals;
 
 extern Globals globals;

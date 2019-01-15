@@ -2,4 +2,5 @@
 
 Globals globals = {
         .redisDLLoaded = false,
+        .rediSearchLoaded = false,
 };

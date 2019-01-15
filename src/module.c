@@ -24,9 +24,13 @@
 #include "redisdl.h"
 #include "config.h"
 #include "globals.h"
+#include "redisearch_api.h"
+#include "keys_reader.h"
 #include <stdbool.h>
 
-#define EXECUTION_PLAN_FREE_MSG 100
+#ifndef REDISGEARS_GIT_SHA
+#define REDISGEARS_GIT_SHA "unknown"
+#endif
 
 #define REGISTER_API(name, registerApiCallback) \
     if(registerApiCallback("RedisGears_" #name, RG_ ## name)){\
@@ -326,6 +330,10 @@ int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, voi
 int moduleRegisterApi(const char *funcname, void *funcptr);
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+	RedisModule_Log(ctx, "notice", "RediGears version %d.%d.%d, git_sha=%s",
+			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
+			REDISGEARS_GIT_SHA);
+
     if(!apiRegistered){
         if(!RedisGears_RegisterApi(moduleRegisterApi)){
             RedisModule_Log(ctx, "warning", "could not register RedisGears api");
@@ -340,14 +348,26 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if(!GearsConfig_Init(ctx, argv, argc)){
     	RedisModule_Log(ctx, "warning", "could not initialize gears config");
-	return REDISMODULE_ERR;
+    	return REDISMODULE_ERR;
     }
 
     if(!RediDL_Initialize()){
-        RedisModule_Log(ctx, "warning", "could not initialize RediDL api, running without DL support");
+        RedisModule_Log(ctx, "warning", "could not initialize RediDL api, running without DL support.");
     }else{
-        RedisModule_Log(ctx, "notice", "redisdl loaded successfully");
+        RedisModule_Log(ctx, "notice", "RedisDL api loaded successfully.");
         globals.redisDLLoaded = true;
+    }
+
+    if(RediSearch_Initialize() != REDISMODULE_OK){
+		RedisModule_Log(ctx, "warning", "could not initialize RediSearch api, running without Search support.");
+	}else{
+		RedisModule_Log(ctx, "notice", "RediSearch api loaded successfully.");
+		globals.rediSearchLoaded= true;
+	}
+
+    if(!KeysReader_Initialize(ctx)){
+    	RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
+		return REDISMODULE_ERR;
     }
 
     Mgmt_Init();
