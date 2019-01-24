@@ -255,6 +255,7 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, BufferWriter* bw
         FlatExecutionStep* step = fep->steps + i;
         FlatExecutionPlan_SerializeStep(step, bw);
     }
+    RedisGears_BWWriteLong(bw, fep->allocator);
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(BufferReader* br){
@@ -282,6 +283,7 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(BufferReader* br){
     for(int i = 0 ; i < numberOfSteps ; ++i){
         ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
     }
+    ret->allocator = RedisGears_BRReadLong(br);
     return ret;
 }
 
@@ -822,6 +824,8 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     Record* record = NULL;
     char* err = NULL;
 
+    RG_SetRecordAlocator(ep->fep->allocator);
+
     while((record = ExecutionPlan_NextRecord(ep, ep->steps[0], rctx, &err))){
         if(err){
             Record* r = RedisGears_StringRecordCreate(err, strlen(err));
@@ -1063,6 +1067,7 @@ static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
         }
         FlatExecutionPlan_AddBasicStep(ret, s->bStep.stepName, arg, s->type);
     }
+    ret->allocator = fep->allocator;
     return ret;
 }
 
@@ -1446,6 +1451,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     FlatExecutionPlan* res = RG_ALLOC(sizeof(*res));
     res->reader = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
+    res->allocator = DEFAULT;
     return res;
 }
 
@@ -1465,6 +1471,10 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     }
     array_free(fep->steps);
     RG_FREE(fep);
+}
+
+void FlatExecutionPlan_SetAllocator(FlatExecutionPlan* fep, enum RecordAllocator allocator){
+    fep->allocator = allocator;
 }
 
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){

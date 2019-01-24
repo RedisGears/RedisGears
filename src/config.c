@@ -112,7 +112,7 @@ static int  GearsCOnfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 	RedisModuleString* curr = NULL;
 	while((curr = ArgsIterator_Next(&iter))){
 		const char* configVal = RedisModule_StringPtrLen(curr, NULL);
-		for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val += sizeof(Gears_ConfigVal)){
+		for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
 			if(strcasecmp(configVal, val->name) == 0){
 				const ConfigVal* confVal = val->getter(configVal);
 				GearsCOnfig_ReplyWithConfVal(ctx, confVal);
@@ -131,7 +131,7 @@ const char* GearsCOnfig_GetPythonHomeDir(){
 }
 
 static void GearsConfig_Print(RedisModuleCtx* ctx){
-	for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val += sizeof(Gears_ConfigVal)){
+	for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
 		const ConfigVal* v = val->getter();
 		switch(v->type){
 		case STR:
@@ -178,7 +178,7 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
 	while((curr = ArgsIterator_Next(&iter))){
 		const char* configVal = RedisModule_StringPtrLen(curr, NULL);
 		bool found = false;
-		for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val += sizeof(Gears_ConfigVal)){
+		for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
 			if(strcasecmp(configVal, val->name) == 0){
 				if(!val->setter(&iter)){
 					RedisModule_Log(ctx, "warning", "failed reading config value %s", configVal);

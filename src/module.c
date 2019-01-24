@@ -351,6 +351,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     	return REDISMODULE_ERR;
     }
 
+    if(!RG_RecordInit()){
+        RedisModule_Log(ctx, "warning", "could not initialize gears Record structures");
+        return REDISMODULE_ERR;
+    }
+
     if(!RediDL_Initialize()){
         RedisModule_Log(ctx, "warning", "could not initialize RediDL api, running without DL support.");
     }else{
