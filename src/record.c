@@ -1,5 +1,4 @@
 #include "utils/arr_rm_alloc.h"
-#include "utils/dict.h"
 #include "record.h"
 
 #include "redisgears.h"
@@ -8,66 +7,67 @@
 #include "redisgears_python.h"
 #endif
 
-typedef struct KeysHandlerRecord{
-    RedisModuleKey *keyHandler;
-}KeysHandlerRecord;
+#include <pthread.h>
 
-typedef struct LongRecord{
-    long num;
-}LongRecord;
+typedef Record* (*Record_Alloc)();
+typedef void (*Record_Dispose)(Record* r);
+typedef void (*Record_Free)(Record* r);
 
-typedef struct DoubleRecord{
-    double num;
-}DoubleRecord;
-
-typedef struct StringRecord{
-    size_t len;
-    char* str;
-}StringRecord;
-
-typedef struct ListRecord{
-    Record** records;
-}ListRecord;
-
-#ifdef WITHPYTHON
-typedef struct PythonRecord{
-    PyObject* obj;
-}PythonRecord;
-#endif
-
-typedef struct KeyRecord{
-    char* key;
-    size_t len;
-    Record* record;
-}KeyRecord;
-
-typedef struct HashSetRecord{
-    dict* d;
-}HashSetRecord;
-
-typedef struct Record{
-    union{
-        KeysHandlerRecord keyHandlerRecord;
-        LongRecord longRecord;
-        StringRecord stringRecord;
-        DoubleRecord doubleRecord;
-        ListRecord listRecord;
-        KeyRecord keyRecord;
-        HashSetRecord hashSetRecord;
-#ifdef WITHPYTHON
-        PythonRecord pyRecord;
-#endif
-    };
-    enum RecordType type;
-}Record;
+pthread_key_t _recordAllocatorKey;
+pthread_key_t _recordDisposeKey;
+pthread_key_t _recordFreeMemoryKey;
 
 
 Record StopRecord = {
         .type = STOP_RECORD,
 };
 
+int RG_RecordInit(){
+    int err = pthread_key_create(&_recordAllocatorKey, NULL);
+    err &= pthread_key_create(&_recordDisposeKey, NULL);
+    err &= pthread_key_create(&_recordFreeMemoryKey, NULL);
+    return !err;
+}
 
-void RG_FreeRecord(Record* record){
+static inline Record* RG_DefaultAllocator(){
+    return RG_ALLOC(sizeof(Record));
+}
+
+void RG_SetRecordAlocator(enum RecordAllocator allocator){
+    switch(allocator){
+    case DEFAULT:
+        pthread_setspecific(_recordAllocatorKey, RG_DefaultAllocator);
+        pthread_setspecific(_recordDisposeKey, RG_DisposeRecord);
+        pthread_setspecific(_recordFreeMemoryKey, RG_FREE);
+        break;
+    case PYTHON:
+        pthread_setspecific(_recordAllocatorKey, RedisGearsPy_AllocatePyRecord);
+        pthread_setspecific(_recordDisposeKey, RedisGearsPy_DisposePyRecord);
+        pthread_setspecific(_recordFreeMemoryKey, NULL); // python handles his own memory!!
+        break;
+    default:
+        assert(false);
+    }
+}
+
+static inline Record* RecordAlloc(){
+    Record_Alloc alloc = pthread_getspecific(_recordAllocatorKey);
+    return alloc();
+}
+
+static inline void RecordDispose(Record* r){
+    Record_Dispose dispose = pthread_getspecific(_recordDisposeKey);
+    dispose(r);
+}
+
+static inline void RecordFree(Record* r){
+    Record_Free free = pthread_getspecific(_recordFreeMemoryKey);
+    if(free){
+        free(r);
+    }
+}
+
+void RG_DisposeRecord(Record* record){
     dictIterator *iter;
     dictEntry *entry;
     Record* temp;
@@ -105,26 +105,32 @@ void RG_FreeRecord(Record* record){
         dictReleaseIterator(iter);
         dictRelease(record->hashSetRecord.d);
         break;
-#ifdef WITHPYTHON
-    case PY_RECORD:
-    	if(record->pyRecord.obj){
-    		PyGILState_STATE state = PyGILState_Ensure();
-    		Py_DECREF(record->pyRecord.obj);
-    		PyGILState_Release(state);
-    	}
-        break;
-#endif
     default:
         assert(false);
     }
-    RG_FREE(record);
+    RecordFree(record);
+}
+
+void RG_FreeRecord(Record* record){
+#ifdef WITHPYTHON
+    if(record->type == PY_RECORD){
+        if(record->pyRecord.obj){
+            PyGILState_STATE state = PyGILState_Ensure();
+            Py_DECREF(record->pyRecord.obj);
+            PyGILState_Release(state);
+        }
+        return;
+    }
+#endif
+    RecordDispose(record);
 }
 
 enum RecordType RG_RecordGetType(Record* r){
     return r->type;
 }
+
 Record* RG_KeyRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordAlloc();
     ret->type = KEY_RECORD;
     ret->keyRecord.key = NULL;
     ret->keyRecord.len = 0;
@@ -154,7 +160,7 @@ char* RG_KeyRecordGetKey(Record* r, size_t* len){
     return r->keyRecord.key;
 }
 Record* RG_ListRecordCreate(size_t initSize){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordAlloc();
     ret->type = LIST_RECORD;
     ret->listRecord.records = array_new(Record*, initSize);
     return ret;
@@ -181,7 +187,7 @@ Record* RG_ListRecordPop(Record* r){
 }
 
 Record* RG_StringRecordCreate(char* val, size_t len){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordAlloc();
     ret->type = STRING_RECORD;
     ret->stringRecord.str = val;
     ret->stringRecord.len = len;
@@ -203,7 +209,7 @@ void RG_StringRecordSet(Record* r, char* val, size_t len){
 }
 
 Record* RG_DoubleRecordCreate(double val){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordAlloc();
     ret->type = DOUBLE_RECORD;
     ret->doubleRecord.num = val;
     return ret;
@@ -220,7 +226,7 @@ void RG_DoubleRecordSet(Record* r, double val){
 }
 
 Record* RG_LongRecordCreate(long val){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordAlloc();
     ret->type = LONG_RECORD;
     ret->longRecord.num = val;
     return ret;
@@ -235,7 +241,7 @@ void RG_LongRecordSet(Record* r, long val){
 }
 
 Record* RG_HashSetRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordAlloc();
     ret->type = HASH_SET_RECORD;
     ret->hashSetRecord.d = dictCreate(&dictTypeHeapStrings, NULL);
     return ret;
@@ -279,7 +285,7 @@ void RG_HashSetRecordFreeKeysArray(char** keyArr){
 }
 
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler){
-    Record* ret = RG_ALLOC(sizeof(Record));
+    Record* ret = RecordAlloc();
     ret->type = KEY_HANDLER_RECORD;
     ret->keyHandlerRecord.keyHandler = handler;
     return ret;

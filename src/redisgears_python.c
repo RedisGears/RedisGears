@@ -9,6 +9,7 @@
 #include <redisgears.h>
 #include <redisgears_memory.h>
 #include <redisgears_python.h>
+#include <execution_plan.h>
 #include "utils/arr_rm_alloc.h"
 
 static PyObject* pFunc;
@@ -253,6 +254,90 @@ static PyTypeObject PyFlatExecutionType = {
     "PyFlatExecution",         /* tp_doc */
 };
 
+typedef struct PyRecord{
+   PyObject_HEAD
+   Record r;
+} PyRecord;
+
+static PyObject* PyRecord_GetItem(PyObject *self, PyObject *args){
+    return PyString_FromString("PyRecord");
+}
+
+PyMethodDef PyRecordMethods[] = {
+    {"__getitem__", PyRecord_GetItem, METH_VARARGS, "return an item from the record"},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyObject *PyRecord_ToStr(PyObject * pyObj){
+    return PyString_FromString("PyRecord");
+}
+
+static void PyRecord_Destruct(PyObject *pyObj){
+    PyRecord* pr = (PyRecord*)pyObj;
+    RG_DisposeRecord(&pr->r);
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
+static PyTypeObject PyRecordType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "redisgears.PyRecord",       /* tp_name */
+    sizeof(PyRecord),          /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    PyRecord_Destruct,         /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_compare */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash */
+    0,                         /* tp_call */
+    PyRecord_ToStr,            /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+    "PyRecord",         /* tp_doc */
+};
+
+typedef enum OwnershipType{
+    TAKE_OWNERSHIP, SHARE_OWENERSHIP, LEAVE_OWNERSHIP
+}OwnershipType;
+
+static inline PyObject* PyRecord_ToPyRecord(Record* r, OwnershipType ownershipType){
+    if(RedisGears_RecordGetType(r) == PY_RECORD){
+        PyObject* p = RG_PyObjRecordGet(r);
+        if(TAKE_OWNERSHIP){
+            RG_PyObjRecordSet(r, NULL);
+            RedisGears_FreeRecord(r);
+        }else if(SHARE_OWENERSHIP){
+            Py_INCREF(p);
+        }
+        return p;
+    }
+    PyRecord* nullPr = (PyRecord*)NULL;
+    size_t offset = (size_t)&nullPr->r;
+    PyRecord* pr = (PyRecord*)(((char*)r) - offset);
+    if(SHARE_OWENERSHIP){
+        Py_INCREF(pr);
+    }
+    return (PyObject*)pr;
+}
+
+static inline Record* PyRecord_ToRecord(PyObject* p, OwnershipType ownershipTyp){
+    if(SHARE_OWENERSHIP){
+        Py_INCREF(p);
+    }
+    if(PyObject_TypeCheck(p, &PyRecordType)){
+        return &((PyRecord*)p)->r;
+    }
+    Record* r = RG_PyObjRecordCreate();
+    RG_PyObjRecordSet(r, p);
+    return r;
+}
+
 static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     char* readerStr = "KeysReader"; // default reader
     if(PyTuple_Size(args) > 0){
@@ -261,7 +346,7 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     }
     PyFlatExecution* pyfep = PyObject_New(PyFlatExecution, &PyFlatExecutionType);
     pyfep->fep = RedisGears_CreateCtx(readerStr);
-    RSM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+    FlatExecutionPlan_SetAllocator(pyfep->fep, PYTHON);
     return (PyObject*)pyfep;
 }
 
@@ -578,13 +663,10 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
 void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    // Call Python/C API functions...
-    assert(RedisGears_RecordGetType(record) == PY_RECORD);
+    PyObject* pr = PyRecord_ToPyRecord(record, SHARE_OWENERSHIP);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
-    PyObject* obj = RG_PyObjRecordGet(record);
-    Py_INCREF(obj);
-    PyTuple_SetItem(pArgs, 0, obj);
+    PyTuple_SetItem(pArgs, 0, pr);
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(ret != Py_None){
@@ -597,14 +679,11 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char
 	PyGILState_STATE state = PyGILState_Ensure();
 	PyObject* pArgs = PyTuple_New(3);
 	PyObject* callback = arg;
-	PyObject* currObj = RG_PyObjRecordGet(r);
+	PyObject* currObj = PyRecord_ToPyRecord(r, TAKE_OWNERSHIP);
 	PyObject* keyPyStr = PyString_FromString(key);
-	RG_PyObjRecordSet(r, NULL);
 	PyObject* oldAccumulateObj = Py_None;
-	if(!accumulate){
-		accumulate = RG_PyObjRecordCreate();
-	}else{
-		oldAccumulateObj = RG_PyObjRecordGet(accumulate);
+	if(accumulate){
+        oldAccumulateObj = PyRecord_ToPyRecord(accumulate, TAKE_OWNERSHIP);
 	}
 	PyTuple_SetItem(pArgs, 0, keyPyStr);
 	PyTuple_SetItem(pArgs, 1, oldAccumulateObj);
@@ -614,12 +693,10 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char
 	if(!newAccumulateObj){
 		PyErr_Print();
 		*err = RG_STRDUP(PYTHON_ERROR);
-		RedisGears_FreeRecord(r);
 		PyGILState_Release(state);
 		return NULL;
 	}
-	RG_PyObjRecordSet(accumulate, newAccumulateObj);
-	RedisGears_FreeRecord(r);
+	accumulate = PyRecord_ToRecord(newAccumulateObj, TAKE_OWNERSHIP);
 	PyGILState_Release(state);
 	return accumulate;
 }
@@ -628,13 +705,10 @@ static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *a
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* pArgs = PyTuple_New(2);
     PyObject* callback = arg;
-    PyObject* currObj = RG_PyObjRecordGet(r);
-    RG_PyObjRecordSet(r, NULL);
+    PyObject* currObj = PyRecord_ToPyRecord(r, TAKE_OWNERSHIP);
     PyObject* oldAccumulateObj = Py_None;
-    if(!accumulate){
-        accumulate = RG_PyObjRecordCreate();
-    }else{
-        oldAccumulateObj = RG_PyObjRecordGet(accumulate);
+    if(accumulate){
+        oldAccumulateObj = PyRecord_ToPyRecord(accumulate, TAKE_OWNERSHIP);
     }
     PyTuple_SetItem(pArgs, 0, oldAccumulateObj);
     PyTuple_SetItem(pArgs, 1, currObj);
@@ -643,69 +717,58 @@ static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *a
     if(!newAccumulateObj){
         PyErr_Print();
         *err = RG_STRDUP(PYTHON_ERROR);
-        RedisGears_FreeRecord(r);
         PyGILState_Release(state);
         return NULL;
     }
-    RG_PyObjRecordSet(accumulate, newAccumulateObj);
-    RedisGears_FreeRecord(r);
+    accumulate = PyRecord_ToRecord(newAccumulateObj, TAKE_OWNERSHIP);
     PyGILState_Release(state);
     return accumulate;
 }
 
 static Record* RedisGearsPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    // Call Python/C API functions...
-    assert(RedisGears_RecordGetType(record) == PY_RECORD);
+    PyObject* pr = PyRecord_ToPyRecord(record, TAKE_OWNERSHIP);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
-    PyObject* oldObj = RG_PyObjRecordGet(record);
-    PyTuple_SetItem(pArgs, 0, oldObj);
+    PyTuple_SetItem(pArgs, 0, pr);
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newObj){
         PyErr_Print();
         *err = RG_STRDUP(PYTHON_ERROR);
-        RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
     }
-    RG_PyObjRecordSet(record, newObj);
+    Record* res = PyRecord_ToRecord(newObj, TAKE_OWNERSHIP);
     PyGILState_Release(state);
-    return record;
+    return res;
 }
 
 static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    // Call Python/C API functions...
-    assert(RedisGears_RecordGetType(record) == PY_RECORD);
+    PyObject* pr = PyRecord_ToPyRecord(record, TAKE_OWNERSHIP);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
-    PyObject* oldObj = RG_PyObjRecordGet(record);
-    RG_PyObjRecordSet(record, NULL);
-    PyTuple_SetItem(pArgs, 0, oldObj);
+    PyTuple_SetItem(pArgs, 0, pr);
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newObj){
         PyErr_Print();
         *err = RG_STRDUP(PYTHON_ERROR);
-        RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
     }
     if(PyList_Check(newObj)){
-        RedisGears_FreeRecord(record);
         size_t len = PyList_Size(newObj);
         record = RedisGears_ListRecordCreate(len);
         for(size_t i = 0 ; i < len ; ++i){
             PyObject* temp = PyList_GetItem(newObj, i);
-            Record* pyRecord = RG_PyObjRecordCreate();
-            Py_INCREF(temp);
-            RG_PyObjRecordSet(pyRecord, temp);
+            Record* pyRecord = PyRecord_ToRecord(temp, SHARE_OWENERSHIP);
             RedisGears_ListRecordAdd(record, pyRecord);
         }
         Py_DECREF(newObj);
     }else{
+        record = PyRecord_ToRecord(newObj, TAKE_OWNERSHIP);
         RG_PyObjRecordSet(record, newObj);
     }
     PyGILState_Release(state);
@@ -714,12 +777,11 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *r
 
 static bool RedisGearsPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
-    assert(RedisGears_RecordGetType(record) == PY_RECORD);
+    PyObject* pr = PyRecord_ToPyRecord(record, SHARE_OWENERSHIP);
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
-    PyObject* obj = RG_PyObjRecordGet(record);
-    Py_INCREF(obj);
-    PyTuple_SetItem(pArgs, 0, obj);
+    Py_INCREF(pr);
+    PyTuple_SetItem(pArgs, 0, pr);
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
@@ -735,12 +797,10 @@ static bool RedisGearsPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, 
 
 static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record, void* arg, size_t* len, char** err){
 	PyGILState_STATE state = PyGILState_Ensure();
-    assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* extractor = arg;
     PyObject* pArgs = PyTuple_New(1);
-    PyObject* obj = RG_PyObjRecordGet(record);
-    Py_INCREF(obj);
-    PyTuple_SetItem(pArgs, 0, obj);
+    PyObject* pr = PyRecord_ToPyRecord(record, SHARE_OWENERSHIP);
+    PyTuple_SetItem(pArgs, 0, pr);
     PyObject* ret = PyObject_CallObject(extractor, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
@@ -762,8 +822,6 @@ static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *reco
     memcpy(retValue, retCStr, *len);
     retValue[*len] = '\0';
     Py_DECREF(retStr);
-    //Py_DECREF(retStr); todo: we should uncomment it after we will pass bool
-    //                         that will tell the extractor to free the memory!!
     PyGILState_Release(state);
     return retValue;
 }
@@ -771,13 +829,7 @@ static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *reco
 static Record* RedisGearsPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
     assert(RedisGears_RecordGetType(records) == LIST_RECORD);
-    PyObject* obj = PyList_New(0);
-    for(size_t i = 0 ; i < RedisGears_ListRecordLen(records) ; ++i){
-        Record* r = RedisGears_ListRecordGet(records, i);
-        assert(RedisGears_RecordGetType(r) == PY_RECORD);
-        PyObject* element = RG_PyObjRecordGet(r);
-        PyList_Append(obj, element);
-    }
+    PyObject* obj = PyRecord_ToPyRecord(records, TAKE_OWNERSHIP);
     PyObject* reducer = arg;
     PyObject* pArgs = PyTuple_New(2);
     PyObject* keyPyObj = PyString_FromString(key);
@@ -787,98 +839,95 @@ static Record* RedisGearsPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, s
     Py_DECREF(pArgs);
     if(!ret){
         PyErr_Print();
-        RedisGears_FreeRecord(records);
         *err = RG_STRDUP(PYTHON_ERROR);
         PyGILState_Release(state);
         return NULL;
     }
-    Record* retRecord = RG_PyObjRecordCreate();
-    RG_PyObjRecordSet(retRecord, ret);
-    RedisGears_FreeRecord(records);
+    Record* retRecord = PyRecord_ToRecord(ret, TAKE_OWNERSHIP);
     PyGILState_Release(state);
     return retRecord;
 }
 
-static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
-    Record* res = RG_PyObjRecordCreate();
-    Record* tempRecord;
-    PyObject* obj;
-    PyObject* temp;
-    char* str;
-    long longNum;
-    double doubleNum;
-    char* key;
-    char** keys;
-    size_t len;
-    switch(RedisGears_RecordGetType(record)){
-    case STRING_RECORD:
-        str = RedisGears_StringRecordGet(record, &len);
-        obj = PyString_FromStringAndSize(str, len);
-        break;
-    case LONG_RECORD:
-        longNum = RedisGears_LongRecordGet(record);
-        obj = PyLong_FromLong(longNum);
-        break;
-    case DOUBLE_RECORD:
-        doubleNum = RedisGears_DoubleRecordGet(record);
-        obj = PyLong_FromDouble(doubleNum);
-        break;
-    case KEY_RECORD:
-        key = RedisGears_KeyRecordGetKey(record, NULL);
-        obj = PyDict_New();
-        temp = PyString_FromString(key);
-        PyDict_SetItemString(obj, "key", temp);
-        Py_DECREF(temp);
+//static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
+//    Record* res = RG_PyObjRecordCreate();
+//    Record* tempRecord;
+//    PyObject* obj;
+//    PyObject* temp;
+//    char* str;
+//    long longNum;
+//    double doubleNum;
+//    char* key;
+//    char** keys;
+//    size_t len;
+//    switch(RedisGears_RecordGetType(record)){
+//    case STRING_RECORD:
+//        str = RedisGears_StringRecordGet(record, &len);
+//        obj = PyString_FromStringAndSize(str, len);
+//        break;
+//    case LONG_RECORD:
+//        longNum = RedisGears_LongRecordGet(record);
+//        obj = PyLong_FromLong(longNum);
+//        break;
+//    case DOUBLE_RECORD:
+//        doubleNum = RedisGears_DoubleRecordGet(record);
+//        obj = PyLong_FromDouble(doubleNum);
+//        break;
+//    case KEY_RECORD:
+//        key = RedisGears_KeyRecordGetKey(record, NULL);
+//        obj = PyDict_New();
+//        temp = PyString_FromString(key);
+//        PyDict_SetItemString(obj, "key", temp);
+//        Py_DECREF(temp);
+//
+//        tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_KeyRecordGetVal(record), arg);
+//        assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
+//        PyDict_SetItemString(obj, "value", RG_PyObjRecordGet(tempRecord));
+//        RedisGears_FreeRecord(tempRecord);
+//
+//        break;
+//    case LIST_RECORD:
+//        len = RedisGears_ListRecordLen(record);
+//        obj = PyList_New(0);
+//        for(size_t i = 0 ; i < len ; ++i){
+//            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_ListRecordGet(record, i), arg);
+//            assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
+//            PyList_Append(obj, RG_PyObjRecordGet(tempRecord));
+//            RedisGears_FreeRecord(tempRecord);
+//        }
+//        break;
+//    case HASH_SET_RECORD:
+//        keys = RedisGears_HashSetRecordGetAllKeys(record, &len);
+//        obj = PyDict_New();
+//        for(size_t i = 0 ; i < len ; ++i){
+//            key = keys[i];
+//            temp = PyString_FromString(key);
+//            tempRecord = RedisGears_HashSetRecordGet(record, key);
+//            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
+//            assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
+//            PyDict_SetItem(obj, temp, RG_PyObjRecordGet(tempRecord));
+//            Py_DECREF(temp);
+//            RedisGears_FreeRecord(tempRecord);
+//        }
+//        RedisGears_HashSetRecordFreeKeysArray(keys);
+//        break;
+//    case PY_RECORD:
+//        obj = RG_PyObjRecordGet(record);
+//        Py_INCREF(obj);
+//        break;
+//    default:
+//        assert(false);
+//    }
+//    RG_PyObjRecordSet(res, obj);
+//    return res;
+//}
 
-        tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_KeyRecordGetVal(record), arg);
-        assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
-        PyDict_SetItemString(obj, "value", RG_PyObjRecordGet(tempRecord));
-        RedisGears_FreeRecord(tempRecord);
-
-        break;
-    case LIST_RECORD:
-        len = RedisGears_ListRecordLen(record);
-        obj = PyList_New(0);
-        for(size_t i = 0 ; i < len ; ++i){
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_ListRecordGet(record, i), arg);
-            assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
-            PyList_Append(obj, RG_PyObjRecordGet(tempRecord));
-            RedisGears_FreeRecord(tempRecord);
-        }
-        break;
-    case HASH_SET_RECORD:
-        keys = RedisGears_HashSetRecordGetAllKeys(record, &len);
-        obj = PyDict_New();
-        for(size_t i = 0 ; i < len ; ++i){
-            key = keys[i];
-            temp = PyString_FromString(key);
-            tempRecord = RedisGears_HashSetRecordGet(record, key);
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
-            assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
-            PyDict_SetItem(obj, temp, RG_PyObjRecordGet(tempRecord));
-            Py_DECREF(temp);
-            RedisGears_FreeRecord(tempRecord);
-        }
-        RedisGears_HashSetRecordFreeKeysArray(keys);
-        break;
-    case PY_RECORD:
-        obj = RG_PyObjRecordGet(record);
-        Py_INCREF(obj);
-        break;
-    default:
-        assert(false);
-    }
-    RG_PyObjRecordSet(res, obj);
-    return res;
-}
-
-static Record* RedisGearsPy_ToPyRecordMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
-    PyGILState_STATE state = PyGILState_Ensure();
-    Record* res = RedisGearsPy_ToPyRecordMapperInternal(record, arg);
-    RedisGears_FreeRecord(record);
-    PyGILState_Release(state);
-    return res;
-}
+//static Record* RedisGearsPy_ToPyRecordMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+//    PyGILState_STATE state = PyGILState_Ensure();
+//    Record* res = RedisGearsPy_ToPyRecordMapperInternal(record, arg);
+//    RedisGears_FreeRecord(record);
+//    PyGILState_Release(state);
+//    return res;
+//}
 
 static void* RedisGearsPy_PyObjectDup(void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
@@ -1003,6 +1052,16 @@ static int RedisGearsPy_Stats(RedisModuleCtx *ctx, RedisModuleString **argv, int
 	return REDISMODULE_OK;
 }
 
+Record* RedisGearsPy_AllocatePyRecord(){
+    PyRecord* pr = PyObject_New(PyRecord, &PyRecordType);
+    return PyRecord_ToRecord((PyObject*)pr, TAKE_OWNERSHIP);
+}
+
+void RedisGearsPy_DisposePyRecord(Record* r){
+    PyObject* pr = PyRecord_ToPyRecord(r, TAKE_OWNERSHIP);
+    Py_DECREF(pr);
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RedisGearsPy_Alloc);
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
@@ -1013,8 +1072,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyTensorType.tp_new = PyType_GenericNew;
     PyGraphRunnerType.tp_new = PyType_GenericNew;
     PyFlatExecutionType.tp_new = PyType_GenericNew;
+    PyRecordType.tp_new = PyType_GenericNew;
 
     PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
+    PyRecordType.tp_methods = PyRecordMethods;
 
     if (PyType_Ready(&PyTensorType) < 0){
         RedisModule_Log(ctx, "warning", "PyTensorType not ready");
@@ -1028,15 +1089,21 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
     }
 
+    if (PyType_Ready(&PyRecordType) < 0){
+        RedisModule_Log(ctx, "warning", "PyRecordType not ready");
+    }
+
     PyObject* m = Py_InitModule("redisgears", EmbMethods);
 
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
     Py_INCREF(&PyFlatExecutionType);
+    Py_INCREF(&PyRecordType);
 
     PyModule_AddObject(m, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(m, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
+    PyModule_AddObject(m, "PyRecord", (PyObject *)&PyRecordType);
 
     PyRun_SimpleString("import redisgears\n"
                        "from redisgears import gearsCtx\n"
@@ -1052,7 +1119,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     RSM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
     RSM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);
-    RSM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
+//    RSM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
     RSM_RegisterMap(RedisGearsPy_PyCallbackFlatMapper, pyCallbackType);
     RSM_RegisterMap(RedisGearsPy_PyCallbackMapper, pyCallbackType);
     RSM_RegisterAccumulator(RedisGearsPy_PyCallbackAccumulate, pyCallbackType);
