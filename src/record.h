@@ -28,7 +28,7 @@ enum RecordAllocator{
 };
 
 typedef struct KeysHandlerRecord{
-    RedisModuleKey *keyHandler;
+    char* key;
 }KeysHandlerRecord;
 
 typedef struct LongRecord{
