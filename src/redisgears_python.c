@@ -259,12 +259,16 @@ typedef struct PyRecord{
    Record r;
 } PyRecord;
 
-static PyObject* PyRecord_GetItem(PyObject *self, PyObject *args){
+static PyObject* PyRecord_GetItem(PyObject *self, PyObject *obj){
     return PyString_FromString("PyRecord");
 }
 
+static Py_ssize_t PyRecord_Length(PyObject* obj){
+
+}
+
 PyMethodDef PyRecordMethods[] = {
-    {"__getitem__", PyRecord_GetItem, METH_VARARGS, "return an item from the record"},
+//    {"__getitem__", PyRecord_GetItem, METH_VARARGS, "return an item from the record"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -277,6 +281,12 @@ static void PyRecord_Destruct(PyObject *pyObj){
     RG_DisposeRecord(&pr->r);
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
+
+PyMappingMethods PyRecordMap = {
+        .mp_length = PyRecord_Length,
+        .mp_subscript = PyRecord_GetItem,
+        .mp_ass_subscript = 0,
+};
 
 static PyTypeObject PyRecordType = {
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -309,10 +319,10 @@ typedef enum OwnershipType{
 static inline PyObject* PyRecord_ToPyRecord(Record* r, OwnershipType ownershipType){
     if(RedisGears_RecordGetType(r) == PY_RECORD){
         PyObject* p = RG_PyObjRecordGet(r);
-        if(TAKE_OWNERSHIP){
+        if(ownershipType == TAKE_OWNERSHIP){
             RG_PyObjRecordSet(r, NULL);
             RedisGears_FreeRecord(r);
-        }else if(SHARE_OWENERSHIP){
+        }else if(ownershipType == SHARE_OWENERSHIP){
             Py_INCREF(p);
         }
         return p;
@@ -320,14 +330,14 @@ static inline PyObject* PyRecord_ToPyRecord(Record* r, OwnershipType ownershipTy
     PyRecord* nullPr = (PyRecord*)NULL;
     size_t offset = (size_t)&nullPr->r;
     PyRecord* pr = (PyRecord*)(((char*)r) - offset);
-    if(SHARE_OWENERSHIP){
+    if(ownershipType == SHARE_OWENERSHIP){
         Py_INCREF(pr);
     }
     return (PyObject*)pr;
 }
 
-static inline Record* PyRecord_ToRecord(PyObject* p, OwnershipType ownershipTyp){
-    if(SHARE_OWENERSHIP){
+static inline Record* PyRecord_ToRecord(PyObject* p, OwnershipType ownershipType){
+    if(ownershipType == SHARE_OWENERSHIP){
         Py_INCREF(p);
     }
     if(PyObject_TypeCheck(p, &PyRecordType)){
@@ -648,16 +658,19 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
 
     PyGILState_STATE state = PyGILState_Ensure();
+    RG_SetRecordAlocator(PYTHON);
     if(PyRun_SimpleString(script) == -1){
         PyErr_Print();
         RedisModule_ReplyWithError(ctx, "failed running the given script");
         PyGILState_Release(state);
+        RG_SetRecordAlocator(DEFAULT);
         return REDISMODULE_OK;
     }
     PyGILState_Release(state);
 
     blockingExecute = true;
 
+    RG_SetRecordAlocator(DEFAULT);
     return REDISMODULE_OK;
 }
 
@@ -1076,6 +1089,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
     PyRecordType.tp_methods = PyRecordMethods;
+    PyRecordType.tp_as_mapping = &PyRecordMap;
 
     if (PyType_Ready(&PyTensorType) < 0){
         RedisModule_Log(ctx, "warning", "PyTensorType not ready");
