@@ -27,16 +27,10 @@ char* stepsNames[] = {
         "WRITER",
         "FLAT_MAP",
         "LIMIT",
+        "ACCUMULATE",
+        "ACCUMULATE_BY_KEY",
         NULL,
 };
-
-#define NEW_FEP_MSG_TYPE 0
-#define NEW_EP_MSG_TYPE 1
-#define NEW_COLLECT_MSG_TYPE 2
-#define DONE_COLLECT_MSG_TYPE 3
-#define NEW_REPARTITION_MSG_TYPE 4
-#define DONE_REPARTITION_MSG_TYPE 5
-#define REGISTER_KEY_SPACE_EVENT_NOTIFICATION 6
 
 typedef struct LimitExecutionStepArg{
     size_t offset;

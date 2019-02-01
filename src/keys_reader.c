@@ -13,7 +13,7 @@
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
 list* keysReaderRegistration = NULL;
 
-IndexSpec* keyIdx = NULL;
+Index* keyIdx = NULL;
 
 RedisModuleDict *keysDict = NULL;
 
@@ -257,19 +257,24 @@ static Record* KeysReader_RaxIndexNext(RedisModuleCtx* rctx, void* ctx){
 static Record* KeysReader_SearchIndexNext(RedisModuleCtx* rctx, void* ctx){
 	KeysReaderCtx* readerCtx = ctx;
 	if(!readerCtx->iter){
+	    QN* tagNode = RediSearch_CreateTagNode(KEYS_NAME_FIELD);
 		size_t matchLen = strlen(readerCtx->match);
 		char match[matchLen + 1];
 		memcpy(match, readerCtx->match, matchLen);
 		match[matchLen] = '\0';
-		int searchType = EXECT_SEARCH;
+		QN* n = NULL;
 		if(match[matchLen - 1] == '*'){
 			match[matchLen - 1] = '\0';
-			searchType = PREFIX_SEARCH;
+			n = RediSearch_CreatePrefixNode(match);
+		}else{
+		    n = RediSearch_CreateTokenNode(match);
 		}
-		QueryNode* node = RediSearch_CreateTagNode(keyIdx, KEYS_NAME_FIELD, match, searchType);
-		readerCtx->iter = RediSearch_GetResultsIterator(keyIdx, node);
+		RediSearch_TagNodeAddChild(tagNode, n);
+
+		readerCtx->iter = RediSearch_GetResutlsIterator(tagNode, keyIdx);
 	}
-	const char* key = RediSearch_ResultsIteratorNext(keyIdx, readerCtx->iter);
+	size_t len;
+	const char* key = RediSearch_ResutlsIteratorNext(readerCtx->iter, keyIdx, &len);
 	if(key == NULL){
 		return NULL;
 	}
@@ -362,22 +367,17 @@ static int KeysReader_IndexAllKeysInRedisearch(RedisModuleCtx *ctx, RedisModuleS
 		return REDISMODULE_OK;
 	}
 
-	RediSearch_Field keyNameField = {
-			.fieldName = KEYS_NAME_FIELD,
-			.fieldType = INDEX_TYPE_TAG,
-	};
-	keyIdx = RediSearch_CreateIndexSpec(KEYS_SPEC_NAME, &keyNameField, 1);
+	keyIdx = RediSearch_CreateSpec(KEYS_SPEC_NAME);
+	RediSearch_CreateTagField(keyIdx, KEYS_NAME_FIELD);
 
 	Reader* reader = KeysReader(RG_STRDUP("*"));
 	Record* r = NULL;
 	RedisModule_ThreadSafeContextUnlock(ctx);
 	while((r = reader->next(ctx, reader->ctx))){
 		const char* keyName = RedisGears_KeyRecordGetKey(r, NULL);
-		RediSearch_FieldVal val = {
-				.fieldName = KEYS_NAME_FIELD,
-				.val.str = keyName,
-		};
-		RediSearch_IndexSpecAddDocument(keyIdx, keyName, &val, 1);
+		Doc* d = RediSearch_CreateDocument(keyName, strlen(keyName), 1.0, NULL);
+		RediSearch_DocumentAddTextField(d, KEYS_NAME_FIELD, keyName);
+		RediSearch_SpecAddDocument(keyIdx, d);
 		RedisGears_FreeRecord(r);
 	}
 	RedisModule_ThreadSafeContextLock(ctx);
