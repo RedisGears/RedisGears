@@ -22,6 +22,13 @@ Record StopRecord = {
         .type = STOP_RECORD,
 };
 
+int RG_RecordInit(){
+    int err = pthread_key_create(&_recordAllocatorKey, NULL);
+    err &= pthread_key_create(&_recordDisposeKey, NULL);
+    err &= pthread_key_create(&_recordFreeMemoryKey, NULL);
+    return !err;
+}
+
 static inline Record* RG_DefaultAllocator(){
     return RG_ALLOC(sizeof(Record));
 }
@@ -41,14 +48,6 @@ void RG_SetRecordAlocator(enum RecordAllocator allocator){
     default:
         assert(false);
     }
-}
-
-int RG_RecordInit(){
-    int err = pthread_key_create(&_recordAllocatorKey, NULL);
-    err &= pthread_key_create(&_recordDisposeKey, NULL);
-    err &= pthread_key_create(&_recordFreeMemoryKey, NULL);
-    RG_SetRecordAlocator(DEFAULT);
-    return !err;
 }
 
 static inline Record* RecordAlloc(){
@@ -120,7 +119,6 @@ void RG_FreeRecord(Record* record){
             Py_DECREF(record->pyRecord.obj);
             PyGILState_Release(state);
         }
-        RG_FREE(record);
         return;
     }
 #endif

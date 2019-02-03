@@ -309,10 +309,10 @@ typedef enum OwnershipType{
 static inline PyObject* PyRecord_ToPyRecord(Record* r, OwnershipType ownershipType){
     if(RedisGears_RecordGetType(r) == PY_RECORD){
         PyObject* p = RG_PyObjRecordGet(r);
-        if(ownershipType == TAKE_OWNERSHIP){
+        if(TAKE_OWNERSHIP){
             RG_PyObjRecordSet(r, NULL);
             RedisGears_FreeRecord(r);
-        }else if(ownershipType == SHARE_OWENERSHIP){
+        }else if(SHARE_OWENERSHIP){
             Py_INCREF(p);
         }
         return p;
@@ -320,14 +320,14 @@ static inline PyObject* PyRecord_ToPyRecord(Record* r, OwnershipType ownershipTy
     PyRecord* nullPr = (PyRecord*)NULL;
     size_t offset = (size_t)&nullPr->r;
     PyRecord* pr = (PyRecord*)(((char*)r) - offset);
-    if(ownershipType == SHARE_OWENERSHIP){
+    if(SHARE_OWENERSHIP){
         Py_INCREF(pr);
     }
     return (PyObject*)pr;
 }
 
-static inline Record* PyRecord_ToRecord(PyObject* p, OwnershipType ownershipType){
-    if(ownershipType == SHARE_OWENERSHIP){
+static inline Record* PyRecord_ToRecord(PyObject* p, OwnershipType ownershipTyp){
+    if(SHARE_OWENERSHIP){
         Py_INCREF(p);
     }
     if(PyObject_TypeCheck(p, &PyRecordType)){
