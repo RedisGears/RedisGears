@@ -11,7 +11,6 @@
 #include <stdbool.h>
 #include "redisgears.h"
 #include "utils/dict.h"
-#include "record.h"
 
 enum StepType{
     MAP=1,
@@ -184,7 +183,6 @@ typedef struct FlatExecutionReader{
 typedef struct FlatExecutionPlan{
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
-    enum RecordAllocator allocator;
 }FlatExecutionPlan;
 
 FlatExecutionPlan* FlatExecutionPlan_New();
@@ -206,7 +204,6 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* ar
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
-void FlatExecutionPlan_SetAllocator(FlatExecutionPlan* fep, enum RecordAllocator allocator);
 
 void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_Free(ExecutionPlan* ep);

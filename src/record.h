@@ -10,7 +10,6 @@
 
 #include "redisgears.h"
 #include "utils/buffer.h"
-#include "utils/dict.h"
 #ifdef WITHPYTHON
 #include <Python.h>
 #endif
@@ -22,69 +21,8 @@ enum AdditionalRecordTypes{
 #endif
 };
 
-enum RecordAllocator{
-    DEFAULT = 1,
-    PYTHON
-};
-
-typedef struct KeysHandlerRecord{
-    RedisModuleKey *keyHandler;
-}KeysHandlerRecord;
-
-typedef struct LongRecord{
-    long num;
-}LongRecord;
-
-typedef struct DoubleRecord{
-    double num;
-}DoubleRecord;
-
-typedef struct StringRecord{
-    size_t len;
-    char* str;
-}StringRecord;
-
-typedef struct ListRecord{
-    Record** records;
-}ListRecord;
-
-#ifdef WITHPYTHON
-typedef struct PythonRecord{
-    PyObject* obj;
-}PythonRecord;
-#endif
-
-typedef struct KeyRecord{
-    char* key;
-    size_t len;
-    Record* record;
-}KeyRecord;
-
-typedef struct HashSetRecord{
-    dict* d;
-}HashSetRecord;
-
-typedef struct Record{
-    union{
-        KeysHandlerRecord keyHandlerRecord;
-        LongRecord longRecord;
-        StringRecord stringRecord;
-        DoubleRecord doubleRecord;
-        ListRecord listRecord;
-        KeyRecord keyRecord;
-        HashSetRecord hashSetRecord;
-#ifdef WITHPYTHON
-        PythonRecord pyRecord;
-#endif
-    };
-    enum RecordType type;
-}Record;
-
 extern Record StopRecord;
 
-int RG_RecordInit();
-void RG_SetRecordAlocator(enum RecordAllocator allocator);
-void RG_DisposeRecord(Record* record);
 void RG_FreeRecord(Record* record);
 enum RecordType RG_RecordGetType(Record* r);
 
