@@ -21,6 +21,7 @@ typedef struct Record Record;
 typedef struct StreamReaderCtx StreamReaderCtx;
 
 enum RecordType{
+    NONE = 0,
     KEY_HANDLER_RECORD = 1,
     LONG_RECORD,
     DOUBLE_RECORD,
@@ -99,7 +100,7 @@ KeysReaderCtx* MODULE_API_FUNC(RedisGears_KeysReaderCtxCreate)(char* match);
 void MODULE_API_FUNC(RedisGears_FreeRecord)(Record* record);
 enum RecordType MODULE_API_FUNC(RedisGears_RecordGetType)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordCreate)();
-void MODULE_API_FUNC(RedisGears_KeyRecordSetKey)(Record* r, char* key, size_t len);
+void MODULE_API_FUNC(RedisGears_KeyRecordSetKey)(Record* r, Record* key);
 void MODULE_API_FUNC(RedisGears_KeyRecordSetVal)(Record* r, Record* val);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordGetVal)(Record* r);
 char* MODULE_API_FUNC(RedisGears_KeyRecordGetKey)(Record* r, size_t* len);
@@ -117,11 +118,12 @@ void MODULE_API_FUNC(RedisGears_DoubleRecordSet)(Record* r, double val);
 Record* MODULE_API_FUNC(RedisGears_LongRecordCreate)(long val);
 long MODULE_API_FUNC(RedisGears_LongRecordGet)(Record* r);
 void MODULE_API_FUNC(RedisGears_LongRecordSet)(Record* r, long val);
-Record* MODULE_API_FUNC(RedisGears_KeyHandlerRecordCreate)(RedisModuleKey* handler);
-RedisModuleKey* MODULE_API_FUNC(RedisGears_KeyHandlerRecordGet)(Record* r);
+Record* MODULE_API_FUNC(RedisGears_KeyHandlerRecordCreate)(RedisModuleString* keyName, enum RecordType recordType);
+RedisModuleString* MODULE_API_FUNC(RedisGears_KeyHandlerRecordGet)(Record* r);
+enum RecordType MODULE_API_FUNC(RedisGears_KeyHandlerRecordGetType)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_HashSetRecordCreate)();
-int MODULE_API_FUNC(RedisGears_HashSetRecordSet)(Record* r, char* key, Record* val);
-Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, char* key);
+int MODULE_API_FUNC(RedisGears_HashSetRecordSet)(Record* r, const char* key, Record* val);
+Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, const char* key);
 char** MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r, size_t* len);
 void MODULE_API_FUNC(RedisGears_HashSetRecordFreeKeysArray)(char** keyArr);
 
@@ -280,6 +282,7 @@ static int RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(LongRecordSet);
     REDISLAMBDA_MODULE_INIT_FUNCTION(KeyHandlerRecordCreate);
     REDISLAMBDA_MODULE_INIT_FUNCTION(KeyHandlerRecordGet);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyHandlerRecordGetType);
     REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordCreate);
     REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordSet);
     REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordGet);

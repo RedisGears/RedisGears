@@ -147,6 +147,28 @@ static Record* ValueToRecordMapper(RedisModuleCtx* rctx, Record* record, RedisMo
     }
 }
 
+static enum RecordType KeysReader_KeyTypeToRecordType(int type){
+    switch(type){
+    case REDISMODULE_KEYTYPE_EMPTY:
+        return NONE;
+    case REDISMODULE_KEYTYPE_STRING:
+        return STRING_RECORD;
+    case REDISMODULE_KEYTYPE_LIST:
+        return LIST_RECORD;
+    case REDISMODULE_KEYTYPE_HASH:
+        return HASH_SET_RECORD;
+    case REDISMODULE_KEYTYPE_SET:
+        return LIST_RECORD;
+    case REDISMODULE_KEYTYPE_ZSET:
+        return LIST_RECORD;
+    case REDISMODULE_KEYTYPE_MODULE:
+        return HASH_SET_RECORD;
+    default:
+        assert(false);
+    }
+    return NONE;
+}
+
 static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
     if(array_len(readerCtx->pendingRecords) > 0){
         return array_pop(readerCtx->pendingRecords);
@@ -209,7 +231,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
         memcpy(keyCStr, keyStr, keyLen);
         keyCStr[keyLen] = '\0';
 
-        RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
+        RedisGears_KeyRecordSetKey(record, RedisGears_StringRecordCreate(keyCStr, keyLen));
 
         ValueToRecordMapper(rctx, record, keyHandler);
 
@@ -230,7 +252,6 @@ static Record* KeysReader_RaxIndexNext(RedisModuleCtx* rctx, void* ctx){
         readerCtx->iter1 = RedisModule_DictIteratorStartC(keysDict, "^", NULL, 0);
     }
 
-    Record* r;
     const char* key = RedisModule_DictNextC(readerCtx->iter1, NULL, NULL);
     if(key == NULL){
       return NULL;
@@ -244,7 +265,7 @@ static Record* KeysReader_RaxIndexNext(RedisModuleCtx* rctx, void* ctx){
     }
 
     Record* record = RedisGears_KeyRecordCreate();
-    RedisGears_KeyRecordSetKey(record, RG_STRDUP(key), strlen(key));
+    RedisGears_KeyRecordSetKey(record, RedisGears_StringRecordCreate(RG_STRDUP(key), strlen(key)));
     ValueToRecordMapper(rctx, record, keyHandler);
 
     RedisModule_FreeString(rctx, keyRedisStr);
@@ -281,7 +302,7 @@ static Record* KeysReader_SearchIndexNext(RedisModuleCtx* rctx, void* ctx){
 	}
 
 	Record* record = RedisGears_KeyRecordCreate();
-	RedisGears_KeyRecordSetKey(record, RG_STRDUP(key), strlen(key));
+	RedisGears_KeyRecordSetKey(record, RedisGears_StringRecordCreate(RG_STRDUP(key), strlen(key)));
 	ValueToRecordMapper(rctx, record, keyHandler);
 
 	RedisModule_FreeString(rctx, keyRedisStr);

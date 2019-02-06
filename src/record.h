@@ -27,8 +27,13 @@ enum RecordAllocator{
     PYTHON
 };
 
+typedef Record* (*ExtractIntValCallback)(Record* r, int val);
+typedef Record* (*ExtractStringValCallback)(Record* r, const char* val);
+typedef char* (*ToStrCallback)(Record* r);
+
 typedef struct KeysHandlerRecord{
-    char* key;
+    RedisModuleString* key;
+    enum RecordType keyType;
 }KeysHandlerRecord;
 
 typedef struct LongRecord{
@@ -55,8 +60,7 @@ typedef struct PythonRecord{
 #endif
 
 typedef struct KeyRecord{
-    char* key;
-    size_t len;
+    Record* key;
     Record* record;
 }KeyRecord;
 
@@ -78,6 +82,9 @@ typedef struct Record{
 #endif
     };
     enum RecordType type;
+    ExtractIntValCallback extractInt;
+    ExtractStringValCallback extractStr;
+    ToStrCallback toStr;
 }Record;
 
 extern Record StopRecord;
@@ -90,7 +97,7 @@ enum RecordType RG_RecordGetType(Record* r);
 
 /** key record api **/
 Record* RG_KeyRecordCreate();
-void RG_KeyRecordSetKey(Record* r, char* key, size_t len);
+void RG_KeyRecordSetKey(Record* r, Record* key);
 void RG_KeyRecordSetVal(Record* r, Record* val);
 Record* RG_KeyRecordGetVal(Record* r);
 char* RG_KeyRecordGetKey(Record* r, size_t* len);
@@ -119,14 +126,15 @@ void RG_LongRecordSet(Record* r, long val);
 
 /** hash set record api **/
 Record* RG_HashSetRecordCreate();
-int RG_HashSetRecordSet(Record* r, char* key, Record* val);
-Record* RG_HashSetRecordGet(Record* r, char* key);
+int RG_HashSetRecordSet(Record* r, const char* key, Record* val);
+Record* RG_HashSetRecordGet(Record* r, const char* key);
 char** RG_HashSetRecordGetAllKeys(Record* r, size_t* len);
 void RG_HashSetRecordFreeKeysArray(char** keyArr);
 
 /* todo: think if we can removed this!! */
-Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler);
-RedisModuleKey* RG_KeyHandlerRecordGet(Record* r);
+Record* RG_KeyHandlerRecordCreate(RedisModuleString* key, enum RecordType rt);
+RedisModuleString* RG_KeyHandlerRecordGet(Record* r);
+enum RecordType RG_KeyHandlerRecordGetType(Record* r);
 
 void RG_SerializeRecord(BufferWriter* bw, Record* r);
 Record* RG_DeserializeRecord(BufferReader* br);
@@ -136,6 +144,10 @@ Record* RG_PyObjRecordCreate();
 PyObject* RG_PyObjRecordGet(Record* r);
 void RG_PyObjRecordSet(Record* r, PyObject* obj);
 #endif
+
+char* RG_RecordToStr(Record* r);
+Record* RG_RecordExtractIntVal(Record* r, int val);
+Record* RG_RecordExtractStrVal(Record* r, const char* val);
 
 
 

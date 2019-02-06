@@ -62,7 +62,7 @@ static PyObject* accumulateby(PyObject *self, PyObject *args){
 	Py_INCREF(extractor);
 	Py_INCREF(accumulator);
 	RSM_AccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
-	RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+//	RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
 	Py_INCREF(self);
 	return self;
 }
@@ -78,7 +78,7 @@ static PyObject* groupby(PyObject *self, PyObject *args){
     Py_INCREF(extractor);
     Py_INCREF(reducer);
     RSM_GroupBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackReducer, reducer);
-    RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+//    RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     Py_INCREF(self);
     return self;
 }
@@ -259,12 +259,42 @@ typedef struct PyRecord{
    Record r;
 } PyRecord;
 
+typedef enum OwnershipType{
+    TAKE_OWNERSHIP, SHARE_OWENERSHIP, LEAVE_OWNERSHIP
+}OwnershipType;
+
+static inline Record* PyRecord_ToRecord(PyObject* p, OwnershipType ownershipType);
+static inline PyObject* PyRecord_ToPyRecord(Record* r, OwnershipType ownershipType);
+
 static PyObject* PyRecord_GetItem(PyObject *self, PyObject *obj){
-    return PyString_FromString("PyRecord");
+    Record* r = PyRecord_ToRecord(self, LEAVE_OWNERSHIP);
+    if(PyObject_TypeCheck(obj, &PyInt_Type)){
+        int val = (int)PyInt_AsLong(obj);
+        PyThreadState *_save = PyEval_SaveThread();
+        Record* ret = RG_RecordExtractIntVal(r, val);
+        PyEval_RestoreThread(_save);
+        if(!ret){
+            return Py_None;
+        }
+        PyObject* retPyObj = PyRecord_ToPyRecord(ret, SHARE_OWENERSHIP);
+        return retPyObj;
+    }
+    if(PyObject_TypeCheck(obj, &PyString_Type)){
+        char* str = PyString_AsString(obj);
+        PyThreadState *_save = PyEval_SaveThread();
+        Record* ret = RG_RecordExtractStrVal(r, str);
+        PyEval_RestoreThread(_save);
+        if(!ret){
+            return Py_None;
+        }
+        PyObject* retPyObj = PyRecord_ToPyRecord(ret, SHARE_OWENERSHIP);
+        return retPyObj;
+    }
+    return Py_None;
 }
 
 static Py_ssize_t PyRecord_Length(PyObject* obj){
-
+    return 1;
 }
 
 PyMethodDef PyRecordMethods[] = {
@@ -273,7 +303,13 @@ PyMethodDef PyRecordMethods[] = {
 };
 
 static PyObject *PyRecord_ToStr(PyObject * pyObj){
-    return PyString_FromString("PyRecord");
+    Record* r = PyRecord_ToRecord(pyObj, LEAVE_OWNERSHIP);
+    PyThreadState *_save = PyEval_SaveThread();
+    char* str = RG_RecordToStr(r);
+    PyEval_RestoreThread(_save);
+    PyObject *ret = PyString_FromString(str);
+    RG_FREE(str);
+    return ret;
 }
 
 static void PyRecord_Destruct(PyObject *pyObj){
@@ -311,10 +347,6 @@ static PyTypeObject PyRecordType = {
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
     "PyRecord",         /* tp_doc */
 };
-
-typedef enum OwnershipType{
-    TAKE_OWNERSHIP, SHARE_OWENERSHIP, LEAVE_OWNERSHIP
-}OwnershipType;
 
 static inline PyObject* PyRecord_ToPyRecord(Record* r, OwnershipType ownershipType){
     if(RedisGears_RecordGetType(r) == PY_RECORD){

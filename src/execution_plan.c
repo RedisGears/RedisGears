@@ -431,7 +431,8 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
         goto end;
     }
     r = RedisGears_KeyRecordCreate();
-    RedisGears_KeyRecordSetKey(r, buff, buffLen);
+    Record* key = RedisGears_StringRecordCreate(buff, buffLen);
+    RedisGears_KeyRecordSetKey(r, key);
     RedisGears_KeyRecordSetVal(r, record);
 end:
 	clock_gettime(CLOCK_REALTIME, &end);
@@ -460,8 +461,8 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
             Record* r = NULL;
             if(!entry){
                 r = RedisGears_KeyRecordCreate();
-                RedisGears_KeyRecordSetKey(r, key, keyLen);
-                RedisGears_KeyRecordSetKey(record, NULL, 0);
+                RedisGears_KeyRecordSetKey(r, record->keyRecord.key);
+                RedisGears_KeyRecordSetKey(record, NULL);
                 Record* val  = RedisGears_ListRecordCreate(GROUP_RECORD_INIT_LEN);
                 RedisGears_KeyRecordSetVal(r, val);
                 dictAdd(step->group.d, key, r);
@@ -738,7 +739,8 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		}
 		if(!keyRecord){
 			keyRecord = RedisGears_KeyRecordCreate();
-			RedisGears_KeyRecordSetKey(keyRecord, RG_STRDUP(key), strlen(key));
+			Record* keyRec = RedisGears_StringRecordCreate(RG_STRDUP(key), strlen(key));
+			RedisGears_KeyRecordSetKey(keyRecord, keyRec);
 			dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
 		}
 		RedisGears_KeyRecordSetVal(keyRecord, accumulator);

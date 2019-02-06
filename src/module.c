@@ -302,6 +302,7 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(LongRecordSet, registerApiCallback);
     REGISTER_API(KeyHandlerRecordCreate, registerApiCallback);
     REGISTER_API(KeyHandlerRecordGet, registerApiCallback);
+    REGISTER_API(KeyHandlerRecordGetType, registerApiCallback);
     REGISTER_API(HashSetRecordCreate, registerApiCallback);
     REGISTER_API(HashSetRecordSet, registerApiCallback);
     REGISTER_API(HashSetRecordGet, registerApiCallback);
