@@ -160,12 +160,12 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
 
 	if (RedisModule_CreateCommand(ctx, "rg.configget", GearsCOnfig_Get, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.configget");
-		return false;
+		return REDISMODULE_ERR;
 	}
 
 	if (RedisModule_CreateCommand(ctx, "rg.configset", GearsCOnfig_Set, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.configset");
-		return false;
+		return REDISMODULE_ERR;
 	}
 
 	ArgsIterator iter = {
@@ -182,7 +182,7 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
 			if(strcasecmp(configVal, val->name) == 0){
 				if(!val->setter(&iter)){
 					RedisModule_Log(ctx, "warning", "failed reading config value %s", configVal);
-					return false;
+					return REDISMODULE_ERR;
 				}
 				found = true;
 				break;
@@ -190,11 +190,11 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
 		}
 		if(!found){
 			RedisModule_Log(ctx, "warning", "unknown config value %s", configVal);
-			return false;
+			return REDISMODULE_ERR;
 		}
 	}
 
 	GearsConfig_Print(ctx);
-	return true;
+	return REDISMODULE_OK;
 }
 

@@ -391,17 +391,17 @@ static int KeysReader_IndexAllKeysInRedisearch(RedisModuleCtx *ctx, RedisModuleS
 	return REDISMODULE_OK;
 }
 
-bool KeysReader_Initialize(RedisModuleCtx* ctx){
+int KeysReader_Initialize(RedisModuleCtx* ctx){
 	if (RedisModule_CreateCommand(ctx, "rg.redisearchkeysindex", KeysReader_IndexAllKeysInRedisearch, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.redisearchkeysindex");
-		return false;
+		return REDISMODULE_ERR;
 	}
 	if (RedisModule_CreateCommand(ctx, "rg.raxkeysindex", KeysReader_IndexAllKeysInRax, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 	    RedisModule_Log(ctx, "warning", "could not register command rg.raxkeysindex");
-        return false;
+        return REDISMODULE_ERR;
 	}
 
-	return true;
+	return REDISMODULE_OK;
 }
 
 Reader* KeysReader(void* arg){

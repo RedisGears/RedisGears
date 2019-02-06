@@ -11,7 +11,7 @@
 #include "redismodule.h"
 #include <stdbool.h>
 
-bool KeysReader_Initialize(RedisModuleCtx* ctx);
+int KeysReader_Initialize(RedisModuleCtx* ctx);
 
 
 #endif /* SRC_KEYS_READER_H_ */

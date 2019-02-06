@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include "redismodule.h"
 
+#define REDISGEARS_LLAPI_VERSION 1
+
 #define MODULE_API_FUNC(x) (*x)
 
 typedef struct ExecutionPlan ExecutionPlan;
@@ -203,13 +205,17 @@ long long MODULE_API_FUNC(RedisGears_GetTotalDuration)(ExecutionPlan* starCtx);
 long long MODULE_API_FUNC(RedisGears_GetReadDuration)(ExecutionPlan* starCtx);
 void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* starCtx);
 
+int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
+
 #define REDISLAMBDA_MODULE_INIT_FUNCTION(name) \
         if (RedisModule_GetApi("RedisGears_" #name, ((void **)&RedisGears_ ## name))) { \
             printf("could not initialize RedisGears_" #name "\r\n");\
-            return false; \
+            return REDISMODULE_ERR; \
         }
 
-static bool RedisGears_Initialize(){
+static int RedisGears_Initialize(){
+    REDISLAMBDA_MODULE_INIT_FUNCTION(GetLLApiVersion);
+
     REDISLAMBDA_MODULE_INIT_FUNCTION(CreateType);
     REDISLAMBDA_MODULE_INIT_FUNCTION(BWWriteLong);
     REDISLAMBDA_MODULE_INIT_FUNCTION(BWWriteString);
@@ -283,7 +289,12 @@ static bool RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(GetTotalDuration);
     REDISLAMBDA_MODULE_INIT_FUNCTION(GetReadDuration);
 
-    return true;
+
+
+    if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
+        return REDISMODULE_ERR;
+    }
+    return REDISMODULE_OK;
 }
 
 #endif /* SRC_REDISGEARG_H_ */

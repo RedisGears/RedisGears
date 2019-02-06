@@ -38,6 +38,10 @@
         return false;\
     }
 
+static int RG_GetLLApiVersion(){
+    return REDISGEARS_LLAPI_VERSION;
+}
+
 static int RG_RegisterReader(char* name, RedisGears_ReaderCallback reader){
     return ReadersMgmt_Add(name, reader, NULL);
 }
@@ -232,6 +236,8 @@ static long long RG_GetReadDuration(ExecutionPlan* ep){
 
 
 static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcname, void *funcptr)){
+    REGISTER_API(GetLLApiVersion, registerApiCallback);
+
     REGISTER_API(CreateType, registerApiCallback);
     REGISTER_API(BWWriteLong, registerApiCallback);
     REGISTER_API(BWWriteString, registerApiCallback);
@@ -341,12 +347,12 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         }
     }
 
-    if(!RedisGears_Initialize()){
+    if(RedisGears_Initialize() != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not initialize RedisGears api");
         return REDISMODULE_ERR;
     }
 
-    if(!GearsConfig_Init(ctx, argv, argc)){
+    if(GearsConfig_Init(ctx, argv, argc) != REDISMODULE_OK){
     	RedisModule_Log(ctx, "warning", "could not initialize gears config");
     	return REDISMODULE_ERR;
     }
@@ -365,7 +371,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 		globals.rediSearchLoaded= true;
 	}
 
-    if(!KeysReader_Initialize(ctx)){
+    if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
     	RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
 		return REDISMODULE_ERR;
     }
