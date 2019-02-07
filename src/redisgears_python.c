@@ -559,6 +559,9 @@ static void gearsTimeEventCallback(RedisModuleCtx *ctx, void *data){
 }
 
 static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
+    if(PyTuple_Size(args) != 2){
+        return Py_False;
+    }
     PyObject* timeInSec = PyTuple_GetItem(args, 0);
     if(!PyObject_TypeCheck(timeInSec, &PyInt_Type)) {
         return Py_False;
