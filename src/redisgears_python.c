@@ -17,6 +17,7 @@ static PyObject* pyGlobals;
 
 static RedisModuleCtx* currentCtx = NULL;
 static bool blockingExecute = true;
+static bool executionTriggered = false;
 
 #define PYTHON_ERROR "error running python code"
 
@@ -181,6 +182,7 @@ static PyObject* run(PyObject *self, PyObject *args){
         regexStr = PyString_AsString(regex);
     }
     ExecutionPlan* ep = RSM_Run(pfep->fep, RG_STRDUP(regexStr), NULL, NULL);
+    executionTriggered = true;
     if(!currentCtx){
         RedisGears_RegisterExecutionDoneCallback(ep, dropExecutionOnDone);
     }
@@ -203,6 +205,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
         regexStr = PyString_AsString(regex);
     }
     int status = RSM_Register(pfep->fep, regexStr);
+    executionTriggered = true;
     if(!currentCtx){
         return Py_None;
     }
@@ -565,6 +568,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     TimerData* td = RG_ALLOC(sizeof(*td));
     td->period = period;
     td->callback = callback;
+    Py_INCREF(callback);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_CreateTimer(ctx, period * 1000, gearsTimeEventCallback, td);
     return Py_True;
@@ -605,6 +609,7 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
         }
     }
 
+    executionTriggered = false;
 
     PyGILState_STATE state = PyGILState_Ensure();
     if(PyRun_SimpleString(script) == -1){
@@ -615,6 +620,11 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
     }
     PyGILState_Release(state);
 
+    if(!executionTriggered){
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
+
+    executionTriggered = false;
     blockingExecute = true;
     currentCtx = NULL;
 
