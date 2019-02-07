@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "lock_handler.h"
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 list* streamsRegistration = NULL;
@@ -107,9 +108,9 @@ static void StreamReader_Free(void* ctx){
 static Record* StreamReader_Next(RedisModuleCtx* rctx, void* ctx){
     StreamReaderCtx* readerCtx = ctx;
     if(!readerCtx->records){
-        RedisModule_ThreadSafeContextLock(rctx);
+        LockHandler_Acquire(rctx);
         StreamReader_ReadRecords(rctx, readerCtx);
-        RedisModule_ThreadSafeContextUnlock(rctx);
+        LockHandler_Realse(rctx);
     }
     if(array_len(readerCtx->records) == 0){
         return NULL;

@@ -13,6 +13,7 @@
 #include "redisgears.h"
 #include "redisgears_memory.h"
 #include <event2/event.h>
+#include "lock_handler.h"
 
 char* stepsNames[] = {
         "NONE",
@@ -543,9 +544,9 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
             RG_SerializeRecord(&bw, record);
             RedisGears_FreeRecord(record);
 
-            RedisModule_ThreadSafeContextLock(rctx);
+            LockHandler_Acquire(rctx);
             Cluster_SendMsgM(shardIdToSendRecord, ExecutionPlan_OnRepartitionRecordReceived, buff->buff, buff->size);
-            RedisModule_ThreadSafeContextUnlock(rctx);
+            LockHandler_Realse(rctx);
 
             Buffer_Clear(buff);
         }
@@ -554,9 +555,9 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
     RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
     RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
-    RedisModule_ThreadSafeContextLock(rctx);
+    LockHandler_Acquire(rctx);
     Cluster_SendMsgM(NULL, ExecutionPlan_DoneRepartition, buff->buff, buff->size);
-    RedisModule_ThreadSafeContextUnlock(rctx);
+    LockHandler_Realse(rctx);
 
     Buffer_Free(buff);
     if(*err){
@@ -612,9 +613,9 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			RG_SerializeRecord(&bw, record);
 			RedisGears_FreeRecord(record);
 
-			RedisModule_ThreadSafeContextLock(rctx);
+			LockHandler_Acquire(rctx);
 			Cluster_SendMsgM(ep->id, ExecutionPlan_CollectOnRecordReceived, buff->buff, buff->size);
-			RedisModule_ThreadSafeContextUnlock(rctx);
+			LockHandler_Realse(rctx);
 
 			Buffer_Clear(buff);
 		}
@@ -641,9 +642,9 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 		RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
 		RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
-		RedisModule_ThreadSafeContextLock(rctx);
+		LockHandler_Acquire(rctx);
 		Cluster_SendMsgM(ep->id, ExecutionPlan_CollectDoneSendingRecords, buff->buff, buff->size);
-		RedisModule_ThreadSafeContextUnlock(rctx);
+		LockHandler_Realse(rctx);
 		Buffer_Free(buff);
 		return NULL;
 	}
@@ -813,9 +814,9 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
 }
 
 static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
-    RedisModule_ThreadSafeContextLock(rctx);
+    LockHandler_Acquire(rctx);
     ep->results = array_append(ep->results, record);
-    RedisModule_ThreadSafeContextUnlock(rctx);
+    LockHandler_Realse(rctx);
 }
 
 static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
@@ -881,7 +882,7 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 	ep->executionDuration += readDuration;
 
 	if(isDone){
-		RedisModule_ThreadSafeContextLock(rctx);
+	    LockHandler_Acquire(rctx);
 		ep->isDone = true;
 		FreePrivateData freeC = ep->freeCallback;
 		void* pd = ep->privateData;
@@ -891,7 +892,7 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 		if(freeC){
 			freeC(pd);
 		}
-		RedisModule_ThreadSafeContextUnlock(rctx);
+		LockHandler_Realse(rctx);
 	}
 	RedisModule_FreeThreadSafeContext(rctx);
 }

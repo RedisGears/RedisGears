@@ -5,6 +5,7 @@
 #include "record.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "lock_handler.h"
 
 void KeyRecordWriter_WriteValueByType(RedisModuleCtx* rctx, Record *record, void* arg, char** err, RedisModuleKey* keyHandler){
     char* str;
@@ -26,7 +27,7 @@ void KeyRecordWriter(RedisModuleCtx* rctx, Record *record, void* arg, char** err
         *err = "key record writer can only write key records.";
         return;
     }
-    RedisModule_ThreadSafeContextLock(rctx);
+    LockHandler_Acquire(rctx);
     size_t len;
     char* key = RedisGears_KeyRecordGetKey(record, &len);
     RedisModuleString* keyStr = RedisModule_CreateString(rctx, key, len);
@@ -39,5 +40,5 @@ void KeyRecordWriter(RedisModuleCtx* rctx, Record *record, void* arg, char** err
     KeyRecordWriter_WriteValueByType(rctx, val, arg, err, keyHandler);
     RedisModule_CloseKey(keyHandler);
     RedisModule_FreeString(rctx, keyStr);
-    RedisModule_ThreadSafeContextUnlock(rctx);
+    LockHandler_Realse(rctx);
 }

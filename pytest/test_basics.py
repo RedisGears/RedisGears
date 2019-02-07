@@ -152,3 +152,32 @@ def testBasicStreamProcessing(env):
         env.cmd('rg.dropexecution', e[1])
     env.assertEqual(conn.get('f1'), 'v1')
     env.assertEqual(conn.get('f2'), 'v2')
+
+
+def testTimeEvent(env):
+    conn = getConnectionByEnv(env)
+    conn.set('x', '1')
+    conn.set('y', '1')
+    conn.set('z', '1')
+    script = '''
+def defineVar(x):
+    global var
+    var = 1
+def func(x):
+    global var
+    var += 1
+    redisgears.executeCommand('set',x['key'], var)
+def OnTime():
+    gearsCtx().foreach(func).collect().run()
+gearsCtx().map(defineVar).collect().run()
+redisgears.registerTimeEvent(2, OnTime)
+    '''
+    id = env.cmd('rg.pyexecute', script, 'UNBLOCKING')
+    env.assertEqual(int(conn.get('x')), 1)
+    env.assertEqual(int(conn.get('y')), 1)
+    env.assertEqual(int(conn.get('z')), 1)
+    time.sleep(3)
+    env.assertTrue(int(conn.get('x')) >= 2)
+    env.assertTrue(int(conn.get('y')) >= 2)
+    env.assertTrue(int(conn.get('z')) >= 2)
+    env.cmd('rg.dropexecution', id)

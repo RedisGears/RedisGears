@@ -27,6 +27,7 @@
 #include "redisearch_api.h"
 #include "keys_reader.h"
 #include <stdbool.h>
+#include "lock_handler.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -339,6 +340,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 	RedisModule_Log(ctx, "notice", "RediGears version %d.%d.%d, git_sha=%s",
 			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
 			REDISGEARS_GIT_SHA);
+
+	if(LockHandler_Initialize() != REDISMODULE_OK){
+	    RedisModule_Log(ctx, "warning", "could not initialize lock handler");
+        return REDISMODULE_ERR;
+	}
 
     if(!apiRegistered){
         if(!RedisGears_RegisterApi(moduleRegisterApi)){

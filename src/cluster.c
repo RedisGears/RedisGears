@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <redisgears_memory.h>
+#include "lock_handler.h"
 
 #include <libevent.h>
 
@@ -351,20 +352,20 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
         break;
     case CLUSTER_REFRESH_MSG:
         ctx = RedisModule_GetThreadSafeContext(msg->clusterRefresh.bc);
-        RedisModule_ThreadSafeContextLock(ctx);
+        LockHandler_Acquire(ctx);
         Cluster_Refresh(ctx);
         RedisModule_ReplyWithSimpleString(ctx, "OK");
         RedisModule_UnblockClient(msg->clusterRefresh.bc, NULL);
-        RedisModule_ThreadSafeContextUnlock(ctx);
+        LockHandler_Realse(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
         break;
     case CLUSTER_SET_MSG:
         ctx = RedisModule_GetThreadSafeContext(msg->clusterSet.bc);
-        RedisModule_ThreadSafeContextLock(ctx);
+        LockHandler_Acquire(ctx);
         Cluster_Set(ctx, msg->clusterSet.argv, msg->clusterSet.argc);
         RedisModule_ReplyWithSimpleString(ctx, "OK");
         RedisModule_UnblockClient(msg->clusterRefresh.bc, NULL);
-        RedisModule_ThreadSafeContextUnlock(ctx);
+        LockHandler_Realse(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
         break;
     default:

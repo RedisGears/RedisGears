@@ -6,6 +6,7 @@
 #include "redisgears_memory.h"
 #include "redisearch_api.h"
 #include "globals.h"
+#include "lock_handler.h"
 
 #define KEYS_NAME_FIELD "key_name"
 #define KEYS_SPEC_NAME "keys_spec"
@@ -154,11 +155,11 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     if(readerCtx->isDone){
         return NULL;
     }
-    RedisModule_ThreadSafeContextLock(rctx);
+    LockHandler_Acquire(rctx);
     RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "10000", "MATCH", readerCtx->match);
     if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
         if(reply) RedisModule_FreeCallReply(reply);
-        RedisModule_ThreadSafeContextUnlock(rctx);
+        LockHandler_Realse(rctx);
         return NULL;
     }
 
@@ -166,7 +167,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
 
     if (RedisModule_CallReplyLength(reply) < 1) {
         RedisModule_FreeCallReply(reply);
-        RedisModule_ThreadSafeContextUnlock(rctx);
+        LockHandler_Realse(rctx);
         return NULL;
     }
 
@@ -188,7 +189,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
     if(RedisModule_CallReplyLength(keysReply) < 1){
         RedisModule_FreeCallReply(reply);
-        RedisModule_ThreadSafeContextUnlock(rctx);
+        LockHandler_Realse(rctx);
         return NULL;
     }
     for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
@@ -219,7 +220,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
         RedisModule_CloseKey(keyHandler);
     }
     RedisModule_FreeCallReply(reply);
-    RedisModule_ThreadSafeContextUnlock(rctx);
+    LockHandler_Realse(rctx);
     return array_pop(readerCtx->pendingRecords);
 }
 
@@ -236,7 +237,7 @@ static Record* KeysReader_RaxIndexNext(RedisModuleCtx* rctx, void* ctx){
       return NULL;
     }
 
-    RedisModule_ThreadSafeContextLock(rctx);
+    LockHandler_Acquire(rctx);
     RedisModuleString* keyRedisStr = RedisModule_CreateString(rctx, key, strlen(key));
     RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, keyRedisStr, REDISMODULE_READ);
     if(!keyHandler){
@@ -249,7 +250,7 @@ static Record* KeysReader_RaxIndexNext(RedisModuleCtx* rctx, void* ctx){
 
     RedisModule_FreeString(rctx, keyRedisStr);
     RedisModule_CloseKey(keyHandler);
-    RedisModule_ThreadSafeContextUnlock(rctx);
+    LockHandler_Realse(rctx);
 
     return record;
 }
@@ -273,7 +274,7 @@ static Record* KeysReader_SearchIndexNext(RedisModuleCtx* rctx, void* ctx){
 	if(key == NULL){
 		return NULL;
 	}
-	RedisModule_ThreadSafeContextLock(rctx);
+	LockHandler_Acquire(rctx);
 	RedisModuleString* keyRedisStr = RedisModule_CreateString(rctx, key, strlen(key));
 	RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, keyRedisStr, REDISMODULE_READ);
 	if(!keyHandler){
@@ -286,7 +287,7 @@ static Record* KeysReader_SearchIndexNext(RedisModuleCtx* rctx, void* ctx){
 
 	RedisModule_FreeString(rctx, keyRedisStr);
 	RedisModule_CloseKey(keyHandler);
-	RedisModule_ThreadSafeContextUnlock(rctx);
+	LockHandler_Realse(rctx);
 
 	return record;
 }
@@ -333,13 +334,11 @@ static int KeysReader_IndexAllKeysInRax(RedisModuleCtx *ctx, RedisModuleString *
 
     Reader* reader = KeysReader(RG_STRDUP("*"));
     Record* r = NULL;
-    RedisModule_ThreadSafeContextUnlock(ctx);
     while((r = reader->next(ctx, reader->ctx))){
       const char* keyName = RedisGears_KeyRecordGetKey(r, NULL);
       RedisModule_DictSetC(keysDict, (char*)keyName, strlen(keyName), NULL);
       RedisGears_FreeRecord(r);
     }
-    RedisModule_ThreadSafeContextLock(ctx);
     reader->free(reader->ctx);
     RG_FREE(reader);
 
@@ -370,7 +369,6 @@ static int KeysReader_IndexAllKeysInRedisearch(RedisModuleCtx *ctx, RedisModuleS
 
 	Reader* reader = KeysReader(RG_STRDUP("*"));
 	Record* r = NULL;
-	RedisModule_ThreadSafeContextUnlock(ctx);
 	while((r = reader->next(ctx, reader->ctx))){
 		const char* keyName = RedisGears_KeyRecordGetKey(r, NULL);
 		RediSearch_FieldVal val = {
@@ -380,7 +378,6 @@ static int KeysReader_IndexAllKeysInRedisearch(RedisModuleCtx *ctx, RedisModuleS
 		RediSearch_IndexSpecAddDocument(keyIdx, keyName, &val, 1);
 		RedisGears_FreeRecord(r);
 	}
-	RedisModule_ThreadSafeContextLock(ctx);
 	reader->free(reader->ctx);
 	RG_FREE(reader);
 

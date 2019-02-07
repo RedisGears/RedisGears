@@ -10,6 +10,7 @@
 #include <redisgears_memory.h>
 #include <redisgears_python.h>
 #include "utils/arr_rm_alloc.h"
+#include "lock_handler.h"
 
 static PyObject* pFunc;
 static PyObject* pyGlobals;
@@ -168,6 +169,10 @@ static void onDone(ExecutionPlan* ep, void* privateData){
     RedisModule_FreeThreadSafeContext(rctx);
 }
 
+static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
+    RedisGears_DropExecution(ep);
+}
+
 static PyObject* run(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     char* regexStr = "*";
@@ -176,7 +181,10 @@ static PyObject* run(PyObject *self, PyObject *args){
         regexStr = PyString_AsString(regex);
     }
     ExecutionPlan* ep = RSM_Run(pfep->fep, RG_STRDUP(regexStr), NULL, NULL);
-    if(!blockingExecute){
+    if(!currentCtx){
+        RedisGears_RegisterExecutionDoneCallback(ep, dropExecutionOnDone);
+    }
+    else if(!blockingExecute){
         const char* id = RedisGears_GetId(ep);
         RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
     }else{
@@ -195,6 +203,9 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
         regexStr = PyString_AsString(regex);
     }
     int status = RSM_Register(pfep->fep, regexStr);
+    if(!currentCtx){
+        return Py_None;
+    }
     if(status){
         RedisModule_ReplyWithSimpleString(currentCtx, "OK");
     }else{
@@ -305,7 +316,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     PyThreadState *_save = PyEval_SaveThread();
-    RedisModule_ThreadSafeContextLock(rctx);
+    LockHandler_Acquire(rctx);
     PyEval_RestoreThread(_save);
 
     RedisModule_AutoMemory(rctx);
@@ -316,8 +327,10 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     RedisModuleString** argements = array_new(RedisModuleString*, 10);
     for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
         PyObject* argument = PyTuple_GetItem(args, i);
-        char* argumentStr = PyString_AsString(argument);
-        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentStr, strlen(argumentStr));
+        PyObject* argumentStr = PyObject_Str(argument);
+        char* argumentCStr = PyString_AsString(argumentStr);
+        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, strlen(argumentCStr));
+        Py_DECREF(argumentStr);
         argements = array_append(argements, argumentRedisStr);
     }
 
@@ -330,7 +343,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     array_free(argements);
 
-    RedisModule_ThreadSafeContextUnlock(rctx);
+    LockHandler_Realse(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
     return res;
 }
@@ -483,7 +496,7 @@ static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
     char* keyNameStr = PyString_AsString(keyName);
 
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisModule_ThreadSafeContextLock(ctx);
+    LockHandler_Acquire(ctx);
 
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
@@ -493,7 +506,7 @@ static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
 
     RedisModule_FreeString(ctx, keyRedisStr);
     RedisModule_CloseKey(key);
-    RedisModule_ThreadSafeContextUnlock(ctx);
+    LockHandler_Realse(ctx);
     RedisModule_FreeThreadSafeContext(ctx);
 
     PyGraphRunner* pyg = PyObject_New(PyGraphRunner, &PyGraphRunnerType);
@@ -527,6 +540,36 @@ static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
     return (PyObject*)pyt;
 }
 
+typedef struct TimerData{
+    long period;
+    PyObject* callback;
+}TimerData;
+
+static void gearsTimeEventCallback(RedisModuleCtx *ctx, void *data){
+    TimerData* td = data;
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* pArgs = PyTuple_New(0);
+    PyObject_CallObject(td->callback, pArgs);
+    Py_DECREF(pArgs);
+    PyGILState_Release(state);
+    RedisModule_CreateTimer(ctx, td->period * 1000, gearsTimeEventCallback, td);
+}
+
+static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
+    PyObject* timeInSec = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(timeInSec, &PyInt_Type)) {
+        return Py_False;
+    }
+    long period = PyInt_AsLong(timeInSec);
+    PyObject* callback = PyTuple_GetItem(args, 1);
+    TimerData* td = RG_ALLOC(sizeof(*td));
+    td->period = period;
+    td->callback = callback;
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_CreateTimer(ctx, period * 1000, gearsTimeEventCallback, td);
+    return Py_True;
+}
+
 PyMethodDef EmbMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
@@ -537,6 +580,7 @@ PyMethodDef EmbMethods[] = {
     {"graphRunnerAddOutput", graphRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
     {"graphRunnerRun", graphRunnerRun, METH_VARARGS, "run graph runner"},
     {"tensorToFlatList", tensorToFlatList, METH_VARARGS, "turning tensor into flat list"},
+    {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -572,6 +616,7 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
     PyGILState_Release(state);
 
     blockingExecute = true;
+    currentCtx = NULL;
 
     return REDISMODULE_OK;
 }
@@ -587,6 +632,12 @@ void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* 
     PyTuple_SetItem(pArgs, 0, obj);
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
+    if(!ret){
+        PyErr_Print();
+        *err = RG_STRDUP(PYTHON_ERROR);
+        PyGILState_Release(state);
+        return;
+    }
     if(ret != Py_None){
     	Py_DECREF(ret);
     }
