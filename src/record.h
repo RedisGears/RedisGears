@@ -27,6 +27,9 @@ enum RecordAllocator{
     PYTHON
 };
 
+typedef Record* (*Record_Alloc)();
+typedef void (*Record_Dispose)(Record* r);
+typedef void (*Record_Free)(Record* r);
 typedef Record* (*ExtractIntValCallback)(Record* r, int val);
 typedef Record* (*ExtractStringValCallback)(Record* r, const char* val);
 typedef char* (*ToStrCallback)(Record* r);
@@ -85,6 +88,8 @@ typedef struct Record{
     ExtractIntValCallback extractInt;
     ExtractStringValCallback extractStr;
     ToStrCallback toStr;
+    Record_Free free;
+    Record_Dispose dispose;
 }Record;
 
 extern Record StopRecord;

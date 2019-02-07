@@ -297,16 +297,34 @@ static Py_ssize_t PyRecord_Length(PyObject* obj){
     return 1;
 }
 
+Buffer b = {0};
+
+static Py_ssize_t PyRecord_Serialize(PyObject * obj, Py_ssize_t s, void ** buff){
+    Record* r = PyRecord_ToRecord(obj, LEAVE_OWNERSHIP);
+    BufferWriter bw;
+    Buffer_Clear(&b);
+    BufferWriter_Init(&bw, &b);
+    RG_SerializeRecord(&bw, r);
+    *buff = b.buff;
+    return b.size;
+}
+
+static Py_ssize_t PyRecord_Segcountproc(PyObject *obj, Py_ssize_t *s){
+    return 1;
+}
+
 PyMethodDef PyRecordMethods[] = {
 //    {"__getitem__", PyRecord_GetItem, METH_VARARGS, "return an item from the record"},
     {NULL, NULL, 0, NULL}
 };
 
+PyBufferProcs PyRecordSerialize = {
+        .bf_getreadbuffer = PyRecord_Serialize,
+};
+
 static PyObject *PyRecord_ToStr(PyObject * pyObj){
     Record* r = PyRecord_ToRecord(pyObj, LEAVE_OWNERSHIP);
-    PyThreadState *_save = PyEval_SaveThread();
     char* str = RG_RecordToStr(r);
-    PyEval_RestoreThread(_save);
     PyObject *ret = PyString_FromString(str);
     RG_FREE(str);
     return ret;
@@ -324,7 +342,7 @@ PyMappingMethods PyRecordMap = {
         .mp_ass_subscript = 0,
 };
 
-static PyTypeObject PyRecordType = {
+PyTypeObject PyRecordType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "redisgears.PyRecord",       /* tp_name */
     sizeof(PyRecord),          /* tp_basicsize */
@@ -443,9 +461,11 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     RedisModuleString** argements = array_new(RedisModuleString*, 10);
     for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
         PyObject* argument = PyTuple_GetItem(args, i);
-        char* argumentStr = PyString_AsString(argument);
-        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentStr, strlen(argumentStr));
+        PyObject* argumentStr = PyObject_Str(argument);
+        char* argumentCStr = PyString_AsString(argumentStr);
+        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, strlen(argumentCStr));
         argements = array_append(argements, argumentRedisStr);
+        Py_DECREF(argumentStr);
     }
 
     RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "v", argements, array_len(argements));
@@ -814,7 +834,6 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *r
         Py_DECREF(newObj);
     }else{
         record = PyRecord_ToRecord(newObj, TAKE_OWNERSHIP);
-        RG_PyObjRecordSet(record, newObj);
     }
     PyGILState_Release(state);
     return record;
@@ -1122,6 +1141,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
     PyRecordType.tp_methods = PyRecordMethods;
     PyRecordType.tp_as_mapping = &PyRecordMap;
+    PyRecordType.tp_as_buffer = &PyRecordSerialize;
 
     if (PyType_Ready(&PyTensorType) < 0){
         RedisModule_Log(ctx, "warning", "PyTensorType not ready");

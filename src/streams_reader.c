@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "record.h"
+#include "execution_plan.h"
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 list* streamsRegistration = NULL;
@@ -130,7 +132,9 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
                     .lastId = RG_STRDUP(srctx->lastId),
                     .records = NULL,
             };
+            RG_SetRecordAlocator(FlatExecutionPlan_GetAllocator(srctx->fep));
             char* lastStreamId = StreamReader_ReadRecords(ctx, readerCtx);
+            RG_SetRecordAlocator(DEFAULT);
             if(lastStreamId){
                 RG_FREE(srctx->lastId);
                 srctx->lastId = RG_STRDUP(lastStreamId);

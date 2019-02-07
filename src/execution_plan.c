@@ -1479,6 +1479,10 @@ void FlatExecutionPlan_SetAllocator(FlatExecutionPlan* fep, enum RecordAllocator
     fep->allocator = allocator;
 }
 
+enum RecordAllocator FlatExecutionPlan_GetAllocator(FlatExecutionPlan* fep){
+    return fep->allocator;
+}
+
 void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
     fep->reader = FlatExecutionPlan_NewReader(reader);
 }

@@ -207,6 +207,7 @@ long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetAllocator(FlatExecutionPlan* fep, enum RecordAllocator allocator);
+enum RecordAllocator FlatExecutionPlan_GetAllocator(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_Free(ExecutionPlan* ep);

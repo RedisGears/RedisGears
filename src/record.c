@@ -24,10 +24,6 @@ char* RecordStrTypes[] = {
 #endif
 };
 
-typedef Record* (*Record_Alloc)();
-typedef void (*Record_Dispose)(Record* r);
-typedef void (*Record_Free)(Record* r);
-
 pthread_key_t _recordAllocatorKey;
 pthread_key_t _recordDisposeKey;
 pthread_key_t _recordFreeMemoryKey;
@@ -73,22 +69,24 @@ static char* RG_RecordDefaultToStr(Record* r){
 
 static inline Record* RecordAlloc(){
     Record_Alloc alloc = pthread_getspecific(_recordAllocatorKey);
+    Record_Free free = pthread_getspecific(_recordFreeMemoryKey);
+    Record_Dispose dispose = pthread_getspecific(_recordDisposeKey);
     Record* ret = alloc();
     ret->extractInt = NULL;
     ret->extractStr = NULL;
     ret->toStr = RG_RecordDefaultToStr;
+    ret->free = free;
+    ret->dispose = dispose;
     return ret;
 }
 
 static inline void RecordDispose(Record* r){
-    Record_Dispose dispose = pthread_getspecific(_recordDisposeKey);
-    dispose(r);
+    r->dispose(r);
 }
 
 static inline void RecordFree(Record* r){
-    Record_Free free = pthread_getspecific(_recordFreeMemoryKey);
-    if(free){
-        free(r);
+    if(r->free){
+        r->free(r);
     }
 }
 
@@ -365,11 +363,10 @@ enum RecordType RG_KeyHandlerRecordGetType(Record* r){
 #ifdef WITHPYTHON
 
 static char* RG_PyObjRecordToStr(Record* r){
-    if(PyObject_TypeCheck(r->pyRecord.obj, &PyBaseString_Type)) {
-        return PyString_AsString(r->pyRecord.obj);
-    }else{
-        return RG_STRDUP("PY_OBJECT");
-    }
+    PyObject* str = PyObject_Str(r->pyRecord.obj);
+    char* cstr = RG_STRDUP(PyString_AsString(str));
+    Py_DECREF(str);
+    return cstr;
 }
 
 Record* RG_PyObjRecordCreate(){
