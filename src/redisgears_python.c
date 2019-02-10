@@ -19,6 +19,8 @@ static RedisModuleCtx* currentCtx = NULL;
 static bool blockingExecute = true;
 static bool executionTriggered = false;
 
+static PyThreadState *_save;
+
 #define PYTHON_ERROR "error running python code"
 
 static void RedisGearsPy_PyCallbackSerialize(void* arg, BufferWriter* bw);
@@ -226,13 +228,13 @@ PyMethodDef PyFlatExecutionMethods[] = {
     {"batchgroupby", groupby, METH_VARARGS, "batch groupby operation on each record"},
 	{"groupby", accumulateby, METH_VARARGS, "groupby operation on each record"},
     {"collect", collect, METH_VARARGS, "collect all the records to the initiator"},
-    {"foreach", foreach, METH_VARARGS, "collect all the records to the initiator"},
+    {"foreach", foreach, METH_VARARGS, "perform the given callback on each record"},
     {"repartition", repartition, METH_VARARGS, "repartition the records according to the extracted data"},
-    {"flatmap", flatmap, METH_VARARGS, "flat map a the records"},
+    {"flatmap", flatmap, METH_VARARGS, "flat map a record to many records"},
     {"limit", limit, METH_VARARGS, "limit the results to a give size and offset"},
     {"accumulate", accumulate, METH_VARARGS, "accumulate the records to a single record"},
     {"run", run, METH_VARARGS, "start the execution"},
-    {"register", registerExecution, METH_VARARGS, "register the execution on key space notification"},
+    {"register", registerExecution, METH_VARARGS, "register the execution on an event"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -675,7 +677,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
 PyMethodDef EmbMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
-    {"executeCommand", executeCommand, METH_VARARGS, "saving the given key to a give value"},
+    {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
     {"createTensor", createTensor, METH_VARARGS, "creating a tensor object"},
     {"createGraphRunner", creatGraphRunner, METH_VARARGS, "open TF graph by key name"},
     {"graphRunnerAddInput", graphRunnerAddInput, METH_VARARGS, "add input to graph runner"},
@@ -709,14 +711,14 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
     executionTriggered = false;
 
-    PyGILState_STATE state = PyGILState_Ensure();
+    PyEval_RestoreThread(_save);
     if(PyRun_SimpleString(script) == -1){
         PyErr_Print();
         RedisModule_ReplyWithError(ctx, "failed running the given script");
-        PyGILState_Release(state);
+        _save = PyEval_SaveThread();
         return REDISMODULE_OK;
     }
-    PyGILState_Release(state);
+    _save = PyEval_SaveThread();
 
     if(!executionTriggered){
         RedisModule_ReplyWithSimpleString(ctx, "OK");
@@ -1239,7 +1241,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 		return REDISMODULE_ERR;
     }
 
-    PyEval_ReleaseLock();
+    _save = PyEval_SaveThread();
 
     return REDISMODULE_OK;
 }
