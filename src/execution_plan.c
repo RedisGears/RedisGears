@@ -661,6 +661,10 @@ static Record* ExecutionPlan_WriteNextRecord(ExecutionPlan* ep, ExecutionStep* s
     if(record){
         step->forEach.forEach(rctx, record, step->forEach.stepArg.stepArg, err);
     }
+    if(*err){
+        RedisGears_FreeRecord(record);
+        return NULL;
+    }
     return record;
 }
 
@@ -731,7 +735,9 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		}
 		accumulator = step->accumulateByKey.accumulate(rctx, key, accumulator, val, step->accumulate.stepArg.stepArg, err);
 		if(*err){
-			RedisGears_FreeRecord(accumulator);
+		    if(accumulator){
+		        RedisGears_FreeRecord(accumulator);
+		    }
 			RedisGears_FreeRecord(r);
 			return NULL;
 		}
