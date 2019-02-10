@@ -14,6 +14,7 @@ def testScriptError(env):
 def testForEachError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().foreach(lambda x: notexists(x)).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
 
@@ -21,6 +22,7 @@ def testForEachError(env):
 def testGroupByError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().groupby(lambda x: "str", lambda a, x, k: notexists(x)).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
 
@@ -28,6 +30,7 @@ def testGroupByError(env):
 def testBatchGroupByError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().batchgroupby(lambda x: "str", lambda x, k: notexists(x)).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
 
@@ -35,6 +38,7 @@ def testBatchGroupByError(env):
 def testExtractorError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().groupby(lambda x: notexists(x), lambda a, x, k: 1).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
 
@@ -42,6 +46,7 @@ def testExtractorError(env):
 def testAccumulateError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().accumulate(lambda a, x: notexists(a, x)).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
 
@@ -49,6 +54,7 @@ def testAccumulateError(env):
 def testMapError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().map(lambda x: notexists(x)).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
 
@@ -56,6 +62,7 @@ def testMapError(env):
 def testFlatMapError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().flatmap(lambda x: notexists(x)).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
 
@@ -63,5 +70,6 @@ def testFlatMapError(env):
 def testFilterError(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
+    env.cmd('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'gearsCtx().filter(lambda x: notexists(x)).run()')
     env.assertContains("global name 'notexists' is not defined", res[1])
