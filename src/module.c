@@ -397,7 +397,9 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     ExecutionPlan_Initialize(1);
 
 #ifdef WITHPYTHON
-    RedisGearsPy_Init(ctx);
+    if(RedisGearsPy_Init(ctx) != REDISMODULE_OK){
+        return REDISMODULE_ERR;
+    }
 #endif
 
     Cluster_RegisterMsgReceiverM(RG_OnDropExecutionMsgReceived);

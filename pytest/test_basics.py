@@ -181,3 +181,30 @@ redisgears.registerTimeEvent(2, OnTime)
     env.assertTrue(int(conn.get('y')) >= 2)
     env.assertTrue(int(conn.get('z')) >= 2)
     env.cmd('rg.dropexecution', id)
+
+
+def testTimeEventSurrviveRestart(env):
+    env.skipOnCluster()
+    env.execute_command('set', 'x', '1')
+    script = '''
+def func():
+    oldVal = int(redisgears.executeCommand('get','x'))
+    redisgears.executeCommand('set','x', str(oldVal + 1))
+redisgears.registerTimeEvent(1, func, 'timeEvent')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    for _ in env.reloading_iterator():
+        res = env.cmd('keys', '*')
+        env.assertEqual(set(res), set(['x', 'timeEvent']))
+        res1 = env.cmd('get', 'x')
+        time.sleep(1)
+        res2 = env.cmd('get', 'x')
+        env.assertTrue(int(res2) >= int(res1) + 1)
+
+    env.expect('del', 'timeEvent').equal(1)
+    res = env.cmd('keys', '*')
+    env.assertEqual(set(res), set(['x']))
+    res1 = env.cmd('get', 'x')
+    time.sleep(1)
+    res2 = env.cmd('get', 'x')
+    env.assertTrue(int(res2) >= int(res1))

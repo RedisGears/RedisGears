@@ -21,6 +21,9 @@ static bool executionTriggered = false;
 
 #define PYTHON_ERROR "error running python code"
 
+static void RedisGearsPy_PyCallbackSerialize(void* arg, BufferWriter* bw);
+static void* RedisGearsPy_PyCallbackDeserialize(BufferReader* br);
+
 typedef struct PyFlatExecution{
    PyObject_HEAD
    FlatExecutionPlan* fep;
@@ -543,26 +546,99 @@ static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
     return (PyObject*)pyt;
 }
 
+#define TIME_EVENT_ENCVER 1
+
 typedef struct TimerData{
-    long period;
+    uint64_t period;
+    RedisModuleTimerID id;
     PyObject* callback;
 }TimerData;
 
-static void gearsTimeEventCallback(RedisModuleCtx *ctx, void *data){
+#define RG_TIME_EVENT_TYPE "rg_timeev"
+
+RedisModuleType *TimeEventType;
+
+static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     TimerData* td = data;
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* pArgs = PyTuple_New(0);
     PyObject_CallObject(td->callback, pArgs);
+    PyErr_Print();
     Py_DECREF(pArgs);
     PyGILState_Release(state);
-    RedisModule_CreateTimer(ctx, td->period * 1000, gearsTimeEventCallback, td);
+    td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
+}
+
+static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
+    TimerData* td = RG_ALLOC(sizeof(*td));
+    td->period = RedisModule_LoadUnsigned(rdb);
+    size_t len;
+    char* buff = RedisModule_LoadStringBuffer(rdb, &len);
+    Buffer b = {
+            .cap = len,
+            .size = len,
+            .buff = buff,
+    };
+    BufferReader reader;
+    BufferReader_Init(&reader, &b);
+    td->callback = RedisGearsPy_PyCallbackDeserialize(&reader);
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
+    RedisModule_FreeThreadSafeContext(ctx);
+    return td;
+}
+
+static void TimeEvent_RDBSave(RedisModuleIO *rdb, void *value){
+    TimerData* td = value;
+    RedisModule_SaveUnsigned(rdb, td->period);
+    Buffer* b = Buffer_New(100);
+    BufferWriter bw;
+    BufferWriter_Init(&bw, b);
+    RedisGearsPy_PyCallbackSerialize(td->callback, &bw);
+    RedisModule_SaveStringBuffer(rdb, b->buff, b->size);
+    Buffer_Free(b);
+}
+
+static void TimeEvent_Free(void *value){
+    TimerData* td = value;
+    PyGILState_STATE state = PyGILState_Ensure();
+    Py_DECREF(td->callback);
+    PyGILState_Release(state);
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_StopTimer(ctx, td->id, NULL);
+    RedisModule_FreeThreadSafeContext(ctx);
+    RG_FREE(td);
+}
+
+static int TimeEvent_RegisterType(RedisModuleCtx* ctx){
+    RedisModuleTypeMethods tm = {.version = REDISMODULE_TYPE_METHOD_VERSION,
+                                 .rdb_load = TimeEvent_RDBLoad,
+                                 .rdb_save = TimeEvent_RDBSave,
+                                 .aof_rewrite = NULL,
+                                 .mem_usage = NULL,
+                                 .free = TimeEvent_Free};
+    TimeEventType = RedisModule_CreateDataType(ctx, RG_TIME_EVENT_TYPE, TIME_EVENT_ENCVER, &tm);
+    if(!TimeEventType){
+        return REDISMODULE_ERR;
+    }
+    return REDISMODULE_OK;
 }
 
 static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
-    if(PyTuple_Size(args) != 2){
+    if(PyTuple_Size(args) < 2 || PyTuple_Size(args) > 3){
         return Py_False;
     }
     PyObject* timeInSec = PyTuple_GetItem(args, 0);
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_AutoMemory(ctx);
+    RedisModuleString* keyNameStr = NULL;
+    if(PyTuple_Size(args) == 3){
+        PyObject* keyName = PyTuple_GetItem(args, 2);
+        if(PyObject_TypeCheck(keyName, &PyString_Type)){
+            char* keyNameCStr = PyString_AsString(keyName);
+            keyNameStr = RedisModule_CreateString(ctx, keyNameCStr, strlen(keyNameCStr));
+        }
+    }
     if(!PyObject_TypeCheck(timeInSec, &PyInt_Type)) {
         return Py_False;
     }
@@ -572,8 +648,27 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     td->period = period;
     td->callback = callback;
     Py_INCREF(callback);
-    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisModule_CreateTimer(ctx, period * 1000, gearsTimeEventCallback, td);
+
+    // avoiding deadlock
+    PyThreadState *_save = PyEval_SaveThread();
+    LockHandler_Acquire(ctx);
+    PyEval_RestoreThread(_save);
+
+    if(keyNameStr){
+        RedisModuleKey* key = RedisModule_OpenKey(ctx, keyNameStr, REDISMODULE_WRITE);
+        if(RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY){
+            TimeEvent_Free(td);
+            LockHandler_Realse(ctx);
+            RedisModule_FreeThreadSafeContext(ctx);
+            return Py_False;
+        }
+        RedisModule_ModuleTypeSetValue(key, TimeEventType, td);
+    }
+
+    td->id = RedisModule_CreateTimer(ctx, period * 1000, TimeEvent_Callback, td);
+
+    LockHandler_Realse(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
     return Py_True;
 }
 
@@ -1124,6 +1219,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RSM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
     RSM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
 
+    if(TimeEvent_RegisterType(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not register command timer datatype");
+        return REDISMODULE_ERR;
+    }
+
     if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
         return REDISMODULE_ERR;
@@ -1141,5 +1241,5 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     PyEval_ReleaseLock();
 
-    return true;
+    return REDISMODULE_OK;
 }
