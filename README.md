@@ -8,8 +8,12 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 # Quick Start
 
 ## Install
-Install [redis 5.0](https://redis.io/) on you machine
+### Prerequisites
+Install [redis 5.0](https://redis.io/) on you machine.
 
+Libraries: build-essential, autotools-dev, autoconf
+
+### Build
 Init submodules
 ```
 git submodule update --init --recursive
