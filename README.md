@@ -10,6 +10,11 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 ## Install
 Install [redis 5.0](https://redis.io/) on you machine
 
+Init submodules
+```
+git submodule update --init --recursive
+```
+
 Clone the git repository and run:
 ```
 make get_deps
