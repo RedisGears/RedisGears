@@ -76,10 +76,18 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
 }
 
 static void StreamReader_CtxDeserialize(void* ctx, BufferReader* br){
-    StreamReaderCtx* readerCtx = ctx;
-    readerCtx->streamKeyName = RG_STRDUP(RedisGears_BRReadString(br));
-    readerCtx->lastId = RG_STRDUP(RedisGears_BRReadString(br));
-    readerCtx->records = array_new(Record*, 1);
+    StreamReaderCtx** readerCtx = (StreamReaderCtx**)ctx;
+    if(!(*readerCtx)){
+        *readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
+        **readerCtx = (StreamReaderCtx){
+                .streamKeyName = NULL,
+                .lastId = NULL,
+                .records = NULL,
+        };
+    }
+    (*readerCtx)->streamKeyName = RG_STRDUP(RedisGears_BRReadString(br));
+    (*readerCtx)->lastId = RG_STRDUP(RedisGears_BRReadString(br));
+    (*readerCtx)->records = array_new(Record*, 1);
 }
 
 static void StreamReader_CtxSerialize(void* ctx, BufferWriter* bw){
@@ -110,7 +118,7 @@ static Record* StreamReader_Next(RedisModuleCtx* rctx, void* ctx){
     if(!readerCtx->records){
         LockHandler_Acquire(rctx);
         StreamReader_ReadRecords(rctx, readerCtx);
-        LockHandler_Realse(rctx);
+        LockHandler_Release(rctx);
     }
     if(array_len(readerCtx->records) == 0){
         return NULL;

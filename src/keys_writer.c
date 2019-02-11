@@ -40,5 +40,5 @@ void KeyRecordWriter(RedisModuleCtx* rctx, Record *record, void* arg, char** err
     KeyRecordWriter_WriteValueByType(rctx, val, arg, err, keyHandler);
     RedisModule_CloseKey(keyHandler);
     RedisModule_FreeString(rctx, keyStr);
-    LockHandler_Realse(rctx);
+    LockHandler_Release(rctx);
 }

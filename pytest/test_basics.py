@@ -88,6 +88,8 @@ def testLimit(env):
 
 
 def testRepartitionAndWriteOption(env):
+    if str(type(Env.defaultDebugger)) == "<class 'RLTest.debuggers.Valgrind'>" and env.isCluster():
+        env.skip()  # seems like with valgrind the database is to slow and redispy thinks its down.
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
@@ -155,6 +157,8 @@ def testBasicStreamProcessing(env):
 
 
 def testTimeEvent(env):
+    if(str(type(Env.defaultDebugger)) == "<class 'RLTest.debuggers.Valgrind'>"):
+        env.skip()
     conn = getConnectionByEnv(env)
     conn.set('x', '1')
     conn.set('y', '1')
@@ -169,18 +173,17 @@ def func(x):
     redisgears.executeCommand('set',x['key'], var)
 def OnTime():
     gearsCtx().foreach(func).collect().run()
-gearsCtx().map(defineVar).collect().run()
 redisgears.registerTimeEvent(2, OnTime)
+gearsCtx().map(defineVar).collect().run()
     '''
-    id = env.cmd('rg.pyexecute', script, 'UNBLOCKING')
+    env.cmd('rg.pyexecute', script)
     env.assertEqual(int(conn.get('x')), 1)
     env.assertEqual(int(conn.get('y')), 1)
     env.assertEqual(int(conn.get('z')), 1)
-    time.sleep(3)
+    time.sleep(5)
     env.assertTrue(int(conn.get('x')) >= 2)
     env.assertTrue(int(conn.get('y')) >= 2)
     env.assertTrue(int(conn.get('z')) >= 2)
-    env.cmd('rg.dropexecution', id)
 
 
 def testTimeEventSurrviveRestart(env):

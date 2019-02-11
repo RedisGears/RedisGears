@@ -38,6 +38,7 @@ typedef struct ConfigVal{
 
 typedef struct RedisGears_Config{
 	ConfigVal pythonHomeDir;
+	ConfigVal executionThreadsAmount;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -67,6 +68,23 @@ static bool ConfigVal_PythonHomeDirSet(ArgsIterator* iter){
 	return true;
 }
 
+static const ConfigVal* ConfigVal_ExecutionThreadAmountGet(){
+    return &DefaultGearsConfig.executionThreadsAmount;
+}
+
+static bool ConfigVal_ExecutionThreadAmountSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val){
+        return false;
+    }
+    long long valLong;
+    if(RedisModule_StringToLongLong(val, &valLong) != REDISMODULE_OK){
+        return false;
+    }
+    DefaultGearsConfig.executionThreadsAmount.val.longVal = valLong;
+    return true;
+}
+
 static Gears_ConfigVal Gears_ConfigVals[] = {
 		{
 				.name = "PythonHomeDir",
@@ -74,6 +92,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
 				.setter = ConfigVal_PythonHomeDirSet,
 				.configurableAtRunTime = false,
 		},
+		{
+                .name = "ExecutionTheadsAmount",
+                .getter = ConfigVal_ExecutionThreadAmountGet,
+                .setter = ConfigVal_ExecutionThreadAmountSet,
+                .configurableAtRunTime = false,
+        },
 		{
 				NULL,
 		},
@@ -130,6 +154,10 @@ const char* GearsCOnfig_GetPythonHomeDir(){
 	return DefaultGearsConfig.pythonHomeDir.val.str;
 }
 
+long long GearsCOnfig_GetExecutionThreadAmount(){
+    return DefaultGearsConfig.executionThreadsAmount.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
 	for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val += sizeof(Gears_ConfigVal)){
 		const ConfigVal* v = val->getter();
@@ -154,6 +182,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
 		.pythonHomeDir = {
 				.val.str = RG_STRDUP("/usr/bin/"),
 				.type = STR,
+		},
+		.executionThreadsAmount = {
+		        .val.longVal = 1,
+                .type = LONG,
 		},
 	};
 

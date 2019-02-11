@@ -352,7 +352,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     array_free(argements);
 
-    LockHandler_Realse(rctx);
+    LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
     return res;
 }
@@ -515,7 +515,7 @@ static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
 
     RedisModule_FreeString(ctx, keyRedisStr);
     RedisModule_CloseKey(key);
-    LockHandler_Realse(ctx);
+    LockHandler_Release(ctx);
     RedisModule_FreeThreadSafeContext(ctx);
 
     PyGraphRunner* pyg = PyObject_New(PyGraphRunner, &PyGraphRunnerType);
@@ -672,7 +672,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
         RedisModuleKey* key = RedisModule_OpenKey(ctx, keyNameStr, REDISMODULE_WRITE);
         if(RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_EMPTY){
             TimeEvent_Free(td);
-            LockHandler_Realse(ctx);
+            LockHandler_Release(ctx);
             RedisModule_FreeThreadSafeContext(ctx);
             return Py_False;
         }
@@ -681,7 +681,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
 
     td->id = RedisModule_CreateTimer(ctx, period * 1000, TimeEvent_Callback, td);
 
-    LockHandler_Realse(ctx);
+    LockHandler_Release(ctx);
     RedisModule_FreeThreadSafeContext(ctx);
     return Py_True;
 }

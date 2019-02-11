@@ -394,7 +394,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RSM_RegisterGroupByExtractor(KeyRecordStrValueExtractor, NULL);
     RSM_RegisterReducer(CountReducer, NULL);
 
-    ExecutionPlan_Initialize(1);
+    ExecutionPlan_Initialize(GearsCOnfig_GetExecutionThreadAmount());
 
 #ifdef WITHPYTHON
     if(RedisGearsPy_Init(ctx) != REDISMODULE_OK){

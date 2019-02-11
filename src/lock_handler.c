@@ -16,8 +16,13 @@ typedef struct LockHandlerCtx{
     int lockCounter;
 }LockHandlerCtx;
 
+static void LockHandlerCtx_Free(void* ctx){
+    LockHandlerCtx* lh = ctx;
+    RG_FREE(lh);
+}
+
 int LockHandler_Initialize(){
-    int err = pthread_key_create(&_lockKey, NULL);
+    int err = pthread_key_create(&_lockKey, LockHandlerCtx_Free);
     if(err){
         return REDISMODULE_ERR;
     }
@@ -40,7 +45,7 @@ void LockHandler_Acquire(RedisModuleCtx* ctx){
     ++lh->lockCounter;
 }
 
-void LockHandler_Realse(RedisModuleCtx* ctx){
+void LockHandler_Release(RedisModuleCtx* ctx){
     LockHandlerCtx* lh = pthread_getspecific(_lockKey);
     assert(lh);
     assert(lh->lockCounter > 0);

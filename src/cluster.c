@@ -356,7 +356,7 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
         Cluster_Refresh(ctx);
         RedisModule_ReplyWithSimpleString(ctx, "OK");
         RedisModule_UnblockClient(msg->clusterRefresh.bc, NULL);
-        LockHandler_Realse(ctx);
+        LockHandler_Release(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
         break;
     case CLUSTER_SET_MSG:
@@ -365,7 +365,7 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
         Cluster_Set(ctx, msg->clusterSet.argv, msg->clusterSet.argc);
         RedisModule_ReplyWithSimpleString(ctx, "OK");
         RedisModule_UnblockClient(msg->clusterRefresh.bc, NULL);
-        LockHandler_Realse(ctx);
+        LockHandler_Release(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
         break;
     default:

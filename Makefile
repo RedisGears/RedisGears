@@ -6,7 +6,7 @@ GIT_SHA := $(shell git rev-parse HEAD)
 $(shell mkdir -p $(OBJ))
 $(shell mkdir -p $(OBJ)/utils)
 
-SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
+SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/thpool.c src/utils/dict.c src/module.c src/execution_plan.c \
        	src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
         src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
         src/globals.c src/config.c src/lock_handler.c
