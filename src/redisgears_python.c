@@ -210,7 +210,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
     if(regex){
         regexStr = PyString_AsString(regex);
     }
-    int status = RSM_Register(pfep->fep, regexStr);
+    int status = RSM_Register(pfep->fep, RG_STRDUP(regexStr));
     executionTriggered = true;
     if(!currentCtx){
         return Py_None;

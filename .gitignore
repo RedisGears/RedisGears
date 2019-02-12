@@ -61,3 +61,4 @@ script_example.py
 *.pyc
 *.log
 *.rdb
+commit.txt

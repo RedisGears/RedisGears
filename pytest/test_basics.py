@@ -131,6 +131,33 @@ def testBasicStream(env):
     env.assertEqual(set(conn.lrange('values', '0', '-1')), set(['1', '2', '3']))
 
 
+def testBasicStreamRegisterOnPrefix(env):
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', "gearsCtx('StreamReader')."
+                               "map(lambda x: str(x))."
+                               "repartition(lambda x: 'new_key')."
+                               "foreach(lambda x: redisgears.executeCommand('set', 'new_key', x))."
+                               "register('s*')").ok()
+    conn.execute_command('xadd', 'stream1', '*', 'name', 'test')
+    res = []
+    while len(res) < 1:
+        res = env.cmd('rg.dumpexecutions')
+    env.broadcast('rg.getresultsblocking', res[0][1])
+    env.cmd('rg.dropexecution', res[0][1])
+    env.assertContains("{'name': 'test', 'streamId': ", conn.get('new_key'))
+
+    conn.execute_command('xadd', 'stream2', '*', 'name', 'test1')
+    res = []
+    while len(res) < 1:
+        res = env.cmd('rg.dumpexecutions')
+    env.broadcast('rg.getresultsblocking', res[0][1])
+    env.cmd('rg.dropexecution', res[0][1])
+    env.assertContains("{'name': 'test1', 'streamId': ", conn.get('new_key'))
+
+    conn.execute_command('xadd', 'rstream1', '*', 'name', 'test2')
+    env.assertContains("{'name': 'test1', 'streamId': ", conn.get('new_key'))
+
+
 def testBasicStreamProcessing(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rg.pyexecute', "gearsCtx('StreamReader')."

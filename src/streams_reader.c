@@ -4,6 +4,7 @@
 #include "redisgears.h"
 #include "redisgears_memory.h"
 #include "lock_handler.h"
+#include "utils/dict.h"
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 list* streamsRegistration = NULL;
@@ -16,9 +17,7 @@ typedef struct StreamReaderCtx{
 
 typedef struct StreamReaderTrigger{
     char* streamKeyName;
-    char* lastId;
-    int batchSize;
-    int currEventIndex;
+    dict* lastIds;
     FlatExecutionPlan* fep;
 }StreamReaderTrigger;
 
@@ -118,23 +117,43 @@ static Record* StreamReader_Next(RedisModuleCtx* rctx, void* ctx){
     return array_pop(readerCtx->records);
 }
 
+static int StreamReader_IsKeyMatch(const char* prefix, const char* key){
+    size_t len = strlen(prefix);
+    const char* data = prefix;
+    int isPrefix = prefix[len - 1] == '*';
+    if(isPrefix){
+        --len;
+    }
+    if(isPrefix){
+        return strncmp(data, key, len) == 0;
+    }else{
+        return strcmp(data, key) == 0;
+    }
+}
+
 static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
     listIter *iter = listGetIterator(streamsRegistration, AL_START_HEAD);
     listNode* node = NULL;
     const char* keyName = RedisModule_StringPtrLen(key, NULL);
     while((node = listNext(iter))){
         StreamReaderTrigger* srctx = listNodeValue(node);
-        if(strcmp(srctx->streamKeyName, keyName) == 0){
+        if(StreamReader_IsKeyMatch(srctx->streamKeyName, keyName)){
+            char* lastId = dictFetchValue(srctx->lastIds, (char*)keyName);
+            if(!lastId){
+                lastId = RG_STRDUP("0-0");
+            }
             StreamReaderCtx* readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
             *readerCtx = (StreamReaderCtx){
                     .streamKeyName = RG_STRDUP(keyName),
-                    .lastId = RG_STRDUP(srctx->lastId),
+                    .lastId = RG_STRDUP(lastId),
                     .records = NULL,
             };
             char* lastStreamId = StreamReader_ReadRecords(ctx, readerCtx);
             if(lastStreamId){
-                RG_FREE(srctx->lastId);
-                srctx->lastId = RG_STRDUP(lastStreamId);
+                RG_FREE(lastId);
+                lastId = RG_STRDUP(lastStreamId);
+                dictEntry *entry = dictAddOrFind(srctx->lastIds, (char*)keyName);
+                dictSetVal(srctx->lastIds, entry, lastId);
                 if(!RedisGears_Run(srctx->fep, readerCtx, NULL, NULL)){
                     RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
                 }
@@ -156,10 +175,8 @@ static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     }
     StreamReaderTrigger* srctx = RG_ALLOC(sizeof(StreamReaderTrigger));
     *srctx = (StreamReaderTrigger){
-        .streamKeyName = RG_STRDUP(arg),
-        .lastId = RG_STRDUP("0-0"),
-        .batchSize = 1,
-        .currEventIndex = 0,
+        .streamKeyName = arg,
+        .lastIds = dictCreate(&dictTypeHeapStrings, NULL),
         .fep = fep,
     };
     listAddNodeHead(streamsRegistration, srctx);
@@ -176,12 +193,12 @@ StreamReaderCtx* StreamReader_CreateCtx(char* keyName){
 }
 
 Reader* StreamReader(void* arg){
-    StreamReaderCtx* readerCtx = arg;
-    if(!readerCtx){
+    StreamReaderCtx* readerCtx = NULL;
+    if(arg){
         readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
         *readerCtx = (StreamReaderCtx){
-                .streamKeyName = NULL,
-                .lastId = NULL,
+                .streamKeyName = arg,
+                .lastId = RG_STRDUP("0-0"),
                 .records = NULL,
         };
     }
