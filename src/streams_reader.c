@@ -193,12 +193,12 @@ StreamReaderCtx* StreamReader_CreateCtx(char* keyName){
 }
 
 Reader* StreamReader(void* arg){
-    StreamReaderCtx* readerCtx = NULL;
-    if(arg){
+    StreamReaderCtx* readerCtx = arg;
+    if(!readerCtx){
         readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
         *readerCtx = (StreamReaderCtx){
-                .streamKeyName = arg,
-                .lastId = RG_STRDUP("0-0"),
+                .streamKeyName = NULL,
+                .lastId = NULL,
                 .records = NULL,
         };
     }

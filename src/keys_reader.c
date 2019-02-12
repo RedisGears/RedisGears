@@ -322,6 +322,7 @@ static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
         RedisModule_FreeThreadSafeContext(ctx);
     }
     listAddNodeHead(keysReaderRegistration, fep);
+    RG_FREE(args); // currently we ignore the args
 }
 
 static int KeysReader_IndexAllKeysInRax(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){

@@ -927,7 +927,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     }
     ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
     assert(rs.r->registerTrigger);
-    rs.r->registerTrigger(fep, RedisGears_BRReadString(&br));
+    rs.r->registerTrigger(fep, RG_STRDUP(RedisGears_BRReadString(&br)));
     if(rs.r->free){
         rs.r->free(rs.r->ctx);
     }
