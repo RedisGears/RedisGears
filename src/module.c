@@ -337,7 +337,7 @@ int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, voi
 int moduleRegisterApi(const char *funcname, void *funcptr);
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-	RedisModule_Log(ctx, "notice", "RediGears version %d.%d.%d, git_sha=%s",
+	RedisModule_Log(ctx, "notice", "RedisGears version %d.%d.%d, git_sha=%s",
 			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
 			REDISGEARS_GIT_SHA);
 
