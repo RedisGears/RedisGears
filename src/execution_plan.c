@@ -374,25 +374,28 @@ static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep*
         }
         goto end;
     }
-    r = ExecutionPlan_MapNextRecord(ep, step, rctx, err);
-    clock_gettime(CLOCK_REALTIME, &start);
-    if(r == NULL){
-    	goto end;
-    }
-    if(r == &StopRecord){
-    	goto end;
-    }
-    if(*err){
-        RedisGears_FreeRecord(r);
-        r = NULL;
-        goto end;
-    }
-    if(RedisGears_RecordGetType(r) != LIST_RECORD){
-    	goto end;
-    }
-    if(RedisGears_ListRecordLen(r) == 0){
-    	goto end;
-    }
+    do{
+        if(r){
+            // if we reach here r is an empty list record
+            RedisGears_FreeRecord(r);
+        }
+        r = ExecutionPlan_MapNextRecord(ep, step, rctx, err);
+        clock_gettime(CLOCK_REALTIME, &start);
+        if(r == NULL){
+            goto end;
+        }
+        if(r == &StopRecord){
+            goto end;
+        }
+        if(*err){
+            RedisGears_FreeRecord(r);
+            r = NULL;
+            goto end;
+        }
+        if(RedisGears_RecordGetType(r) != LIST_RECORD){
+            goto end;
+        }
+    }while(RedisGears_ListRecordLen(r) == 0);
     if(RedisGears_ListRecordLen(r) == 1){
         Record* ret;
         ret = RedisGears_ListRecordPop(r);
@@ -715,6 +718,9 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
 
 static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
 	Record* r = NULL;
+	if(!step->accumulateByKey.accumulators){
+	    return NULL;
+	}
 	while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx, err))){
 		if(r == &StopRecord){
 			return r;
@@ -744,6 +750,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		if(!keyRecord){
 			keyRecord = RedisGears_KeyRecordCreate();
 			RedisGears_KeyRecordSetKey(keyRecord, RG_STRDUP(key), strlen(key));
+			assert(dictFetchValue(step->accumulateByKey.accumulators, key) == NULL);
 			dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
 		}
 		RedisGears_KeyRecordSetVal(keyRecord, accumulator);
@@ -760,7 +767,9 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		step->accumulateByKey.accumulators = NULL;
 		return NULL;
 	}
-	return dictGetVal(entry);
+	Record* ret = dictGetVal(entry);
+	assert(RedisGears_RecordGetType(ret) == KEY_RECORD);
+	return ret;
 }
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx, char** err){
