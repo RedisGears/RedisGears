@@ -235,3 +235,7 @@ redisgears.registerTimeEvent(1, func, 'timeEvent')
     time.sleep(1)
     res2 = env.cmd('get', 'x')
     env.assertTrue(int(res2) >= int(res1))
+
+
+def testTimeWithSlave(env):
+    pass
