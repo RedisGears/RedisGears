@@ -51,6 +51,10 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
         }
         break;
 #endif
+    case ERROR_RECORD:
+        str = RedisGears_StringRecordGet(record, &listLen);
+        RedisModule_ReplyWithError(rctx, str);
+        break;
     default:
         assert(false);
     }

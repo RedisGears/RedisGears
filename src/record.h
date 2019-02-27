@@ -16,6 +16,7 @@
 
 enum AdditionalRecordTypes{
     STOP_RECORD = 8, // telling the execution plan to stop the execution.
+    ERROR_RECORD, // telling the execution plan an error acquire
 #ifdef WITHPYTHON
     PY_RECORD
 #endif
@@ -74,6 +75,8 @@ Record* RG_PyObjRecordCreate();
 PyObject* RG_PyObjRecordGet(Record* r);
 void RG_PyObjRecordSet(Record* r, PyObject* obj);
 #endif
+
+Record* RG_ErrorRecordCreate(char* val, size_t len);
 
 
 

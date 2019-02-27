@@ -73,6 +73,7 @@ void RG_FreeRecord(Record* record){
     Record* temp;
     switch(record->type){
     case STRING_RECORD:
+    case ERROR_RECORD:
         RG_FREE(record->stringRecord.str);
         break;
     case LONG_RECORD:
@@ -189,7 +190,7 @@ Record* RG_StringRecordCreate(char* val, size_t len){
 }
 
 char* RG_StringRecordGet(Record* r, size_t* len){
-    assert(r->type == STRING_RECORD);
+    assert(r->type == STRING_RECORD || r->type == ERROR_RECORD);
     if(len){
         *len = r->stringRecord.len;
     }
@@ -197,7 +198,7 @@ char* RG_StringRecordGet(Record* r, size_t* len){
 }
 
 void RG_StringRecordSet(Record* r, char* val, size_t len){
-    assert(r->type == STRING_RECORD);
+    assert(r->type == STRING_RECORD || r->type == ERROR_RECORD);
     r->stringRecord.str = val;
     r->stringRecord.len = len;
 }
@@ -290,6 +291,12 @@ RedisModuleKey* RG_KeyHandlerRecordGet(Record* r){
     return r->keyHandlerRecord.keyHandler;
 }
 
+Record* RG_ErrorRecordCreate(char* val, size_t len){
+    Record* ret = RG_StringRecordCreate(val, len);
+    ret->type = ERROR_RECORD;
+    return ret;
+}
+
 #ifdef WITHPYTHON
 Record* RG_PyObjRecordCreate(){
     Record* ret = RG_ALLOC(sizeof(Record));
@@ -313,6 +320,7 @@ void RG_SerializeRecord(BufferWriter* bw, Record* r){
     RedisGears_BWWriteLong(bw, r->type);
     switch(r->type){
     case STRING_RECORD:
+    case ERROR_RECORD:
         RedisGears_BWWriteBuffer(bw, r->stringRecord.str, r->stringRecord.len);
         break;
     case LONG_RECORD:
@@ -357,6 +365,7 @@ Record* RG_DeserializeRecord(BufferReader* br){
     size_t size;
     switch(type){
     case STRING_RECORD:
+    case ERROR_RECORD:
         temp = RedisGears_BRReadBuffer(br, &size);
         temp1 = RG_ALLOC(size);
         memcpy(temp1, temp, size);

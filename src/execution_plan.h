@@ -159,6 +159,7 @@ typedef struct ExecutionPlan{
     FreePrivateData freeCallback;
     long long executionDuration;
     WorkerData* assignWorker;
+    bool isErrorOccure;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
