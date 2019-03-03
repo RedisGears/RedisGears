@@ -3,7 +3,7 @@ author: RedisLabs
 email: meir@redislabs.com
 description: Dynamic execution framework for your Redis data
 homepage: 'http://redisgears.io'
-license: Commercial
+license: Redis Source Available License Agreement
 min_redis_version: '5.0'
 min_redis_pack_version: '6.0'
 capabilities:
