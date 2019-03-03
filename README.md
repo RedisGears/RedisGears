@@ -126,5 +126,5 @@ RedisGears support all of the operations on oss-cluster. Notice that the module 
 
 # License
 
-Apache 2.0 with Commons Clause - see [LICENSE](LICENSE)
+Redis Source Available License Agreement - see [LICENSE](LICENSE)
 
