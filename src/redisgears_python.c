@@ -807,6 +807,7 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char
 	PyObject* keyPyStr = PyString_FromString(key);
 	RG_PyObjRecordSet(r, NULL);
 	PyObject* oldAccumulateObj = Py_None;
+	Py_INCREF(oldAccumulateObj);
 	if(!accumulate){
 		accumulate = RG_PyObjRecordCreate();
 	}else{
@@ -837,6 +838,7 @@ static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *a
     PyObject* currObj = RG_PyObjRecordGet(r);
     RG_PyObjRecordSet(r, NULL);
     PyObject* oldAccumulateObj = Py_None;
+    Py_INCREF(oldAccumulateObj);
     if(!accumulate){
         accumulate = RG_PyObjRecordCreate();
     }else{
