@@ -452,9 +452,6 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
 #define GROUP_RECORD_INIT_LEN 10
     Record* record = NULL;
     if(step->group.isGrouped){
-        if(ep->isErrorOccure){
-            return NULL;
-        }
         if(array_len(step->group.groupedRecords) == 0){
             return NULL;
         }
@@ -528,9 +525,6 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         return ExecutionPlan_NextRecord(ep, step->prev, rctx);
     }
     if(step->repartion.stoped){
-        if(ep->isErrorOccure){
-            return NULL;
-        }
         if(array_len(step->repartion.pendings) > 0){
             return array_pop(step->repartion.pendings);
         }
@@ -602,9 +596,6 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 	}
 
 	if(step->collect.stoped){
-	    if(ep->isErrorOccure){
-	        return NULL;
-	    }
 		if(array_len(step->collect.pendings) > 0){
 			return array_pop(step->collect.pendings);
 		}
