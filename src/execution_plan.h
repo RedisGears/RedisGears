@@ -132,7 +132,7 @@ typedef struct ExecutionStep{
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 
 typedef enum ExecutionPlanStatus{
-    CREATED, RUNNING, WAITING_FOR_RECIEVED_NOTIFICATION, WAITING_FOR_RUN_NOTIFICATION
+    CREATED, RUNNING, WAITING_FOR_RECIEVED_NOTIFICATION, WAITING_FOR_RUN_NOTIFICATION, WAITING_FOR_CLUSTER_TO_COMPLETE
 }ExecutionPlanStatus;
 
 #define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
@@ -150,6 +150,7 @@ typedef struct ExecutionPlan{
     ExecutionStep** steps;
     FlatExecutionPlan* fep;
     size_t totalShardsRecieved;
+    size_t totalShardsCompleted;
     Record** results;
     ExecutionPlanStatus status;
     bool isDone;

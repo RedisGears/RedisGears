@@ -116,12 +116,16 @@ dictType dictTypeHeapIds = {
 };
 
 typedef enum MsgType{
-    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG
+    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE
 }MsgType;
 
 typedef struct RunWorkerMsg{
 	ExecutionPlan* ep;
 }RunWorkerMsg;
+
+typedef struct ExecutionDoneMsg{
+    ExecutionPlan* ep;
+}ExecutionDoneMsg;
 
 typedef struct ShardCompletedWorkerMsg{
 	ExecutionPlan* ep;
@@ -141,6 +145,7 @@ typedef struct WorkerMsg{
     	RunWorkerMsg runWM;
     	AddRecordWorkerMsg addRecordWM;
     	ShardCompletedWorkerMsg shardCompletedWM;
+    	ExecutionDoneMsg executionDone;
     };
     MsgType type;
 }WorkerMsg;
@@ -158,6 +163,13 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateRun(ExecutionPlan* ep){
 	ret->type = RUN_MSG;
 	ret->runWM.ep = ep;
 	return ret;
+}
+
+static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
+    WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
+    ret->type = EXECUTION_DONE;
+    ret->runWM.ep = ep;
+    return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
@@ -864,9 +876,29 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     return true;
 }
 
+static void ExecutionPlan_DoExecutionDoneActions(ExecutionPlan* ep, RedisModuleCtx* rctx){
+    LockHandler_Acquire(rctx);
+    ep->isDone = true;
+    FreePrivateData freeC = ep->freeCallback;
+    void* pd = ep->privateData;
+    if(ep->callback){
+        ep->callback(ep, ep->privateData);
+    }
+    if(freeC){
+        freeC(pd);
+    }
+    LockHandler_Realse(rctx);
+}
+
 static void ExecutionPlan_Main(ExecutionPlan* ep){
 	assert(!ep->isDone);
 	ep->sentRunRequest = false;
+	if(ep->status == WAITING_FOR_CLUSTER_TO_COMPLETE){
+	    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+	    ExecutionPlan_DoExecutionDoneActions(ep, rctx);
+        RedisModule_FreeThreadSafeContext(rctx);
+	    return;
+	}
 	if(ep->status == CREATED){
 		if(Cluster_IsClusterMode()){
 			if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
@@ -903,17 +935,18 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 	ep->executionDuration += readDuration;
 
 	if(isDone){
-	    LockHandler_Acquire(rctx);
-		ep->isDone = true;
-		FreePrivateData freeC = ep->freeCallback;
-		void* pd = ep->privateData;
-		if(ep->callback){
-			ep->callback(ep, ep->privateData);
-		}
-		if(freeC){
-			freeC(pd);
-		}
-		LockHandler_Realse(rctx);
+	    if(Cluster_IsClusterMode()){
+	        LockHandler_Acquire(rctx);
+            Cluster_SendMsgM(NULL, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
+            LockHandler_Realse(rctx);
+            if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
+                ExecutionPlan_DoExecutionDoneActions(ep, rctx);
+            }else{
+                ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
+            }
+	    }else{
+	        ExecutionPlan_DoExecutionDoneActions(ep, rctx);
+	    }
 	}
 	RedisModule_FreeThreadSafeContext(rctx);
 }
@@ -1088,6 +1121,13 @@ static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
     return ret;
 }
 
+static void ExecutionPlan_NotifyExecutionDone(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    ExecutionPlan* ep = ExecutionPlan_FindById(payload);
+    assert(ep);
+    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateDone(ep);
+    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
+}
+
 static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     Buffer buff;
     buff.buff = (char*)payload;
@@ -1102,6 +1142,13 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 	assert(ep);
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, REPARTITION);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
+}
+
+static void ExecutionPlan_ExecutionDone(ExecutionPlan* ep){
+    ep->totalShardsCompleted++;
+    if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
+        ExecutionPlan_RegisterForRun(ep);
+    }
 }
 
 static void ExecutionPlan_StepDone(ExecutionPlan* ep, size_t stepId, enum StepType stepType){
@@ -1159,6 +1206,9 @@ static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
 	case SHARD_COMPLETED_MSG:
 		ExecutionPlan_StepDone(msg->shardCompletedWM.ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
 		break;
+	case EXECUTION_DONE:
+	    ExecutionPlan_ExecutionDone(msg->shardCompletedWM.ep);
+        break;
 	default:
 		assert(false);
 	}
@@ -1199,6 +1249,7 @@ void ExecutionPlan_Initialize(size_t numberOfworkers){
     Cluster_RegisterMsgReceiverM(ExecutionPlan_CollectDoneSendingRecords);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_OnRepartitionRecordReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_DoneRepartition);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_NotifyExecutionDone);
     Cluster_RegisterMsgReceiverM(FlatExecutionPlan_RegisterKeySpaceEvent);
 
     for(size_t i = 0 ; i < numberOfworkers ; ++i){
@@ -1336,6 +1387,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->steps = array_append(ret->steps, readerStep);
     ret->fep = fep;
     ret->totalShardsRecieved = 0;
+    ret->totalShardsCompleted = 0;
     ret->results = array_new(Record*, 100);
     ret->status = CREATED;
     ret->isDone = false;
