@@ -321,7 +321,7 @@ static void RG_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sende
 		printf("warning: execution not found %s !!!\r\n", payload);
 		return;
 	}
-	ExecutionPlan_Free(ep);
+	ExecutionPlan_SendFreeMsg(ep);
 }
 
 bool apiRegistered = false;

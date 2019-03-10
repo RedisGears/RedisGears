@@ -116,7 +116,7 @@ dictType dictTypeHeapIds = {
 };
 
 typedef enum MsgType{
-    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE
+    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_FREE
 }MsgType;
 
 typedef struct RunWorkerMsg{
@@ -126,6 +126,10 @@ typedef struct RunWorkerMsg{
 typedef struct ExecutionDoneMsg{
     ExecutionPlan* ep;
 }ExecutionDoneMsg;
+
+typedef struct ExecutionFreeMsg{
+    ExecutionPlan* ep;
+}ExecutionFreeMsg;
 
 typedef struct ShardCompletedWorkerMsg{
 	ExecutionPlan* ep;
@@ -146,6 +150,7 @@ typedef struct WorkerMsg{
     	AddRecordWorkerMsg addRecordWM;
     	ShardCompletedWorkerMsg shardCompletedWM;
     	ExecutionDoneMsg executionDone;
+    	ExecutionFreeMsg executionFree;
     };
     MsgType type;
 }WorkerMsg;
@@ -168,7 +173,14 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateRun(ExecutionPlan* ep){
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
     WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
     ret->type = EXECUTION_DONE;
-    ret->runWM.ep = ep;
+    ret->executionDone.ep = ep;
+    return ret;
+}
+
+static WorkerMsg* ExectuionPlan_WorkerMsgCreateFree(ExecutionPlan* ep){
+    WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
+    ret->type = EXECUTION_FREE;
+    ret->executionFree.ep = ep;
     return ret;
 }
 
@@ -1147,7 +1159,7 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 static void ExecutionPlan_ExecutionDone(ExecutionPlan* ep){
     ep->totalShardsCompleted++;
     if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
-        ExecutionPlan_RegisterForRun(ep);
+        ExecutionPlan_Main(ep);
     }
 }
 
@@ -1168,7 +1180,7 @@ static void ExecutionPlan_StepDone(ExecutionPlan* ep, size_t stepId, enum StepTy
 
 	assert(Cluster_GetSize() - 1 >= totalShardsCompleted);
 	if((Cluster_GetSize() - 1) == totalShardsCompleted){ // no need to wait to myself
-		ExecutionPlan_RegisterForRun(ep);
+	    ExecutionPlan_Main(ep);
 	}
 }
 
@@ -1189,7 +1201,7 @@ static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record
 	}
 	*pendings = array_append(*pendings, r);
 	if(array_len(*pendings) >= MAX_PENDING_TO_START_RUNNING){
-		ExecutionPlan_RegisterForRun(ep);
+	    ExecutionPlan_Main(ep);
 	}
 }
 
@@ -1207,7 +1219,10 @@ static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
 		ExecutionPlan_StepDone(msg->shardCompletedWM.ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
 		break;
 	case EXECUTION_DONE:
-	    ExecutionPlan_ExecutionDone(msg->shardCompletedWM.ep);
+	    ExecutionPlan_ExecutionDone(msg->executionDone.ep);
+        break;
+	case EXECUTION_FREE:
+        ExecutionPlan_Free(msg->executionFree.ep);
         break;
 	default:
 		assert(false);
@@ -1494,6 +1509,11 @@ static void ExecutionStep_Free(ExecutionStep* es){
         assert(false);
     }
     RG_FREE(es);
+}
+
+void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep){
+    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateFree(ep);
+    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
 void ExecutionPlan_Free(ExecutionPlan* ep){

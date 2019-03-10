@@ -1,6 +1,8 @@
 #include "cluster.h"
 #include "redismodule.h"
 #include "utils/dict.h"
+#include "utils/adlist.h"
+#include <stdlib.h>
 #include <assert.h>
 #include <event2/event.h>
 #include <async.h>
@@ -35,6 +37,36 @@ Cluster* CurrCluster = NULL;
 int notify[2];
 pthread_t messagesThread;
 struct event_base *main_base = NULL;
+
+typedef struct MsgArriveCtx{
+    char* sender;
+    char* msg;
+    size_t msgLen;
+    RedisModuleClusterMessageReceiver receiver;
+}MsgArriveCtx;
+
+pthread_t messagesArriveThread;
+list* msgArriveList;
+pthread_mutex_t msgArriveLock;
+pthread_cond_t msgArriveCond;
+
+static MsgArriveCtx* MsgArriveCtx_Create(const char* sender, const char* msg,
+                                         size_t msgLen, RedisModuleClusterMessageReceiver receiver){
+    MsgArriveCtx* ret = RG_ALLOC(sizeof(*ret));
+    ret->sender = RG_STRDUP(sender);
+    ret->receiver = receiver;
+    ret->msgLen = msgLen;
+    ret->msg = RG_ALLOC(sizeof(char) * (msgLen + 1));
+    memcpy(ret->msg, msg, msgLen);
+    ret->msg[msgLen] = '\0';
+    return ret;
+}
+
+static void MsgArriveCtx_Free(MsgArriveCtx* ctx){
+    RG_FREE(ctx->sender);
+    RG_FREE(ctx->msg);
+    RG_FREE(ctx);
+}
 
 typedef enum MsgType{
     SEND_MSG, CLUSTER_REFRESH_MSG, CLUSTER_SET_MSG
@@ -379,6 +411,49 @@ static void* Cluster_MessageThreadMain(void *arg){
     return NULL;
 }
 
+static struct timespec timespecAdd(struct timespec *a, struct timespec *b) {
+  struct timespec ret;
+  ret.tv_sec = a->tv_sec + b->tv_sec;
+
+  long long ns = a->tv_nsec + b->tv_nsec;
+  ret.tv_sec += ns / 1000000000;
+  ret.tv_nsec = ns % 1000000000;
+  return ret;
+}
+
+static void* Cluster_MessageArriveThread(void *arg){
+    struct timespec ts;
+    struct timespec interval;
+    interval.tv_sec = 1;
+    interval.tv_nsec = 0;
+    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(NULL);
+    pthread_mutex_lock(&msgArriveLock);
+    while (true) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        struct timespec timeout = timespecAdd(&ts, &interval);
+        int rc = pthread_cond_timedwait(&msgArriveCond, &msgArriveLock, &timeout);
+        if (rc == EINVAL) {
+            perror("Error waiting for condition");
+            exit(1);
+        }
+
+        while(listLength(msgArriveList) > 0){
+            listNode *node = listFirst(msgArriveList);
+            MsgArriveCtx* msgCtx = listNodeValue(node);
+            listDelNode(msgArriveList, node);
+            pthread_mutex_unlock(&msgArriveLock);
+            msgCtx->receiver(rctx, msgCtx->sender, 0, msgCtx->msg, msgCtx->msgLen);
+            MsgArriveCtx_Free(msgCtx);
+            pthread_mutex_lock(&msgArriveLock);
+        }
+    }
+    return NULL;
+}
+
+static void Cluster_StartMsgArriveThread(){
+    pthread_create(&messagesArriveThread, NULL, Cluster_MessageArriveThread, NULL);
+}
+
 static void Cluster_StartClusterThread(){
     pipe(notify);
     main_base = (struct event_base*)event_base_new();
@@ -439,7 +514,11 @@ size_t Cluster_GetSize(){
 
 void Cluster_Init(){
     RemoteCallbacks = dictCreate(&dictTypeHeapStrings, NULL);
+    msgArriveList = listCreate();
+    pthread_cond_init(&msgArriveCond, NULL);
+    pthread_mutex_init(&msgArriveLock, NULL);
     Cluster_StartClusterThread();
+    Cluster_StartMsgArriveThread();
 }
 
 char* Cluster_GetMyId(){
@@ -509,7 +588,14 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         return REDISMODULE_OK;
     }
     RedisModuleClusterMessageReceiver receiver = dictGetVal(entry);
-    receiver(ctx, senderIdStr, 0, msgStr, msgLen);
+
+    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(senderIdStr, msgStr, msgLen, receiver);
+
+    pthread_mutex_lock(&msgArriveLock);
+    listAddNodeTail(msgArriveList, msgArriveCtx);
+    pthread_mutex_unlock(&msgArriveLock);
+    pthread_cond_signal(&msgArriveCond);
+
     RedisModule_ReplyWithSimpleString(ctx, "OK");
     return REDISMODULE_OK;
 }
