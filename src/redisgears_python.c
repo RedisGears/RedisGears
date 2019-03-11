@@ -338,7 +338,8 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         PyObject* argument = PyTuple_GetItem(args, i);
         PyObject* argumentStr = PyObject_Str(argument);
         char* argumentCStr = PyString_AsString(argumentStr);
-        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, strlen(argumentCStr));
+        size_t argLen = PyString_Size(argumentStr);
+        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
         Py_DECREF(argumentStr);
         argements = array_append(argements, argumentRedisStr);
     }
