@@ -20,6 +20,15 @@ class testBasic:
         for i in range(100):
             conn.execute_command('set', str(i), str(i))
 
+    def testCount(self):
+        self.env.expect('rg.pyexecute', "GearsBuilder().count().run()").contains(['100'])
+
+    def testCountBy(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().'
+                                        'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
+                                        'countby(lambda x: x["value"]).run()').contains(["{'value': 50, 'key': '0'}",
+                                                                                         "{'value': 50, 'key': '100'}"])
+
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
