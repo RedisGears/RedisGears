@@ -1,63 +1,92 @@
+
+PLATFORM:=$(shell python -c 'import platform; print "".join(platform.dist()[0:2])')
+
+MAKEFLAGS += --no-builtin-rules
+
+WITH_PYTHON ?= 1
+
 CC=gcc
-SRC := src
-OBJ := obj
+SRCDIR := src
+BINDIR := obj
 GIT_SHA := $(shell git rev-parse HEAD)
 
-$(shell mkdir -p $(OBJ))
-$(shell mkdir -p $(OBJ)/utils)
+SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
+	mgmt.c keys_reader.c keys_writer.c example.c filters.c mappers.c \
+	extractors.c reducers.c record.c cluster.c commands.c streams_reader.c \
+	globals.c config.c lock_handler.c module_init.c
 
-SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
-       	src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
-        src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
-        src/globals.c src/config.c src/lock_handler.c
-CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -std=gnu99
-LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
-ifeq ($(DEBUG), 1)
-    CFLAGS+=-g -O0 -DVALGRIND
+OBJECTS=$(patsubst %.c, $(BINDIR)/%.o, $(SOURCES))
+
+CFLAGS=\
+	-fPIC -std=gnu99 \
+	-I$(SRCDIR) -Iinclude \
+	-DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\"
+
+ifeq ($(DEBUG),1)
+CFLAGS += -g -O0 -DVALGRIND
 else
-	CFLAGS+=-O2 -Wno-unused-result
-endif
-ifeq ($(WITHPYTHON), 1)
-	SOURCES+=src/redisgears_python.c
-	PYTHON_CFLAGS=-I./src/deps/cpython/Include/ -I./src/deps/cpython/
-	PYTHON_LFLAGS=-L./src/deps/cpython/ -Wl,--whole-archive -Wl,-Bstatic -lpython2.7 -Wl,-Bdynamic -Wl,--no-whole-archive -lutil
-	CFLAGS+=-DWITHPYTHON
-    CFLAGS+=$(PYTHON_CFLAGS)
-    LFLAGS+=$(PYTHON_LFLAGS)
+CFLAGS += -O2 -Wno-unused-result
 endif
 
-OBJECTS=$(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
+ifeq ($(WITH_PYTHON),1)
+CPYTHON_DIR=$(SRCDIR)/deps/cpython
+SOURCES += redisgears_python.c
+CFLAGS += -I$(CPYTHON_DIR)/Include -Ibuild/cpython -DWITHPYTHON
+LDFLAGS +=
+EMBEDDED_LIBS += $(LIBPYTHON) -lutil
+endif
 
-$(OBJ)/%.o: $(SRC)/%.c
-	$(CC) -I$(SRC) $(CFLAGS) -c $< -o $@
+LIBPYTHON=build/cpython/libpython2.7.a
+LIBEVENT=build/libevent/.libs/libevent.a
 
-all: redisgears.so
+EMBEDDED_LIBS += $(LIBEVENT)
 
-python:
-	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE" ./configure --without-pymalloc;make
-	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata.py /usr/lib/python2.7/
-	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata_nd.py /usr/lib/python2.7/
+$(BINDIR)/%.o: $(SRCDIR)/%.c
+	@echo Compiling $^...
+	@$(CC) -I$(SRCDIR) $(CFLAGS) -c $< -o $@
+
+ifeq ($(ALL),1)
+all: $(BINDIR) python libevent redisgears.so
+else
+all: $(BINDIR) redisgears.so
+endif
+
+$(BINDIR):
+	@mkdir -p $(BINDIR) $(BINDIR)/utils
+
+$(LIBPYTHON):
+	@echo Building cpython...
+	@$(MAKE) -C build/cpython -f Makefile.main -j
+
+python:  $(LIBPYTHON)
 
 python_clean:
-	cd src/deps/cpython;make clean
+	@$(MAKE) -C build/cpython -f Makefile.main clean
 
-redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
-	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
-	
-static: $(OBJECTS)
-	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
+libevent: $(LIBEVENT)
+
+$(LIBEVENT):
+	@echo Building libevent...
+	@$(MAKE) -C build/libevent -f Makefile.main -j
+
+redisgears.so: $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
+	@echo Linking $@...
+	@$(CC) -shared -o $@ $(OBJECTS) $(LDFLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive 
+
+redisgears.a: $(OBJECTS)
+	$(AR) rcs $@ $(filter-out module_init,$(OBJECTS)) $(LIBEVENT)
+
+static: redisgears.a
 
 clean:
-	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o redisgears.zip
+	find obj -name '*.[oad]' -type f -delete
+	rm -f redisgears.so redisgears.a redisgears.zip
+ifeq ($(ALL),1) 
+	@$(MAKE) -C build/cpython -f Makefile.main clean
+	@$(MAKE) -C build/libevent -f Makefile.main clean
+endif
 	
-get_deps: python
-	rm -rf deps
-	rm -rf libs
-	mkdir deps
-	mkdir libs
-	cd deps;git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git;cd ./libevent/;libtoolize;aclocal;autoheader;autoconf;automake --add-missing;CFLAGS=-fPIC ./configure;make;
-	cp ./deps/libevent/.libs/libevent.a ./libs/
-	rm -rf deps
-	
+deps: python libevent
+
 ramp_pack: all
-	ramp pack $(realpath ./redisgears.so) -m ramp.yml -o redisgears.zip
+	@ramp pack $(realpath ./redisgears.so) -m ramp.yml -o redisgears.zip

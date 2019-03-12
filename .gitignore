@@ -1,3 +1,14 @@
+build/**
+!build/cpython
+build/cpython/**
+!build/cpython/Makefile.boot
+!build/cpython/Makefile.main
+!build/libevent
+build/libevent/**
+!build/libevent/Makefile.boot
+!build/libevent/Makefile.main
+src/deps/libevent/
+
 # Prerequisites
 *.d
 

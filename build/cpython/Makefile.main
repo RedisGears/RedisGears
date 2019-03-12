@@ -1,0 +1,14 @@
+
+SRCDIR=../../src/deps/cpython
+export CFLAGS=-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE
+
+all:
+	@$(SRCDIR)/configure --without-pymalloc
+	@$(MAKE)
+
+clean:
+ifeq ($(ALL),1) 
+	find . \( ! -name "Makefile.boot" \) -delete
+else
+	$(MAKE) clean
+endif

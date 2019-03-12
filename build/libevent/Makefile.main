@@ -1,0 +1,21 @@
+
+SRCDIR=../../src/deps/libevent
+export CFLAGS=-fPIC
+
+all:
+	if [ ! -d $(SRCDIR) ]; then \
+		cd ../../src/deps; \
+		git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git; \
+		cd libevent; \
+		./autogen.sh; \
+	fi
+	$(SRCDIR)/configure
+	$(MAKE)
+
+clean:
+ifeq ($(ALL),1) 
+	rm -rf $(SRCDIR)
+	find . \( ! -name "Makefile.boot" \) -delete
+else
+	$(MAKE) clean
+endif
