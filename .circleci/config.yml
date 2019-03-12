@@ -8,7 +8,7 @@ defaults:
         command: git submodule update --init --recursive
     - run:
         name: Install_Deps
-        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster
+        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y xxd
     - run:
         name: Build
         command: make get_deps;make WITHPYTHON=1 
@@ -41,7 +41,7 @@ jobs:
           command: git submodule update --init --recursive
       - run:
           name: Install_Deps
-          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster
+          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y vim-common
       - run:
           name: Build
           command: make get_deps;make WITHPYTHON=1
