@@ -21,7 +21,7 @@ class testBasic:
             conn.execute_command('set', str(i), str(i))
 
     def testBasicQuery(self):
-        id = self.env.cmd('rg.pyexecute', "gearsCtx().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
+        id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res[1]]
         for i in range(100):
@@ -29,7 +29,7 @@ class testBasic:
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicFilterQuery(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
+        id = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res[1]]
         for i in range(50, 100):
@@ -37,14 +37,14 @@ class testBasic:
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicMapQuery(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
+        id = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res[1]]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicGroupByQuery(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx().'
+        id = self.env.cmd('rg.pyexecute', 'GearsBuilder().'
                                           'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
                                           'groupby(lambda x: str(x["value"]), lambda key, a, vals: 1 + (a if a else 0)).'
                                           'map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
@@ -54,7 +54,7 @@ class testBasic:
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicAccumulate(self):
-        id = self.env.cmd('rg.pyexecute', 'gearsCtx().'
+        id = self.env.cmd('rg.pyexecute', 'GearsBuilder().'
                                           'map(lambda x: int(x["value"])).'
                                           'accumulate(lambda a,x: x + (a if a else 0)).'
                                           'collect().'
@@ -68,7 +68,7 @@ class testBasic:
 def testFlatMap(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
-    id = env.cmd('rg.pyexecute', "gearsCtx()."
+    id = env.cmd('rg.pyexecute', "GearsBuilder()."
                                  "flatmap(lambda x: x['value'])."
                                  "collect().run()", 'UNBLOCKING')
     res = env.cmd('rg.getresultsblocking', id)
@@ -79,7 +79,7 @@ def testFlatMap(env):
 def testLimit(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
-    id = env.cmd('rg.pyexecute', "gearsCtx()."
+    id = env.cmd('rg.pyexecute', "GearsBuilder()."
                                  "flatmap(lambda x: x['value'])."
                                  "limit(1).collect().run()", 'UNBLOCKING')
     res = env.cmd('rg.getresultsblocking', id)
@@ -92,7 +92,7 @@ def testRepartitionAndWriteOption(env):
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
-    id = env.cmd('rg.pyexecute', "gearsCtx()."
+    id = env.cmd('rg.pyexecute', "GearsBuilder()."
                                  "repartition(lambda x: x['value'])."
                                  "foreach(lambda x: redisgears.executeCommand('set', x['value'], x['key']))."
                                  "map(lambda x : str(x)).collect().run()", 'UNBLOCKING')
@@ -111,7 +111,7 @@ def testRepartitionAndWriteOption(env):
 
 def testBasicStream(env):
     conn = getConnectionByEnv(env)
-    res = env.cmd('rg.pyexecute', "gearsCtx()."
+    res = env.cmd('rg.pyexecute', "GearsBuilder()."
                                   "repartition(lambda x: 'values')."
                                   "foreach(lambda x: redisgears.executeCommand('lpush', 'values', x['value']))."
                                   "register('*')", 'UNBLOCKING')
@@ -133,7 +133,7 @@ def testBasicStream(env):
 
 def testBasicStreamRegisterOnPrefix(env):
     conn = getConnectionByEnv(env)
-    env.expect('rg.pyexecute', "gearsCtx('StreamReader')."
+    env.expect('rg.pyexecute', "GearsBuilder('StreamReader')."
                                "map(lambda x: str(x))."
                                "repartition(lambda x: 'new_key')."
                                "foreach(lambda x: redisgears.executeCommand('set', 'new_key', x))."
@@ -160,7 +160,7 @@ def testBasicStreamRegisterOnPrefix(env):
 
 def testBasicStreamProcessing(env):
     conn = getConnectionByEnv(env)
-    res = env.cmd('rg.pyexecute', "gearsCtx('StreamReader')."
+    res = env.cmd('rg.pyexecute', "GearsBuilder('StreamReader')."
                                   "flatmap(lambda x: [(a[0], a[1]) for a in x.items()])."
                                   "repartition(lambda x: x[0])."
                                   "foreach(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
@@ -195,8 +195,8 @@ def func(x):
     var += 1
     redisgears.executeCommand('set',x['key'], var)
 def OnTime():
-    gearsCtx().foreach(func).collect().run()
-gearsCtx().map(defineVar).collect().run()
+    GearsBuilder().foreach(func).collect().run()
+GearsBuilder().map(defineVar).collect().run()
 redisgears.registerTimeEvent(2, OnTime)
     '''
     id = env.cmd('rg.pyexecute', script, 'UNBLOCKING')
@@ -241,5 +241,5 @@ def testExecuteCommandWithNullTerminated(env):
     env.skipOnCluster()
     env.expect('set', 'x', 'test\x00test').equal('OK')
     env.expect('get', 'x').equal('test\x00test')
-    env.cmd('RG.PYEXECUTE', "gearsCtx().foreach(lambda x: redisgears.executeCommand('SET', 'bar', str(x['value']))).map(lambda x: str(x)).run()")
+    env.cmd('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: redisgears.executeCommand('SET', 'bar', str(x['value']))).map(lambda x: str(x)).run()")
     env.expect('get', 'bar').equal('test\x00test')

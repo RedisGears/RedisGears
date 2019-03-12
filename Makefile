@@ -31,7 +31,7 @@ OBJECTS=$(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
 $(OBJ)/%.o: $(SRC)/%.c
 	$(CC) -I$(SRC) $(CFLAGS) -c $< -o $@
 
-all: redisgears.so
+all: GearsBuilder.py redisgears.so
 
 python:
 	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE" ./configure --without-pymalloc;make
@@ -44,6 +44,9 @@ python_clean:
 redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
 	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
 	
+GearsBuilder.py:
+	xxd -i src/GearsBuilder.py > src/GearsBuilder.auto.h
+
 static: $(OBJECTS)
 	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
 

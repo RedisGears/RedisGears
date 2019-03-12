@@ -12,18 +12,18 @@ def getConnectionByEnv(env):
 
 
 def testInvalidSyntax(env):
-    env.expect('rg.pyexecute', '1defs + gearsCtx().notexists()').error().contains("invalid syntax")
+    env.expect('rg.pyexecute', '1defs + GearsBuilder().notexists()').error().contains("invalid syntax")
 
 
 def testScriptError(env):
-    env.expect('rg.pyexecute', 'gearsCtx().notexists()').error().equal("'redisgears.PyFlatExecution' object has no attribute 'notexists'")
+    env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().equal("GearsBuilder instance has no attribute 'notexists'")
 
 
 def testForEachError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().foreach(lambda x: notexists(x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().foreach(lambda x: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -31,7 +31,7 @@ def testGroupByError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().groupby(lambda x: "str", lambda a, x, k: notexists(x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: "str", lambda a, x, k: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -39,7 +39,7 @@ def testBatchGroupByError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().batchgroupby(lambda x: "str", lambda x, k: notexists(x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().batchgroupby(lambda x: "str", lambda x, k: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -47,7 +47,7 @@ def testExtractorError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().groupby(lambda x: notexists(x), lambda a, x, k: 1).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: notexists(x), lambda a, x, k: 1).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -55,7 +55,7 @@ def testAccumulateError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().accumulate(lambda a, x: notexists(a, x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -63,7 +63,7 @@ def testMapError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().map(lambda x: notexists(x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -71,7 +71,7 @@ def testFlatMapError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().flatmap(lambda x: notexists(x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().flatmap(lambda x: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -79,7 +79,7 @@ def testFilterError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().filter(lambda x: notexists(x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
@@ -87,5 +87,5 @@ def testRepartitionError(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'gearsCtx().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
+    res = env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])

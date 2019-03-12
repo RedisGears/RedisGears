@@ -62,3 +62,5 @@ script_example.py
 *.log
 *.rdb
 commit.txt
+src/GearsBuilder.auto.h
+*.zip

@@ -10,7 +10,9 @@
 #include <redisgears_memory.h>
 #include <redisgears_python.h>
 #include "utils/arr_rm_alloc.h"
+#include "utils/dict.h"
 #include "lock_handler.h"
+#include "GearsBuilder.auto.h"
 
 static PyObject* pFunc;
 static PyObject* pyGlobals;
@@ -1242,10 +1244,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(m, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
 
-    PyRun_SimpleString("import redisgears\n"
-                       "from redisgears import gearsCtx\n"
-                       "globals()['str'] = str\n"
-                       "redisgears._saveGlobals()\n");
+    char* script = RG_ALLOC(src_GearsBuilder_py_len + 1);
+    memcpy(script, src_GearsBuilder_py, src_GearsBuilder_py_len);
+    script[src_GearsBuilder_py_len] = '\0';
+    PyRun_SimpleString(script);
+    RG_FREE(script);
 
     PyObject* pName = PyString_FromString("types");
     PyObject* pModule = PyImport_Import(pName);
