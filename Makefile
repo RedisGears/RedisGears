@@ -43,7 +43,7 @@ EMBEDDED_LIBS += $(LIBEVENT)
 
 $(BINDIR)/%.o: $(SRCDIR)/%.c
 	@echo Compiling $^...
-	@$(CC) -I$(SRCDIR) $(CFLAGS) -c $< -o $@
+	$(CC) -I$(SRCDIR) $(CFLAGS) -c $< -o $@
 
 ifeq ($(ALL),1)
 all: $(BINDIR) python libevent redisgears.so
@@ -56,9 +56,9 @@ $(BINDIR):
 
 $(LIBPYTHON):
 	@echo Building cpython...
-	@$(MAKE) -C build/cpython -f Makefile.main -j
+	@$(MAKE) -C build/cpython -f Makefile.main
 
-python:  $(LIBPYTHON)
+python: $(LIBPYTHON)
 
 python_clean:
 	@$(MAKE) -C build/cpython -f Makefile.main clean
@@ -67,11 +67,11 @@ libevent: $(LIBEVENT)
 
 $(LIBEVENT):
 	@echo Building libevent...
-	@$(MAKE) -C build/libevent -f Makefile.main -j
+	@$(MAKE) -C build/libevent -f Makefile.main
 
 redisgears.so: $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 	@echo Linking $@...
-	@$(CC) -shared -o $@ $(OBJECTS) $(LDFLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive 
+	$(CC) -shared -o $@ $(OBJECTS) $(LDFLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive 
 
 redisgears.a: $(OBJECTS)
 	$(AR) rcs $@ $(filter-out module_init,$(OBJECTS)) $(LIBEVENT)

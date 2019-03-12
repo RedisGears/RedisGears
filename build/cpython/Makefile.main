@@ -8,7 +8,7 @@ all:
 
 clean:
 ifeq ($(ALL),1) 
-	find . \( ! -name "Makefile.boot" \) -delete
+	find . \( ! -name "Makefile.main" \) -delete
 else
 	$(MAKE) clean
 endif

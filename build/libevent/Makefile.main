@@ -15,7 +15,7 @@ all:
 clean:
 ifeq ($(ALL),1) 
 	rm -rf $(SRCDIR)
-	find . \( ! -name "Makefile.boot" \) -delete
+	find . \( ! -name "Makefile.main" \) -delete
 else
 	$(MAKE) clean
 endif
