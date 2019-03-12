@@ -1213,9 +1213,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RedisGearsPy_Alloc);
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
+	char* arg = "Embeded";
     Py_SetProgramName((char*)GearsCOnfig_GetPythonHomeDir());
     Py_Initialize();
     PyEval_InitThreads();
+    PySys_SetArgv(1, &arg);
     PyTensorType.tp_new = PyType_GenericNew;
     PyGraphRunnerType.tp_new = PyType_GenericNew;
     PyFlatExecutionType.tp_new = PyType_GenericNew;

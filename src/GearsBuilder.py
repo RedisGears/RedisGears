@@ -1,6 +1,8 @@
 import redisgears
 from redisgears import gearsCtx
 from redisgears import PyFlatExecution
+import cloud
+import pickle
 
 globals()['str'] = str
 
