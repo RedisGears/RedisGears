@@ -88,5 +88,7 @@ endif
 	
 deps: python libevent
 
+get_deps: deps
+
 ramp_pack: all
 	@ramp pack $(realpath ./redisgears.so) -m ramp.yml -o redisgears.zip
