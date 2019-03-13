@@ -1,12 +1,16 @@
 import redisgears
 from redisgears import gearsCtx
 from redisgears import PyFlatExecution
-import cloud
-import pickle
+
 
 globals()['str'] = str
 
 redisgears._saveGlobals()
+
+
+def __aggregateFunction__(key, a, r, agg, zero):
+    a[key] = agg(key, a[key] if key in a.keys() else zero, r)
+    return a
 
 
 class GearsBuilder():
@@ -17,12 +21,8 @@ class GearsBuilder():
         self.gearsCtx.accumulate(lambda a, r: seqOp(a if a else zero, r))
         return self
 
-    def __aggregateFunction__(self, key, a, r, agg, zero):
-        a[key] = agg(key, a[key] if key in a.keys() else zero, r)
-        return a
-
     def __localAggregateby__(self, extractor, zero, aggregator):
-        self.__localAggregate__({}, lambda a, r: self.__aggregateFunction__(extractor(r), a, r, aggregator, zero))
+        self.__localAggregate__({}, lambda a, r: __aggregateFunction__(extractor(r), a, r, aggregator, zero))
         self.gearsCtx.flatmap(lambda r: [(k, r[k]) for k in r.keys()])
         return self
 

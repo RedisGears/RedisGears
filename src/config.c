@@ -149,10 +149,14 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
 	}
 }
 
+#ifndef CPYTHON_PATH
+#define CPYTHON_PATH "/usr/bin/"
+#endif
+
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
 	DefaultGearsConfig = (RedisGears_Config){
 		.pythonHomeDir = {
-				.val.str = RG_STRDUP("/usr/bin/"),
+				.val.str = RG_STRDUP(CPYTHON_PATH),
 				.type = STR,
 		},
 	};

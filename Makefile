@@ -6,11 +6,13 @@ GIT_SHA := $(shell git rev-parse HEAD)
 $(shell mkdir -p $(OBJ))
 $(shell mkdir -p $(OBJ)/utils)
 
+CPYTHON_PATH := $(realpath ./src/deps/cpython/)
+
 SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
        	src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
         src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
         src/globals.c src/config.c src/lock_handler.c
-CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -std=gnu99
+CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -DCPYTHON_PATH=\"$(CPYTHON_PATH)/\" -std=gnu99
 LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
 ifeq ($(DEBUG), 1)
     CFLAGS+=-g -O0 -DVALGRIND
@@ -46,6 +48,7 @@ redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
 	
 GearsBuilder.py:
 	xxd -i src/GearsBuilder.py > src/GearsBuilder.auto.h
+	xxd -i src/cloudpickle.py > src/cloudpickle.auto.h
 
 static: $(OBJECTS)
 	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a

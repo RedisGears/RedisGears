@@ -1623,7 +1623,7 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
 }
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-	dictIterator *iter = dictGetIterator(epData.epDict);
+	dictIterator *iter = dictGetSafeIterator(epData.epDict);
 	dictEntry *entry = NULL;
 	RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
 	size_t numOfEntries = 0;

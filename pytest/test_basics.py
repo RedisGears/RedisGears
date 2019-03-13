@@ -24,10 +24,25 @@ class testBasic:
         self.env.expect('rg.pyexecute', "GearsBuilder().count().run()").contains(['100'])
 
     def testCountBy(self):
-        self.env.expect('rg.pyexecute', 'GearsBuilder().'
-                                        'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
-                                        'countby(lambda x: x["value"]).run()').contains(["{'value': 50, 'key': '0'}",
-                                                                                         "{'value': 50, 'key': '100'}"])
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().'
+                                           'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
+                                           'countby(lambda x: x["value"]).collect().run()')
+        a = []
+        for r in res[1]:
+            a.append(eval(r))
+        self.env.assertContains({'key': '100', 'value': 50}, a)
+        self.env.assertContains({'value': 50, 'key': '0'}, a)
+
+    def testLocalAggregate(self):
+        self.env.skipOnCluster()
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().'
+                                           'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
+                                           '__localAggregateby__(lambda x:x["value"], 0, lambda k, a, x: 1 + a).run()')
+        a = []
+        for r in res[1]:
+            a.append(eval(r))
+        self.env.assertContains((100, 50), a)
+        self.env.assertContains((0, 50), a)
 
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
@@ -196,19 +211,16 @@ def testTimeEvent(env):
     conn.set('y', '1')
     conn.set('z', '1')
     script = '''
-def defineVar(x):
-    global var
-    var = 1
-def func(x):
-    global var
-    var += 1
-    redisgears.executeCommand('set',x['key'], var)
 def OnTime():
+    def func(x):
+        var = int(redisgears.executeCommand('get',x['key'])) + 1
+        redisgears.executeCommand('set',x['key'], var)
     GearsBuilder().foreach(func).collect().run()
-GearsBuilder().map(defineVar).collect().run()
-redisgears.registerTimeEvent(2, OnTime)
+def start():
+    redisgears.registerTimeEvent(2, OnTime)
+start()
     '''
-    id = env.cmd('rg.pyexecute', script, 'UNBLOCKING')
+    env.cmd('rg.pyexecute', script)
     env.assertEqual(int(conn.get('x')), 1)
     env.assertEqual(int(conn.get('y')), 1)
     env.assertEqual(int(conn.get('z')), 1)
@@ -216,7 +228,6 @@ redisgears.registerTimeEvent(2, OnTime)
     env.assertTrue(int(conn.get('x')) >= 2)
     env.assertTrue(int(conn.get('y')) >= 2)
     env.assertTrue(int(conn.get('z')) >= 2)
-    env.cmd('rg.dropexecution', id)
 
 
 def testTimeEventSurrviveRestart(env):

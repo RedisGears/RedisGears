@@ -16,10 +16,10 @@ fi
 shift
 
 echo "no cluster on "$env_prefix
-RLTest --clear-logs --module ../redisgears.so --env $env_prefix $@
+RLTest --clear-logs --module ../redisgears.so --module-args "PythonHomeDir ../../src/deps/cpython/" --env $env_prefix $@
 echo "cluster mode, 1 shard"
-RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count 1 $@
+RLTest --clear-logs --module ../redisgears.$module_suffix --module-args "PythonHomeDir ../../src/deps/cpython/" --env $env_prefix-cluster --shards-count 1 $@
 echo "cluster mode, 2 shards"
-RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count 2 $@
+RLTest --clear-logs --module ../redisgears.$module_suffix --module-args "PythonHomeDir ../../src/deps/cpython/" --env $env_prefix-cluster --shards-count 2 $@
 echo "cluster mode, 3 shards"
-RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count 3 $@
+RLTest --clear-logs --module ../redisgears.$module_suffix --module-args "PythonHomeDir ../../src/deps/cpython/" --env $env_prefix-cluster --shards-count 3 $@
