@@ -365,11 +365,16 @@ Record* RG_DeserializeRecord(BufferReader* br){
     size_t size;
     switch(type){
     case STRING_RECORD:
-    case ERROR_RECORD:
         temp = RedisGears_BRReadBuffer(br, &size);
         temp1 = RG_ALLOC(size);
         memcpy(temp1, temp, size);
         r = RG_StringRecordCreate(temp1, size);
+        break;
+    case ERROR_RECORD:
+        temp = RedisGears_BRReadBuffer(br, &size);
+        temp1 = RG_ALLOC(size);
+        memcpy(temp1, temp, size);
+        r = RG_ErrorRecordCreate(temp1, size);
         break;
     case LONG_RECORD:
         r = RG_LongRecordCreate(RedisGears_BRReadLong(br));

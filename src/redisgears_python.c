@@ -10,7 +10,10 @@
 #include <redisgears_memory.h>
 #include <redisgears_python.h>
 #include "utils/arr_rm_alloc.h"
+#include "utils/dict.h"
 #include "lock_handler.h"
+#include "GearsBuilder.auto.h"
+#include "cloudpickle.auto.h"
 
 static PyObject* pFunc;
 static PyObject* pyGlobals;
@@ -245,7 +248,9 @@ static PyObject *PyFlatExecution_ToStr(PyObject * pyObj){
 
 static void PyFlatExecution_Destruct(PyObject *pyObj){
     PyFlatExecution* pfep = (PyFlatExecution*)pyObj;
-    RedisGears_FreeFlatExecution(pfep->fep);
+    if(pfep->fep){
+        RedisGears_FreeFlatExecution(pfep->fep);
+    }
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
@@ -288,6 +293,9 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
 static PyObject* saveGlobals(PyObject *cls, PyObject *args){
     pyGlobals = PyEval_GetGlobals();
     Py_INCREF(pyGlobals);
+    // main var are not serialize, we want all the user define functions to
+    // be serialize so we specify the module on which the user run as not_main!!
+    PyDict_SetItemString(pyGlobals, "__name__", PyString_FromString("not_main"));
     return PyLong_FromLong(1);
 }
 
@@ -726,12 +734,9 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
     PyEval_RestoreThread(_save);
 
-    PyObject *m, *d, *v;
-    m = PyImport_AddModule("__main__");
-    if (m == NULL)
-        return -1;
-    d = PyModule_GetDict(m);
-    v = PyRun_StringFlags(script, Py_file_input, d, d, NULL);
+    PyObject *v;
+
+    v = PyRun_StringFlags(script, Py_file_input, pyGlobals, pyGlobals, NULL);
 
     if(!v){
         PyObject *ptype, *pvalue, *ptraceback;
@@ -1127,21 +1132,38 @@ void* RedisGearsPy_PyObjectDeserialize(BufferReader* br){
 static void RedisGearsPy_PyCallbackSerialize(void* arg, BufferWriter* bw){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* callback = arg;
-    PyObject* callbackCode = PyObject_GetAttrString(callback, "func_code");
-    RedisGearsPy_PyObjectSerialize(callbackCode, bw);
+    PyObject *pickleFunction = PyDict_GetItemString(pyGlobals, "dumps");
+    PyObject *args = PyTuple_New(1);
+    Py_INCREF(callback);
+    PyTuple_SetItem(args, 0, callback);
+    PyObject * serializedStr = PyObject_CallObject(pickleFunction, args);
+    if(!serializedStr || PyErr_Occurred()){
+        PyErr_Print();
+        exit(1);
+    }
+    Py_DECREF(args);
+    size_t len = PyString_Size(serializedStr);
+    char* objStrCstr  = PyString_AsString(serializedStr);
+    RedisGears_BWWriteBuffer(bw, objStrCstr, len);
+    Py_DECREF(serializedStr);
     PyGILState_Release(state);
     return;
 }
 
 static void* RedisGearsPy_PyCallbackDeserialize(BufferReader* br){
     PyGILState_STATE state = PyGILState_Ensure();
-    PyObject* callbackCode = RedisGearsPy_PyObjectDeserialize(br);
-    PyObject* pArgs = PyTuple_New(2);
-    PyTuple_SetItem(pArgs, 0, callbackCode);
-    PyTuple_SetItem(pArgs, 1, pyGlobals);
-    Py_INCREF(pyGlobals);
-    PyObject* callback = PyObject_CallObject(pFunc, pArgs);
-    Py_DECREF(pArgs);
+    size_t len;
+    char* data = RedisGears_BRReadBuffer(br, &len);
+    PyObject *dataStr = PyString_FromStringAndSize(data, len);
+    PyObject *loadFunction = PyDict_GetItemString(pyGlobals, "loads");
+    PyObject *args = PyTuple_New(1);
+    PyTuple_SetItem(args, 0, dataStr);
+    PyObject * callback = PyObject_CallObject(loadFunction, args);
+    if(!callback || PyErr_Occurred()){
+        PyErr_Print();
+        exit(1);
+    }
+    Py_DECREF(args);
     PyGILState_Release(state);
     return callback;
 }
@@ -1211,9 +1233,12 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RedisGearsPy_Alloc);
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
-    Py_SetProgramName((char*)GearsCOnfig_GetPythonHomeDir());
+	char* arg = "Embeded";
+	char* progName = (char*)GearsCOnfig_GetPythonHomeDir();
+    Py_SetProgramName(progName);
     Py_Initialize();
     PyEval_InitThreads();
+    PySys_SetArgv(1, &arg);
     PyTensorType.tp_new = PyType_GenericNew;
     PyGraphRunnerType.tp_new = PyType_GenericNew;
     PyFlatExecutionType.tp_new = PyType_GenericNew;
@@ -1242,15 +1267,32 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(m, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
 
-    PyRun_SimpleString("import redisgears\n"
-                       "from redisgears import gearsCtx\n"
-                       "globals()['str'] = str\n"
-                       "redisgears._saveGlobals()\n");
+    char* script = RG_ALLOC(src_cloudpickle_py_len + 1);
+    memcpy(script, src_cloudpickle_py, src_cloudpickle_py_len);
+    script[src_cloudpickle_py_len] = '\0';
+    PyRun_SimpleString(script);
+    RG_FREE(script);
+
+    script = RG_ALLOC(src_GearsBuilder_py_len + 1);
+    memcpy(script, src_GearsBuilder_py, src_GearsBuilder_py_len);
+    script[src_GearsBuilder_py_len] = '\0';
+    PyRun_SimpleString(script);
+    RG_FREE(script);
+
+    if(PyErr_Occurred()){
+        PyErr_Print();
+        return REDISMODULE_ERR;
+    }
 
     PyObject* pName = PyString_FromString("types");
     PyObject* pModule = PyImport_Import(pName);
     pFunc = PyObject_GetAttrString(pModule, "FunctionType");
     Py_DECREF(pName);
+
+    if(PyErr_Occurred()){
+        PyErr_Print();
+        return REDISMODULE_ERR;
+    }
 
     ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
 

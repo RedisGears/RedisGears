@@ -8,11 +8,13 @@ OS := $(shell lsb_release -si)
 $(shell mkdir -p $(OBJ))
 $(shell mkdir -p $(OBJ)/utils)
 
+CPYTHON_PATH := $(realpath ./src/deps/cpython/)
+
 SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
        	src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
         src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
         src/globals.c src/config.c src/lock_handler.c
-CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -std=gnu99
+CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -DCPYTHON_PATH=\"$(CPYTHON_PATH)/\" -std=gnu99
 LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
 ifeq ($(DEBUG), 1)
     CFLAGS+=-g -O0 -DVALGRIND
@@ -33,12 +35,10 @@ OBJECTS=$(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
 $(OBJ)/%.o: $(SRC)/%.c
 	$(CC) -I$(SRC) $(CFLAGS) -c $< -o $@
 
-all: redisgears.so
+all: GearsBuilder.py redisgears.so
 
 python:
 	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE" ./configure --without-pymalloc;make
-	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata.py /usr/lib/python2.7/
-	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata_nd.py /usr/lib/python2.7/
 
 python_clean:
 	cd src/deps/cpython;make clean
@@ -46,6 +46,10 @@ python_clean:
 redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
 	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
 	
+GearsBuilder.py:
+	xxd -i src/GearsBuilder.py > src/GearsBuilder.auto.h
+	xxd -i src/cloudpickle.py > src/cloudpickle.auto.h
+
 static: $(OBJECTS)
 	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
 
@@ -62,4 +66,4 @@ get_deps: python
 	rm -rf deps
 	
 ramp_pack: all
-	mkdir artifacts;ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip
+	mkdir artifacts;ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip;zip -rq artifacts/redisgears-artifact-$(GIT_BRANCH)-$(OS).zip src/deps/cpython

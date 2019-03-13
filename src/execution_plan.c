@@ -338,7 +338,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
         if(err){
             ep->isErrorOccure = true;
             RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(err, strlen(err));
+            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
             return record;
         }
         if(filterRes){
@@ -374,7 +374,7 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
             if(record){
                 RedisGears_FreeRecord(record);
             }
-            record = RG_ErrorRecordCreate(err, strlen(err));
+            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
         }
     }
 end:
@@ -458,7 +458,7 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
     if(err){
         ep->isErrorOccure = true;
         RedisGears_FreeRecord(record);
-        r = RG_ErrorRecordCreate(err, strlen(err));
+        r = RG_ErrorRecordCreate(err, strlen(err) + 1);
         goto end;
     }
     r = RedisGears_KeyRecordCreate();
@@ -536,7 +536,7 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     if(err){
         ep->isErrorOccure = true;
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(err, strlen(err));
+        record = RG_ErrorRecordCreate(err, strlen(err) + 1);
     }
     return record;
 }
@@ -694,7 +694,7 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     if(err){
         ep->isErrorOccure = true;
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(err, strlen(err));
+        record = RG_ErrorRecordCreate(err, strlen(err) + 1);
     }
     return record;
 }
@@ -743,7 +743,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
             if(step->accumulate.accumulator){
                 RedisGears_FreeRecord(step->accumulate.accumulator);
             }
-            return RG_ErrorRecordCreate(err, strlen(err));
+            return RG_ErrorRecordCreate(err, strlen(err) + 1);
         }
     }
     r = step->accumulate.accumulator;
@@ -783,7 +783,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		        RedisGears_FreeRecord(accumulator);
 		    }
 			RedisGears_FreeRecord(r);
-			return RG_ErrorRecordCreate(err, strlen(err));
+			return RG_ErrorRecordCreate(err, strlen(err) + 1);
 		}
 		if(!keyRecord){
 			keyRecord = RedisGears_KeyRecordCreate();
@@ -1623,7 +1623,7 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
 }
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-	dictIterator *iter = dictGetIterator(epData.epDict);
+	dictIterator *iter = dictGetSafeIterator(epData.epDict);
 	dictEntry *entry = NULL;
 	RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
 	size_t numOfEntries = 0;
