@@ -39,8 +39,6 @@ all: GearsBuilder.py redisgears.so
 
 python:
 	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE" ./configure --without-pymalloc;make
-	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata.py /usr/lib/python2.7/
-	ln -fs /usr/lib/python2.7/plat-x86_64-linux-gnu/_sysconfigdata_nd.py /usr/lib/python2.7/
 
 python_clean:
 	cd src/deps/cpython;make clean
@@ -68,4 +66,4 @@ get_deps: python
 	rm -rf deps
 	
 ramp_pack: all
-	mkdir artifacts;ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip
+	mkdir artifacts;ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip;zip -r artifacts/redisgears-artifact-$(GIT_BRANCH)-$(OS).zip src/deps/cpython
