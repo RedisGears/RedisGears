@@ -1,0 +1,3 @@
+libevent:
+    source: https://github.com/libevent/libevent.git
+    branch: release-2.1.8-stable
