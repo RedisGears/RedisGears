@@ -3,6 +3,8 @@ PLATFORM:=$(shell python -c 'import platform; print "".join(platform.dist()[0:2]
 
 MAKEFLAGS += --no-builtin-rules --no-builtin-variables
 
+.NOTPARALLEL:
+
 WITH_PYTHON ?= 1
 
 CC=gcc

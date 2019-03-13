@@ -6,9 +6,12 @@ all:
 	if [ ! -d $(SRCDIR) ]; then \
 		cd $(dir $(SRCDIR)); \
 		git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git; \
-		cd libevent; \
+	fi
+	if [ ! -f $(SRCDIR)/configure ]; then \
+		cd $(SRCDIR); \
 		./autogen.sh; \
 	fi
+	echo ### 3
 	if [ ! -f Makefile ]; then \
 		$(SRCDIR)/configure; \
 	fi
