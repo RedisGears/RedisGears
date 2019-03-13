@@ -14,8 +14,9 @@ def __aggregateFunction__(key, a, r, agg, zero):
 
 
 class GearsBuilder():
-    def __init__(self, reader='KeysReader'):
+    def __init__(self, reader='KeysReader', defautlPrefix='*'):
         self.gearsCtx = gearsCtx(reader)
+        self.defautlPrefix = defautlPrefix
 
     def __localAggregate__(self, zero, seqOp):
         self.gearsCtx.accumulate(lambda a, r: seqOp(a if a else zero, r))
@@ -56,10 +57,10 @@ class GearsBuilder():
     def distinct(self):
         return self.aggregate(set(), lambda a, r: a | set([r]), lambda a, r: a | r).flatmap(lambda x: list(x))
 
-    def run(self, converteToStr=True):
+    def run(self, prefix=None, converteToStr=True):
         if(converteToStr):
             self.gearsCtx.map(lambda x: str(x))
-        self.gearsCtx.run()
+        self.gearsCtx.run(prefix if prefix else self.defautlPrefix)
 
 
 def createDecorator(f):
@@ -75,3 +76,7 @@ for k in PyFlatExecution.__dict__:
     if '_' in k:
         continue
     GearsBuilder.__dict__[k] = createDecorator(PyFlatExecution.__dict__[k])
+
+ExecutionBuilder = GearsBuilder
+GB = GearsBuilder
+EB = GearsBuilder
