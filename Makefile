@@ -14,6 +14,8 @@ CC=gcc
 SRCDIR := src
 BINDIR := obj
 GIT_SHA := $(shell git rev-parse HEAD)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+OS := $(shell lsb_release -si)
 
 _SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
 	mgmt.c keys_reader.c keys_writer.c example.c filters.c mappers.c \
@@ -30,8 +32,6 @@ CFLAGS=\
 	-DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\"
 
 ifeq ($(DEBUG),1)
-### SOURCES += deps/readies/cetara/diag/gdb.c
-
 CFLAGS += -g -O0 -DVALGRIND
 LDFLAGS += -g
 else
@@ -106,7 +106,7 @@ static: redisgears.a
 
 clean:
 	find obj -name '*.[oad]' -type f -delete
-	rm -f redisgears.so redisgears.a redisgears.zip
+	rm -f redisgears.so redisgears.a redisgears.zip artifacts/*.zip
 ifeq ($(DEPS),1) 
 	@$(MAKE) -C build/cpython -f Makefile.main clean
 	@$(MAKE) -C build/libevent -f Makefile.main clean
@@ -119,4 +119,5 @@ deps: python libevent
 get_deps: deps
 
 ramp_pack: all
-	@ramp pack $(realpath ./redisgears.so) -m ramp.yml -o redisgears.zip
+	mkdir artifacts; \
+	ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip

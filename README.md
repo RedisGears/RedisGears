@@ -21,14 +21,17 @@ git submodule update --init --recursive
 
 Clone the git repository and run:
 ```
-make get_deps
-make WITHPYTHON=1
+make
 ```
 
 Notice that RedisGears dynamicly linked with your local python installation, it is possible to run without python support by just typing `make`.
 
 ## Run
-run: `redis-server --loadmodule ./redisgears.so`
+run: 
+
+```
+./scripts/redisd
+```
 
 Add some keys to your redis server and then run:
 ```
@@ -36,8 +39,8 @@ Add some keys to your redis server and then run:
 ```
 You will get all of your keys and values in redis.
 
-# RedisGears components:
-## Execution Plan:
+# RedisGears components
+## Execution Plan
 RedisGears end goal is to allow the user building Execution Plans and run them. Each execution plan starts with Reader, which supply the data, follow by a chain of operations and ends with run or register (will be explained in details later).
 
 ## Record
@@ -107,7 +110,7 @@ gearsCtx().repartition(lambda x: x['value']) # repartition record by value
 ForEach is similar to map but it does not return any value, using ForEach it is possible for example to write results back to redis. After performing the ForEach operation the execution plan will continue with the same records.
 example (using python api):
 ```
-gearsCtx().foreach(lambda x: redistar.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
+gearsCtx().foreach(lambda x: redisgears.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
 ```
 
 ### Accumulate

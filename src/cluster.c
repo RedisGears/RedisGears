@@ -257,6 +257,14 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         for(int i = minslot ; i <= maxslot ; ++i){
             CurrCluster->slots[i] = n;
         }
+
+        if(j < numOfRanges - 1){
+            // we are not at the last range
+            const char* unixAdd = RedisModule_StringPtrLen(argv[i + 7], NULL);
+            if(strcmp(unixAdd, "UNIXADDR") == 0){
+                i += 2;
+            }
+        }
     }
 
     Cluster_ConnectToShards();

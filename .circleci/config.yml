@@ -8,13 +8,21 @@ defaults:
         command: git submodule update --init --recursive
     - run:
         name: Install_Deps
-        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster
+        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release
     - run:
         name: Build
-        command: make
+        command: make; make ramp_pack
     - run:
         name: Test
         command: cd ./pytest; ./run_tests.sh
+    - persist_to_workspace:
+        root: ./artifacts
+        paths:
+          - '*.zip'
+
+  default_jobs: &default_jobs
+    - centos
+    - ubuntu
 
 jobs:
   ubuntu:
@@ -41,13 +49,30 @@ jobs:
           command: git submodule update --init --recursive
       - run:
           name: Install_Deps
-          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster
+          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core
       - run:
           name: Build
-          command: make
+          command: make; source scripts/pyenv; make ramp_pack
       - run:
           name: Test
-          command: source scripts/pyenv; cd ./pytest; ./run_tests.sh
+          command: source scripts/pyenv; cd pytest; ./run_tests.sh
+      - persist_to_workspace:
+          root: ./artifacts
+          paths:
+            - '*.zip'
+
+  deploy_snapshots:
+    docker:
+      - image: 'redislabsmodules/rmbuilder:latest'
+    steps:
+      - attach_workspace:
+          at: ./artifacts
+      - run:
+          name: Deploy Snapshots to S3
+          command: >-
+            for f in ./artifacts/*.zip; do
+              aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read;
+            done
 
 workflows:
   version: 2
@@ -66,3 +91,10 @@ workflows:
               only: /.*/
             tags:
               only: /.*/
+      - deploy_snapshots:
+          requires: *default_jobs
+          filters:
+            branches:
+              only:
+                - master
+                - deploy_snapshots
