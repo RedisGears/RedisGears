@@ -2,6 +2,8 @@ CC=gcc
 SRC := src
 OBJ := obj
 GIT_SHA := $(shell git rev-parse HEAD)
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+OS := $(shell lsb_release -si)
 
 $(shell mkdir -p $(OBJ))
 $(shell mkdir -p $(OBJ)/utils)
@@ -54,7 +56,7 @@ static: $(OBJECTS)
 	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
 
 clean:
-	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o redisgears.zip
+	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o artifacts/*.zip
 	
 get_deps: python
 	rm -rf deps
@@ -66,4 +68,4 @@ get_deps: python
 	rm -rf deps
 	
 ramp_pack: all
-	ramp pack $(realpath ./redisgears.so) -m ramp.yml -o redisgears.zip
+	mkdir artifacts;ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip

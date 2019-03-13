@@ -313,7 +313,7 @@ static PyObject* replyToPyList(RedisModuleCallReply *reply){
             RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
         size_t len;
         const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
-        return PyString_FromString(replyStr);
+        return PyString_FromStringAndSize(replyStr, len);
     }
 
     if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER){

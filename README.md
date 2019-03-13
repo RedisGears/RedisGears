@@ -107,7 +107,7 @@ gearsCtx().repartition(lambda x: x['value']) # repartition record by value
 ForEach is similar to map but it does not return any value, using ForEach it is possible for example to write results back to redis. After performing the ForEach operation the execution plan will continue with the same records.
 example (using python api):
 ```
-gearsCtx().foreach(lambda x: redistar.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
+gearsCtx().foreach(lambda x: redisgears.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
 ```
 
 ### Accumulate
