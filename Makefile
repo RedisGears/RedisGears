@@ -1,7 +1,7 @@
 
 PLATFORM:=$(shell python -c 'import platform; print "".join(platform.dist()[0:2])')
 
-MAKEFLAGS += --no-builtin-rules
+MAKEFLAGS += --no-builtin-rules --no-builtin-variables
 
 WITH_PYTHON ?= 1
 
@@ -45,18 +45,14 @@ $(BINDIR)/%.o: $(SRCDIR)/%.c
 	@echo Compiling $^...
 	$(CC) -I$(SRCDIR) $(CFLAGS) -c $< -o $@
 
-ifeq ($(ALL),1)
 all: $(BINDIR) python libevent redisgears.so
-else
-all: $(BINDIR) redisgears.so
-endif
 
 $(BINDIR):
 	@mkdir -p $(BINDIR) $(BINDIR)/utils
 
 $(LIBPYTHON):
 	@echo Building cpython...
-	@$(MAKE) -C build/cpython -f Makefile.main
+	@$(MAKE) -C build/cpython -f Makefile.main  MAKEFLAGS=
 
 python: $(LIBPYTHON)
 
@@ -81,7 +77,7 @@ static: redisgears.a
 clean:
 	find obj -name '*.[oad]' -type f -delete
 	rm -f redisgears.so redisgears.a redisgears.zip
-ifeq ($(ALL),1) 
+ifeq ($(DEPS),1) 
 	@$(MAKE) -C build/cpython -f Makefile.main clean
 	@$(MAKE) -C build/libevent -f Makefile.main clean
 endif

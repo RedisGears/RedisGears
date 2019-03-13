@@ -3,7 +3,9 @@ SRCDIR=../../src/deps/cpython
 export CFLAGS=-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE
 
 all:
+ifeq (,$(wildcard Makefile))
 	@$(SRCDIR)/configure --without-pymalloc
+endif
 	@$(MAKE)
 
 clean:

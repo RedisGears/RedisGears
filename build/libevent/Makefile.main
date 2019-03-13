@@ -1,15 +1,17 @@
 
-SRCDIR=../../src/deps/libevent
+SRCDIR=../../deps/libevent
 export CFLAGS=-fPIC
 
 all:
 	if [ ! -d $(SRCDIR) ]; then \
-		cd ../../src/deps; \
+		cd $(dir $(SRCDIR)); \
 		git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git; \
 		cd libevent; \
 		./autogen.sh; \
 	fi
-	$(SRCDIR)/configure
+	if [ ! -f Makefile ]; then \
+		$(SRCDIR)/configure; \
+	fi
 	$(MAKE)
 
 clean:
