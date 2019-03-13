@@ -47,7 +47,7 @@ jobs:
           command: make
       - run:
           name: Test
-          command: export PYTHONPATH="/usr/lib64/python27.zip:/usr/lib64/python2.7:/usr/lib64/python2.7/plat-linux2:/usr/lib64/python2.7/lib-tk:/usr/lib64/python2.7/lib-old:/usr/lib64/python2.7/lib-dynload:/usr/lib64/python2.7/site-packages:/usr/lib/python2.7/site-packages";export PYTHONHOME=/usr/bin/;cd ./pytest; ./run_tests.sh
+          command: source scripts/pyenv; cd ./pytest; ./run_tests.sh
 
 workflows:
   version: 2

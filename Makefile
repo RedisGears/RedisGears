@@ -1,38 +1,46 @@
 
+SHOW=@
 PLATFORM:=$(shell python -c 'import platform; print "".join(platform.dist()[0:2])')
 
 MAKEFLAGS += --no-builtin-rules --no-builtin-variables
 
-.NOTPARALLEL:
-
 WITH_PYTHON ?= 1
 
+#----------------------------------------------------------------------------------------------
+
+.NOTPARALLEL:
+ 
 CC=gcc
 SRCDIR := src
 BINDIR := obj
 GIT_SHA := $(shell git rev-parse HEAD)
 
-SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
+_SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
 	mgmt.c keys_reader.c keys_writer.c example.c filters.c mappers.c \
 	extractors.c reducers.c record.c cluster.c commands.c streams_reader.c \
 	globals.c config.c lock_handler.c module_init.c
 
+SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
 OBJECTS=$(patsubst %.c, $(BINDIR)/%.o, $(SOURCES))
 
 CFLAGS=\
 	-fPIC -std=gnu99 \
+	-include $(SRCDIR)/common.h \
 	-I$(SRCDIR) -Iinclude \
 	-DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\"
 
 ifeq ($(DEBUG),1)
+### SOURCES += deps/readies/cetara/diag/gdb.c
+
 CFLAGS += -g -O0 -DVALGRIND
+LDFLAGS += -g
 else
 CFLAGS += -O2 -Wno-unused-result
 endif
 
 ifeq ($(WITH_PYTHON),1)
 CPYTHON_DIR=$(SRCDIR)/deps/cpython
-SOURCES += redisgears_python.c
+SOURCES += src/redisgears_python.c
 CFLAGS += -I$(CPYTHON_DIR)/Include -Ibuild/cpython -DWITHPYTHON
 LDFLAGS +=
 EMBEDDED_LIBS += $(LIBPYTHON) -lutil
@@ -43,29 +51,47 @@ LIBEVENT=build/libevent/.libs/libevent.a
 
 EMBEDDED_LIBS += $(LIBEVENT)
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
+all: bindirs python libevent redisgears.so
+
+#----------------------------------------------------------------------------------------------
+
+BIN_DIRS=$(sort $(patsubst %/,%,$(BINDIR) $(dir $(OBJECTS))))
+
+bindirs: $(BIN_DIRS)
+
+define mkdir_rule
+$(1):
+	$$(SHOW)mkdir -p $(1)
+endef
+
+$(foreach DIR,$(BIN_DIRS),$(eval $(call mkdir_rule,$(DIR))))
+
+#----------------------------------------------------------------------------------------------
+
+$(BINDIR)/%.o: %.c
 	@echo Compiling $^...
-	$(CC) -I$(SRCDIR) $(CFLAGS) -c $< -o $@
+	$(CC) -I$(SRCDIR) -Ideps $(CFLAGS) -c $< -o $@
 
-all: $(BINDIR) python libevent redisgears.so
-
-$(BINDIR):
-	@mkdir -p $(BINDIR) $(BINDIR)/utils
-
-$(LIBPYTHON):
-	@echo Building cpython...
-	@$(MAKE) -C build/cpython -f Makefile.main  MAKEFLAGS=
+#----------------------------------------------------------------------------------------------
 
 python: $(LIBPYTHON)
 
+$(LIBPYTHON):
+	@echo Building cpython...
+	@$(MAKE) -C build/cpython -f Makefile.main MAKEFLAGS=
+
 python_clean:
-	@$(MAKE) -C build/cpython -f Makefile.main clean
+	@$(MAKE) -C build/cpython -f Makefile.main clean MAKEFLAGS=
+
+#----------------------------------------------------------------------------------------------
 
 libevent: $(LIBEVENT)
 
 $(LIBEVENT):
 	@echo Building libevent...
 	@$(MAKE) -C build/libevent -f Makefile.main
+
+#----------------------------------------------------------------------------------------------
 
 redisgears.so: $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 	@echo Linking $@...
@@ -76,6 +102,8 @@ redisgears.a: $(OBJECTS)
 
 static: redisgears.a
 
+#----------------------------------------------------------------------------------------------
+
 clean:
 	find obj -name '*.[oad]' -type f -delete
 	rm -f redisgears.so redisgears.a redisgears.zip
@@ -84,6 +112,8 @@ ifeq ($(DEPS),1)
 	@$(MAKE) -C build/libevent -f Makefile.main clean
 endif
 	
+#----------------------------------------------------------------------------------------------
+
 deps: python libevent
 
 get_deps: deps

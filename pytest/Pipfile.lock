@@ -1,0 +1,39 @@
+{
+    "_meta": {
+        "hash": {
+            "sha256": "baf890e10fbd27030a5bc8e7325e4198471c2e093ff4efd57d88eb736ca4924e"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "2.7"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "redis": {
+            "hashes": [
+                "sha256:8a1900a9f2a0a44ecf6e8b5eb3e967a9909dfed219ad66df094f27f7d6f330fb",
+                "sha256:a22ca993cea2962dbb588f9f30d0015ac4afcc45bee27d3978c0dbe9e97c6c0f"
+            ],
+            "version": "==2.10.6"
+        },
+        "redis-py-cluster": {
+            "hashes": [
+                "sha256:7db54b1de60bd34da3806676b112f07fc9afae556d8260ac02c3335d574ee42c"
+            ],
+            "index": "pypi",
+            "version": "==1.3.6"
+        },
+        "rltest": {
+            "git": "https://github.com/RedisLabsModules/RLTest.git",
+            "ref": "4470676b7f3b96f2b5ab3f60bb8a2e479b3cb996"
+        }
+    },
+    "develop": {}
+}

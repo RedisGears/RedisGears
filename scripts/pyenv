@@ -1,0 +1,3 @@
+
+export PYTHONPATH=`python -c "import sys; print(':'.join(sys.path))"`
+export PYTHONHOME=`python -c "import sys; print(sys.exec_prefix)"`
