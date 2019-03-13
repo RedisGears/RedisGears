@@ -20,8 +20,16 @@ class testBasic:
         for i in range(100):
             conn.execute_command('set', str(i), str(i))
 
+    def testAggregate(self):
+        self.env.expect('rg.pyexecute', "GearsBuilder()."
+                                        "map(lambda x:int(x['value']))."
+                                        "aggregate(0, lambda r, x: x + r, lambda r, x: x + r).run()").contains(['4950'])
+
     def testCount(self):
         self.env.expect('rg.pyexecute', "GearsBuilder().count().run()").contains(['100'])
+
+    def testSort(self):
+        self.env.expect('rg.pyexecute', "GearsBuilder().map(lambda x:int(x['value'])).sort().run()").contains([str(i) for i in range(100)])
 
     def testCountBy(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().'
@@ -211,10 +219,10 @@ def testTimeEvent(env):
     conn.set('y', '1')
     conn.set('z', '1')
     script = '''
+def func(x):
+    var = int(redisgears.executeCommand('get',x['key'])) + 1
+    redisgears.executeCommand('set',x['key'], var)
 def OnTime():
-    def func(x):
-        var = int(redisgears.executeCommand('get',x['key'])) + 1
-        redisgears.executeCommand('set',x['key'], var)
     GearsBuilder().foreach(func).collect().run()
 def start():
     redisgears.registerTimeEvent(2, OnTime)

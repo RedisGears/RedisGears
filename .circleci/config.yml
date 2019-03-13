@@ -8,7 +8,7 @@ defaults:
         command: git submodule update --init --recursive
     - run:
         name: Install_Deps
-        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd
+        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd;apt-get install -y zip unzip
     - run:
         name: Build
         command: make get_deps;make ramp_pack WITHPYTHON=1 

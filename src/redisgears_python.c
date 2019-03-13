@@ -293,6 +293,9 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
 static PyObject* saveGlobals(PyObject *cls, PyObject *args){
     pyGlobals = PyEval_GetGlobals();
     Py_INCREF(pyGlobals);
+    // main var are not serialize, we want all the user define functions to
+    // be serialize so we specify the module on which the user run as not_main!!
+    PyDict_SetItemString(pyGlobals, "__name__", PyString_FromString("not_main"));
     return PyLong_FromLong(1);
 }
 
@@ -731,12 +734,9 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
     PyEval_RestoreThread(_save);
 
-    PyObject *m, *d, *v;
-    m = PyImport_AddModule("__main__");
-    if (m == NULL)
-        return -1;
-    d = PyModule_GetDict(m);
-    v = PyRun_StringFlags(script, Py_file_input, d, d, NULL);
+    PyObject *v;
+
+    v = PyRun_StringFlags(script, Py_file_input, pyGlobals, pyGlobals, NULL);
 
     if(!v){
         PyObject *ptype, *pvalue, *ptraceback;
@@ -1279,10 +1279,20 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyRun_SimpleString(script);
     RG_FREE(script);
 
+    if(PyErr_Occurred()){
+        PyErr_Print();
+        return REDISMODULE_ERR;
+    }
+
     PyObject* pName = PyString_FromString("types");
     PyObject* pModule = PyImport_Import(pName);
     pFunc = PyObject_GetAttrString(pModule, "FunctionType");
     Py_DECREF(pName);
+
+    if(PyErr_Occurred()){
+        PyErr_Print();
+        return REDISMODULE_ERR;
+    }
 
     ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
 

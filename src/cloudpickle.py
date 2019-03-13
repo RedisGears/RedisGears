@@ -352,6 +352,7 @@ class CloudPickler(Pickler):
         except Exception:
             modname = None
         # print('which gives %s %s %s' % (modname, obj, name))
+        themodule = None
         try:
             themodule = sys.modules[modname]
         except KeyError:

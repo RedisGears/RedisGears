@@ -66,4 +66,4 @@ get_deps: python
 	rm -rf deps
 	
 ramp_pack: all
-	mkdir artifacts;ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip;zip -r artifacts/redisgears-artifact-$(GIT_BRANCH)-$(OS).zip src/deps/cpython
+	mkdir artifacts;ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip;zip -rq artifacts/redisgears-artifact-$(GIT_BRANCH)-$(OS).zip src/deps/cpython
