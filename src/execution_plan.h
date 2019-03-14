@@ -188,7 +188,7 @@ typedef struct FlatExecutionPlan{
 }FlatExecutionPlan;
 
 FlatExecutionPlan* FlatExecutionPlan_New();
-void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
+bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);

@@ -17,6 +17,7 @@
 
 static PyObject* pFunc;
 static PyObject* pyGlobals;
+PyObject* GearsError;
 
 static RedisModuleCtx* currentCtx = NULL;
 static bool blockingExecute = true;
@@ -38,10 +39,14 @@ typedef struct PyFlatExecution{
 static PyObject* map(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 1){
-        //todo: print error
-        return Py_None;
+        PyErr_SetString(GearsError, "wrong number of args to map function");
+        return NULL;
     }
     PyObject* callback = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(callback, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "map argument must be a function");
+        return NULL;
+    }
     Py_INCREF(callback);
     RSM_Map(pfep->fep, RedisGearsPy_PyCallbackMapper, callback);
     Py_INCREF(self);
@@ -51,10 +56,14 @@ static PyObject* map(PyObject *self, PyObject *args){
 static PyObject* filter(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 1){
-        //todo: print error
-        return Py_None;
+        PyErr_SetString(GearsError, "wrong number of args to filter function");
+        return NULL;
     }
     PyObject* callback = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(callback, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "filter argument must be a function");
+        return NULL;
+    }
     Py_INCREF(callback);
     RSM_Filter(pfep->fep, RedisGearsPy_PyCallbackFilter, callback);
     Py_INCREF(self);
@@ -64,11 +73,19 @@ static PyObject* filter(PyObject *self, PyObject *args){
 static PyObject* accumulateby(PyObject *self, PyObject *args){
 	PyFlatExecution* pfep = (PyFlatExecution*)self;
 	if(PyTuple_Size(args) != 2){
-		//todo: print error
-		return Py_None;
+	    PyErr_SetString(GearsError, "wrong number of args to groupby function");
+        return NULL;
 	}
 	PyObject* extractor = PyTuple_GetItem(args, 0);
+	if(!PyObject_TypeCheck(extractor, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "groupby extractor argument must be a function");
+        return NULL;
+    }
 	PyObject* accumulator = PyTuple_GetItem(args, 1);
+	if(!PyObject_TypeCheck(accumulator, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "groupby reducer argument must be a function");
+        return NULL;
+    }
 	Py_INCREF(extractor);
 	Py_INCREF(accumulator);
 	RSM_AccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
@@ -80,11 +97,19 @@ static PyObject* accumulateby(PyObject *self, PyObject *args){
 static PyObject* groupby(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 2){
-        //todo: print error
-        return Py_None;
+        PyErr_SetString(GearsError, "wrong number of args to batchgroupby function");
+        return NULL;
     }
     PyObject* extractor = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(extractor, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "batchgroupby extractor argument must be a function");
+        return NULL;
+    }
     PyObject* reducer = PyTuple_GetItem(args, 1);
+    if(!PyObject_TypeCheck(extractor, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "batchgroupby reducer argument must be a function");
+        return NULL;
+    }
     Py_INCREF(extractor);
     Py_INCREF(reducer);
     RSM_GroupBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackReducer, reducer);
@@ -94,6 +119,10 @@ static PyObject* groupby(PyObject *self, PyObject *args){
 }
 
 static PyObject* collect(PyObject *self, PyObject *args){
+    if(PyTuple_Size(args) != 0){
+        PyErr_SetString(GearsError, "wrong number of args to collect function");
+        return NULL;
+    }
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     RSM_Collect(pfep->fep);
     Py_INCREF(self);
@@ -103,10 +132,14 @@ static PyObject* collect(PyObject *self, PyObject *args){
 static PyObject* foreach(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 1){
-        //todo: print error
-        return Py_None;
+        PyErr_SetString(GearsError, "wrong number of args to foreach function");
+        return NULL;
     }
     PyObject* callback = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(callback, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "foreach argument must be a function");
+        return NULL;
+    }
     Py_INCREF(callback);
     RSM_ForEach(pfep->fep, RedisGearsPy_PyCallbackForEach, callback);
     Py_INCREF(self);
@@ -116,10 +149,14 @@ static PyObject* foreach(PyObject *self, PyObject *args){
 static PyObject* repartition(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 1){
-        //todo: print error
-        return Py_None;
+        PyErr_SetString(GearsError, "wrong number of args to repartition function");
+        return NULL;
     }
     PyObject* callback = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(callback, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "repartition argument must be a function");
+        return NULL;
+    }
     Py_INCREF(callback);
     RSM_Repartition(pfep->fep, RedisGearsPy_PyCallbackExtractor, callback);
     Py_INCREF(self);
@@ -129,10 +166,14 @@ static PyObject* repartition(PyObject *self, PyObject *args){
 static PyObject* flatmap(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 1){
-        //todo: print error
-        return Py_None;
+        PyErr_SetString(GearsError, "wrong number of args to flatmap function");
+        return NULL;
     }
     PyObject* callback = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(callback, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "flatmap argument must be a function");
+        return NULL;
+    }
     Py_INCREF(callback);
     RSM_FlatMap(pfep->fep, RedisGearsPy_PyCallbackFlatMapper, callback);
     Py_INCREF(self);
@@ -141,15 +182,23 @@ static PyObject* flatmap(PyObject *self, PyObject *args){
 
 static PyObject* limit(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
-    if(PyTuple_Size(args) < 1){
-        //todo: print error
-        return Py_None;
+    if(PyTuple_Size(args) < 1 || PyTuple_Size(args) > 2){
+        PyErr_SetString(GearsError, "wrong number of args to limit function");
+        return NULL;
     }
     PyObject* len = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(len, &PyInt_Type)){
+        PyErr_SetString(GearsError, "limit argument must be a number");
+        return NULL;
+    }
     long lenLong = PyInt_AsLong(len);
     long offsetLong = 0;
     if(PyTuple_Size(args) > 1){
         PyObject* offset= PyTuple_GetItem(args, 1);
+        if(!PyObject_TypeCheck(offset, &PyInt_Type)){
+            PyErr_SetString(GearsError, "limit argument must be a number");
+            return NULL;
+        }
         offsetLong = PyInt_AsLong(offset);
     }
     RSM_Limit(pfep->fep, (size_t)offsetLong, (size_t)lenLong);
@@ -160,10 +209,14 @@ static PyObject* limit(PyObject *self, PyObject *args){
 static PyObject* accumulate(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     if(PyTuple_Size(args) != 1){
-        //todo: print error
-        return Py_None;
+        PyErr_SetString(GearsError, "wrong number of args to accumulate function");
+        return NULL;
     }
     PyObject* callback = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(callback, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "accumulate argument must be a function");
+        return NULL;
+    }
     Py_INCREF(callback);
     RSM_Accumulate(pfep->fep, RedisGearsPy_PyCallbackAccumulate, callback);
     Py_INCREF(self);
@@ -286,6 +339,11 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     }
     PyFlatExecution* pyfep = PyObject_New(PyFlatExecution, &PyFlatExecutionType);
     pyfep->fep = RedisGears_CreateCtx(readerStr);
+    if(!pyfep->fep){
+        Py_DecRef(pyfep);
+        PyErr_SetString(GearsError, "the given reader are not exists");
+        return NULL;
+    }
     RSM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     return (PyObject*)pyfep;
 }
@@ -1266,6 +1324,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyModule_AddObject(m, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(m, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
+
+    GearsError = PyErr_NewException("spam.error", NULL, NULL);
+    Py_INCREF(GearsError);
+    PyModule_AddObject(m, "GearsError", GearsError);
 
     char* script = RG_ALLOC(src_cloudpickle_py_len + 1);
     memcpy(script, src_cloudpickle_py, src_cloudpickle_py_len);

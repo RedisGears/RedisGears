@@ -89,3 +89,53 @@ def testRepartitionError(env):
     conn.execute_command('set', 'y', '1')
     res = env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
     env.assertContains("global name 'notexists' is not defined", res[1][0])
+
+
+def testMapWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().map(1, 2).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().map(1).run()').error().contains('argument must be a function')
+
+
+def testFilterWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().filter(1, 2).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().filter(1).run()').error().contains('argument must be a function')
+
+
+def testGroupByWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().groupby(1, 2, 3).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().groupby(1, 2).run()').error().contains('argument must be a function')
+
+
+def testBatchGroupByWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().batchgroupby(1, 2, 3).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().batchgroupby(1, 2).run()').error().contains('argument must be a function')
+
+
+def testCollectWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().collect(1, 2, 3).run()').error().contains('wrong number of args')
+
+
+def testForEachWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().foreach(1, 2).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().foreach(1).run()').error().contains('argument must be a function')
+
+
+def testRepartitionWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().repartition(1, 2).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().repartition(1).run()').error().contains('argument must be a function')
+
+
+def testLimitWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().limit().run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().limit(1, 2, 3).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().limit("awdwada").run()').error().contains('argument must be a number')
+    env.expect('rg.pyexecute', 'GB().limit(1, "kakaka").run()').error().contains('argument must be a number')
+
+
+def testAccumulateWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().accumulate(1, 2).run()').error().contains('wrong number of args')
+    env.expect('rg.pyexecute', 'GB().accumulate(1).run()').error().contains('argument must be a function')
+
+
+def testBuilderCreationWithUnexistingReader(env):
+    env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')

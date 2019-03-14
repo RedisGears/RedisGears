@@ -1121,7 +1121,8 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
 
 static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
-    FlatExecutionPlan_SetReader(ret, fep->reader->reader);
+    bool res = FlatExecutionPlan_SetReader(ret, fep->reader->reader);
+    assert(res);
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* s = fep->steps + i;
         void* arg = NULL;
@@ -1551,8 +1552,10 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
 }
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
-    RG_FREE(fep->reader->reader);
-    RG_FREE(fep->reader);
+    if(fep->reader){
+        RG_FREE(fep->reader->reader);
+        RG_FREE(fep->reader);
+    }
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
         RG_FREE(step->bStep.stepName);
@@ -1562,8 +1565,13 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     RG_FREE(fep);
 }
 
-void FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
+bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
+    RedisGears_ReaderCallback callback = ReadersMgmt_Get(reader);
+    if(!callback){
+        return false;
+    }
     fep->reader = FlatExecutionPlan_NewReader(reader);
+    return true;
 }
 
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){

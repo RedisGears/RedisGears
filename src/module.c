@@ -77,7 +77,10 @@ static int RG_RegisterReducer(char* name, RedisGears_ReducerCallback reducer, Ar
 
 static FlatExecutionPlan* RG_CreateCtx(char* readerName){
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
-    FlatExecutionPlan_SetReader(fep, readerName);
+    if(!FlatExecutionPlan_SetReader(fep, readerName)){
+        FlatExecutionPlan_Free(fep);
+        return NULL;
+    }
     return fep;
 }
 
