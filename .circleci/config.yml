@@ -52,10 +52,10 @@ jobs:
           command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core;yum install -y vim-common
       - run:
           name: Build
-          command: make get_deps;export PYTHONPATH="/usr/lib64/python27.zip:/usr/lib64/python2.7:/usr/lib64/python2.7/plat-linux2:/usr/lib64/python2.7/lib-tk:/usr/lib64/python2.7/lib-old:/usr/lib64/python2.7/lib-dynload:/usr/lib64/python2.7/site-packages:/usr/lib/python2.7/site-packages";export PYTHONHOME=/usr/bin/;make ramp_pack WITHPYTHON=1
+          command: make get_deps;make ramp_pack WITHPYTHON=1
       - run:
           name: Test
-          command: export PYTHONPATH="/usr/lib64/python27.zip:/usr/lib64/python2.7:/usr/lib64/python2.7/plat-linux2:/usr/lib64/python2.7/lib-tk:/usr/lib64/python2.7/lib-old:/usr/lib64/python2.7/lib-dynload:/usr/lib64/python2.7/site-packages:/usr/lib/python2.7/site-packages";export PYTHONHOME=/usr/bin/;cd ./pytest; ./run_tests.sh
+          command: cd ./pytest; ./run_tests.sh
       - persist_to_workspace:
           root: ./artifacts
           paths:
