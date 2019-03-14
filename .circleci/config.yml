@@ -8,7 +8,7 @@ defaults:
         command: git submodule update --init --recursive
     - run:
         name: Install_Deps
-        command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd;apt-get install -y zip unzip
+        command: pip install git+https://github.com/mnunberg/RAMP@print_logs_to_stdout --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd;apt-get install -y zip unzip
     - run:
         name: Build
         command: make get_deps;make ramp_pack WITHPYTHON=1 
@@ -49,7 +49,7 @@ jobs:
           command: git submodule update --init --recursive
       - run:
           name: Install_Deps
-          command: pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core;yum install -y vim-common
+          command: pip install git+https://github.com/mnunberg/RAMP@print_logs_to_stdout --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core;yum install -y vim-common
       - run:
           name: Build
           command: make get_deps;export PYTHONPATH="/usr/lib64/python27.zip:/usr/lib64/python2.7:/usr/lib64/python2.7/plat-linux2:/usr/lib64/python2.7/lib-tk:/usr/lib64/python2.7/lib-old:/usr/lib64/python2.7/lib-dynload:/usr/lib64/python2.7/site-packages:/usr/lib/python2.7/site-packages";export PYTHONHOME=/usr/bin/;make ramp_pack WITHPYTHON=1

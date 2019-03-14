@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#define PYTHON_HOME_DIR "PYTHON_HOME_DIR"
+
 typedef struct ArgsIterator{
 	int currIndex;
 	RedisModuleString** argv;
@@ -61,9 +63,13 @@ static bool ConfigVal_PythonHomeDirSet(ArgsIterator* iter){
 	if(!val){
 		return false;
 	}
+	if(getenv(PYTHON_HOME_DIR)){
+	    printf("warning setting PythonHomeDir will take no effect cause its defined in env var\r\n");
+	    return true;
+	}
 	RG_FREE(DefaultGearsConfig.pythonHomeDir.val.str);
 	const char* valStr = RedisModule_StringPtrLen(val, NULL);
-	DefaultGearsConfig.pythonHomeDir.val.str = RG_STRDUP(valStr);
+        DefaultGearsConfig.pythonHomeDir.val.str = RG_STRDUP(valStr);
 	return true;
 }
 
@@ -154,9 +160,10 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
 #endif
 
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
+        printf("lalalallal:%s\r\n", getenv(PYTHON_HOME_DIR));
 	DefaultGearsConfig = (RedisGears_Config){
 		.pythonHomeDir = {
-				.val.str = RG_STRDUP(CPYTHON_PATH),
+				.val.str = getenv(PYTHON_HOME_DIR) ? RG_STRDUP(getenv(PYTHON_HOME_DIR)) : RG_STRDUP(CPYTHON_PATH),
 				.type = STR,
 		},
 	};
