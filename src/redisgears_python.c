@@ -340,7 +340,7 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     PyFlatExecution* pyfep = PyObject_New(PyFlatExecution, &PyFlatExecutionType);
     pyfep->fep = RedisGears_CreateCtx(readerStr);
     if(!pyfep->fep){
-        Py_DecRef(pyfep);
+        Py_DecRef((PyObject*)pyfep);
         PyErr_SetString(GearsError, "the given reader are not exists");
         return NULL;
     }

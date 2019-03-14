@@ -38,7 +38,7 @@ $(OBJ)/%.o: $(SRC)/%.c
 all: GearsBuilder.py redisgears.so
 
 python:
-	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC -DPy_UNICODE_WIDE" ./configure --without-pymalloc;make
+	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc --enable-unicode=ucs2	;make
 
 python_clean:
 	cd src/deps/cpython;make clean

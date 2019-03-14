@@ -57,9 +57,11 @@ class GearsBuilder():
     def distinct(self):
         return self.aggregate(set(), lambda a, r: a | set([r]), lambda a, r: a | r).flatmap(lambda x: list(x))
 
-    def run(self, prefix=None, converteToStr=True):
+    def run(self, prefix=None, converteToStr=True, collect=True):
         if(converteToStr):
             self.gearsCtx.map(lambda x: str(x))
+        if(collect):
+            self.gearsCtx.collect()
         self.gearsCtx.run(prefix if prefix else self.defautlPrefix)
 
 
