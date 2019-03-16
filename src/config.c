@@ -160,7 +160,6 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
 #endif
 
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
-        printf("lalalallal:%s\r\n", getenv(PYTHON_HOME_DIR));
 	DefaultGearsConfig = (RedisGears_Config){
 		.pythonHomeDir = {
 				.val.str = getenv(PYTHON_HOME_DIR) ? RG_STRDUP(getenv(PYTHON_HOME_DIR)) : RG_STRDUP(CPYTHON_PATH),

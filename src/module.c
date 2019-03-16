@@ -21,7 +21,7 @@
 #include "utils/buffer.h"
 #include "record.h"
 #include "commands.h"
-#include "redisdl.h"
+#include "redisai.h"
 #include "config.h"
 #include "globals.h"
 #include "redisearch_api.h"
@@ -366,11 +366,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     	return REDISMODULE_ERR;
     }
 
-    if(!RediDL_Initialize()){
-        RedisModule_Log(ctx, "warning", "could not initialize RediDL api, running without DL support.");
+    if(RediAI_Initialize() != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not initialize RediAI api, running without AI support.");
     }else{
-        RedisModule_Log(ctx, "notice", "RedisDL api loaded successfully.");
-        globals.redisDLLoaded = true;
+        RedisModule_Log(ctx, "notice", "RedisAI api loaded successfully.");
+        globals.redisAILoaded = true;
     }
 
     if(RediSearch_Initialize() != REDISMODULE_OK){

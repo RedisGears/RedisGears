@@ -22,7 +22,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     dladdr(test, &info);
     char resolved_path[PATH_MAX];
     realpath(info.dli_fname, resolved_path);
-    printf("%s\r\n", resolved_path);
 
     void* handler = dlopen(resolved_path, RTLD_NOW|RTLD_GLOBAL);
     if(!handler){

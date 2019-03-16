@@ -15,3 +15,4 @@ capabilities:
     - persistence_rdb
     - clustering
     - backup_restore
+    - reshard_rebalance

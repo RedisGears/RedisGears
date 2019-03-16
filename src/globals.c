@@ -1,6 +1,6 @@
 #include "globals.h"
 
 Globals globals = {
-        .redisDLLoaded = false,
+        .redisAILoaded = false,
         .rediSearchLoaded = false,
 };

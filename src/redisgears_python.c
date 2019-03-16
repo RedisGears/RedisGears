@@ -1,6 +1,6 @@
 #include <Python.h>
 #include "record.h"
-#include "redisdl.h"
+#include "redisai.h"
 #include "globals.h"
 #include "commands.h"
 #include "config.h"
@@ -426,21 +426,21 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
 
 typedef struct PyTensor{
    PyObject_HEAD
-   RDL_Tensor* t;
+   RAI_Tensor* t;
 } PyTensor;
 
 static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
-    int ndims = RedisDL_TensorNumDims(pyt->t);
+    int ndims = RedisAI_TensorNumDims(pyt->t);
     PyObject* dims = PyList_New(0);
     long long len = 0;
     long long totalElements = 1;
     for(int i = 0 ; i < ndims ; ++i){
-        totalElements *= RedisDL_TensorDim(pyt->t, i);
+        totalElements *= RedisAI_TensorDim(pyt->t, i);
     }
     PyObject* elements = PyList_New(0);
     for(long long j = 0 ; j < totalElements ; ++j){
         double val;
-        RedisDL_TensorGetValueAsDouble(pyt->t, j, &val);
+        RedisAI_TensorGetValueAsDouble(pyt->t, j, &val);
         PyObject *pyVal = PyFloat_FromDouble(val);
         PyList_Append(dims, pyVal);
     }
@@ -459,7 +459,7 @@ static PyObject *PyTensor_ToStr(PyObject * pyObj){
 
 static void PyTensor_Destruct(PyObject *pyObj){
     PyTensor* pyt = (PyTensor*)pyObj;
-    RedisDL_TensorFree(pyt->t);
+    RedisAI_TensorFree(pyt->t);
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
@@ -508,17 +508,17 @@ static void getAllValues(PyObject *list, double** values){
 }
 
 static PyObject* createTensor(PyObject *cls, PyObject *args){
-    assert(globals.redisDLLoaded);
+    assert(globals.redisAILoaded);
     PyObject* typeName = PyTuple_GetItem(args, 0);
     char* typeNameStr = PyString_AsString(typeName);
     PyObject* pyDims = PyTuple_GetItem(args, 1);
     long long* dims = array_new(long long, 10);
     double* values = array_new(long long, 1000);
     size_t ndims = getDimsRecursive(pyDims, &dims);
-    RDL_Tensor* t = RedisDL_TensorCreate(typeNameStr, dims, ndims);
+    RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, ndims);
     getAllValues(pyDims, &values);
     for(long long i = 0 ; i < array_len(values) ; ++i){
-        RedisDL_TensorSetValueFromDouble(t, i, values[i]);
+        RedisAI_TensorSetValueFromDouble(t, i, values[i]);
     }
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
@@ -529,7 +529,7 @@ static PyObject* createTensor(PyObject *cls, PyObject *args){
 
 typedef struct PyGraphRunner{
    PyObject_HEAD
-   RDL_GraphRunCtx* g;
+   RAI_ModelRunCtx* g;
 } PyGraphRunner;
 
 static PyObject* PyGraph_ToStr(PyObject *obj){
@@ -538,7 +538,7 @@ static PyObject* PyGraph_ToStr(PyObject *obj){
 
 static void PyGraphRunner_Destruct(PyObject *pyObj){
     PyGraphRunner* pyg = (PyGraphRunner*)pyObj;
-    RedisDL_RunCtxFree(pyg->g);
+    RedisAI_ModelRunCtxFree(pyg->g);
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
@@ -567,7 +567,7 @@ static PyTypeObject PyGraphRunnerType = {
 };
 
 static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
-    assert(globals.redisDLLoaded);
+    assert(globals.redisAILoaded);
     PyObject* keyName = PyTuple_GetItem(args, 0);
     char* keyNameStr = PyString_AsString(keyName);
 
@@ -577,8 +577,8 @@ static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
     // todo: check for type, add api for this
-    RDL_Graph *g = RedisModule_ModuleTypeGetValue(key);
-    RDL_GraphRunCtx* runCtx = RedisDL_RunCtxCreate(g);
+    RAI_Model *g = RedisModule_ModuleTypeGetValue(key);
+    RAI_ModelRunCtx* runCtx = RedisAI_ModelRunCtxCreate(g);
 
     RedisModule_FreeString(ctx, keyRedisStr);
     RedisModule_CloseKey(key);
@@ -596,7 +596,7 @@ static PyObject* graphRunnerAddInput(PyObject *cls, PyObject *args){
     PyObject* inputName = PyTuple_GetItem(args, 1);
     char* inputNameStr = PyString_AsString(inputName);
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 2);
-    RedisDL_RunCtxAddInput(pyg->g, inputNameStr, pyt->t);
+    RedisAI_ModelRunCtxAddInput(pyg->g, inputNameStr, pyt->t);
     return PyLong_FromLong(1);
 }
 
@@ -604,15 +604,15 @@ static PyObject* graphRunnerAddOutput(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     PyObject* outputName = PyTuple_GetItem(args, 1);
     char* outputNameStr = PyString_AsString(outputName);
-    RedisDL_RunCtxAddOutput(pyg->g, outputNameStr);
+    RedisAI_ModelRunCtxAddOutput(pyg->g, outputNameStr);
     return PyLong_FromLong(1);
 }
 
 static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
-    RedisDL_GraphRun(pyg->g);
+    RedisAI_ModelRun(pyg->g);
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-    pyt->t = RedisDL_TensorGetShallowCopy(RedisDL_RunCtxOutputTensor(pyg->g, 0));
+    pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(pyg->g, 0));
     return (PyObject*)pyt;
 }
 

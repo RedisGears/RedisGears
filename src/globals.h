@@ -11,7 +11,7 @@
 #include <stdbool.h>
 
 typedef struct Globals{
-    bool redisDLLoaded;
+    bool redisAILoaded;
     bool rediSearchLoaded;
 }Globals;
 
