@@ -143,8 +143,8 @@ static Record* ValueToRecordMapper(RedisModuleCtx* rctx, Record* record, RedisMo
         return ValueToHashSetMapper(record, rctx);
         break;
     default:
-        assert(false);
-        return NULL;
+        // we do not want how to parse this type, we will return a key record with no value
+        return record;
     }
 }
 

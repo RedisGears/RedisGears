@@ -1,4 +1,7 @@
 import redisgears
+import redisgears as rg
+from redisgears import executeCommand as execute
+from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
 from redisgears import PyFlatExecution
 

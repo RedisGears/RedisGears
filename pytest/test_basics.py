@@ -271,3 +271,9 @@ def testExecuteCommandWithNullTerminated(env):
     env.expect('get', 'x').equal('test\x00test')
     env.cmd('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: redisgears.executeCommand('SET', 'bar', str(x['value']))).map(lambda x: str(x)).run()")
     env.expect('get', 'bar').equal('test\x00test')
+
+
+def testKeyWithUnparsedValue(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('sadd', 'x', '1', '2', '3')
+    env.expect('RG.PYEXECUTE', "GB().map(lambda x: execute('smembers', x['key'])).flatmap(lambda x:x).sort().run()").contains(['1', '2', '3'])

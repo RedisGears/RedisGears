@@ -1096,11 +1096,16 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
         temp = PyString_FromString(key);
         PyDict_SetItemString(obj, "key", temp);
         Py_DECREF(temp);
-
-        tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_KeyRecordGetVal(record), arg);
-        assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
-        PyDict_SetItemString(obj, "value", RG_PyObjRecordGet(tempRecord));
-        RedisGears_FreeRecord(tempRecord);
+        tempRecord = RedisGears_KeyRecordGetVal(record);
+        if(tempRecord){
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
+            assert(RedisGears_RecordGetType(tempRecord) == PY_RECORD);
+            PyDict_SetItemString(obj, "value", RG_PyObjRecordGet(tempRecord));
+            RedisGears_FreeRecord(tempRecord);
+        }else{
+            Py_INCREF(Py_None);
+            PyDict_SetItemString(obj, "value", Py_None);
+        }
 
         break;
     case LIST_RECORD:
