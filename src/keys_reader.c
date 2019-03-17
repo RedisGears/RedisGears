@@ -316,7 +316,7 @@ static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
     if(!keysReaderRegistration){
         keysReaderRegistration = Gears_listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
-        if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_STRING, KeysReader_OnKeyTouched) != REDISMODULE_OK){
+        if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_ALL, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
         RedisModule_FreeThreadSafeContext(ctx);

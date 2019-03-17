@@ -184,7 +184,7 @@ int Gears_dictExpand(Gears_dict *d, unsigned long size)
     /* Allocate the new hash table and initialize all pointers to NULL */
     n.size = realsize;
     n.sizemask = realsize-1;
-    n.table = RedisModule_Calloc(realsize, sizeof(Gears_dictEntry*));
+    n.table = RG_CALLOC(realsize, sizeof(Gears_dictEntry*));
     n.used = 0;
 
     /* Is this the first initialization? If so it's not really a rehashing
@@ -463,7 +463,7 @@ void Gears_dictFreeUnlinkedEntry(Gears_dict *d, Gears_dictEntry *he) {
 }
 
 /* Destroy an entire dictionary */
-int _dictClear(Gears_dict *d, Gears_dictht *ht, void(callback)(void *)) {
+static int _dictClear(Gears_dict *d, Gears_dictht *ht, void(callback)(void *)) {
     unsigned long i;
 
     /* Free all the elements */
@@ -531,7 +531,7 @@ void *Gears_dictFetchValue(Gears_dict *d, const void *key) {
  * the fingerprint again when the iterator is released.
  * If the two fingerprints are different it means that the user of the iterator
  * performed forbidden operations against the dictionary while iterating. */
-long long dictFingerprint(Gears_dict *d) {
+static long long dictFingerprint(Gears_dict *d) {
     long long integers[6], hash = 0;
     int j;
 
@@ -1056,7 +1056,7 @@ Gears_dictEntry **Gears_dictFindEntryRefByPtrAndHash(Gears_dict *d, const void *
 /* ------------------------------- Debugging ---------------------------------*/
 
 #define DICT_STATS_VECTLEN 50
-size_t _dictGetStatsHt(char *buf, size_t bufsize, Gears_dictht *ht, int tableid) {
+static size_t _dictGetStatsHt(char *buf, size_t bufsize, Gears_dictht *ht, int tableid) {
     unsigned long i, slots = 0, chainlen, maxchainlen = 0;
     unsigned long totchainlen = 0;
     unsigned long clvector[DICT_STATS_VECTLEN];

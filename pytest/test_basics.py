@@ -144,6 +144,7 @@ def testRepartitionAndWriteOption(env):
 def testBasicStream(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rg.pyexecute', "GearsBuilder()."
+                                  "filter(lambda x:x['key'] != 'values')."
                                   "repartition(lambda x: 'values')."
                                   "foreach(lambda x: redisgears.executeCommand('lpush', 'values', x['value']))."
                                   "register('*')", 'UNBLOCKING')
