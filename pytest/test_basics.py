@@ -119,6 +119,17 @@ def testLimit(env):
     env.cmd('rg.dropexecution', id)
 
 
+def testLimitWithOffset(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('lpush', 'l', '1', '2', '3', '4', '5')
+    id = env.cmd('rg.pyexecute', "GearsBuilder()."
+                                 "flatmap(lambda x: x['value'])."
+                                 "limit(1, 3).collect().run()", 'UNBLOCKING')
+    res = env.cmd('rg.getresultsblocking', id)
+    env.assertEqual(res[1], ['4'])
+    env.cmd('rg.dropexecution', id)
+
+
 def testRepartitionAndWriteOption(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -156,7 +167,7 @@ def testBasicStream(env):
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
     res = []
-    while len(res) < 3:
+    while len(res) < 6:
         res = env.cmd('rg.dumpexecutions')
     for e in res:
         env.broadcast('rg.getresultsblocking', e[1])

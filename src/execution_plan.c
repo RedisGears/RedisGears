@@ -700,28 +700,31 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
 }
 
 static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
-    Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
-    if(record == NULL){
-        return NULL;
-    }
-    if(record == &StopRecord){
-        return record;
-    }
-    if(RedisGears_RecordGetType(record) == ERROR_RECORD){
-        return record;
-    }
+    while(true){
+        Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
+        if(record == NULL){
+            return NULL;
+        }
+        if(record == &StopRecord){
+            return record;
+        }
+        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+            return record;
+        }
 
-    Record* ret = NULL;
-    LimitExecutionStepArg* arg = (LimitExecutionStepArg*)step->limit.stepArg.stepArg;
-    if(step->limit.currRecordIndex >= arg->offset &&
-            step->limit.currRecordIndex < arg->offset + arg->len){
-
-        ret = record;
-    }else{
-        RedisGears_FreeRecord(record);
+        LimitExecutionStepArg* arg = (LimitExecutionStepArg*)step->limit.stepArg.stepArg;
+        if(step->limit.currRecordIndex >= arg->offset &&
+                step->limit.currRecordIndex < arg->offset + arg->len){
+            ++step->limit.currRecordIndex;
+            return record;
+        }else{
+            RedisGears_FreeRecord(record);
+        }
+        ++step->limit.currRecordIndex;
+        if(step->limit.currRecordIndex >= arg->offset + arg->len){
+            return NULL;
+        }
     }
-    ++step->limit.currRecordIndex;
-    return ret;
 }
 
 static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
