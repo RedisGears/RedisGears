@@ -1,6 +1,6 @@
 FROM redis:5.0.3 AS builder
 
-ENV BUILD_DEPS "build-essential autotools-dev autoconf automake libtool python git ca-certificates"
+ENV BUILD_DEPS "build-essential autotools-dev autoconf automake libtool python git ca-certificates lsb-release xxd"
 
 # Set up a build environment
 RUN set -ex;\
@@ -28,6 +28,6 @@ RUN set -ex;\
     mkdir -p "$LD_LIBRARY_PATH/deps";
 
 COPY --from=builder /redisgears/redisgears.so "$LD_LIBRARY_PATH"
-COPY --from=builder /redisgears/src/deps/cpython "$LD_LIBRARY_PATH/deps"
+COPY --from=builder /redisgears/src/deps/cpython "$LD_LIBRARY_PATH/deps/cpython/"
 
 CMD ["--loadmodule", "/usr/lib/redis/modules/redisgears.so", "PythonHomeDir", "/usr/lib/redis/modules/deps/cpython/"]
