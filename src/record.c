@@ -42,7 +42,7 @@ typedef struct KeyRecord{
 }KeyRecord;
 
 typedef struct HashSetRecord{
-    dict* d;
+    Gears_dict* d;
 }HashSetRecord;
 
 typedef struct Record{
@@ -68,8 +68,8 @@ Record StopRecord = {
 
 
 void RG_FreeRecord(Record* record){
-    dictIterator *iter;
-    dictEntry *entry;
+    Gears_dictIterator *iter;
+    Gears_dictEntry *entry;
     Record* temp;
     switch(record->type){
     case STRING_RECORD:
@@ -97,14 +97,14 @@ void RG_FreeRecord(Record* record){
         RedisModule_CloseKey(record->keyHandlerRecord.keyHandler);
         break;
     case HASH_SET_RECORD:
-        iter = dictGetIterator(record->hashSetRecord.d);
+        iter = Gears_dictGetIterator(record->hashSetRecord.d);
         entry = NULL;
-        while((entry = dictNext(iter))){
-            temp = dictGetVal(entry);
+        while((entry = Gears_dictNext(iter))){
+            temp = Gears_dictGetVal(entry);
             RG_FreeRecord(temp);
         }
-        dictReleaseIterator(iter);
-        dictRelease(record->hashSetRecord.d);
+        Gears_dictReleaseIterator(iter);
+        Gears_dictRelease(record->hashSetRecord.d);
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
@@ -238,7 +238,7 @@ void RG_LongRecordSet(Record* r, long val){
 Record* RG_HashSetRecordCreate(){
     Record* ret = RG_ALLOC(sizeof(Record));
     ret->type = HASH_SET_RECORD;
-    ret->hashSetRecord.d = dictCreate(&dictTypeHeapStrings, NULL);
+    ret->hashSetRecord.d = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     return ret;
 }
 
@@ -247,31 +247,31 @@ int RG_HashSetRecordSet(Record* r, char* key, Record* val){
     Record* oldVal = RG_HashSetRecordGet(r, key);
     if(oldVal){
         RG_FreeRecord(oldVal);
-        dictDelete(r->hashSetRecord.d, key);
+        Gears_dictDelete(r->hashSetRecord.d, key);
     }
-    return dictAdd(r->hashSetRecord.d, key, val) == DICT_OK;
+    return Gears_dictAdd(r->hashSetRecord.d, key, val) == DICT_OK;
 }
 
 Record* RG_HashSetRecordGet(Record* r, char* key){
     assert(r->type == HASH_SET_RECORD);
-    dictEntry *entry = dictFind(r->hashSetRecord.d, key);
+    Gears_dictEntry *entry = Gears_dictFind(r->hashSetRecord.d, key);
     if(!entry){
         return 0;
     }
-    return dictGetVal(entry);
+    return Gears_dictGetVal(entry);
 }
 
 char** RG_HashSetRecordGetAllKeys(Record* r, size_t* len){
     assert(r->type == HASH_SET_RECORD);
-    dictIterator *iter = dictGetIterator(r->hashSetRecord.d);
-    dictEntry *entry = NULL;
-    char** ret = array_new(char*, dictSize(r->hashSetRecord.d));
-    while((entry = dictNext(iter))){
-        char* key = dictGetKey(entry);
+    Gears_dictIterator *iter = Gears_dictGetIterator(r->hashSetRecord.d);
+    Gears_dictEntry *entry = NULL;
+    char** ret = array_new(char*, Gears_dictSize(r->hashSetRecord.d));
+    while((entry = Gears_dictNext(iter))){
+        char* key = Gears_dictGetKey(entry);
         ret = array_append(ret, key);
     }
     *len = array_len(ret);
-    dictReleaseIterator(iter);
+    Gears_dictReleaseIterator(iter);
     return ret;
 }
 
@@ -316,7 +316,7 @@ void RG_PyObjRecordSet(Record* r, PyObject* obj){
 }
 #endif
 
-void RG_SerializeRecord(BufferWriter* bw, Record* r){
+void RG_SerializeRecord(Gears_BufferWriter* bw, Record* r){
     RedisGears_BWWriteLong(bw, r->type);
     switch(r->type){
     case STRING_RECORD:
@@ -357,7 +357,7 @@ void RG_SerializeRecord(BufferWriter* bw, Record* r){
     }
 }
 
-Record* RG_DeserializeRecord(BufferReader* br){
+Record* RG_DeserializeRecord(Gears_BufferReader* br){
     enum RecordType type = RedisGears_BRReadLong(br);
     Record* r;
     char* temp;

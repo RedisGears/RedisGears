@@ -38,9 +38,9 @@
  * by the user before to call AlFreeList().
  *
  * On error, NULL is returned. Otherwise the pointer to the new list. */
-list *listCreate(void)
+Gears_list *Gears_listCreate(void)
 {
-    struct list *list;
+    struct Gears_list *list;
 
     if ((list = RG_ALLOC(sizeof(*list))) == NULL)
         return NULL;
@@ -53,10 +53,10 @@ list *listCreate(void)
 }
 
 /* Remove all the elements from the list without destroying the list itself. */
-void listEmpty(list *list)
+void Gears_listEmpty(Gears_list *list)
 {
     unsigned long len;
-    listNode *current, *next;
+    Gears_listNode *current, *next;
 
     current = list->head;
     len = list->len;
@@ -73,9 +73,9 @@ void listEmpty(list *list)
 /* Free the whole list.
  *
  * This function can't fail. */
-void listRelease(list *list)
+void Gears_listRelease(Gears_list *list)
 {
-    listEmpty(list);
+    Gears_listEmpty(list);
     RG_FREE(list);
 }
 
@@ -85,9 +85,9 @@ void listRelease(list *list)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
-list *listAddNodeHead(list *list, void *value)
+Gears_list *Gears_listAddNodeHead(Gears_list *list, void *value)
 {
-    listNode *node;
+    Gears_listNode *node;
 
     if ((node = RG_ALLOC(sizeof(*node))) == NULL)
         return NULL;
@@ -111,9 +111,9 @@ list *listAddNodeHead(list *list, void *value)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
-list *listAddNodeTail(list *list, void *value)
+Gears_list *Gears_listAddNodeTail(Gears_list *list, void *value)
 {
-    listNode *node;
+    Gears_listNode *node;
 
     if ((node = RG_ALLOC(sizeof(*node))) == NULL)
         return NULL;
@@ -131,8 +131,8 @@ list *listAddNodeTail(list *list, void *value)
     return list;
 }
 
-list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
-    listNode *node;
+Gears_list *Gears_listInsertNode(Gears_list *list, Gears_listNode *old_node, void *value, int after) {
+    Gears_listNode *node;
 
     if ((node = RG_ALLOC(sizeof(*node))) == NULL)
         return NULL;
@@ -164,7 +164,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
  * It's up to the caller to free the private value of the node.
  *
  * This function can't fail. */
-void listDelNode(list *list, listNode *node)
+void Gears_listDelNode(Gears_list *list, Gears_listNode *node)
 {
     if (node->prev)
         node->prev->next = node->next;
@@ -183,9 +183,9 @@ void listDelNode(list *list, listNode *node)
  * call to listNext() will return the next element of the list.
  *
  * This function can't fail. */
-listIter *listGetIterator(list *list, int direction)
+Gears_listIter *Gears_listGetIterator(Gears_list *list, int direction)
 {
-    listIter *iter;
+    Gears_listIter *iter;
 
     if ((iter = RG_ALLOC(sizeof(*iter))) == NULL) return NULL;
     if (direction == AL_START_HEAD)
@@ -197,17 +197,17 @@ listIter *listGetIterator(list *list, int direction)
 }
 
 /* Release the iterator memory */
-void listReleaseIterator(listIter *iter) {
+void Gears_listReleaseIterator(Gears_listIter *iter) {
     RG_FREE(iter);
 }
 
 /* Create an iterator in the list private iterator structure */
-void listRewind(list *list, listIter *li) {
+void Gears_listRewind(Gears_list *list, Gears_listIter *li) {
     li->next = list->head;
     li->direction = AL_START_HEAD;
 }
 
-void listRewindTail(list *list, listIter *li) {
+void Gears_listRewindTail(Gears_list *list, Gears_listIter *li) {
     li->next = list->tail;
     li->direction = AL_START_TAIL;
 }
@@ -226,9 +226,9 @@ void listRewindTail(list *list, listIter *li) {
  * }
  *
  * */
-listNode *listNext(listIter *iter)
+Gears_listNode *Gears_listNext(Gears_listIter *iter)
 {
-    listNode *current = iter->next;
+    Gears_listNode *current = iter->next;
 
     if (current != NULL) {
         if (iter->direction == AL_START_HEAD)
@@ -247,31 +247,31 @@ listNode *listNext(listIter *iter)
  * the original node is used as value of the copied node.
  *
  * The original list both on success or error is never modified. */
-list *listDup(list *orig)
+Gears_list *Gears_listDup(Gears_list *orig)
 {
-    list *copy;
-    listIter iter;
-    listNode *node;
+    Gears_list *copy;
+    Gears_listIter iter;
+    Gears_listNode *node;
 
-    if ((copy = listCreate()) == NULL)
+    if ((copy = Gears_listCreate()) == NULL)
         return NULL;
     copy->dup = orig->dup;
     copy->free = orig->free;
     copy->match = orig->match;
-    listRewind(orig, &iter);
-    while((node = listNext(&iter)) != NULL) {
+    Gears_listRewind(orig, &iter);
+    while((node = Gears_listNext(&iter)) != NULL) {
         void *value;
 
         if (copy->dup) {
             value = copy->dup(node->value);
             if (value == NULL) {
-                listRelease(copy);
+                Gears_listRelease(copy);
                 return NULL;
             }
         } else
             value = node->value;
-        if (listAddNodeTail(copy, value) == NULL) {
-            listRelease(copy);
+        if (Gears_listAddNodeTail(copy, value) == NULL) {
+            Gears_listRelease(copy);
             return NULL;
         }
     }
@@ -287,13 +287,13 @@ list *listDup(list *orig)
  * On success the first matching node pointer is returned
  * (search starts from head). If no matching node exists
  * NULL is returned. */
-listNode *listSearchKey(list *list, void *key)
+Gears_listNode *Gears_listSearchKey(Gears_list *list, void *key)
 {
-    listIter iter;
-    listNode *node;
+    Gears_listIter iter;
+    Gears_listNode *node;
 
-    listRewind(list, &iter);
-    while((node = listNext(&iter)) != NULL) {
+    Gears_listRewind(list, &iter);
+    while((node = Gears_listNext(&iter)) != NULL) {
         if (list->match) {
             if (list->match(node->value, key)) {
                 return node;
@@ -312,8 +312,8 @@ listNode *listSearchKey(list *list, void *key)
  * and so on. Negative integers are used in order to count
  * from the tail, -1 is the last element, -2 the penultimate
  * and so on. If the index is out of range NULL is returned. */
-listNode *listIndex(list *list, long index) {
-    listNode *n;
+Gears_listNode *Gears_listIndex(Gears_list *list, long index) {
+    Gears_listNode *n;
 
     if (index < 0) {
         index = (-index)-1;
@@ -327,10 +327,10 @@ listNode *listIndex(list *list, long index) {
 }
 
 /* Rotate the list removing the tail node and inserting it to the head. */
-void listRotate(list *list) {
-    listNode *tail = list->tail;
+void Gears_listRotate(Gears_list *list) {
+    Gears_listNode *tail = list->tail;
 
-    if (listLength(list) <= 1) return;
+    if (Gears_listLength(list) <= 1) return;
 
     /* Detach current tail */
     list->tail = tail->prev;
@@ -344,7 +344,7 @@ void listRotate(list *list) {
 
 /* Add all the elements of the list 'o' at the end of the
  * list 'l'. The list 'other' remains empty but otherwise valid. */
-void listJoin(list *l, list *o) {
+void Gears_listJoin(Gears_list *l, Gears_list *o) {
     if (o->head)
         o->head->prev = l->tail;
 

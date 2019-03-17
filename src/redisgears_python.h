@@ -14,8 +14,8 @@
 
 extern PyMethodDef EmbMethods[];
 
-void RedisGearsPy_PyObjectSerialize(void* arg, BufferWriter* bw);
-void* RedisGearsPy_PyObjectDeserialize(BufferReader* br);
+void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw);
+void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br);
 int RedisGearsPy_Init(RedisModuleCtx *ctx);
 
 

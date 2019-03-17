@@ -252,7 +252,7 @@ redisgears.registerTimeEvent(1, func, 'timeEvent')
         res = env.cmd('keys', '*')
         env.assertEqual(set(res), set(['x', 'timeEvent']))
         res1 = env.cmd('get', 'x')
-        time.sleep(1)
+        time.sleep(2)
         res2 = env.cmd('get', 'x')
         env.assertTrue(int(res2) >= int(res1) + 1)
 

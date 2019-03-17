@@ -7,30 +7,30 @@
         ArgType* type;\
         void* callback;\
     }apiName ## Holder;\
-    dict* apiName ## dict = NULL;\
+    Gears_dict* apiName ## dict = NULL;\
     void apiName ## sMgmt_Init(){\
-        apiName ## dict = dictCreate(&dictTypeHeapStrings, NULL);\
+        apiName ## dict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);\
     }\
     bool apiName ## sMgmt_Add(const char* name, RedisGears_ ## apiName ## Callback callback, ArgType* type){\
         apiName ## Holder* holder = RG_ALLOC(sizeof(*holder));\
         holder->type = type;\
         holder->callback = callback;\
-        return dictAdd(apiName ## dict, (void*)name, holder);\
+        return Gears_dictAdd(apiName ## dict, (void*)name, holder);\
     }\
     RedisGears_ ## apiName ## Callback apiName ## sMgmt_Get(const char* name){\
-        dictEntry *entry = dictFind(apiName ## dict, name);\
+        Gears_dictEntry *entry = Gears_dictFind(apiName ## dict, name);\
         if(!entry){\
             return NULL;\
         }\
-        apiName ## Holder* holder = dictGetVal(entry);\
+        apiName ## Holder* holder = Gears_dictGetVal(entry);\
         return holder->callback;\
     }\
     ArgType* apiName ## sMgmt_GetArgType(const char* name){\
-        dictEntry *entry = dictFind(apiName ## dict, name);\
+        Gears_dictEntry *entry = Gears_dictFind(apiName ## dict, name);\
         if(!entry){\
             return NULL;\
         }\
-        apiName ## Holder* holder = dictGetVal(entry);\
+        apiName ## Holder* holder = Gears_dictGetVal(entry);\
         return holder->type;\
     }
 

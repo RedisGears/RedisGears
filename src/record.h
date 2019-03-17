@@ -67,8 +67,8 @@ void RG_HashSetRecordFreeKeysArray(char** keyArr);
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RG_KeyHandlerRecordGet(Record* r);
 
-void RG_SerializeRecord(BufferWriter* bw, Record* r);
-Record* RG_DeserializeRecord(BufferReader* br);
+void RG_SerializeRecord(Gears_BufferWriter* bw, Record* r);
+Record* RG_DeserializeRecord(Gears_BufferReader* br);
 
 #ifdef WITHPYTHON
 Record* RG_PyObjRecordCreate();

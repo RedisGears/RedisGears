@@ -206,28 +206,28 @@ static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSer
     return ret;
 }
 
-static void RG_BWWriteLong(BufferWriter* bw, long val){
-    BufferWriter_WriteLong(bw, val);
+static void RG_BWWriteLong(Gears_BufferWriter* bw, long val){
+    Gears_BufferWriterWriteLong(bw, val);
 }
 
-static void RG_BWWriteString(BufferWriter* bw, char* str){
-    BufferWriter_WriteString(bw, str);
+static void RG_BWWriteString(Gears_BufferWriter* bw, char* str){
+    Gears_BufferWriterWriteString(bw, str);
 }
 
-static void RG_BWWriteBuffer(BufferWriter* bw, char* buff, size_t len){
-    BufferWriter_WriteBuff(bw, buff, len);
+static void RG_BWWriteBuffer(Gears_BufferWriter* bw, char* buff, size_t len){
+    Gears_BufferWriterWriteBuff(bw, buff, len);
 }
 
-static long RG_BRReadLong(BufferReader* br){
-    return BufferReader_ReadLong(br);
+static long RG_BRReadLong(Gears_BufferReader* br){
+    return Gears_BufferReaderReadLong(br);
 }
 
-static char* RG_BRReadString(BufferReader* br){
-    return BufferReader_ReadString(br);
+static char* RG_BRReadString(Gears_BufferReader* br){
+    return Gears_BufferReaderReadString(br);
 }
 
-static char* RG_BRReadBuffer(BufferReader* br, size_t* len){
-    return BufferReader_ReadBuff(br, len);
+static char* RG_BRReadBuffer(Gears_BufferReader* br, size_t* len){
+    return Gears_BufferReaderReadBuff(br, len);
 }
 
 static long long RG_GetTotalDuration(ExecutionPlan* ep){

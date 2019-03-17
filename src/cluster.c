@@ -27,11 +27,11 @@ typedef struct Node{
 typedef struct Cluster{
     char* myId;
     bool isClusterMode;
-    dict* nodes;
+    Gears_dict* nodes;
     Node* slots[MAX_SLOT];
 }Cluster;
 
-dict* RemoteCallbacks;
+Gears_dict* RemoteCallbacks;
 
 Cluster* CurrCluster = NULL;
 int notify[2];
@@ -46,7 +46,7 @@ typedef struct MsgArriveCtx{
 }MsgArriveCtx;
 
 pthread_t messagesArriveThread;
-list* msgArriveList;
+Gears_list* msgArriveList;
 pthread_mutex_t msgArriveLock;
 pthread_cond_t msgArriveCond;
 
@@ -99,10 +99,10 @@ typedef struct Msg{
 }Msg;
 
 static Node* GetNode(const char* id){
-    dictEntry *entry = dictFind(CurrCluster->nodes, id);
+    Gears_dictEntry *entry = Gears_dictFind(CurrCluster->nodes, id);
     Node* n = NULL;
     if(entry){
-        n = dictGetVal(entry);
+        n = Gears_dictGetVal(entry);
     }
     return n;
 }
@@ -130,21 +130,21 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .unixSocket = unixSocket ? RG_STRDUP(unixSocket) : NULL,
             .c = NULL,
     };
-    dictAdd(CurrCluster->nodes, n->id, n);
+    Gears_dictAdd(CurrCluster->nodes, n->id, n);
     return n;
 }
 
 static void Cluster_Free(){
     if(CurrCluster->isClusterMode){
         RG_FREE(CurrCluster->myId);
-        dictIterator *iter = dictGetIterator(CurrCluster->nodes);
-        dictEntry *entry = NULL;
-        while((entry = dictNext(iter))){
-            Node* n = dictGetVal(entry);
+        Gears_dictIterator *iter = Gears_dictGetIterator(CurrCluster->nodes);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            Node* n = Gears_dictGetVal(entry);
             FreeNode(n);
         }
-        dictReleaseIterator(iter);
-        dictRelease(CurrCluster->nodes);
+        Gears_dictReleaseIterator(iter);
+        Gears_dictRelease(CurrCluster->nodes);
     }
 
     RG_FREE(CurrCluster);
@@ -183,16 +183,16 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
 }
 
 static void Cluster_ConnectToShards(){
-    dictIterator *iter = dictGetIterator(CurrCluster->nodes);
-    dictEntry *entry = NULL;
-    while((entry = dictNext(iter))){
-        Node* n = dictGetVal(entry);
+    Gears_dictIterator *iter = Gears_dictGetIterator(CurrCluster->nodes);
+    Gears_dictEntry *entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        Node* n = Gears_dictGetVal(entry);
         if(strcmp(n->id, CurrCluster->myId) == 0){
             continue;
         }
         Cluster_ConnectToShard(n);
     }
-    dictReleaseIterator(iter);
+    Gears_dictReleaseIterator(iter);
 }
 
 static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
@@ -210,7 +210,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
     memcpy(CurrCluster->myId + zerosPadding, myId, myIdLen);
     CurrCluster->myId[REDISMODULE_NODE_ID_LEN] = '\0';
 
-    CurrCluster->nodes = dictCreate(&dictTypeHeapStrings, NULL);
+    CurrCluster->nodes = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
     long long numOfRanges;
     assert(RedisModule_StringToLongLong(argv[8], &numOfRanges) == REDISMODULE_OK);
@@ -287,7 +287,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
     CurrCluster->myId = RG_ALLOC(REDISMODULE_NODE_ID_LEN + 1);
     memcpy(CurrCluster->myId, RedisModule_GetMyClusterID(), REDISMODULE_NODE_ID_LEN);
     CurrCluster->myId[REDISMODULE_NODE_ID_LEN] = '\0';
-    CurrCluster->nodes = dictCreate(&dictTypeHeapStrings, NULL);
+    CurrCluster->nodes = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
     RedisModuleCallReply *allSlotsRelpy = RedisModule_Call(ctx, "cluster", "c", "slots");
     assert(RedisModule_CallReplyType(allSlotsRelpy) == REDISMODULE_REPLY_ARRAY);
@@ -370,15 +370,15 @@ static void Cluster_SendMessage(SendMsg* sendMsg){
         assert(n);
         Cluster_SendMsgToNode(n, sendMsg);
     }else{
-        dictIterator *iter = dictGetIterator(CurrCluster->nodes);
-        dictEntry *entry = NULL;
-        while((entry = dictNext(iter))){
-            Node* n = dictGetVal(entry);
+        Gears_dictIterator *iter = Gears_dictGetIterator(CurrCluster->nodes);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            Node* n = Gears_dictGetVal(entry);
             if(n->c){
                 Cluster_SendMsgToNode(n, sendMsg);
             }
         }
-        dictReleaseIterator(iter);
+        Gears_dictReleaseIterator(iter);
     }
 }
 
@@ -445,10 +445,10 @@ static void* Cluster_MessageArriveThread(void *arg){
             exit(1);
         }
 
-        while(listLength(msgArriveList) > 0){
-            listNode *node = listFirst(msgArriveList);
-            MsgArriveCtx* msgCtx = listNodeValue(node);
-            listDelNode(msgArriveList, node);
+        while(Gears_listLength(msgArriveList) > 0){
+            Gears_listNode *node = Gears_listFirst(msgArriveList);
+            MsgArriveCtx* msgCtx = Gears_listNodeValue(node);
+            Gears_listDelNode(msgArriveList, node);
             pthread_mutex_unlock(&msgArriveLock);
             msgCtx->receiver(rctx, msgCtx->sender, 0, msgCtx->msg, msgCtx->msgLen);
             MsgArriveCtx_Free(msgCtx);
@@ -477,7 +477,7 @@ static void Cluster_StartClusterThread(){
 }
 
 void Cluster_RegisterMsgReceiver(char* function, RedisModuleClusterMessageReceiver receiver){
-    dictAdd(RemoteCallbacks, function, receiver);
+    Gears_dictAdd(RemoteCallbacks, function, receiver);
 }
 
 void Cluster_SendClusterRefresh(RedisModuleCtx *ctx){
@@ -517,12 +517,12 @@ bool Cluster_IsClusterMode(){
 }
 
 size_t Cluster_GetSize(){
-    return dictSize(CurrCluster->nodes);
+    return Gears_dictSize(CurrCluster->nodes);
 }
 
 void Cluster_Init(){
-    RemoteCallbacks = dictCreate(&dictTypeHeapStrings, NULL);
-    msgArriveList = listCreate();
+    RemoteCallbacks = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
+    msgArriveList = Gears_listCreate();
     pthread_cond_init(&msgArriveCond, NULL);
     pthread_mutex_init(&msgArriveLock, NULL);
     Cluster_StartClusterThread();
@@ -553,11 +553,11 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     RedisModule_ReplyWithArray(ctx, 3);
     RedisModule_ReplyWithStringBuffer(ctx, "MyId", strlen("MyId"));
     RedisModule_ReplyWithStringBuffer(ctx, CurrCluster->myId, strlen(CurrCluster->myId));
-    RedisModule_ReplyWithArray(ctx, dictSize(CurrCluster->nodes));
-    dictIterator *iter = dictGetIterator(CurrCluster->nodes);
-    dictEntry *entry = NULL;
-    while((entry = dictNext(iter))){
-        Node* n = dictGetVal(entry);
+    RedisModule_ReplyWithArray(ctx, Gears_dictSize(CurrCluster->nodes));
+    Gears_dictIterator *iter = Gears_dictGetIterator(CurrCluster->nodes);
+    Gears_dictEntry *entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        Node* n = Gears_dictGetVal(entry);
         RedisModule_ReplyWithArray(ctx, 8);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, n->id, strlen(n->id));
@@ -572,7 +572,7 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             RedisModule_ReplyWithStringBuffer(ctx, "None", strlen("None"));
         }
     }
-    dictReleaseIterator(iter);
+    Gears_dictReleaseIterator(iter);
     return REDISMODULE_OK;
 }
 
@@ -589,18 +589,18 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     size_t msgLen;
     const char* msgStr = RedisModule_StringPtrLen(msg, &msgLen);
 
-    dictEntry *entry = dictFind(RemoteCallbacks, functionToCallStr);
+    Gears_dictEntry *entry = Gears_dictFind(RemoteCallbacks, functionToCallStr);
     if(!entry){
         RedisModule_Log(ctx, "warning", "can not find the callback requested : %s", functionToCallStr);
         RedisModule_ReplyWithError(ctx, "can not find the callback requested");
         return REDISMODULE_OK;
     }
-    RedisModuleClusterMessageReceiver receiver = dictGetVal(entry);
+    RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
 
     MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(senderIdStr, msgStr, msgLen, receiver);
 
     pthread_mutex_lock(&msgArriveLock);
-    listAddNodeTail(msgArriveList, msgArriveCtx);
+    Gears_listAddNodeTail(msgArriveList, msgArriveCtx);
     pthread_mutex_unlock(&msgArriveLock);
     pthread_cond_signal(&msgArriveCond);
 

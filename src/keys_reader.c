@@ -12,7 +12,7 @@
 #define KEYS_SPEC_NAME "keys_spec"
 
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
-list* keysReaderRegistration = NULL;
+Gears_list* keysReaderRegistration = NULL;
 
 IndexSpec* keyIdx = NULL;
 
@@ -45,12 +45,12 @@ static KeysReaderCtx* RG_KeysReaderCtxCreate(char* match){
     return krctx;
 }
 
-static void RG_KeysReaderCtxSerialize(void* ctx, BufferWriter* bw){
+static void RG_KeysReaderCtxSerialize(void* ctx, Gears_BufferWriter* bw){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     RedisGears_BWWriteString(bw, krctx->match);
 }
 
-static void RG_KeysReaderCtxDeserialize(void* ctx, BufferReader* br){
+static void RG_KeysReaderCtxDeserialize(void* ctx, Gears_BufferReader* br){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     char* match = RedisGears_BRReadString(br);
     krctx->match = RG_STRDUP(match);
@@ -299,29 +299,29 @@ static Record* KeysReader_Next(RedisModuleCtx* rctx, void* ctx){
 }
 
 static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
-    listIter *iter = listGetIterator(keysReaderRegistration, AL_START_HEAD);
-    listNode* node = NULL;
-    while((node = listNext(iter))){
-        FlatExecutionPlan* fep = listNodeValue(node);
+    Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        FlatExecutionPlan* fep = Gears_listNodeValue(node);
         char* keyStr = RG_STRDUP(RedisModule_StringPtrLen(key, NULL));
         if(!RedisGears_Run(fep, keyStr, NULL, NULL)){
             RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         }
     }
-    listReleaseIterator(iter);
+    Gears_listReleaseIterator(iter);
     return REDISMODULE_OK;
 }
 
 static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
     if(!keysReaderRegistration){
-        keysReaderRegistration = listCreate();
+        keysReaderRegistration = Gears_listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_STRING, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
         RedisModule_FreeThreadSafeContext(ctx);
     }
-    listAddNodeHead(keysReaderRegistration, fep);
+    Gears_listAddNodeHead(keysReaderRegistration, fep);
     RG_FREE(args); // currently we ignore the args
 }
 

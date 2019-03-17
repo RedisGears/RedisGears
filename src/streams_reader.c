@@ -7,7 +7,7 @@
 #include "utils/dict.h"
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
-list* streamsRegistration = NULL;
+Gears_list* streamsRegistration = NULL;
 
 typedef struct StreamReaderCtx{
     char* streamKeyName;
@@ -17,7 +17,7 @@ typedef struct StreamReaderCtx{
 
 typedef struct StreamReaderTrigger{
     char* streamKeyName;
-    dict* lastIds;
+    Gears_dict* lastIds;
     FlatExecutionPlan* fep;
 }StreamReaderTrigger;
 
@@ -74,14 +74,14 @@ static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* read
     return lastStreamId;
 }
 
-static void StreamReader_CtxDeserialize(void* ctx, BufferReader* br){
+static void StreamReader_CtxDeserialize(void* ctx, Gears_BufferReader* br){
     StreamReaderCtx* readerCtx = ctx;
     readerCtx->streamKeyName = RG_STRDUP(RedisGears_BRReadString(br));
     readerCtx->lastId = RG_STRDUP(RedisGears_BRReadString(br));
     readerCtx->records = array_new(Record*, 1);
 }
 
-static void StreamReader_CtxSerialize(void* ctx, BufferWriter* bw){
+static void StreamReader_CtxSerialize(void* ctx, Gears_BufferWriter* bw){
     StreamReaderCtx* readerCtx = ctx;
     RedisGears_BWWriteString(bw, readerCtx->streamKeyName);
     RedisGears_BWWriteString(bw, readerCtx->lastId);
@@ -132,13 +132,13 @@ static int StreamReader_IsKeyMatch(const char* prefix, const char* key){
 }
 
 static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
-    listIter *iter = listGetIterator(streamsRegistration, AL_START_HEAD);
-    listNode* node = NULL;
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
     const char* keyName = RedisModule_StringPtrLen(key, NULL);
-    while((node = listNext(iter))){
-        StreamReaderTrigger* srctx = listNodeValue(node);
+    while((node = Gears_listNext(iter))){
+        StreamReaderTrigger* srctx = Gears_listNodeValue(node);
         if(StreamReader_IsKeyMatch(srctx->streamKeyName, keyName)){
-            char* lastId = dictFetchValue(srctx->lastIds, (char*)keyName);
+            char* lastId = Gears_dictFetchValue(srctx->lastIds, (char*)keyName);
             if(!lastId){
                 lastId = RG_STRDUP("0-0");
             }
@@ -152,21 +152,21 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             if(lastStreamId){
                 RG_FREE(lastId);
                 lastId = RG_STRDUP(lastStreamId);
-                dictEntry *entry = dictAddOrFind(srctx->lastIds, (char*)keyName);
-                dictSetVal(srctx->lastIds, entry, lastId);
+                Gears_dictEntry *entry = Gears_dictAddOrFind(srctx->lastIds, (char*)keyName);
+                Gears_dictSetVal(srctx->lastIds, entry, lastId);
                 if(!RedisGears_Run(srctx->fep, readerCtx, NULL, NULL)){
                     RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
                 }
             }
         }
     }
-    listReleaseIterator(iter);
+    Gears_listReleaseIterator(iter);
     return REDISMODULE_OK;
 }
 
 static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     if(!streamsRegistration){
-        streamsRegistration = listCreate();
+        streamsRegistration = Gears_listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_STREAM, StreamReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
@@ -176,10 +176,10 @@ static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     StreamReaderTrigger* srctx = RG_ALLOC(sizeof(StreamReaderTrigger));
     *srctx = (StreamReaderTrigger){
         .streamKeyName = arg,
-        .lastIds = dictCreate(&dictTypeHeapStrings, NULL),
+        .lastIds = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .fep = fep,
     };
-    listAddNodeHead(streamsRegistration, srctx);
+    Gears_listAddNodeHead(streamsRegistration, srctx);
 }
 
 StreamReaderCtx* StreamReader_CreateCtx(char* keyName){

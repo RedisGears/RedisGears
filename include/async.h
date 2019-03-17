@@ -38,7 +38,7 @@ extern "C" {
 #endif
 
 struct redisAsyncContext; /* need forward declaration of redisAsyncContext */
-struct dict; /* dictionary header is included in async.c */
+struct Gears_dict; /* dictionary header is included in async.c */
 
 /* Reply callback prototype and container */
 typedef void (redisCallbackFn)(struct redisAsyncContext*, void*, void*);
@@ -95,8 +95,8 @@ typedef struct redisAsyncContext {
     /* Subscription callbacks */
     struct {
         redisCallbackList invalid;
-        struct dict *channels;
-        struct dict *patterns;
+        struct Gears_dict *channels;
+        struct Gears_dict *patterns;
     } sub;
 } redisAsyncContext;
 

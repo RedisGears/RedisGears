@@ -27,8 +27,8 @@ static PyThreadState *_save;
 
 #define PYTHON_ERROR "error running python code"
 
-static void RedisGearsPy_PyCallbackSerialize(void* arg, BufferWriter* bw);
-static void* RedisGearsPy_PyCallbackDeserialize(BufferReader* br);
+static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
+static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br);
 static void TimeEvent_Free(void *value);
 
 typedef struct PyFlatExecution{
@@ -654,13 +654,13 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     td->period = RedisModule_LoadUnsigned(rdb);
     size_t len;
     char* buff = RedisModule_LoadStringBuffer(rdb, &len);
-    Buffer b = {
+    Gears_Buffer b = {
             .cap = len,
             .size = len,
             .buff = buff,
     };
-    BufferReader reader;
-    BufferReader_Init(&reader, &b);
+    Gears_BufferReader reader;
+    Gears_BufferReaderInit(&reader, &b);
     td->callback = RedisGearsPy_PyCallbackDeserialize(&reader);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
@@ -671,12 +671,12 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
 static void TimeEvent_RDBSave(RedisModuleIO *rdb, void *value){
     TimerData* td = value;
     RedisModule_SaveUnsigned(rdb, td->period);
-    Buffer* b = Buffer_New(100);
-    BufferWriter bw;
-    BufferWriter_Init(&bw, b);
+    Gears_Buffer* b = Gears_BufferNew(100);
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, b);
     RedisGearsPy_PyCallbackSerialize(td->callback, &bw);
     RedisModule_SaveStringBuffer(rdb, b->buff, b->size);
-    Buffer_Free(b);
+    Gears_BufferFree(b);
 }
 
 static void TimeEvent_Free(void *value){
@@ -1167,7 +1167,7 @@ static void RedisGearsPy_PyObjectFree(void* arg){
     PyGILState_Release(state);
 }
 
-void RedisGearsPy_PyObjectSerialize(void* arg, BufferWriter* bw){
+void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* obj = arg;
     PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
@@ -1183,7 +1183,7 @@ void RedisGearsPy_PyObjectSerialize(void* arg, BufferWriter* bw){
     return;
 }
 
-void* RedisGearsPy_PyObjectDeserialize(BufferReader* br){
+void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br){
     PyGILState_STATE state = PyGILState_Ensure();
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
@@ -1192,7 +1192,7 @@ void* RedisGearsPy_PyObjectDeserialize(BufferReader* br){
     return obj;
 }
 
-static void RedisGearsPy_PyCallbackSerialize(void* arg, BufferWriter* bw){
+static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* callback = arg;
     PyObject *pickleFunction = PyDict_GetItemString(pyGlobals, "dumps");
@@ -1213,7 +1213,7 @@ static void RedisGearsPy_PyCallbackSerialize(void* arg, BufferWriter* bw){
     return;
 }
 
-static void* RedisGearsPy_PyCallbackDeserialize(BufferReader* br){
+static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br){
     PyGILState_STATE state = PyGILState_Ensure();
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);

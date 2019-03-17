@@ -13,37 +13,37 @@
 
 #define DEFAULT_INITIAL_CAP 50
 
-typedef struct Buffer{
+typedef struct Gears_Buffer{
     size_t cap;
     size_t size;
     char* buff;
-}Buffer;
+}Gears_Buffer;
 
-#define Buffer_Create() Buffer_New(DEFAULT_INITIAL_CAP)
+#define Gears_BufferCreate() Gears_BufferNew(DEFAULT_INITIAL_CAP)
 
-Buffer* Buffer_New(size_t initialCap);
-void Buffer_Free(Buffer* buff);
-void Buffer_Add(Buffer* buff, char* data, size_t len);
-void Buffer_Clear(Buffer* buff);
+Gears_Buffer* Gears_BufferNew(size_t initialCap);
+void Gears_BufferFree(Gears_Buffer* buff);
+void Gears_BufferAdd(Gears_Buffer* buff, char* data, size_t len);
+void Gears_BufferClear(Gears_Buffer* buff);
 
-typedef struct BufferWriter{
-    Buffer* buff;
-}BufferWriter;
+typedef struct Gears_BufferWriter{
+    Gears_Buffer* buff;
+}Gears_BufferWriter;
 
-void BufferWriter_Init(BufferWriter* bw, Buffer* buff);
-void BufferWriter_WriteLong(BufferWriter* bw, long val);
-void BufferWriter_WriteString(BufferWriter* bw, char* str);
-void BufferWriter_WriteBuff(BufferWriter* bw, char* buff, size_t len);
+void Gears_BufferWriterInit(Gears_BufferWriter* bw, Gears_Buffer* buff);
+void Gears_BufferWriterWriteLong(Gears_BufferWriter* bw, long val);
+void Gears_BufferWriterWriteString(Gears_BufferWriter* bw, char* str);
+void Gears_BufferWriterWriteBuff(Gears_BufferWriter* bw, char* buff, size_t len);
 
-typedef struct BufferReader{
-    Buffer* buff;
+typedef struct Gears_BufferReader{
+    Gears_Buffer* buff;
     size_t location;
-}BufferReader;
+}Gears_BufferReader;
 
-void BufferReader_Init(BufferReader* br, Buffer* buff);
-long BufferReader_ReadLong(BufferReader* br);
-char* BufferReader_ReadBuff(BufferReader* br, size_t* len);
-char* BufferReader_ReadString(BufferReader* br);
+void Gears_BufferReaderInit(Gears_BufferReader* br, Gears_Buffer* buff);
+long Gears_BufferReaderReadLong(Gears_BufferReader* br);
+char* Gears_BufferReaderReadBuff(Gears_BufferReader* br, size_t* len);
+char* Gears_BufferReaderReadString(Gears_BufferReader* br);
 
 
 

@@ -33,60 +33,60 @@
 
 /* Node, List, and Iterator are the only data structures used currently. */
 
-typedef struct listNode {
-    struct listNode *prev;
-    struct listNode *next;
+typedef struct Gears_listNode {
+    struct Gears_listNode *prev;
+    struct Gears_listNode *next;
     void *value;
-} listNode;
+} Gears_listNode;
 
-typedef struct listIter {
-    listNode *next;
+typedef struct Gears_listIter {
+    Gears_listNode *next;
     int direction;
-} listIter;
+} Gears_listIter;
 
-typedef struct list {
-    listNode *head;
-    listNode *tail;
+typedef struct Gears_list {
+    Gears_listNode *head;
+    Gears_listNode *tail;
     void *(*dup)(void *ptr);
     void (*free)(void *ptr);
     int (*match)(void *ptr, void *key);
     unsigned long len;
-} list;
+} Gears_list;
 
 /* Functions implemented as macros */
-#define listLength(l) ((l)->len)
-#define listFirst(l) ((l)->head)
-#define listLast(l) ((l)->tail)
-#define listPrevNode(n) ((n)->prev)
-#define listNextNode(n) ((n)->next)
-#define listNodeValue(n) ((n)->value)
+#define Gears_listLength(l) ((l)->len)
+#define Gears_listFirst(l) ((l)->head)
+#define Gears_listLast(l) ((l)->tail)
+#define Gears_listPrevNode(n) ((n)->prev)
+#define Gears_listNextNode(n) ((n)->next)
+#define Gears_listNodeValue(n) ((n)->value)
 
-#define listSetDupMethod(l,m) ((l)->dup = (m))
-#define listSetFreeMethod(l,m) ((l)->free = (m))
-#define listSetMatchMethod(l,m) ((l)->match = (m))
+#define Gears_listSetDupMethod(l,m) ((l)->dup = (m))
+#define Gears_listSetFreeMethod(l,m) ((l)->free = (m))
+#define Gears_listSetMatchMethod(l,m) ((l)->match = (m))
 
-#define listGetDupMethod(l) ((l)->dup)
-#define listGetFree(l) ((l)->free)
-#define listGetMatchMethod(l) ((l)->match)
+#define Gears_listGetDupMethod(l) ((l)->dup)
+#define Gears_listGetFree(l) ((l)->free)
+#define Gears_listGetMatchMethod(l) ((l)->match)
 
 /* Prototypes */
-list *listCreate(void);
-void listRelease(list *list);
-void listEmpty(list *list);
-list *listAddNodeHead(list *list, void *value);
-list *listAddNodeTail(list *list, void *value);
-list *listInsertNode(list *list, listNode *old_node, void *value, int after);
-void listDelNode(list *list, listNode *node);
-listIter *listGetIterator(list *list, int direction);
-listNode *listNext(listIter *iter);
-void listReleaseIterator(listIter *iter);
-list *listDup(list *orig);
-listNode *listSearchKey(list *list, void *key);
-listNode *listIndex(list *list, long index);
-void listRewind(list *list, listIter *li);
-void listRewindTail(list *list, listIter *li);
-void listRotate(list *list);
-void listJoin(list *l, list *o);
+Gears_list *Gears_listCreate(void);
+void Gears_listRelease(Gears_list *list);
+void Gears_listEmpty(Gears_list *list);
+Gears_list *Gears_listAddNodeHead(Gears_list *list, void *value);
+Gears_list *Gears_listAddNodeTail(Gears_list *list, void *value);
+Gears_list *Gears_listInsertNode(Gears_list *list, Gears_listNode *old_node, void *value, int after);
+void Gears_listDelNode(Gears_list *list, Gears_listNode *node);
+Gears_listIter *Gears_listGetIterator(Gears_list *list, int direction);
+Gears_listNode *Gears_listNext(Gears_listIter *iter);
+void Gears_listReleaseIterator(Gears_listIter *iter);
+Gears_list *Gears_listDup(Gears_list *orig);
+Gears_listNode *Gears_listSearchKey(Gears_list *list, void *key);
+Gears_listNode *Gears_listIndex(Gears_list *list, long index);
+void Gears_listRewind(Gears_list *list, Gears_listIter *li);
+void Gears_listRewindTail(Gears_list *list, Gears_listIter *li);
+void Gears_listRotate(Gears_list *list);
+void Gears_listJoin(Gears_list *l, Gears_list *o);
 
 /* Directions for iterators */
 #define AL_START_HEAD 0

@@ -58,7 +58,7 @@ typedef struct ExtractKeyExecutionStep{
 
 typedef struct GroupExecutionStep{
     Record** groupedRecords;
-    dict* d;
+    Gears_dict* d;
     bool isGrouped;
 }GroupExecutionStep;
 
@@ -103,8 +103,8 @@ typedef struct AccumulateExecutionStep{
 typedef struct AccumulateByKeyExecutionStep{
     RedisGears_AccumulateByKeyCallback accumulate;
     ExecutionStepArg stepArg;
-    dict* accumulators;
-    dictIterator *iter;
+    Gears_dict* accumulators;
+    Gears_dictIterator *iter;
 }AccumulateByKeyExecutionStep;
 
 typedef struct ExecutionStep{
