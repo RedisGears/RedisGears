@@ -16,7 +16,11 @@ defaults:
         name: Test
         command: cd ./pytest; ./run_tests.sh
     - persist_to_workspace:
-        root: ./artifacts
+        root: ./snapshot
+        paths:
+          - '*.zip'
+    - persist_to_workspace:
+        root: ./release
         paths:
           - '*.zip'
 
@@ -60,18 +64,35 @@ jobs:
           root: ./artifacts
           paths:
             - '*.zip'
+      - persist_to_workspace:
+        root: ./release
+        paths:
+          - '*.zip'
 
   deploy_snapshots:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     steps:
       - attach_workspace:
-          at: ./artifacts
+          at: ./snapshot
       - run:
           name: Deploy Snapshots to S3
           command: >-
-            for f in ./artifacts/*.zip; do
+            for f in ./snapshot/*.zip; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read;
+            done
+
+  deploy_release:
+    docker:
+      - image: 'redislabsmodules/rmbuilder:latest'
+    steps:
+      - attach_workspace:
+          at: ./release
+      - run:
+          name: Deploy Snapshots to S3
+          command: >-
+            for f in ./release/*.zip; do
+              aws s3 cp $f s3://redismodules/redisgears/ --acl public-read;
             done
 
 
@@ -98,4 +119,11 @@ workflows:
             branches:
               only:
                 - master
-                - deploy_snapshots
+                - deploy_snapshots_1
+      - deploy_release:
+          requires: *default_jobs
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9].*/

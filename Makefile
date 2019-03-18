@@ -2,11 +2,19 @@ CC=gcc
 SRC := src
 OBJ := obj
 GIT_SHA := $(shell git rev-parse HEAD)
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 OS := $(shell lsb_release -si)
 
 $(shell mkdir -p $(OBJ))
 $(shell mkdir -p $(OBJ)/utils)
+
+ifndef PACKAGE_NAME
+	PACKAGE_NAME := redisgears
+endif
+
+ifndef CIRCLE_BRANCH
+	CIRCLE_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+endif
+
 
 CPYTHON_PATH := $(realpath ./src/deps/cpython/)
 
@@ -66,4 +74,11 @@ get_deps: python
 	rm -rf deps
 	
 ramp_pack: all
-	mkdir artifacts;PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o artifacts/redisgears-$(GIT_BRANCH)-$(OS)-{architecture}.{semantic_version}.zip;zip -rq artifacts/redisgears-artifact-$(GIT_BRANCH)-$(OS).zip src/deps/cpython
+	mkdir -p snapshot
+	mkdir -p release
+	$(eval SNAPSHOT=$(shell PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-{architecture}.$(CIRCLE_BRANCH).zip))
+	$(eval DEPLOY=$(shell PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-{architecture}.{semantic_version}.zip))
+	mv ./$(SNAPSHOT) ./snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
+	mv ./$(DEPLOY) ./release/$(PACKAGE_NAME).$(DEPLOY)
+	zip -rq snapshot/$(PACKAGE_NAME)-dependencies.$(SNAPSHOT) src/deps/cpython
+	zip -rq release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) src/deps/cpython
