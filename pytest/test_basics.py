@@ -1,7 +1,6 @@
 from RLTest import Env
 import yaml
 import time
-import paella
 
 
 def getConnectionByEnv(env):
@@ -308,5 +307,4 @@ def testMaxExecutions():
     time.sleep(1)
     res = env.execute_command('RG.DUMPEXECUTIONS')
     env.assertTrue(map(lambda x: int(x[1].split('-')[1]), res) == [1, 2, 3])
-    bb()
     map(lambda x: env.cmd('rg.dropexecution', x[1]), res)
