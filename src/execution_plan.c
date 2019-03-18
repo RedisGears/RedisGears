@@ -1227,7 +1227,7 @@ static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
 	    ExecutionPlan_ExecutionDone(msg->executionDone.ep);
         break;
 	case EXECUTION_FREE:
-        ExecutionPlan_Free(msg->executionFree.ep);
+        ExecutionPlan_Free(msg->executionFree.ep, true);
         break;
 	default:
 		assert(false);
@@ -1438,8 +1438,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     while (Gears_listLength(epData.epList) >= GearsCOnfig_GetMaxExecutions()) {
         Gears_listNode* n0 = Gears_listFirst(epData.epList);
         ExecutionPlan* ep0 = Gears_listNodeValue(n0);
-        Gears_dictDelete(epData.epDict, ep0->id);
-        Gears_listDelNode(epData.epList, n0);
+        ExecutionPlan_Free(ep0, false);
     }
     Gears_listAddNodeTail(epData.epList, ret);
     Gears_dictAdd(epData.epDict, ret->id, ret);
@@ -1531,9 +1530,9 @@ void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep){
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
-void ExecutionPlan_Free(ExecutionPlan* ep){
+void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock){
     FlatExecutionPlan_Free(ep->fep);
-    pthread_mutex_lock(&epData.mutex);
+    if (needLock) pthread_mutex_lock(&epData.mutex);
     Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_TAIL);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(it))){
@@ -1545,7 +1544,7 @@ void ExecutionPlan_Free(ExecutionPlan* ep){
     }
     Gears_listReleaseIterator(it);  
     Gears_dictDelete(epData.epDict, ep->id);
-    pthread_mutex_unlock(&epData.mutex);
+    if (needLock) pthread_mutex_unlock(&epData.mutex);
 
     ExecutionStep_Free(ep->steps[0]);
     array_free(ep->steps);
