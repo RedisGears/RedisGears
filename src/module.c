@@ -186,7 +186,7 @@ static void RG_DropExecution(ExecutionPlan* ep){
     if(Cluster_IsClusterMode()){
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
-    ExecutionPlan_Free(ep);
+    ExecutionPlan_Free(ep, true);
 }
 
 static ExecutionPlan* RG_GetExecution(const char* id){
