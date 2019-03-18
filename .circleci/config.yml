@@ -65,9 +65,9 @@ jobs:
           paths:
             - '*.zip'
       - persist_to_workspace:
-        root: ./release
-        paths:
-          - '*.zip'
+          root: ./release
+          paths:
+            - '*.zip'
 
   deploy_snapshots:
     docker:
