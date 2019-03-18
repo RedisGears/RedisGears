@@ -209,7 +209,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
-void ExecutionPlan_Free(ExecutionPlan* ep);
+void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
 
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

@@ -294,3 +294,22 @@ def testKeyWithUnparsedValue(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('sadd', 'x', '1', '2', '3')
     env.expect('RG.PYEXECUTE', "GB().map(lambda x: execute('smembers', x['key'])).flatmap(lambda x:x).sort().run()").contains(['1', '2', '3'])
+
+def testMaxExecutions():
+    env = Env(moduleArgs="MaxExecutions 3")
+    conn = getConnectionByEnv(env)
+    conn.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
+    time.sleep(1)
+    conn.execute_command('set', 'x', '0')
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'x', '2')
+    time.sleep(1)
+    res = env.execute_command('RG.DUMPEXECUTIONS')
+    # res is a list of the form ['executionId', '0000000000000000000000000000000000000000-0', 'status', 'done']
+    env.assertTrue(len(res) == 3)
+    env.assertTrue(map(lambda x: int(x[1].split('-')[1]), res) == [0, 1, 2])
+    conn.execute_command('set', 'x', '3')
+    time.sleep(1)
+    res = env.execute_command('RG.DUMPEXECUTIONS')
+    env.assertTrue(map(lambda x: int(x[1].split('-')[1]), res) == [1, 2, 3])
+    map(lambda x: env.cmd('rg.dropexecution', x[1]), res)

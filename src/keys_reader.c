@@ -316,9 +316,11 @@ static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
     if(!keysReaderRegistration){
         keysReaderRegistration = Gears_listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
+        LockHandler_Acquire(ctx);
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_ALL, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
+        LockHandler_Realse(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
     }
     Gears_listAddNodeHead(keysReaderRegistration, fep);

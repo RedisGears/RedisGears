@@ -1,3 +1,5 @@
+WITHPYTHON ?= 1
+
 CC=gcc
 SRC := src
 OBJ := obj
@@ -27,6 +29,7 @@ SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/
         src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
         src/globals.c src/config.c src/lock_handler.c
 CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -DCPYTHON_PATH=\"$(CPYTHON_PATH)/\" -std=gnu99
+# CFLAGS += -DFEATURE_1
 LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
 ifeq ($(DEBUG), 1)
     CFLAGS+=-g -O0 -DVALGRIND

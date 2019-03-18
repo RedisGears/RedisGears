@@ -40,6 +40,7 @@ typedef struct ConfigVal{
 
 typedef struct RedisGears_Config{
 	ConfigVal pythonHomeDir;
+    ConfigVal maxExecutions;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -69,8 +70,25 @@ static bool ConfigVal_PythonHomeDirSet(ArgsIterator* iter){
 	}
 	RG_FREE(DefaultGearsConfig.pythonHomeDir.val.str);
 	const char* valStr = RedisModule_StringPtrLen(val, NULL);
-        DefaultGearsConfig.pythonHomeDir.val.str = RG_STRDUP(valStr);
+    DefaultGearsConfig.pythonHomeDir.val.str = RG_STRDUP(valStr);
 	return true;
+}
+
+static const ConfigVal* ConfigVal_MaxExecutionsGet(){
+	return &DefaultGearsConfig.maxExecutions;
+}
+
+static bool ConfigVal_MaxExecutionsSet(ArgsIterator* iter){
+	RedisModuleString* val = ArgsIterator_Next(iter);
+	if(!val) return false;
+    long long n;
+
+	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.maxExecutions.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 static Gears_ConfigVal Gears_ConfigVals[] = {
@@ -79,6 +97,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
 				.getter = ConfigVal_PythonHomeDirGet,
 				.setter = ConfigVal_PythonHomeDirSet,
 				.configurableAtRunTime = false,
+		},
+		{
+				.name = "MaxExecutions",
+				.getter = ConfigVal_MaxExecutionsGet,
+				.setter = ConfigVal_MaxExecutionsSet,
+				.configurableAtRunTime = true,
 		},
 		{
 				NULL,
@@ -136,6 +160,10 @@ const char* GearsCOnfig_GetPythonHomeDir(){
 	return DefaultGearsConfig.pythonHomeDir.val.str;
 }
 
+long long GearsCOnfig_GetMaxExecutions(){
+	return DefaultGearsConfig.maxExecutions.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
 	for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
 		const ConfigVal* v = val->getter();
@@ -165,8 +193,11 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
 				.val.str = getenv(PYTHON_HOME_DIR) ? RG_STRDUP(getenv(PYTHON_HOME_DIR)) : RG_STRDUP(CPYTHON_PATH),
 				.type = STR,
 		},
+        .maxExecutions = {
+            .val.longVal = 1000,
+            .type = LONG,
+        },
 	};
-
 
 	if (RedisModule_CreateCommand(ctx, "rg.configget", GearsCOnfig_Get, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.configget");
