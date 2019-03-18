@@ -3,6 +3,7 @@
 #include "mgmt.h"
 #include "record.h"
 #include "cluster.h"
+#include "config.h"
 #include <assert.h>
 #include <stdbool.h>
 #include "utils/adlist.h"
@@ -72,6 +73,9 @@ static ArgType LimitArgType = {
 
 typedef struct ExecutionPlansData{
     Gears_dict* epDict;
+#ifndef FEATURE_1
+    Gears_list* epList;
+#endif // FEATURE_1
     pthread_mutex_t mutex;
     WorkerData** workers;
 }ExecutionPlansData;
@@ -231,11 +235,18 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
 }
 
 ExecutionPlan* ExecutionPlan_FindById(const char* id){
+#ifdef FEATURE_1
+    pthread_mutex_lock(&epData.mutex);
+    ExecutionPlan* ep = Gears_dictFetchValue(epData.epDict, id);
+    pthread_mutex_unlock(&epData.mutex);
+    return ep;
+#else
     Gears_dictEntry *entry = Gears_dictFind(epData.epDict, id);
     if(!entry){
         return NULL;
     }
     return Gears_dictGetVal(entry);
+#endif // FEATURE_1
 }
 
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id){
@@ -1258,6 +1269,9 @@ static WorkerData* ExecutionPlan_StartThread(){
 
 void ExecutionPlan_Initialize(size_t numberOfworkers){
     epData.epDict = Gears_dictCreate(&dictTypeHeapIds, NULL);
+#ifndef FEATURE_1
+    epData.epList = Gears_listCreate();
+#endif // FEATURE_1
     pthread_mutex_init(&epData.mutex, NULL);
     epData.workers = array_new(WorkerData*, numberOfworkers);
 
@@ -1432,7 +1446,20 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     }
     memcpy(ret->id, finalId, EXECUTION_PLAN_ID_LEN);
     snprintf(ret->idStr, EXECUTION_PLAN_STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, ret->id, *(long long*)&ret->id[REDISMODULE_NODE_ID_LEN]);
+#ifndef FEATURE_1
+    pthread_mutex_lock(&epData.mutex);
+    while (Gears_listLength(epData.epList) >= GearsCOnfig_GetMaxExecutions()) {
+        Gears_listNode* n0 = Gears_listFirst(epData.epList);
+        ExecutionPlan* ep0 = Gears_listNodeValue(n0);
+        Gears_dictDelete(epData.epDict, ep0->id);
+        Gears_listDelNode(epData.epList, n0);
+    }
+    Gears_listAddNodeTail(epData.epList, ret);
     Gears_dictAdd(epData.epDict, ret->id, ret);
+    pthread_mutex_unlock(&epData.mutex);
+#else
+    Gears_dictAdd(epData.epDict, ret->id, ret);
+#endif // FEATURE_1
     return ret;
 }
 
@@ -1522,7 +1549,23 @@ void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep){
 
 void ExecutionPlan_Free(ExecutionPlan* ep){
     FlatExecutionPlan_Free(ep->fep);
+#ifndef FEATURE_1
+    pthread_mutex_lock(&epData.mutex);
+    Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_TAIL);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(it))){
+        ExecutionPlan* it_ep = Gears_listNodeValue(node);
+		if (!memcmp(it_ep->id, ep->id, EXECUTION_PLAN_ID_LEN)) {
+			Gears_listDelNode(epData.epList, node);
+			break;
+		}
+    }
+    Gears_listReleaseIterator(it);  
     Gears_dictDelete(epData.epDict, ep->id);
+    pthread_mutex_unlock(&epData.mutex);
+#else
+    Gears_dictDelete(epData.epDict, ep->id);
+#endif // FEATURE_1
 
     ExecutionStep_Free(ep->steps[0]);
     array_free(ep->steps);
@@ -1634,6 +1677,29 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
 }
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+#ifndef FEATURE_1
+    pthread_mutex_lock(&epData.mutex);
+	RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+	size_t numOfEntries = 0;
+    Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(it))) {
+        ExecutionPlan* ep = Gears_listNodeValue(node);
+		RedisModule_ReplyWithArray(ctx, 4);
+		RedisModule_ReplyWithStringBuffer(ctx, "executionId", strlen("executionId"));
+		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
+		RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
+		if(ep->isDone){
+			RedisModule_ReplyWithStringBuffer(ctx, "done", strlen("done"));
+		}else{
+			RedisModule_ReplyWithStringBuffer(ctx, "running", strlen("running"));
+		}
+
+		++numOfEntries;
+    }
+    Gears_listReleaseIterator(it);  
+    pthread_mutex_unlock(&epData.mutex);
+#else // FEATURE_1
 	Gears_dictIterator *iter = Gears_dictGetSafeIterator(epData.epDict);
 	Gears_dictEntry *entry = NULL;
 	RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
@@ -1653,6 +1719,7 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 		++numOfEntries;
 	}
 	Gears_dictReleaseIterator(iter);
+#endif // FEATURE_1
 	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
 	return REDISMODULE_OK;
 }
