@@ -62,7 +62,7 @@ static: $(OBJECTS)
 	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
 
 clean:
-	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o artifacts/*.zip
+	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o release/*.zip snapshot/*.zip
 	
 get_deps: python
 	rm -rf deps
