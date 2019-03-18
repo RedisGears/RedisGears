@@ -61,7 +61,7 @@ jobs:
           name: Test
           command: cd ./pytest; ./run_tests.sh
       - persist_to_workspace:
-          root: ./artifacts
+          root: ./snapshot
           paths:
             - '*.zip'
       - persist_to_workspace:

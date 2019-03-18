@@ -76,8 +76,8 @@ get_deps: python
 ramp_pack: all
 	mkdir -p snapshot
 	mkdir -p release
-	$(eval SNAPSHOT=$(shell PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-{architecture}.$(CIRCLE_BRANCH).zip))
-	$(eval DEPLOY=$(shell PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-{architecture}.{semantic_version}.zip))
+	$(eval SNAPSHOT=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-{architecture}.$(CIRCLE_BRANCH).zip | tail -1))
+	$(eval DEPLOY=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-{architecture}.{semantic_version}.zip | tail -1))
 	mv ./$(SNAPSHOT) ./snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
 	mv ./$(DEPLOY) ./release/$(PACKAGE_NAME).$(DEPLOY)
 	zip -rq snapshot/$(PACKAGE_NAME)-dependencies.$(SNAPSHOT) src/deps/cpython
