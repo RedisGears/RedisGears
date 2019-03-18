@@ -15,6 +15,10 @@ ifndef CIRCLE_BRANCH
 	CIRCLE_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 endif
 
+ifndef PYTHON_ENCODING_FLAG
+	PYTHON_ENCODING_FLAG := --enable-unicode=ucs2
+endif
+
 
 CPYTHON_PATH := $(realpath ./src/deps/cpython/)
 
@@ -46,7 +50,7 @@ $(OBJ)/%.o: $(SRC)/%.c
 all: GearsBuilder.py redisgears.so
 
 python:
-	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc --enable-unicode=ucs2	;make
+	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc $(PYTHON_ENCODING_FLAG)	;make
 
 python_clean:
 	cd src/deps/cpython;make clean
