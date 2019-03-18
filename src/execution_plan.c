@@ -1010,7 +1010,10 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
 static int currAssignWorker = 0;
 
 static void ExecutionPlan_Run(ExecutionPlan* ep){
+    pthread_mutex_lock(&epData.mutex);
 	WorkerData* wd = epData.workers[currAssignWorker];
+	currAssignWorker = (currAssignWorker + 1) % array_len(epData.workers);
+	pthread_mutex_unlock(&epData.mutex);
 	ep->assignWorker = wd;
     ExecutionPlan_RegisterForRun(ep);
 }
@@ -1026,14 +1029,14 @@ static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender
 	assert(ep);
 	++ep->totalShardsRecieved;
 	if((Cluster_GetSize() - 1) == ep->totalShardsRecieved){ // no need to wait to myself
-		ExecutionPlan_Run(ep);
+	    ExecutionPlan_RegisterForRun(ep);
 	}
 }
 
 static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
 	assert(ep);
-	ExecutionPlan_Run(ep);
+	ExecutionPlan_RegisterForRun(ep);
 }
 
 static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
