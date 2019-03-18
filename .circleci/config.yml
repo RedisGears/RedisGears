@@ -16,13 +16,10 @@ defaults:
         name: Test
         command: cd ./pytest; ./run_tests.sh
     - persist_to_workspace:
-        root: ./snapshot
+        root: ./artifacts
         paths:
-          - '*.zip'
-    - persist_to_workspace:
-        root: ./release
-        paths:
-          - '*.zip'
+          - 'snapshot/*.zip'
+          - 'release/*.zip'
 
   default_jobs: &default_jobs
     - centos
@@ -61,24 +58,21 @@ jobs:
           name: Test
           command: cd ./pytest; ./run_tests.sh
       - persist_to_workspace:
-          root: ./snapshot
+          root: ./artifacts
           paths:
-            - '*.zip'
-      - persist_to_workspace:
-          root: ./release
-          paths:
-            - '*.zip'
+            - 'snapshot/*.zip'
+            - 'release/*.zip'
 
   deploy_snapshots:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     steps:
       - attach_workspace:
-          at: ./snapshot
+          at: ./artifacts
       - run:
           name: Deploy Snapshots to S3
           command: >-
-            for f in ./snapshot/*.zip; do
+            for f in ./artifacts/snapshot/*.zip; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read;
             done
 
@@ -87,11 +81,11 @@ jobs:
       - image: 'redislabsmodules/rmbuilder:latest'
     steps:
       - attach_workspace:
-          at: ./release
+          at: ./artifacts
       - run:
           name: Deploy Snapshots to S3
           command: >-
-            for f in ./release/*.zip; do
+            for f in ./artifacts/release/*.zip; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read;
             done
 

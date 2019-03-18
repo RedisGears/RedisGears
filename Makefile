@@ -62,7 +62,7 @@ static: $(OBJECTS)
 	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
 
 clean:
-	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o release/*.zip snapshot/*.zip
+	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o artifacts/release/*.zip artifacts/snapshot/*.zip
 	
 get_deps: python
 	rm -rf deps
@@ -74,11 +74,12 @@ get_deps: python
 	rm -rf deps
 	
 ramp_pack: all
-	mkdir -p snapshot
-	mkdir -p release
+	mkdir -p artifacts
+	mkdir -p artifacts/snapshot
+	mkdir -p artifacts/release
 	$(eval SNAPSHOT=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS)-{architecture}.$(CIRCLE_BRANCH).zip | tail -1))
 	$(eval DEPLOY=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS)-{architecture}.{semantic_version}.zip | tail -1))
-	mv ./$(SNAPSHOT) ./snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
-	mv ./$(DEPLOY) ./release/$(PACKAGE_NAME).$(DEPLOY)
-	zip -rq snapshot/$(PACKAGE_NAME)-dependencies.$(SNAPSHOT) src/deps/cpython
-	zip -rq release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) src/deps/cpython
+	mv ./$(SNAPSHOT) artifacts/snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
+	mv ./$(DEPLOY) artifacts/release/$(PACKAGE_NAME).$(DEPLOY)
+	zip -rq artifacts/snapshot/$(PACKAGE_NAME)-dependencies.$(SNAPSHOT) src/deps/cpython
+	zip -rq artifacts/release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) src/deps/cpython
