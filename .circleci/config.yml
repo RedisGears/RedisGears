@@ -18,7 +18,8 @@ defaults:
     - persist_to_workspace:
         root: ./artifacts
         paths:
-          - '*.zip'
+          - 'snapshot/*.zip'
+          - 'release/*.zip'
 
   default_jobs: &default_jobs
     - centos
@@ -59,7 +60,8 @@ jobs:
       - persist_to_workspace:
           root: ./artifacts
           paths:
-            - '*.zip'
+            - 'snapshot/*.zip'
+            - 'release/*.zip'
 
   deploy_snapshots:
     docker:
@@ -70,8 +72,21 @@ jobs:
       - run:
           name: Deploy Snapshots to S3
           command: >-
-            for f in ./artifacts/*.zip; do
+            for f in ./artifacts/snapshot/*.zip; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read;
+            done
+
+  deploy_release:
+    docker:
+      - image: 'redislabsmodules/rmbuilder:latest'
+    steps:
+      - attach_workspace:
+          at: ./artifacts
+      - run:
+          name: Deploy Snapshots to S3
+          command: >-
+            for f in ./artifacts/release/*.zip; do
+              aws s3 cp $f s3://redismodules/redisgears/ --acl public-read;
             done
 
 
@@ -98,4 +113,11 @@ workflows:
             branches:
               only:
                 - master
-                - deploy_snapshots
+                - deploy_snapshots_1
+      - deploy_release:
+          requires: *default_jobs
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9].*/
