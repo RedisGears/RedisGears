@@ -20,6 +20,11 @@ class testBasic:
         for i in range(100):
             conn.execute_command('set', str(i), str(i))
 
+    def testAvg(self):
+        self.env.expect('rg.pyexecute', "GearsBuilder()."
+                                        "map(lambda x:int(x['value']))."
+                                        "avg().run()").contains(['49.5'])
+
     def testAggregate(self):
         self.env.expect('rg.pyexecute', "GearsBuilder()."
                                         "map(lambda x:int(x['value']))."
