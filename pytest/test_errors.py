@@ -137,5 +137,9 @@ def testAccumulateWrongArgs(env):
     env.expect('rg.pyexecute', 'GB().accumulate(1).run()').error().contains('argument must be a function')
 
 
+def testAvgWrongArgs(env):
+    env.expect('rg.pyexecute', 'GB().avg(1).run()').error().contains('argument must be a function')
+
+
 def testBuilderCreationWithUnexistingReader(env):
     env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')

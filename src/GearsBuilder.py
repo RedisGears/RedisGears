@@ -47,7 +47,7 @@ class GearsBuilder():
         self.gearsCtx.accumulate(lambda a, r: r + (a if a else 0))
         return self
 
-    def countby(self, extractor):
+    def countby(self, extractor=lambda x: x):
         self.aggregateby(extractor, 0, lambda k, a, r: 1 + a, lambda k, a, r: r + a)
         return self
 
@@ -59,6 +59,11 @@ class GearsBuilder():
 
     def distinct(self):
         return self.aggregate(set(), lambda a, r: a | set([r]), lambda a, r: a | r).flatmap(lambda x: list(x))
+
+    def avg(self, extractor=lambda x: float(x)):
+        return self.map(extractor).aggregate((0, 0),
+                                             lambda a, r: (a[0] + r, a[1] + 1),
+                                             lambda a, r: (a[0] + r[0], a[1] + r[1])).map(lambda x: x[0] / x[1])
 
     def run(self, prefix=None, converteToStr=True, collect=True):
         if(converteToStr):
