@@ -21,6 +21,16 @@ typedef struct StreamReaderTrigger{
     FlatExecutionPlan* fep;
 }StreamReaderTrigger;
 
+StreamReaderCtx* StreamReaderCtx_Create(const char* streamName, const char* streamId){
+    StreamReaderCtx* readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
+    *readerCtx = (StreamReaderCtx){
+            .streamKeyName = streamName ? RG_STRDUP(streamName) : NULL,
+            .lastId = streamId ? RG_STRDUP(streamId) : NULL,
+            .records = NULL,
+    };
+    return readerCtx;
+}
+
 static char* StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* readerCtx){
     char* lastStreamId = NULL;
     assert(!readerCtx->records);
@@ -142,12 +152,7 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             if(!lastId){
                 lastId = RG_STRDUP("0-0");
             }
-            StreamReaderCtx* readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
-            *readerCtx = (StreamReaderCtx){
-                    .streamKeyName = RG_STRDUP(keyName),
-                    .lastId = RG_STRDUP(lastId),
-                    .records = NULL,
-            };
+            StreamReaderCtx* readerCtx = StreamReaderCtx_Create(keyName, lastId);
             char* lastStreamId = StreamReader_ReadRecords(ctx, readerCtx);
             if(lastStreamId){
                 RG_FREE(lastId);
@@ -182,25 +187,10 @@ static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     Gears_listAddNodeHead(streamsRegistration, srctx);
 }
 
-StreamReaderCtx* StreamReader_CreateCtx(char* keyName){
-    StreamReaderCtx* readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
-    *readerCtx = (StreamReaderCtx){
-            .streamKeyName = RG_STRDUP(keyName),
-            .lastId = RG_STRDUP("0-0"),
-            .records = NULL,
-    };
-    return readerCtx;
-}
-
 Reader* StreamReader(void* arg){
     StreamReaderCtx* readerCtx = arg;
     if(!readerCtx){
-        readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
-        *readerCtx = (StreamReaderCtx){
-                .streamKeyName = NULL,
-                .lastId = NULL,
-                .records = NULL,
-        };
+        readerCtx = StreamReaderCtx_Create(NULL, NULL);
     }
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){

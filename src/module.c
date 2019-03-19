@@ -138,8 +138,16 @@ static int RG_Register(FlatExecutionPlan* fep, char* key){
     return FlatExecutionPlan_Register(fep, key);
 }
 
+static const char* RG_GetReader(FlatExecutionPlan* fep){
+    return FlatExecutionPlan_GetReader(fep);
+}
+
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
 	return FlatExecutionPlan_Run(fep, NULL, arg, callback, privateData);
+}
+
+static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const char* streamId){
+    return StreamReaderCtx_Create(streamName, streamId);
 }
 
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
@@ -272,6 +280,8 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(Run, registerApiCallback);
     REGISTER_API(Register, registerApiCallback);
     REGISTER_API(FreeFlatExecution, registerApiCallback);
+    REGISTER_API(GetReader, registerApiCallback);
+    REGISTER_API(StreamReaderCtxCreate, registerApiCallback);
 
     REGISTER_API(GetExecution, registerApiCallback);
     REGISTER_API(IsDone, registerApiCallback);

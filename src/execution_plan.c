@@ -1282,6 +1282,10 @@ void ExecutionPlan_Initialize(size_t numberOfworkers){
     }
 }
 
+const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
+    return fep->reader->reader;
+}
+
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
     ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
     if(!rs.r->registerTrigger){

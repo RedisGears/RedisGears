@@ -157,6 +157,16 @@ def testRepartitionAndWriteOption(env):
     env.cmd('rg.dropexecution', id)
 
 
+def testBasicWithRun(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('xadd', 'stream', '*', 'test', '1')
+    res = env.cmd('rg.pyexecute', "GearsBuilder('StreamReader')."
+                                  "run('stream')")
+    env.assertEqual(len(res[1]), 1)
+    res = eval(res[1][0])
+    env.assertEqual(res['test'], '1')
+
+
 def testBasicStream(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rg.pyexecute', "GearsBuilder()."
