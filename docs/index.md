@@ -1,49 +1,27 @@
-# RedisGears Module
-Dynamic execution framework for your Redis data, simply:
+<center>![logo.png](./images/RedisGears.png)</center>
 
-## Docker
+# RedisGears - Dynamic execution for Redis data
 
-To quickly tryout RedisGears, launch an instance using docker:
-
-```sh
-todo: add docker run command
+simply:
 ```
-
-## Build
-### Prerequisites
-Install [redis 5.0](https://redis.io/) on you machine.
-
-Inastal: build-essential, autotools-dev, autoconf, libtool
-
-### Compile
-```bash
-git submodule init
-git submodule update
-make get_deps
-make WITHPYTHON=1
+GearsBuilder().filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run('*')
 ```
-It is possible to run without python support by just running `make`.
+RedisGears supports full python syntax and low level c api. In addition you can run it on cluster.
 
-## Run
-If you running gears on the same machine on which it was compile then its enough just loading the RedisGears module:
+!!! note "Quick Links:"
+    * [Source Code at GitHub](https://github.com/RedisLabsModules/RedisGears).
+    * [Latest Release: 0.1.0](https://github.com/RedisLabsModules/RedisGears/releases)
+    * [Docker Image: redislabs/redisgears](https://hub.docker.com/r/redislabs/redisgears/)
+    * [Quick Start Guide](quickstart.md)
+    * [Mailing list / Forum](https://groups.google.com/forum/#!forum/redisgears)
 
-`--loamodule <path to redisgears.so`
+!!! tip "Supported Platforms"
+    RedisGears is developed and tested on Linux x86_64 CPUs.
 
-If you run RedisGears on another machine, some extra setup is needed. For Gears to run properly its need to have the cpython directory it was compiled with. All the required files are located in `/src/deps/cpython/` make sure to put this directory on the same machine where Redis running and use `PythonHomeDir` config variable to tell RedisGears where it should look for this cpython directory:
+# Future plans
+* GearsQL - SQL like language for quering your data.
 
-`--loamodule <path to redisgears.so> PythonHomeDir <path to cpython direcotry>`
+# License
 
-## Tests
-Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
-```
-$ pip install git+https://github.com/RedisLabsModules/RLTest.git@master # optional, use virtualenv
-$ cd pytest
-$ ./run_tests.sh
-```
+Redis Source Available License Agreement - see [LICENSE](https://github.com/RedisLabsModules/RedisGears/blob/master/LICENSE)
 
-## Client libraries
-
-todo!!!
-
-## Cluster Support
-RedisGears support all of the operations on oss and enterprise cluster. Notice that the module needs to be loaded on all the cluster nodes. In addition, on oss cluster, after setting up the cluster you need to run `rs.refreshcluster` on each node.

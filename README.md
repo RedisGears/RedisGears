@@ -11,8 +11,12 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 
 # Content
 
-* [Quick Start](/docs/index.md)
+* [Quick Start](/docs/quickstart.md)
 * [Overview](/docs/overview.md)
+* [Commands](/docs/commands.md)
+* [Streaming API](/docs/gears_streaming.md)
+* [Examples](/docs/examples.md)
+* [GearsBuilder documentation](/docs/gears_build_doc.md)
 
 # Future plans
 * GearsQL - SQL like language for quering your data.

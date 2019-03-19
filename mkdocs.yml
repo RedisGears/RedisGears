@@ -7,7 +7,7 @@ google_analytics:
   - 'UA-92003007-1'
   - 'auto'
 
-use_directory_urls: true
+use_directory_urls: false
 
 theme:
   name: 'material'
@@ -24,8 +24,13 @@ theme:
     tabs: false
 
 pages:
-    - 'Quickstart': index.md
-    - 'Overview': overview.md
+  - 'Home': 'index.md'
+  - 'Quickstart': 'quickstart.md'
+  - 'Overview': 'overview.md'
+  - 'Commands': 'commands.md'
+  - 'Streaming API': 'gears_streaming.md'
+  - 'Examples': 'examples.md'
+  - 'GearsBuilder Documentation': 'gears_build_doc.md'
 
 markdown_extensions:
   - admonition
