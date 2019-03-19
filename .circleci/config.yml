@@ -11,7 +11,7 @@ defaults:
         command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd;apt-get install -y zip unzip
     - run:
         name: Build
-        command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=debian
+        command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=ubuntu
     - run:
         name: Test
         command: cd ./pytest; ./run_tests.sh
@@ -53,7 +53,7 @@ jobs:
           command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core;yum install -y vim-common
       - run:
           name: Build
-          command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=centos
+          command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=redhat
       - run:
           name: Test
           command: cd ./pytest; ./run_tests.sh
