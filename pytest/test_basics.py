@@ -50,12 +50,13 @@ class testBasic:
         self.env.skipOnCluster()
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().'
                                            'map(lambda x: {"key":x["key"], "value": 0 if int(x["value"]) < 50 else 100}).'
-                                           '__localAggregateby__(lambda x:x["value"], 0, lambda k, a, x: 1 + a).run()')
+                                           '__localAggregateby__(lambda x:x["value"], 0, lambda k, a, x: 1 + a).'
+                                           'map(lambda x:(x["key"], x["value"])).run()')
         a = []
         for r in res[1]:
             a.append(eval(r))
-        self.env.assertContains((100, 50), a)
-        self.env.assertContains((0, 50), a)
+        self.env.assertContains(('100', 50), a)
+        self.env.assertContains(('0', 50), a)
 
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')

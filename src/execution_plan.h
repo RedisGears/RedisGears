@@ -25,7 +25,7 @@ enum StepType{
     FLAT_MAP,
     LIMIT,
     ACCUMULATE,
-	ACCUMULATE_BY_KEY,
+    ACCUMULATE_BY_KEY,
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -197,6 +197,8 @@ void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbac
 void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                       const char* reducerName, void* reducerArg);
 void FlatExecutionPlan_AddAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
+                                              const char* accumulateName, void* accumulateArg);
+void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
                                               const char* accumulateName, void* accumulateArg);
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);

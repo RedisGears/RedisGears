@@ -1632,10 +1632,16 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
 }
 
 void FlatExecutionPlan_AddAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
-                                           const char* accumulateName, void* accumulateArg){
+                                              const char* accumulateName, void* accumulateArg){
     FlatExecutionStep extractKey;
     FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
     FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
+    FlatExecutionPlan_AddBasicStep(fep, accumulateName, accumulateArg, ACCUMULATE_BY_KEY);
+}
+
+void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg,
+                                                   const char* accumulateName, void* accumulateArg){
+    FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
     FlatExecutionPlan_AddBasicStep(fep, accumulateName, accumulateArg, ACCUMULATE_BY_KEY);
 }
 

@@ -109,6 +109,11 @@ static int RG_AccumulateBy(FlatExecutionPlan* fep, char* extraxtorName, void* ex
 	return 1;
 }
 
+static int RG_LocalAccumulateBy(FlatExecutionPlan* fep, char* extraxtorName, void* extractorArg, char* accumulatorName, void* accumulatorArg){
+    FlatExecutionPlan_AddLocalAccumulateByKeyStep(fep, extraxtorName, extractorArg, accumulatorName, accumulatorArg);
+    return 1;
+}
+
 static int RG_Collect(FlatExecutionPlan* fep){
     FlatExecutionPlan_AddCollectStep(fep);
 	return 1;
@@ -262,6 +267,7 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(Map, registerApiCallback);
     REGISTER_API(Accumulate, registerApiCallback);
     REGISTER_API(AccumulateBy, registerApiCallback);
+    REGISTER_API(LocalAccumulateBy, registerApiCallback);
     REGISTER_API(FlatMap, registerApiCallback);
     REGISTER_API(Filter, registerApiCallback);
     REGISTER_API(GroupBy, registerApiCallback);

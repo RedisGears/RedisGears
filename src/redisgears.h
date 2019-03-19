@@ -169,6 +169,10 @@ int MODULE_API_FUNC(RedisGears_AccumulateBy)(FlatExecutionPlan* ctx, char* extra
 #define RSM_AccumulateBy(ctx, extractor, extractorArg, accumulate, accumulateArg)\
 		RedisGears_AccumulateBy(ctx, #extractor, extractorArg, #accumulate, accumulateArg)
 
+int MODULE_API_FUNC(RedisGears_LocalAccumulateBy)(FlatExecutionPlan* ctx, char* extraxtorName, void* extractorArg, char* accumulateName, void* accumulateArg);
+#define RSM_LocalAccumulateBy(ctx, extractor, extractorArg, accumulate, accumulateArg)\
+        RedisGears_AccumulateBy(ctx, #extractor, extractorArg, #accumulate, accumulateArg)
+
 int MODULE_API_FUNC(RedisGears_Collect)(FlatExecutionPlan* ctx);
 #define RSM_Collect(ctx) RedisGears_Collect(ctx)
 
@@ -236,6 +240,7 @@ static int RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(Map);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Accumulate);
     REDISLAMBDA_MODULE_INIT_FUNCTION(AccumulateBy);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(LocalAccumulateBy);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Filter);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Run);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Register);
