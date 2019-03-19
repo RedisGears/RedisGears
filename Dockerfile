@@ -8,7 +8,7 @@ RUN set -ex;\
 
 ADD . /redisgears
 WORKDIR /redisgears
-RUN make clean; make python_clean;
+RUN make clean;
 RUN make get_deps PYTHON_ENCODING_FLAG=--enable-unicode=ucs4
 RUN make WITHPYTHON=1
 
