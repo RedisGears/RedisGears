@@ -1442,7 +1442,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     memcpy(ret->id, finalId, EXECUTION_PLAN_ID_LEN);
     snprintf(ret->idStr, EXECUTION_PLAN_STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, ret->id, *(long long*)&ret->id[REDISMODULE_NODE_ID_LEN]);
     pthread_mutex_lock(&epData.mutex);
-    while (Gears_listLength(epData.epList) >= GearsCOnfig_GetMaxExecutions()) {
+    while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
         Gears_listNode* n0 = Gears_listFirst(epData.epList);
         ExecutionPlan* ep0 = Gears_listNodeValue(n0);
         ExecutionPlan_Free(ep0, false);

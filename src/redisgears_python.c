@@ -1631,7 +1631,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
 	char* arg = "Embeded";
-	char* progName = (char*)GearsCOnfig_GetPythonHomeDir();
+	char* progName = (char*)GearsConfig_GetPythonHomeDir();
     Py_SetProgramName(progName);
     Py_Initialize();
     PyEval_InitThreads();

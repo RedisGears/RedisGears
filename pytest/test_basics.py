@@ -71,7 +71,7 @@ class testBasic:
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[1]]
+        res = [yaml.full_load(r) for r in res[1]]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -79,7 +79,7 @@ class testBasic:
     def testBasicFilterQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[1]]
+        res = [yaml.full_load(r) for r in res[1]]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -87,7 +87,7 @@ class testBasic:
     def testBasicMapQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[1]]
+        res = [yaml.full_load(r) for r in res[1]]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 
@@ -370,7 +370,6 @@ def testMaxExecutions():
     env.assertTrue(map(lambda x: int(x[1].split('-')[1]), res) == [1, 2, 3])
     map(lambda x: env.cmd('rg.dropexecution', x[1]), res)
 
-
 def testOneKeyScan(env):
     env.skipOnCluster()
     conn = getConnectionByEnv(env)
@@ -382,3 +381,10 @@ def testOneKeyScan(env):
     conn.execute_command('set', 'x', '1')
     env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['200000'])
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
+
+def testConfigSet(env):
+    res = env.execute_command('RG.CONFIGGET', 'MaxExecutions')
+    n = long(res[0]) + 1
+    env.expect('RG.CONFIGSET', 'MaxExecutions', n).equal('OK')
+    res = env.expect('RG.CONFIGGET', 'MaxExecutions').equal([n])
+
