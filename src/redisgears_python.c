@@ -239,11 +239,17 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
 static PyObject* run(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     char* regexStr = "*";
+    void* arg;
     if(PyTuple_Size(args) > 0){
         PyObject* regex = PyTuple_GetItem(args, 0);
         regexStr = PyString_AsString(regex);
     }
-    ExecutionPlan* ep = RSM_Run(pfep->fep, RG_STRDUP(regexStr), NULL, NULL);
+    if(strcmp(RedisGears_GetReader(pfep->fep), "StreamReader") == 0){
+        arg = RedisGears_StreamReaderCtxCreate(regexStr, "0-0");
+    }else{
+        arg = RG_STRDUP(regexStr);
+    }
+    ExecutionPlan* ep = RSM_Run(pfep->fep, arg, NULL, NULL);
     executionTriggered = true;
     if(!currentCtx){
         RedisGears_RegisterExecutionDoneCallback(ep, dropExecutionOnDone);

@@ -202,6 +202,7 @@ void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key);
+const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);

@@ -53,10 +53,8 @@ typedef struct Reader{
 }Reader;
 
 Reader* KeysReader(void* arg);
-
-// todo: use MODULE_API_FUNC
-StreamReaderCtx* StreamReader_CreateCtx(char* keyName);
 Reader* StreamReader(void* arg);
+StreamReaderCtx* StreamReaderCtx_Create(const char* streamName, const char* streamId);
 
 /******************************* Writers *******************************/
 void KeyRecordWriter(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
@@ -190,6 +188,10 @@ int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, char* arg);
 int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RSM_ForEach(ctx, name, arg) RedisGears_ForEach(ctx, #name, arg)
 
+const char* MODULE_API_FUNC(RedisGears_GetReader)(FlatExecutionPlan* fep);
+
+StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
+
 typedef void (*FreePrivateData)(void* privateData);
 
 bool MODULE_API_FUNC(RedisGears_RegisterExecutionDoneCallback)(ExecutionPlan* ctx, RedisGears_OnExecutionDoneCallback callback);
@@ -246,6 +248,8 @@ static int RedisGears_Initialize(){
     REDISLAMBDA_MODULE_INIT_FUNCTION(FlatMap);
     REDISLAMBDA_MODULE_INIT_FUNCTION(Limit);
     REDISLAMBDA_MODULE_INIT_FUNCTION(FreeFlatExecution);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(GetReader);
+    REDISLAMBDA_MODULE_INIT_FUNCTION(StreamReaderCtxCreate);
 
     REDISLAMBDA_MODULE_INIT_FUNCTION(GetExecution);
     REDISLAMBDA_MODULE_INIT_FUNCTION(IsDone);
