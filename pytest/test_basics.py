@@ -1,7 +1,6 @@
 from RLTest import Env
 import yaml
 import time
-# import paella
 
 
 def getConnectionByEnv(env):
@@ -297,7 +296,6 @@ def testKeyWithUnparsedValue(env):
     env.expect('RG.PYEXECUTE', "GB().map(lambda x: execute('smembers', x['key'])).flatmap(lambda x:x).sort().run()").contains(['1', '2', '3'])
 
 def testMaxExecutions():
-#    bb()
     env = Env(moduleArgs="MaxExecutions 3")
     conn = getConnectionByEnv(env)
     conn.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
@@ -313,7 +311,6 @@ def testMaxExecutions():
     conn.execute_command('set', 'x', '3')
     time.sleep(1)
     res = env.execute_command('RG.DUMPEXECUTIONS')
-#    bb()
     env.assertTrue(map(lambda x: int(x[1].split('-')[1]), res) == [1, 2, 3])
     map(lambda x: env.cmd('rg.dropexecution', x[1]), res)
 
