@@ -1,5 +1,5 @@
 FROM redis:5.0.3 AS builder
-ENV BUILD_DEPS "build-essential autotools-dev autoconf automake libtool python git ca-certificates lsb-release xxd zlib1g zlib1g-dev libreadline-dev libbz2-dev"
+ENV BUILD_DEPS "build-essential autotools-dev autoconf automake libtool python git ca-certificates xxd zlib1g zlib1g-dev libreadline-dev libbz2-dev"
 
 # Set up a build environment
 RUN set -ex;\
@@ -8,6 +8,7 @@ RUN set -ex;\
 
 ADD . /redisgears
 WORKDIR /redisgears
+RUN make clean; make python_clean;
 RUN make get_deps PYTHON_ENCODING_FLAG=--enable-unicode=ucs4
 RUN make WITHPYTHON=1
 
