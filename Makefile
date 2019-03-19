@@ -21,6 +21,9 @@ ifndef PYTHON_ENCODING_FLAG
 	PYTHON_ENCODING_FLAG := --enable-unicode=ucs2
 endif
 
+ifndef OS_VERSION
+	OS_VERSION := linux
+endif
 
 CPYTHON_PATH := $(realpath ./src/deps/cpython/)
 
@@ -96,8 +99,8 @@ ramp_pack: all
 	mkdir -p artifacts
 	mkdir -p artifacts/snapshot
 	mkdir -p artifacts/release
-	$(eval SNAPSHOT=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS)-{architecture}.$(CIRCLE_BRANCH).zip | tail -1))
-	$(eval DEPLOY=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS)-{architecture}.{semantic_version}.zip | tail -1))
+	$(eval SNAPSHOT=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS_VERSION)-{architecture}.$(CIRCLE_BRANCH).zip | tail -1))
+	$(eval DEPLOY=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS_VERSION)-{architecture}.{semantic_version}.zip | tail -1))
 	mv ./$(SNAPSHOT) artifacts/snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
 	mv ./$(DEPLOY) artifacts/release/$(PACKAGE_NAME).$(DEPLOY)
 	zip -rq artifacts/snapshot/$(PACKAGE_NAME)-dependencies.$(SNAPSHOT) src/deps/cpython
