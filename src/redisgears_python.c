@@ -74,6 +74,30 @@ static PyObject* filter(PyObject *self, PyObject *args){
     return self;
 }
 
+static PyObject* localAccumulateby(PyObject *self, PyObject *args){
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if(PyTuple_Size(args) != 2){
+        PyErr_SetString(GearsError, "wrong number of args to groupby function");
+        return NULL;
+    }
+    PyObject* extractor = PyTuple_GetItem(args, 0);
+    if(!PyObject_TypeCheck(extractor, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "groupby extractor argument must be a function");
+        return NULL;
+    }
+    PyObject* accumulator = PyTuple_GetItem(args, 1);
+    if(!PyObject_TypeCheck(accumulator, &PyFunction_Type)){
+        PyErr_SetString(GearsError, "groupby reducer argument must be a function");
+        return NULL;
+    }
+    Py_INCREF(extractor);
+    Py_INCREF(accumulator);
+    RSM_LocalAccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
+    RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+    Py_INCREF(self);
+    return self;
+}
+
 static PyObject* accumulateby(PyObject *self, PyObject *args){
 	PyFlatExecution* pfep = (PyFlatExecution*)self;
 	if(PyTuple_Size(args) != 2){
@@ -294,6 +318,7 @@ PyMethodDef PyFlatExecutionMethods[] = {
     {"filter", filter, METH_VARARGS, "filter operation on each record"},
     {"batchgroupby", groupby, METH_VARARGS, "batch groupby operation on each record"},
 	{"groupby", accumulateby, METH_VARARGS, "groupby operation on each record"},
+	{"localgroupby", localAccumulateby, METH_VARARGS, "local groupby operation on each record"},
     {"collect", collect, METH_VARARGS, "collect all the records to the initiator"},
     {"foreach", foreach, METH_VARARGS, "perform the given callback on each record"},
     {"repartition", repartition, METH_VARARGS, "repartition the records according to the extracted data"},
