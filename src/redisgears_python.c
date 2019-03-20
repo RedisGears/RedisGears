@@ -14,7 +14,11 @@
 #include "lock_handler.h"
 #include "GearsBuilder.auto.h"
 #include "cloudpickle.auto.h"
-
+typedef struct RAI_Error {
+ int code;
+ char* detail;
+ char* detail_oneline;
+} RAI_Error;
 static PyObject* pFunc;
 static PyObject* pyGlobals;
 PyObject* GearsError;
@@ -619,7 +623,12 @@ static PyObject* graphRunnerAddOutput(PyObject *cls, PyObject *args){
 
 static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
-    RedisAI_ModelRun(pyg->g);
+    RAI_Error err = {0};
+    RedisAI_ModelRun(pyg->g, &err);
+    if (err.code) {
+        printf("ERROR: %s\n", err.detail);
+        return Py_None;
+    }
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(pyg->g, 0));
     return (PyObject*)pyt;
@@ -635,8 +644,8 @@ static PyObject* PyTorchScript_ToStr(PyObject *obj){
 }
 
 static void PyTorchScriptRunner_Destruct(PyObject *pyObj){
-    PyTorchScriptRunner* pyg = (PyTorchScriptRunner*)pyObj;
-    RedisAI_ScriptRunCtxFree(pyg->s);
+    PyTorchScriptRunner* pys = (PyTorchScriptRunner*)pyObj;
+    RedisAI_ScriptRunCtxFree(pys->s);
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
@@ -679,14 +688,11 @@ static PyObject* createTorchScriptRunner(PyObject *cls, PyObject *args){
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
     // todo: check for type, add api for this
     RAI_Script *s = RedisModule_ModuleTypeGetValue(key);
-    RAI_ScriptRunCtx* runCtx = RedisAI_ScriptRunCtxCreate(s);
 
     PyObject* fnName = PyTuple_GetItem(args, 1);
     char* fnNameStr = PyString_AsString(fnName);
-    // todo: need an API from AI for this, see https://github.com/RedisAI/RedisAI/pull/93
-    // size_t fnName_len = strlen(fnName);
-    // runCtx->fnname = RedisModule_Calloc(fnName_len, sizeof(char));
-    // memcpy(runCtx->fnname, fnName, fnName_len);
+
+    RAI_ScriptRunCtx* runCtx = RedisAI_ScriptRunCtxCreate(s, fnNameStr);
 
     RedisModule_FreeString(ctx, keyRedisStr);
     RedisModule_CloseKey(key);
@@ -704,7 +710,7 @@ static PyObject* torchScriptRunnerAddInput(PyObject *cls, PyObject *args){
     PyObject* inputName = PyTuple_GetItem(args, 1);
     char* inputNameStr = PyString_AsString(inputName);
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 2);
-    RedisAI_ScriptRunCtxAddInput(pys->s, inputNameStr, pyt->t);
+    RedisAI_ScriptRunCtxAddInput(pys->s, pyt->t);
     return PyLong_FromLong(1);
 }
 
@@ -712,13 +718,18 @@ static PyObject* torchScriptRunnerAddOutput(PyObject *cls, PyObject *args){
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
     PyObject* outputName = PyTuple_GetItem(args, 1);
     char* outputNameStr = PyString_AsString(outputName);
-    RedisAI_ScriptRunCtxAddOutput(pys->s, outputNameStr);
+    RedisAI_ScriptRunCtxAddOutput(pys->s);
     return PyLong_FromLong(1);
 }
 
 static PyObject* torchScriptRunnerRun(PyObject *cls, PyObject *args){
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
-    RedisAI_ScriptRun(pys->s);
+    RAI_Error err = {0};
+    RedisAI_ScriptRun(pys->s, &err);
+    if (err.code) {
+        printf("ERROR: %s\n", err.detail);
+        return Py_None;
+    }
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, 0));
     return (PyObject*)pyt;
@@ -1428,6 +1439,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
     }
 
+    if (PyType_Ready(&PyTorchScriptRunnerType) < 0){
+        RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
+    }
+
     if (PyType_Ready(&PyFlatExecutionType) < 0){
         RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
     }
@@ -1436,10 +1451,12 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
+    Py_INCREF(&PyTorchScriptRunnerType);
     Py_INCREF(&PyFlatExecutionType);
 
     PyModule_AddObject(m, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
+    PyModule_AddObject(m, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
     PyModule_AddObject(m, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
 
     GearsError = PyErr_NewException("spam.error", NULL, NULL);
