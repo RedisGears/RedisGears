@@ -11,23 +11,13 @@ globals()['str'] = str
 redisgears._saveGlobals()
 
 
-def __aggregateFunction__(key, a, r, agg, zero):
-    a[key] = agg(key, a[key] if key in a.keys() else zero, r)
-    return a
-
-
 class GearsBuilder():
     def __init__(self, reader='KeysReader', defautlPrefix='*'):
         self.gearsCtx = gearsCtx(reader)
         self.defautlPrefix = defautlPrefix
 
-    def __localAggregate__(self, zero, seqOp):
-        self.gearsCtx.accumulate(lambda a, r: seqOp(a if a else zero, r))
-        return self
-
     def __localAggregateby__(self, extractor, zero, aggregator):
-        self.__localAggregate__({}, lambda a, r: __aggregateFunction__(extractor(r), a, r, aggregator, zero))
-        self.gearsCtx.flatmap(lambda r: [(k, r[k]) for k in r.keys()])
+        self.gearsCtx.localgroupby(lambda x: extractor(x), lambda k, a, r: aggregator(k, a if a else zero, r))
         return self
 
     def aggregate(self, zero, seqOp, combOp):
@@ -38,7 +28,7 @@ class GearsBuilder():
 
     def aggregateby(self, extractor, zero, seqOp, combOp):
         self.__localAggregateby__(extractor, zero, seqOp)
-        self.gearsCtx.groupby(lambda r: r[0], lambda k, a, r: combOp(k, a if a else zero, r[1]))
+        self.gearsCtx.groupby(lambda r: r['key'], lambda k, a, r: combOp(k, a if a else zero, r['value']))
         return self
 
     def count(self):
