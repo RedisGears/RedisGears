@@ -110,37 +110,46 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
     },
 };
 
-static int GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int error_fmt(RedisModuleCtx *ctx, const char *fmt, const char* configVal) {
+    RedisModule_Log(ctx, "warning", fmt, configVal);
+    char err[256] = "ERR ";
+    snprintf(err + 4, sizeof(err) - 4, fmt, configVal);
+    err[sizeof(err)-1] = '\0';
+    RedisModule_ReplyWithSimpleString(ctx, err);
+    return REDISMODULE_ERR;
+}
+
+static int _GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool hasCommand){
     ArgsIterator iter = {
             .currIndex = 0,
             .argv = argv,
             .argc = argc,
     };
 
-    ArgsIterator_Next(&iter); // skip command name
+    if (hasCommand) ArgsIterator_Next(&iter); // skip command name
     RedisModuleString* arg = NULL;
     while((arg = ArgsIterator_Next(&iter))) {
         const char* configVal = RedisModule_StringPtrLen(arg, NULL);
-        RedisModule_Log(ctx, "warning", "checking config value %s", configVal);
         bool found = false;
         for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
             if(strcasecmp(configVal, val->name) == 0) {
-                if (!val->setter(&iter)) {
-                    RedisModule_Log(ctx, "warning", "failed reading config value %s", configVal);
-                    return REDISMODULE_ERR;
+                if (!val->configurableAtRunTime) {
+                    return error_fmt(ctx, "config value %s not modifiable at runtime", configVal);
                 }
+                if (!val->setter(&iter)) return error_fmt(ctx, "failed setting config value %s", configVal);
                 found = true;
                 break;
             }
         }
-        if (!found) {
-            RedisModule_Log(ctx, "warning", "unknown config value %s", configVal);
-            return REDISMODULE_ERR;
-        }
+        if (!found) return error_fmt(ctx, "Unsupported config parameter %s", configVal);
     }
     
     RedisModule_ReplyWithSimpleString(ctx, "OK");
     return REDISMODULE_OK;
+}
+
+static int GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    return _GearsConfig_Set(ctx, argv, argc, true);
 }
 
 static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* confVal){
@@ -160,7 +169,6 @@ static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* c
 }
 
 static int GearsConfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-#define UNKNOWN_CONFIG_PARAM "unknown config parameter"
     ArgsIterator iter = {
             .currIndex = 0,
             .argv = argv,
@@ -184,9 +192,8 @@ static int GearsConfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             }
         }
         if(!found){
-            RedisModule_Log(ctx, "warning", "unknown config value %s", configVal);
-            RedisModule_ReplyWithStringBuffer(ctx, UNKNOWN_CONFIG_PARAM, strlen(UNKNOWN_CONFIG_PARAM));
-            return REDISMODULE_ERR;
+            RedisModule_ReplySetArrayLength(ctx, ++n_found);
+            return error_fmt(ctx, "Unsupported config parameter: %s", configVal);
         }
     }
     RedisModule_ReplySetArrayLength(ctx, n_found);
@@ -220,6 +227,14 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
     }
 }
 
+#define DEF_COMMAND(cmd, handler) \
+    do { \
+        if (RedisModule_CreateCommand(ctx, "rg." #cmd, handler, "readonly", 0, 0, 0) != REDISMODULE_OK) { \
+            RedisModule_Log(ctx, "warning", "could not register command %s", #cmd); \
+            return REDISMODULE_ERR; \
+        } \
+    } while (false)
+
 #ifndef CPYTHON_PATH
 #define CPYTHON_PATH "/usr/bin/"
 #endif
@@ -236,24 +251,12 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
     };
 
-    if (RedisModule_CreateCommand(ctx, "rg.configget", GearsConfig_Get, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.configget");
-        return REDISMODULE_ERR;
-    }
+    DEF_COMMAND(configget, GearsConfig_Get);
+    DEF_COMMAND(configset, GearsConfig_Set);
 
-    if (RedisModule_CreateCommand(ctx, "rg.configset", GearsConfig_Set, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.configset");
-        return REDISMODULE_ERR;
-    }
-
-    // insert a dummy leading arg to emulate a 'rg.configset' command
-    RedisModuleString** argv1 = array_newlen(RedisModuleString*, argc + 1);
-    memcpy(&argv1[1], &argv[0], argc * sizeof(RedisModuleString*));
-    argv1[0] = NULL;
-    GearsConfig_Set(ctx, argv1, argc + 1);
-    array_free(argv1);
-
+    _GearsConfig_Set(ctx, argv, argc, false);
     GearsConfig_Print(ctx);
+
     return REDISMODULE_OK;
 }
 
