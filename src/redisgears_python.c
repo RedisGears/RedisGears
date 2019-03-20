@@ -578,7 +578,10 @@ static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
     char* keyNameStr = PyString_AsString(keyName);
 
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    // avoiding deadlock
+    PyThreadState *_save = PyEval_SaveThread();
     LockHandler_Acquire(ctx);
+    PyEval_RestoreThread(_save);
 
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
@@ -667,7 +670,10 @@ static PyObject* createTorchScriptRunner(PyObject *cls, PyObject *args){
     char* keyNameStr = PyString_AsString(keyName);
 
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    // avoiding deadlock
+    PyThreadState *_save = PyEval_SaveThread();
     LockHandler_Acquire(ctx);
+    PyEval_RestoreThread(_save);
 
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
