@@ -20,6 +20,16 @@ class testBasic:
         for i in range(100):
             conn.execute_command('set', str(i), str(i))
 
+    def testShardsGB(self):
+        self.env.expect('rg.pyexecute', "ShardsGB()."
+                                        "map(lambda x:int(execute('dbsize')))."
+                                        "aggregate(0, lambda r, x: x, lambda r, x:r + x).run()").contains(['100'])
+
+    def testKeysOnlyGB(self):
+        self.env.expect('rg.pyexecute', "KeysOnlyGB()."
+                                        "map(lambda x:int(execute('get', x)))."
+                                        "aggregate(0, lambda r, x: r + x, lambda r, x:r + x).run()").contains(['4950'])
+
     def testAvg(self):
         self.env.expect('rg.pyexecute', "GearsBuilder()."
                                         "map(lambda x:int(x['value']))."

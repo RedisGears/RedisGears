@@ -143,3 +143,10 @@ def testAvgWrongArgs(env):
 
 def testBuilderCreationWithUnexistingReader(env):
     env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')
+
+
+def testPyReaderWithWrongArgument(env):
+    env.expect('rg.pyexecute', 'GB("PythonReader").run("*")').error().contains('pyreader argument must be a functio')
+    env.expect('rg.pyexecute', 'GB("PythonReader").run()').error().contains('pyreader argument must be a functio')
+    env.expect('rg.pyexecute', 'GB("PythonReader", "*").run()').error().contains('pyreader argument must be a functio')
+    env.expect('rg.pyexecute', 'GB("PythonReader", PythonReaderCallback).run("*")').error().contains('pyreader argument must be a functio')

@@ -264,14 +264,30 @@ static PyObject* run(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
     char* regexStr = "*";
     void* arg;
-    if(PyTuple_Size(args) > 0){
-        PyObject* regex = PyTuple_GetItem(args, 0);
-        regexStr = PyString_AsString(regex);
-    }
-    if(strcmp(RedisGears_GetReader(pfep->fep), "StreamReader") == 0){
-        arg = RedisGears_StreamReaderCtxCreate(regexStr, "0-0");
+    if (strcmp(RedisGears_GetReader(pfep->fep), "PythonReader") == 0){
+        if(PyTuple_Size(args) != 1){
+            PyErr_SetString(GearsError, "python reader function is not given");
+            return NULL;
+        }
+        arg = PyTuple_GetItem(args, 0);
+        if(!PyObject_TypeCheck(arg, &PyFunction_Type)){
+            PyErr_SetString(GearsError, "pyreader argument must be a function");
+            return NULL;
+        }
     }else{
-        arg = RG_STRDUP(regexStr);
+        if(PyTuple_Size(args) > 0){
+            PyObject* regex = PyTuple_GetItem(args, 0);
+            if(!PyObject_TypeCheck(regex , &PyString_Type)){
+                PyErr_SetString(GearsError, "reader argument must be a string");
+                return NULL;
+            }
+            regexStr = PyString_AsString(regex);
+        }
+        if(strcmp(RedisGears_GetReader(pfep->fep), "StreamReader") == 0){
+                arg = RedisGears_StreamReaderCtxCreate(regexStr, "0-0");
+        }else{
+            arg = RG_STRDUP(regexStr);
+        }
     }
     ExecutionPlan* ep = RSM_Run(pfep->fep, arg, NULL, NULL);
     executionTriggered = true;
@@ -396,7 +412,9 @@ static PyObject* replyToPyList(RedisModuleCallReply *reply){
         PyObject* ret = PyList_New(0);
         for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; ++i){
             RedisModuleCallReply *subReply = RedisModule_CallReplyArrayElement(reply, i);
-            PyList_Append(ret, replyToPyList(subReply));
+            PyObject* val = replyToPyList(subReply);
+            PyList_Append(ret, val);
+            Py_DECREF(val);
         }
         return ret;
     }
@@ -1323,6 +1341,80 @@ static int RedisGearsPy_Stats(RedisModuleCtx *ctx, RedisModuleString **argv, int
 	return REDISMODULE_OK;
 }
 
+typedef struct PythonReaderCtx{
+    PyObject* callback;
+    PyObject* generator;
+}PythonReaderCtx;
+
+static Record* PythonReader_Next(RedisModuleCtx* rctx, void* ctx){
+    PythonReaderCtx* pyCtx = ctx;
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* pyRecord = NULL;
+    if(!pyCtx->generator){
+        PyObject* pArgs = PyTuple_New(0);
+        PyObject* callback = pyCtx->callback;
+        pyRecord = PyObject_CallObject(callback, pArgs);
+        if(PyObject_TypeCheck(pyRecord, &PyGen_Type)) {
+            pyCtx->generator = pyRecord;
+            pyRecord = PyGen_Type.tp_iternext(pyCtx->generator);
+        }
+    }else{
+        pyRecord = PyGen_Type.tp_iternext(pyCtx->generator);
+    }
+    if(pyRecord == Py_None || pyRecord == NULL){
+        PyGILState_Release(state);
+        return NULL;
+    }
+    PyGILState_Release(state);
+    Record* record = RG_PyObjRecordCreate();
+    RG_PyObjRecordSet(record, pyRecord);
+    return record;
+}
+
+static void PythonReader_Free(void* ctx){
+    PythonReaderCtx* pyCtx = ctx;
+    PyObject* callback = pyCtx->callback;
+    PyGILState_STATE state = PyGILState_Ensure();
+    Py_DECREF(callback);
+    if(pyCtx->generator){
+        Py_DECREF(pyCtx->generator);
+    }
+    PyGILState_Release(state);
+    RG_FREE(pyCtx);
+}
+
+static void PythonReader_Serialize(void* ctx, Gears_BufferWriter* bw){
+    PythonReaderCtx* pyCtx = ctx;
+    RedisGearsPy_PyCallbackSerialize(pyCtx->callback, bw);
+}
+
+static void PythonReader_Deserialize(void* ctx, Gears_BufferReader* br){
+    PythonReaderCtx* pyCtx = ctx;
+    pyCtx->callback = RedisGearsPy_PyCallbackDeserialize(br);
+}
+
+static Reader* PythonReader(void* arg){
+    PyObject* callback = arg;
+    if(callback){
+        PyGILState_STATE state = PyGILState_Ensure();
+        Py_INCREF(callback);
+        PyGILState_Release(state);
+    }
+    PythonReaderCtx* pyCtx = RG_ALLOC(sizeof(*pyCtx));
+    pyCtx->callback = callback;
+    pyCtx->generator = NULL;
+    Reader* ret = RG_ALLOC(sizeof(*ret));
+    *ret = (Reader){
+            .ctx = pyCtx,
+            .registerTrigger = NULL,
+            .next = PythonReader_Next,
+            .free = PythonReader_Free,
+            .serialize = PythonReader_Serialize,
+            .deserialize = PythonReader_Deserialize,
+    };
+    return ret;
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RedisGearsPy_Alloc);
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
@@ -1394,6 +1486,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
 
+    RSM_RegisterReader(PythonReader);
     RSM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
     RSM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);
     RSM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);

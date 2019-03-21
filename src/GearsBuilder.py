@@ -11,6 +11,29 @@ globals()['str'] = str
 redisgears._saveGlobals()
 
 
+def PythonReaderCallback():
+    cursor = '0'
+    res = execute('scan', cursor, 'COUNT', '10000')
+    cursor = res[0]
+    keys = res[1]
+    while int(cursor) != 0:
+        for k in keys:
+            yield k
+        res = execute('scan', cursor, 'COUNT', '10000')
+        cursor = res[0]
+        keys = res[1]
+    for k in keys:
+            yield k
+
+
+def ShardReaderCallback():
+    res = execute('RG.INFOCLUSTER')
+    if res == 'no cluster mode':
+        yield '1'
+    else:
+        yield res[1]
+
+
 class GearsBuilder():
     def __init__(self, reader='KeysReader', defautlPrefix='*'):
         self.gearsCtx = gearsCtx(reader)
@@ -83,3 +106,15 @@ for k in PyFlatExecution.__dict__:
 ExecutionBuilder = GearsBuilder
 GB = GearsBuilder
 EB = GearsBuilder
+
+
+def KeysOnlyGearsReader():
+    return GB('PythonReader', PythonReaderCallback)
+
+
+def ShardsGearsReader():
+    return GB('PythonReader', ShardReaderCallback)
+
+
+KeysOnlyGB = KeysOnlyGearsReader
+ShardsGB = ShardsGearsReader
