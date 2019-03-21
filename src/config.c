@@ -110,46 +110,63 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
     },
 };
 
-static int error_fmt(RedisModuleCtx *ctx, const char *fmt, const char* configVal) {
-    RedisModule_Log(ctx, "warning", fmt, configVal);
-    char err[256] = "ERR ";
-    snprintf(err + 4, sizeof(err) - 4, fmt, configVal);
-    err[sizeof(err)-1] = '\0';
+static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* configItem) {
+    RedisModule_Log(ctx, "warning", fmt, configItem);
+
+    char fmt1[256] = "(error) ";
+    strncat(fmt1, fmt, sizeof(fmt1));
+    RedisModuleString* rms = RedisModule_CreateStringPrintf(ctx, fmt1, configItem);
+    const char* err = RedisModule_StringPtrLen(rms, NULL);
     RedisModule_ReplyWithSimpleString(ctx, err);
-    return REDISMODULE_ERR;
+    RedisModule_FreeString(ctx, rms);
 }
 
-static int _GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool hasCommand){
-    ArgsIterator iter = {
-            .currIndex = 0,
-            .argv = argv,
-            .argc = argc,
-    };
-
-    if (hasCommand) ArgsIterator_Next(&iter); // skip command name
-    RedisModuleString* arg = NULL;
-    while((arg = ArgsIterator_Next(&iter))) {
-        const char* configVal = RedisModule_StringPtrLen(arg, NULL);
+static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter) {
+    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+    bool error = false;
+    int n_values = 0;
+    RedisModuleString* arg;
+    while ((arg = ArgsIterator_Next(iter))) {
+        const char* configName = RedisModule_StringPtrLen(arg, NULL);
         bool found = false;
-        for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
-            if(strcasecmp(configVal, val->name) == 0) {
-                if (!val->configurableAtRunTime) {
-                    return error_fmt(ctx, "config value %s not modifiable at runtime", configVal);
-                }
-                if (!val->setter(&iter)) return error_fmt(ctx, "failed setting config value %s", configVal);
+        for (Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++) {
+            if (strcasecmp(configName, val->name) == 0) {
                 found = true;
+                ++n_values;
+                if (!val->configurableAtRunTime) {
+                    error = true;
+                    config_error(ctx, "Config value %s not modifiable at runtime", configName);
+                    ArgsIterator_Next(iter); // skip value
+                    break;
+                }
+                if (val->setter(iter)) {
+                    RedisModule_ReplyWithSimpleString(ctx, "OK");
+                } else {
+                    error = true;
+                    config_error(ctx, "Failed setting config value %s", configName);
+                }
                 break;
             }
         }
-        if (!found) return error_fmt(ctx, "Unsupported config parameter %s", configVal);
+        if (!found) {
+            error = true;
+            ++n_values;
+            config_error(ctx, "Unsupported config parameter %s", configName);
+            ArgsIterator_Next(iter); // skip value
+        }
     }
-    
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    return REDISMODULE_OK;
+
+    RedisModule_ReplySetArrayLength(ctx, n_values);
+    return error ? REDISMODULE_ERR : REDISMODULE_OK;
 }
 
 static int GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    return _GearsConfig_Set(ctx, argv, argc, true);
+    ArgsIterator iter = {
+            .currIndex = 1, // skip command name
+            .argv = argv,
+            .argc = argc,
+    };
+    return GearsConfig_Set_with_iterator(ctx, &iter);
 }
 
 static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* confVal){
@@ -168,36 +185,50 @@ static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* c
     }
 }
 
-static int GearsConfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    ArgsIterator iter = {
-            .currIndex = 0,
-            .argv = argv,
-            .argc = argc,
-    };
+static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter) {
+    void report_error(const char *fmt, const char* configItem) {
+        RedisModule_Log(ctx, "warning", fmt, configItem);
+        
+        RedisModuleString* rms = RedisModule_CreateStringPrintf(ctx, fmt, configItem);
+        const char* err = RedisModule_StringPtrLen(rms, NULL);
+        RedisModule_ReplyWithSimpleString(ctx, err);
+        RedisModule_FreeString(ctx, rms);   
+    }
 
-    ArgsIterator_Next(&iter); // skip command name
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
-    RedisModuleString* arg = NULL;
-    int n_found = 0;
-    while((arg = ArgsIterator_Next(&iter))){
-        const char* configVal = RedisModule_StringPtrLen(arg, NULL);
+    bool error = false;
+    int n_values = 0;
+    RedisModuleString* arg;
+    while ((arg = ArgsIterator_Next(iter))) {
+        const char* configName = RedisModule_StringPtrLen(arg, NULL);
         bool found = false;
-        for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
-            if(strcasecmp(configVal, val->name) == 0){
-                const ConfigVal* confVal = val->getter(configVal);
+        for (Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++) {
+            if (strcasecmp(configName, val->name) == 0) {
+                const ConfigVal* confVal = val->getter(configName);
                 GearsConfig_ReplyWithConfVal(ctx, confVal);
                 found = true;
-                ++n_found;
+                ++n_values;
                 break;
             }
         }
-        if(!found){
-            RedisModule_ReplySetArrayLength(ctx, ++n_found);
-            return error_fmt(ctx, "Unsupported config parameter: %s", configVal);
+        if (!found) {
+            error = true;
+            ++n_values;
+            config_error(ctx, "Unsupported config parameter: %s", configName);
         }
     }
-    RedisModule_ReplySetArrayLength(ctx, n_found);
-    return REDISMODULE_OK;
+
+    RedisModule_ReplySetArrayLength(ctx, n_values);
+    return error ? REDISMODULE_ERR : REDISMODULE_OK;
+}
+
+static int GearsConfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    ArgsIterator iter = {
+            .currIndex = 1, // skip command name
+            .argv = argv,
+            .argc = argc,
+    };
+    return GearsConfig_Get_with_iterator(ctx, &iter);
 }
 
 const char* GearsConfig_GetPythonHomeDir(){
@@ -254,7 +285,12 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
     DEF_COMMAND(configget, GearsConfig_Get);
     DEF_COMMAND(configset, GearsConfig_Set);
 
-    _GearsConfig_Set(ctx, argv, argc, false);
+    ArgsIterator iter = {
+        .currIndex = 0,
+        .argv = argv,
+        .argc = argc,
+    };  
+    GearsConfig_Set_with_iterator(ctx, &iter);
     GearsConfig_Print(ctx);
 
     return REDISMODULE_OK;

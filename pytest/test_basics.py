@@ -321,18 +321,25 @@ class testConfig:
     def testMaxExecutions(self):
         max_exe = self.env.execute_command('RG.CONFIGGET', 'MaxExecutions')
         n = long(max_exe[0]) + 1
-        self.env.expect('RG.CONFIGSET', 'MaxExecutions', n).equal('OK')
+        self.env.expect('RG.CONFIGSET', 'MaxExecutions', n).equal(['OK'])
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([n])
 
     def testNotModifiableAtRuntime(self):
         pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
         res = self.env.execute_command('RG.CONFIGSET', 'PythonHomeDir', '/')
-        self.env.assertTrue(res.startswith('ERR'))
+        self.env.assertTrue(res[0].startswith('(error)'))
         pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
-        self.env.expect('RG.CONFIGSET', 'MaxExecutions', 10).equal('OK')
+        self.env.expect('RG.CONFIGSET', 'MaxExecutions', 10).equal(['OK'])
 
     def testNonExisting(self):
         res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig')
-        self.env.assertTrue(res[0].startswith('ERR'))
+        self.env.assertTrue(res[0].startswith('(error)'))
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1)
-        self.env.assertTrue(res.startswith('ERR'))
+        self.env.assertTrue(res[0].startswith('(error)'))
+
+    def testMultiple(self):
+        res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig', 'MaxExecutions')
+        self.env.assertTrue(res[0].startswith('(error)') and not str(res[1]).startswith('(error)'))
+        res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
+        self.env.assertTrue(res[0].startswith('(error)'))
+        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
