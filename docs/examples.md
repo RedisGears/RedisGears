@@ -1,7 +1,8 @@
 # RedisGears Streaming
 
 ## Word Count
-Assuming your data are located in redis keys, each key is a sentence. It is possible to use Gear script to count how many unique words there is.
+Assumes that your data is located in redis keys, each key is a sentence (string). 
+This Gears script allows you to count how many unique words there are.
 ```
 # creating gears builder
 bg = GearsBuilder()
