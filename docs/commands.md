@@ -1,99 +1,84 @@
 # RedisGears Commands
 
+## Execution Response
+RedisGears allows you to run python scripts.  These python scripts can run in a `Gears` and a `non Gears` mode.  The execution result depends on the type of execution and success or failure.
+
+* When running a `Gears` execution
+   * successful: the execution result
+   * failure: the error message
+* When running a `non Gears` execution
+   * successful: `OK`
+   * failure: the error message
+
+
 ## RG.PYEXECUTE
-
-### Format
+```sql
+RG.PYEXECUTE python-script [UNBLOCKING]
 ```
-  RG.PYEXECUTE {PYTHON-SCRIPT} [UNBLOCKING]
-```
+* python-script: the python script to run (string)
+Optional args:
+   * UNBLOCKING: run the script in an unblocking mode, in this case an execution ID is returned.  If ran in unblocking mode you can get your result with `RG.GETRESULTSBLOCKING`
 
-### Description
-Running the given python script. The python script may or may not run Gears execution. If the script will not run Gears execution then it will only return a `OK` reply if the script was running successfully. If the script does create Gears execution then the results will be returned when the execution will finish, an exception is when using the UNBLOCKING flag, if used then the execution id will be return and it will be possible to track the execution results using  `RG.GETRESULTS` and `RG.GETRESULTSBLOCKING` (will be explained in details later). If error accured when running the script then the error will be return as the reply.
-
-### Parameters
-
-* **PYTHON-SCRIPT**: the python script to run.
-
-* **UNBLOCKING**: run the script in an unblocking mode, the execution id will return as a result.
+Run the given python script. The python script may or may not run a `Gears` execution. 
 
 ### Returns
-The execution result, unless no execution was perform (in this case, on `OK` reply will be returned notify that the script was running successfully). If an error accure the error discription will be return.
+When running in UNBLOCKING mode
+* an execution ID.  You can get the result with `RG.GETRESULTSBLOCKING` or `RG.GETRESULTS` 
 
----
+When running in normal mode
+* the execution result (see above)
+
 
 ## RG.GETRESULTS
-
-### Format
+```sql
+RG.GETRESULTS execution-id
 ```
-  RG.GETRESULTS {EXECUTION-ID}
-```
+* execution-id: the exectuion id for which to return the results.
 
-### Description
-Returns the results of the given execution id. Return an error if the given execution does not exists or if the execution is still running.
-
-### Parameters
-
-* **EXECUTION-ID**: the exectuion id on which to return the results.
+Returns the results of the given execution id. Returns an error if the given execution does not exists or if the execution is still running.
 
 ### Returns
-Execution results or error.
+Execution result (see above) or an error when 
+* the script is still running 
+* if the script doesn't exist 
+* the execution result is no longer available (see configuration, we keep by default the last 1000 results)
 
----
 
 ## RG.GETRESULTSBLOCKING
-
-### Format
+```sql
+RG.GETRESULTSBLOCKING execution-id
 ```
-  RG.GETRESULTSBLOCKING {EXECUTION-ID}
-```
+* execution-id: the execution id for which to return the results.
 
-### Description
-Same as `RG.GETRESULTS` but will block untill the excution will finished. Return error if the execution does not exists.
-
-### Parameters
-
-* **EXECUTION-ID**: the exectuion id on which to return the results.
+Same as `RG.GETRESULTS` but will block untill the execution is finished in which case it will return the Execution Result.
 
 ### Returns
-Execution results or error.
+Execution result (see above) or an error when:
+* if the execution-id doesn't exist or is no longer available (see configuration, we keep by default the last 1000 results)
 
----
 
 ## RG.DUMPEXECUTIONS
-
-### Format
-```
-  RG.DUMPEXECUTIONS
+```sql
+RG.DUMPEXECUTIONS
 ```
 
-### Description
-Return all the executions including the following information:
+Return all the executions.
 
+### Returns
+List of executions with
 * executionId
 * status (running/done)
 
-### Returns
-List of executions
-
----
 
 ## RG.DROPEXECUTION
-
-### Format
+```sql
+RG.DROPEXECUTION execution-id
 ```
-  RG.DROPEXECUTION EXECUTION-ID
-```
+* execution-id: the execution id for which to drop the execution result.
 
-### Description
-Dropping the given execution id, return error if the execution does not exists or is still running.
-
-
-### Parameters
-
-* **EXECUTION-ID**: the exectuion id to drope.
-
+Dropping the given execution-id result, returns error if the execution does not exists or is still running.
 
 ### Returns
-OK on success or error.
-
----
+OK on success or error when:
+* the script is still running
+* if the execution-id doesn't exist or is no longer available (see configuration, we keep by default the last 1000 results)
