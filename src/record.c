@@ -110,7 +110,9 @@ void RG_FreeRecord(Record* record){
     case PY_RECORD:
     	if(record->pyRecord.obj){
     		PyGILState_STATE state = PyGILState_Ensure();
-    		Py_DECREF(record->pyRecord.obj);
+    		if(record->pyRecord.obj != Py_None){
+    		    Py_DECREF(record->pyRecord.obj);
+    		}
     		PyGILState_Release(state);
     	}
         break;
