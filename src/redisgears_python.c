@@ -496,6 +496,25 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
     return dims;
 }
 
+static PyObject* tensorGetDims(PyObject *cls, PyObject *args){
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
+    int numDims = RedisAI_TensorNumDims(pyt->t);
+    PyObject *tuple = PyTuple_New(numDims);
+    for(int i = 0 ; i < numDims ; ++i){
+        long long dim = RedisAI_TensorDim(pyt->t, i);
+        PyObject* pyDim = PyLong_FromLongLong(dim);
+        PyTuple_SetItem(tuple, i, pyDim);
+    }
+    return tuple;
+}
+
+static PyObject* tensorGetDataAsBlob(PyObject *cls, PyObject *args){
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
+    size_t size = RedisAI_TensorByteSize(pyt->t);
+    char* data = RedisAI_TensorData(pyt->t);
+    return PyString_FromStringAndSize(data, size);
+}
+
 static PyObject* tensorToFlatList(PyObject *cls, PyObject *args){
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
     return PyTensor_ToFlatList(pyt);
@@ -812,6 +831,8 @@ PyMethodDef EmbMethods[] = {
     {"graphRunnerAddOutput", graphRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
     {"graphRunnerRun", graphRunnerRun, METH_VARARGS, "run graph runner"},
     {"tensorToFlatList", tensorToFlatList, METH_VARARGS, "turning tensor into flat list"},
+    {"tensorGetDataAsBlob", tensorGetDataAsBlob, METH_VARARGS, "getting the tensor data as a string blob"},
+    {"tensorGetDims", tensorGetDims, METH_VARARGS, "return tuple of the tensor dims"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {NULL, NULL, 0, NULL}
 };
