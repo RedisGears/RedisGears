@@ -14,11 +14,14 @@
 #include "lock_handler.h"
 #include "GearsBuilder.auto.h"
 #include "cloudpickle.auto.h"
+
+/* TODO: this needs to be exported from RAI via an API */
 typedef struct RAI_Error {
  int code;
  char* detail;
  char* detail_oneline;
 } RAI_Error;
+
 static PyObject* pFunc;
 static PyObject* pyGlobals;
 PyObject* GearsError;
@@ -561,7 +564,28 @@ static void getAllValues(PyObject *list, double** values){
     }
 }
 
-static PyObject* createTensor(PyObject *cls, PyObject *args){
+static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
+    assert(globals.redisAILoaded);
+    PyObject* typeName = PyTuple_GetItem(args, 0);
+    char* typeNameStr = PyString_AsString(typeName);
+    PyObject* pyDims = PyTuple_GetItem(args, 1);
+    size_t ndims = PyList_Size(pyDims);
+    long long* dims = array_new(long long, ndims);
+    for(long long i = 0; i < ndims; i++) {
+        dims = array_append(dims, PyInt_AsLong(PyList_GetItem(pyDims, i)));
+    }
+    RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, ndims);
+    PyObject* pyBlob = PyTuple_GetItem(args, 2);
+    size_t size = PyString_Size(pyBlob);
+    char* blob = PyString_AsString(pyBlob);
+    RedisAI_TensorSetData(t, blob, size);
+    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+    pyt->t = t;
+    array_free(dims);
+    return (PyObject*)pyt;
+}
+
+static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     assert(globals.redisAILoaded);
     PyObject* typeName = PyTuple_GetItem(args, 0);
     char* typeNameStr = PyString_AsString(typeName);
@@ -667,6 +691,7 @@ static PyObject* graphRunnerAddOutput(PyObject *cls, PyObject *args){
 
 static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
+    // TODO: deal with errors better
     RAI_Error err = {0};
     RedisAI_ModelRun(pyg->g, &err);
     if (err.code) {
@@ -768,6 +793,7 @@ static PyObject* torchScriptRunnerAddOutput(PyObject *cls, PyObject *args){
 
 static PyObject* torchScriptRunnerRun(PyObject *cls, PyObject *args){
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
+    // TODO: deal with errors better
     RAI_Error err = {0};
     RedisAI_ScriptRun(pys->s, &err);
     if (err.code) {
@@ -920,7 +946,8 @@ PyMethodDef EmbMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
-    {"createTensor", createTensor, METH_VARARGS, "creating a tensor object"},
+    {"createTensorFromValues", createTensorFromValues, METH_VARARGS, "creating a tensor object from values"},
+    {"createTensorFromBlob", createTensorFromBlob, METH_VARARGS, "creating a tensor object from blob"},
     {"createGraphRunner", creatGraphRunner, METH_VARARGS, "open TF graph by key name"},
     {"graphRunnerAddInput", graphRunnerAddInput, METH_VARARGS, "add input to graph runner"},
     {"graphRunnerAddOutput", graphRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
