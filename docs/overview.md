@@ -1,29 +1,36 @@
 # RedisGears Overview
 RedisGears is a fast cluster computing system. It provides high-level APIs using Python, and a low level api using C.
 
-RedisGears end goal is to allow the user to build an operations pipe (OPP) in which each key in redis will pass through. The pipe is built using a python script and then run in background thread. When finished the results are returned to the user.
+RedisGears end goal is to allow the user to build an operations pipe (OPP) in which each key in redis will pass through. Results from the first operation will pass as input to the second operation, Results from the second operation will pass as input to the third operation, and so on. Results from the last operation will pass to the user as a reply. The pipe builds using a python script and then runs in background thread. When finished, the results return to the user.
 
 In order to create this OPP, Gears introduce a python class called `GearsBuilder`. When the `GearsBuilder` is first created it contains empty OPP. `GearsBuilder` provide a set of function that allows the user to add operations to the OPP.
 
 example:
-The following will create an OPP with one map operation that increase each value by one (assuming values are numbers)
+The following will create an OPP with one map operation that get all keys from redis.
 ```
-GearsBuilder().map(lambda x: x + 1).run()
+GearsBuilder().map(lambda x: x['key']).run()
 ```
 
 In addition Gears provide a simple command that allow to pass this python code to the redis server:
 ```
-RG.PYEXECUTE 'GearsBuilder().map(lambda x: x + 1).run()'
+RG.PYEXECUTE "GearsBuilder().map(lambda x: x['key']).run()"
 ```
 
 ## Record
 Record is the most basic object in RedisGears. A Record go through the entire OPP and in the end returned to the user as a result.
 
 ## Reader
-The reader is the first component on each OPP, The reader responsable for suppling data to be process by the operations in the opp. RedisGears comes with a default reader that reads keys from redis. The default reader will return Records in the following format:
+The reader is the first component on each OPP, The reader responsable for suppling data to be process by the operations in the OPP. RedisGears comes with a default reader that reads keys from redis. The default reader will return Records in the following format:
 ```
 {'key':< key as string >, 'value': < value (value type is depend on the key content) >}
 ```
+
+By default, when creating a `GearsBuilder`, the builder will automatically use the default reader. It is possible to tell the builder to use different readers, for example:
+```
+RG.PYEXECUTE "GearsBuilder('KeysOnlyReader').run()" # will read only keys names without the value
+RG.PYEXECUTE "GearsBuilder('StreamReader', 's1').run()" # read all the records from stream s1
+```
+
 
 ## Operations
 
