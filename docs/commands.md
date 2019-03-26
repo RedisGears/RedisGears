@@ -4,11 +4,11 @@
 RedisGears allows you to run python scripts.  These python scripts can run in a `Gears` and a `non Gears` mode.  The execution result depends on the type of execution and success or failure.
 
 * When running a `Gears` execution
-   * successful: the execution result
-   * failure: the error message
+	- successful: the execution result
+	- failure: the error message
 * When running a `non Gears` execution
-   * successful: `OK`
-   * failure: the error message
+	- successful: `OK`
+	- failure: the error message
 
 
 ## RG.PYEXECUTE
@@ -23,9 +23,11 @@ Run the given python script. The python script may or may not run a `Gears` exec
 
 ### Returns
 When running in UNBLOCKING mode
+
 * an execution ID.  You can get the result with `RG.GETRESULTSBLOCKING` or `RG.GETRESULTS` 
 
 When running in normal mode
+
 * the execution result (see above)
 
 
@@ -38,7 +40,8 @@ RG.GETRESULTS execution-id
 Returns the results of the given execution id. Returns an error if the given execution does not exists or if the execution is still running.
 
 ### Returns
-Execution result (see above) or an error when 
+Execution result (see above) or an error when:
+
 * the script is still running 
 * if the script doesn't exist 
 * the execution result is no longer available (see configuration, we keep by default the last 1000 results)
@@ -54,7 +57,9 @@ Same as `RG.GETRESULTS` but will block untill the execution is finished in which
 
 ### Returns
 Execution result (see above) or an error when:
-* if the execution-id doesn't exist or is no longer available (see configuration, we keep by default the last 1000 results)
+
+* the execution-id doesn't exist
+* execution is no longer available (see configuration, we keep by default the last 1000 results)
 
 
 ## RG.DUMPEXECUTIONS
@@ -80,5 +85,6 @@ Dropping the given execution-id result, returns error if the execution does not 
 
 ### Returns
 OK on success or error when:
+
 * the script is still running
 * if the execution-id doesn't exist or is no longer available (see configuration, we keep by default the last 1000 results)

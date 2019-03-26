@@ -30,7 +30,7 @@ pages:
   - 'Commands': 'commands.md'
   - 'Streaming API': 'gears_streaming.md'
   - 'Examples': 'examples.md'
-  - 'GearsBuilder Documentation': 'gears_build_doc.md'
+  - 'Configuration': 'configuration.md'
 
 markdown_extensions:
   - admonition

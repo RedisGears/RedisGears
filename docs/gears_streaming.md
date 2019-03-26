@@ -13,7 +13,7 @@ It is possible to register an execution on an event using the `register` functio
 GearsBuilder().foreach(lambda x: execute('del', x['key'])).register()
 ```
 
-The following Gears will be trigger when ever a key is touched, the execution will delete the key, basicly it will deny the ability to put anything on redis.
+The following Gears will be trigger each time a key changes, the execution will delete the key, basicly it will deny the ability to put anything on redis.
 
 
 It is also possible to register on streams using the following syntax:
