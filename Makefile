@@ -21,6 +21,11 @@ ifndef PYTHON_ENCODING_FLAG
 	PYTHON_ENCODING_FLAG := --enable-unicode=ucs2
 endif
 
+CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27
+
+CPYTHON_FLAGS=$(PYTHON_ENCODING_FLAG) \
+	--prefix=$(CPYTHON_PREFIX) --with-zlib --with-ssl --with-readline
+
 ifndef OS_VERSION
 	OS_VERSION := linux
 endif
@@ -33,7 +38,7 @@ SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/
         src/globals.c src/config.c src/lock_handler.c
 
 CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -DCPYTHON_PATH=\"$(CPYTHON_PATH)/\" -std=gnu99
-# CFLAGS += -DFEATURE_1
+
 ifeq ($(OS),Linux)
 	LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
 	LIBTOOLIZE=libtoolize
@@ -47,6 +52,7 @@ ifeq ($(DEBUG), 1)
 else
 	CFLAGS+=-O2 -Wno-unused-result
 endif
+
 ifeq ($(WITHPYTHON), 1)
 	SOURCES+=src/redisgears_python.c
 	PYTHON_CFLAGS=-I./src/deps/cpython/Include/ -I./src/deps/cpython/
@@ -65,13 +71,25 @@ OBJECTS=$(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
 $(OBJ)/%.o: $(SRC)/%.c
 	$(CC) -I$(SRC) $(CFLAGS) -c $< -o $@
 
+.PHONY: all python python_clean pyenv static clean get_deps ramp_pack
+
 all: GearsBuilder.py redisgears.so
 
 python:
-	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc $(PYTHON_ENCODING_FLAG)	;make
+	cd src/deps/cpython; \
+	CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc $(CPYTHON_FLAGS); \
+	make
 
 python_clean:
 	cd src/deps/cpython;make clean
+
+pyenv:
+	make -C src/deps/cpython install > $(PWD)/python-install.log
+	cp pyenv/Pipfile* $(CPYTHON_PREFIX)
+	cd $(CPYTHON_PREFIX); \
+	export PIPENV_VENV_IN_PROJECT=1; \
+	pipenv install
+	cp $(CPYTHON_PREFIX)/Pipfile.lock pyenv/
 
 redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
 	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
@@ -94,7 +112,7 @@ get_deps: python
 	cd deps;git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git;cd ./libevent/;$(LIBTOOLIZE);aclocal;autoheader;autoconf;automake --add-missing;CFLAGS=-fPIC ./configure;make;
 	cp ./deps/libevent/.libs/libevent.a ./libs/
 	rm -rf deps
-	
+
 ramp_pack: all
 	mkdir -p artifacts
 	mkdir -p artifacts/snapshot
@@ -103,5 +121,4 @@ ramp_pack: all
 	$(eval DEPLOY=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS_VERSION)-{architecture}.{semantic_version}.zip | tail -1))
 	mv ./$(SNAPSHOT) artifacts/snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
 	mv ./$(DEPLOY) artifacts/release/$(PACKAGE_NAME).$(DEPLOY)
-	zip -rq artifacts/snapshot/$(PACKAGE_NAME)-dependencies.$(SNAPSHOT) src/deps/cpython
-	zip -rq artifacts/release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) src/deps/cpython
+	zip -rq -y artifacts/release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) $(CPYTHON_PREFIX)/
