@@ -20,7 +20,7 @@ Inastal: build-essential, autotools-dev, autoconf, libtool
 git submodule init
 git submodule update
 make get_deps
-make WITHPYTHON=1
+make
 ```
 It is possible to run without python support by just running `make`.
 
