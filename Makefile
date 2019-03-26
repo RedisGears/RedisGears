@@ -113,7 +113,7 @@ get_deps: python
 	cp ./deps/libevent/.libs/libevent.a ./libs/
 	rm -rf deps
 
-ramp_pack: all
+ramp_pack: all pyenv
 	mkdir -p artifacts
 	mkdir -p artifacts/snapshot
 	mkdir -p artifacts/release
