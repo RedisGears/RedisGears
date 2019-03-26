@@ -26,7 +26,7 @@ class testBasic:
                                         "aggregate(0, lambda r, x: x, lambda r, x:r + x).run()").contains(['100'])
 
     def testKeysOnlyGB(self):
-        self.env.expect('rg.pyexecute', "KeysOnlyGB()."
+        self.env.expect('rg.pyexecute', "GearsBuilder(keysOnly=True)."
                                         "map(lambda x:int(execute('get', x)))."
                                         "aggregate(0, lambda r, x: r + x, lambda r, x:r + x).run()").contains(['4950'])
 
@@ -111,6 +111,41 @@ class testBasic:
         res = self.env.cmd('rg.getresultsblocking', id)[1]
         self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
         self.env.cmd('rg.dropexecution', id)
+
+
+def testKeysOnlyReader(env):
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('set', 'xx', '1')
+    conn.execute_command('set', 'xy', '1')
+    conn.execute_command('set', 'y', '1')
+
+    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run()')[1]
+    env.assertEqual(set(res), set(['xx', 'xy', 'y']))
+
+    res = env.cmd('rg.pyexecute', 'GB(defaultArg="*", keysOnly=True).run()')[1]
+    env.assertEqual(set(res), set(['xx', 'xy', 'y']))
+
+    res = env.cmd('rg.pyexecute', 'GB(defaultArg="x*", keysOnly=True).run()')[1]
+    env.assertEqual(set(res), set(['xx', 'xy']))
+
+    res = env.cmd('rg.pyexecute', 'GB(defaultArg="xx*", keysOnly=True).run()')[1]
+    env.assertEqual(set(res), set(['xx']))
+
+    res = env.cmd('rg.pyexecute', 'GB(defaultArg="xx", keysOnly=True).run()')[1]
+    env.assertEqual(set(res), set(['xx']))
+
+    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("*")')[1]
+    env.assertEqual(set(res), set(['xx', 'xy', 'y']))
+
+    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("x*")')[1]
+    env.assertEqual(set(res), set(['xx', 'xy']))
+
+    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("xx*")')[1]
+    env.assertEqual(set(res), set(['xx']))
+
+    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("xx")')[1]
+    env.assertEqual(set(res), set(['xx']))
 
 
 def testFlatMap(env):

@@ -11,19 +11,22 @@ globals()['str'] = str
 redisgears._saveGlobals()
 
 
-def PythonReaderCallback():
-    cursor = '0'
-    res = execute('scan', cursor, 'COUNT', '10000')
-    cursor = res[0]
-    keys = res[1]
-    while int(cursor) != 0:
-        for k in keys:
-            yield k
-        res = execute('scan', cursor, 'COUNT', '10000')
+def CreatePythonReaderCallback(prefix):
+    def PythonReaderCallback():
+        pref = prefix
+        cursor = '0'
+        res = execute('scan', cursor, 'COUNT', '10000', 'MATCH', pref)
         cursor = res[0]
         keys = res[1]
-    for k in keys:
-            yield k
+        while int(cursor) != 0:
+            for k in keys:
+                yield k
+            res = execute('scan', cursor, 'COUNT', '10000', 'MATCH', pref)
+            cursor = res[0]
+            keys = res[1]
+        for k in keys:
+                yield k
+    return PythonReaderCallback
 
 
 def ShardReaderCallback():
@@ -35,9 +38,11 @@ def ShardReaderCallback():
 
 
 class GearsBuilder():
-    def __init__(self, reader='KeysReader', defautlPrefix='*'):
-        self.gearsCtx = gearsCtx(reader)
-        self.defautlPrefix = defautlPrefix
+    def __init__(self, reader='KeysReader', defaultArg='*', keysOnly=False):
+        self.keysOnly = keysOnly
+        self.reader = reader if not keysOnly else 'PythonReader'
+        self.gearsCtx = gearsCtx(self.reader)
+        self.defaultArg = defaultArg
 
     def __localAggregateby__(self, extractor, zero, aggregator):
         self.gearsCtx.localgroupby(lambda x: extractor(x), lambda k, a, r: aggregator(k, a if a else zero, r))
@@ -81,12 +86,15 @@ class GearsBuilder():
                                              lambda a, r: (a[0] + r, a[1] + 1),
                                              lambda a, r: (a[0] + r[0], a[1] + r[1])).map(lambda x: x[0] / x[1])
 
-    def run(self, prefix=None, converteToStr=True, collect=True):
+    def run(self, arg=None, converteToStr=True, collect=True):
         if(converteToStr):
             self.gearsCtx.map(lambda x: str(x))
         if(collect):
             self.gearsCtx.collect()
-        self.gearsCtx.run(prefix if prefix else self.defautlPrefix)
+        arg = arg if arg else self.defaultArg
+        if(self.keysOnly):
+            arg = CreatePythonReaderCallback(arg)
+        self.gearsCtx.run(arg)
 
 
 def createDecorator(f):
@@ -108,13 +116,8 @@ GB = GearsBuilder
 EB = GearsBuilder
 
 
-def KeysOnlyGearsReader():
-    return GB('PythonReader', PythonReaderCallback)
-
-
 def ShardsGearsReader():
     return GB('PythonReader', ShardReaderCallback)
 
 
-KeysOnlyGB = KeysOnlyGearsReader
 ShardsGB = ShardsGearsReader
