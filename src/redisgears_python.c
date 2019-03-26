@@ -6,6 +6,7 @@
 #include "config.h"
 #include <marshal.h>
 #include <assert.h>
+#include <dirent.h>
 #include <redisgears.h>
 #include <redisgears_memory.h>
 #include <redisgears_python.h>
@@ -1626,14 +1627,35 @@ static Reader* PythonReader(void* arg){
     return ret;
 }
 
+#define PYENV_DIR "/opt/redislabs/lib/modules/python27"
+#define PYENV_ACTIVATE PYENV_DIR "/.venv/bin/activate_this.py"
+
+bool PyEnvExist() {
+    DIR* dir = opendir(PYENV_DIR);
+    if (dir) {
+        closedir(dir);
+        return true;
+    }
+    return false;
+}
+
+int RedisGears_SetupPyEnv() {
+    if (!PyEnvExist()) return 0;
+    PyRun_SimpleString("exec(open('" PYENV_ACTIVATE "').read(), {'__file__': '" PYENV_ACTIVATE "'})");
+    return 0;
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RedisGearsPy_Alloc);
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
 	char* arg = "Embeded";
-	char* progName = (char*)GearsConfig_GetPythonHomeDir();
-    Py_SetProgramName(progName);
+    if (!PyEnvExist()) {
+        char* progName = (char*)GearsCOnfig_GetPythonHomeDir();
+        Py_SetProgramName(progName);
+    }
     Py_Initialize();
+    RedisGears_SetupPyEnv();
     PyEval_InitThreads();
     PySys_SetArgv(1, &arg);
     PyTensorType.tp_new = PyType_GenericNew;
