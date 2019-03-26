@@ -21,12 +21,12 @@ class testBasic:
             conn.execute_command('set', str(i), str(i))
 
     def testShardsGB(self):
-        self.env.expect('rg.pyexecute', "ShardsGB()."
+        self.env.expect('rg.pyexecute', "GB('ShardsIDReader')."
                                         "map(lambda x:int(execute('dbsize')))."
                                         "aggregate(0, lambda r, x: x, lambda r, x:r + x).run()").contains(['100'])
 
     def testKeysOnlyGB(self):
-        self.env.expect('rg.pyexecute', "GearsBuilder(keysOnly=True)."
+        self.env.expect('rg.pyexecute', "GearsBuilder('KeysOnlyReader')."
                                         "map(lambda x:int(execute('get', x)))."
                                         "aggregate(0, lambda r, x: r + x, lambda r, x:r + x).run()").contains(['4950'])
 
@@ -120,31 +120,31 @@ def testKeysOnlyReader(env):
     conn.execute_command('set', 'xy', '1')
     conn.execute_command('set', 'y', '1')
 
-    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run()')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()')[1]
     env.assertEqual(set(res), set(['xx', 'xy', 'y']))
 
-    res = env.cmd('rg.pyexecute', 'GB(defaultArg="*", keysOnly=True).run()')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="*").run()')[1]
     env.assertEqual(set(res), set(['xx', 'xy', 'y']))
 
-    res = env.cmd('rg.pyexecute', 'GB(defaultArg="x*", keysOnly=True).run()')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="x*").run()')[1]
     env.assertEqual(set(res), set(['xx', 'xy']))
 
-    res = env.cmd('rg.pyexecute', 'GB(defaultArg="xx*", keysOnly=True).run()')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="xx*").run()')[1]
     env.assertEqual(set(res), set(['xx']))
 
-    res = env.cmd('rg.pyexecute', 'GB(defaultArg="xx", keysOnly=True).run()')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="xx").run()')[1]
     env.assertEqual(set(res), set(['xx']))
 
-    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("*")')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("*")')[1]
     env.assertEqual(set(res), set(['xx', 'xy', 'y']))
 
-    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("x*")')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("x*")')[1]
     env.assertEqual(set(res), set(['xx', 'xy']))
 
-    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("xx*")')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("xx*")')[1]
     env.assertEqual(set(res), set(['xx']))
 
-    res = env.cmd('rg.pyexecute', 'GB(keysOnly=True).run("xx")')[1]
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("xx")')[1]
     env.assertEqual(set(res), set(['xx']))
 
 

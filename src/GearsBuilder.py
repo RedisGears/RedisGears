@@ -38,9 +38,11 @@ def ShardReaderCallback():
 
 
 class GearsBuilder():
-    def __init__(self, reader='KeysReader', defaultArg='*', keysOnly=False):
-        self.keysOnly = keysOnly
-        self.reader = reader if not keysOnly else 'PythonReader'
+    def __init__(self, reader='KeysReader', defaultArg='*'):
+        self.realReader = reader
+        if(reader == 'KeysOnlyReader' or reader == 'ShardsIDReader'):
+            reader = 'PythonReader'
+        self.reader = reader
         self.gearsCtx = gearsCtx(self.reader)
         self.defaultArg = defaultArg
 
@@ -92,8 +94,10 @@ class GearsBuilder():
         if(collect):
             self.gearsCtx.collect()
         arg = arg if arg else self.defaultArg
-        if(self.keysOnly):
+        if(self.realReader == 'KeysOnlyReader'):
             arg = CreatePythonReaderCallback(arg)
+        if(self.realReader == 'ShardsIDReader'):
+            arg = ShardReaderCallback
         self.gearsCtx.run(arg)
 
 
@@ -111,13 +115,5 @@ for k in PyFlatExecution.__dict__:
         continue
     GearsBuilder.__dict__[k] = createDecorator(PyFlatExecution.__dict__[k])
 
-ExecutionBuilder = GearsBuilder
+
 GB = GearsBuilder
-EB = GearsBuilder
-
-
-def ShardsGearsReader():
-    return GB('PythonReader', ShardReaderCallback)
-
-
-ShardsGB = ShardsGearsReader
