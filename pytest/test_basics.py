@@ -21,12 +21,12 @@ class testBasic:
             conn.execute_command('set', str(i), str(i))
 
     def testShardsGB(self):
-        self.env.expect('rg.pyexecute', "ShardsGB()."
+        self.env.expect('rg.pyexecute', "GB('ShardsIDReader')."
                                         "map(lambda x:int(execute('dbsize')))."
                                         "aggregate(0, lambda r, x: x, lambda r, x:r + x).run()").contains(['100'])
 
     def testKeysOnlyGB(self):
-        self.env.expect('rg.pyexecute', "KeysOnlyGB()."
+        self.env.expect('rg.pyexecute', "GearsBuilder('KeysOnlyReader')."
                                         "map(lambda x:int(execute('get', x)))."
                                         "aggregate(0, lambda r, x: r + x, lambda r, x:r + x).run()").contains(['4950'])
 
@@ -111,6 +111,41 @@ class testBasic:
         res = self.env.cmd('rg.getresultsblocking', id)[1]
         self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
         self.env.cmd('rg.dropexecution', id)
+
+
+def testKeysOnlyReader(env):
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('set', 'xx', '1')
+    conn.execute_command('set', 'xy', '1')
+    conn.execute_command('set', 'y', '1')
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()')[1]
+    env.assertEqual(set(res), set(['xx', 'xy', 'y']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="*").run()')[1]
+    env.assertEqual(set(res), set(['xx', 'xy', 'y']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="x*").run()')[1]
+    env.assertEqual(set(res), set(['xx', 'xy']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="xx*").run()')[1]
+    env.assertEqual(set(res), set(['xx']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader", defaultArg="xx").run()')[1]
+    env.assertEqual(set(res), set(['xx']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("*")')[1]
+    env.assertEqual(set(res), set(['xx', 'xy', 'y']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("x*")')[1]
+    env.assertEqual(set(res), set(['xx', 'xy']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("xx*")')[1]
+    env.assertEqual(set(res), set(['xx']))
+
+    res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("xx")')[1]
+    env.assertEqual(set(res), set(['xx']))
 
 
 def testFlatMap(env):

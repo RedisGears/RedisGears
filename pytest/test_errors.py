@@ -149,4 +149,4 @@ def testPyReaderWithWrongArgument(env):
     env.expect('rg.pyexecute', 'GB("PythonReader").run("*")').error().contains('pyreader argument must be a functio')
     env.expect('rg.pyexecute', 'GB("PythonReader").run()').error().contains('pyreader argument must be a functio')
     env.expect('rg.pyexecute', 'GB("PythonReader", "*").run()').error().contains('pyreader argument must be a functio')
-    env.expect('rg.pyexecute', 'GB("PythonReader", PythonReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
+    env.expect('rg.pyexecute', 'GB("PythonReader", ShardReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
