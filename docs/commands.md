@@ -1,10 +1,10 @@
 # RedisGears Commands
 
-## Execution Response
+## Execution Result
 RedisGears allows you to run python scripts.  These python scripts can run in a `Gears` and a `non Gears` mode.  The execution result depends on the type of execution and success or failure.
 
 * When running a `Gears` execution
-	- successful: the execution result
+	- successful: the resultset
 	- failure: the error message
 * When running a `non Gears` execution
 	- successful: `OK`
@@ -28,7 +28,7 @@ When running in UNBLOCKING mode
 
 When running in normal mode
 
-* the execution result (see above)
+* The [Execution Result](#execution-result)
 
 
 ## RG.GETRESULTS
@@ -40,7 +40,7 @@ RG.GETRESULTS execution-id
 Returns the results of the given execution id. Returns an error if the given execution does not exists or if the execution is still running.
 
 ### Returns
-Execution result (see above) or an error when:
+The [Execution Result](#execution-result) or an error when:
 
 * the script is still running 
 * if the script doesn't exist 
@@ -56,7 +56,7 @@ RG.GETRESULTSBLOCKING execution-id
 Same as `RG.GETRESULTS` but will block untill the execution is finished in which case it will return the Execution Result.
 
 ### Returns
-Execution result (see above) or an error when:
+The [Execution Result](#execution-result) or an error when:
 
 * the execution-id doesn't exist
 * execution is no longer available (see configuration, we keep by default the last 1000 results)
@@ -84,7 +84,7 @@ RG.DROPEXECUTION execution-id
 Dropping the given execution-id result, returns error if the execution does not exists or is still running.
 
 ### Returns
-OK on success or error when:
+`OK` on success or error when:
 
 * the script is still running
 * if the execution-id doesn't exist or is no longer available (see configuration, we keep by default the last 1000 results)
