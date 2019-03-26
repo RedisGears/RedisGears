@@ -88,6 +88,8 @@ pyenv:
 	cp pyenv/Pipfile* $(CPYTHON_PREFIX)
 	cd $(CPYTHON_PREFIX); \
 	export PIPENV_VENV_IN_PROJECT=1; \
+	export LC_ALL=C.UTF-8; \
+    export LANG=C.UTF-8; \
 	pipenv install
 	cp $(CPYTHON_PREFIX)/Pipfile.lock pyenv/
 
