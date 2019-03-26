@@ -25,13 +25,9 @@ The reader is the first component on each OPP, The reader responsable for suppli
 {'key':< key as string >, 'value': < value (value type is depend on the key content) >}
 ```
 
-By default, when creating a `GearsBuilder`, the builder will automatically use the default reader. It is possible to tell the default reader to pass only keys names:
+By default, when creating a `GearsBuilder`, the builder will automatically use the default reader. It is possible to tell the builder to use different readers, for example:
 ```
-RG.PYEXECUTE "GearsBuilder(keysOnly=True).run()"
-```
-
-It is also possible to tell the builder to use different reader:
-```
+RG.PYEXECUTE "GearsBuilder('KeysOnlyReader').run()" # will read only keys names without the value
 RG.PYEXECUTE "GearsBuilder('StreamReader', 's1').run()" # read all the records from stream s1
 ```
 
