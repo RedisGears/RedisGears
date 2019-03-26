@@ -662,7 +662,7 @@ static PyTypeObject PyGraphRunnerType = {
     "PyGraphRunner",           /* tp_doc */
 };
 
-static PyObject* creatModelRunner(PyObject *cls, PyObject *args){
+static PyObject* createModelRunner(PyObject *cls, PyObject *args){
     assert(globals.redisAILoaded);
     PyObject* keyName = PyTuple_GetItem(args, 0);
     char* keyNameStr = PyString_AsString(keyName);
@@ -971,7 +971,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
 PyMethodDef EmbRedisAIMethods[] = {
     {"createTensorFromValues", createTensorFromValues, METH_VARARGS, "creating a tensor object from values"},
     {"createTensorFromBlob", createTensorFromBlob, METH_VARARGS, "creating a tensor object from blob"},
-    {"createModelRunner", creatModelRunner, METH_VARARGS, "open TF graph by key name"},
+    {"createModelRunner", createModelRunner, METH_VARARGS, "open TF graph by key name"},
     {"modelRunnerAddInput", modelRunnerAddInput, METH_VARARGS, "add input to graph runner"},
     {"modelRunnerAddOutput", modelRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
     {"modelRunnerRun", modelRunnerRun, METH_VARARGS, "run graph runner"},
