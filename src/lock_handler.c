@@ -40,7 +40,7 @@ void LockHandler_Acquire(RedisModuleCtx* ctx){
     ++lh->lockCounter;
 }
 
-void LockHandler_Realse(RedisModuleCtx* ctx){
+void LockHandler_Release(RedisModuleCtx* ctx){
     LockHandlerCtx* lh = pthread_getspecific(_lockKey);
     assert(lh);
     assert(lh->lockCounter > 0);

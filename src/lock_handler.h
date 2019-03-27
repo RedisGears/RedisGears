@@ -12,6 +12,6 @@
 
 int LockHandler_Initialize();
 void LockHandler_Acquire(RedisModuleCtx* ctx);
-void LockHandler_Realse(RedisModuleCtx* ctx);
+void LockHandler_Release(RedisModuleCtx* ctx);
 
 #endif /* SRC_LOCK_HANDLER_H_ */

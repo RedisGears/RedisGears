@@ -119,7 +119,7 @@ static Record* StreamReader_Next(RedisModuleCtx* rctx, void* ctx){
     if(!readerCtx->records){
         LockHandler_Acquire(rctx);
         StreamReader_ReadRecords(rctx, readerCtx);
-        LockHandler_Realse(rctx);
+        LockHandler_Release(rctx);
     }
     if(array_len(readerCtx->records) == 0){
         return NULL;

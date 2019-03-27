@@ -160,7 +160,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
         RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "10000", "MATCH", readerCtx->match);
         if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
             if(reply) RedisModule_FreeCallReply(reply);
-            LockHandler_Realse(rctx);
+            LockHandler_Release(rctx);
             return NULL;
         }
 
@@ -185,7 +185,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
         if(RedisModule_CallReplyLength(keysReply) < 1){
             RedisModule_FreeCallReply(reply);
             if(readerCtx->isDone){
-                LockHandler_Realse(rctx);
+                LockHandler_Release(rctx);
                 return NULL;
             }
             continue;
@@ -218,7 +218,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
             RedisModule_CloseKey(keyHandler);
         }
         RedisModule_FreeCallReply(reply);
-        LockHandler_Realse(rctx);
+        LockHandler_Release(rctx);
         return array_pop(readerCtx->pendingRecords);
     }
     return NULL;
@@ -250,7 +250,7 @@ static Record* KeysReader_RaxIndexNext(RedisModuleCtx* rctx, void* ctx){
 
     RedisModule_FreeString(rctx, keyRedisStr);
     RedisModule_CloseKey(keyHandler);
-    LockHandler_Realse(rctx);
+    LockHandler_Release(rctx);
 
     return record;
 }
@@ -287,7 +287,7 @@ static Record* KeysReader_SearchIndexNext(RedisModuleCtx* rctx, void* ctx){
 
 	RedisModule_FreeString(rctx, keyRedisStr);
 	RedisModule_CloseKey(keyHandler);
-	LockHandler_Realse(rctx);
+	LockHandler_Release(rctx);
 
 	return record;
 }
@@ -320,7 +320,7 @@ static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_ALL, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
-        LockHandler_Realse(ctx);
+        LockHandler_Release(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
     }
     Gears_listAddNodeHead(keysReaderRegistration, fep);
