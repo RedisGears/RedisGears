@@ -663,7 +663,7 @@ static PyTypeObject PyGraphRunnerType = {
     "PyGraphRunner",           /* tp_doc */
 };
 
-static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
+static PyObject* createModelRunner(PyObject *cls, PyObject *args){
     assert(globals.redisAILoaded);
     PyObject* keyName = PyTuple_GetItem(args, 0);
     char* keyNameStr = PyString_AsString(keyName);
@@ -691,7 +691,7 @@ static PyObject* creatGraphRunner(PyObject *cls, PyObject *args){
     return (PyObject*)pyg;
 }
 
-static PyObject* graphRunnerAddInput(PyObject *cls, PyObject *args){
+static PyObject* modelRunnerAddInput(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     PyObject* inputName = PyTuple_GetItem(args, 1);
     char* inputNameStr = PyString_AsString(inputName);
@@ -700,7 +700,7 @@ static PyObject* graphRunnerAddInput(PyObject *cls, PyObject *args){
     return PyLong_FromLong(1);
 }
 
-static PyObject* graphRunnerAddOutput(PyObject *cls, PyObject *args){
+static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     PyObject* outputName = PyTuple_GetItem(args, 1);
     char* outputNameStr = PyString_AsString(outputName);
@@ -708,7 +708,7 @@ static PyObject* graphRunnerAddOutput(PyObject *cls, PyObject *args){
     return PyLong_FromLong(1);
 }
 
-static PyObject* graphRunnerRun(PyObject *cls, PyObject *args){
+static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     // TODO: deal with errors better
     RAI_Error err = {0};
@@ -761,7 +761,7 @@ static PyTypeObject PyTorchScriptRunnerType = {
     "PyTorchScriptRunner",           /* tp_doc */
 };
 
-static PyObject* createTorchScriptRunner(PyObject *cls, PyObject *args){
+static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
     assert(globals.redisAILoaded);
     PyObject* keyName = PyTuple_GetItem(args, 0);
     char* keyNameStr = PyString_AsString(keyName);
@@ -793,7 +793,7 @@ static PyObject* createTorchScriptRunner(PyObject *cls, PyObject *args){
     return (PyObject*)pys;
 }
 
-static PyObject* torchScriptRunnerAddInput(PyObject *cls, PyObject *args){
+static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
     PyObject* inputName = PyTuple_GetItem(args, 1);
     char* inputNameStr = PyString_AsString(inputName);
@@ -802,7 +802,7 @@ static PyObject* torchScriptRunnerAddInput(PyObject *cls, PyObject *args){
     return PyLong_FromLong(1);
 }
 
-static PyObject* torchScriptRunnerAddOutput(PyObject *cls, PyObject *args){
+static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
     PyObject* outputName = PyTuple_GetItem(args, 1);
     char* outputNameStr = PyString_AsString(outputName);
@@ -810,7 +810,7 @@ static PyObject* torchScriptRunnerAddOutput(PyObject *cls, PyObject *args){
     return PyLong_FromLong(1);
 }
 
-static PyObject* torchScriptRunnerRun(PyObject *cls, PyObject *args){
+static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
     // TODO: deal with errors better
     RAI_Error err = {0};
@@ -961,24 +961,28 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
-PyMethodDef EmbMethods[] = {
+PyMethodDef EmbRedisGearsMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
+    {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
+    {NULL, NULL, 0, NULL}
+};
+
+PyMethodDef EmbRedisAIMethods[] = {
     {"createTensorFromValues", createTensorFromValues, METH_VARARGS, "creating a tensor object from values"},
     {"createTensorFromBlob", createTensorFromBlob, METH_VARARGS, "creating a tensor object from blob"},
-    {"createGraphRunner", creatGraphRunner, METH_VARARGS, "open TF graph by key name"},
-    {"graphRunnerAddInput", graphRunnerAddInput, METH_VARARGS, "add input to graph runner"},
-    {"graphRunnerAddOutput", graphRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
-    {"graphRunnerRun", graphRunnerRun, METH_VARARGS, "run graph runner"},
-    {"createTorchScriptRunner", createTorchScriptRunner, METH_VARARGS, "open a torch script by key name"},
-    {"torchScriptRunnerAddInput", torchScriptRunnerAddInput, METH_VARARGS, "add input to torch script runner"},
-    {"torchScriptRunnerAddOutput", torchScriptRunnerAddOutput, METH_VARARGS, "add output to torch script runner"},
-    {"torchScriptRunnerRun", torchScriptRunnerRun, METH_VARARGS, "run torch script runner"},
+    {"createModelRunner", createModelRunner, METH_VARARGS, "open TF graph by key name"},
+    {"modelRunnerAddInput", modelRunnerAddInput, METH_VARARGS, "add input to graph runner"},
+    {"modelRunnerAddOutput", modelRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
+    {"modelRunnerRun", modelRunnerRun, METH_VARARGS, "run graph runner"},
+    {"createScriptRunner", createScriptRunner, METH_VARARGS, "open a torch script by key name"},
+    {"scriptRunnerAddInput", scriptRunnerAddInput, METH_VARARGS, "add input to torch script runner"},
+    {"scriptRunnerAddOutput", scriptRunnerAddOutput, METH_VARARGS, "add output to torch script runner"},
+    {"scriptRunnerRun", scriptRunnerRun, METH_VARARGS, "run torch script runner"},
     {"tensorToFlatList", tensorToFlatList, METH_VARARGS, "turning tensor into flat list"},
     {"tensorGetDataAsBlob", tensorGetDataAsBlob, METH_VARARGS, "getting the tensor data as a string blob"},
     {"tensorGetDims", tensorGetDims, METH_VARARGS, "return tuple of the tensor dims"},
-    {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -1634,21 +1638,22 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
     }
 
-    PyObject* m = Py_InitModule("redisgears", EmbMethods);
+    PyObject* redisGearsModule = Py_InitModule("redisgears", EmbRedisGearsMethods);
+    PyObject* redisAIModule = Py_InitModule("redisAI", EmbRedisAIMethods);
 
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
     Py_INCREF(&PyTorchScriptRunnerType);
     Py_INCREF(&PyFlatExecutionType);
 
-    PyModule_AddObject(m, "PyTensor", (PyObject *)&PyTensorType);
-    PyModule_AddObject(m, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
-    PyModule_AddObject(m, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
-    PyModule_AddObject(m, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
+    PyModule_AddObject(redisAIModule, "PyTensor", (PyObject *)&PyTensorType);
+    PyModule_AddObject(redisAIModule, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
+    PyModule_AddObject(redisAIModule, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
+    PyModule_AddObject(redisGearsModule, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
 
     GearsError = PyErr_NewException("spam.error", NULL, NULL);
     Py_INCREF(GearsError);
-    PyModule_AddObject(m, "GearsError", GearsError);
+    PyModule_AddObject(redisGearsModule, "GearsError", GearsError);
 
     char* script = RG_ALLOC(src_cloudpickle_py_len + 1);
     memcpy(script, src_cloudpickle_py, src_cloudpickle_py_len);

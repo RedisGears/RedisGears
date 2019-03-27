@@ -11,19 +11,22 @@ globals()['str'] = str
 redisgears._saveGlobals()
 
 
-def PythonReaderCallback():
-    cursor = '0'
-    res = execute('scan', cursor, 'COUNT', '10000')
-    cursor = res[0]
-    keys = res[1]
-    while int(cursor) != 0:
-        for k in keys:
-            yield k
-        res = execute('scan', cursor, 'COUNT', '10000')
+def CreatePythonReaderCallback(prefix):
+    def PythonReaderCallback():
+        pref = prefix
+        cursor = '0'
+        res = execute('scan', cursor, 'COUNT', '10000', 'MATCH', pref)
         cursor = res[0]
         keys = res[1]
-    for k in keys:
-            yield k
+        while int(cursor) != 0:
+            for k in keys:
+                yield k
+            res = execute('scan', cursor, 'COUNT', '10000', 'MATCH', pref)
+            cursor = res[0]
+            keys = res[1]
+        for k in keys:
+                yield k
+    return PythonReaderCallback
 
 
 def ShardReaderCallback():
@@ -35,45 +38,79 @@ def ShardReaderCallback():
 
 
 class GearsBuilder():
-    def __init__(self, reader='KeysReader', defautlPrefix='*'):
-        self.gearsCtx = gearsCtx(reader)
-        self.defautlPrefix = defautlPrefix
+    def __init__(self, reader='KeysReader', defaultArg='*'):
+        self.realReader = reader
+        if(reader == 'KeysOnlyReader' or reader == 'ShardsIDReader'):
+            reader = 'PythonReader'
+        self.reader = reader
+        self.gearsCtx = gearsCtx(self.reader)
+        self.defaultArg = defaultArg
 
     def __localAggregateby__(self, extractor, zero, aggregator):
         self.gearsCtx.localgroupby(lambda x: extractor(x), lambda k, a, r: aggregator(k, a if a else zero, r))
         return self
 
     def aggregate(self, zero, seqOp, combOp):
+        '''
+        perform aggregation on all the execution data.
+        zero - the first value that will pass to the aggregation function
+        seqOp - the local aggregate function (will be performed on each shard)
+        combOp - the global aggregate function (will be performed on the results of seqOp from each shard)
+        '''
         self.gearsCtx.accumulate(lambda a, r: seqOp(a if a else zero, r))
         self.gearsCtx.collect()
         self.gearsCtx.accumulate(lambda a, r: combOp(a if a else zero, r))
         return self
 
     def aggregateby(self, extractor, zero, seqOp, combOp):
+        '''
+        Like aggregate but on each key, the key is extracted using the extractor.
+        extractor - a function that get as input the record and return the aggregated key
+        zero - the first value that will pass to the aggregation function
+        seqOp - the local aggregate function (will be performed on each shard)
+        combOp - the global aggregate function (will be performed on the results of seqOp from each shard)
+        '''
         self.__localAggregateby__(extractor, zero, seqOp)
         self.gearsCtx.groupby(lambda r: r['key'], lambda k, a, r: combOp(k, a if a else zero, r['value']))
         return self
 
     def count(self):
+        '''
+        Count the number of recors in the execution
+        '''
         self.gearsCtx.accumulate(lambda a, r: 1 + (a if a else 0))
         self.gearsCtx.collect()
         self.gearsCtx.accumulate(lambda a, r: r + (a if a else 0))
         return self
 
     def countby(self, extractor=lambda x: x):
+        '''
+        Count, for each key, the number of recors contains this key.
+        extractor - a function that get as input the record and return the key by which to perform the counting
+        '''
         self.aggregateby(extractor, 0, lambda k, a, r: 1 + a, lambda k, a, r: r + a)
         return self
 
     def sort(self, reverse=True):
+        '''
+        Sorting the data
+        '''
         self.aggregate([], lambda a, r: a + [r], lambda a, r: a + r)
         self.map(lambda r: sorted(r, reverse=reverse))
         self.flatmap(lambda r: r)
         return self
 
     def distinct(self):
+        '''
+        Keep only the distinct values in the data
+        '''
         return self.aggregate(set(), lambda a, r: a | set([r]), lambda a, r: a | r).flatmap(lambda x: list(x))
 
     def avg(self, extractor=lambda x: float(x)):
+        '''
+        Calculating average on all the records
+        extractor - a function that gets the record and return the value by which to calculate the average
+        '''
         # we aggregate using a tupple, the first entry is the sum of all the elements,
         # the second element is the amount of elements.
         # After the aggregate phase we just devide the sum in the amount of elements and get the avg.
@@ -81,12 +118,20 @@ class GearsBuilder():
                                              lambda a, r: (a[0] + r, a[1] + 1),
                                              lambda a, r: (a[0] + r[0], a[1] + r[1])).map(lambda x: x[0] / x[1])
 
-    def run(self, prefix=None, converteToStr=True, collect=True):
+    def run(self, arg=None, converteToStr=True, collect=True):
+        '''
+        Starting the execution
+        '''
         if(converteToStr):
             self.gearsCtx.map(lambda x: str(x))
         if(collect):
             self.gearsCtx.collect()
-        self.gearsCtx.run(prefix if prefix else self.defautlPrefix)
+        arg = arg if arg else self.defaultArg
+        if(self.realReader == 'KeysOnlyReader'):
+            arg = CreatePythonReaderCallback(arg)
+        if(self.realReader == 'ShardsIDReader'):
+            arg = ShardReaderCallback
+        self.gearsCtx.run(arg)
 
 
 def createDecorator(f):
@@ -103,18 +148,5 @@ for k in PyFlatExecution.__dict__:
         continue
     GearsBuilder.__dict__[k] = createDecorator(PyFlatExecution.__dict__[k])
 
-ExecutionBuilder = GearsBuilder
+
 GB = GearsBuilder
-EB = GearsBuilder
-
-
-def KeysOnlyGearsReader():
-    return GB('PythonReader', PythonReaderCallback)
-
-
-def ShardsGearsReader():
-    return GB('PythonReader', ShardReaderCallback)
-
-
-KeysOnlyGB = KeysOnlyGearsReader
-ShardsGB = ShardsGearsReader
