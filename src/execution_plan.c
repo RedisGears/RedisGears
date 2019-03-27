@@ -587,7 +587,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
 
             LockHandler_Acquire(rctx);
             Cluster_SendMsgM(shardIdToSendRecord, ExecutionPlan_OnRepartitionRecordReceived, buff->buff, buff->size);
-            LockHandler_Realse(rctx);
+            LockHandler_Release(rctx);
 
             Gears_BufferClear(buff);
         }
@@ -598,7 +598,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
 
     LockHandler_Acquire(rctx);
     Cluster_SendMsgM(NULL, ExecutionPlan_DoneRepartition, buff->buff, buff->size);
-    LockHandler_Realse(rctx);
+    LockHandler_Release(rctx);
 
     Gears_BufferFree(buff);
     step->repartion.stoped = true;
@@ -649,7 +649,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 
 			LockHandler_Acquire(rctx);
 			Cluster_SendMsgM(ep->id, ExecutionPlan_CollectOnRecordReceived, buff->buff, buff->size);
-			LockHandler_Realse(rctx);
+			LockHandler_Release(rctx);
 
 			Gears_BufferClear(buff);
 		}
@@ -673,7 +673,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 
 		LockHandler_Acquire(rctx);
 		Cluster_SendMsgM(ep->id, ExecutionPlan_CollectDoneSendingRecords, buff->buff, buff->size);
-		LockHandler_Realse(rctx);
+		LockHandler_Release(rctx);
 		Gears_BufferFree(buff);
 		return NULL;
 	}
@@ -875,7 +875,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
 static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
     LockHandler_Acquire(rctx);
     ep->results = array_append(ep->results, record);
-    LockHandler_Realse(rctx);
+    LockHandler_Release(rctx);
 }
 
 static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
@@ -903,7 +903,7 @@ static void ExecutionPlan_DoExecutionDoneActions(ExecutionPlan* ep, RedisModuleC
     if(freeC){
         freeC(pd);
     }
-    LockHandler_Realse(rctx);
+    LockHandler_Release(rctx);
 }
 
 static void ExecutionPlan_Main(ExecutionPlan* ep){
@@ -954,7 +954,7 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 	    if(Cluster_IsClusterMode()){
 	        LockHandler_Acquire(rctx);
             Cluster_SendMsgM(NULL, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
-            LockHandler_Realse(rctx);
+            LockHandler_Release(rctx);
             if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
                 ExecutionPlan_DoExecutionDoneActions(ep, rctx);
             }else{
