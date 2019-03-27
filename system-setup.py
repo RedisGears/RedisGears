@@ -11,7 +11,7 @@ distver = dist[1]
 def install(cmd):
     rc = os.system(cmd)
     if rc > 0:
-        print("failed to install " + packs, file=sys.stderr)
+        print("failed to install " + cmd, file=sys.stderr)
         sys.exit(1)
 
 def apt_install(packs):
@@ -47,13 +47,15 @@ if platform.system() == 'Linux':
         dnf_install("autoconf automake libtool")
         dnf_install("zlib-devel openssl-devel readline-devel")
         dnf_install("python3-pip")
+        install("pip3 install pipenv")
 
-    if distname == 'ubuntu':
+    if distname == 'ubuntu' or distname == 'debian':
         apt_install("build-essential autotools-dev autoconf libtool")
         apt_install("zlib1g-dev libssl-dev libreadline-dev")
         apt_install("lsb-release")
         yum_install("zip unzip")
         apt_install("python3-pip")
+        install("pip3 install pipenv")
 
     if distname == 'centos linux':
         yum_install("'Development Tools'", group=True)
@@ -64,8 +66,8 @@ if platform.system() == 'Linux':
         yum_install("zip unzip")
         yum_install("python36-pip");
         install("pip3.6 install --upgrade pip");
+        install("pip install pipenv")
 
 if platform.system() == 'Darwin':
     pass
 
-install("pip3 install pipenv")
