@@ -166,13 +166,7 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
 
         assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
 
-        if (RedisModule_CallReplyLength(reply) < 1) {
-            RedisModule_FreeCallReply(reply);
-            LockHandler_Realse(rctx);
-            return NULL;
-        }
-
-        assert(RedisModule_CallReplyLength(reply) <= 2);
+        assert(RedisModule_CallReplyLength(reply) == 2);
 
         RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
 
