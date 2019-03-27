@@ -7,11 +7,11 @@ defaults:
         name: Submodule checkout
         command: git submodule update --init --recursive
     - run:
-        name: Install_Deps
-        command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd;apt-get install -y zip unzip; apt-get install -y python3-pip; pip3 install pipenv
+        name: System_setup
+        command: ./system-setup.py
     - run:
         name: Build
-        command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=ubuntu
+        command: make get_deps; make ramp_pack WITHPYTHON=1 OS_VERSION=ubuntu
     - run:
         name: Test
         command: cd ./pytest; ./run_tests.sh
@@ -43,14 +43,14 @@ jobs:
     steps:
       - run:
           name: Redis_5_upgrade
-          command: cd ../redis;git fetch;git checkout 5.0.1;make;make install
+          command: cd ../redis; git fetch; git checkout 5.0.1; make; make install
       - checkout
       - run:
           name: Submodule checkout
           command: git submodule update --init --recursive
       - run:
-          name: Install_Deps
-          command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core;yum install -y vim-common; yum install -y python3-pip; pip3 install pipenv
+          name: System_setup
+          command: yum install -y python36; python36 system-setup.py
       - run:
           name: Build
           command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=redhat
