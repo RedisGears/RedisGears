@@ -503,7 +503,25 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
     return dims;
 }
 
+static bool verifyOrLoadRedisAI(){
+    if(!globals.redisAILoaded){
+        if(RedisAI_Initialize() != REDISMODULE_OK){
+            PyErr_SetString(GearsError, "RedisAI is not loaded, it is not possible to use AI interface.");
+            return false;
+        }
+        globals.redisAILoaded = true;
+    }
+    return true;
+}
+
+#define verifyRedisAILoaded() \
+    if(!verifyOrLoadRedisAI()){ \
+        PyErr_SetString(GearsError, "RedisAI is not loaded, it is not possible to use AI interface."); \
+        return NULL;\
+    }
+
 static PyObject* tensorGetDims(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
     int numDims = RedisAI_TensorNumDims(pyt->t);
     PyObject *tuple = PyTuple_New(numDims);
@@ -516,6 +534,7 @@ static PyObject* tensorGetDims(PyObject *cls, PyObject *args){
 }
 
 static PyObject* tensorGetDataAsBlob(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
     size_t size = RedisAI_TensorByteSize(pyt->t);
     char* data = RedisAI_TensorData(pyt->t);
@@ -523,6 +542,7 @@ static PyObject* tensorGetDataAsBlob(PyObject *cls, PyObject *args){
 }
 
 static PyObject* tensorToFlatList(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
     return PyTensor_ToFlatList(pyt);
 }
@@ -583,7 +603,7 @@ static void getAllValues(PyObject *list, double** values){
 }
 
 static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
-    assert(globals.redisAILoaded);
+    verifyRedisAILoaded();
     PyObject* typeName = PyTuple_GetItem(args, 0);
     char* typeNameStr = PyString_AsString(typeName);
     PyObject* pyDims = PyTuple_GetItem(args, 1);
@@ -604,7 +624,7 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
 }
 
 static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
-    assert(globals.redisAILoaded);
+    verifyRedisAILoaded();
     PyObject* typeName = PyTuple_GetItem(args, 0);
     char* typeNameStr = PyString_AsString(typeName);
     PyObject* pyDims = PyTuple_GetItem(args, 1);
@@ -663,7 +683,7 @@ static PyTypeObject PyGraphRunnerType = {
 };
 
 static PyObject* createModelRunner(PyObject *cls, PyObject *args){
-    assert(globals.redisAILoaded);
+    verifyRedisAILoaded();
     PyObject* keyName = PyTuple_GetItem(args, 0);
     char* keyNameStr = PyString_AsString(keyName);
 
@@ -691,6 +711,7 @@ static PyObject* createModelRunner(PyObject *cls, PyObject *args){
 }
 
 static PyObject* modelRunnerAddInput(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     PyObject* inputName = PyTuple_GetItem(args, 1);
     char* inputNameStr = PyString_AsString(inputName);
@@ -700,6 +721,7 @@ static PyObject* modelRunnerAddInput(PyObject *cls, PyObject *args){
 }
 
 static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     PyObject* outputName = PyTuple_GetItem(args, 1);
     char* outputNameStr = PyString_AsString(outputName);
@@ -708,6 +730,7 @@ static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
 }
 
 static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     // TODO: deal with errors better
     RAI_Error err = {0};
@@ -761,6 +784,7 @@ static PyTypeObject PyTorchScriptRunnerType = {
 };
 
 static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     assert(globals.redisAILoaded);
     PyObject* keyName = PyTuple_GetItem(args, 0);
     char* keyNameStr = PyString_AsString(keyName);
@@ -793,6 +817,7 @@ static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
 }
 
 static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
     PyObject* inputName = PyTuple_GetItem(args, 1);
     char* inputNameStr = PyString_AsString(inputName);
@@ -802,6 +827,7 @@ static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
 }
 
 static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
     PyObject* outputName = PyTuple_GetItem(args, 1);
     char* outputNameStr = PyString_AsString(outputName);
@@ -810,6 +836,7 @@ static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
 }
 
 static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
     // TODO: deal with errors better
     RAI_Error err = {0};
