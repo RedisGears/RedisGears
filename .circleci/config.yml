@@ -8,7 +8,7 @@ defaults:
         command: git submodule update --init --recursive
     - run:
         name: System_setup
-        command: ./system-setup.py
+        command: apt install python3.5; ln -sf /usr/bin/python3.5 /usr/bin/python3; ./system-setup.py
     - run:
         name: Build
         command: make get_deps; make ramp_pack WITHPYTHON=1 OS_VERSION=ubuntu
