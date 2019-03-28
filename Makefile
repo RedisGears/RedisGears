@@ -81,16 +81,18 @@ python:
 	make
 
 python_clean:
-	cd src/deps/cpython;make clean
+	make -C src/deps/cpython clean
 
-pyenv:
-	make -C src/deps/cpython install > $(PWD)/python-install.log
+pyenv: $(CPYTHON_PREFIX)
+
+$(CPYTHON_PREFIX):
+	make -C src/deps/cpython install 2>&1 >$(PWD)/python-install.log
 	cp pyenv/Pipfile* $(CPYTHON_PREFIX)
 	cd $(CPYTHON_PREFIX); \
 	export PIPENV_VENV_IN_PROJECT=1; \
 	export LC_ALL=C.UTF-8; \
     export LANG=C.UTF-8; \
-	pipenv install
+	pipenv install --python $(CPYTHON_PREFIX)/bin/python
 	cp $(CPYTHON_PREFIX)/Pipfile.lock pyenv/
 
 redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
@@ -111,16 +113,23 @@ get_deps: python
 	rm -rf libs
 	mkdir deps
 	mkdir libs
-	cd deps;git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git;cd ./libevent/;$(LIBTOOLIZE);aclocal;autoheader;autoconf;automake --add-missing;CFLAGS=-fPIC ./configure;make;
-	cp ./deps/libevent/.libs/libevent.a ./libs/
+	cd deps; \
+		git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git; \
+		cd libevent; \
+		$(LIBTOOLIZE); \
+		aclocal; \
+		autoheader; \
+		autoconf; \
+		automake --add-missing; \
+		CFLAGS=-fPIC ./configure; \
+		make
+	cp deps/libevent/.libs/libevent.a libs/
 	rm -rf deps
 
-ramp_pack: all pyenv
-	mkdir -p artifacts
-	mkdir -p artifacts/snapshot
-	mkdir -p artifacts/release
+ramp_pack: all $(CPYTHON_PREFIX)
+	mkdir -p artifacts/snapshot artifacts/release
 	$(eval SNAPSHOT=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS_VERSION)-{architecture}.$(CIRCLE_BRANCH).zip | tail -1))
 	$(eval DEPLOY=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS_VERSION)-{architecture}.{semantic_version}.zip | tail -1))
-	mv ./$(SNAPSHOT) artifacts/snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
-	mv ./$(DEPLOY) artifacts/release/$(PACKAGE_NAME).$(DEPLOY)
-	zip -rq -y artifacts/release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) $(CPYTHON_PREFIX)/
+	mv $(SNAPSHOT) artifacts/snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
+	mv $(DEPLOY) artifacts/release/$(PACKAGE_NAME).$(DEPLOY)
+	tar pczf artifacts/release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) $(CPYTHON_PREFIX)/

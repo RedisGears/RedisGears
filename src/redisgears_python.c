@@ -1613,7 +1613,8 @@ static Reader* PythonReader(void* arg){
 }
 
 #define PYENV_DIR "/opt/redislabs/lib/modules/python27"
-#define PYENV_ACTIVATE PYENV_DIR "/.venv/bin/activate_this.py"
+#define PYENV_HOME_DIR PYENV_DIR "/.venv/bin"
+#define PYENV_ACTIVATE PYENV_HOME_DIR "/activate_this.py"
 
 bool PyEnvExist() {
     DIR* dir = opendir(PYENV_DIR);
@@ -1624,8 +1625,9 @@ bool PyEnvExist() {
     return false;
 }
 
-int RedisGears_SetupPyEnv() {
+int RedisGears_SetupPyEnv(RedisModuleCtx *ctx) {
     if (!PyEnvExist()) return 0;
+    RedisModule_Log(ctx, "notice", "Initializing Python environment with: " "exec(open('" PYENV_ACTIVATE "').read(), {'__file__': '" PYENV_ACTIVATE "'})");
     PyRun_SimpleString("exec(open('" PYENV_ACTIVATE "').read(), {'__file__': '" PYENV_ACTIVATE "'})");
     return 0;
 }
@@ -1635,12 +1637,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
 	char* arg = "Embeded";
-    if (!PyEnvExist()) {
-        char* progName = (char*)GearsCOnfig_GetPythonHomeDir();
-        Py_SetProgramName(progName);
-    }
+    char* progName = (char*)GearsCOnfig_GetPythonHomeDir();
+    if (PyEnvExist()) progName = PYENV_HOME_DIR;
+    Py_SetProgramName(progName);
     Py_Initialize();
-    RedisGears_SetupPyEnv();
+    RedisGears_SetupPyEnv(ctx);
     PyEval_InitThreads();
     PySys_SetArgv(1, &arg);
     PyTensorType.tp_new = PyType_GenericNew;

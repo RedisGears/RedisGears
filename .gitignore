@@ -65,3 +65,4 @@ commit.txt
 src/GearsBuilder.auto.h
 src/cloudpickle.auto.h
 *.zip
+*.tgz
