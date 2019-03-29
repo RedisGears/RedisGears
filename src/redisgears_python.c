@@ -309,6 +309,7 @@ static PyObject* run(PyObject *self, PyObject *args){
         RedisGears_RegisterExecutionDoneCallback(ep, onDone);
         RedisGears_SetPrivateData(ep, bc, NULL);
     }
+    Py_INCREF(Py_None);
     return Py_None;
 }
 
@@ -322,6 +323,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
     int status = RSM_Register(pfep->fep, RG_STRDUP(regexStr));
     executionTriggered = true;
     if(!currentCtx){
+        Py_INCREF(Py_None);
         return Py_None;
     }
     if(status){
@@ -329,6 +331,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
     }else{
         RedisModule_ReplyWithError(currentCtx, "Registration Failed");
     }
+    Py_INCREF(Py_None);
     return Py_None;
 }
 
@@ -738,6 +741,7 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     RedisAI_ModelRun(pyg->g, &err);
     if (err.code) {
         printf("ERROR: %s\n", err.detail);
+        Py_INCREF(Py_None);
         return Py_None;
     }
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
@@ -844,6 +848,7 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     RedisAI_ScriptRun(pys->s, &err);
     if (err.code) {
         printf("ERROR: %s\n", err.detail);
+        Py_INCREF(Py_None);
         return Py_None;
     }
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
