@@ -413,6 +413,7 @@ static PyObject* saveGlobals(PyObject *cls, PyObject *args){
 
 static PyObject* replyToPyList(RedisModuleCallReply *reply){
     if(!reply){
+        Py_INCREF(Py_None);
         return Py_None;
     }
     if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY){
@@ -437,7 +438,7 @@ static PyObject* replyToPyList(RedisModuleCallReply *reply){
         long long val = RedisModule_CallReplyInteger(reply);
         return PyLong_FromLongLong(val);
     }
-
+    Py_INCREF(Py_None);
     return Py_None;
 }
 
