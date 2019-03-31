@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 
 defaults:
   ci_steps: &ci_steps
@@ -8,25 +8,26 @@ defaults:
         command: git submodule update --init --recursive
     - run:
         name: System_setup
-        command: apt install python3.5; ln -sf /usr/bin/python3.5 /usr/bin/python3; ./system-setup.py
+        command: python system-setup.py
     - run:
         name: Build
-        command: make get_deps; make ramp_pack WITHPYTHON=1 OS_VERSION=ubuntu
+        command: make get_deps; make ramp_pack OS_VERSION=<<platform>>
     - run:
         name: Test
-        command: cd ./pytest; ./run_tests.sh
+        command: cd pytest; ./run_tests.sh
     - persist_to_workspace:
-        root: ./artifacts
+        root: artifacts
         paths:
           - 'snapshot/*.zip'
           - 'release/*.zip'
 
   default_jobs: &default_jobs
     - centos
-    - ubuntu
+    - debian
 
 jobs:
-  ubuntu:
+  debian:
+    platform: debian
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     environment:
@@ -35,44 +36,45 @@ jobs:
     steps: *ci_steps
   
   centos:
+    platform: redhat
     docker:
       - image: 'redislabsmodules/rmbuildercentos:latest'
     environment:
       - BUILD_DIR: build-el
 
-    steps:
-      - run:
-          name: Redis_5_upgrade
-          command: cd ../redis; git fetch; git checkout 5.0.1; make; make install
-      - checkout
-      - run:
-          name: Submodule checkout
-          command: git submodule update --init --recursive
-      - run:
-          name: System_setup
-          command: yum install -y python36; python36 system-setup.py
-      - run:
-          name: Build
-          command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=redhat
-      - run:
-          name: Test
-          command: cd ./pytest; ./run_tests.sh
-      - persist_to_workspace:
-          root: ./artifacts
-          paths:
-            - 'snapshot/*.zip'
-            - 'release/*.zip'
+    steps: *ci_steps
+#      - run:
+#          name: Redis_5_upgrade
+#          command: cd ../redis; git fetch; git checkout 5.0.1; make; make install
+#      - checkout
+#      - run:
+#          name: Submodule checkout
+#          command: git submodule update --init --recursive
+#      - run:
+#          name: System_setup
+#          command: python system-setup.py
+#      - run:
+#          name: Build
+#          command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=redhat
+#      - run:
+#          name: Test
+#          command: cd pytest; ./run_tests.sh
+#      - persist_to_workspace:
+#          root: artifacts
+#          paths:
+#            - 'snapshot/*.zip'
+#            - 'release/*.zip'
 
   deploy_snapshots:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     steps:
       - attach_workspace:
-          at: ./artifacts
+          at: artifacts
       - run:
           name: Deploy Snapshots to S3
           command: >-
-            for f in ./artifacts/snapshot/*.zip; do
+            for f in artifacts/snapshot/*.zip artifacts/snapshot/*.tgz; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read;
             done
 
@@ -81,11 +83,11 @@ jobs:
       - image: 'redislabsmodules/rmbuilder:latest'
     steps:
       - attach_workspace:
-          at: ./artifacts
+          at: artifacts
       - run:
           name: Deploy Snapshots to S3
           command: >-
-            for f in ./artifacts/release/*.zip; do
+            for f in artifacts/release/*.zip artifacts/release/*.tgz; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read;
             done
 
@@ -109,7 +111,7 @@ workflows:
 
   default_flow:
     jobs:
-      - ubuntu:
+      - debian:
           filters:
             branches:
               only: /.*/
