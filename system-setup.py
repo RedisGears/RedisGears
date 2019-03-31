@@ -3,11 +3,10 @@
 import os
 import sys
 import platform
-import paella
 
+# suppress Python 2 deprecation warnings
 os.environ["PYTHONWARNINGS"] = "ignore"
 
-bb()
 dist = platform.linux_distribution()
 distname = dist[0].lower()
 distver = dist[1]
@@ -79,29 +78,29 @@ def pip3_install(cmd):
     run("pip3 install " + cmd)
 
 def install_pip():
+    get_pip = "set -e; cd /tmp; curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py"
     if not has_command("pip"):
         install("curl")
-        get_pip = "set -e; cd /tmp; curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py"
         run(get_pip + "; python2 get-pip.py")
-    if not has_command("pip3") and has_command("python3"):
-        run(get_pip + "; python3 get-pip.py")
+    ## fails on ubuntu 18:
+    # if not has_command("pip3") and has_command("python3"):
+    #     run(get_pip + "; python3 get-pip.py")
 
 #----------------------------------------------------------------------------------------------
 
-install_pip()
 pip_install("wheel")
 pip_install("setuptools --upgrade")
+install_pip()
 
 #----------------------------------------------------------------------------------------------
 
-bb()
 if platform.system() == 'Linux':
     if distname == 'fedora':
         dnf_install("'Development Tools'", group=True)
         dnf_install("autoconf automake libtool")
         dnf_install("zlib-devel openssl-devel readline-devel")
         # dnf_install("python3-pip")
-        run("pip3 install pipenv")
+        run("pip install pipenv")
 
     elif distname == 'ubuntu' or distname == 'debian':
         run("apt-get update -y")
@@ -111,7 +110,7 @@ if platform.system() == 'Linux':
         apt_install("zip unzip")
         # apt_install("python3-pip")
         bb()
-        pip3_install("pipenv")
+        pip_install("pipenv")
 
     elif distname == 'centos linux':
         yum_install("'Development Tools'", group=True)
@@ -128,10 +127,10 @@ if platform.system() == 'Linux':
 elif platform.system() == 'Darwin':
     pass
 
-bb()
+#----------------------------------------------------------------------------------------------
+
 if not has_command("ramp"):
     pip_install("git+https://github.com/RedisLabs/RAMP --upgrade")
 if not has_command("RLTest"):
     pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
 pip_install("redis-py-cluster")
-
