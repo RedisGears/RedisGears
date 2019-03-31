@@ -1,25 +1,28 @@
 version: 2.1
 
 defaults:
+  platform: undefined
+
   ci_steps: &ci_steps
-    - checkout
-    - run:
-        name: Submodule checkout
-        command: git submodule update --init --recursive
-    - run:
-        name: System_setup
-        command: python system-setup.py
-    - run:
-        name: Build
-        command: make get_deps; make ramp_pack OS_VERSION=<<platform>>
-    - run:
-        name: Test
-        command: cd pytest; ./run_tests.sh
-    - persist_to_workspace:
-        root: artifacts
-        paths:
-          - 'snapshot/*.zip'
-          - 'release/*.zip'
+    steps: 
+      - checkout
+      - run:
+          name: Submodule checkout
+          command: git submodule update --init --recursive
+      - run:
+          name: System_setup
+          command: python system-setup.py
+      - run:
+          name: Build
+          command: make get_deps; make ramp_pack OS_VERSION=<<platform>>
+      - run:
+          name: Test
+          command: cd pytest; ./run_tests.sh
+      - persist_to_workspace:
+          root: artifacts
+          paths:
+            - 'snapshot/*.zip'
+            - 'release/*.zip'
 
   default_jobs: &default_jobs
     - centos
@@ -33,7 +36,7 @@ jobs:
     environment:
       - BUILD_DIR: build-debian
 
-    steps: *ci_steps
+    <<: *ci_steps
   
   centos:
     platform: redhat
@@ -42,7 +45,9 @@ jobs:
     environment:
       - BUILD_DIR: build-el
 
-    steps: *ci_steps
+    <<: *ci_steps
+
+#    steps: *ci_steps
 #      - run:
 #          name: Redis_5_upgrade
 #          command: cd ../redis; git fetch; git checkout 5.0.1; make; make install
