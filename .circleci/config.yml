@@ -1,7 +1,8 @@
 version: 2.1
 
 defaults:
-  platform: undefined
+  parameters:
+    platform: undefined
 
   ci_steps: &ci_steps
     steps: 
@@ -14,7 +15,7 @@ defaults:
           command: python system-setup.py
       - run:
           name: Build
-          command: make get_deps; make ramp_pack OS_VERSION=debian
+          command: make get_deps; make ramp_pack OS_VERSION=<<parameters.platform>>
       - run:
           name: Test
           command: cd pytest; ./run_tests.sh
@@ -30,7 +31,8 @@ defaults:
 
 jobs:
   debian:
-    platform: debian
+    parameters:
+      platform: debian
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     environment:
@@ -39,7 +41,8 @@ jobs:
     <<: *ci_steps
   
   centos:
-    platform: redhat
+    parameters:
+      platform: redhat
     docker:
       - image: 'redislabsmodules/rmbuildercentos:latest'
     environment:
