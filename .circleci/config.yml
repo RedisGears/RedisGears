@@ -14,7 +14,7 @@ defaults:
           command: python system-setup.py
       - run:
           name: Build
-          command: make get_deps; make ramp_pack OS_VERSION=<<platform>>
+          command: make get_deps; make ramp_pack OS_VERSION=debian
       - run:
           name: Test
           command: cd pytest; ./run_tests.sh
