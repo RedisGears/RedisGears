@@ -1,10 +1,15 @@
 version: 2.1
 
 defaults:
-  parameters:
-    platform: undefined
+  default_jobs: &default_jobs
+    - centos
+    - debian
 
-  ci_steps: &ci_steps
+commands:
+  ci_steps:
+    parameters:
+      platform:
+        type: string
     steps: 
       - checkout
       - run:
@@ -25,30 +30,25 @@ defaults:
             - 'snapshot/*.zip'
             - 'release/*.zip'
 
-  default_jobs: &default_jobs
-    - centos
-    - debian
-
 jobs:
   debian:
-    parameters:
-      platform: debian
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     environment:
       - BUILD_DIR: build-debian
-
-    <<: *ci_steps
+    steps:
+      - ci_steps:
+        platform: debian
+      
   
   centos:
-    parameters:
-      platform: redhat
     docker:
       - image: 'redislabsmodules/rmbuildercentos:latest'
     environment:
       - BUILD_DIR: build-el
-
-    <<: *ci_steps
+    steps:
+      - ci_steps:
+        platform: redhat
 
 #    steps: *ci_steps
 #      - run:
