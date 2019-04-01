@@ -2,8 +2,8 @@ version: 2.1
 
 defaults:
   default_jobs: &default_jobs
-    - build_centos
-    - build_debian
+    - centos
+    - ubuntu
 
 commands:
   ci_steps:
@@ -31,7 +31,7 @@ commands:
             - 'release/*.zip'
 
 jobs:
-  build_debian:
+  ubuntu:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     environment:
@@ -40,7 +40,7 @@ jobs:
       - ci_steps:
           platform: debian
   
-  build_centos:
+  centos:
     docker:
       - image: 'redislabsmodules/rmbuildercentos:latest'
     environment:
@@ -81,13 +81,13 @@ workflows:
 
   default_flow:
     jobs:
-      - build_debian:
+      - ubuntu:
           filters:
             branches:
               only: /.*/
             tags:
               only: /.*/
-      - build_centos:
+      - centos:
           filters:
             branches:
               only: /.*/

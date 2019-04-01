@@ -11,6 +11,8 @@ dist = platform.linux_distribution()
 distname = dist[0].lower()
 distver = dist[1]
 
+print("This system is " + distname + " " + distver + "\n")
+
 #----------------------------------------------------------------------------------------------
 
 def eprint(*args, **kwargs):
@@ -99,6 +101,7 @@ if platform.system() == 'Linux':
         dnf_install("'Development Tools'", group=True)
         dnf_install("autoconf automake libtool")
         dnf_install("zlib-devel openssl-devel readline-devel")
+        yum_install("vim-common") # for xxd
         # dnf_install("python3-pip")
         run("pip install pipenv")
 
@@ -106,6 +109,7 @@ if platform.system() == 'Linux':
         run("apt-get update -y")
         apt_install("build-essential autotools-dev autoconf libtool")
         apt_install("zlib1g-dev libssl-dev libreadline-dev")
+        apt_install("xxd")
         apt_install("lsb-release")
         apt_install("zip unzip")
         # apt_install("python3-pip")
