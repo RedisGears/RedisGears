@@ -109,7 +109,6 @@ if platform.system() == 'Linux':
         apt_install("lsb-release")
         apt_install("zip unzip")
         # apt_install("python3-pip")
-        bb()
         pip_install("pipenv")
 
     elif distname == 'centos linux':
