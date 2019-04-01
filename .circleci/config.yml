@@ -38,7 +38,7 @@ jobs:
       - BUILD_DIR: build-debian
     steps:
       - ci_steps:
-        platform: debian
+          platform: debian
   
   build_centos:
     docker:
@@ -47,7 +47,7 @@ jobs:
       - BUILD_DIR: build-el
     steps:
       - ci_steps:
-        platform: redhat
+          platform: redhat
 
   deploy_snapshots:
     docker:
