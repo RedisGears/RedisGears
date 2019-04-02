@@ -1,4 +1,4 @@
-<center>![logo.png](./images/RedisGears.png)</center>
+<img src="images/RedisGears.png" alt="logo" width="200"/>
 
 # RedisGears - Dynamic execution for Redis data
 
