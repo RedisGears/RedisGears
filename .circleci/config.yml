@@ -89,6 +89,20 @@ jobs:
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read;
             done
 
+  deploy_docs:
+    docker:
+      - image: 'redislabsmodules/rmbuilder:latest'
+    steps:
+      - checkout
+      - run:
+          name: Build Docs
+          command: mkdocs build
+      - run:
+          name: Deploy Docs to S3
+          command: >-
+            aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl
+            public-read --recursive
+
 
 workflows:
   version: 2
@@ -121,3 +135,8 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v[0-9].*/
+
+      - deploy_docs:
+          filters:
+            branches:
+              only: master
