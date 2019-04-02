@@ -1,8 +1,8 @@
 <img src="images/RedisGears.png" alt="logo" width="200"/>
 
-# RedisGears - Dynamic execution for Redis data
+# RedisGears
 
-simply:
+A Dynamic Execution Framework for Redis, simply:
 ```
 GearsBuilder().filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run('*')
 ```
