@@ -23,7 +23,7 @@ def eprint(*args, **kwargs):
 def run(cmd):
     rc = os.system(cmd)
     if rc > 0:
-        eprint("failed to install " + cmd)
+        eprint("command failed: " + cmd)
         sys.exit(1)
 
 def has_command(cmd):
@@ -32,7 +32,7 @@ def has_command(cmd):
 #----------------------------------------------------------------------------------------------
 
 def apt_install(packs):
-    run("apt install -q -y " + packs)
+    run("apt-get install -q -y " + packs)
 
 def yum_install(packs, group=False):
     if not group:
@@ -58,7 +58,7 @@ def install(packs):
             dnf_install(packs)
         elif distname == 'ubuntu' or distname == 'debian':
             apt_install(packs)
-        elif distname == 'centos linux':
+        elif distname == 'centos linux' or distname == 'redhat enterprise linux server':
             yum_install(packs)
         elif distname == 'suse linux':
             zypper_install(packs)
@@ -90,9 +90,9 @@ def install_pip():
 
 #----------------------------------------------------------------------------------------------
 
+install_pip()
 pip_install("wheel")
 pip_install("setuptools --upgrade")
-install_pip()
 
 #----------------------------------------------------------------------------------------------
 
@@ -113,22 +113,30 @@ if platform.system() == 'Linux':
         apt_install("lsb-release")
         apt_install("zip unzip")
         # apt_install("python3-pip")
+        apt_install("python-psutil")
         pip_install("pipenv")
 
-    elif distname == 'centos linux':
+    elif distname == 'centos linux' or distname == 'redhat enterprise linux server':
         yum_install("'Development Tools'", group=True)
         yum_install("autoconf automake libtool")
         yum_install("zlib-devel openssl-devel readline-devel")
         yum_install("redhat-lsb-core")
         yum_install("vim-common") # for xxd
         yum_install("zip unzip")
-        yum_install("python2-psutil") # otherwise subsequent python package installations fail
-        # yum_install("python36-pip");
-        # install("pip3.6 install --upgrade pip");
+
+        # uninstall and install psutil (order is important), otherwise RLTest fails
+        run("pip uninstall -y psutil")
+        yum_install("python2-psutil")
+
+        # yum_install("python36-pip")
+        # install("pip3.6 install --upgrade pip")
         pip_install("pipenv")
 
 elif platform.system() == 'Darwin':
-    pass
+    mac_ver = platform.mac_var()
+    os_full_ver = mac_ver[0] # e.g. 10.14, but also 10.5.8
+    os_ver = '.'.join(os_full_ver.split('.')[:2]) # major.minor
+    arch = mac_ver[2] # e.g. x64_64
 
 #----------------------------------------------------------------------------------------------
 

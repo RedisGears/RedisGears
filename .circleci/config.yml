@@ -16,7 +16,7 @@ commands:
           name: Submodule checkout
           command: git submodule update --init --recursive
       - run:
-          name: System_setup
+          name: System setup
           command: python system-setup.py
       - run:
           name: Build
@@ -46,6 +46,9 @@ jobs:
     environment:
       - BUILD_DIR: build-el
     steps:
+      - run:
+          name: Redis_5_upgrade
+          command: cd ../redis; git fetch; git checkout 5.0.1; make; make install
       - ci_steps:
           platform: redhat
 
