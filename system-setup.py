@@ -123,6 +123,7 @@ if platform.system() == 'Linux':
         yum_install("redhat-lsb-core")
         yum_install("vim-common") # for xxd
         yum_install("zip unzip")
+        yum_install("which") # required by pipenv
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         run("pip uninstall -y psutil")
