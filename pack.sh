@@ -5,16 +5,15 @@ pack() {
 	local branch="$2"
 
 	local packfile=$PACKAGE_NAME.{os}-$OS_VERSION-{architecture}.$branch.zip
-	local log=pack/$artifact.log
 
 	local packer=$(mktemp --tmpdir pack.XXXXXXX)
 	cat <<- EOF > $packer
 		cd $ROOT
-		ramp pack $GEARS -m ramp.yml -o $packfile 2> $log | tail -1
+		ramp pack $GEARS -m ramp.yml -o $packfile | tail -1
 	EOF
 
 	cd $CPYTHON_PREFIX
-	packname=`pipenv run bash $packer 2>> $artifact.log`
+	packname=`pipenv run bash $packer`
 	cd $ROOT
 	[[ -f $packer ]] && rm -f $packer
 	if [[ -z $packname ]]; then
@@ -25,7 +24,6 @@ pack() {
 	mv $packname artifacts/$artifact/
 	packname="artifacts/$artifact/$packname"
 	echo Created $packname
-	rm -f $log
 }
 
 set -e
@@ -37,7 +35,7 @@ fi
 
 export ROOT=`git rev-parse --show-toplevel`
 CPYTHON_PREFIX=${CPYTHON_PREFIX:-/opt/redislabs/lib/modules/python27}
-GEARS=redisgears.so
+GEARS=$(realpath redisgears.so)
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
