@@ -632,18 +632,22 @@ static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     PyObject* typeName = PyTuple_GetItem(args, 0);
     char* typeNameStr = PyString_AsString(typeName);
     PyObject* pyDims = PyTuple_GetItem(args, 1);
-    long long* dims = array_new(long long, 10);
-    double* values = array_new(long long, 1000);
-    size_t ndims = getDimsRecursive(pyDims, &dims);
+    size_t ndims = PyList_Size(pyDims);
+    long long* dims = array_new(long long, ndims);
+    for(long long i = 0; i < ndims; i++) {
+        dims = array_append(dims, PyInt_AsLong(PyList_GetItem(pyDims, i)));
+    }
+
     RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, ndims);
-    getAllValues(pyDims, &values);
-    for(long long i = 0 ; i < array_len(values) ; ++i){
-        RedisAI_TensorSetValueFromDouble(t, i, values[i]);
+
+    PyObject* values = PyTuple_GetItem(args, 2);
+    for(long long i = 0 ; i < PyList_Size(values) ; ++i){
+        PyObject* val = PyList_GetItem(values, i);
+        RedisAI_TensorSetValueFromDouble(t, i, PyFloat_AsDouble(val));
     }
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
     array_free(dims);
-    array_free(values);
     return (PyObject*)pyt;
 }
 
@@ -744,9 +748,14 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
         Py_INCREF(Py_None);
         return Py_None;
     }
-    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-    pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(pyg->g, 0));
-    return (PyObject*)pyt;
+    PyObject* tensorList = PyList_New(0);
+    for(size_t i = 0 ; i < RedisAI_ModelRunCtxNumOutputs(pyg->g) ; ++i){
+        PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(pyg->g, i));
+        PyList_Append(tensorList, (PyObject*)pyt);
+        Py_DECREF(pyt);
+    }
+    return tensorList;
 }
 
 typedef struct PyTorchScriptRunner{
