@@ -1,4 +1,4 @@
-FROM redis:5.0.3 AS builder
+FROM redis:latest AS builder
 ENV BUILD_DEPS "build-essential autotools-dev autoconf automake libtool python git ca-certificates xxd zlib1g zlib1g-dev libreadline-dev libbz2-dev"
 
 # Set up a build environment
