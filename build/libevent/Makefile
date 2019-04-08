@@ -22,8 +22,8 @@ endif
 ifneq ($(VARIANT),)
 override VARIANT:=-$(VARIANT)
 endif
-_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(VARIANT)
-BINROOT=$(ROOT)/bin/$(_VARIANT)
+FULL_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(VARIANT)
+BINROOT=$(ROOT)/bin/$(FULL_VARIANT)
 
 define __SEP
 import os; rows, cols = os.popen('stty size', 'r').read().split(); print(\"\n\" + '-' * (int(cols) - 1) + \"\n\")
@@ -69,7 +69,7 @@ ifeq (,$(wildcard $(BINDIR)/Makefile))
 endif
 	@make -C $(BINDIR)
 
-clean:
+clean: __sep
 ifeq ($(ALL),1) 
 	$(SHOW)rm -rf $(BINDIR)
 else
