@@ -56,8 +56,8 @@ export CFLAGS=-fPIC
 
 all: bindirs build
 
-__sep:
-	@python -c "$(__SEP)"
+__sep: ;
+#	@python -c "$(__SEP)"
 
 bindirs: $(BIN_DIRS)
 
@@ -67,7 +67,7 @@ build: __sep bindirs
 ifeq (,$(wildcard $(BINDIR)/Makefile))
 	$(SHOW)cd $(BINDIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
-	@make -C $(BINDIR)
+	@make -C $(BINDIR) -j
 
 clean: __sep
 ifeq ($(ALL),1) 

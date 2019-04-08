@@ -146,8 +146,8 @@ build: bindirs $(TARGET)
 
 all: __sep bindirs deps build pack
 
-__sep:
-	@python -c "$(__SEP)"
+__sep: ;
+#	@python -c "$(__SEP)"
 
 #----------------------------------------------------------------------------------------------
 
@@ -204,7 +204,7 @@ cpython: $(LIBPYTHON)
 
 $(LIBPYTHON):
 	@echo Building cpython...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT) -j8
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT)
 #PYTHON_ENCODING=$(PYTHON_ENCODING)
 
 pyenv:
@@ -218,7 +218,7 @@ libevent: $(LIBEVENT)
 
 $(LIBEVENT):
 	@echo Building libevent...
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT) -j8
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT)
 
 #----------------------------------------------------------------------------------------------
 
