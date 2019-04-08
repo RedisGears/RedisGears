@@ -28,13 +28,28 @@ else
 FLAVOR=release
 endif
 
-ifneq ($(VARIANT),)
-override VARIANT:=-$(VARIANT)
+GIT_SHA := $(shell git rev-parse HEAD)
+
+__VARIANT__=$(shell if [ -f VARIANT ]; then cat VARIANT; fi)
+
+ifeq ($(origin VARIANT),undefined)
+ifneq ($(__VARIANT__),)
+VARIANT:=$(__VARIANT__)
 endif
-_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(VARIANT)
+endif
+
+ifeq ($(VARIANT),)
+__VARIANT:=
+else
+__VARIANT:=-$(VARIANT)
+endif
+_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(__VARIANT)
 PURE_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)
 
-GIT_SHA := $(shell git rev-parse HEAD)
+ifneq ($(origin VARIANT),)
+$(eval $(shell if [ -z $(VARIANT) ]; then rm -f VARIANT; else echo $(VARIANT)>VARIANT; fi))
+endif
+
 
 #----------------------------------------------------------------------------------------------
 
@@ -113,11 +128,13 @@ EMBEDDED_LIBS += $(LIBEVENT)
 
 #----------------------------------------------------------------------------------------------
 
-.PHONY: all build cpython libevent pyenv static clean pack ramp_pack
+.PHONY: all  __sep __variant build cpython libevent pyenv static clean pack ramp_pack
 
-all: __sep bindirs deps build
+all: __always variant bindirs deps build
 
-__sep:
+__always: ;
+
+__sep: __always
 	@python -c "$(__SEP)"
 
 #----------------------------------------------------------------------------------------------
@@ -144,7 +161,7 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
-build: __sep bindirs $(TARGET)
+build: __sep __variant bindirs $(TARGET)
 
 ifeq ($(DEPS),1)
 $(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
@@ -153,6 +170,7 @@ $(TARGET): $(OBJECTS)
 endif
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
 
 static: $(TARGET:.so=.a)
 
@@ -162,7 +180,11 @@ $(TARGET:.so=.a): $(OBJECTS)
 
 #----------------------------------------------------------------------------------------------
 
-deps: __sep $(DEPENDENCIES)
+get_deps:
+	$(SHOW)git submodule update --init --recursive
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
+
+deps: __sep __variant $(DEPENDENCIES)
 
 ifeq ($(DEPS),1)
 
@@ -205,3 +227,11 @@ endif
 
 pack ramp_pack: deps build $(CPYTHON_PREFIX)
 	$(SHOW)./pack.sh $(TARGET)
+
+#----------------------------------------------------------------------------------------------
+
+tests:
+	$(SHOW)cd tests; ./run_tests.sh
+
+report:
+	@echo $(VARIANT)

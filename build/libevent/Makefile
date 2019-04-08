@@ -23,7 +23,7 @@ ifneq ($(VARIANT),)
 override VARIANT:=-$(VARIANT)
 endif
 _VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(VARIANT)
-BINDIR=$(ROOT)/bin/$(_VARIANT)
+BINROOT=$(ROOT)/bin/$(_VARIANT)
 
 define __SEP
 import os; rows, cols = os.popen('stty size', 'r').read().split(); print(\"\n\" + '-' * (int(cols) - 1) + \"\n\")
@@ -33,7 +33,7 @@ endef
 
 LIBEVENT_BRANCH=release-2.1.8-stable
 
-BUILD_DIR=$(BINDIR)/libevent
+BINDIR=$(BINROOT)/libevent
 
 SRCDIR=$(ROOT)/deps/libevent
 
@@ -41,7 +41,7 @@ CONFIGURE_FLAGS=
 
 #----------------------------------------------------------------------------------------------
 
-BIN_DIRS=$(BUILD_DIR)
+BIN_DIRS=$(BINDIR)
 
 define mkdir_rule
 $(1):
@@ -52,9 +52,9 @@ endef
 
 export CFLAGS=-fPIC
 
-.PHONY: all bindirs build
+.PHONY: all bindirs build source
 
-all: bindirs build automake
+all: bindirs build
 
 __sep:
 	@python -c "$(__SEP)"
@@ -64,26 +64,25 @@ bindirs: $(BIN_DIRS)
 $(foreach DIR,$(BIN_DIRS),$(eval $(call mkdir_rule,$(DIR))))
 
 build: __sep bindirs
-ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
-	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
+ifeq (,$(wildcard $(BINDIR)/Makefile))
+	$(SHOW)cd $(BINDIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
-	@make -C $(BUILD_DIR)
+	@make -C $(BINDIR)
 
 clean:
 ifeq ($(ALL),1) 
-	$(SHOW)rm -rf $(BUILD_DIR)
+	$(SHOW)rm -rf $(BINDIR)
 else
-	$(SHOW)$(MAKE) clean -C $(BUILD_DIR)
+	$(SHOW)$(MAKE) clean -C $(BINDIR)
 endif
 
 #----------------------------------------------------------------------------------------------
 
-automake:
-	$(SHOW)if [ ! -d $(SRCDIR) ]; then \
-		cd $(dir $(SRCDIR)); \
-		git clone --single-branch --branch $(LIBEVENT_BRANCH) https://github.com/libevent/libevent.git; \
-	fi
-	$(SHOW)if [ ! -f $(SRCDIR)/configure ]; then \
-		cd $(SRCDIR); \
-		./autogen.sh; \
-	fi
+source: $(SRCDIR) $(SRCDIR)/configure
+
+$(SRCDIR):
+	$(SHOW)cd $(dir $(SRCDIR)); \
+		git clone --single-branch --branch $(LIBEVENT_BRANCH) https://github.com/libevent/libevent.git
+
+$(SRCDIR)/configure: $(SRCDIR)
+	$(SHOW)cd $(SRCDIR); ./autogen.sh
