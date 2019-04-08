@@ -22,8 +22,8 @@ endif
 ifneq ($(VARIANT),)
 override VARIANT:=-$(VARIANT)
 endif
-_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(VARIANT)
-BINDIR=$(ROOT)/bin/$(_VARIANT)
+FULL_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(VARIANT)
+BINDIR=$(ROOT)/bin/$(FULL_VARIANT)
 
 define __SEP
 import os; rows, cols = os.popen('stty size', 'r').read().split(); print(\"\n\" + '-' * (int(cols) - 1) + \"\n\")
@@ -76,7 +76,7 @@ ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 endif
 	@make -C $(BUILD_DIR)
 
-clean:
+clean: __sep
 ifeq ($(ALL),1) 
 	$(SHOW)rm -rf $(BUILD_DIR) $(CPYTHON_PREFIX)
 else

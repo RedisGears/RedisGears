@@ -1,4 +1,6 @@
 
+ROOT=.
+
 .NOTPARALLEL:
 
 ifeq ($(SHOW),1)
@@ -43,18 +45,25 @@ __VARIANT:=
 else
 __VARIANT:=-$(VARIANT)
 endif
-_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(__VARIANT)
-PURE_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)
+FULL_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(__VARIANT)
+FULL_VARIANT_1:=$(OS)-$(ARCH)-release$(__VARIANT)
+
+# BLAND_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(__VARIANT)
+# BLAND_VARIANT:=$(OS)-$(ARCH)$(__VARIANT)
+# PURE_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)
 
 ifneq ($(origin VARIANT),)
 $(eval $(shell if [ -z $(VARIANT) ]; then rm -f VARIANT; else echo $(VARIANT)>VARIANT; fi))
 endif
 
+ifneq ($(filter all deps cpython libevent,$(MAKECMDGOALS)),)
+DEPS=1
+endif
 
 #----------------------------------------------------------------------------------------------
 
-BINROOT=bin/$(_VARIANT)
-BINDIR=$(BINROOT)/src
+BINROOT=bin/$(FULL_VARIANT)
+BINDIR=$(BINROOT)/$(SRCDIR)
 BIN_DIRS=$(sort $(patsubst %/,%,$(BINDIR) $(dir $(OBJECTS))))
 
 define mkdir_rule
@@ -68,11 +77,11 @@ WITHPYTHON ?= 1
 
 export PYTHON_ENCODING ?= ucs2
 
-LIBPYTHON=$(BINROOT)/cpython/libpython2.7.a
+LIBPYTHON=bin/$(FULL_VARIANT_1)/cpython/libpython2.7.a
 
 #----------------------------------------------------------------------------------------------
 
-LIBEVENT=$(BINROOT)/libevent/.libs/libevent.a
+LIBEVENT=bin/$(FULL_VARIANT_1)/libevent/.libs/libevent.a
 
 #----------------------------------------------------------------------------------------------
 
@@ -94,11 +103,11 @@ OBJECTS=$(patsubst %.c,$(BINDIR)/%.o,$(SOURCES))
 
 CC_DEPS = $(patsubst %.c, $(BINROOT)/%.d, $(SOURCES))
 
-CC_C_FLAGS=\
+CC_FLAGS=\
 	-fPIC -std=gnu99 \
 	-MMD -MF $(@:.o=.d) \
 	-include $(SRCDIR)/common.h \
-	-I$(SRCDIR) -Iinclude -I$(BINDIR)/src \
+	-I$(SRCDIR) -Iinclude -I$(BINDIR) \
 	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -DCPYTHON_PATH=\"$(CPYTHON_PREFIX)/\" \
 	-DREDISMODULE_EXPERIMENTAL_API
 
@@ -114,12 +123,15 @@ endif
 ifeq ($(WITHPYTHON), 1)
 CPYTHON_DIR=deps/cpython
 
-CC_PYTHON_FLAGS = -I$(CPYTHON_DIR)/Include -I$(CPYTHON_DIR) -I$(BINROOT)/cpython -I$(BINDIR)
+CC_FLAGS += \
+	-DWITHPYTHON \
+	-I$(CPYTHON_DIR)/Include \
+	-I$(CPYTHON_DIR) \
+	-I$(BINROOT)/cpython \
+	-Ibin/$(FULL_VARIANT_1)/cpython
 
 LD_FLAGS += 
 EMBEDDED_LIBS += $(LIBPYTHON) -lutil
-
-CC_FLAGS += -DWITHPYTHON $(CC_PYTHON_FLAGS)
 endif # WITHPYTHON
 
 OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
@@ -128,13 +140,13 @@ EMBEDDED_LIBS += $(LIBEVENT)
 
 #----------------------------------------------------------------------------------------------
 
-.PHONY: all  __sep __variant build cpython libevent pyenv static clean pack ramp_pack
+.PHONY: all __sep bindir deps cpython libevent pyenv build static clean pack ramp_pack test
 
-all: __always variant bindirs deps build
+build: bindirs $(TARGET)
 
-__always: ;
+all: __sep bindirs deps build pack
 
-__sep: __always
+__sep:
 	@python -c "$(__SEP)"
 
 #----------------------------------------------------------------------------------------------
@@ -161,8 +173,6 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
-build: __sep __variant bindirs $(TARGET)
-
 ifeq ($(DEPS),1)
 $(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 else
@@ -174,7 +184,7 @@ endif
 
 static: $(TARGET:.so=.a)
 
-$(TARGET:.so=.a): $(OBJECTS)
+$(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT)
 	@echo Creating $@...
 	$(SHOW)$(AR) rcs $@ $(filter-out module_init,$(OBJECTS)) $(LIBEVENT)
 
@@ -184,23 +194,23 @@ get_deps:
 	$(SHOW)git submodule update --init --recursive
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
 
-deps: __sep __variant $(DEPENDENCIES)
-
 ifeq ($(DEPS),1)
 
 #----------------------------------------------------------------------------------------------
+
+deps: $(LIBPYTHON) $(LIBEVENT)
 
 cpython: $(LIBPYTHON)
 
 $(LIBPYTHON):
 	@echo Building cpython...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT)
-	#PYTHON_ENCODING=$(PYTHON_ENCODING)
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT) -j8
+#PYTHON_ENCODING=$(PYTHON_ENCODING)
 
 pyenv:
 	@echo Building pyenv...
 	$(SHOW)$(MAKE) --no-print-directory -C build/cpython pyenv 
-	#MAKEFLAGS=
+#MAKEFLAGS=
 
 #----------------------------------------------------------------------------------------------
 
@@ -208,7 +218,7 @@ libevent: $(LIBEVENT)
 
 $(LIBEVENT):
 	@echo Building libevent...
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT) -j8
 
 #----------------------------------------------------------------------------------------------
 
@@ -218,20 +228,22 @@ endif # DEPS
 
 clean:
 	$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
-	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) artifacts/release/* artifacts/snapshot/*
+	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) artifacts/release/* artifacts/snapshot/*
 ifeq ($(DEPS),1) 
-	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean)
+	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT);)
 endif
 	
 #----------------------------------------------------------------------------------------------
 
-pack ramp_pack: deps build $(CPYTHON_PREFIX)
+pack ramp_pack: __sep deps build $(CPYTHON_PREFIX)
 	$(SHOW)./pack.sh $(TARGET)
 
 #----------------------------------------------------------------------------------------------
 
-tests:
-	$(SHOW)cd tests; ./run_tests.sh
+test: __sep
+ifeq ($(DEBUG),1)
+	$(SHOW)cd pytest; ./run_tests_valgrind.sh
+else
+	$(SHOW)cd pytest; ./run_tests.sh
+endif
 
-report:
-	@echo $(VARIANT)

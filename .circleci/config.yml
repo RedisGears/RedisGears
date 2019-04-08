@@ -20,10 +20,10 @@ commands:
           command: python system-setup.py
       - run:
           name: Build
-          command: make get_deps; make ramp_pack OS_VERSION=<<parameters.platform>>
+          command: make get_deps; make pack OS_VERSION=<<parameters.platform>>
       - run:
           name: Test
-          command: cd pytest; ./run_tests.sh
+          command: make test
       - persist_to_workspace:
           root: artifacts
           paths:
