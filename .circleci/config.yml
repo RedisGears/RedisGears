@@ -29,6 +29,7 @@ commands:
           paths:
             - 'snapshot/*.zip'
             - 'release/*.zip'
+            - 'release/*.tgz'
 
 jobs:
   ubuntu:

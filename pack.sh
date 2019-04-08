@@ -35,7 +35,9 @@ fi
 
 export ROOT=`git rev-parse --show-toplevel`
 CPYTHON_PREFIX=${CPYTHON_PREFIX:-/opt/redislabs/lib/modules/python27}
-GEARS=$(realpath redisgears.so)
+[[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
+[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
+GEARS=$(realpath $1)
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}

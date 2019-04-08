@@ -58,6 +58,7 @@ script_example.py
 .project
 .settings/
 
+bin/
 *.pyc
 *.log
 *.rdb

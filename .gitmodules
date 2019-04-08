@@ -1,3 +1,6 @@
 [submodule "src/deps/cpython"]
 	path = src/deps/cpython
 	url = git@github.com:RedisLabsModules/cpython.git
+[submodule "cpython"]
+	path = deps/cpython
+	url = git@github.com:RedisLabsModules/cpython.git

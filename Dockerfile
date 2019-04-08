@@ -1,6 +1,5 @@
 FROM redis:5.0.3 AS builder
 
-# Set up a build environment
 RUN set -ex; \
     apt-get update; \
 	apt-get install -y python git
@@ -10,24 +9,21 @@ WORKDIR /redisgears
 
 RUN python system-setup.py
 RUN make clean
-RUN make get_deps PYTHON_ENCODING=ucs4
+RUN make get_deps
+# PYTHON_ENCODING=ucs4
 RUN make
 RUN make pyenv
 RUN make pack
 
 # Set up the runner
 FROM redis:5.0.3
-ENV RUNTIME_DEPS "python"
-ENV LD_LIBRARY_PATH /usr/lib/redis/modules
+ENV REDIS_MODULES /opt/redislabs/lib/modules
 
-RUN set -ex; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends $RUNTIME_DEPS;
+RUN mkdir -p $REDIS_MODULES/
 
-RUN set -ex;\
-    mkdir -p "$LD_LIBRARY_PATH/deps";
+COPY --from=builder /redisgears/redisgears.so $REDIS_MODULES/
+COPY --from=builder /redisgears/artifacts/release/redisgears-dependencies.*.tgz /tmp/redisgears-dependencies.tgz
 
-COPY --from=builder /redisgears/redisgears.so "$LD_LIBRARY_PATH"
-COPY --from=builder /redisgears/src/deps/cpython "$LD_LIBRARY_PATH/deps/cpython/"
+RUN tar xzf /tmp/redisgears-dependencies.tgz -C /
 
-CMD ["--loadmodule", "/usr/lib/redis/modules/redisgears.so"]
+CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python27"]
