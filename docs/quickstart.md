@@ -13,7 +13,7 @@ docker run redislabs/redisgears:latest
 ### Prerequisites
 Install [redis 5.0](https://redis.io/) on you machine.
 
-Inastal: build-essential, autotools-dev, autoconf, libtool
+Install: build-essential, autotools-dev, autoconf, libtool
 
 ### Compile
 ```bash
