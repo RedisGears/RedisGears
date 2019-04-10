@@ -20,7 +20,7 @@ commands:
           command: python system-setup.py
       - run:
           name: Build
-          command: make get_deps; make all OS_VERSION=<<parameters.platform>>
+          command: make get_deps; make all OS_VERSION=<<parameters.platform>> SHOW=1
       - run:
           name: Test
           command: make test

@@ -14,7 +14,7 @@ PYENV_DIR=$(CPYTHON_PREFIX)/.venv
 
 PYTHON_ENCODING ?= ucs2
 
-CONFIGURE_FLAGS= \
+CONFIGURE_FLAGS += \
 	--without-pymalloc \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
 	--prefix=$(CPYTHON_PREFIX)

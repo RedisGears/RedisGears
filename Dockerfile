@@ -22,6 +22,6 @@ RUN mkdir -p $REDIS_MODULES/
 COPY --from=builder /redisgears/redisgears.so $REDIS_MODULES/
 COPY --from=builder /redisgears/artifacts/release/redisgears-dependencies.*.tgz /tmp/
 
-RUN tar xzf /tmp/redisgears-dependencies.tgz -C /
+RUN tar xzf /tmp/redisgears-dependencies.*.tgz -C /
 
 CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python27"]
