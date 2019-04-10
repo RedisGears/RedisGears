@@ -23,7 +23,7 @@ export PYTHON_ENCODING ?= ucs2
 
 CPYTHON_BINDIR=bin/$(FULL_VARIANT_REL)/cpython
 
-include deps/cpython/Makefile.defs
+include build/cpython/Makefile.defs
 endif # WITHPYTHON
 
 #----------------------------------------------------------------------------------------------
@@ -32,7 +32,7 @@ endif # WITHPYTHON
 
 LIBEVENT_BINDIR=bin/$(FULL_VARIANT_REL)/libevent
 
-include deps/libevent/Makefile.defs
+include build/libevent/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
