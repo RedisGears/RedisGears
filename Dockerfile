@@ -8,12 +8,10 @@ ADD . /redisgears
 WORKDIR /redisgears
 
 RUN python system-setup.py
-RUN make clean
+# RUN make clean DEPS=1 ALL=1
 RUN make get_deps
 # PYTHON_ENCODING=ucs4
-RUN make
-RUN make pyenv
-RUN make pack
+RUN make all
 
 # Set up the runner
 FROM redis:5.0.3
