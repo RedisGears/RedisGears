@@ -1,6 +1,6 @@
 
 ROOT=.
-include build/Makefile.defs
+include build/mk/defs
 
 BINDIR=$(BINROOT)/$(SRCDIR)
 
@@ -18,8 +18,6 @@ WITHPYTHON ?= 1
 
 ifeq ($(WITHPYTHON),1)
 export PYTHON_ENCODING ?= ucs2
-
-# LIBPYTHON=bin/$(FULL_VARIANT_REL)/cpython/libpython2.7.a
 
 CPYTHON_BINDIR=bin/$(FULL_VARIANT_REL)/cpython
 
@@ -48,10 +46,8 @@ _SOURCES += redisgears_python.c
 endif
 
 SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
-# OBJECTS=$(patsubst %.c,$(BINDIR)/%.o,$(SOURCES))
 OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
 
-# CC_DEPS = $(patsubst %.c, $(BINROOT)/%.d, $(SOURCES))
 CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
 
 CC_FLAGS += \
@@ -116,7 +112,7 @@ build: bindirs $(TARGET)
 
 all: deps build pack
 
-include build/Makefile.rules
+include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
 
@@ -173,13 +169,11 @@ cpython: $(LIBPYTHON)
 
 $(LIBPYTHON):
 	@echo Building cpython...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython MAKEFLAGS= SHOW=$(SHOW) DEBUG= VARIANT=$(VARIANT)
-#PYTHON_ENCODING=$(PYTHON_ENCODING)
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython DEBUG=
 
 pyenv:
 	@echo Building pyenv...
 	$(SHOW)$(MAKE) --no-print-directory -C build/cpython pyenv 
-#MAKEFLAGS=
 
 #----------------------------------------------------------------------------------------------
 
@@ -187,7 +181,7 @@ libevent: $(LIBEVENT)
 
 $(LIBEVENT):
 	@echo Building libevent...
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent MAKEFLAGS= SHOW=$(SHOW) DEBUG= VARIANT=$(VARIANT)
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent
 
 #----------------------------------------------------------------------------------------------
 
@@ -199,7 +193,7 @@ clean:
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) artifacts/release/* artifacts/snapshot/*
 ifeq ($(DEPS),1) 
-	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean MAKEFLAGS= ALL=$(ALL) SHOW=$(SHOW) VARIANT=$(VARIANT);)
+	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean;)
 endif
 
 #----------------------------------------------------------------------------------------------

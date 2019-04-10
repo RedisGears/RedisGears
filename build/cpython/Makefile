@@ -1,6 +1,9 @@
 
+# built-in rules are needed here
+override MAKEFLAGS:=$(filter-out r,$(MAKEFLAGS))
+
 ROOT=../..
-include $(ROOT)/build/Makefile.defs
+include $(ROOT)/build/mk/defs
 
 #----------------------------------------------------------------------------------------------
 
@@ -34,7 +37,7 @@ build: __sep bindirs
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
-	@make -C $(BUILD_DIR) -j
+	@make -C $(BUILD_DIR)
 
 clean:
 ifeq ($(ALL),1) 
@@ -43,7 +46,7 @@ else
 	$(SHOW)$(MAKE) clean -C $(BUILD_DIR)
 endif
 
-include $(ROOT)/build/Makefile.rules
+include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
 

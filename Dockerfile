@@ -8,10 +8,9 @@ ADD . /redisgears
 WORKDIR /redisgears
 
 RUN python system-setup.py
-# RUN make clean DEPS=1 ALL=1
+# RUN make clean DEPS=1 ALL=1 
 RUN make get_deps
-# PYTHON_ENCODING=ucs4
-RUN make all SHOW=1
+RUN make all SHOW=1 PYTHON_ENCODING=ucs4
 
 # Set up the runner
 FROM redis:latest
