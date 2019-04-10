@@ -59,6 +59,7 @@ script_example.py
 .settings/
 
 bin/
+pytest/logs/
 *.pyc
 *.log
 *.rdb

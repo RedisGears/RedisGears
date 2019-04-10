@@ -1,25 +1,29 @@
+#!/bin/bash
+
 set -x
 
 env_prefix=oss
 module_suffix=so
 
-if [ -n "$1" ]
-then
- env_prefix=$1
-fi
-
-if [ "$env_prefix" != "oss" ]
-then
- module_suffix=zip
-fi
+[[ -n "$1" ]] && env_prefix="$1"
+[[ "$env_prefix" != "oss" ]] && module_suffix=zip
 
 shift
 
-echo "no cluster on "$env_prefix
-RLTest --clear-logs --module ../redisgears.so --env $env_prefix $@
-echo "cluster mode, 1 shard"
-RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count 1 $@
-echo "cluster mode, 2 shards"
-RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count 2 $@
-echo "cluster mode, 3 shards"
-RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count 3 $@
+run_tests() {
+	shards=$1
+	shift
+
+	if [[ $shards == 0 ]]; then
+		echo "no cluster on $env_prefix"
+		RLTest --clear-logs --module ../redisgears.so --env $env_prefix "$@"
+	else
+		echo "cluster mode, $nodes shard"
+		RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count $shards "$@"
+	fi
+}
+
+run_tests 0 "$@"
+run_tests 1 "$@"
+run_tests 2 "$@"
+run_tests 3 "$@"

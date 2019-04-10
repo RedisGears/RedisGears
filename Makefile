@@ -176,7 +176,7 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 ifeq ($(DEPS),1)
 $(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 else
-$(TARGET): $(OBJECTS)
+$(TARGET): __sep $(OBJECTS)
 endif
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
@@ -190,9 +190,15 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT)
 
 #----------------------------------------------------------------------------------------------
 
-get_deps:
+setup:
+	@echo Setting up system...
+	$(SHOW)./system-setup.sh
+
+get_deps fetch:
 	$(SHOW)git submodule update --init --recursive
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
+
+#----------------------------------------------------------------------------------------------
 
 ifeq ($(DEPS),1)
 
@@ -227,10 +233,10 @@ endif # DEPS
 #----------------------------------------------------------------------------------------------
 
 clean:
-	$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
+	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) artifacts/release/* artifacts/snapshot/*
 ifeq ($(DEPS),1) 
-	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT);)
+	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean MAKEFLAGS= ALL=$(ALL) SHOW=$(SHOW) VARIANT=$(VARIANT);)
 endif
 	
 #----------------------------------------------------------------------------------------------
@@ -247,3 +253,23 @@ else
 	$(SHOW)cd pytest; ./run_tests.sh
 endif
 
+#----------------------------------------------------------------------------------------------
+
+define HELP
+
+Building RedisGears from scratch:
+
+make setup # install packages required for build
+make fetch # download and prepare dependant modules (i.e., python, libevent)
+make all   # build everything
+make test  # run tests
+
+
+endef
+
+HELPFILE:=$(shell mktemp /tmp/make.help.XXXX)
+
+help:
+	$(file >$(HELPFILE),$(HELP))
+	@cat $(HELPFILE)
+	@-rm -f $(HELPFILE)

@@ -1,11 +1,8 @@
-env_prefix=oss
+#!/bin/bash
 
-if [ -n "$1" ]
-then
- env_prefix=$1
-fi
+env_prefix=oss
+[[ -n "$1" ]] && env_prefix="$1"
 
 shift
 
-./run_tests.sh $env_prefix --use-valgrind --vg-suppressions ./../leakcheck.supp $@
-
+./run_tests.sh $env_prefix --use-valgrind --vg-suppressions ../leakcheck.supp "$@"
