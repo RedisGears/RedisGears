@@ -1,0 +1,4 @@
+
+include $(ROOT)/build/Makefile.common.rules
+include $(ROOT)/build/Makefile.bindirs.rules
+include $(ROOT)/build/Makefile.variant.rules

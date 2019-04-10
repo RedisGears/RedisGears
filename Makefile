@@ -3,58 +3,15 @@ ROOT=.
 
 .NOTPARALLEL:
 
-ifeq ($(SHOW),1)
-override SHOW:=
-else
-override SHOW:=@
-endif
+include build/Makefile.common.defs
+include build/Makefile.variant.defs
+include build/Makefile.bindirs.defs
 
-MAKEFLAGS += --no-builtin-rules  --no-print-directory
-# --no-builtin-variables
-
-DEPENDENCIES=cpython libevent
-
-define __SEP
-import os; rows, cols = os.popen('stty size', 'r').read().split(); print(\"\n\" + '-' * (int(cols) - 1) + \"\n\")
-endef
+BINDIR=$(BINROOT)/$(SRCDIR)
 
 #----------------------------------------------------------------------------------------------
 
-OS=linux
-# OS := $(shell sh -c 'uname -s 2>/dev/null || echo not')
-ARCH=x64
-
-ifeq ($(DEBUG),1)
-FLAVOR=debug
-else
-FLAVOR=release
-endif
-
-GIT_SHA := $(shell git rev-parse HEAD)
-
-__VARIANT__=$(shell if [ -f VARIANT ]; then cat VARIANT; fi)
-
-ifeq ($(origin VARIANT),undefined)
-ifneq ($(__VARIANT__),)
-VARIANT:=$(__VARIANT__)
-endif
-endif
-
-ifeq ($(VARIANT),)
-__VARIANT:=
-else
-__VARIANT:=-$(VARIANT)
-endif
-FULL_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(__VARIANT)
-FULL_VARIANT_1:=$(OS)-$(ARCH)-release$(__VARIANT)
-
-# BLAND_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(__VARIANT)
-# BLAND_VARIANT:=$(OS)-$(ARCH)$(__VARIANT)
-# PURE_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)
-
-ifneq ($(origin VARIANT),)
-$(eval $(shell if [ -z $(VARIANT) ]; then rm -f VARIANT; else echo $(VARIANT)>VARIANT; fi))
-endif
+DEPENDENCIES=cpython libevent
 
 ifneq ($(filter all deps cpython libevent,$(MAKECMDGOALS)),)
 DEPS=1
@@ -62,26 +19,15 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
-BINROOT=bin/$(FULL_VARIANT)
-BINDIR=$(BINROOT)/$(SRCDIR)
-BIN_DIRS=$(sort $(patsubst %/,%,$(BINDIR) $(dir $(OBJECTS))))
-
-define mkdir_rule
-$(1):
-	$$(SHOW)mkdir -p $(1)
-endef
-
-#----------------------------------------------------------------------------------------------
-
 WITHPYTHON ?= 1
 
 export PYTHON_ENCODING ?= ucs2
 
-LIBPYTHON=bin/$(FULL_VARIANT_1)/cpython/libpython2.7.a
+LIBPYTHON=bin/$(FULL_VARIANT_REL)/cpython/libpython2.7.a
 
 #----------------------------------------------------------------------------------------------
 
-LIBEVENT=bin/$(FULL_VARIANT_1)/libevent/.libs/libevent.a
+LIBEVENT=bin/$(FULL_VARIANT_REL)/libevent/.libs/libevent.a
 
 #----------------------------------------------------------------------------------------------
 
@@ -128,7 +74,7 @@ CC_FLAGS += \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
 	-I$(BINROOT)/cpython \
-	-Ibin/$(FULL_VARIANT_1)/cpython
+	-Ibin/$(FULL_VARIANT_REL)/cpython
 
 LD_FLAGS += 
 EMBEDDED_LIBS += $(LIBPYTHON) -lutil
@@ -140,20 +86,13 @@ EMBEDDED_LIBS += $(LIBEVENT)
 
 #----------------------------------------------------------------------------------------------
 
-.PHONY: all __sep bindir deps cpython libevent pyenv build static clean pack ramp_pack test
+.PHONY: all deps cpython libevent pyenv build static clean pack ramp_pack test
 
 build: bindirs $(TARGET)
 
-all: __sep bindirs deps build pack
+all: deps build pack
 
-__sep: ;
-#	@python -c "$(__SEP)"
-
-#----------------------------------------------------------------------------------------------
-
-bindirs: $(BIN_DIRS)
-
-$(foreach DIR,$(BIN_DIRS),$(eval $(call mkdir_rule,$(DIR))))
+include build/Makefile.rules
 
 #----------------------------------------------------------------------------------------------
 
@@ -176,7 +115,7 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 ifeq ($(DEPS),1)
 $(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 else
-$(TARGET): __sep $(OBJECTS)
+$(TARGET): $(OBJECTS)
 endif
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
@@ -184,7 +123,7 @@ endif
 
 static: $(TARGET:.so=.a)
 
-$(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT)
+$(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 	@echo Creating $@...
 	$(SHOW)$(AR) rcs $@ $(filter-out module_init,$(OBJECTS)) $(LIBEVENT)
 
@@ -238,7 +177,7 @@ clean:
 ifeq ($(DEPS),1) 
 	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean MAKEFLAGS= ALL=$(ALL) SHOW=$(SHOW) VARIANT=$(VARIANT);)
 endif
-	
+
 #----------------------------------------------------------------------------------------------
 
 pack ramp_pack: __sep deps build $(CPYTHON_PREFIX)

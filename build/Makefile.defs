@@ -1,0 +1,4 @@
+
+include $(ROOT)/build/Makefile.common.defs
+include $(ROOT)/build/Makefile.variant.defs
+include $(ROOT)/build/Makefile.bindirs.defs
