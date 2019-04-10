@@ -1,37 +1,11 @@
 
-MAKEFLAGS += --no-builtin-rules --no-builtin-variables  --no-print-directory
-
 ROOT=../..
-
-ifeq ($(SHOW),1)
-override SHOW:=
-else
-override SHOW:=@
-endif
-
-OS=linux
-# OS := $(shell sh -c 'uname -s 2>/dev/null || echo not')
-ARCH=x64
-
-ifeq ($(DEBUG),1)
-FLAVOR=debug
-else
-FLAVOR=release
-endif
-
-ifneq ($(VARIANT),)
-override VARIANT:=-$(VARIANT)
-endif
-FULL_VARIANT:=$(OS)-$(ARCH)-$(FLAVOR)$(VARIANT)
-BINDIR=$(ROOT)/bin/$(FULL_VARIANT)
-
-define __SEP
-import os; rows, cols = os.popen('stty size', 'r').read().split(); print(\"\n\" + '-' * (int(cols) - 1) + \"\n\")
-endef
+include $(ROOT)/build/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
-BUILD_DIR=$(BINDIR)/cpython
+BINDIR=$(BINROOT)/cpython
+BUILD_DIR=$(BINDIR)
 
 SRCDIR=$(ROOT)/deps/cpython
 
@@ -47,28 +21,14 @@ CONFIGURE_FLAGS= \
 
 #----------------------------------------------------------------------------------------------
 
-BIN_DIRS=$(BUILD_DIR)
-
-define mkdir_rule
-$(1):
-	$$(SHOW)mkdir -p $(1)
-endef
-
-#----------------------------------------------------------------------------------------------
-
 export CFLAGS=-fPIC -DREDIS_ALLOC
 # -DPy_UNICODE_WIDE
 
-.PHONY: all bindirs build pyenv
+#----------------------------------------------------------------------------------------------
 
-all: bindirs build pyenv
+.PHONY: all build pyenv
 
-__sep: ;
-#	@python -c "$(__SEP)"
-
-bindirs: $(BIN_DIRS)
-
-$(foreach DIR,$(BIN_DIRS),$(eval $(call mkdir_rule,$(DIR))))
+all: build pyenv
 
 build: __sep bindirs
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
@@ -76,12 +36,14 @@ ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 endif
 	@make -C $(BUILD_DIR) -j
 
-clean: __sep
+clean:
 ifeq ($(ALL),1) 
 	$(SHOW)rm -rf $(BUILD_DIR) $(CPYTHON_PREFIX)
 else
 	$(SHOW)$(MAKE) clean -C $(BUILD_DIR)
 endif
+
+include $(ROOT)/build/Makefile.rules
 
 #----------------------------------------------------------------------------------------------
 
