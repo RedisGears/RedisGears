@@ -1,11 +1,6 @@
 
 ROOT=.
-
-.NOTPARALLEL:
-
-include build/Makefile.common.defs
-include build/Makefile.variant.defs
-include build/Makefile.bindirs.defs
+include build/Makefile.defs
 
 BINDIR=$(BINROOT)/$(SRCDIR)
 
@@ -13,7 +8,7 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 
 DEPENDENCIES=cpython libevent
 
-ifneq ($(filter all deps cpython libevent,$(MAKECMDGOALS)),)
+ifneq ($(filter all deps $(DEPENDENCIES),$(MAKECMDGOALS)),)
 DEPS=1
 endif
 
@@ -21,20 +16,28 @@ endif
 
 WITHPYTHON ?= 1
 
+ifeq ($(WITHPYTHON),1)
 export PYTHON_ENCODING ?= ucs2
 
-LIBPYTHON=bin/$(FULL_VARIANT_REL)/cpython/libpython2.7.a
+# LIBPYTHON=bin/$(FULL_VARIANT_REL)/cpython/libpython2.7.a
+
+CPYTHON_BINDIR=bin/$(FULL_VARIANT_REL)/cpython
+
+include deps/cpython/Makefile.defs
+endif # WITHPYTHON
 
 #----------------------------------------------------------------------------------------------
 
-LIBEVENT=bin/$(FULL_VARIANT_REL)/libevent/.libs/libevent.a
+# LIBEVENT=bin/$(FULL_VARIANT_REL)/libevent/.libs/libevent.a
+
+LIBEVENT_BINDIR=bin/$(FULL_VARIANT_REL)/libevent
+
+include deps/libevent/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
 CC=gcc
-SRCDIR := src
-
-export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27
+SRCDIR=src
 
 _SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
 	mgmt.c keys_reader.c keys_writer.c example.c filters.c mappers.c \
@@ -45,16 +48,18 @@ _SOURCES += redisgears_python.c
 endif
 
 SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
-OBJECTS=$(patsubst %.c,$(BINDIR)/%.o,$(SOURCES))
+# OBJECTS=$(patsubst %.c,$(BINDIR)/%.o,$(SOURCES))
+OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
 
-CC_DEPS = $(patsubst %.c, $(BINROOT)/%.d, $(SOURCES))
+# CC_DEPS = $(patsubst %.c, $(BINROOT)/%.d, $(SOURCES))
+CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
 
-CC_FLAGS=\
+CC_FLAGS += \
 	-fPIC -std=gnu99 \
 	-MMD -MF $(@:.o=.d) \
 	-include $(SRCDIR)/common.h \
-	-I$(SRCDIR) -Iinclude -I$(BINDIR) \
-	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -DCPYTHON_PATH=\"$(CPYTHON_PREFIX)/\" \
+	-I$(SRCDIR) -Iinclude -I$(BINDIR) -Ideps \
+	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
 	-DREDISMODULE_EXPERIMENTAL_API
 
 TARGET=$(BINROOT)/redisgears.so
@@ -66,11 +71,15 @@ else
 CC_FLAGS += -O2 -Wno-unused-result
 endif
 
+#----------------------------------------------------------------------------------------------
+
 ifeq ($(WITHPYTHON), 1)
+
 CPYTHON_DIR=deps/cpython
 
 CC_FLAGS += \
 	-DWITHPYTHON \
+	-DCPYTHON_PATH=\"$(CPYTHON_PREFIX)/\" \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
 	-I$(BINROOT)/cpython \
@@ -78,15 +87,30 @@ CC_FLAGS += \
 
 LD_FLAGS += 
 EMBEDDED_LIBS += $(LIBPYTHON) -lutil
-endif # WITHPYTHON
 
-OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
+endif # WITHPYTHON
 
 EMBEDDED_LIBS += $(LIBEVENT)
 
 #----------------------------------------------------------------------------------------------
 
-.PHONY: all deps cpython libevent pyenv build static clean pack ramp_pack test
+define HELP
+
+Building RedisGears from scratch:
+
+make setup # install packages required for build
+make fetch # download and prepare dependant modules (i.e., python, libevent)
+make all   # build everything
+make test  # run tests
+
+
+endef
+
+#----------------------------------------------------------------------------------------------
+
+.NOTPARALLEL:
+
+.PHONY: all deps $(DEPENDENCIES) pyenv build static clean pack ramp_pack test
 
 build: bindirs $(TARGET)
 
@@ -100,7 +124,7 @@ include build/Makefile.rules
 
 $(BINDIR)/%.o: $(SRCDIR)/%.c
 	@echo Compiling $^...
-	$(SHOW)$(CC) -I$(SRCDIR) -Ideps $(CC_FLAGS) -c $< -o $@
+	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
 
 $(SRCDIR)/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h
 
@@ -149,7 +173,7 @@ cpython: $(LIBPYTHON)
 
 $(LIBPYTHON):
 	@echo Building cpython...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT)
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython MAKEFLAGS= SHOW=$(SHOW) DEBUG= VARIANT=$(VARIANT)
 #PYTHON_ENCODING=$(PYTHON_ENCODING)
 
 pyenv:
@@ -163,7 +187,7 @@ libevent: $(LIBEVENT)
 
 $(LIBEVENT):
 	@echo Building libevent...
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent MAKEFLAGS= SHOW=$(SHOW) VARIANT=$(VARIANT)
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent MAKEFLAGS= SHOW=$(SHOW) DEBUG= VARIANT=$(VARIANT)
 
 #----------------------------------------------------------------------------------------------
 
@@ -193,22 +217,3 @@ else
 endif
 
 #----------------------------------------------------------------------------------------------
-
-define HELP
-
-Building RedisGears from scratch:
-
-make setup # install packages required for build
-make fetch # download and prepare dependant modules (i.e., python, libevent)
-make all   # build everything
-make test  # run tests
-
-
-endef
-
-HELPFILE:=$(shell mktemp /tmp/make.help.XXXX)
-
-help:
-	$(file >$(HELPFILE),$(HELP))
-	@cat $(HELPFILE)
-	@-rm -f $(HELPFILE)

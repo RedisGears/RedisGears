@@ -7,10 +7,9 @@ include $(ROOT)/build/Makefile.defs
 LIBEVENT_BRANCH=release-2.1.8-stable
 
 BINDIR=$(BINROOT)/libevent
+BUILD_DIR=$(BINDIR)
 
 SRCDIR=$(ROOT)/deps/libevent
-
-CONFIGURE_FLAGS=
 
 #----------------------------------------------------------------------------------------------
 
@@ -21,16 +20,16 @@ export CFLAGS=-fPIC
 all: build
 
 build: __sep bindirs
-ifeq (,$(wildcard $(BINDIR)/Makefile))
-	$(SHOW)cd $(BINDIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
+ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
+	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
-	@make -C $(BINDIR) -j
+	@make -C $(BUILD_DIR) -j
 
 clean:
 ifeq ($(ALL),1) 
 	$(SHOW)rm -rf $(BINDIR)
 else
-	$(SHOW)$(MAKE) clean -C $(BINDIR)
+	$(SHOW)$(MAKE) clean -C $(BUILD_DIR)
 endif
 
 include $(ROOT)/build/Makefile.rules
