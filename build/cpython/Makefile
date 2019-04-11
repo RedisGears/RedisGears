@@ -1,6 +1,7 @@
 
 # built-in rules are needed here
-override MAKEFLAGS:=$(filter-out r,$(MAKEFLAGS))
+# MAKEFLAGS syntax differs in gnu make v3 and v4
+override MAKEFLAGS:=$(filter-out r -r no-builtin-rules --no-builtin-rules,$(MAKEFLAGS))
 
 ROOT=../..
 include $(ROOT)/build/mk/defs
