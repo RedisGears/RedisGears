@@ -12,20 +12,26 @@
 #include "redisgears.h"
 #include "utils/dict.h"
 
+#define STEP_TYPES \
+    X(NONE, "None") \
+    X(MAP, "Map") \
+    X(FILTER, "Filter") \
+    X(READER, "Reader") \
+    X(GROUP, "Group") \
+    X(EXTRACTKEY, "ExtractKey") \
+    X(REPARTITION, "Repartition") \
+    X(REDUCE, "Reduce") \
+    X(COLLECT, "Collect") \
+    X(FOREACH, "ForEach") \
+    X(FLAT_MAP, "FlatMap") \
+    X(LIMIT, "Limit") \
+    X(ACCUMULATE, "Accumulate") \
+    X(ACCUMULATE_BY_KEY, "AccumulateByKey")
+
 enum StepType{
-    MAP=1,
-    FILTER,
-    READER,
-    GROUP,
-    EXTRACTKEY,
-    REPARTITION,
-    REDUCE,
-    COLLECT,
-    FOREACH,
-    FLAT_MAP,
-    LIMIT,
-    ACCUMULATE,
-    ACCUMULATE_BY_KEY,
+#define X(a, b) a,
+    STEP_TYPES
+#undef X
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -216,6 +222,7 @@ void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
 
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 

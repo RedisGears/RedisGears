@@ -94,7 +94,7 @@ int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	ExecutionPlan* starCtx = RedisGears_GetExecution(id);
 
 	if(!starCtx){
-		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
+		RedisModule_ReplyWithError(ctx, "execution plan does not exist");
 		return REDISMODULE_OK;
 	}
 
