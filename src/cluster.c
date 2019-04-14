@@ -207,7 +207,12 @@ static void RGHelloResponseArrived(struct redisAsyncContext* c, void* a, void* b
             Gears_listEmpty(n->pendingMesages);
         }else{
             // shard is alive, tcp disconnected
-
+            Gears_listIter* iter = Gears_listGetIterator(n->pendingMesages, AL_START_HEAD);
+            Gears_listNode *node = NULL;
+            while((node = Gears_listNext(iter)) != NULL){
+                SentMessages* sentMsg = Gears_listNodeValue(node);
+                redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
+            }
         }
         RG_FREE(n->runId);
     }
@@ -222,7 +227,7 @@ static void Cluster_ConnectToShard(Node* n){
         //todo: handle this!!!
     }
     if(n->password){
-        redisAsyncCommand(n->c, OnResponseArrived, NULL, "AUTH %s", n->password);
+        redisAsyncCommand(n->c, NULL, NULL, "AUTH %s", n->password);
     }
 
     redisAsyncCommand(n->c, RGHelloResponseArrived, n, "RG.HELLO");
