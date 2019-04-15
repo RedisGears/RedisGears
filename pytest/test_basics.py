@@ -413,4 +413,3 @@ class testConfig:
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
         self.env.assertTrue(res[0].startswith('(error)'))
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
-
