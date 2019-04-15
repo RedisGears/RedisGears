@@ -182,10 +182,6 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
         return;
     }
     assert(reply->type == REDIS_REPLY_STATUS);
-    if(strcmp(reply->str, "OK") != 0){
-        printf("got a bad reply on "RG_INNER_MSG_COMMAND"\r\n");
-        assert(false);
-    }
     Node* n = (Node*)b;
     Gears_listNode* node = Gears_listFirst(n->pendingMesages);
     Gears_listDelNode(n->pendingMesages, node);
@@ -241,6 +237,7 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
     printf("disconnected : %s:%d, status : %d, will try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
     Cluster_ConnectToShard((Node*)c->data);
 }
+
 static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status){
     printf("connected : %s:%d\r\n", c->c.tcp.host, c->c.tcp.port);
 }
@@ -707,10 +704,10 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         entity = Gears_dictAddRaw(nodesMsgIds, (char*)senderIdStr, NULL);
     }
     if(msgId <= currId){
-        // already got this message
+        RedisModule_ReplyWithSimpleString(ctx, "duplicate message ignored");
         return REDISMODULE_OK;
     }
-    Gears_dictSetSignedIntegerVal(entity, currId);
+    Gears_dictSetSignedIntegerVal(entity, msgId);
     const char* functionToCallStr = RedisModule_StringPtrLen(functionToCall, NULL);
     size_t msgLen;
     const char* msgStr = RedisModule_StringPtrLen(msg, &msgLen);

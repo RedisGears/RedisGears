@@ -187,86 +187,144 @@ class Connection(object):
             raise Exception('Invalid response: %s' % line)
 
 
-new_conns = gevent.queue.Queue()
+class ShardMock():
+    def __init__(self, env):
+        self.env = env
+        self.new_conns = gevent.queue.Queue()
+
+    def __enter__(self):
+        def _handle_conn(sock, client_addr):
+            conn = Connection(sock)
+            self.new_conns.put(conn)
+
+        self.stream_server = gevent.server.StreamServer(('localhost', 10000), _handle_conn)
+        self.stream_server.start()
+        self.env.cmd('RG.CLUSTERSET',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '2',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '0',
+                     '8192',
+                     'NO-USED',
+                     'password@localhost:6379',
+                     'NO-USED',
+                     'NO-USED',
+                     '2',
+                     'NO-USED',
+                     '8193',
+                     '16383',
+                     'NO-USED',
+                     'password@localhost:10000'
+                     )
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.stream_server.stop()
+
+    def GetConnection(self, runid='1'):
+        conn = self.new_conns.get(block=True, timeout=None)
+        self.env.assertEqual(conn.read_request(), ['AUTH', 'password'])
+        self.env.assertEqual(conn.read_request(), ['RG.HELLO'])
+        conn.send_status('OK')  # auth response
+        conn.send_bulk(runid)  # hello response, sending runid
+        conn.flush()
+        return conn
 
 
-def initializeShardMock(env):
-
-    def _handle_conn(sock, client_addr):
-        conn = Connection(sock)
-        new_conns.put(conn)
-
-    stream_server = gevent.server.StreamServer(('localhost', 10000), _handle_conn)
-    stream_server.start()
-    env.cmd('RG.CLUSTERSET',
-            'NO-USED',
-            'NO-USED',
-            'NO-USED',
-            'NO-USED',
-            'NO-USED',
-            '1',
-            'NO-USED',
-            '2',
-            'NO-USED',
-            '1',
-            'NO-USED',
-            '0',
-            '8192',
-            'NO-USED',
-            'password@localhost:6379',
-            'NO-USED',
-            'NO-USED',
-            '2',
-            'NO-USED',
-            '8193',
-            '16383',
-            'NO-USED',
-            'password@localhost:10000'
-            )
-    conn = new_conns.get(block=True, timeout=None)
-    env.assertEqual(conn.read_request(), ['AUTH', 'password'])
-    env.assertEqual(conn.read_request(), ['RG.HELLO'])
-    conn.send_status('OK')  # auth response
-    conn.send_bulk('1')  # hello response, sending runid
-    conn.flush()
-    return conn
-
-
-def testBasicTcpDisconnection(env):
+def testMessageIdCorrectness(env):
     env.skipOnCluster()
 
-    conn = initializeShardMock(env)
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection()
 
-    env.cmd('set', 'x', '1')
+        env.expect('RG.NETWORKTEST').equal('OK')
 
-    env.cmd('RG.PYEXECUTE', 'GB().repartition(lambda x: x["key"]).run()', 'UNBLOCKING')
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        conn.send_status('OK')
 
-    execution = conn.read_request()  # read execution
-    conn.send_status('OK')  # got the execution
+        env.expect('RG.NETWORKTEST').equal('OK')
 
-    eid = execution[3][len(execution[3]) - 48 - 11: len(execution[3]) - 11]  # extracting execution id
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        conn.send_status('OK')
 
-    # notify the shard that the execution was recieved
-    env.cmd('rg.innermsgcommand', '0000000000000000000000000000000000000002', 'ExecutionPlan_NotifyReceived', eid, '0')
 
-    # reading ExecutionPlan_NotifyRun
-    env.assertEqual(conn.read_request()[2], 'ExecutionPlan_NotifyRun')
-    # sending Ok ExecutionPlan_NotifyRun
-    conn.send_status('OK')
+def testMessageResentAfterDisconnect(env):
+    env.skipOnCluster()
 
-    # reading ExecutionPlan_OnRepartitionRecordReceived
-    env.assertEqual(conn.read_request()[2], 'ExecutionPlan_OnRepartitionRecordReceived')
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection()
 
-    # not sending OK on ExecutionPlan_OnRepartitionRecordReceived and closing the connection
-    conn.close()
+        env.expect('RG.NETWORKTEST').equal('OK')
 
-    # waiting for the shard to reconect
-    conn = new_conns.get(block=True, timeout=None)
-    env.assertEqual(conn.read_request(), ['AUTH', 'password'])
-    env.assertEqual(conn.read_request(), ['RG.HELLO'])
-    conn.send_status('OK')  # auth response
-    conn.send_bulk('1')  # hello response, sending same runid so shard will continue from where it stopped
-    conn.flush()
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
 
-    # make sure we got the ExecutionPlan_OnRepartitionRecordReceived again
-    env.assertEqual(conn.read_request()[2], 'ExecutionPlan_OnRepartitionRecordReceived')
+        conn.send_status('OK')
+
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+
+        conn.close()
+
+        conn = shardMock.GetConnection()
+
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+
+        conn.send_status('duplicate message ignored')  # reply to the second message with duplicate reply
+
+        conn.close()
+
+        conn = shardMock.GetConnection()
+
+        # make sure message 2 will not be sent again
+        try:
+            with TimeLimit(1):
+                conn.read_request()
+                env.assertTrue(False)  # we should not get any data after crash
+        except Exception:
+            pass
+
+
+def testMessageNotResentAfterCrash(env):
+    env.skipOnCluster()
+
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection()
+
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+
+        conn.send_status('OK')
+
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+
+        conn.close()
+
+        conn = shardMock.GetConnection(runid='2')  # shard crash
+
+        try:
+            with TimeLimit(1):
+                conn.read_request()
+                env.assertTrue(False)  # we should not get any data after crash
+        except Exception:
+            pass
+
+
+def testDuplicateMessagesAreIgnored(env):
+    env.skipOnCluster()
+
+    with ShardMock(env) as shardMock:
+        shardMock.GetConnection()
+        env.expect('rg.innermsgcommand', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('OK')
+        env.expect('rg.innermsgcommand', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
