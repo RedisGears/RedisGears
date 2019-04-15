@@ -166,7 +166,8 @@ static int GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             .argv = argv,
             .argc = argc,
     };
-    return GearsConfig_Set_with_iterator(ctx, &iter);
+    GearsConfig_Set_with_iterator(ctx, &iter);
+    return REDISMODULE_OK; // redis expects REDISMODULE_ERR only on catastrophes
 }
 
 static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* confVal){
@@ -228,7 +229,8 @@ static int GearsConfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             .argv = argv,
             .argc = argc,
     };
-    return GearsConfig_Get_with_iterator(ctx, &iter);
+    GearsConfig_Get_with_iterator(ctx, &iter);
+    return REDISMODULE_OK; // redis expects REDISMODULE_ERR only on catastrophes
 }
 
 const char* GearsConfig_GetPythonHomeDir(){
