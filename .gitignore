@@ -58,8 +58,9 @@ script_example.py
 .project
 .settings/
 
-bin/
-pytest/logs/
+/bin/
+/deps/libevent/
+/pytest/logs/
 *.pyc
 *.log
 *.rdb
