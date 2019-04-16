@@ -8,7 +8,6 @@ ADD . /redisgears
 WORKDIR /redisgears
 
 RUN python system-setup.py
-# RUN make clean DEPS=1 ALL=1 
 RUN make get_deps
 RUN make all SHOW=1 PYTHON_ENCODING=ucs4
 
