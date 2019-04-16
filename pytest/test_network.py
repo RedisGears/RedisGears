@@ -192,12 +192,12 @@ class ShardMock():
         self.env = env
         self.new_conns = gevent.queue.Queue()
 
-    def __enter__(self):
-        def _handle_conn(sock, client_addr):
-            conn = Connection(sock)
-            self.new_conns.put(conn)
+    def _handle_conn(self, sock, client_addr):
+        conn = Connection(sock)
+        self.new_conns.put(conn)
 
-        self.stream_server = gevent.server.StreamServer(('localhost', 10000), _handle_conn)
+    def __enter__(self):
+        self.stream_server = gevent.server.StreamServer(('localhost', 10000), self._handle_conn)
         self.stream_server.start()
         self.env.cmd('RG.CLUSTERSET',
                      'NO-USED',
@@ -237,6 +237,13 @@ class ShardMock():
         conn.send_bulk(runid)  # hello response, sending runid
         conn.flush()
         return conn
+
+    def StopListening(self):
+        self.stream_server.stop()
+
+    def StartListening(self):
+        self.stream_server = gevent.server.StreamServer(('localhost', 10000), self._handle_conn)
+        self.stream_server.start()
 
 
 def testMessageIdCorrectness(env):
@@ -319,6 +326,34 @@ def testMessageNotResentAfterCrash(env):
                 env.assertTrue(False)  # we should not get any data after crash
         except Exception:
             pass
+
+
+def testStopListening(env):
+    env.skipOnCluster()
+
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection()
+
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+
+        conn.send_status('OK')
+
+        shardMock.StopListening()
+
+        conn.close()
+
+        time.sleep(0.5)
+
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        shardMock.StartListening()
+
+        conn = shardMock.GetConnection()
+
+        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+
 
 
 def testDuplicateMessagesAreIgnored(env):

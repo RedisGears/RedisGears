@@ -178,7 +178,6 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
 static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     redisReply* reply = (redisReply*)a;
     if(!reply){
-        printf("got a NULL reply to "RG_INNER_MSG_COMMAND"\r\n");
         return;
     }
     assert(reply->type == REDIS_REPLY_STATUS);
@@ -190,7 +189,6 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
 static void RGHelloResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     redisReply* reply = (redisReply*)a;
     if(!reply){
-        printf("got a NULL reply to RG.HELLO\r\n");
         return;
     }
     assert(reply->type == REDIS_REPLY_STRING);
@@ -213,33 +211,41 @@ static void RGHelloResponseArrived(struct redisAsyncContext* c, void* a, void* b
         RG_FREE(n->runId);
     }
     n->runId = RG_STRDUP(reply->str);
+    n->c = c;
 }
 
 static void Cluster_ConnectToShard(Node* n){
-    n->c = redisAsyncConnect(n->ip, n->port);
-    if (n->c->err) {
+    redisAsyncContext* c = redisAsyncConnect(n->ip, n->port);
+    if (c->err) {
         /* Let *c leak for now... */
         printf("Error: %s\n", n->c->errstr);
         //todo: handle this!!!
     }
-    if(n->password){
-        redisAsyncCommand(n->c, NULL, NULL, "AUTH %s", n->password);
-    }
-
-    redisAsyncCommand(n->c, RGHelloResponseArrived, n, "RG.HELLO");
-    n->c->data = n;
-    redisLibeventAttach(n->c, main_base);
-    redisAsyncSetConnectCallback(n->c, Cluster_ConnectCallback);
-    redisAsyncSetDisconnectCallback(n->c, Cluster_DisconnectCallback);
+    c->data = n;
+    redisLibeventAttach(c, main_base);
+    redisAsyncSetConnectCallback(c, Cluster_ConnectCallback);
+    redisAsyncSetDisconnectCallback(c, Cluster_DisconnectCallback);
 }
 
 static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int status){
     printf("disconnected : %s:%d, status : %d, will try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
+    Node* n = (Node*)c->data;
+    n->c = NULL;
     Cluster_ConnectToShard((Node*)c->data);
 }
 
 static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status){
-    printf("connected : %s:%d\r\n", c->c.tcp.host, c->c.tcp.port);
+    if(status == -1){
+        // connection failed lets try again
+        Cluster_ConnectToShard((Node*)c->data);
+    }else{
+        Node* n = (Node*)c->data;
+        printf("connected : %s:%d, status = %d\r\n", c->c.tcp.host, c->c.tcp.port, status);
+        if(n->password){
+            redisAsyncCommand((redisAsyncContext*)c, NULL, NULL, "AUTH %s", n->password);
+        }
+        redisAsyncCommand((redisAsyncContext*)c, RGHelloResponseArrived, n, "RG.HELLO");
+    }
 }
 
 static void Cluster_ConnectToShards(){
@@ -448,7 +454,9 @@ static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
 
     RedisModule_FreeString(NULL, msgIdStr);
 
-    redisAsyncCommandArgv(node->c, OnResponseArrived, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
+    if(node->c){
+        redisAsyncCommandArgv(node->c, OnResponseArrived, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
+    }
     Gears_listAddNodeTail(node->pendingMesages, sentMsg);
 }
 
@@ -462,9 +470,7 @@ static void Cluster_SendMessage(SendMsg* sendMsg){
         Gears_dictEntry *entry = NULL;
         while((entry = Gears_dictNext(iter))){
             Node* n = Gears_dictGetVal(entry);
-            if(n->c){
-                Cluster_SendMsgToNode(n, sendMsg);
-            }
+            Cluster_SendMsgToNode(n, sendMsg);
         }
         Gears_dictReleaseIterator(iter);
     }
