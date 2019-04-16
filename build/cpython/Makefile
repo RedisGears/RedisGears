@@ -18,10 +18,40 @@ PYENV_DIR=$(CPYTHON_PREFIX)/.venv
 
 PYTHON_ENCODING ?= ucs2
 
+#----------------------------------------------------------------------------------------------
+
+ifeq ($(OS),macosx)
+
+ZLIB_PREFIX:=$(shell brew --prefix zlib)
+LIBSSL_PREFIX:=$(shell brew --prefix openssl)
+READLINE_PREFIX:=$(shell brew --prefix readline)
+SDK_PREFIX:=$(shell xcrun --show-sdk-path)
+
+export CPPFLAGS:=\
+	-I$(ZLIB_PREFIX)/include \
+	-I$(READLINE_PREFIX)/include \
+	-I$(LIBSSL_PREFIX)/include \
+	-I$(SDK_PREFIX)/usr/include
+
+export LDFLAGS:=\
+	-L$(ZLIB_PREFIX)/lib \
+	-L$(LIBSSL_PREFIX)/lib \
+	-L$(READLINE_PREFIX)/lib \
+	-L$(SDK_PREFIX)/usr/lib
+
+export PKG_CONFIG_PATH:=$(ZLIB_PREFIX)/lib/pkgconfig:$(LIBSSL_PREFIX)/lib/pkgconfig:$(READLINE_PREFIX)/lib/pkgconfig
+
+CONFIGURE_FLAGS.macosx += CPPFLAGS='$(CPPFLAGS)' LDFLAGS='$(LDFLAGS)'
+
+endif # macosx
+
+#----------------------------------------------------------------------------------------------
+
 CONFIGURE_FLAGS += \
 	--without-pymalloc \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
-	--prefix=$(CPYTHON_PREFIX)
+	--prefix=$(CPYTHON_PREFIX) \
+	$(CONFIGURE_FLAGS.$(OS)
 
 #----------------------------------------------------------------------------------------------
 
@@ -36,6 +66,7 @@ all: build pyenv
 
 build: __sep bindirs
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
+	@echo CPPFLAGS="$(CPPFLAGS)"
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
 	@make -C $(BUILD_DIR)

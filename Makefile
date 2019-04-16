@@ -8,7 +8,7 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 
 DEPENDENCIES=cpython libevent
 
-ifneq ($(filter all deps $(DEPENDENCIES),$(MAKECMDGOALS)),)
+ifneq ($(filter all deps $(DEPENDENCIES) pyenv,$(MAKECMDGOALS)),)
 DEPS=1
 endif
 
@@ -25,8 +25,6 @@ include build/cpython/Makefile.defs
 endif # WITHPYTHON
 
 #----------------------------------------------------------------------------------------------
-
-# LIBEVENT=bin/$(FULL_VARIANT_REL)/libevent/.libs/libevent.a
 
 LIBEVENT_BINDIR=bin/$(FULL_VARIANT_REL)/libevent
 
