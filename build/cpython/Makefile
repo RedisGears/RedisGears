@@ -66,7 +66,6 @@ all: build pyenv
 
 build: __sep bindirs
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
-	@echo CPPFLAGS="$(CPPFLAGS)"
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
 	@make -C $(BUILD_DIR)
