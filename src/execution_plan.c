@@ -22,8 +22,10 @@
 #define STOP_TIMER  if(GearsConfig_GetProfileExecutions()) GETTIME(&_te);
 #define DURATION    ((long long)1000000000 * (_te.tv_sec - _ts.tv_sec) \
                     + (_te.tv_nsec - _ts.tv_nsec))
-#define ADD_DURATION(d) STOP_TIMER; \
-                        d += DURATION;
+#define ADD_DURATION(d) if(GearsConfig_GetProfileExecutions()){ \
+                            STOP_TIMER; \
+                            d += DURATION; \
+                        }
 
 char* stepsNames[] = {
 #define X(a, b) b,
@@ -889,11 +891,12 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     INIT_TIMER;
     switch(step->type){
     case READER:
-        START_TIMER;
+        GETTIME(&_ts);
     	if(!ep->isErrorOccure){
     	    r = step->reader.r->next(rctx, step->reader.r->ctx);
     	}
-    	ADD_DURATION(step->executionDuration);
+        GETTIME(&_te);
+    	step->executionDuration += DURATION;
         break;
     case MAP:
     	r = ExecutionPlan_MapNextRecord(ep, step, rctx);
@@ -1769,7 +1772,7 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	}
 
     pthread_mutex_lock(&epData.mutex);
-	RedisModule_ReplyWithArray(ctx, 10);
+	RedisModule_ReplyWithArray(ctx, 12);
 	RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
 	if(ep->isDone){
 		RedisModule_ReplyWithStringBuffer(ctx, "done", strlen("done"));
@@ -1796,22 +1799,25 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
 	RedisModule_ReplyWithStringBuffer(ctx, "total_duration", strlen("total_duration"));
     RedisModule_ReplyWithLongLong(ctx, ep->executionDuration);
+	RedisModule_ReplyWithStringBuffer(ctx, "read_duration", strlen("read_duration"));
+    RedisModule_ReplyWithLongLong(ctx, ep->steps[array_len(ep->steps) - 1]->executionDuration);
 
+    uint32_t fstepsLen = array_len(ep->fep->steps);
 	RedisModule_ReplyWithStringBuffer(ctx, "steps", strlen("steps"));
-	RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
-    long numOfEntries = 0;
-    for(size_t i = 0; i < array_len(ep->steps); i++){
+	RedisModule_ReplyWithArray(ctx, fstepsLen);
+    for(size_t i = 0; i < fstepsLen; i++){
         ExecutionStep *step = ep->steps[i];
-        RedisModule_ReplyWithArray(ctx, 4);
+        FlatExecutionStep fstep = ep->fep->steps[fstepsLen - i - 1];
+        RedisModule_ReplyWithArray(ctx, 6);
 		RedisModule_ReplyWithStringBuffer(ctx, "type", strlen("type"));
 		RedisModule_ReplyWithStringBuffer(ctx, stepsNames[step->type], strlen(stepsNames[step->type]));
+		RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
+		RedisModule_ReplyWithStringBuffer(ctx, fstep.bStep.stepName, strlen(fstep.bStep.stepName));
 		RedisModule_ReplyWithStringBuffer(ctx, "duration", strlen("duration"));
 		RedisModule_ReplyWithLongLong(ctx, step->executionDuration);
         // TODO: add actual step name and args to output
-        numOfEntries++;
     }
     pthread_mutex_unlock(&epData.mutex);
-	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
 	return REDISMODULE_OK;
 }
 
