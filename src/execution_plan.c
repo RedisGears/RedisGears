@@ -1808,14 +1808,26 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
     for(size_t i = 0; i < fstepsLen; i++){
         ExecutionStep *step = ep->steps[i];
         FlatExecutionStep fstep = ep->fep->steps[fstepsLen - i - 1];
-        RedisModule_ReplyWithArray(ctx, 6);
+        RedisModule_ReplyWithArray(ctx, 8);
 		RedisModule_ReplyWithStringBuffer(ctx, "type", strlen("type"));
 		RedisModule_ReplyWithStringBuffer(ctx, stepsNames[step->type], strlen(stepsNames[step->type]));
-		RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
-		RedisModule_ReplyWithStringBuffer(ctx, fstep.bStep.stepName, strlen(fstep.bStep.stepName));
 		RedisModule_ReplyWithStringBuffer(ctx, "duration", strlen("duration"));
 		RedisModule_ReplyWithLongLong(ctx, step->executionDuration);
-        // TODO: add actual step name and args to output
+		RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
+		RedisModule_ReplyWithStringBuffer(ctx, fstep.bStep.stepName, strlen(fstep.bStep.stepName));
+		RedisModule_ReplyWithStringBuffer(ctx, "arg", strlen("arg"));
+        ExecutionStepArg arg = fstep.bStep.arg;
+        if(arg.stepArg){
+            ArgType* type = arg.type;
+            if(type && type->tostring){
+                char* argCstr = type->tostring(arg.stepArg);
+        		RedisModule_ReplyWithStringBuffer(ctx, argCstr, strlen(argCstr));
+            }else{
+        		RedisModule_ReplyWithStringBuffer(ctx, "WTF?", strlen("WTF?"));
+            }
+        }else{
+            RedisModule_ReplyWithNull(ctx);
+        }
     }
     pthread_mutex_unlock(&epData.mutex);
 	return REDISMODULE_OK;

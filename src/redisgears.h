@@ -41,6 +41,7 @@ typedef void (*ArgFree)(void* arg);
 typedef void* (*ArgDuplicate)(void* arg);
 typedef void (*ArgSerialize)(void* arg, Gears_BufferWriter* bw);
 typedef void* (*ArgDeserialize)(Gears_BufferReader* br);
+typedef char* (*ArgToString)(void* arg);
 typedef void (*RegisterTrigger)(FlatExecutionPlan* fep);
 
 typedef struct Reader{
@@ -61,7 +62,7 @@ void KeyRecordWriter(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 
 /******************************* args *********************************/
 
-ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize);
+ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
 void MODULE_API_FUNC(RedisGears_BWWriteLong)(Gears_BufferWriter* bw, long val);
 void MODULE_API_FUNC(RedisGears_BWWriteString)(Gears_BufferWriter* bw, char* str);
 void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(Gears_BufferWriter* bw, char* buff, size_t len);

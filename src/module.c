@@ -207,7 +207,7 @@ static ExecutionPlan* RG_GetExecution(const char* id){
 	return ep;
 }
 
-static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize){
+static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring){
     ArgType* ret = RG_ALLOC(sizeof(*ret));
     *ret = (ArgType){
         .type = RG_STRDUP(name),
@@ -215,6 +215,7 @@ static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSer
         .dup = dup,
         .serialize = serialize,
         .deserialize = deserialize,
+        .tostring = tostring,
     };
     return ret;
 }

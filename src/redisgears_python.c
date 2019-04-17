@@ -1427,6 +1427,16 @@ static void RedisGearsPy_PyObjectFree(void* arg){
     PyGILState_Release(state);
 }
 
+static char* RedisGearsPy_PyObjectToString(void* arg){
+    char* objCstr = NULL;
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* obj = arg;
+    PyObject *objStr = PyObject_Str(obj);
+    objCstr = PyString_AsString(objStr);
+    Py_DECREF(objStr);
+    return objCstr;
+}
+
 void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* obj = arg;
@@ -1702,7 +1712,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
-    ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
+    ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize, RedisGearsPy_PyObjectToString);
 
     RSM_RegisterReader(PythonReader);
     RSM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
