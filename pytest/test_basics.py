@@ -71,7 +71,7 @@ class testBasic:
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[1]]
+        res = [yaml.full_load(r) for r in res[1]]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -79,7 +79,7 @@ class testBasic:
     def testBasicFilterQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[1]]
+        res = [yaml.full_load(r) for r in res[1]]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -87,7 +87,7 @@ class testBasic:
     def testBasicMapQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[1]]
+        res = [yaml.full_load(r) for r in res[1]]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 
@@ -382,3 +382,34 @@ def testOneKeyScan(env):
     conn.execute_command('set', 'x', '1')
     env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['200000'])
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
+
+
+class testConfig:
+    def __init__(self):
+        self.env = Env()
+
+    def testMaxExecutions(self):
+        max_exe = self.env.execute_command('RG.CONFIGGET', 'MaxExecutions')
+        n = long(max_exe[0]) + 1
+        self.env.expect('RG.CONFIGSET', 'MaxExecutions', n).equal(['OK'])
+        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([n])
+
+    def testNotModifiableAtRuntime(self):
+        pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
+        res = self.env.execute_command('RG.CONFIGSET', 'PythonHomeDir', '/')
+        self.env.assertTrue(res[0].startswith('(error)'))
+        pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
+        self.env.expect('RG.CONFIGSET', 'MaxExecutions', 10).equal(['OK'])
+
+    def testNonExisting(self):
+        res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig')
+        self.env.assertTrue(res[0].startswith('(error)'))
+        res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1)
+        self.env.assertTrue(res[0].startswith('(error)'))
+
+    def testMultiple(self):
+        res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig', 'MaxExecutions')
+        self.env.assertTrue(res[0].startswith('(error)') and not str(res[1]).startswith('(error)'))
+        res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
+        self.env.assertTrue(res[0].startswith('(error)'))
+        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
