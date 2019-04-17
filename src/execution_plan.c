@@ -16,10 +16,10 @@
 #include <event2/event.h>
 #include "lock_handler.h"
 
-#define INIT_TIMER  struct timespec _ts,_te;
+#define INIT_TIMER  struct timespec _ts = {0}, _te = {0};
 #define GETTIME(t)  clock_gettime(CLOCK_REALTIME, t);
-#define START_TIMER GETTIME(&_ts);
-#define STOP_TIMER  GETTIME(&_te);
+#define START_TIMER if(GearsConfig_GetProfileExecutions()) GETTIME(&_ts);
+#define STOP_TIMER  if(GearsConfig_GetProfileExecutions()) GETTIME(&_te);
 #define DURATION    ((long long)1000000000 * (_te.tv_sec - _ts.tv_sec) \
                     + (_te.tv_nsec - _ts.tv_nsec))
 #define ADD_DURATION(d) STOP_TIMER; \
@@ -348,7 +348,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
             RedisGears_FreeRecord(record);
         }
     }
-    return NULL;  // TODO: check if this is a reachable code path
+    record = NULL;
 end:
 	ADD_DURATION(step->executionDuration);
     return record;
@@ -506,8 +506,7 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
         RedisGears_ListRecordAdd(listRecord, RedisGears_KeyRecordGetVal(record));
         RedisGears_KeyRecordSetVal(record, NULL);
         RedisGears_FreeRecord(record);
-        STOP_TIMER;
-    	step->executionDuration += DURATION;
+        ADD_DURATION(step->executionDuration);
     }
     START_TIMER;
     step->group.isGrouped = true;
@@ -1006,10 +1005,11 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 	}
 
     INIT_TIMER;
-    START_TIMER;
+    GETTIME(&_ts);
 	RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
 	bool isDone = ExecutionPlan_Execute(ep, rctx);
-	ADD_DURATION(ep->executionDuration);
+    GETTIME(&_te);
+	ep->executionDuration += DURATION;
 
 	if(isDone){
 	    if(Cluster_IsClusterMode()){
@@ -1503,7 +1503,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     memcpy(ret->id, finalId, EXECUTION_PLAN_ID_LEN);
     snprintf(ret->idStr, EXECUTION_PLAN_STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, ret->id, *(long long*)&ret->id[REDISMODULE_NODE_ID_LEN]);
     pthread_mutex_lock(&epData.mutex);
-    while (Gears_listLength(epData.epList) >= GearsCOnfig_GetMaxExecutions()) {
+    while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
         Gears_listNode* n0 = Gears_listFirst(epData.epList);
         ExecutionPlan* ep0 = Gears_listNodeValue(n0);
         ExecutionPlan_Free(ep0, false);

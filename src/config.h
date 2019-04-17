@@ -11,7 +11,8 @@
 #include "redismodule.h"
 
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc);
-const char* GearsCOnfig_GetPythonHomeDir();
-long long GearsCOnfig_GetMaxExecutions();
+const char* GearsConfig_GetPythonHomeDir();
+long long GearsConfig_GetMaxExecutions();
+long long GearsConfig_GetProfileExecutions();
 
 #endif /* SRC_CONFIG_H_ */

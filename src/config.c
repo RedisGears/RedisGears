@@ -41,6 +41,7 @@ typedef struct ConfigVal{
 typedef struct RedisGears_Config{
 	ConfigVal pythonHomeDir;
     ConfigVal maxExecutions;
+	ConfigVal profileExecutions;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -91,6 +92,24 @@ static bool ConfigVal_MaxExecutionsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ProfileExecutionsGet(){
+	return &DefaultGearsConfig.profileExecutions;
+}
+
+static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
+	RedisModuleString* val = ArgsIterator_Next(iter);
+	if(!val) return false;
+    long long n;
+
+	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.profileExecutions.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+
 static Gears_ConfigVal Gears_ConfigVals[] = {
 		{
 				.name = "PythonHomeDir",
@@ -105,16 +124,22 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
 				.configurableAtRunTime = true,
 		},
 		{
+				.name = "ProfileExecutions",
+				.getter = ConfigVal_ProfileExecutionsGet,
+				.setter = ConfigVal_ProfileExecutionsSet,
+				.configurableAtRunTime = true,
+		},
+		{
 				NULL,
 		},
 };
 
-static int  GearsCOnfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int  GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	RedisModule_ReplyWithError(ctx, "not implemented yet");
 	return REDISMODULE_OK;
 }
 
-static void GearsCOnfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* confVal){
+static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* confVal){
 	switch(confVal->type){
 	case STR:
 		RedisModule_ReplyWithStringBuffer(ctx, confVal->val.str, strlen(confVal->val.str));
@@ -130,7 +155,7 @@ static void GearsCOnfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* c
 	}
 }
 
-static int  GearsCOnfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int  GearsConfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 #define UNKNOWN_CONFIG_PARAM "unknown config parameter"
 	ArgsIterator iter = {
 			.currIndex = 0,
@@ -145,7 +170,7 @@ static int  GearsCOnfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 		for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
 			if(strcasecmp(configVal, val->name) == 0){
 				const ConfigVal* confVal = val->getter(configVal);
-				GearsCOnfig_ReplyWithConfVal(ctx, confVal);
+				GearsConfig_ReplyWithConfVal(ctx, confVal);
 				continue;
 			}
 		}
@@ -156,12 +181,16 @@ static int  GearsCOnfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 	return REDISMODULE_OK;
 }
 
-const char* GearsCOnfig_GetPythonHomeDir(){
+const char* GearsConfig_GetPythonHomeDir(){
 	return DefaultGearsConfig.pythonHomeDir.val.str;
 }
 
-long long GearsCOnfig_GetMaxExecutions(){
+long long GearsConfig_GetMaxExecutions(){
 	return DefaultGearsConfig.maxExecutions.val.longVal;
+}
+
+long long GearsConfig_GetProfileExecutions(){
+	return DefaultGearsConfig.profileExecutions.val.longVal;
 }
 
 static void GearsConfig_Print(RedisModuleCtx* ctx){
@@ -197,14 +226,18 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 1000,
             .type = LONG,
         },
+        .profileExecutions = {
+            .val.longVal = 0,
+            .type = LONG,
+        },
 	};
 
-	if (RedisModule_CreateCommand(ctx, "rg.configget", GearsCOnfig_Get, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+	if (RedisModule_CreateCommand(ctx, "rg.configget", GearsConfig_Get, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.configget");
 		return REDISMODULE_ERR;
 	}
 
-	if (RedisModule_CreateCommand(ctx, "rg.configset", GearsCOnfig_Set, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+	if (RedisModule_CreateCommand(ctx, "rg.configset", GearsConfig_Set, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.configset");
 		return REDISMODULE_ERR;
 	}
