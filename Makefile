@@ -149,7 +149,7 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 
 setup:
 	@echo Setting up system...
-	$(SHOW)./system-setup.sh
+	$(SHOW)./system-setup.py
 
 get_deps fetch:
 	$(SHOW)git submodule update --init --recursive
