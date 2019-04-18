@@ -6,6 +6,8 @@ override MAKEFLAGS:=$(filter-out r -r no-builtin-rules --no-builtin-rules,$(MAKE
 ROOT=../..
 include $(ROOT)/build/mk/defs
 
+include Makefile.defs
+
 #----------------------------------------------------------------------------------------------
 
 BINDIR=$(BINROOT)/cpython

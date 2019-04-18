@@ -1,4 +1,8 @@
 
+ifeq ($(CPYTHON_BINDIR),)
+$(error CPYTHON_BINDIR not defined. Aborting.)
+endif
+
 LIBPYTHON=$(CPYTHON_BINDIR)/libpython2.7.a
 
 export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27

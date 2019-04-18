@@ -8,7 +8,7 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 
 DEPENDENCIES=cpython libevent
 
-ifneq ($(filter all deps $(DEPENDENCIES) pyenv,$(MAKECMDGOALS)),)
+ifneq ($(filter all deps $(DEPENDENCIES) pyenv pack ramp_pack,$(MAKECMDGOALS)),)
 DEPS=1
 endif
 
@@ -104,7 +104,7 @@ endef
 
 .NOTPARALLEL:
 
-.PHONY: all deps $(DEPENDENCIES) pyenv build static clean pack ramp_pack test
+.PHONY: all deps $(DEPENDENCIES) pyenv build static clean pack ramp_pack test setup
 
 build: bindirs $(TARGET)
 
