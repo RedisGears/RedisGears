@@ -16,7 +16,7 @@ SRCDIR=$(ROOT)/deps/cpython
 export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27
 PYENV_DIR=$(CPYTHON_PREFIX)/.venv
 
-PYTHON_ENCODING ?= ucs2
+PYTHON_ENCODING ?= ucs4
 
 #----------------------------------------------------------------------------------------------
 
@@ -51,7 +51,7 @@ CONFIGURE_FLAGS += \
 	--without-pymalloc \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
 	--prefix=$(CPYTHON_PREFIX) \
-	$(CONFIGURE_FLAGS.$(OS)
+	$(CONFIGURE_FLAGS.$(OS))
 
 #----------------------------------------------------------------------------------------------
 

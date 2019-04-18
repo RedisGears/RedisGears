@@ -18,6 +18,8 @@ class RedisGearsSetup(paella.Setup):
         self.setup_pip()
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
+        
+        self.install("git")
 
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool")

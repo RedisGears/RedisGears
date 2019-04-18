@@ -1,8 +1,8 @@
 
 OS:=$(shell $(ROOT)/deps/readies/bin/platform --os)
-ifeq ($(OS),linux)
-OS:=$(shell $(ROOT)/deps/readies/bin/platform --dist)
-endif
+# ifeq ($(OS),linux)
+# OS:=$(shell $(ROOT)/deps/readies/bin/platform --dist)
+# endif
 
 ARCH=$(shell $(ROOT)/deps/readies/bin/platform --arch)
 

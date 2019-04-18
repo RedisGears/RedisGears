@@ -17,7 +17,7 @@ endif
 WITHPYTHON ?= 1
 
 ifeq ($(WITHPYTHON),1)
-export PYTHON_ENCODING ?= ucs2
+export PYTHON_ENCODING ?= ucs4
 
 CPYTHON_BINDIR=bin/$(FULL_VARIANT_REL)/cpython
 
