@@ -160,7 +160,7 @@ static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
 }
 
 static bool RG_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback){
-	if(ep->isDone){
+	if(ep->status == DONE){
 		return false;
 	}
 	ep->callback = callback;
@@ -168,7 +168,7 @@ static bool RG_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExe
 }
 
 static bool RG_IsDone(ExecutionPlan* ep){
-	return ep->isDone;
+	return(ep->status == DONE);
 }
 
 static const char* RG_GetId(ExecutionPlan* ep){
@@ -176,8 +176,12 @@ static const char* RG_GetId(ExecutionPlan* ep){
 }
 
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
-	assert(ep->isDone);
+	assert(ep->status == DONE);
 	return array_len(ep->results);
+}
+
+static long long RG_GetErrorsLen(ExecutionPlan* ep){
+	return array_len(ep->errors);
 }
 
 static void* RG_GetPrivateData(ExecutionPlan* ep){
@@ -190,9 +194,15 @@ static void RG_SetPrivateData(ExecutionPlan* ep, void* privateData, FreePrivateD
 }
 
 static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
-	assert(ep && ep->isDone);
+	assert(ep && ep->status == DONE);
 	assert(i >= 0 && i < array_len(ep->results));
 	return ep->results[i];
+}
+
+static Record* RG_GetError(ExecutionPlan* ep, long long i){
+	assert(ep);
+	assert(i >= 0 && i < array_len(ep->errors));
+	return ep->errors[i];
 }
 
 static void RG_DropExecution(ExecutionPlan* ep){
@@ -294,6 +304,8 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(IsDone, registerApiCallback);
     REGISTER_API(GetRecordsLen, registerApiCallback);
     REGISTER_API(GetRecord, registerApiCallback);
+    REGISTER_API(GetErrorsLen, registerApiCallback);
+    REGISTER_API(GetError, registerApiCallback);
     REGISTER_API(RegisterExecutionDoneCallback, registerApiCallback);
     REGISTER_API(GetPrivateData, registerApiCallback);
 	REGISTER_API(SetPrivateData, registerApiCallback);

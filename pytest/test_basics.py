@@ -370,7 +370,6 @@ def testMaxExecutions():
     env.assertTrue(map(lambda x: int(x[1].split('-')[1]), res) == [1, 2, 3])
     map(lambda x: env.cmd('rg.dropexecution', x[1]), res)
 
-
 def testOneKeyScan(env):
     env.skipOnCluster()
     conn = getConnectionByEnv(env)
@@ -409,7 +408,19 @@ class testConfig:
 
     def testMultiple(self):
         res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig', 'MaxExecutions')
-        self.env.assertTrue(res[0].startswith('(error)') and not str(res[1]).startswith('(error)'))
+        self.env.assertTrue(str(res[0]).startswith('(error)') and not str(res[1]).startswith('(error)'))
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
-        self.env.assertTrue(res[0].startswith('(error)'))
+        self.env.assertTrue(str(res[0]).startswith('(error)'))
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
+
+class testGetExecution:
+    def __init__(self):
+        self.env = Env()
+
+
+    def testGettingNonExistingExecutionIdShouldError(self):
+        self.env.expect('RG.GETEXECUTION', 'NoSuchExecutionId').raiseError()
+
+
+    def testProfileExecutions(self):
+        pass

@@ -60,26 +60,28 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     }
 }
 
-void Command_ReturnResults(ExecutionPlan* starCtx, RedisModuleCtx *ctx){
-	long long len = RedisGears_GetRecordsLen(starCtx);
+void Command_ReturnResults(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx){
+	long long len = RedisGears_GetRecordsLen(gearsCtx);
 	RedisModule_ReplyWithArray(ctx, 2);
-	RedisModule_ReplyWithArray(ctx, 4);
+	RedisModule_ReplyWithArray(ctx, 6);
 	RedisModule_ReplyWithStringBuffer(ctx, "TotalExecutionDuration", strlen("TotalExecutionDuration"));
-	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetTotalDuration(starCtx));
+	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetTotalDuration(gearsCtx));
 	RedisModule_ReplyWithStringBuffer(ctx, "TotalReadDuration", strlen("TotalReadDuration"));
-	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetReadDuration(starCtx));
+	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetReadDuration(gearsCtx));
+	RedisModule_ReplyWithStringBuffer(ctx, "ErrorsCount", strlen("ErrorsCount"));
+	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetErrorsLen(gearsCtx));
 	RedisModule_ReplyWithArray(ctx, len);
 	for(long long i = 0 ; i < len ; ++i){
-		Record* r = RedisGears_GetRecord(starCtx, i);
+		Record* r = RedisGears_GetRecord(gearsCtx, i);
 		Command_ReturnResult(ctx, r);
 	}
 }
 
-static void Command_ExecutionDone(ExecutionPlan* starCtx, void *privateData){
+static void Command_ExecutionDone(ExecutionPlan* gearsCtx, void *privateData){
 	RedisModuleBlockedClient** bc = privateData;
 	for(size_t i = 0 ; i < array_len(bc) ; ++i){
 		RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bc[i]);
-		Command_ReturnResults(starCtx, rctx);
+		Command_ReturnResults(gearsCtx, rctx);
 		RedisModule_UnblockClient(bc[i], NULL);
 		RedisModule_FreeThreadSafeContext(rctx);
 	}
@@ -91,19 +93,19 @@ int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	}
 
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* starCtx = RedisGears_GetExecution(id);
+	ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
 
-	if(!starCtx){
+	if(!gearsCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exist");
 		return REDISMODULE_OK;
 	}
 
-	if(!RedisGears_IsDone(starCtx)){
+	if(!RedisGears_IsDone(gearsCtx)){
 		RedisModule_ReplyWithError(ctx, "execution is still running");
 		return REDISMODULE_OK;
 	}
 
-	Command_ReturnResults(starCtx, ctx);
+	Command_ReturnResults(gearsCtx, ctx);
 	return REDISMODULE_OK;
 }
 
@@ -118,25 +120,25 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	}
 
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* starCtx = RedisGears_GetExecution(id);
+	ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
 
-	if(!starCtx){
+	if(!gearsCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
 		return REDISMODULE_OK;
 	}
 
 	RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 1000000);
-	if(RedisGears_RegisterExecutionDoneCallback(starCtx, Command_ExecutionDone)){
-		RedisModuleBlockedClient **blockClients = RedisGears_GetPrivateData(starCtx);
+	if(RedisGears_RegisterExecutionDoneCallback(gearsCtx, Command_ExecutionDone)){
+		RedisModuleBlockedClient **blockClients = RedisGears_GetPrivateData(gearsCtx);
 		if(!blockClients){
 			blockClients = array_new(RedisModuleBlockedClient*, 10);
-			RedisGears_SetPrivateData(starCtx, blockClients, Command_FreePrivateData);
+			RedisGears_SetPrivateData(gearsCtx, blockClients, Command_FreePrivateData);
 		}
 		blockClients = array_append(blockClients, bc);
 		return REDISMODULE_OK;
 	}
 	RedisModule_AbortBlock(bc);
-	Command_ReturnResults(starCtx, ctx);
+	Command_ReturnResults(gearsCtx, ctx);
 	return REDISMODULE_OK;
 }
 
@@ -146,19 +148,19 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	}
 
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* starCtx = RedisGears_GetExecution(id);
+	ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
 
-	if(!starCtx){
+	if(!gearsCtx){
 		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
 		return REDISMODULE_OK;
 	}
 
-	if(!RedisGears_IsDone(starCtx)){
+	if(!RedisGears_IsDone(gearsCtx)){
 		RedisModule_ReplyWithError(ctx, "can not drop a running execution");
 		return REDISMODULE_OK;
 	}
 
-	RedisGears_DropExecution(starCtx);
+	RedisGears_DropExecution(gearsCtx);
 
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 
@@ -174,14 +176,14 @@ int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 //
 //    const char* name = RedisModule_StringPtrLen(argv[1], NULL);
 //    char* arg = RG_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
-//    FlatExecutionPlan* starCtx = RedisGears_GetFlatExecution(name);
+//    FlatExecutionPlan* gearsCtx = RedisGears_GetFlatExecution(name);
 //
-//    if(!starCtx){
+//    if(!gearsCtx){
 //        RedisModule_ReplyWithError(ctx, "flat execution plan does not exits");
 //        return REDISMODULE_OK;
 //    }
 //
-//    ExecutionPlan* ep = RedisGears_Run(starCtx, arg, NULL, NULL);
+//    ExecutionPlan* ep = RedisGears_Run(gearsCtx, arg, NULL, NULL);
 //    const char* id = RedisGears_GetId(ep);
 //    RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
 //    return REDISMODULE_OK;

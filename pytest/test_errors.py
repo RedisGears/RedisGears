@@ -10,143 +10,160 @@ def getConnectionByEnv(env):
         conn = env.getConnection()
     return conn
 
-
-def testInvalidSyntax(env):
-    env.expect('rg.pyexecute', '1defs + GearsBuilder().notexists()').error().contains("invalid syntax")
-
-
-def testScriptError(env):
-    env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().equal("GearsBuilder instance has no attribute 'notexists'")
+class testGenericErrors:
+    def __init__(self):
+        self.env = Env()
 
 
-def testForEachError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().foreach(lambda x: notexists(x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testInvalidSyntax(self):
+        self.env.expect('rg.pyexecute', '1defs + GearsBuilder().notexists()').error().contains("invalid syntax")
 
 
-def testGroupByError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: "str", lambda a, x, k: notexists(x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testScriptError(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().equal("GearsBuilder instance has no attribute 'notexists'")
 
 
-def testBatchGroupByError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().batchgroupby(lambda x: "str", lambda x, k: notexists(x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testBuilderCreationWithUnexistingReader(self):
+        self.env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')
 
 
-def testExtractorError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: notexists(x), lambda a, x, k: 1).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+class testStepsErrors:
+    def __init__(self):
+        self.env = Env()
+
+    def testForEachError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().foreach(lambda x: notexists(x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])
+        # self.env.assertContains("global name 'notexists' is not defined", res[1][0])
 
 
-def testAccumulateError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testGroupByError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: "str", lambda a, x, k: notexists(x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])
 
 
-def testMapError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: notexists(x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testBatchGroupByError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().batchgroupby(lambda x: "str", lambda x, k: notexists(x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])
 
 
-def testFlatMapError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().flatmap(lambda x: notexists(x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testExtractorError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: notexists(x), lambda a, x, k: 1).collect().run()')
+        self.env.assertEquals(1, res[0][5])
 
 
-def testFilterError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: notexists(x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testAccumulateError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])
 
 
-def testRepartitionError(env):
-    conn = getConnectionByEnv(env)
-    conn.execute_command('set', 'x', '1')
-    conn.execute_command('set', 'y', '1')
-    res = env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
-    env.assertContains("global name 'notexists' is not defined", res[1][0])
+    def testMapError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: notexists(x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])
 
 
-def testMapWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().map(1, 2).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().map(1).run()').error().contains('argument must be a function')
+    def testFlatMapError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().flatmap(lambda x: notexists(x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])
 
 
-def testFilterWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().filter(1, 2).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().filter(1).run()').error().contains('argument must be a function')
+    def testFilterError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: notexists(x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])
 
 
-def testGroupByWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().groupby(1, 2, 3).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().groupby(1, 2).run()').error().contains('argument must be a function')
+    def testRepartitionError(self):
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('set', 'x', '1')
+        conn.execute_command('set', 'y', '1')
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
+        self.env.assertEquals(1, res[0][5])  # TODO: Shouldn't this be 2?
 
 
-def testBatchGroupByWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().batchgroupby(1, 2, 3).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().batchgroupby(1, 2).run()').error().contains('argument must be a function')
+class testStepsWrongArgs:
+    def __init__(self):
+        self.env = Env()
 
 
-def testCollectWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().collect(1, 2, 3).run()').error().contains('wrong number of args')
+    def testMapWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().map(1, 2).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().map(1).run()').error().contains('argument must be a function')
 
 
-def testForEachWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().foreach(1, 2).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().foreach(1).run()').error().contains('argument must be a function')
+    def testFilterWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().filter(1, 2).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().filter(1).run()').error().contains('argument must be a function')
 
 
-def testRepartitionWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().repartition(1, 2).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().repartition(1).run()').error().contains('argument must be a function')
+    def testGroupByWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().groupby(1, 2, 3).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().groupby(1, 2).run()').error().contains('argument must be a function')
 
 
-def testLimitWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().limit().run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().limit(1, 2, 3).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().limit("awdwada").run()').error().contains('argument must be a number')
-    env.expect('rg.pyexecute', 'GB().limit(1, "kakaka").run()').error().contains('argument must be a number')
+    def testBatchGroupByWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().batchgroupby(1, 2, 3).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().batchgroupby(1, 2).run()').error().contains('argument must be a function')
 
 
-def testAccumulateWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().accumulate(1, 2).run()').error().contains('wrong number of args')
-    env.expect('rg.pyexecute', 'GB().accumulate(1).run()').error().contains('argument must be a function')
+    def testCollectWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().collect(1, 2, 3).run()').error().contains('wrong number of args')
 
 
-def testAvgWrongArgs(env):
-    env.expect('rg.pyexecute', 'GB().avg(1).run()').error().contains('argument must be a function')
+    def testForEachWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().foreach(1, 2).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().foreach(1).run()').error().contains('argument must be a function')
 
 
-def testBuilderCreationWithUnexistingReader(env):
-    env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')
+    def testRepartitionWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().repartition(1, 2).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().repartition(1).run()').error().contains('argument must be a function')
 
 
-def testPyReaderWithWrongArgument(env):
-    env.expect('rg.pyexecute', 'GB("PythonReader").run("*")').error().contains('pyreader argument must be a functio')
-    env.expect('rg.pyexecute', 'GB("PythonReader").run()').error().contains('pyreader argument must be a functio')
-    env.expect('rg.pyexecute', 'GB("PythonReader", "*").run()').error().contains('pyreader argument must be a functio')
-    env.expect('rg.pyexecute', 'GB("PythonReader", ShardReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
+    def testLimitWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().limit().run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().limit(1, 2, 3).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().limit("awdwada").run()').error().contains('argument must be a number')
+        self.env.expect('rg.pyexecute', 'GB().limit(1, "kakaka").run()').error().contains('argument must be a number')
+
+
+    def testAccumulateWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().accumulate(1, 2).run()').error().contains('wrong number of args')
+        self.env.expect('rg.pyexecute', 'GB().accumulate(1).run()').error().contains('argument must be a function')
+
+
+    def testAvgWrongArgs(self):
+        self.env.expect('rg.pyexecute', 'GB().avg(1).run()').error().contains('argument must be a function')
+
+
+    def testPyReaderWithWrongArgument(self):
+        self.env.expect('rg.pyexecute', 'GB("PythonReader").run("*")').error().contains('pyreader argument must be a functio')
+        self.env.expect('rg.pyexecute', 'GB("PythonReader").run()').error().contains('pyreader argument must be a functio')
+        self.env.expect('rg.pyexecute', 'GB("PythonReader", "*").run()').error().contains('pyreader argument must be a functio')
+        self.env.expect('rg.pyexecute', 'GB("PythonReader", ShardReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
+
+def testPythonAttemptTraceback(env):
+    pass

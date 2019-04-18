@@ -13,20 +13,20 @@
 #include "utils/dict.h"
 
 #define STEP_TYPES \
-    X(NONE, "None") \
-    X(MAP, "Map") \
-    X(FILTER, "Filter") \
-    X(READER, "Reader") \
-    X(GROUP, "Group") \
-    X(EXTRACTKEY, "ExtractKey") \
-    X(REPARTITION, "Repartition") \
-    X(REDUCE, "Reduce") \
-    X(COLLECT, "Collect") \
-    X(FOREACH, "ForEach") \
-    X(FLAT_MAP, "FlatMap") \
-    X(LIMIT, "Limit") \
-    X(ACCUMULATE, "Accumulate") \
-    X(ACCUMULATE_BY_KEY, "AccumulateByKey")
+    X(NONE, "none") \
+    X(MAP, "map") \
+    X(FILTER, "filter") \
+    X(READER, "reader") \
+    X(GROUP, "group") \
+    X(EXTRACTKEY, "extractkey") \
+    X(REPARTITION, "repartition") \
+    X(REDUCE, "reduce") \
+    X(COLLECT, "collect") \
+    X(FOREACH, "foreach") \
+    X(FLAT_MAP, "flatmap") \
+    X(LIMIT, "limit") \
+    X(ACCUMULATE, "accumulate") \
+    X(ACCUMULATE_BY_KEY, "accumulatebykey")
 
 enum StepType{
 #define X(a, b) a,
@@ -137,8 +137,18 @@ typedef struct ExecutionStep{
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 
+#define EXECUTION_PLAN_STATUSES \
+    X(CREATED, "created") \
+    X(RUNNING, "running") \
+    X(WAITING_FOR_RECIEVED_NOTIFICATION, "pending_receive") \
+    X(WAITING_FOR_RUN_NOTIFICATION, "pending_run") \
+    X(WAITING_FOR_CLUSTER_TO_COMPLETE, "pending_cluster") \
+    X(DONE, "done")
+
 typedef enum ExecutionPlanStatus{
-    CREATED, RUNNING, WAITING_FOR_RECIEVED_NOTIFICATION, WAITING_FOR_RUN_NOTIFICATION, WAITING_FOR_CLUSTER_TO_COMPLETE
+#define X(a, b) a,
+    EXECUTION_PLAN_STATUSES
+#undef X
 }ExecutionPlanStatus;
 
 #define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
@@ -158,15 +168,14 @@ typedef struct ExecutionPlan{
     size_t totalShardsRecieved;
     size_t totalShardsCompleted;
     Record** results;
+    Record** errors;
     ExecutionPlanStatus status;
-    bool isDone;
     bool sentRunRequest;
     RedisGears_OnExecutionDoneCallback callback;
     void* privateData;
     FreePrivateData freeCallback;
     long long executionDuration;
     WorkerData* assignWorker;
-    bool isErrorOccure;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
