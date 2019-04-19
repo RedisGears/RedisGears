@@ -1785,9 +1785,9 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
     RedisModule_ReplyWithStringBuffer(ctx, "results", strlen("results"));
     RedisModule_ReplyWithLongLong(ctx, RedisGears_GetRecordsLen(ep));
 	RedisModule_ReplyWithStringBuffer(ctx, "errors", strlen("errors"));
-    uint32_t errorsLen = array_len(ep->errors);
+    long long errorsLen = RedisGears_GetErrorsLen(ep);
     RedisModule_ReplyWithArray(ctx,errorsLen);
-    for(uint32_t i = 0; i < errorsLen; i++){
+    for(long long i = 0; i < errorsLen; i++){
         Record* error = RedisGears_GetError(ep, i);
         size_t errorStrLen;
         char* errorStr = RedisGears_StringRecordGet(error, &errorStrLen);

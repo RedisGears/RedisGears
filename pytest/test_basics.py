@@ -413,14 +413,58 @@ class testConfig:
         self.env.assertTrue(str(res[0]).startswith('(error)'))
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
 
+
 class testGetExecution:
     def __init__(self):
         self.env = Env()
+        conn = getConnectionByEnv(self.env)
+        conn.execute_command('SET', 'k1', 'spark')
+        conn.execute_command('SET', 'k2', 'star')
+        conn.execute_command('SET', 'k3', 'lambda')
 
 
-    def testGettingNonExistingExecutionIdShouldError(self):
+    def testGettingANonExistingExecutionIdShouldError(self):
         self.env.expect('RG.GETEXECUTION', 'NoSuchExecutionId').raiseError()
 
 
-    def testProfileExecutions(self):
-        pass
+    def testGettingAnExecutionPlanShouldSucceed(self):
+        id = self.env.cmd('RG.PYEXECUTE', "GB().map(lambda x: x['value']).run()", 'UNBLOCKING')
+        time.sleep(1)
+        res = self.env.cmd('RG.GETEXECUTION', id)
+        self.env.assertEqual(res[3], 3)       # results
+        self.env.assertEqual(len(res[5]), 0)  # errors
+
+
+    def testProfileExecutionsShouldBeDisabledByDefault(self):
+        res = self.env.cmd('RG.CONFIGGET', 'ProfileExecutions')
+        self.env.assertEqual(res[0], 0)
+
+
+    def testExecutionShouldNotContainStepsDurationsWhenProfilingIsDisabled(self):
+        res = self.env.cmd('RG.CONFIGSET', 'ProfileExecutions', 0)
+        self.env.assertOk(res[0])
+        id = self.env.cmd('RG.PYEXECUTE', "GB().map(lambda x: x['value']).run()", 'UNBLOCKING')
+        time.sleep(1)
+        res = self.env.cmd('RG.GETEXECUTION', id)
+        steps = res[11]
+        self.env.assertLessEqual(1, len(steps))
+        sdursum = 0
+        for _, stype, _, sdur, _, sname, _, sarg in steps:
+            sdursum += sdur    
+        self.env.assertEqual(sdursum, 0)
+
+
+    def testExecutionsShouldContainSomeStepsDurationsWhenProfilingIsEnabled(self):
+        res = self.env.cmd('RG.CONFIGSET', 'ProfileExecutions', 1)
+        self.env.assertOk(res[0])
+        id = self.env.cmd('RG.PYEXECUTE', "GB().flatmap(lambda x: x['value']).run()", 'UNBLOCKING')
+        time.sleep(1)
+        res = self.env.cmd('RG.CONFIGSET', 'ProfileExecutions', 0)  # TODO: consider running the basicTests class with profiling
+        self.env.assertOk(res[0])
+        res = self.env.cmd('RG.GETEXECUTION', id)
+        steps = res[11]
+        self.env.assertLessEqual(1, len(steps))
+        sdursum = 0
+        for _, stype, _, sdur, _, sname, _, sarg in steps:
+            sdursum += sdur    
+        self.env.assertLess(0, sdursum)

@@ -1462,8 +1462,9 @@ static char* RedisGearsPy_PyObjectToString(void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* obj = arg;
     PyObject *objStr = PyObject_Str(obj);
-    objCstr = PyString_AsString(objStr);
+    objCstr = RG_STRDUP(PyString_AsString(objStr));
     Py_DECREF(objStr);
+    PyGILState_Release(state);
     return objCstr;
 }
 
