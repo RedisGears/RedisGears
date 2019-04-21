@@ -43,7 +43,28 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 #ifdef WITHPYTHON
     case PY_RECORD:
         obj = RG_PyObjRecordGet(record);
-        if(PyObject_TypeCheck(obj, &PyBaseString_Type)) {
+        if(PyObject_TypeCheck(obj, &PyList_Type)){
+			listLen = PyList_Size(obj);
+			Record* rgl = RedisGears_ListRecordCreate(listLen);
+			for(int i = 0 ; i < listLen ; ++i){
+				Record* temp = RG_PyObjRecordCreate();
+				PyObject* pItem = PyList_GetItem(obj, i);
+				RG_PyObjRecordSet(temp, pItem);
+				Py_INCREF(pItem);
+				RedisGears_ListRecordAdd(rgl, temp);
+			}			
+			Command_ReturnResult(rctx, rgl);
+			RedisGears_FreeRecord(rgl);
+		}else if(PyObject_TypeCheck(obj, &PyInt_Type)) {
+			RedisModule_ReplyWithLongLong(rctx, (long long)PyInt_AsLong(obj));
+		}else if(PyObject_TypeCheck(obj, &PyLong_Type)) {
+			RedisModule_ReplyWithLongLong(rctx, PyLong_AsLongLong(obj));
+		}else if(PyObject_TypeCheck(obj, &PyFloat_Type)) {
+			char buf[128];
+			PyFloatObject *fObj = (PyFloatObject*)obj;
+			PyFloat_AsReprString(buf, fObj);
+            RedisModule_ReplyWithStringBuffer(rctx, buf, strlen(buf));
+		}else if(PyObject_TypeCheck(obj, &PyBaseString_Type)) {
             str = PyString_AsString(obj);
             RedisModule_ReplyWithStringBuffer(rctx, str, strlen(str));
         }else{
@@ -62,14 +83,6 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 
 void Command_ReturnResults(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx){
 	long long len = RedisGears_GetRecordsLen(gearsCtx);
-	RedisModule_ReplyWithArray(ctx, 2);
-	RedisModule_ReplyWithArray(ctx, 6);
-	RedisModule_ReplyWithStringBuffer(ctx, "TotalExecutionDuration", strlen("TotalExecutionDuration"));
-	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetTotalDuration(gearsCtx));
-	RedisModule_ReplyWithStringBuffer(ctx, "TotalReadDuration", strlen("TotalReadDuration"));
-	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetReadDuration(gearsCtx));
-	RedisModule_ReplyWithStringBuffer(ctx, "ErrorsCount", strlen("ErrorsCount"));
-	RedisModule_ReplyWithLongLong(ctx, RedisGears_GetErrorsLen(gearsCtx));
 	RedisModule_ReplyWithArray(ctx, len);
 	for(long long i = 0 ; i < len ; ++i){
 		Record* r = RedisGears_GetRecord(gearsCtx, i);
@@ -77,11 +90,28 @@ void Command_ReturnResults(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx){
 	}
 }
 
+void Command_ReturnErrors(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx){
+	long long len = RedisGears_GetErrorsLen(gearsCtx);
+	RedisModule_ReplyWithArray(ctx, len);
+	for(long long i = 0 ; i < len ; ++i){
+		Record* error = RedisGears_GetError(gearsCtx, i);
+		size_t errorStrLen;
+		char* errorStr = RedisGears_StringRecordGet(error, &errorStrLen);
+		RedisModule_ReplyWithStringBuffer(ctx, errorStr, errorStrLen);
+	}
+}
+
+void Command_ReturnResultsAndErrors(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx){
+	RedisModule_ReplyWithArray(ctx, 2);
+	Command_ReturnResults(gearsCtx, ctx);
+	Command_ReturnErrors(gearsCtx, ctx);
+}
+
 static void Command_ExecutionDone(ExecutionPlan* gearsCtx, void *privateData){
 	RedisModuleBlockedClient** bc = privateData;
 	for(size_t i = 0 ; i < array_len(bc) ; ++i){
 		RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bc[i]);
-		Command_ReturnResults(gearsCtx, rctx);
+		Command_ReturnResultsAndErrors(gearsCtx, rctx);
 		RedisModule_UnblockClient(bc[i], NULL);
 		RedisModule_FreeThreadSafeContext(rctx);
 	}
@@ -105,7 +135,7 @@ int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 		return REDISMODULE_OK;
 	}
 
-	Command_ReturnResults(gearsCtx, ctx);
+	Command_ReturnResultsAndErrors(gearsCtx, ctx);
 	return REDISMODULE_OK;
 }
 
@@ -138,7 +168,7 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 		return REDISMODULE_OK;
 	}
 	RedisModule_AbortBlock(bc);
-	Command_ReturnResults(gearsCtx, ctx);
+	Command_ReturnResultsAndErrors(gearsCtx, ctx);
 	return REDISMODULE_OK;
 }
 

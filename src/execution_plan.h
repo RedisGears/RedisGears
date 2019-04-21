@@ -11,7 +11,9 @@
 #include <stdbool.h>
 #include "redisgears.h"
 #include "utils/dict.h"
-
+#ifdef WITHPYTHON
+#include <redisgears_python.h>
+#endif
 #define STEP_TYPES \
     X(NONE, "none") \
     X(MAP, "map") \

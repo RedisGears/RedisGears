@@ -36,47 +36,47 @@ class testStepsErrors:
 
     def testForEachError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().foreach(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testGroupByError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: "str", lambda a, x, k: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testBatchGroupByError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().batchgroupby(lambda x: "str", lambda x, k: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testExtractorError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: notexists(x), lambda a, x, k: 1).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testAccumulateError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testMapError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testFlatMapError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().flatmap(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testFilterError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
     def testRepartitionError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[0][5])
+        self.env.assertLessEqual(1, res[1])
 
 
 class testStepsWrongArgs:
@@ -154,7 +154,7 @@ class testGetExecutionErrorReporting:
         id = self.env.cmd('RG.PYEXECUTE', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()', 'UNBLOCKING')
         time.sleep(1)
         res = self.env.cmd('RG.GETEXECUTION', id)
-        errors = res[5]
+        errors = res[0][3][9]
         for error in errors:
             self.env.assertContains("global name 'notexists' is not defined", error)
         self.env.cmd('RG.DROPEXECUTION', id)
@@ -165,7 +165,7 @@ class testGetExecutionErrorReporting:
         id = self.env.cmd('RG.PYEXECUTE', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()', 'UNBLOCKING')
         time.sleep(1)
         res = self.env.cmd('RG.GETEXECUTION', id)
-        errors = res[5]
+        errors = res[0][3][9]
         for error in errors:
             self.env.assertContains("global name 'notexists' is not defined", error)
         self.env.cmd('RG.DROPEXECUTION', id)

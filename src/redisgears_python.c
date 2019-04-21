@@ -30,6 +30,10 @@ static RedisModuleCtx* currentCtx = NULL;
 static bool blockingExecute = true;
 static bool executionTriggered = false;
 
+typedef void (*DoneCallbackFunction)(ExecutionPlan*, void*); 
+static void onDone(ExecutionPlan* ep, void* privateData);
+static DoneCallbackFunction doneFunction = onDone;
+
 static PyThreadState *_save;
 
 #define PYTHON_ERROR "error running python code"
@@ -257,7 +261,7 @@ static PyObject* accumulate(PyObject *self, PyObject *args){
 static void onDone(ExecutionPlan* ep, void* privateData){
     RedisModuleBlockedClient *bc = privateData;
     RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
-    Command_ReturnResults(ep, rctx);
+    Command_ReturnResultsAndErrors(ep, rctx);
     RedisModule_UnblockClient(bc, NULL);
     RedisGears_DropExecution(ep);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -306,7 +310,7 @@ static PyObject* run(PyObject *self, PyObject *args){
         RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
     }else{
         RedisModuleBlockedClient *bc = RedisModule_BlockClient(currentCtx, NULL, NULL, NULL, 1000000);
-        RedisGears_RegisterExecutionDoneCallback(ep, onDone);
+        RedisGears_RegisterExecutionDoneCallback(ep, doneFunction);
         RedisGears_SetPrivateData(ep, bc, NULL);
     }
     Py_INCREF(Py_None);
@@ -1034,7 +1038,7 @@ static int RedisGearsPy_FreeInterpreter(RedisModuleCtx *ctx, RedisModuleString *
 	return REDISMODULE_OK;
 }
 
-static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 2 || argc > 3){
         return RedisModule_WrongArity(ctx);
     }
@@ -1088,6 +1092,22 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
+static void onDoneResultsOnly(ExecutionPlan* ep, void* privateData){
+    RedisModuleBlockedClient *bc = privateData;
+    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
+    Command_ReturnResults(ep, rctx);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisGears_DropExecution(ep);
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
+int RedisGearsPy_ExecuteReturnResultsOnly(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    doneFunction = onDoneResultsOnly;
+    int res = RedisGearsPy_Execute(ctx, argv, argc);
+    doneFunction = onDone;
+    return res;
+}
+
 void fetchPyError(char** err) {
     PyObject *pType, *pValue, *pTraceback;
     PyErr_Fetch(&pType, &pValue, &pTraceback);
@@ -1116,8 +1136,6 @@ void fetchPyError(char** err) {
         PyTuple_SetItem(pArgs, 1, pStrValue);
         pStrTraceback = PyString_Format(pStrFormat, pArgs);
         Py_DECREF(pArgs);
-        Py_DECREF(pStrValue);
-        Py_DECREF(pStrType);
         Py_DECREF(pStrFormat);
     }
     char *strTraceback = PyString_AsString(pStrTraceback);
@@ -1761,7 +1779,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
         return REDISMODULE_ERR;
     }

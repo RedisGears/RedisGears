@@ -118,11 +118,11 @@ class GearsBuilder():
                                              lambda a, r: (a[0] + r, a[1] + 1),
                                              lambda a, r: (a[0] + r[0], a[1] + r[1])).map(lambda x: x[0] / x[1])
 
-    def run(self, arg=None, converteToStr=True, collect=True):
+    def run(self, arg=None, convertToStr=True, collect=True):
         '''
         Starting the execution
         '''
-        if(converteToStr):
+        if(convertToStr):
             self.gearsCtx.map(lambda x: str(x))
         if(collect):
             self.gearsCtx.collect()

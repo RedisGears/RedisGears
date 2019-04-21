@@ -1766,68 +1766,125 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 }
 
 int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-	if(argc != 2){
+	if(argc < 2 || argc > 3){
 		return RedisModule_WrongArity(ctx);
 	}
 
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-	ExecutionPlan* ep = RedisGears_GetExecution(id);
+    bool bClusterPlan = Cluster_IsClusterMode();
 
-	if(!ep){
-		RedisModule_ReplyWithError(ctx, "execution plan does not exist");
-		return REDISMODULE_OK;
-	}
+    // TODO: big potential issue if another thread releases the ep before we acquire the lock <- maybe just lock the eplist?
+    ExecutionPlan* ep = RedisGears_GetExecution(id);
 
-    pthread_mutex_lock(&epData.mutex);
-	RedisModule_ReplyWithArray(ctx, 12);
-	RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
-    RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
-    RedisModule_ReplyWithStringBuffer(ctx, "results", strlen("results"));
-    RedisModule_ReplyWithLongLong(ctx, RedisGears_GetRecordsLen(ep));
-	RedisModule_ReplyWithStringBuffer(ctx, "errors", strlen("errors"));
-    long long errorsLen = RedisGears_GetErrorsLen(ep);
-    RedisModule_ReplyWithArray(ctx,errorsLen);
-    for(long long i = 0; i < errorsLen; i++){
-        Record* error = RedisGears_GetError(ep, i);
-        size_t errorStrLen;
-        char* errorStr = RedisGears_StringRecordGet(error, &errorStrLen);
-        RedisModule_ReplyWithStringBuffer(ctx, errorStr, errorStrLen);
+    if(!ep){
+        RedisModule_ReplyWithError(ctx, "execution plan does not exist");
+        return REDISMODULE_OK;
     }
 
-	RedisModule_ReplyWithStringBuffer(ctx, "total_duration", strlen("total_duration"));
-    RedisModule_ReplyWithLongLong(ctx, FlatExecutionPlan_GetExecutionDuration(ep));
-	RedisModule_ReplyWithStringBuffer(ctx, "read_duration", strlen("read_duration"));
-    RedisModule_ReplyWithLongLong(ctx, FlatExecutionPlan_GetReadDuration(ep));
-
-    uint32_t fstepsLen = array_len(ep->fep->steps);
-	RedisModule_ReplyWithStringBuffer(ctx, "steps", strlen("steps"));
-	RedisModule_ReplyWithArray(ctx, fstepsLen);
-    for(size_t i = 0; i < fstepsLen; i++){
-        ExecutionStep *step = ep->steps[i];
-        FlatExecutionStep fstep = ep->fep->steps[fstepsLen - i - 1];
-        RedisModule_ReplyWithArray(ctx, 8);
-		RedisModule_ReplyWithStringBuffer(ctx, "type", strlen("type"));
-		RedisModule_ReplyWithStringBuffer(ctx, stepsNames[step->type], strlen(stepsNames[step->type]));
-		RedisModule_ReplyWithStringBuffer(ctx, "duration", strlen("duration"));
-		RedisModule_ReplyWithLongLong(ctx, step->executionDuration);
-		RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
-		RedisModule_ReplyWithStringBuffer(ctx, fstep.bStep.stepName, strlen(fstep.bStep.stepName));
-		RedisModule_ReplyWithStringBuffer(ctx, "arg", strlen("arg"));
-        ExecutionStepArg arg = fstep.bStep.arg;
-        if(arg.stepArg){
-            ArgType* type = arg.type;
-            if(type && type->tostring){
-                char* argCstr = type->tostring(arg.stepArg);
-        		RedisModule_ReplyWithStringBuffer(ctx, argCstr, strlen(argCstr));
-                RG_FREE(argCstr);
-            }else{
-        		RedisModule_ReplyWithNull(ctx);
+    if(argc == 3){
+        const char *subcommand = RedisModule_StringPtrLen(argv[2], NULL);
+        if(!strcasecmp(subcommand, "shard")){
+            bClusterPlan = false;
+        }else if(!strcasecmp(subcommand, "cluster")){
+            if(!bClusterPlan){
+                RedisModule_ReplyWithError(ctx, "no cluster detected - use `RG.GETEXECUTION <id> [SHARD]` instead");
+                return REDISMODULE_OK;            
             }
+#ifndef WITHPYTHON
+            RedisModule_ReplyWithError(ctx, "cluster execution plan requires Python enabled - only `RG.GETEXECUTION <id> SHARD` is supported");
+            return REDISMODULE_OK;            
+#endif
         }else{
-            RedisModule_ReplyWithNull(ctx);
+            RedisModule_ReplyWithError(ctx, "unknown subcommand");
+            return REDISMODULE_OK;
         }
     }
-    pthread_mutex_unlock(&epData.mutex);
+
+    if(bClusterPlan){
+#ifndef WITHPYTHON
+        assert(true);
+#else
+        RedisModuleString **fargv = RedisModule_Calloc(2, sizeof(RedisModuleString*));
+        const char *eid = RedisModule_StringPtrLen(argv[1], NULL);
+        fargv[1] = RedisModule_CreateStringPrintf(ctx,
+            "GB('ShardsIDReader')"
+            ".map(lambda x: execute('RG.GETEXECUTION', '%s', 'SHARD'))"
+            ".collect()"
+            ".flatmap(lambda x: [i for i in x])"
+            ".run(convertToStr=False, collect=False)", eid);
+        int res = RedisGearsPy_ExecuteReturnResultsOnly(ctx, fargv, 2);
+        RedisModule_Free(fargv[1]);
+        RedisModule_Free(fargv);
+        return res;
+#endif
+    }else{
+
+        pthread_mutex_lock(&epData.mutex);
+        RedisModule_ReplyWithArray(ctx, 1);
+        RedisModule_ReplyWithArray(ctx, 4);
+        RedisModule_ReplyWithStringBuffer(ctx, "shard_id", strlen("shard_id"));
+        char myId[REDISMODULE_NODE_ID_LEN];
+        if(Cluster_IsClusterMode()){
+            memcpy(myId, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN);
+        }else{
+            memset(myId, '0', REDISMODULE_NODE_ID_LEN);
+        }
+        RedisModule_ReplyWithStringBuffer(ctx, myId, REDISMODULE_NODE_ID_LEN);
+        RedisModule_ReplyWithStringBuffer(ctx, "execution_plan", strlen("execution_plan"));
+        RedisModule_ReplyWithArray(ctx, 16);
+        RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
+        RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
+        RedisModule_ReplyWithStringBuffer(ctx, "shards_received", strlen("shards_received"));
+        RedisModule_ReplyWithLongLong(ctx, ep->totalShardsRecieved);
+        RedisModule_ReplyWithStringBuffer(ctx, "shards_completed", strlen("shards_completed"));
+        RedisModule_ReplyWithLongLong(ctx, ep->totalShardsCompleted);
+        RedisModule_ReplyWithStringBuffer(ctx, "results", strlen("results"));
+        RedisModule_ReplyWithLongLong(ctx, RedisGears_GetRecordsLen(ep));
+        RedisModule_ReplyWithStringBuffer(ctx, "errors", strlen("errors"));
+        long long errorsLen = RedisGears_GetErrorsLen(ep);
+        RedisModule_ReplyWithArray(ctx,errorsLen);
+        for(long long i = 0; i < errorsLen; i++){
+            Record* error = RedisGears_GetError(ep, i);
+            size_t errorStrLen;
+            char* errorStr = RedisGears_StringRecordGet(error, &errorStrLen);
+            RedisModule_ReplyWithStringBuffer(ctx, errorStr, errorStrLen);
+        }
+
+        RedisModule_ReplyWithStringBuffer(ctx, "total_duration", strlen("total_duration"));
+        RedisModule_ReplyWithLongLong(ctx, FlatExecutionPlan_GetExecutionDuration(ep));
+        RedisModule_ReplyWithStringBuffer(ctx, "read_duration", strlen("read_duration"));
+        RedisModule_ReplyWithLongLong(ctx, FlatExecutionPlan_GetReadDuration(ep));
+
+        uint32_t fstepsLen = array_len(ep->fep->steps);
+        RedisModule_ReplyWithStringBuffer(ctx, "steps", strlen("steps"));
+        RedisModule_ReplyWithArray(ctx, fstepsLen);
+        for(size_t i = 0; i < fstepsLen; i++){
+            ExecutionStep *step = ep->steps[i];
+            FlatExecutionStep fstep = ep->fep->steps[fstepsLen - i - 1];
+            RedisModule_ReplyWithArray(ctx, 8);
+            RedisModule_ReplyWithStringBuffer(ctx, "type", strlen("type"));
+            RedisModule_ReplyWithStringBuffer(ctx, stepsNames[step->type], strlen(stepsNames[step->type]));
+            RedisModule_ReplyWithStringBuffer(ctx, "duration", strlen("duration"));
+            RedisModule_ReplyWithLongLong(ctx, step->executionDuration);
+            RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
+            RedisModule_ReplyWithStringBuffer(ctx, fstep.bStep.stepName, strlen(fstep.bStep.stepName));
+            RedisModule_ReplyWithStringBuffer(ctx, "arg", strlen("arg"));
+            ExecutionStepArg arg = fstep.bStep.arg;
+            if(arg.stepArg){
+                ArgType* type = arg.type;
+                if(type && type->tostring){
+                    char* argCstr = type->tostring(arg.stepArg);
+                    RedisModule_ReplyWithStringBuffer(ctx, argCstr, strlen(argCstr));
+                    RG_FREE(argCstr);
+                }else{
+                    RedisModule_ReplyWithStringBuffer(ctx, "", strlen(""));
+                }
+            }else{
+                RedisModule_ReplyWithStringBuffer(ctx, "", strlen(""));
+            }
+        }
+        pthread_mutex_unlock(&epData.mutex);
+    }
 	return REDISMODULE_OK;
 }
 
