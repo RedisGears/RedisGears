@@ -433,7 +433,7 @@ class testGetExecution:
         res = self.env.cmd('RG.GETEXECUTION', id)
         self.env.assertEqual(res[3], 3)       # results
         self.env.assertEqual(len(res[5]), 0)  # errors
-
+        self.env.cmd('RG.DROPEXECUTION', id)
 
     def testProfileExecutionsShouldBeDisabledByDefault(self):
         res = self.env.cmd('RG.CONFIGGET', 'ProfileExecutions')
@@ -452,6 +452,7 @@ class testGetExecution:
         for _, stype, _, sdur, _, sname, _, sarg in steps:
             sdursum += sdur    
         self.env.assertEqual(sdursum, 0)
+        self.env.cmd('RG.DROPEXECUTION', id)
 
 
     def testExecutionsShouldContainSomeStepsDurationsWhenProfilingIsEnabled(self):
@@ -468,3 +469,4 @@ class testGetExecution:
         for _, stype, _, sdur, _, sname, _, sarg in steps:
             sdursum += sdur    
         self.env.assertLess(0, sdursum)
+        self.env.cmd('RG.DROPEXECUTION', id)

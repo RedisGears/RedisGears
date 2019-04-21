@@ -157,6 +157,7 @@ class testGetExecutionErrorReporting:
         errors = res[5]
         for error in errors:
             self.env.assertContains("global name 'notexists' is not defined", error)
+        self.env.cmd('RG.DROPEXECUTION', id)
 
 
     def testErrorShouldBeReportedWithTracebackNotAttempted(self):
@@ -167,4 +168,5 @@ class testGetExecutionErrorReporting:
         errors = res[5]
         for error in errors:
             self.env.assertContains("global name 'notexists' is not defined", error)
+        self.env.cmd('RG.DROPEXECUTION', id)
         self.env.cmd('RG.CONFIGSET', 'PythonAttemptTraceback', 1)

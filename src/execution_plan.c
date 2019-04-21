@@ -1819,6 +1819,7 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
             if(type && type->tostring){
                 char* argCstr = type->tostring(arg.stepArg);
         		RedisModule_ReplyWithStringBuffer(ctx, argCstr, strlen(argCstr));
+                RG_FREE(argCstr);
             }else{
         		RedisModule_ReplyWithNull(ctx);
             }
