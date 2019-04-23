@@ -186,7 +186,7 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     Gears_listDelNode(n->pendingMesages, node);
 }
 
-static void RGHelloResponseArrived(struct redisAsyncContext* c, void* a, void* b){
+static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     redisReply* reply = (redisReply*)a;
     if(!reply){
         return;
@@ -207,6 +207,7 @@ static void RGHelloResponseArrived(struct redisAsyncContext* c, void* a, void* b
                 SentMessages* sentMsg = Gears_listNodeValue(node);
                 redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
             }
+            Gears_listReleaseIterator(iter);
         }
         RG_FREE(n->runId);
     }
@@ -244,7 +245,7 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
         if(n->password){
             redisAsyncCommand((redisAsyncContext*)c, NULL, NULL, "AUTH %s", n->password);
         }
-        redisAsyncCommand((redisAsyncContext*)c, RGHelloResponseArrived, n, "RG.HELLO");
+        redisAsyncCommand((redisAsyncContext*)c, RG_HelloResponseArrived, n, "RG.HELLO");
     }
 }
 
