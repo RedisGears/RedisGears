@@ -468,7 +468,7 @@ class testGetExecution:
         sdursum = 0
         for _, stype, _, sdur, _, sname, _, sarg in steps:
             sdursum += sdur    
-        self.env.assertLess(0, sdursum)
+        self.env.assertLessEqual(0, sdursum)
         self.env.cmd('RG.DROPEXECUTION', id)
 
     def testGetShardExecutionShouldSucceed(self):
