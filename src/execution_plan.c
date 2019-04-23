@@ -26,6 +26,7 @@
                             STOP_TIMER; \
                             d += DURATION; \
                         }
+#define DURATION2MS(d)  (long long)(d/(long long)1000000)
 
 char* stepsNames[] = {
 #define X(a, b) b,
@@ -1765,6 +1766,15 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 	return REDISMODULE_OK;
 }
 
+static void onDoneResultsOnly(ExecutionPlan* ep, void* privateData){
+    RedisModuleBlockedClient *bc = privateData;
+    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
+    Command_ReturnResults(ep, rctx);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisGears_DropExecution(ep);
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
 int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	if(argc < 2 || argc > 3){
 		return RedisModule_WrongArity(ctx);
@@ -1812,7 +1822,7 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
             ".collect()"
             ".flatmap(lambda x: [i for i in x])"
             ".run(convertToStr=False, collect=False)", eid);
-        int res = RedisGearsPy_ExecuteReturnResultsOnly(ctx, fargv, 2);
+        int res = RedisGearsPy_ExecuteWithCallback(ctx, fargv, 2, onDoneResultsOnly);
         RedisModule_Free(fargv[1]);
         RedisModule_Free(fargv);
         return res;
@@ -1839,21 +1849,30 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
         RedisModule_ReplyWithStringBuffer(ctx, "shards_completed", strlen("shards_completed"));
         RedisModule_ReplyWithLongLong(ctx, ep->totalShardsCompleted);
         RedisModule_ReplyWithStringBuffer(ctx, "results", strlen("results"));
-        RedisModule_ReplyWithLongLong(ctx, RedisGears_GetRecordsLen(ep));
+        // TODO: once results and errors are linked lists we can provide more insight here
+        if(ep->status == DONE){
+            RedisModule_ReplyWithLongLong(ctx, RedisGears_GetRecordsLen(ep));
+        }else{
+            RedisModule_ReplyWithLongLong(ctx, -1);
+        }
         RedisModule_ReplyWithStringBuffer(ctx, "errors", strlen("errors"));
-        long long errorsLen = RedisGears_GetErrorsLen(ep);
-        RedisModule_ReplyWithArray(ctx,errorsLen);
-        for(long long i = 0; i < errorsLen; i++){
-            Record* error = RedisGears_GetError(ep, i);
-            size_t errorStrLen;
-            char* errorStr = RedisGears_StringRecordGet(error, &errorStrLen);
-            RedisModule_ReplyWithStringBuffer(ctx, errorStr, errorStrLen);
+        if(ep->status == DONE){
+            long long errorsLen = RedisGears_GetErrorsLen(ep);
+            RedisModule_ReplyWithArray(ctx,errorsLen);
+            for(long long i = 0; i < errorsLen; i++){
+                Record* error = RedisGears_GetError(ep, i);
+                size_t errorStrLen;
+                char* errorStr = RedisGears_StringRecordGet(error, &errorStrLen);
+                RedisModule_ReplyWithStringBuffer(ctx, errorStr, errorStrLen);
+            }
+        }else{
+            RedisModule_ReplyWithArray(ctx, 0);
         }
 
         RedisModule_ReplyWithStringBuffer(ctx, "total_duration", strlen("total_duration"));
-        RedisModule_ReplyWithLongLong(ctx, FlatExecutionPlan_GetExecutionDuration(ep));
+        RedisModule_ReplyWithLongLong(ctx, DURATION2MS(FlatExecutionPlan_GetExecutionDuration(ep)));
         RedisModule_ReplyWithStringBuffer(ctx, "read_duration", strlen("read_duration"));
-        RedisModule_ReplyWithLongLong(ctx, FlatExecutionPlan_GetReadDuration(ep));
+        RedisModule_ReplyWithLongLong(ctx, DURATION2MS(FlatExecutionPlan_GetReadDuration(ep)));
 
         uint32_t fstepsLen = array_len(ep->fep->steps);
         RedisModule_ReplyWithStringBuffer(ctx, "steps", strlen("steps"));
@@ -1865,7 +1884,7 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
             RedisModule_ReplyWithStringBuffer(ctx, "type", strlen("type"));
             RedisModule_ReplyWithStringBuffer(ctx, stepsNames[step->type], strlen(stepsNames[step->type]));
             RedisModule_ReplyWithStringBuffer(ctx, "duration", strlen("duration"));
-            RedisModule_ReplyWithLongLong(ctx, step->executionDuration);
+            RedisModule_ReplyWithLongLong(ctx, DURATION2MS(step->executionDuration));
             RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
             RedisModule_ReplyWithStringBuffer(ctx, fstep.bStep.stepName, strlen(fstep.bStep.stepName));
             RedisModule_ReplyWithStringBuffer(ctx, "arg", strlen("arg"));

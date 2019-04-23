@@ -26,11 +26,11 @@ static PyObject* pFunc;
 static PyObject* pyGlobals;
 PyObject* GearsError;
 
+// TODO: wrap these global variables in their very own thread's private context
 static RedisModuleCtx* currentCtx = NULL;
 static bool blockingExecute = true;
 static bool executionTriggered = false;
 
-typedef void (*DoneCallbackFunction)(ExecutionPlan*, void*); 
 static void onDone(ExecutionPlan* ep, void* privateData);
 static DoneCallbackFunction doneFunction = onDone;
 
@@ -1092,19 +1092,11 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     return REDISMODULE_OK;
 }
 
-static void onDoneResultsOnly(ExecutionPlan* ep, void* privateData){
-    RedisModuleBlockedClient *bc = privateData;
-    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
-    Command_ReturnResults(ep, rctx);
-    RedisModule_UnblockClient(bc, NULL);
-    RedisGears_DropExecution(ep);
-    RedisModule_FreeThreadSafeContext(rctx);
-}
-
-int RedisGearsPy_ExecuteReturnResultsOnly(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    doneFunction = onDoneResultsOnly;
+int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, DoneCallbackFunction callback){
+    DoneCallbackFunction orgDoneFunction = doneFunction;
+    doneFunction = callback;
     int res = RedisGearsPy_Execute(ctx, argv, argc);
-    doneFunction = onDone;
+    doneFunction = orgDoneFunction;
     return res;
 }
 

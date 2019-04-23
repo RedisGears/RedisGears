@@ -176,11 +176,14 @@ static const char* RG_GetId(ExecutionPlan* ep){
 }
 
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
-	assert(ep->status == DONE);
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
+	assert(ep && ep->status == DONE);
 	return array_len(ep->results);
 }
 
 static long long RG_GetErrorsLen(ExecutionPlan* ep){
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
+	assert(ep && ep->status == DONE);
 	return array_len(ep->errors);
 }
 
@@ -194,13 +197,15 @@ static void RG_SetPrivateData(ExecutionPlan* ep, void* privateData, FreePrivateD
 }
 
 static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
 	assert(ep && ep->status == DONE);
 	assert(i >= 0 && i < array_len(ep->results));
 	return ep->results[i];
 }
 
 static Record* RG_GetError(ExecutionPlan* ep, long long i){
-	assert(ep);
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
+	assert(ep && ep->status == DONE);
 	assert(i >= 0 && i < array_len(ep->errors));
 	return ep->errors[i];
 }

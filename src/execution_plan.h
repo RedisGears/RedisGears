@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include "redisgears.h"
+#include "commands.h"
 #include "utils/dict.h"
 #ifdef WITHPYTHON
 #include <redisgears_python.h>

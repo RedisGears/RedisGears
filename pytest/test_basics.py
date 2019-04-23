@@ -486,3 +486,4 @@ class testGetExecution:
         res = self.env.cmd('RG.GETEXECUTION', id, 'Cluster')
         self.env.assertLessEqual(1, len(res))
         self.env.cmd('RG.DROPEXECUTION', id)
+
