@@ -76,7 +76,7 @@ List of executions with
 
 ## RG.GETEXECUTION
 ```sql
-RG.DUMPEXECUTIONS execution-id [ SHARD | CLUSTER ]
+RG.GETEXECUTION execution-id [ SHARD | CLUSTER ]
 ```
 
 Return an execution plan.
@@ -101,6 +101,8 @@ Each shard's execution plan consists of the following:
 * total_duration (integer) - the total duration of the plan in milliseconds 
 * read_duration (integer) - the duration of the plan's read stage in milliseconds 
 * steps (array) - the plan's steps
+
+A note about durations: the total duration is greater than the sum of step durations due to the execution's overheads.
 
 The steps array is made up of step entries. Each consists of the following:
 * type (string) - the step's type

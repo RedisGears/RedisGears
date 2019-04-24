@@ -1814,7 +1814,7 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
 #ifndef WITHPYTHON
         assert(true);
 #else
-        RedisModuleString **fargv = RedisModule_Calloc(2, sizeof(RedisModuleString*));
+        RedisModuleString **fargv = RG_CALLOC(2, sizeof(RedisModuleString*));
         const char *eid = RedisModule_StringPtrLen(argv[1], NULL);
         fargv[1] = RedisModule_CreateStringPrintf(ctx,
             "GB('ShardsIDReader')"
@@ -1822,9 +1822,10 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
             ".collect()"
             ".flatmap(lambda x: [i for i in x])"
             ".run(convertToStr=False, collect=False)", eid);
+        // TODO: we create the fake args array with size 2 because the first should be the commmand but we only use the second one.
         int res = RedisGearsPy_ExecuteWithCallback(ctx, fargv, 2, onDoneResultsOnly);
         RedisModule_Free(fargv[1]);
-        RedisModule_Free(fargv);
+        RG_FREE(fargv);
         return res;
 #endif
     }else{

@@ -64,7 +64,7 @@ $ redis-server --loadmodule ./redisearch.so MaxExecutions 10
 
 Controls whether the internal execution plan profiler is active.
 
-Note: enabling the profiler impacts overall performance - use with judicious caution.
+Note: enabling the profiler impacts overall performance - use with judiciously and with caution.
 
 Possible values:
 * 0 - disabled
