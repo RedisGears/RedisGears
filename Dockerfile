@@ -13,7 +13,7 @@ RUN make get_deps PYTHON_ENCODING_FLAG=--enable-unicode=ucs4
 RUN make WITHPYTHON=1
 
 # Set up the runner
-FROM redis:5.0.3
+FROM redis:latest
 ENV RUNTIME_DEPS "python"
 ENV LD_LIBRARY_PATH /usr/lib/redis/modules
 
