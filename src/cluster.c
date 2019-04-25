@@ -24,7 +24,7 @@ typedef struct Node{
     redisAsyncContext *c;
     char* runId;
     unsigned long long msgId;
-    Gears_list* pendingMesages;
+    Gears_list* pendingMessages;
 }Node;
 
 Gears_dict* nodesMsgIds;
@@ -148,9 +148,9 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .unixSocket = unixSocket ? RG_STRDUP(unixSocket) : NULL,
             .c = NULL,
             .msgId = 0,
-            .pendingMesages = Gears_listCreate(),
+            .pendingMessages = Gears_listCreate(),
     };
-    Gears_listSetFreeMethod(n->pendingMesages, SentMessages_Free);
+    Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
     return n;
 }
@@ -182,8 +182,8 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     }
     assert(reply->type == REDIS_REPLY_STATUS);
     Node* n = (Node*)b;
-    Gears_listNode* node = Gears_listFirst(n->pendingMesages);
-    Gears_listDelNode(n->pendingMesages, node);
+    Gears_listNode* node = Gears_listFirst(n->pendingMessages);
+    Gears_listDelNode(n->pendingMessages, node);
 }
 
 static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* b){
@@ -198,10 +198,10 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
             // here we know that the shard has crashed
             // todo: notify all running executions to abort
             n->msgId = 0;
-            Gears_listEmpty(n->pendingMesages);
+            Gears_listEmpty(n->pendingMessages);
         }else{
             // shard is alive, tcp disconnected
-            Gears_listIter* iter = Gears_listGetIterator(n->pendingMesages, AL_START_HEAD);
+            Gears_listIter* iter = Gears_listGetIterator(n->pendingMessages, AL_START_HEAD);
             Gears_listNode *node = NULL;
             while((node = Gears_listNext(iter)) != NULL){
                 SentMessages* sentMsg = Gears_listNodeValue(node);
@@ -458,7 +458,7 @@ static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
     if(node->c){
         redisAsyncCommandArgv(node->c, OnResponseArrived, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
     }
-    Gears_listAddNodeTail(node->pendingMesages, sentMsg);
+    Gears_listAddNodeTail(node->pendingMessages, sentMsg);
 }
 
 static void Cluster_SendMessage(SendMsg* sendMsg){
