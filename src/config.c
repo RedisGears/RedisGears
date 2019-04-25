@@ -42,6 +42,8 @@ typedef struct ConfigVal{
 typedef struct RedisGears_Config{
     ConfigVal pythonHomeDir;
     ConfigVal maxExecutions;
+	ConfigVal profileExecutions;
+	ConfigVal pythonAttemptTraceback;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -92,6 +94,40 @@ static bool ConfigVal_MaxExecutionsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ProfileExecutionsGet(){
+	return &DefaultGearsConfig.profileExecutions;
+}
+
+static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
+	RedisModuleString* val = ArgsIterator_Next(iter);
+	if(!val) return false;
+    long long n;
+
+	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.profileExecutions.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static const ConfigVal* ConfigVal_PythonAttemptTracebackGet(){
+	return &DefaultGearsConfig.pythonAttemptTraceback;
+}
+
+static bool ConfigVal_PythonAttemptTracebackSet(ArgsIterator* iter){
+	RedisModuleString* val = ArgsIterator_Next(iter);
+	if(!val) return false;
+    long long n;
+
+	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.pythonAttemptTraceback.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static Gears_ConfigVal Gears_ConfigVals[] = {
     {
         .name = "PythonHomeDir",
@@ -103,6 +139,18 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "MaxExecutions",
         .getter = ConfigVal_MaxExecutionsGet,
         .setter = ConfigVal_MaxExecutionsSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "ProfileExecutions",
+        .getter = ConfigVal_ProfileExecutionsGet,
+        .setter = ConfigVal_ProfileExecutionsSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "PythonAttemptTraceback",
+        .getter = ConfigVal_PythonAttemptTracebackGet,
+        .setter = ConfigVal_PythonAttemptTracebackSet,
         .configurableAtRunTime = true,
     },
     {
@@ -241,6 +289,14 @@ long long GearsConfig_GetMaxExecutions(){
     return DefaultGearsConfig.maxExecutions.val.longVal;
 }
 
+long long GearsConfig_GetProfileExecutions(){
+	return DefaultGearsConfig.profileExecutions.val.longVal;
+}
+
+long long GearsConfig_GetPythonAttemptTraceback(){
+	return DefaultGearsConfig.pythonAttemptTraceback.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -280,6 +336,14 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .maxExecutions = {
             .val.longVal = 1000,
+            .type = LONG,
+        },
+        .profileExecutions = {
+            .val.longVal = 0,
+            .type = LONG,
+        },
+        .pythonAttemptTraceback = {
+            .val.longVal = 1,
             .type = LONG,
         },
     };

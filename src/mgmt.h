@@ -18,6 +18,7 @@ typedef struct ArgType{
     ArgDuplicate dup;
     ArgSerialize serialize;
     ArgDeserialize deserialize;
+    ArgToString tostring;
 }ArgType;
 
 bool FiltersMgmt_Add(const char* name, RedisGears_FilterCallback callback, ArgType* type);

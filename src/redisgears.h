@@ -1,5 +1,5 @@
 /*
- * redispark.h
+ * redisgears.h
  *
  *  Created on: Oct 15, 2018
  *      Author: meir
@@ -41,6 +41,7 @@ typedef void (*ArgFree)(void* arg);
 typedef void* (*ArgDuplicate)(void* arg);
 typedef void (*ArgSerialize)(void* arg, Gears_BufferWriter* bw);
 typedef void* (*ArgDeserialize)(Gears_BufferReader* br);
+typedef char* (*ArgToString)(void* arg);
 typedef void (*RegisterTrigger)(FlatExecutionPlan* fep);
 
 typedef struct Reader{
@@ -61,7 +62,7 @@ void KeyRecordWriter(RedisModuleCtx* rctx, Record *data, void* arg, char** err);
 
 /******************************* args *********************************/
 
-ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize);
+ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
 void MODULE_API_FUNC(RedisGears_BWWriteLong)(Gears_BufferWriter* bw, long val);
 void MODULE_API_FUNC(RedisGears_BWWriteString)(Gears_BufferWriter* bw, char* str);
 void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(Gears_BufferWriter* bw, char* buff, size_t len);
@@ -201,102 +202,106 @@ typedef void (*FreePrivateData)(void* privateData);
 bool MODULE_API_FUNC(RedisGears_RegisterExecutionDoneCallback)(ExecutionPlan* ctx, RedisGears_OnExecutionDoneCallback callback);
 bool MODULE_API_FUNC(RedisGears_IsDone)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetRecordsLen)(ExecutionPlan* ctx);
+long long MODULE_API_FUNC(RedisGears_GetErrorsLen)(ExecutionPlan* ctx);
 void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionPlan* ctx);
 void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionPlan* ctx, void* privateData, FreePrivateData freeCallback);
 const char* MODULE_API_FUNC(RedisGears_GetId)(ExecutionPlan* ctx);
 Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
+Record* MODULE_API_FUNC(RedisGears_GetError)(ExecutionPlan* ctx, long long i);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
-void MODULE_API_FUNC(RedisGears_DropExecution)(ExecutionPlan* starCtx);
-long long MODULE_API_FUNC(RedisGears_GetTotalDuration)(ExecutionPlan* starCtx);
-long long MODULE_API_FUNC(RedisGears_GetReadDuration)(ExecutionPlan* starCtx);
-void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* starCtx);
+void MODULE_API_FUNC(RedisGears_DropExecution)(ExecutionPlan* gearsCtx);
+long long MODULE_API_FUNC(RedisGears_GetTotalDuration)(ExecutionPlan* gearsCtx);
+long long MODULE_API_FUNC(RedisGears_GetReadDuration)(ExecutionPlan* gearsCtx);
+void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* gearsCtx);
 
 int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
-#define REDISLAMBDA_MODULE_INIT_FUNCTION(name) \
+#define REDISGEARS_MODULE_INIT_FUNCTION(name) \
         if (RedisModule_GetApi("RedisGears_" #name, ((void **)&RedisGears_ ## name))) { \
             printf("could not initialize RedisGears_" #name "\r\n");\
             return REDISMODULE_ERR; \
         }
 
 static int RedisGears_Initialize(){
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetLLApiVersion);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetLLApiVersion);
 
-    REDISLAMBDA_MODULE_INIT_FUNCTION(CreateType);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(BWWriteLong);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(BWWriteString);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(BWWriteBuffer);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(BRReadLong);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(BRReadString);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(BRReadBuffer);
+    REDISGEARS_MODULE_INIT_FUNCTION(CreateType);
+    REDISGEARS_MODULE_INIT_FUNCTION(BWWriteLong);
+    REDISGEARS_MODULE_INIT_FUNCTION(BWWriteString);
+    REDISGEARS_MODULE_INIT_FUNCTION(BWWriteBuffer);
+    REDISGEARS_MODULE_INIT_FUNCTION(BRReadLong);
+    REDISGEARS_MODULE_INIT_FUNCTION(BRReadString);
+    REDISGEARS_MODULE_INIT_FUNCTION(BRReadBuffer);
 
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterReader);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterForEach);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterAccumulator);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterAccumulatorByKey);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterMap);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterFilter);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterGroupByExtractor);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterReducer);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(CreateCtx);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Map);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Accumulate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(AccumulateBy);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(LocalAccumulateBy);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Filter);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Run);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Register);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(ForEach);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GroupBy);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Collect);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Repartition);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(FlatMap);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(Limit);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(FreeFlatExecution);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetReader);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(StreamReaderCtxCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterReader);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterForEach);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterAccumulator);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterAccumulatorByKey);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterMap);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterFilter);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterGroupByExtractor);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterReducer);
+    REDISGEARS_MODULE_INIT_FUNCTION(CreateCtx);
+    REDISGEARS_MODULE_INIT_FUNCTION(Map);
+    REDISGEARS_MODULE_INIT_FUNCTION(Accumulate);
+    REDISGEARS_MODULE_INIT_FUNCTION(AccumulateBy);
+    REDISGEARS_MODULE_INIT_FUNCTION(LocalAccumulateBy);
+    REDISGEARS_MODULE_INIT_FUNCTION(Filter);
+    REDISGEARS_MODULE_INIT_FUNCTION(Run);
+    REDISGEARS_MODULE_INIT_FUNCTION(Register);
+    REDISGEARS_MODULE_INIT_FUNCTION(ForEach);
+    REDISGEARS_MODULE_INIT_FUNCTION(GroupBy);
+    REDISGEARS_MODULE_INIT_FUNCTION(Collect);
+    REDISGEARS_MODULE_INIT_FUNCTION(Repartition);
+    REDISGEARS_MODULE_INIT_FUNCTION(FlatMap);
+    REDISGEARS_MODULE_INIT_FUNCTION(Limit);
+    REDISGEARS_MODULE_INIT_FUNCTION(FreeFlatExecution);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetReader);
+    REDISGEARS_MODULE_INIT_FUNCTION(StreamReaderCtxCreate);
 
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetExecution);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(IsDone);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetRecordsLen);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetRecord);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RegisterExecutionDoneCallback);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetPrivateData);
-	REDISLAMBDA_MODULE_INIT_FUNCTION(SetPrivateData);
-	REDISLAMBDA_MODULE_INIT_FUNCTION(DropExecution);
-	REDISLAMBDA_MODULE_INIT_FUNCTION(GetId);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetExecution);
+    REDISGEARS_MODULE_INIT_FUNCTION(IsDone);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetRecordsLen);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetErrorsLen);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetRecord);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetError);
+    REDISGEARS_MODULE_INIT_FUNCTION(RegisterExecutionDoneCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetPrivateData);
+	REDISGEARS_MODULE_INIT_FUNCTION(SetPrivateData);
+	REDISGEARS_MODULE_INIT_FUNCTION(DropExecution);
+	REDISGEARS_MODULE_INIT_FUNCTION(GetId);
 
-    REDISLAMBDA_MODULE_INIT_FUNCTION(FreeRecord);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(RecordGetType);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyRecordCreate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyRecordSetKey);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyRecordSetVal);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyRecordGetVal);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyRecordGetKey);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(ListRecordCreate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(ListRecordLen);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(ListRecordAdd);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(ListRecordGet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(ListRecordPop);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(StringRecordCreate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(StringRecordGet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(StringRecordSet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(DoubleRecordCreate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(DoubleRecordGet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(DoubleRecordSet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(LongRecordCreate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(LongRecordGet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(LongRecordSet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyHandlerRecordCreate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(KeyHandlerRecordGet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordCreate);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordSet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordGet);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordGetAllKeys);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(HashSetRecordFreeKeysArray);
+    REDISGEARS_MODULE_INIT_FUNCTION(FreeRecord);
+    REDISGEARS_MODULE_INIT_FUNCTION(RecordGetType);
+    REDISGEARS_MODULE_INIT_FUNCTION(KeyRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(KeyRecordSetKey);
+    REDISGEARS_MODULE_INIT_FUNCTION(KeyRecordSetVal);
+    REDISGEARS_MODULE_INIT_FUNCTION(KeyRecordGetVal);
+    REDISGEARS_MODULE_INIT_FUNCTION(KeyRecordGetKey);
+    REDISGEARS_MODULE_INIT_FUNCTION(ListRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ListRecordLen);
+    REDISGEARS_MODULE_INIT_FUNCTION(ListRecordAdd);
+    REDISGEARS_MODULE_INIT_FUNCTION(ListRecordGet);
+    REDISGEARS_MODULE_INIT_FUNCTION(ListRecordPop);
+    REDISGEARS_MODULE_INIT_FUNCTION(StringRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(StringRecordGet);
+    REDISGEARS_MODULE_INIT_FUNCTION(StringRecordSet);
+    REDISGEARS_MODULE_INIT_FUNCTION(DoubleRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(DoubleRecordGet);
+    REDISGEARS_MODULE_INIT_FUNCTION(DoubleRecordSet);
+    REDISGEARS_MODULE_INIT_FUNCTION(LongRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(LongRecordGet);
+    REDISGEARS_MODULE_INIT_FUNCTION(LongRecordSet);
+    REDISGEARS_MODULE_INIT_FUNCTION(KeyHandlerRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(KeyHandlerRecordGet);
+    REDISGEARS_MODULE_INIT_FUNCTION(HashSetRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(HashSetRecordSet);
+    REDISGEARS_MODULE_INIT_FUNCTION(HashSetRecordGet);
+    REDISGEARS_MODULE_INIT_FUNCTION(HashSetRecordGetAllKeys);
+    REDISGEARS_MODULE_INIT_FUNCTION(HashSetRecordFreeKeysArray);
 
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetTotalDuration);
-    REDISLAMBDA_MODULE_INIT_FUNCTION(GetReadDuration);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetTotalDuration);
+    REDISGEARS_MODULE_INIT_FUNCTION(GetReadDuration);
 
 
 

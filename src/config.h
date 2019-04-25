@@ -13,5 +13,7 @@
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc);
 const char* GearsConfig_GetPythonHomeDir();
 long long GearsConfig_GetMaxExecutions();
+long long GearsConfig_GetProfileExecutions();
+long long GearsConfig_GetPythonAttemptTraceback();
 
 #endif /* SRC_CONFIG_H_ */
