@@ -8,7 +8,7 @@ defaults:
         command: git submodule update --init --recursive
     - run:
         name: Install_Deps
-        command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd;apt-get install -y zip unzip
+        command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;apt install -y lsb-release;apt install -y xxd;apt-get install -y zip unzip;pip install gevent
     - run:
         name: Build
         command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=ubuntu
@@ -50,7 +50,7 @@ jobs:
           command: git submodule update --init --recursive
       - run:
           name: Install_Deps
-          command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core;yum install -y vim-common
+          command: pip install git+https://github.com/RedisLabs/RAMP --upgrade;pip install wheel;pip install setuptools --upgrade;pip install git+https://github.com/RedisLabsModules/RLTest.git@master;pip install redis-py-cluster;yum install -y redhat-lsb-core;yum install -y vim-common;pip install gevent
       - run:
           name: Build
           command: make get_deps;make ramp_pack WITHPYTHON=1 OS_VERSION=redhat

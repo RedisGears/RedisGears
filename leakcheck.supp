@@ -63,3 +63,10 @@
    fun:compiler_visit_expr
    ...
 }
+{
+   <ignore_compiler_visit_expr_for_now>
+   Memcheck:Leak
+   ...
+   fun:redisConnectNonBlock
+   ...
+}
