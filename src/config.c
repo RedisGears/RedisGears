@@ -235,15 +235,6 @@ static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* c
 }
 
 static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter) {
-    void report_error(const char *fmt, const char* configItem) {
-        RedisModule_Log(ctx, "warning", fmt, configItem);
-        
-        RedisModuleString* rms = RedisModule_CreateStringPrintf(ctx, fmt, configItem);
-        const char* err = RedisModule_StringPtrLen(rms, NULL);
-        RedisModule_ReplyWithSimpleString(ctx, err);
-        RedisModule_FreeString(ctx, rms);   
-    }
-
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     bool error = false;
     int n_values = 0;

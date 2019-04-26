@@ -13,7 +13,10 @@ docker run redislabs/redisgears:latest
 ### Prerequisites
 Install [redis 5.0](https://redis.io/) on you machine.
 
-Inastal: build-essential, autotools-dev, autoconf, libtool
+Install:
+
+* Linux (Ubuntu 18.4): Yo'll need to `sudo apt install build-essential autotools-dev autoconf libtool`
+* OSX (High Sierra): You'll need XCode and also `brew install autoconf libtool`
 
 ### Compile
 ```bash
