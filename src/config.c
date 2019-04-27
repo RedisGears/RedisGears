@@ -169,7 +169,7 @@ static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* confi
     RedisModule_FreeString(ctx, rms);
 }
 
-static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter) {
+static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter, bool isFirstInitialization) {
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     bool error = false;
     int n_values = 0;
@@ -181,7 +181,7 @@ static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
             if (strcasecmp(configName, val->name) == 0) {
                 found = true;
                 ++n_values;
-                if (!val->configurableAtRunTime) {
+                if (!val->configurableAtRunTime && !isFirstInitialization) {
                     error = true;
                     config_error(ctx, "Config value %s not modifiable at runtime", configName);
                     ArgsIterator_Next(iter); // skip value
@@ -214,7 +214,7 @@ static int GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             .argv = argv,
             .argc = argc,
     };
-    GearsConfig_Set_with_iterator(ctx, &iter);
+    GearsConfig_Set_with_iterator(ctx, &iter, false);
     return REDISMODULE_OK; // redis expects REDISMODULE_ERR only on catastrophes
 }
 
@@ -347,7 +347,7 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         .argv = argv,
         .argc = argc,
     };  
-    GearsConfig_Set_with_iterator(ctx, &iter);
+    GearsConfig_Set_with_iterator(ctx, &iter, true);
     GearsConfig_Print(ctx);
 
     return REDISMODULE_OK;
