@@ -15,7 +15,7 @@ Install [redis 5.0](https://redis.io/) on you machine.
 
 Install:
 
-* Linux (Ubuntu 18.4): Yo'll need to `sudo apt install build-essential autotools-dev autoconf libtool`
+* Linux (Ubuntu 18.4): You'll need to `sudo apt install build-essential autotools-dev autoconf libtool`
 * OSX (High Sierra): You'll need XCode and also `brew install autoconf libtool`
 
 ### Compile
