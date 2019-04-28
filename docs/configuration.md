@@ -59,3 +59,29 @@ $ redis-server --loadmodule ./redisearch.so MaxExecutions 10
 ```
 
 ---
+
+## ProfileExecutions
+
+Controls whether the internal execution plan profiler is active.
+
+Note: enabling the profiler impacts overall performance - use with judiciously and with caution.
+
+Possible values:
+* 0 - disabled
+* not 0 - enabled
+
+### Default
+
+0 (disabled)
+
+## PythonAttemptTraceback
+
+Controls whether traceback is attempted onw Python errors.
+
+Possible values:
+* 0 - disabled
+* not 0 - enabled
+
+## Default
+
+1 (enableds)

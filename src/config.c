@@ -42,6 +42,8 @@ typedef struct ConfigVal{
 typedef struct RedisGears_Config{
     ConfigVal pythonHomeDir;
     ConfigVal maxExecutions;
+	ConfigVal profileExecutions;
+	ConfigVal pythonAttemptTraceback;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -92,6 +94,40 @@ static bool ConfigVal_MaxExecutionsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ProfileExecutionsGet(){
+	return &DefaultGearsConfig.profileExecutions;
+}
+
+static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
+	RedisModuleString* val = ArgsIterator_Next(iter);
+	if(!val) return false;
+    long long n;
+
+	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.profileExecutions.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static const ConfigVal* ConfigVal_PythonAttemptTracebackGet(){
+	return &DefaultGearsConfig.pythonAttemptTraceback;
+}
+
+static bool ConfigVal_PythonAttemptTracebackSet(ArgsIterator* iter){
+	RedisModuleString* val = ArgsIterator_Next(iter);
+	if(!val) return false;
+    long long n;
+
+	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.pythonAttemptTraceback.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static Gears_ConfigVal Gears_ConfigVals[] = {
     {
         .name = "PythonHomeDir",
@@ -103,6 +139,18 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "MaxExecutions",
         .getter = ConfigVal_MaxExecutionsGet,
         .setter = ConfigVal_MaxExecutionsSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "ProfileExecutions",
+        .getter = ConfigVal_ProfileExecutionsGet,
+        .setter = ConfigVal_ProfileExecutionsSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "PythonAttemptTraceback",
+        .getter = ConfigVal_PythonAttemptTracebackGet,
+        .setter = ConfigVal_PythonAttemptTracebackSet,
         .configurableAtRunTime = true,
     },
     {
@@ -121,7 +169,7 @@ static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* confi
     RedisModule_FreeString(ctx, rms);
 }
 
-static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter) {
+static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter, bool isFirstInitialization) {
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     bool error = false;
     int n_values = 0;
@@ -133,7 +181,7 @@ static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
             if (strcasecmp(configName, val->name) == 0) {
                 found = true;
                 ++n_values;
-                if (!val->configurableAtRunTime) {
+                if (!val->configurableAtRunTime && !isFirstInitialization) {
                     error = true;
                     config_error(ctx, "Config value %s not modifiable at runtime", configName);
                     ArgsIterator_Next(iter); // skip value
@@ -166,7 +214,7 @@ static int GearsConfig_Set(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             .argv = argv,
             .argc = argc,
     };
-    GearsConfig_Set_with_iterator(ctx, &iter);
+    GearsConfig_Set_with_iterator(ctx, &iter, false);
     return REDISMODULE_OK; // redis expects REDISMODULE_ERR only on catastrophes
 }
 
@@ -187,15 +235,6 @@ static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* c
 }
 
 static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter) {
-    void report_error(const char *fmt, const char* configItem) {
-        RedisModule_Log(ctx, "warning", fmt, configItem);
-        
-        RedisModuleString* rms = RedisModule_CreateStringPrintf(ctx, fmt, configItem);
-        const char* err = RedisModule_StringPtrLen(rms, NULL);
-        RedisModule_ReplyWithSimpleString(ctx, err);
-        RedisModule_FreeString(ctx, rms);   
-    }
-
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     bool error = false;
     int n_values = 0;
@@ -241,6 +280,14 @@ long long GearsConfig_GetMaxExecutions(){
     return DefaultGearsConfig.maxExecutions.val.longVal;
 }
 
+long long GearsConfig_GetProfileExecutions(){
+	return DefaultGearsConfig.profileExecutions.val.longVal;
+}
+
+long long GearsConfig_GetPythonAttemptTraceback(){
+	return DefaultGearsConfig.pythonAttemptTraceback.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -282,6 +329,14 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 1000,
             .type = LONG,
         },
+        .profileExecutions = {
+            .val.longVal = 0,
+            .type = LONG,
+        },
+        .pythonAttemptTraceback = {
+            .val.longVal = 1,
+            .type = LONG,
+        },
     };
 
     DEF_COMMAND(configget, GearsConfig_Get);
@@ -292,7 +347,7 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         .argv = argv,
         .argc = argc,
     };  
-    GearsConfig_Set_with_iterator(ctx, &iter);
+    GearsConfig_Set_with_iterator(ctx, &iter, true);
     GearsConfig_Print(ctx);
 
     return REDISMODULE_OK;

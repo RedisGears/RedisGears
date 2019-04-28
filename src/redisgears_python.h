@@ -12,8 +12,12 @@
 #include "redismodule.h"
 #include "redisgears.h"
 
+typedef void (*DoneCallbackFunction)(ExecutionPlan*, void*); 
+
 void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw);
 void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br);
+int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, DoneCallbackFunction callback);
 int RedisGearsPy_Init(RedisModuleCtx *ctx);
 
 
