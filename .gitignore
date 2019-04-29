@@ -58,10 +58,13 @@ script_example.py
 .project
 .settings/
 
+/bin/
+/deps/libevent/
+/pytest/logs/
 *.pyc
 *.log
 *.rdb
 commit.txt
-src/GearsBuilder.auto.h
-src/cloudpickle.auto.h
 *.zip
+*.tgz
+VARIANT

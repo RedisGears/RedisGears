@@ -1,107 +1,211 @@
+
+ROOT=.
+include build/mk/defs
+
+BINDIR=$(BINROOT)/$(SRCDIR)
+
+#----------------------------------------------------------------------------------------------
+
+DEPENDENCIES=cpython libevent
+
+ifneq ($(filter all deps $(DEPENDENCIES) pyenv pack ramp_pack,$(MAKECMDGOALS)),)
+DEPS=1
+endif
+
+#----------------------------------------------------------------------------------------------
+
 WITHPYTHON ?= 1
 
+ifeq ($(WITHPYTHON),1)
+export PYTHON_ENCODING ?= ucs4
+
+CPYTHON_BINDIR=bin/$(FULL_VARIANT_REL)/cpython
+
+include build/cpython/Makefile.defs
+endif # WITHPYTHON
+
+#----------------------------------------------------------------------------------------------
+
+LIBEVENT_BINDIR=bin/$(FULL_VARIANT_REL)/libevent
+
+include build/libevent/Makefile.defs
+
+#----------------------------------------------------------------------------------------------
+
 CC=gcc
-SRC := src
-OBJ := obj
-GIT_SHA := $(shell git rev-parse HEAD)
-OS := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+SRCDIR=src
 
-$(shell mkdir -p $(OBJ))
-$(shell mkdir -p $(OBJ)/utils)
-
-ifndef PACKAGE_NAME
-	PACKAGE_NAME := redisgears
+_SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
+	mgmt.c keys_reader.c keys_writer.c example.c filters.c mappers.c \
+	extractors.c reducers.c record.c cluster.c commands.c streams_reader.c \
+	globals.c config.c lock_handler.c module_init.c
+ifeq ($(WITHPYTHON),1)
+_SOURCES += redisgears_python.c
 endif
 
-ifndef CIRCLE_BRANCH
-	CIRCLE_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
-endif
+SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
+OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
 
-ifndef PYTHON_ENCODING_FLAG
-	PYTHON_ENCODING_FLAG := --enable-unicode=ucs2
-endif
+CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
 
-ifndef OS_VERSION
-	OS_VERSION := linux
-endif
+CC_FLAGS += \
+	-fPIC -std=gnu99 \
+	-MMD -MF $(@:.o=.d) \
+	-include $(SRCDIR)/common.h \
+	-I$(SRCDIR) -Iinclude -I$(BINDIR) -Ideps \
+	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
+	-DREDISMODULE_EXPERIMENTAL_API
 
-CPYTHON_PATH := $(realpath ./src/deps/cpython/)
+TARGET=$(BINROOT)/redisgears.so
 
-SOURCES=src/utils/adlist.c src/utils/buffer.c src/utils/dict.c src/module.c src/execution_plan.c \
-       	src/mgmt.c src/keys_reader.c src/keys_writer.c src/example.c src/filters.c src/mappers.c \
-        src/extractors.c src/reducers.c src/record.c src/cluster.c src/commands.c src/streams_reader.c \
-        src/globals.c src/config.c src/lock_handler.c
-
-CFLAGS=-fPIC -I./src/ -I./include/ -DREDISMODULE_EXPERIMENTAL_API -DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" -DCPYTHON_PATH=\"$(CPYTHON_PATH)/\" -std=gnu99
-# CFLAGS += -DFEATURE_1
-ifeq ($(OS),Linux)
-	LFLAGS=-L./libs/ -Wl,-Bstatic -levent -Wl,-Bdynamic
-	LIBTOOLIZE=libtoolize
+ifeq ($(DEBUG),1)
+CC_FLAGS += -g -O0 -DVALGRIND
+LD_FLAGS += -g
 else
-	LFLAGS=-L./libs/ -static -levent -dynamic -undefined dynamic_lookup -lc
-	LIBTOOLIZE=glibtoolize
+CC_FLAGS += -O2 -Wno-unused-result
 endif
 
-ifeq ($(DEBUG), 1)
-    CFLAGS+=-g -O0 -DVALGRIND
-else
-	CFLAGS+=-O2 -Wno-unused-result
-endif
+#----------------------------------------------------------------------------------------------
+
 ifeq ($(WITHPYTHON), 1)
-	SOURCES+=src/redisgears_python.c
-	PYTHON_CFLAGS=-I./src/deps/cpython/Include/ -I./src/deps/cpython/
-	ifeq ($(OS),Linux)
-		PYTHON_LFLAGS=-L./src/deps/cpython/ -Wl,--whole-archive -Wl,-Bstatic -lpython2.7 -Wl,-Bdynamic -Wl,--no-whole-archive -lutil
-	else
-		PYTHON_LFLAGS=-L./src/deps/cpython/ -all_load -static -lpython2.7 -dynamic -lutil
-	endif
-	CFLAGS+=-DWITHPYTHON
-    CFLAGS+=$(PYTHON_CFLAGS)
-    LFLAGS+=$(PYTHON_LFLAGS)
+
+CPYTHON_DIR=deps/cpython
+
+CC_FLAGS += \
+	-DWITHPYTHON \
+	-DCPYTHON_PATH=\"$(CPYTHON_PREFIX)/\" \
+	-I$(CPYTHON_DIR)/Include \
+	-I$(CPYTHON_DIR) \
+	-I$(BINROOT)/cpython \
+	-Ibin/$(FULL_VARIANT_REL)/cpython
+
+LD_FLAGS += 
+EMBEDDED_LIBS += $(LIBPYTHON) -lutil
+
+endif # WITHPYTHON
+
+EMBEDDED_LIBS += $(LIBEVENT)
+
+#----------------------------------------------------------------------------------------------
+
+define HELP
+
+Building RedisGears from scratch:
+
+make setup # install packages required for build
+make fetch # download and prepare dependant modules (i.e., python, libevent)
+make all   # build everything
+make test  # run tests
+
+
+endef
+
+#----------------------------------------------------------------------------------------------
+
+.NOTPARALLEL:
+
+.PHONY: all deps $(DEPENDENCIES) pyenv build static clean pack ramp_pack test setup
+
+build: bindirs $(TARGET)
+
+all: deps build pack
+
+include $(MK)/rules
+
+#----------------------------------------------------------------------------------------------
+
+-include $(CC_DEPS)
+
+$(BINDIR)/%.o: $(SRCDIR)/%.c
+	@echo Compiling $^...
+	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
+
+$(SRCDIR)/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h
+
+$(BINDIR)/GearsBuilder.auto.h: $(SRCDIR)/GearsBuilder.py
+	$(SHOW)xxd -i $< > $@
+
+$(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
+	$(SHOW)xxd -i $< > $@
+
+#----------------------------------------------------------------------------------------------
+
+ifeq ($(DEPS),1)
+$(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
+else
+$(TARGET): $(OBJECTS)
 endif
+	@echo Linking $@...
+	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
 
-OBJECTS=$(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
+static: $(TARGET:.so=.a)
 
-$(OBJ)/%.o: $(SRC)/%.c
-	$(CC) -I$(SRC) $(CFLAGS) -c $< -o $@
+$(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
+	@echo Creating $@...
+	$(SHOW)$(AR) rcs $@ $(filter-out module_init,$(OBJECTS)) $(LIBEVENT)
 
-all: GearsBuilder.py redisgears.so
+#----------------------------------------------------------------------------------------------
 
-python:
-	cd src/deps/cpython;CFLAGS="-fPIC -DREDIS_ALLOC" ./configure --without-pymalloc $(PYTHON_ENCODING_FLAG)	;make
+setup:
+	@echo Setting up system...
+	$(SHOW)./system-setup.py
 
-python_clean:
-	cd src/deps/cpython;make clean
+get_deps fetch:
+	$(SHOW)git submodule update --init --recursive
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
 
-redisgears.so: $(OBJECTS) $(OBJ)/module_init.o
-	$(CC) -shared -o redisgears.so $(OBJECTS) $(OBJ)/module_init.o $(LFLAGS)
-	
-GearsBuilder.py:
-	xxd -i src/GearsBuilder.py > src/GearsBuilder.auto.h
-	xxd -i src/cloudpickle.py > src/cloudpickle.auto.h
+#----------------------------------------------------------------------------------------------
 
-static: $(OBJECTS)
-	ar rcs redisgears.a $(OBJECTS) ./libs/libevent.a
+ifeq ($(DEPS),1)
+
+#----------------------------------------------------------------------------------------------
+
+deps: $(LIBPYTHON) $(LIBEVENT)
+
+cpython: $(LIBPYTHON)
+
+$(LIBPYTHON):
+	@echo Building cpython...
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython DEBUG=
+
+pyenv:
+	@echo Building pyenv...
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython pyenv 
+
+#----------------------------------------------------------------------------------------------
+
+libevent: $(LIBEVENT)
+
+$(LIBEVENT):
+	@echo Building libevent...
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent
+
+#----------------------------------------------------------------------------------------------
+
+endif # DEPS
+
+#----------------------------------------------------------------------------------------------
 
 clean:
-	rm -f redisgears.so redisgears.a obj/*.o obj/utils/*.o artifacts/release/*.zip artifacts/snapshot/*.zip
-	
-get_deps: python
-	rm -rf deps
-	rm -rf libs
-	mkdir deps
-	mkdir libs
-	cd deps;git clone --single-branch --branch release-2.1.8-stable https://github.com/libevent/libevent.git;cd ./libevent/;$(LIBTOOLIZE);aclocal;autoheader;autoconf;automake --add-missing;CFLAGS=-fPIC ./configure;make;
-	cp ./deps/libevent/.libs/libevent.a ./libs/
-	rm -rf deps
-	
-ramp_pack: all
-	mkdir -p artifacts
-	mkdir -p artifacts/snapshot
-	mkdir -p artifacts/release
-	$(eval SNAPSHOT=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS_VERSION)-{architecture}.$(CIRCLE_BRANCH).zip | tail -1))
-	$(eval DEPLOY=$(shell PYTHONWARNINGS=ignore PYTHON_HOME_DIR=$(CPYTHON_PATH)/ ramp pack $(realpath ./redisgears.so) -m ramp.yml -o {os}-$(OS_VERSION)-{architecture}.{semantic_version}.zip | tail -1))
-	mv ./$(SNAPSHOT) artifacts/snapshot/$(PACKAGE_NAME).$(SNAPSHOT)
-	mv ./$(DEPLOY) artifacts/release/$(PACKAGE_NAME).$(DEPLOY)
-	zip -rq artifacts/snapshot/$(PACKAGE_NAME)-dependencies.$(SNAPSHOT) src/deps/cpython
-	zip -rq artifacts/release/$(PACKAGE_NAME)-dependencies.$(DEPLOY) src/deps/cpython
+	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
+	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) artifacts/release/* artifacts/snapshot/*
+ifeq ($(DEPS),1) 
+	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean;)
+endif
+
+#----------------------------------------------------------------------------------------------
+
+pack ramp_pack: __sep deps build $(CPYTHON_PREFIX)
+	$(SHOW)./pack.sh $(TARGET)
+
+#----------------------------------------------------------------------------------------------
+
+test: __sep
+ifeq ($(DEBUG),1)
+	$(SHOW)cd pytest; ./run_tests_valgrind.sh
+else
+	$(SHOW)cd pytest; ./run_tests.sh
+endif
+
+#----------------------------------------------------------------------------------------------

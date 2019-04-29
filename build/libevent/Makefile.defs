@@ -1,0 +1,2 @@
+
+LIBEVENT=$(LIBEVENT_BINDIR)/.libs/libevent.a

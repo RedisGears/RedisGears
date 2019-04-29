@@ -71,7 +71,7 @@ class testBasic:
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.full_load(r) for r in res[0]]
+        res = [yaml.load(r) for r in res[0]]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -79,7 +79,7 @@ class testBasic:
     def testBasicFilterQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.full_load(r) for r in res[0]]
+        res = [yaml.load(r) for r in res[0]]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -87,7 +87,7 @@ class testBasic:
     def testBasicMapQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.full_load(r) for r in res[0]]
+        res = [yaml.load(r) for r in res[0]]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 

@@ -6,6 +6,7 @@
 #include "config.h"
 #include <marshal.h>
 #include <assert.h>
+#include <dirent.h>
 #include <redisgears.h>
 #include <redisgears_memory.h>
 #include <redisgears_python.h>
@@ -1677,14 +1678,36 @@ static Reader* PythonReader(void* arg){
     return ret;
 }
 
+#define PYENV_DIR "/opt/redislabs/lib/modules/python27"
+#define PYENV_HOME_DIR PYENV_DIR "/.venv/bin"
+#define PYENV_ACTIVATE PYENV_HOME_DIR "/activate_this.py"
+
+bool PyEnvExist() {
+    DIR* dir = opendir(PYENV_DIR);
+    if (dir) {
+        closedir(dir);
+        return true;
+    }
+    return false;
+}
+
+int RedisGears_SetupPyEnv(RedisModuleCtx *ctx) {
+    if (!PyEnvExist()) return 0;
+    RedisModule_Log(ctx, "notice", "Initializing Python environment with: " "exec(open('" PYENV_ACTIVATE "').read(), {'__file__': '" PYENV_ACTIVATE "'})");
+    PyRun_SimpleString("exec(open('" PYENV_ACTIVATE "').read(), {'__file__': '" PYENV_ACTIVATE "'})");
+    return 0;
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetAllocFunction(RedisGearsPy_Alloc);
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
 	char* arg = "Embeded";
-	char* progName = (char*)GearsConfig_GetPythonHomeDir();
+    char* progName = (char*)GearsConfig_GetPythonHomeDir();
+    if (PyEnvExist()) progName = PYENV_HOME_DIR;
     Py_SetProgramName(progName);
     Py_Initialize();
+    RedisGears_SetupPyEnv(ctx);
     PyEval_InitThreads();
     PySys_SetArgv(1, &arg);
     PyTensorType.tp_new = PyType_GenericNew;

@@ -1,30 +1,25 @@
 FROM redis:latest AS builder
-ENV BUILD_DEPS "build-essential autotools-dev autoconf automake libtool python git ca-certificates xxd zlib1g zlib1g-dev libreadline-dev libbz2-dev"
 
-# Set up a build environment
-RUN set -ex;\
-    apt-get update;\
-    apt-get install -y --no-install-recommends $BUILD_DEPS;
+RUN set -ex; \
+    apt-get update; \
+	apt-get install -y python git
 
 ADD . /redisgears
 WORKDIR /redisgears
-RUN make clean;
-RUN make get_deps PYTHON_ENCODING_FLAG=--enable-unicode=ucs4
-RUN make WITHPYTHON=1
+
+RUN python system-setup.py
+RUN make get_deps
+RUN make all SHOW=1 PYTHON_ENCODING=ucs4
 
 # Set up the runner
 FROM redis:latest
-ENV RUNTIME_DEPS "python"
-ENV LD_LIBRARY_PATH /usr/lib/redis/modules
+ENV REDIS_MODULES /opt/redislabs/lib/modules
 
-RUN set -ex;\
-    apt-get update;\
-    apt-get install -y --no-install-recommends $RUNTIME_DEPS;
+RUN mkdir -p $REDIS_MODULES/
 
-RUN set -ex;\
-    mkdir -p "$LD_LIBRARY_PATH/deps";
+COPY --from=builder /redisgears/redisgears.so $REDIS_MODULES/
+COPY --from=builder /redisgears/artifacts/release/redisgears-dependencies.*.tgz /tmp/
 
-COPY --from=builder /redisgears/redisgears.so "$LD_LIBRARY_PATH"
-COPY --from=builder /redisgears/src/deps/cpython "$LD_LIBRARY_PATH/deps/cpython/"
+RUN tar xzf /tmp/redisgears-dependencies.*.tgz -C /
 
-CMD ["--loadmodule", "/usr/lib/redis/modules/redisgears.so", "PythonHomeDir", "/usr/lib/redis/modules/deps/cpython/"]
+CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python27"]
