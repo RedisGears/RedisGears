@@ -4,7 +4,7 @@
 RedisGears allows you to run python scripts.  These python scripts can run in a `Gears` and a `non Gears` mode.  The execution result depends on the type of execution and success or failure.
 
 * When running a `Gears` execution
-	- successful: the resultset
+	- successful: the results and errors (if any) as an array consisting of two arrays
 	- failure: the error message
 * When running a `non Gears` execution
 	- successful: `OK`
@@ -74,6 +74,41 @@ List of executions with
 * executionId
 * status (running/done)
 
+## RG.GETEXECUTION
+```sql
+RG.GETEXECUTION execution-id [ SHARD | CLUSTER ]
+```
+
+Return an execution plan.
+
+Optional args:
+* `SHARD` - returns the local execution plan. This is the default for single-instance deployments.
+* `CLUSTER` - returns the execution plan from all shards in the cluster. This is the default for cluster deployments.
+
+Trivia: when called with the `CLUSTER` subcommand, RedisGears actually runs a gear that collects the shards' execution plans... self reference is so paradoxical :)
+
+### Returns
+An array where each entry represents a shard. A shard's entry is structured to mimic a a Hash (i.e. alternating name and value entries) with the following data:
+* shard_id (string) - the shard's ID
+* execution_plan (Hash as array) - the exection plan
+
+Each shard's execution plan consists of the following:
+* status (string) - the execution plan's status
+* shards_received (integer) - the number of shards that received the plan from this shard
+* shards_completed (integer) - the number of shards that had completed plan received from this shard
+* results (integer) - the number of results collected (-1 if status is not done)
+* errors (array) - the errors reported by the steps (empty array if not done)
+* total_duration (integer) - the total duration of the plan in milliseconds 
+* read_duration (integer) - the duration of the plan's read stage in milliseconds 
+* steps (array) - the plan's steps
+
+A note about durations: the total duration is greater than the sum of step durations due to the execution's overheads.
+
+The steps array is made up of step entries. Each consists of the following:
+* type (string) - the step's type
+* duration (integer) - the step's execution duration in millisecondss
+* name (string) - the step's name, if available
+* arg (string) - the step's argument, if available
 
 ## RG.DROPEXECUTION
 ```sql

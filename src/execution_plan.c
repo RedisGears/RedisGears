@@ -16,22 +16,28 @@
 #include <event2/event.h>
 #include "lock_handler.h"
 
+#define INIT_TIMER  struct timespec _ts = {0}, _te = {0};
+#define GETTIME(t)  clock_gettime(CLOCK_REALTIME, t);
+#define START_TIMER if(GearsConfig_GetProfileExecutions()) GETTIME(&_ts);
+#define STOP_TIMER  if(GearsConfig_GetProfileExecutions()) GETTIME(&_te);
+#define DURATION    ((long long)1000000000 * (_te.tv_sec - _ts.tv_sec) \
+                    + (_te.tv_nsec - _ts.tv_nsec))
+#define ADD_DURATION(d) if(GearsConfig_GetProfileExecutions()){ \
+                            STOP_TIMER; \
+                            d += DURATION; \
+                        }
+#define DURATION2MS(d)  (long long)(d/(long long)1000000)
+
 char* stepsNames[] = {
-        "NONE",
-        "MAP",
-        "FILETER",
-        "READER",
-        "GROUP",
-        "EXTRACTKEY",
-        "REPARTITION",
-        "REDUCE",
-        "COLLECT",
-        "WRITER",
-        "FLAT_MAP",
-        "LIMIT",
-        "ACCUMULATE",
-        "ACCUMULATE_BY_KEY",
-        NULL,
+#define X(a, b) b,
+    STEP_TYPES
+#undef X
+};
+
+char* statusesNames[] = {
+#define X(a, b) b,
+    EXECUTION_PLAN_STATUSES
+#undef X
 };
 
 typedef struct LimitExecutionStepArg{
@@ -118,7 +124,7 @@ Gears_dictType dictTypeHeapIds = {
 };
 
 typedef enum MsgType{
-    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_FREE
+    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_TERMINATE, EXECUTION_FREE
 }MsgType;
 
 typedef struct RunWorkerMsg{
@@ -170,6 +176,13 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateRun(ExecutionPlan* ep){
 	ret->type = RUN_MSG;
 	ret->runWM.ep = ep;
 	return ret;
+}
+
+static WorkerMsg* ExectuionPlan_WorkerMsgCreateTerminate(ExecutionPlan* ep){
+    WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
+    ret->type = EXECUTION_TERMINATE;
+    ret->executionDone.ep = ep;
+    return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
@@ -327,6 +340,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
 
 static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* record = NULL;
+    INIT_TIMER;
     while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
         if(record == &StopRecord){
             return record;
@@ -334,30 +348,31 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
             return record;
         }
+	    START_TIMER;
         char* err = NULL;
         bool filterRes = step->filter.filter(rctx, record, step->filter.stepArg.stepArg, &err);
         if(err){
-            ep->isErrorOccure = true;
             RedisGears_FreeRecord(record);
             record = RG_ErrorRecordCreate(err, strlen(err) + 1);
-            return record;
+            goto end;
         }
         if(filterRes){
-            return record;
+            goto end;
         }else{
             RedisGears_FreeRecord(record);
         }
     }
-    return NULL;
+    record = NULL;
+end:
+	ADD_DURATION(step->executionDuration);
+    return record;
 }
 
 static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
 
-    struct timespec start;
-	struct timespec end;
-	clock_gettime(CLOCK_REALTIME, &start);
-
+    INIT_TIMER;
+	START_TIMER;
 	if(record == NULL){
         goto end;
     }
@@ -371,7 +386,6 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
         char* err = NULL;
         record = step->map.map(rctx, record, step->map.stepArg.stepArg, &err);
         if(err){
-            ep->isErrorOccure = true;
             if(record){
                 RedisGears_FreeRecord(record);
             }
@@ -379,19 +393,16 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
         }
     }
 end:
-	clock_gettime(CLOCK_REALTIME, &end);
-	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
-							 (end.tv_nsec - start.tv_nsec);
-	step->executionDuration += readDuration;
+	ADD_DURATION(step->executionDuration);
     return record;
 }
 
 static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
 	Record* r = NULL;
-	struct timespec start;
-	struct timespec end;
+
+    INIT_TIMER;
 	if(step->flatMap.pendings){
-		clock_gettime(CLOCK_REALTIME, &start);
+        START_TIMER;
         r = RedisGears_ListRecordPop(step->flatMap.pendings);
         if(RedisGears_ListRecordLen(step->flatMap.pendings) == 0){
             RedisGears_FreeRecord(step->flatMap.pendings);
@@ -405,7 +416,7 @@ static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep*
             RedisGears_FreeRecord(r);
         }
         r = ExecutionPlan_MapNextRecord(ep, step, rctx);
-        clock_gettime(CLOCK_REALTIME, &start);
+        START_TIMER;
         if(r == NULL){
             goto end;
         }
@@ -418,7 +429,9 @@ static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep*
         if(RedisGears_RecordGetType(r) != LIST_RECORD){
             goto end;
         }
+    	ADD_DURATION(step->executionDuration);
     }while(RedisGears_ListRecordLen(r) == 0);
+    START_TIMER;
     if(RedisGears_ListRecordLen(r) == 1){
         Record* ret;
         ret = RedisGears_ListRecordPop(r);
@@ -429,20 +442,17 @@ static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep*
     step->flatMap.pendings = r;
     r = RedisGears_ListRecordPop(step->flatMap.pendings);
 end:
-	clock_gettime(CLOCK_REALTIME, &end);
-	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
-							 (end.tv_nsec - start.tv_nsec);
-	step->executionDuration += readDuration;
+	ADD_DURATION(step->executionDuration);
     return r;
 }
 
 static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     size_t buffLen;
     Record* r = NULL;
-    struct timespec start;
-	struct timespec end;
     Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
-    clock_gettime(CLOCK_REALTIME, &start);
+
+    INIT_TIMER;
+    START_TIMER;
     if(record == NULL){
         goto end;
     }
@@ -457,7 +467,6 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
     char* err = NULL;
     char* buff = step->extractKey.extractor(rctx, record, step->extractKey.extractorArg.stepArg, &buffLen, &err);
     if(err){
-        ep->isErrorOccure = true;
         RedisGears_FreeRecord(record);
         r = RG_ErrorRecordCreate(err, strlen(err) + 1);
         goto end;
@@ -466,16 +475,15 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
     RedisGears_KeyRecordSetKey(r, buff, buffLen);
     RedisGears_KeyRecordSetVal(r, record);
 end:
-	clock_gettime(CLOCK_REALTIME, &end);
-	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
-							 (end.tv_nsec - start.tv_nsec);
-	step->executionDuration += readDuration;
+	ADD_DURATION(step->executionDuration);
     return r;
 }
 
 static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
 #define GROUP_RECORD_INIT_LEN 10
     Record* record = NULL;
+
+    INIT_TIMER;
     if(step->group.isGrouped){
         if(array_len(step->group.groupedRecords) == 0){
             return NULL;
@@ -483,11 +491,12 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
         return array_pop(step->group.groupedRecords);
     }
     while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
+        START_TIMER;
         if(record == &StopRecord){
-            return record;
+            goto end;
         }
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
-            return record;
+            goto end;
         }
         assert(RedisGears_RecordGetType(record) == KEY_RECORD);
         size_t keyLen;
@@ -509,24 +518,33 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
         RedisGears_ListRecordAdd(listRecord, RedisGears_KeyRecordGetVal(record));
         RedisGears_KeyRecordSetVal(record, NULL);
         RedisGears_FreeRecord(record);
+        ADD_DURATION(step->executionDuration);
     }
+    START_TIMER;
     step->group.isGrouped = true;
     if(array_len(step->group.groupedRecords) == 0){
-        return NULL;
+        record = NULL;
+    }else{
+        record = array_pop(step->group.groupedRecords);
     }
-    return array_pop(step->group.groupedRecords);
+end:
+	ADD_DURATION(step->executionDuration);
+    return record;
 }
 
 static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
-    if(!record){
-        return NULL;
+
+    INIT_TIMER;
+    START_TIMER;
+    if(record == NULL){
+        goto end;
     }
     if(record == &StopRecord){
-        return record;
+        goto end;
     }
     if(RedisGears_RecordGetType(record) == ERROR_RECORD){
-        return record;
+        goto end;
     }
     assert(RedisGears_RecordGetType(record) == KEY_RECORD);
     size_t keyLen;
@@ -535,39 +553,50 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     Record* r = step->reduce.reducer(rctx, key, keyLen, RedisGears_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg, &err);
     RedisGears_KeyRecordSetVal(record, r);
     if(err){
-        ep->isErrorOccure = true;
         RedisGears_FreeRecord(record);
         record = RG_ErrorRecordCreate(err, strlen(err) + 1);
     }
+end:
+	ADD_DURATION(step->executionDuration);
     return record;
 }
 
 static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
+    Record* record = NULL;
     Gears_Buffer* buff;
     Gears_BufferWriter bw;
-    Record* record;
+
     if(!Cluster_IsClusterMode()){
         return ExecutionPlan_NextRecord(ep, step->prev, rctx);
     }
+
+    INIT_TIMER;
+    START_TIMER;
     if(step->repartion.stoped){
         if(array_len(step->repartion.pendings) > 0){
-            return array_pop(step->repartion.pendings);
+            record = array_pop(step->repartion.pendings);
+            goto end;
         }
         if((Cluster_GetSize() - 1) == step->repartion.totalShardsCompleted){
-			return NULL; // we are done!!
+			goto end; // we are done!!
 		}
-        return &StopRecord;
+        record = &StopRecord;
+        goto end;
     }
     buff = Gears_BufferCreate();
+    STOP_TIMER;
+	step->executionDuration += DURATION;
+
     while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx)) != NULL){
+        START_TIMER;
         if(record == &StopRecord){
             Gears_BufferFree(buff);
-            return record;
+            goto end;
         }
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
             // this is an error record which should stay with us so lets return it
             Gears_BufferFree(buff);
-            return record;
+            goto end;
         }
         size_t len;
         char* key = RedisGears_KeyRecordGetKey(record, &len);
@@ -575,7 +604,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         if(memcmp(shardIdToSendRecord, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
             // this record should stay with us, lets return it.
         	Gears_BufferFree(buff);
-        	return record;
+            goto end;
         }
         else{
             // we need to send the record to another shard
@@ -585,61 +614,72 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
             RG_SerializeRecord(&bw, record);
             RedisGears_FreeRecord(record);
 
-            LockHandler_Acquire(rctx);
             Cluster_SendMsgM(shardIdToSendRecord, ExecutionPlan_OnRepartitionRecordReceived, buff->buff, buff->size);
-            LockHandler_Release(rctx);
 
             Gears_BufferClear(buff);
         }
+    	ADD_DURATION(step->executionDuration);
     }
+
+    START_TIMER;
     Gears_BufferWriterInit(&bw, buff);
     RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
     RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
-    LockHandler_Acquire(rctx);
     Cluster_SendMsgM(NULL, ExecutionPlan_DoneRepartition, buff->buff, buff->size);
-    LockHandler_Release(rctx);
 
     Gears_BufferFree(buff);
     step->repartion.stoped = true;
     if(array_len(step->repartion.pendings) > 0){
-		return array_pop(step->repartion.pendings);
+        record = array_pop(step->repartion.pendings);
+        goto end;
 	}
 	if((Cluster_GetSize() - 1) == step->repartion.totalShardsCompleted){
-		return NULL; // we are done!!
+		record = NULL; // we are done!!
+        goto end;
 	}
-	return &StopRecord;
+    record = &StopRecord;
+end:
+	ADD_DURATION(step->executionDuration);
+    return record;
 }
 
 static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
 	Record* record = NULL;
-	Gears_Buffer* buff;
+	Gears_Buffer* buff;;
 	Gears_BufferWriter bw;
 
 	if(!Cluster_IsClusterMode()){
 		return ExecutionPlan_NextRecord(ep, step->prev, rctx);
 	}
 
+    INIT_TIMER;
+    START_TIMER;
 	if(step->collect.stoped){
 		if(array_len(step->collect.pendings) > 0){
-			return array_pop(step->collect.pendings);
+            record = array_pop(step->collect.pendings);
+            goto end;
 		}
 		if((Cluster_GetSize() - 1) == step->collect.totalShardsCompleted){
-			return NULL; // we are done!!
+			record = NULL; // we are done!!
+            goto end;
 		}
-		return &StopRecord;
+		record = &StopRecord;
+        goto end;
 	}
 
 	buff = Gears_BufferCreate();
+	ADD_DURATION(step->executionDuration);
 
 	while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx)) != NULL){
+        START_TIMER;
 		if(record == &StopRecord){
 			Gears_BufferFree(buff);
-			return record;
+			goto end;
 		}
 		if(Cluster_IsMyId(ep->id)){
 			Gears_BufferFree(buff);
-			return record; // record should stay here, just return it.
+			goto end; // record should stay here, just return it.
 		}else{
 			Gears_BufferWriterInit(&bw, buff);
 			RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
@@ -647,131 +687,155 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			RG_SerializeRecord(&bw, record);
 			RedisGears_FreeRecord(record);
 
-			LockHandler_Acquire(rctx);
 			Cluster_SendMsgM(ep->id, ExecutionPlan_CollectOnRecordReceived, buff->buff, buff->size);
-			LockHandler_Release(rctx);
 
 			Gears_BufferClear(buff);
 		}
+    	ADD_DURATION(step->executionDuration);
 	}
 
+    START_TIMER;
 	step->collect.stoped = true;
 
 	if(Cluster_IsMyId(ep->id)){
 		Gears_BufferFree(buff);
 		if(array_len(step->collect.pendings) > 0){
-			return array_pop(step->collect.pendings);
+			record = array_pop(step->collect.pendings);
+            goto end;
 		}
 		if((Cluster_GetSize() - 1) == step->collect.totalShardsCompleted){
-			return NULL; // we are done!!
+			record = NULL; // we are done!!
+            goto end;
 		}
-		return &StopRecord; // now we should wait for record to arrive from the other shards
+		record = &StopRecord; // now we should wait for record to arrive from the other shards
 	}else{
 		Gears_BufferWriterInit(&bw, buff);
 		RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
 		RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
-		LockHandler_Acquire(rctx);
 		Cluster_SendMsgM(ep->id, ExecutionPlan_CollectDoneSendingRecords, buff->buff, buff->size);
-		LockHandler_Release(rctx);
 		Gears_BufferFree(buff);
-		return NULL;
+		record = NULL;
 	}
+end:
+	ADD_DURATION(step->executionDuration);
+    return record;
 }
 
 static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
+    INIT_TIMER;
+    START_TIMER;
     if(record == &StopRecord){
-        return record;
+        goto end;
     }
     if(record == NULL){
-        return NULL;
+        goto end;
     }
     if(RedisGears_RecordGetType(record) == ERROR_RECORD){
-        return record;
+        goto end;
     }
     char* err = NULL;
     step->forEach.forEach(rctx, record, step->forEach.stepArg.stepArg, &err);
     if(err){
-        ep->isErrorOccure = true;
         RedisGears_FreeRecord(record);
         record = RG_ErrorRecordCreate(err, strlen(err) + 1);
     }
+end:
+	ADD_DURATION(step->executionDuration);
     return record;
 }
 
 static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
-    while(true){
-        Record* record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
+    Record* record = NULL;    
+
+    INIT_TIMER;
+    while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
+        START_TIMER;
         if(record == NULL){
-            return NULL;
+            goto end;
         }
         if(record == &StopRecord){
-            return record;
+            goto end;
         }
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
-            return record;
+            goto end;
         }
 
         LimitExecutionStepArg* arg = (LimitExecutionStepArg*)step->limit.stepArg.stepArg;
         if(step->limit.currRecordIndex >= arg->offset &&
                 step->limit.currRecordIndex < arg->offset + arg->len){
             ++step->limit.currRecordIndex;
-            return record;
+            goto end;
         }else{
             RedisGears_FreeRecord(record);
         }
         ++step->limit.currRecordIndex;
         if(step->limit.currRecordIndex >= arg->offset + arg->len){
-            return NULL;
+            record = NULL;
+            goto end;
         }
+    	ADD_DURATION(step->executionDuration);
     }
+end:
+	ADD_DURATION(step->executionDuration);
+    return record;
 }
 
 static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
-    Record* r = NULL;
+    Record* record = NULL;    
+
+    INIT_TIMER;
     if(step->accumulate.isDone){
     	return NULL;
     }
-    while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
-        if(r == &StopRecord){
-            return r;
+    while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
+        START_TIMER;
+        if(record == &StopRecord){
+            goto end;
         }
-        if(RedisGears_RecordGetType(r) == ERROR_RECORD){
-            return r;
+        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+            goto end;
         }
         char* err = NULL;
-        step->accumulate.accumulator = step->accumulate.accumulate(rctx, step->accumulate.accumulator, r, step->accumulate.stepArg.stepArg, &err);
+        step->accumulate.accumulator = step->accumulate.accumulate(rctx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg, &err);
         if(err){
-            ep->isErrorOccure = true;
             if(step->accumulate.accumulator){
                 RedisGears_FreeRecord(step->accumulate.accumulator);
             }
-            return RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            goto end;
         }
+    	ADD_DURATION(step->executionDuration);
     }
-    r = step->accumulate.accumulator;
+    START_TIMER;
+    record = step->accumulate.accumulator;
     step->accumulate.accumulator = NULL;
     step->accumulate.isDone = true;
-    return r;
+end:
+	ADD_DURATION(step->executionDuration);
+    return record;
 }
 
 static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
-	Record* r = NULL;
+	Record* record = NULL;
+
+    INIT_TIMER;
 	if(!step->accumulateByKey.accumulators){
 	    return NULL;
 	}
-	while((r = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
-		if(r == &StopRecord){
-			return r;
+	while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
+        START_TIMER;
+		if(record == &StopRecord){
+			goto end;
 		}
-		if(RedisGears_RecordGetType(r) == ERROR_RECORD){
-		    return r;
+		if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+		    goto end;
 		}
-		assert(RedisGears_RecordGetType(r) == KEY_RECORD);
-		char* key = RedisGears_KeyRecordGetKey(r, NULL);
-		Record* val = RedisGears_KeyRecordGetVal(r);
-		RedisGears_KeyRecordSetVal(r, NULL);
+		assert(RedisGears_RecordGetType(record) == KEY_RECORD);
+		char* key = RedisGears_KeyRecordGetKey(record, NULL);
+		Record* val = RedisGears_KeyRecordGetVal(record);
+		RedisGears_KeyRecordSetVal(record, NULL);
 		Record* accumulator = NULL;
 		Gears_dictEntry *entry = Gears_dictFind(step->accumulateByKey.accumulators, key);
 		Record* keyRecord = NULL;
@@ -782,12 +846,12 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		char* err = NULL;
 		accumulator = step->accumulateByKey.accumulate(rctx, key, accumulator, val, step->accumulate.stepArg.stepArg, &err);
 		if(err){
-		    ep->isErrorOccure = true;
 		    if(accumulator){
 		        RedisGears_FreeRecord(accumulator);
 		    }
-			RedisGears_FreeRecord(r);
-			return RG_ErrorRecordCreate(err, strlen(err) + 1);
+			RedisGears_FreeRecord(record);
+            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            goto end;
 		}
 		if(!keyRecord){
 			keyRecord = RedisGears_KeyRecordCreate();
@@ -796,9 +860,11 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 			Gears_dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
 		}
 		RedisGears_KeyRecordSetVal(keyRecord, accumulator);
-		RedisGears_FreeRecord(r);
+		RedisGears_FreeRecord(record);
+    	ADD_DURATION(step->executionDuration);
 	}
-	if(!step->accumulateByKey.iter){
+	START_TIMER;
+    if(!step->accumulateByKey.iter){
 		step->accumulateByKey.iter = Gears_dictGetIterator(step->accumulateByKey.accumulators);
 	}
 	Gears_dictEntry *entry = Gears_dictNext(step->accumulateByKey.iter);
@@ -807,27 +873,28 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		Gears_dictRelease(step->accumulateByKey.accumulators);
 		step->accumulateByKey.iter = NULL;
 		step->accumulateByKey.accumulators = NULL;
-		return NULL;
+		record = NULL;
+        goto end;
 	}
-	Record* ret = Gears_dictGetVal(entry);
-	assert(RedisGears_RecordGetType(ret) == KEY_RECORD);
-	return ret;
+	record = Gears_dictGetVal(entry);
+	assert(RedisGears_RecordGetType(record) == KEY_RECORD);
+end:
+	ADD_DURATION(step->executionDuration);
+    return record;
 }
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* r = NULL;
-    struct timespec start;
-	struct timespec end;
+
+    INIT_TIMER;
     switch(step->type){
     case READER:
-    	clock_gettime(CLOCK_REALTIME, &start);
-    	if(!ep->isErrorOccure){
+    	if(array_len(ep->errors) == 0){
+            GETTIME(&_ts);
     	    r = step->reader.r->next(rctx, step->reader.r->ctx);
+            GETTIME(&_te);
+    	    step->executionDuration += DURATION;
     	}
-        clock_gettime(CLOCK_REALTIME, &end);
-		long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
-								 (end.tv_nsec - start.tv_nsec);
-		step->executionDuration += readDuration;
         break;
     case MAP:
     	r = ExecutionPlan_MapNextRecord(ep, step, rctx);
@@ -878,6 +945,12 @@ static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, R
     LockHandler_Release(rctx);
 }
 
+static void ExecutionPlan_WriteError(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
+    LockHandler_Acquire(rctx);
+    ep->errors = array_append(ep->errors, record);
+    LockHandler_Release(rctx);
+}
+
 static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     Record* record = NULL;
 
@@ -886,7 +959,11 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
             // Execution need to be stopped, lets wait for a while.
             return false;
         }
-        ExecutionPlan_WriteResult(ep, rctx, record);
+        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+            ExecutionPlan_WriteError(ep, rctx, record);
+        }else{
+            ExecutionPlan_WriteResult(ep, rctx, record);
+        }
     }
 
     return true;
@@ -894,7 +971,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
 
 static void ExecutionPlan_DoExecutionDoneActions(ExecutionPlan* ep, RedisModuleCtx* rctx){
     LockHandler_Acquire(rctx);
-    ep->isDone = true;
+    ep->status = DONE;
     FreePrivateData freeC = ep->freeCallback;
     void* pd = ep->privateData;
     if(ep->callback){
@@ -907,10 +984,13 @@ static void ExecutionPlan_DoExecutionDoneActions(ExecutionPlan* ep, RedisModuleC
 }
 
 static void ExecutionPlan_Main(ExecutionPlan* ep){
-	assert(!ep->isDone);
+	assert(ep->status != DONE);
 	ep->sentRunRequest = false;
 	if(ep->status == WAITING_FOR_CLUSTER_TO_COMPLETE){
 	    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+	    if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+	        Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+	    }
 	    ExecutionPlan_DoExecutionDoneActions(ep, rctx);
         RedisModule_FreeThreadSafeContext(rctx);
 	    return;
@@ -938,28 +1018,26 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 		ep->status = RUNNING;
 	}
 
-	struct timespec start;
-	struct timespec end;
-	clock_gettime(CLOCK_REALTIME, &start);
-
+    INIT_TIMER;
+    GETTIME(&_ts);
 	RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
 	bool isDone = ExecutionPlan_Execute(ep, rctx);
-
-	clock_gettime(CLOCK_REALTIME, &end);
-	long long readDuration = (long long)1000000000 * (end.tv_sec - start.tv_sec) +
-							 (end.tv_nsec - start.tv_nsec);
-	ep->executionDuration += readDuration;
+    GETTIME(&_te);
+	ep->executionDuration += DURATION;
 
 	if(isDone){
 	    if(Cluster_IsClusterMode()){
-	        LockHandler_Acquire(rctx);
-            Cluster_SendMsgM(NULL, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
-            LockHandler_Release(rctx);
-            if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
-                ExecutionPlan_DoExecutionDoneActions(ep, rctx);
-            }else{
-                ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
-            }
+	        if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+	            if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // wait for all the shards to complete the execution
+	                Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+                    ExecutionPlan_DoExecutionDoneActions(ep, rctx);
+                }else{
+                    ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
+                }
+	        }else{
+	            Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
+	            ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
+	        }
 	    }else{
 	        ExecutionPlan_DoExecutionDoneActions(ep, rctx);
 	    }
@@ -1141,6 +1219,13 @@ static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
     return ret;
 }
 
+static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    ExecutionPlan* ep = ExecutionPlan_FindById(payload);
+    assert(ep);
+    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateTerminate(ep);
+    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
+}
+
 static void ExecutionPlan_NotifyExecutionDone(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
     assert(ep);
@@ -1162,6 +1247,10 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 	assert(ep);
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, REPARTITION);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
+}
+
+static void ExecutionPlan_ExecutionTerminate(ExecutionPlan* ep){
+    ExecutionPlan_Main(ep);
 }
 
 static void ExecutionPlan_ExecutionDone(ExecutionPlan* ep){
@@ -1228,7 +1317,10 @@ static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
 		break;
 	case EXECUTION_DONE:
 	    ExecutionPlan_ExecutionDone(msg->executionDone.ep);
-        break;
+	    break;
+	case EXECUTION_TERMINATE:
+            ExecutionPlan_ExecutionTerminate(msg->executionDone.ep);
+            break;
 	case EXECUTION_FREE:
         ExecutionPlan_Free(msg->executionFree.ep, true);
         break;
@@ -1275,6 +1367,7 @@ void ExecutionPlan_Initialize(size_t numberOfworkers){
     Cluster_RegisterMsgReceiverM(ExecutionPlan_DoneRepartition);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_NotifyExecutionDone);
     Cluster_RegisterMsgReceiverM(FlatExecutionPlan_RegisterKeySpaceEvent);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_TeminateExecution);
 
     for(size_t i = 0 ; i < numberOfworkers ; ++i){
     	WorkerData* wd = ExecutionPlan_StartThread();
@@ -1417,13 +1510,12 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->totalShardsRecieved = 0;
     ret->totalShardsCompleted = 0;
     ret->results = array_new(Record*, 100);
+    ret->errors = array_new(Record*, 1);
     ret->status = CREATED;
-    ret->isDone = false;
     ret->sentRunRequest = false;
     ret->callback = NULL;
     ret->privateData = NULL;
     ret->freeCallback = NULL;
-    ret->isErrorOccure = false;
     char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
     if(!finalId){
         char noneClusterId[REDISMODULE_NODE_ID_LEN] = {0};
@@ -1442,7 +1534,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     memcpy(ret->id, finalId, EXECUTION_PLAN_ID_LEN);
     snprintf(ret->idStr, EXECUTION_PLAN_STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, ret->id, *(long long*)&ret->id[REDISMODULE_NODE_ID_LEN]);
     pthread_mutex_lock(&epData.mutex);
-    while (Gears_listLength(epData.epList) >= GearsCOnfig_GetMaxExecutions()) {
+    while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
         Gears_listNode* n0 = Gears_listFirst(epData.epList);
         ExecutionPlan* ep0 = Gears_listNodeValue(n0);
         ExecutionPlan_Free(ep0, false);
@@ -1560,6 +1652,11 @@ void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock){
         RedisGears_FreeRecord(ep->results[i]);
     }
     array_free(ep->results);
+
+    for(int i = 0 ; i < array_len(ep->errors) ; ++i){
+        RedisGears_FreeRecord(ep->errors[i]);
+    }
+    array_free(ep->errors);
     RG_FREE(ep);
 }
 
@@ -1630,8 +1727,8 @@ void FlatExecutionPlan_AddGroupByStep(FlatExecutionPlan* fep, const char* extrax
                                   const char* reducerName, void* reducerArg){
     FlatExecutionStep extractKey;
     FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
-    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
-    FlatExecutionPlan_AddBasicStep(fep, "Group", NULL, GROUP);
+    FlatExecutionPlan_AddBasicStep(fep, stepsNames[REPARTITION], NULL, REPARTITION);
+    FlatExecutionPlan_AddBasicStep(fep, stepsNames[GROUP], NULL, GROUP);
     FlatExecutionPlan_AddBasicStep(fep, reducerName, reducerArg, REDUCE);
 }
 
@@ -1639,7 +1736,7 @@ void FlatExecutionPlan_AddAccumulateByKeyStep(FlatExecutionPlan* fep, const char
                                               const char* accumulateName, void* accumulateArg){
     FlatExecutionStep extractKey;
     FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
-    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
+    FlatExecutionPlan_AddBasicStep(fep, stepsNames[REPARTITION], NULL, REPARTITION);
     FlatExecutionPlan_AddBasicStep(fep, accumulateName, accumulateArg, ACCUMULATE_BY_KEY);
 }
 
@@ -1650,7 +1747,7 @@ void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const
 }
 
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep){
-	FlatExecutionPlan_AddBasicStep(fep, "Collect", NULL, COLLECT);
+	FlatExecutionPlan_AddBasicStep(fep, stepsNames[COLLECT], NULL, COLLECT);
 }
 
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len){
@@ -1659,12 +1756,12 @@ void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_
         .offset = offset,
         .len = len,
     };
-    FlatExecutionPlan_AddBasicStep(fep, "Limit", arg, LIMIT);
+    FlatExecutionPlan_AddBasicStep(fep, stepsNames[LIMIT], arg, LIMIT);
 }
 
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg){
     FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
-    FlatExecutionPlan_AddBasicStep(fep, "Repartition", NULL, REPARTITION);
+    FlatExecutionPlan_AddBasicStep(fep, stepsNames[REPARTITION], NULL, REPARTITION);
     FlatExecutionPlan_AddMapStep(fep, "GetValueMapper", NULL);
 }
 
@@ -1680,12 +1777,7 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 		RedisModule_ReplyWithStringBuffer(ctx, "executionId", strlen("executionId"));
 		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
 		RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
-		if(ep->isDone){
-			RedisModule_ReplyWithStringBuffer(ctx, "done", strlen("done"));
-		}else{
-			RedisModule_ReplyWithStringBuffer(ctx, "running", strlen("running"));
-		}
-
+        RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
 		++numOfEntries;
     }
     Gears_listReleaseIterator(it);  
@@ -1694,6 +1786,149 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 	return REDISMODULE_OK;
 }
 
+static void onDoneResultsOnly(ExecutionPlan* ep, void* privateData){
+    RedisModuleBlockedClient *bc = privateData;
+    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
+    Command_ReturnResults(ep, rctx);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisGears_DropExecution(ep);
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
+int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+	if(argc < 2 || argc > 3){
+		return RedisModule_WrongArity(ctx);
+	}
+
+	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+    bool bClusterPlan = Cluster_IsClusterMode();
+
+    // TODO: big potential issue if another thread releases the ep before we acquire the lock <- maybe just lock the eplist?
+    ExecutionPlan* ep = RedisGears_GetExecution(id);
+
+    if(!ep){
+        RedisModule_ReplyWithError(ctx, "execution plan does not exist");
+        return REDISMODULE_OK;
+    }
+
+    if(argc == 3){
+        const char *subcommand = RedisModule_StringPtrLen(argv[2], NULL);
+        if(!strcasecmp(subcommand, "shard")){
+            bClusterPlan = false;
+        }else if(!strcasecmp(subcommand, "cluster")){
+            if(!bClusterPlan){
+                RedisModule_ReplyWithError(ctx, "no cluster detected - use `RG.GETEXECUTION <id> [SHARD]` instead");
+                return REDISMODULE_OK;            
+            }
+#ifndef WITHPYTHON
+            RedisModule_ReplyWithError(ctx, "cluster execution plan requires Python enabled - only `RG.GETEXECUTION <id> SHARD` is supported");
+            return REDISMODULE_OK;            
+#endif
+        }else{
+            RedisModule_ReplyWithError(ctx, "unknown subcommand");
+            return REDISMODULE_OK;
+        }
+    }
+
+    if(bClusterPlan){
+#ifndef WITHPYTHON
+        assert(true);
+#else
+        RedisModuleString **fargv = RG_CALLOC(2, sizeof(RedisModuleString*));
+        const char *eid = RedisModule_StringPtrLen(argv[1], NULL);
+        fargv[1] = RedisModule_CreateStringPrintf(ctx,
+            "GB('ShardsIDReader')"
+            ".map(lambda x: execute('RG.GETEXECUTION', '%s', 'SHARD'))"
+            ".collect()"
+            ".flatmap(lambda x: [i for i in x])"
+            ".run(convertToStr=False, collect=False)", eid);
+        // TODO: we create the fake args array with size 2 because the first should be the commmand but we only use the second one.
+        int res = RedisGearsPy_ExecuteWithCallback(ctx, fargv, 2, onDoneResultsOnly);
+        RedisModule_Free(fargv[1]);
+        RG_FREE(fargv);
+        return res;
+#endif
+    }else{
+
+        pthread_mutex_lock(&epData.mutex);
+        RedisModule_ReplyWithArray(ctx, 1);
+        RedisModule_ReplyWithArray(ctx, 4);
+        RedisModule_ReplyWithStringBuffer(ctx, "shard_id", strlen("shard_id"));
+        char myId[REDISMODULE_NODE_ID_LEN];
+        if(Cluster_IsClusterMode()){
+            memcpy(myId, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN);
+        }else{
+            memset(myId, '0', REDISMODULE_NODE_ID_LEN);
+        }
+        RedisModule_ReplyWithStringBuffer(ctx, myId, REDISMODULE_NODE_ID_LEN);
+        RedisModule_ReplyWithStringBuffer(ctx, "execution_plan", strlen("execution_plan"));
+        RedisModule_ReplyWithArray(ctx, 16);
+        RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
+        RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
+        RedisModule_ReplyWithStringBuffer(ctx, "shards_received", strlen("shards_received"));
+        RedisModule_ReplyWithLongLong(ctx, ep->totalShardsRecieved);
+        RedisModule_ReplyWithStringBuffer(ctx, "shards_completed", strlen("shards_completed"));
+        RedisModule_ReplyWithLongLong(ctx, ep->totalShardsCompleted);
+        RedisModule_ReplyWithStringBuffer(ctx, "results", strlen("results"));
+        // TODO: once results and errors are linked lists we can provide more insight here
+        if(ep->status == DONE){
+            RedisModule_ReplyWithLongLong(ctx, RedisGears_GetRecordsLen(ep));
+        }else{
+            RedisModule_ReplyWithLongLong(ctx, -1);
+        }
+        RedisModule_ReplyWithStringBuffer(ctx, "errors", strlen("errors"));
+        if(ep->status == DONE){
+            long long errorsLen = RedisGears_GetErrorsLen(ep);
+            RedisModule_ReplyWithArray(ctx,errorsLen);
+            for(long long i = 0; i < errorsLen; i++){
+                Record* error = RedisGears_GetError(ep, i);
+                size_t errorStrLen;
+                char* errorStr = RedisGears_StringRecordGet(error, &errorStrLen);
+                RedisModule_ReplyWithStringBuffer(ctx, errorStr, errorStrLen);
+            }
+        }else{
+            RedisModule_ReplyWithArray(ctx, 0);
+        }
+
+        RedisModule_ReplyWithStringBuffer(ctx, "total_duration", strlen("total_duration"));
+        RedisModule_ReplyWithLongLong(ctx, DURATION2MS(FlatExecutionPlan_GetExecutionDuration(ep)));
+        RedisModule_ReplyWithStringBuffer(ctx, "read_duration", strlen("read_duration"));
+        RedisModule_ReplyWithLongLong(ctx, DURATION2MS(FlatExecutionPlan_GetReadDuration(ep)));
+
+        uint32_t fstepsLen = array_len(ep->fep->steps);
+        RedisModule_ReplyWithStringBuffer(ctx, "steps", strlen("steps"));
+        RedisModule_ReplyWithArray(ctx, fstepsLen);
+        for(size_t i = 0; i < fstepsLen; i++){
+            ExecutionStep *step = ep->steps[i];
+            FlatExecutionStep fstep = ep->fep->steps[fstepsLen - i - 1];
+            RedisModule_ReplyWithArray(ctx, 8);
+            RedisModule_ReplyWithStringBuffer(ctx, "type", strlen("type"));
+            RedisModule_ReplyWithStringBuffer(ctx, stepsNames[step->type], strlen(stepsNames[step->type]));
+            RedisModule_ReplyWithStringBuffer(ctx, "duration", strlen("duration"));
+            RedisModule_ReplyWithLongLong(ctx, DURATION2MS(step->executionDuration));
+            RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
+            RedisModule_ReplyWithStringBuffer(ctx, fstep.bStep.stepName, strlen(fstep.bStep.stepName));
+            RedisModule_ReplyWithStringBuffer(ctx, "arg", strlen("arg"));
+            ExecutionStepArg arg = fstep.bStep.arg;
+            if(arg.stepArg){
+                ArgType* type = arg.type;
+                if(type && type->tostring){
+                    char* argCstr = type->tostring(arg.stepArg);
+                    RedisModule_ReplyWithStringBuffer(ctx, argCstr, strlen(argCstr));
+                    RG_FREE(argCstr);
+                }else{
+                    RedisModule_ReplyWithStringBuffer(ctx, "", strlen(""));
+                }
+            }else{
+                RedisModule_ReplyWithStringBuffer(ctx, "", strlen(""));
+            }
+        }
+        pthread_mutex_unlock(&epData.mutex);
+    }
+	return REDISMODULE_OK;
+}
+
+
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep){
 	return ep->executionDuration;
 }
@@ -1701,3 +1936,4 @@ long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep){
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep){
 	return ep->steps[array_len(ep->steps) - 1]->executionDuration;
 }
+

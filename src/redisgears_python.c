@@ -26,9 +26,13 @@ static PyObject* pFunc;
 static PyObject* pyGlobals;
 PyObject* GearsError;
 
+// TODO: wrap these global variables in their very own thread's private context
 static RedisModuleCtx* currentCtx = NULL;
 static bool blockingExecute = true;
 static bool executionTriggered = false;
+
+static void onDone(ExecutionPlan* ep, void* privateData);
+static DoneCallbackFunction doneFunction = onDone;
 
 static PyThreadState *_save;
 
@@ -257,7 +261,7 @@ static PyObject* accumulate(PyObject *self, PyObject *args){
 static void onDone(ExecutionPlan* ep, void* privateData){
     RedisModuleBlockedClient *bc = privateData;
     RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
-    Command_ReturnResults(ep, rctx);
+    Command_ReturnResultsAndErrors(ep, rctx);
     RedisModule_UnblockClient(bc, NULL);
     RedisGears_DropExecution(ep);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -306,7 +310,7 @@ static PyObject* run(PyObject *self, PyObject *args){
         RedisModule_ReplyWithStringBuffer(currentCtx, id, strlen(id));
     }else{
         RedisModuleBlockedClient *bc = RedisModule_BlockClient(currentCtx, NULL, NULL, NULL, 1000000);
-        RedisGears_RegisterExecutionDoneCallback(ep, onDone);
+        RedisGears_RegisterExecutionDoneCallback(ep, doneFunction);
         RedisGears_SetPrivateData(ep, bc, NULL);
     }
     Py_INCREF(Py_None);
@@ -1034,7 +1038,7 @@ static int RedisGearsPy_FreeInterpreter(RedisModuleCtx *ctx, RedisModuleString *
 	return REDISMODULE_OK;
 }
 
-static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 2 || argc > 3){
         return RedisModule_WrongArity(ctx);
     }
@@ -1088,18 +1092,54 @@ static int RedisGearsPy_Execut(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
-#define FETCH_PY_ERROR \
-    PyObject *ptype, *pvalue, *ptraceback;\
-    PyErr_Fetch(&ptype, &pvalue, &ptraceback);\
-    PyObject* errStr = PyObject_Str(pvalue);\
-    char *pStrErrorMessage = PyString_AsString(errStr);\
-    *err = RG_STRDUP(pStrErrorMessage);\
-    Py_DECREF(errStr);\
-    Py_DECREF(ptype);\
-    Py_DECREF(pvalue);\
-    if(ptraceback){\
-        Py_DECREF(ptraceback);\
+int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, DoneCallbackFunction callback){
+    DoneCallbackFunction orgDoneFunction = doneFunction;
+    doneFunction = callback;
+    int res = RedisGearsPy_Execute(ctx, argv, argc);
+    doneFunction = orgDoneFunction;
+    return res;
+}
+
+void fetchPyError(char** err) {
+    PyObject *pType, *pValue, *pTraceback;
+    PyErr_Fetch(&pType, &pValue, &pTraceback);
+    PyErr_NormalizeException(&pType, &pValue, &pTraceback);
+    PyObject *pModuleName = PyString_FromString("traceback");
+    PyObject *pModule = PyImport_Import(pModuleName);
+    PyObject *pStrTraceback = NULL;
+    if(GearsConfig_GetPythonAttemptTraceback() && pTraceback != NULL && pModule != NULL){
+        PyObject *pFunc = PyObject_GetAttrString(pModule, "format_exception");
+        if(pFunc != NULL){
+            if(PyCallable_Check(pFunc)){
+                PyObject *pCall = PyObject_CallFunctionObjArgs(pFunc, pType, pValue, pTraceback, NULL);
+                pStrTraceback = PyObject_Str(pCall);
+                Py_DECREF(pCall);
+            }
+            Py_DECREF(pFunc);
+        }
+        Py_DECREF(pModule);
     }
+    if(pStrTraceback == NULL){
+        PyObject *pStrFormat = PyString_FromString("Error type: %s, Value: %s");
+        PyObject* pStrType = PyObject_Str(pType);
+        PyObject* pStrValue = PyObject_Str(pValue);
+        PyObject *pArgs = PyTuple_New(2);
+        PyTuple_SetItem(pArgs, 0, pStrType);
+        PyTuple_SetItem(pArgs, 1, pStrValue);
+        pStrTraceback = PyString_Format(pStrFormat, pArgs);
+        Py_DECREF(pArgs);
+        Py_DECREF(pStrFormat);
+    }
+    char *strTraceback = PyString_AsString(pStrTraceback);
+    *err = RG_STRDUP(strTraceback);
+    Py_DECREF(pStrTraceback);
+    Py_DECREF(pModuleName);
+    Py_DECREF(pType);
+    Py_DECREF(pValue);
+    if(pTraceback){
+        Py_DECREF(pTraceback);
+    }
+}
 
 void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
     PyGILState_STATE state = PyGILState_Ensure();
@@ -1113,7 +1153,7 @@ void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* 
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        FETCH_PY_ERROR
+        fetchPyError(err);
         PyGILState_Release(state);
         return;
     }
@@ -1143,7 +1183,7 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char
 	PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
 	Py_DECREF(pArgs);
 	if(!newAccumulateObj){
-	    FETCH_PY_ERROR
+	    fetchPyError(err);
 	    RedisGears_FreeRecord(accumulate);
 		RedisGears_FreeRecord(r);
 		PyGILState_Release(state);
@@ -1173,7 +1213,7 @@ static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *a
     PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newAccumulateObj){
-        FETCH_PY_ERROR
+        fetchPyError(err);
         RedisGears_FreeRecord(accumulate);
         RedisGears_FreeRecord(r);
         PyGILState_Release(state);
@@ -1196,7 +1236,7 @@ static Record* RedisGearsPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *recor
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newObj){
-        FETCH_PY_ERROR
+        fetchPyError(err);
         RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
@@ -1218,7 +1258,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *r
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newObj){
-        FETCH_PY_ERROR
+        fetchPyError(err);
         RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
@@ -1253,7 +1293,7 @@ static bool RedisGearsPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, 
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        FETCH_PY_ERROR
+        fetchPyError(err);
         PyGILState_Release(state);
         return false;
     }
@@ -1273,7 +1313,7 @@ static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *reco
     PyObject* ret = PyObject_CallObject(extractor, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        FETCH_PY_ERROR
+        fetchPyError(err);
         PyGILState_Release(state);
         return "";
     }
@@ -1314,7 +1354,7 @@ static Record* RedisGearsPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, s
     PyObject* ret = PyObject_CallObject(reducer, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        FETCH_PY_ERROR
+        fetchPyError(err);
         RedisGears_FreeRecord(records);
         PyGILState_Release(state);
         return NULL;
@@ -1427,6 +1467,17 @@ static void RedisGearsPy_PyObjectFree(void* arg){
     PyGILState_Release(state);
 }
 
+static char* RedisGearsPy_PyObjectToString(void* arg){
+    char* objCstr = NULL;
+    PyGILState_STATE state = PyGILState_Ensure();
+    PyObject* obj = arg;
+    PyObject *objStr = PyObject_Str(obj);
+    objCstr = RG_STRDUP(PyString_AsString(objStr));
+    Py_DECREF(objStr);
+    PyGILState_Release(state);
+    return objCstr;
+}
+
 void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* obj = arg;
@@ -1462,7 +1513,7 @@ static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     PyObject * serializedStr = PyObject_CallObject(pickleFunction, args);
     if(!serializedStr || PyErr_Occurred()){
         PyErr_Print();
-        exit(1);
+        assert(false);
     }
     Py_DECREF(args);
     size_t len = PyString_Size(serializedStr);
@@ -1484,7 +1535,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br){
     PyObject * callback = PyObject_CallObject(loadFunction, args);
     if(!callback || PyErr_Occurred()){
         PyErr_Print();
-        exit(1);
+        assert(false);
     }
     Py_DECREF(args);
     PyGILState_Release(state);
@@ -1631,7 +1682,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 	Py_SetReallocFunction(RedisGearsPy_Relloc);
 	Py_SetFreeFunction(RedisGearsPy_Free);
 	char* arg = "Embeded";
-	char* progName = (char*)GearsCOnfig_GetPythonHomeDir();
+	char* progName = (char*)GearsConfig_GetPythonHomeDir();
     Py_SetProgramName(progName);
     Py_Initialize();
     PyEval_InitThreads();
@@ -1702,7 +1753,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
-    ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize);
+    ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize, RedisGearsPy_PyObjectToString);
 
     RSM_RegisterReader(PythonReader);
     RSM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
@@ -1720,7 +1771,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execut, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
         return REDISMODULE_ERR;
     }

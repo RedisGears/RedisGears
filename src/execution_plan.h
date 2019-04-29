@@ -10,22 +10,31 @@
 
 #include <stdbool.h>
 #include "redisgears.h"
+#include "commands.h"
 #include "utils/dict.h"
+#ifdef WITHPYTHON
+#include <redisgears_python.h>
+#endif
+#define STEP_TYPES \
+    X(NONE, "none") \
+    X(MAP, "map") \
+    X(FILTER, "filter") \
+    X(READER, "reader") \
+    X(GROUP, "group") \
+    X(EXTRACTKEY, "extractkey") \
+    X(REPARTITION, "repartition") \
+    X(REDUCE, "reduce") \
+    X(COLLECT, "collect") \
+    X(FOREACH, "foreach") \
+    X(FLAT_MAP, "flatmap") \
+    X(LIMIT, "limit") \
+    X(ACCUMULATE, "accumulate") \
+    X(ACCUMULATE_BY_KEY, "accumulatebykey")
 
 enum StepType{
-    MAP=1,
-    FILTER,
-    READER,
-    GROUP,
-    EXTRACTKEY,
-    REPARTITION,
-    REDUCE,
-    COLLECT,
-    FOREACH,
-    FLAT_MAP,
-    LIMIT,
-    ACCUMULATE,
-    ACCUMULATE_BY_KEY,
+#define X(a, b) a,
+    STEP_TYPES
+#undef X
 };
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
@@ -131,8 +140,18 @@ typedef struct ExecutionStep{
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 
+#define EXECUTION_PLAN_STATUSES \
+    X(CREATED, "created") \
+    X(RUNNING, "running") \
+    X(WAITING_FOR_RECIEVED_NOTIFICATION, "pending_receive") \
+    X(WAITING_FOR_RUN_NOTIFICATION, "pending_run") \
+    X(WAITING_FOR_CLUSTER_TO_COMPLETE, "pending_cluster") \
+    X(DONE, "done")
+
 typedef enum ExecutionPlanStatus{
-    CREATED, RUNNING, WAITING_FOR_RECIEVED_NOTIFICATION, WAITING_FOR_RUN_NOTIFICATION, WAITING_FOR_CLUSTER_TO_COMPLETE
+#define X(a, b) a,
+    EXECUTION_PLAN_STATUSES
+#undef X
 }ExecutionPlanStatus;
 
 #define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
@@ -152,15 +171,14 @@ typedef struct ExecutionPlan{
     size_t totalShardsRecieved;
     size_t totalShardsCompleted;
     Record** results;
+    Record** errors;
     ExecutionPlanStatus status;
-    bool isDone;
     bool sentRunRequest;
     RedisGears_OnExecutionDoneCallback callback;
     void* privateData;
     FreePrivateData freeCallback;
     long long executionDuration;
     WorkerData* assignWorker;
-    bool isErrorOccure;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -216,6 +234,7 @@ void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
 
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 

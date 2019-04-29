@@ -160,7 +160,7 @@ static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
 }
 
 static bool RG_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback){
-	if(ep->isDone){
+	if(ep->status == DONE){
 		return false;
 	}
 	ep->callback = callback;
@@ -168,7 +168,7 @@ static bool RG_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExe
 }
 
 static bool RG_IsDone(ExecutionPlan* ep){
-	return ep->isDone;
+	return(ep->status == DONE);
 }
 
 static const char* RG_GetId(ExecutionPlan* ep){
@@ -176,8 +176,15 @@ static const char* RG_GetId(ExecutionPlan* ep){
 }
 
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
-	assert(ep->isDone);
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
+	assert(ep && ep->status == DONE);
 	return array_len(ep->results);
+}
+
+static long long RG_GetErrorsLen(ExecutionPlan* ep){
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
+	assert(ep && ep->status == DONE);
+	return array_len(ep->errors);
 }
 
 static void* RG_GetPrivateData(ExecutionPlan* ep){
@@ -190,9 +197,17 @@ static void RG_SetPrivateData(ExecutionPlan* ep, void* privateData, FreePrivateD
 }
 
 static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
-	assert(ep && ep->isDone);
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
+	assert(ep && ep->status == DONE);
 	assert(i >= 0 && i < array_len(ep->results));
 	return ep->results[i];
+}
+
+static Record* RG_GetError(ExecutionPlan* ep, long long i){
+    // TODO: move results and errors to linked lists for partial parallelism w/o locking
+	assert(ep && ep->status == DONE);
+	assert(i >= 0 && i < array_len(ep->errors));
+	return ep->errors[i];
 }
 
 static void RG_DropExecution(ExecutionPlan* ep){
@@ -207,7 +222,7 @@ static ExecutionPlan* RG_GetExecution(const char* id){
 	return ep;
 }
 
-static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize){
+static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring){
     ArgType* ret = RG_ALLOC(sizeof(*ret));
     *ret = (ArgType){
         .type = RG_STRDUP(name),
@@ -215,6 +230,7 @@ static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSer
         .dup = dup,
         .serialize = serialize,
         .deserialize = deserialize,
+        .tostring = tostring,
     };
     return ret;
 }
@@ -293,6 +309,8 @@ static bool RedisGears_RegisterApi(int (*registerApiCallback)(const char *funcna
     REGISTER_API(IsDone, registerApiCallback);
     REGISTER_API(GetRecordsLen, registerApiCallback);
     REGISTER_API(GetRecord, registerApiCallback);
+    REGISTER_API(GetErrorsLen, registerApiCallback);
+    REGISTER_API(GetError, registerApiCallback);
     REGISTER_API(RegisterExecutionDoneCallback, registerApiCallback);
     REGISTER_API(GetPrivateData, registerApiCallback);
 	REGISTER_API(SetPrivateData, registerApiCallback);
@@ -354,6 +372,17 @@ int RedisModule_RegisterApi(int (*registerApiCallback)(const char *funcname, voi
 }
 
 int moduleRegisterApi(const char *funcname, void *funcptr);
+
+static void RG_NetworkTest(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    printf("Got test network message\r\n");
+}
+
+static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+#define TEST_MSG "test"
+    Cluster_SendMsgM(NULL, RG_NetworkTest, TEST_MSG, strlen(TEST_MSG));
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
+}
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 	RedisModule_Log(ctx, "notice", "RedisGears version %d.%d.%d, git_sha=%s",
@@ -422,6 +451,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 #endif
 
     Cluster_RegisterMsgReceiverM(RG_OnDropExecutionMsgReceived);
+    Cluster_RegisterMsgReceiverM(RG_NetworkTest);
 
     if (RedisModule_CreateCommand(ctx, "rg.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.example");
@@ -443,6 +473,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
+    if (RedisModule_CreateCommand(ctx, "rg.hello", Cluster_RedisGearsHello, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.getclusterinfo");
+        return REDISMODULE_ERR;
+    }
+
     if (RedisModule_CreateCommand(ctx, RG_INNER_MSG_COMMAND, Cluster_OnMsgArrive, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_MSG_COMMAND);
         return REDISMODULE_ERR;
@@ -450,6 +485,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if (RedisModule_CreateCommand(ctx, "rg.dumpexecutions", ExecutionPlan_ExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.dumpexecutions");
+		return REDISMODULE_ERR;
+	}
+
+    if (RedisModule_CreateCommand(ctx, "rg.getexecution", ExecutionPlan_ExecutionGet, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+		RedisModule_Log(ctx, "warning", "could not register command rg.getexecution");
 		return REDISMODULE_ERR;
 	}
 
@@ -470,6 +510,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if (RedisModule_CreateCommand(ctx, "rg.reexecute", Command_ReExecute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.reexecute");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.networktest", Command_NetworkTest, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.networktest");
         return REDISMODULE_ERR;
     }
 
