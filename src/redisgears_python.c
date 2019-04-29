@@ -1513,7 +1513,7 @@ static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     PyObject * serializedStr = PyObject_CallObject(pickleFunction, args);
     if(!serializedStr || PyErr_Occurred()){
         PyErr_Print();
-        exit(1);
+        assert(false);
     }
     Py_DECREF(args);
     size_t len = PyString_Size(serializedStr);
@@ -1535,7 +1535,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br){
     PyObject * callback = PyObject_CallObject(loadFunction, args);
     if(!callback || PyErr_Occurred()){
         PyErr_Print();
-        exit(1);
+        assert(false);
     }
     Py_DECREF(args);
     PyGILState_Release(state);
