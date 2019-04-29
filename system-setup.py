@@ -66,6 +66,7 @@ class RedisGearsSetup(paella.Setup):
         if not self.has_command("RLTest"):
             self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("redis-py-cluster")
+        self.pip_install("gevent")
 
 #----------------------------------------------------------------------------------------------
 
