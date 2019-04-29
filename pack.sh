@@ -56,6 +56,7 @@ pack release "{semantic_version}"
 RELEASE=$packname
 
 pack snapshot "$BRANCH"
+SNAPSHOT=$packname
 
 if [[ ! -d $CPYTHON_PREFIX ]]; then
 	echo $CPYTHON_PREFIX does not exist
@@ -66,3 +67,8 @@ stem=$(basename $RELEASE | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
 TAR=$PACKAGE_NAME-dependencies.$stem.tgz
 tar pczf artifacts/release/$TAR $CPYTHON_PREFIX/ 2> /dev/null
 echo Created artifacts/release/$TAR
+
+stem=$(basename $SNAPSHOT | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
+TAR1=$PACKAGE_NAME-dependencies.$stem.tgz
+cp artifacts/release/$TAR artifacts/snapshot/$TAR1
+echo Created artifacts/snapshot/$TAR1
