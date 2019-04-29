@@ -537,7 +537,7 @@ static void* Cluster_MessageArriveThread(void *arg){
         int rc = pthread_cond_timedwait(&msgArriveCond, &msgArriveLock, &timeout);
         if (rc == EINVAL) {
             perror("Error waiting for condition");
-            exit(1);
+            assert(false);
         }
 
         while(Gears_listLength(msgArriveList) > 0){

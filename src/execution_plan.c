@@ -124,7 +124,7 @@ Gears_dictType dictTypeHeapIds = {
 };
 
 typedef enum MsgType{
-    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_FREE
+    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_TERMINATE, EXECUTION_FREE
 }MsgType;
 
 typedef struct RunWorkerMsg{
@@ -176,6 +176,13 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateRun(ExecutionPlan* ep){
 	ret->type = RUN_MSG;
 	ret->runWM.ep = ep;
 	return ret;
+}
+
+static WorkerMsg* ExectuionPlan_WorkerMsgCreateTerminate(ExecutionPlan* ep){
+    WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
+    ret->type = EXECUTION_TERMINATE;
+    ret->executionDone.ep = ep;
+    return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
@@ -981,6 +988,9 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 	ep->sentRunRequest = false;
 	if(ep->status == WAITING_FOR_CLUSTER_TO_COMPLETE){
 	    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+	    if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+	        Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+	    }
 	    ExecutionPlan_DoExecutionDoneActions(ep, rctx);
         RedisModule_FreeThreadSafeContext(rctx);
 	    return;
@@ -1017,12 +1027,17 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 
 	if(isDone){
 	    if(Cluster_IsClusterMode()){
-            Cluster_SendMsgM(NULL, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
-            if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
-                ExecutionPlan_DoExecutionDoneActions(ep, rctx);
-            }else{
-                ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
-            }
+	        if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+	            if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // wait for all the shards to complete the execution
+	                Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+                    ExecutionPlan_DoExecutionDoneActions(ep, rctx);
+                }else{
+                    ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
+                }
+	        }else{
+	            Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
+	            ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
+	        }
 	    }else{
 	        ExecutionPlan_DoExecutionDoneActions(ep, rctx);
 	    }
@@ -1204,6 +1219,13 @@ static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
     return ret;
 }
 
+static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    ExecutionPlan* ep = ExecutionPlan_FindById(payload);
+    assert(ep);
+    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateTerminate(ep);
+    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
+}
+
 static void ExecutionPlan_NotifyExecutionDone(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
     assert(ep);
@@ -1225,6 +1247,10 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 	assert(ep);
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, REPARTITION);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
+}
+
+static void ExecutionPlan_ExecutionTerminate(ExecutionPlan* ep){
+    ExecutionPlan_Main(ep);
 }
 
 static void ExecutionPlan_ExecutionDone(ExecutionPlan* ep){
@@ -1291,7 +1317,10 @@ static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
 		break;
 	case EXECUTION_DONE:
 	    ExecutionPlan_ExecutionDone(msg->executionDone.ep);
-        break;
+	    break;
+	case EXECUTION_TERMINATE:
+            ExecutionPlan_ExecutionTerminate(msg->executionDone.ep);
+            break;
 	case EXECUTION_FREE:
         ExecutionPlan_Free(msg->executionFree.ep, true);
         break;
@@ -1338,6 +1367,7 @@ void ExecutionPlan_Initialize(size_t numberOfworkers){
     Cluster_RegisterMsgReceiverM(ExecutionPlan_DoneRepartition);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_NotifyExecutionDone);
     Cluster_RegisterMsgReceiverM(FlatExecutionPlan_RegisterKeySpaceEvent);
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_TeminateExecution);
 
     for(size_t i = 0 ; i < numberOfworkers ; ++i){
     	WorkerData* wd = ExecutionPlan_StartThread();
