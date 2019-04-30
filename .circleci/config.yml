@@ -40,13 +40,13 @@ jobs:
       - BUILD_DIR: build-debian
     steps:
       - ci_steps:
-          platform: debian
+          platform: ubuntu
   
   centos:
     docker:
       - image: 'redislabsmodules/rmbuildercentos:latest'
     environment:
-      - BUILD_DIR: build-el
+      - BUILD_DIR: build-centos
     steps:
       - run:
           name: Redis_5_upgrade
