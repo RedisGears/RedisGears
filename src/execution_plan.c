@@ -1050,7 +1050,7 @@ ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
     }
 
     // we are done the local execution but we are on cluster mode
-    // we need to initiate completion protocol:
+    // we need to initiate termination protocol:
     // if (we are the initiator){
     //     1. wait for all shards to tell us they are done
     //     2. sent complete notification to all shards
