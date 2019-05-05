@@ -1072,7 +1072,7 @@ ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
             ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
         }
     }else{
-        // we are not the initiator, notifing the initiator that we are done and wait
+        // we are not the initiator, notifying the initiator that we are done and wait
         // for him to tell us that it safe to complete the execution
         Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
         ep->status = WAITING_FOR_INITIATOR_TERMINATION;
