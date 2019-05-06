@@ -15,6 +15,7 @@ BUILD_DIR=$(BINDIR)
 
 SRCDIR=$(ROOT)/deps/cpython
 
+# No /opt in macOS
 export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27
 PYENV_DIR=$(CPYTHON_PREFIX)/.venv
 

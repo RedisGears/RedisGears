@@ -80,7 +80,7 @@ class Setup(OnPlatform):
         self.run("pacman --noconfirm -S " + packs)
 
     def brew_install(self, packs, group=False):
-        self.run('brew install -y ' + packs)
+        self.run('brew install ' + packs)
 
     def install(self, packs, group=False):
         if self.os == 'linux':
@@ -98,6 +98,9 @@ class Setup(OnPlatform):
                 Assert(False), "Cannot determine installer"
         elif self.os == 'macosx':
             self.brew_install(packs, group)
+            # TODO: also brew install python2.7, otherwise the default osx's is used which doesn't have pip and installing it is impossible-ish
+            # TODO: also brew install pipenv
+            # TODO: verify that xcode command line tools are installed? (`xcode-select --install`)
         else:
             Assert(False), "Cannot determine installer"
 
@@ -116,7 +119,7 @@ class Setup(OnPlatform):
         get_pip = "set -e; cd /tmp; curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py"
         if not self.has_command("pip"):
             self.install("curl")
-            self.run(get_pip + "; python2 get-pip.py")
+            self.run(get_pip + "; python get-pip.py")
         ## fails on ubuntu 18:
         # if not has_command("pip3") and has_command("python3"):
         #     run(get_pip + "; python3 get-pip.py")

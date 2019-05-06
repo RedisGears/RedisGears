@@ -80,7 +80,8 @@ CC_FLAGS += \
 	-Ibin/$(FULL_VARIANT_REL)/cpython
 
 LD_FLAGS += 
-EMBEDDED_LIBS += $(LIBPYTHON) -lutil
+EMBEDDED_LIBS += $(LIBPYTHON)
+# No libutil in macOS (http://www.finkproject.org/doc/porting/porting.en.html 1.4)
 
 endif # WITHPYTHON
 
@@ -136,7 +137,7 @@ else
 $(TARGET): $(OBJECTS)
 endif
 	@echo Linking $@...
-	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) -Wl,-static $(EMBEDDED_LIBS) -Wl
 	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
 
 static: $(TARGET:.so=.a)
