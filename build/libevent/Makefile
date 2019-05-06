@@ -19,7 +19,7 @@ export CFLAGS=-fPIC
 
 all: build
 
-build: __sep bindirs
+build: __sep bindirs source
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
