@@ -36,7 +36,7 @@ CC=gcc
 SRCDIR=src
 
 _SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
-	mgmt.c keys_reader.c keys_writer.c example.c filters.c mappers.c \
+	mgmt.c keys_reader.c example.c filters.c mappers.c \
 	extractors.c reducers.c record.c cluster.c commands.c streams_reader.c \
 	globals.c config.c lock_handler.c module_init.c
 ifeq ($(WITHPYTHON),1)

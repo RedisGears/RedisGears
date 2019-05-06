@@ -60,7 +60,7 @@ static PyObject* map(PyObject *self, PyObject *args){
         return NULL;
     }
     Py_INCREF(callback);
-    RSM_Map(pfep->fep, RedisGearsPy_PyCallbackMapper, callback);
+    RGM_Map(pfep->fep, RedisGearsPy_PyCallbackMapper, callback);
     Py_INCREF(self);
     return self;
 }
@@ -77,7 +77,7 @@ static PyObject* filter(PyObject *self, PyObject *args){
         return NULL;
     }
     Py_INCREF(callback);
-    RSM_Filter(pfep->fep, RedisGearsPy_PyCallbackFilter, callback);
+    RGM_Filter(pfep->fep, RedisGearsPy_PyCallbackFilter, callback);
     Py_INCREF(self);
     return self;
 }
@@ -100,8 +100,8 @@ static PyObject* localAccumulateby(PyObject *self, PyObject *args){
     }
     Py_INCREF(extractor);
     Py_INCREF(accumulator);
-    RSM_LocalAccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
-    RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+    RGM_LocalAccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
+    RGM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     Py_INCREF(self);
     return self;
 }
@@ -124,8 +124,8 @@ static PyObject* accumulateby(PyObject *self, PyObject *args){
     }
 	Py_INCREF(extractor);
 	Py_INCREF(accumulator);
-	RSM_AccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
-	RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+	RGM_AccumulateBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackAccumulateByKey, accumulator);
+	RGM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
 	Py_INCREF(self);
 	return self;
 }
@@ -148,8 +148,8 @@ static PyObject* groupby(PyObject *self, PyObject *args){
     }
     Py_INCREF(extractor);
     Py_INCREF(reducer);
-    RSM_GroupBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackReducer, reducer);
-    RSM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+    RGM_GroupBy(pfep->fep, RedisGearsPy_PyCallbackExtractor, extractor, RedisGearsPy_PyCallbackReducer, reducer);
+    RGM_Map(pfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     Py_INCREF(self);
     return self;
 }
@@ -160,7 +160,7 @@ static PyObject* collect(PyObject *self, PyObject *args){
         return NULL;
     }
     PyFlatExecution* pfep = (PyFlatExecution*)self;
-    RSM_Collect(pfep->fep);
+    RGM_Collect(pfep->fep);
     Py_INCREF(self);
     return self;
 }
@@ -177,7 +177,7 @@ static PyObject* foreach(PyObject *self, PyObject *args){
         return NULL;
     }
     Py_INCREF(callback);
-    RSM_ForEach(pfep->fep, RedisGearsPy_PyCallbackForEach, callback);
+    RGM_ForEach(pfep->fep, RedisGearsPy_PyCallbackForEach, callback);
     Py_INCREF(self);
     return self;
 }
@@ -194,7 +194,7 @@ static PyObject* repartition(PyObject *self, PyObject *args){
         return NULL;
     }
     Py_INCREF(callback);
-    RSM_Repartition(pfep->fep, RedisGearsPy_PyCallbackExtractor, callback);
+    RGM_Repartition(pfep->fep, RedisGearsPy_PyCallbackExtractor, callback);
     Py_INCREF(self);
     return self;
 }
@@ -211,7 +211,7 @@ static PyObject* flatmap(PyObject *self, PyObject *args){
         return NULL;
     }
     Py_INCREF(callback);
-    RSM_FlatMap(pfep->fep, RedisGearsPy_PyCallbackFlatMapper, callback);
+    RGM_FlatMap(pfep->fep, RedisGearsPy_PyCallbackFlatMapper, callback);
     Py_INCREF(self);
     return self;
 }
@@ -237,7 +237,7 @@ static PyObject* limit(PyObject *self, PyObject *args){
         }
         offsetLong = PyInt_AsLong(offset);
     }
-    RSM_Limit(pfep->fep, (size_t)offsetLong, (size_t)lenLong);
+    RGM_Limit(pfep->fep, (size_t)offsetLong, (size_t)lenLong);
     Py_INCREF(self);
     return self;
 }
@@ -254,7 +254,7 @@ static PyObject* accumulate(PyObject *self, PyObject *args){
         return NULL;
     }
     Py_INCREF(callback);
-    RSM_Accumulate(pfep->fep, RedisGearsPy_PyCallbackAccumulate, callback);
+    RGM_Accumulate(pfep->fep, RedisGearsPy_PyCallbackAccumulate, callback);
     Py_INCREF(self);
     return self;
 }
@@ -301,7 +301,7 @@ static PyObject* run(PyObject *self, PyObject *args){
             arg = RG_STRDUP(regexStr);
         }
     }
-    ExecutionPlan* ep = RSM_Run(pfep->fep, arg, NULL, NULL);
+    ExecutionPlan* ep = RGM_Run(pfep->fep, arg, NULL, NULL);
     executionTriggered = true;
     if(!currentCtx){
         RedisGears_RegisterExecutionDoneCallback(ep, dropExecutionOnDone);
@@ -325,7 +325,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
     if(regex){
         regexStr = PyString_AsString(regex);
     }
-    int status = RSM_Register(pfep->fep, RG_STRDUP(regexStr));
+    int status = RGM_Register(pfep->fep, RG_STRDUP(regexStr));
     executionTriggered = true;
     if(!currentCtx){
         Py_INCREF(Py_None);
@@ -406,7 +406,7 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "the given reader are not exists");
         return NULL;
     }
-    RSM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
+    RGM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     return (PyObject*)pyfep;
 }
 
@@ -1778,16 +1778,16 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     ArgType* pyCallbackType = RedisGears_CreateType("PyObjectType", RedisGearsPy_PyObjectFree, RedisGearsPy_PyObjectDup, RedisGearsPy_PyCallbackSerialize, RedisGearsPy_PyCallbackDeserialize, RedisGearsPy_PyObjectToString);
 
-    RSM_RegisterReader(PythonReader);
-    RSM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
-    RSM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);
-    RSM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
-    RSM_RegisterMap(RedisGearsPy_PyCallbackFlatMapper, pyCallbackType);
-    RSM_RegisterMap(RedisGearsPy_PyCallbackMapper, pyCallbackType);
-    RSM_RegisterAccumulator(RedisGearsPy_PyCallbackAccumulate, pyCallbackType);
-    RSM_RegisterAccumulatorByKey(RedisGearsPy_PyCallbackAccumulateByKey, pyCallbackType);
-    RSM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
-    RSM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
+    RGM_RegisterReader(PythonReader);
+    RGM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
+    RGM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);
+    RGM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
+    RGM_RegisterMap(RedisGearsPy_PyCallbackFlatMapper, pyCallbackType);
+    RGM_RegisterMap(RedisGearsPy_PyCallbackMapper, pyCallbackType);
+    RGM_RegisterAccumulator(RedisGearsPy_PyCallbackAccumulate, pyCallbackType);
+    RGM_RegisterAccumulatorByKey(RedisGearsPy_PyCallbackAccumulateByKey, pyCallbackType);
+    RGM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
+    RGM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
 
     if(TimeEvent_RegisterType(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not register command timer datatype");

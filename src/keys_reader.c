@@ -31,7 +31,7 @@ typedef struct KeysReaderCtx{
     RedisModuleDictIter* iter1;
 }KeysReaderCtx;
 
-static KeysReaderCtx* RG_KeysReaderCtxCreate(char* match){
+KeysReaderCtx* KeysReaderCtx_Create(char* match){
 #define PENDING_KEYS_INIT_CAP 10
     KeysReaderCtx* krctx = RG_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
@@ -405,7 +405,7 @@ int KeysReader_Initialize(RedisModuleCtx* ctx){
 }
 
 Reader* KeysReader(void* arg){
-    KeysReaderCtx* ctx = RG_KeysReaderCtxCreate(arg);
+    KeysReaderCtx* ctx = KeysReaderCtx_Create(arg);
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,

@@ -14,8 +14,15 @@
 #include <Python.h>
 #endif
 
-enum AdditionalRecordTypes{
-    STOP_RECORD = 8, // telling the execution plan to stop the execution.
+enum RecordType{
+    KEY_HANDLER_RECORD = 1,
+    LONG_RECORD,
+    DOUBLE_RECORD,
+    STRING_RECORD,
+    LIST_RECORD,
+    KEY_RECORD,
+    HASH_SET_RECORD,
+    STOP_RECORD, // telling the execution plan to stop the execution.
     ERROR_RECORD, // telling the execution plan an error acquire
 #ifdef WITHPYTHON
     PY_RECORD
@@ -25,7 +32,7 @@ enum AdditionalRecordTypes{
 extern Record StopRecord;
 
 void RG_FreeRecord(Record* record);
-enum RecordType RG_RecordGetType(Record* r);
+int RG_RecordGetType(Record* r);
 
 /** key record api **/
 Record* RG_KeyRecordCreate();

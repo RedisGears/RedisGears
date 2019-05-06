@@ -7,7 +7,7 @@
 
 
 Record* GetValueMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
-    if(RedisGears_RecordGetType(record) != KEY_RECORD){
+    if(RedisGears_RecordGetType(record) != KEY_RECORD_TYPE){
         *err = "can not extract value for a none key value record.";
         RedisGears_FreeRecord(record);
         return NULL;
