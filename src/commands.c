@@ -4,6 +4,7 @@
 #include "record.h"
 #ifdef WITHPYTHON
 #include <Python.h>
+#include <object.h>
 #endif
 
 static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
@@ -43,7 +44,7 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 #ifdef WITHPYTHON
     case PY_RECORD:
         obj = RG_PyObjRecordGet(record);
-        if(PyObject_TypeCheck(obj, &PyList_Type)){
+        if(PyList_Check(obj)){
 			listLen = PyList_Size(obj);
 			Record* rgl = RedisGears_ListRecordCreate(listLen);
 			for(int i = 0 ; i < listLen ; ++i){
@@ -55,18 +56,17 @@ static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
 			}			
 			Command_ReturnResult(rctx, rgl);
 			RedisGears_FreeRecord(rgl);
-		}else if(PyObject_TypeCheck(obj, &PyInt_Type)) {
-			RedisModule_ReplyWithLongLong(rctx, (long long)PyInt_AsLong(obj));
-		}else if(PyObject_TypeCheck(obj, &PyLong_Type)) {
+        }else if(PyLong_Check(obj)) {
 			RedisModule_ReplyWithLongLong(rctx, PyLong_AsLongLong(obj));
-		}else if(PyObject_TypeCheck(obj, &PyFloat_Type)) {
-			char buf[128];
-			PyFloatObject *fObj = (PyFloatObject*)obj;
-			PyFloat_AsReprString(buf, fObj);
-            RedisModule_ReplyWithStringBuffer(rctx, buf, strlen(buf));
-		}else if(PyObject_TypeCheck(obj, &PyBaseString_Type)) {
-            str = PyString_AsString(obj);
-            RedisModule_ReplyWithStringBuffer(rctx, str, strlen(str));
+		}else if(PyFloat_Check(obj)){
+		    double d = PyFloat_AsDouble(obj);
+		    RedisModuleString* str = RedisModule_CreateStringPrintf(NULL, "%lf", d);
+		    RedisModule_ReplyWithString(rctx, str);
+		    RedisModule_FreeString(NULL, str);
+		}else if(PyUnicode_Check(obj)) {
+		    size_t len;
+		    str = (char*)PyUnicode_AsUTF8AndSize(obj, &len);
+            RedisModule_ReplyWithStringBuffer(rctx, (char*)str, len);
         }else{
             RedisModule_ReplyWithStringBuffer(rctx, "PY RECORD", strlen("PY RECORD"));
         }

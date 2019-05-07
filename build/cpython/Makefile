@@ -50,14 +50,13 @@ endif # macosx
 #----------------------------------------------------------------------------------------------
 
 CONFIGURE_FLAGS += \
-	--without-pymalloc \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
 	--prefix=$(CPYTHON_PREFIX) \
 	$(CONFIGURE_FLAGS.$(OS))
 
 #----------------------------------------------------------------------------------------------
 
-export CFLAGS=-fPIC -DREDIS_ALLOC
+export CFLAGS=-fPIC
 # -DPy_UNICODE_WIDE
 
 #----------------------------------------------------------------------------------------------
@@ -94,5 +93,5 @@ $(PYENV_DIR): $(CPYTHON_PREFIX)
 	export PIPENV_VENV_IN_PROJECT=1; \
 	export LC_ALL=C.UTF-8; \
 	export LANG=C.UTF-8; \
-	pipenv install --python $(CPYTHON_PREFIX)/bin/python
+	pipenv install --python $(CPYTHON_PREFIX)/bin/python3.7
 	$(SHOW)cp $(CPYTHON_PREFIX)/Pipfile.lock .

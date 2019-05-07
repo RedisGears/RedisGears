@@ -146,7 +146,7 @@ for k in PyFlatExecution.__dict__:
         continue
     if '_' in k:
         continue
-    GearsBuilder.__dict__[k] = createDecorator(PyFlatExecution.__dict__[k])
+    setattr(GearsBuilder, k, createDecorator(PyFlatExecution.__dict__[k]))
 
 
 GB = GearsBuilder
