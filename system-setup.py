@@ -20,7 +20,6 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("setuptools --upgrade")
         
         self.install("git")
-        self.install("libffi-dev")
 
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool")
@@ -29,6 +28,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("lsb-release")
         self.install("zip unzip")
         self.install("python-psutil")
+        self.install("libffi-dev")
         self.pip_install("pipenv")
 
     def redhat_compat(self):

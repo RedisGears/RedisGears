@@ -1014,7 +1014,8 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
-    {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"}
+    {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
+    {NULL, NULL, 0, NULL}
 };
 
 PyMethodDef EmbRedisAIMethods[] = {
@@ -1749,6 +1750,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     EmbRedisGears.m_size = sizeof(EmbRedisGearsMethods) / sizeof(*EmbRedisGearsMethods);
     PyImport_AppendInittab("redisgears", &PyInit_RedisGears);
 
+    EmbRedisAI.m_methods = EmbRedisAIMethods;
+    EmbRedisAI.m_size = sizeof(EmbRedisAIMethods) / sizeof(*EmbRedisAIMethods);
+    PyImport_AppendInittab("redisAI", &PyInit_RedisGears);
+
     Py_Initialize();
     RedisGears_SetupPyEnv(ctx);
     PyEval_InitThreads();
@@ -1777,14 +1782,13 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
     }
 
-    PyObject* pName = PyUnicode_DecodeFSDefault("redisgears");
+    PyObject* pName = PyUnicode_FromString("redisgears");
     PyObject* redisGearsModule = PyImport_Import(pName);
     Py_DECREF(pName);
 
-    EmbRedisAI.m_methods = EmbRedisGearsMethods;
-    EmbRedisAI.m_size = sizeof(EmbRedisAIMethods) / sizeof(*EmbRedisAIMethods);
-    PyObject* redisAIModule = PyModule_Create(&EmbRedisAI);
-    Py_INCREF(&EmbRedisAI);
+    pName = PyUnicode_FromString("redisAI");
+    PyObject* redisAIModule = PyImport_Import(pName);
+    Py_DECREF(pName);
 
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
