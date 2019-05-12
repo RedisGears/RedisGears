@@ -36,13 +36,15 @@
 #endif
 
 #define REGISTER_API(name, ctx) \
-    RedisGears_ ## name = RG_ ## name;\
-    if(RedisModule_ExportSharedAPI){\
-        if(RedisModule_ExportSharedAPI(ctx, "RedisGears_" #name, RG_ ## name) != REDISMODULE_OK){\
-            printf("could not register RedisGears_" #name "\r\n");\
-            return REDISMODULE_ERR;\
+    do{\
+        RedisGears_ ## name = RG_ ## name;\
+        if(RedisModule_ExportSharedAPI){\
+            if(RedisModule_ExportSharedAPI(ctx, "RedisGears_" #name, RG_ ## name) != REDISMODULE_OK){\
+                printf("could not register RedisGears_" #name "\r\n");\
+                return REDISMODULE_ERR;\
+            }\
         }\
-    }
+    } while(0)
 
 static int RG_GetLLApiVersion(){
     return REDISGEARS_LLAPI_VERSION;
