@@ -321,7 +321,10 @@ static PyObject* run(PyObject *self, PyObject *args){
 
 static PyObject* registerExecution(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
-    PyObject* regex = PyTuple_GetItem(args, 0);
+    PyObject* regex = NULL;
+    if(PyTuple_Size(args) > 0){
+        regex = PyTuple_GetItem(args, 0);
+    }
     char* defaultRegexStr = "*";
     const char* regexStr = defaultRegexStr;
     if(regex){

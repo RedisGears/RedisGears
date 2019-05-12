@@ -52,6 +52,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("autoconf automake libtool")
         self.install("zlib-devel openssl-devel readline-devel")
         self.install("vim-common") # for xxd
+        self.install("libffi-devel")
 
         self.pip_install("pipenv")
 
