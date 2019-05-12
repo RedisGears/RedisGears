@@ -35,7 +35,19 @@ char* stepsNames[] = {
 };
 
 char* statusesNames[] = {
-#define X(a, b) b,
+#define X(a, b, c) b,
+    EXECUTION_PLAN_STATUSES
+#undef X
+};
+
+enum ActionResult{
+    CONTINUE, STOP, COMPLETED
+};
+
+typedef ActionResult (*EPStatus_ActionCallback)(ExecutionPlan*);
+
+EPStatus_ActionCallback statusesActions[] = {
+#define X(a, b, c) c,
     EXECUTION_PLAN_STATUSES
 #undef X
 };
@@ -969,9 +981,39 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
     return true;
 }
 
-static void ExecutionPlan_DoExecutionDoneActions(ExecutionPlan* ep, RedisModuleCtx* rctx){
+ActionResult EPStatus_CreatedAction(ExecutionPlan* ep){
+    if(Cluster_IsClusterMode()){
+        // we are in a cluster mode, we must first distribute the exection to all the shards.
+        if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+            ExecutionPlan_Distribute(ep);
+            ep->status = WAITING_FOR_RECIEVED_NOTIFICATION;
+        }else{
+            ExecutionPlan_SendRecievedNotification(ep);
+            ep->status = WAITING_FOR_RUN_NOTIFICATION;
+        }
+        return STOP;
+    }
+    // we are not in cluster mode, we can just start the execution
+    ep->status = RUNNING;
+    return CONTINUE;
+}
+
+ActionResult EPStatus_PendingReceiveAction(ExecutionPlan* ep){
+    // we got recieved notification from all the cluster. Lets tell everyone to start the execution!
+    ExecutionPlan_SendRunRequest(ep);
+    ep->status = RUNNING;
+    return CONTINUE;
+}
+
+ActionResult EPStatus_PendingRunAction(ExecutionPlan* ep){
+    // got run notification. Lets start the execution!
+    ep->status = RUNNING;
+    return CONTINUE;
+}
+
+ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
-    ep->status = DONE;
     FreePrivateData freeC = ep->freeCallback;
     void* pd = ep->privateData;
     if(ep->callback){
@@ -981,68 +1023,96 @@ static void ExecutionPlan_DoExecutionDoneActions(ExecutionPlan* ep, RedisModuleC
         freeC(pd);
     }
     LockHandler_Release(rctx);
+    RedisModule_FreeThreadSafeContext(rctx);
+    return COMPLETED;
+}
+
+ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
+    INIT_TIMER;
+    GETTIME(&_ts);
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    bool isDone = ExecutionPlan_Execute(ep, rctx);
+    GETTIME(&_te);
+    ep->executionDuration += DURATION;
+    RedisModule_FreeThreadSafeContext(rctx);
+
+    if(!isDone){
+        // if we reach here and we are not done we should stop and wait for notification
+        // to continue the execution
+        return STOP;
+    }
+
+    // we are done :)
+    if(!Cluster_IsClusterMode()){
+        // no cluster mode, we can just complete the execution
+        ep->status = DONE;
+        return CONTINUE;
+    }
+
+    // we are done the local execution but we are on cluster mode
+    // we need to initiate termination protocol:
+    // if (we are the initiator){
+    //     1. wait for all shards to tell us they are done
+    //     2. sent complete notification to all shards
+    // }
+    // else{
+    //     1. tell the initiator that we are done
+    //     2. wait for the initiator to tell us that everyone done and it safe to finish the execution
+    // }
+
+    if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
+        if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){
+            // todo: check if this can really happened (I think it can not)
+            // all the shards are done
+            // notify them that its safe to complete the execution
+            Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+            ep->status = DONE;
+            return CONTINUE;
+        }else{
+            ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
+        }
+    }else{
+        // we are not the initiator, notifying the initiator that we are done and wait
+        // for him to tell us that it safe to complete the execution
+        Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
+        ep->status = WAITING_FOR_INITIATOR_TERMINATION;
+    }
+    return STOP;
+}
+
+ActionResult EPStatus_PendingClusterAction(ExecutionPlan* ep){
+    // if we are here we must be the initiator
+    assert(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0);
+
+    // we are the initiator, lets notify everyone that its safe to complete the execution
+    Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+
+    ep->status = DONE;
+    return CONTINUE;
+}
+
+ActionResult EPStatus_InitiatorTerminationAction(ExecutionPlan* ep){
+    // initiator notifies us that its safe to complete the execution. Lets finish it!!!
+    ep->status = DONE;
+    return CONTINUE;
 }
 
 static void ExecutionPlan_Main(ExecutionPlan* ep){
-	assert(ep->status != DONE);
-	ep->sentRunRequest = false;
-	if(ep->status == WAITING_FOR_CLUSTER_TO_COMPLETE){
-	    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-	    if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
-	        Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
-	    }
-	    ExecutionPlan_DoExecutionDoneActions(ep, rctx);
-        RedisModule_FreeThreadSafeContext(rctx);
-	    return;
-	}
-	if(ep->status == CREATED){
-		if(Cluster_IsClusterMode()){
-			if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
-				ExecutionPlan_Distribute(ep);
-				ep->status = WAITING_FOR_RECIEVED_NOTIFICATION;
-			}else{
-				ExecutionPlan_SendRecievedNotification(ep);
-				ep->status = WAITING_FOR_RUN_NOTIFICATION;
-			}
-			return;
-		}
-		ep->status = RUNNING;
-	}
-
-	if(ep->status == WAITING_FOR_RECIEVED_NOTIFICATION){
-		ExecutionPlan_SendRunRequest(ep);
-		ep->status = RUNNING;
-	}
-
-	if(ep->status == WAITING_FOR_RUN_NOTIFICATION){
-		ep->status = RUNNING;
-	}
-
-    INIT_TIMER;
-    GETTIME(&_ts);
-	RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-	bool isDone = ExecutionPlan_Execute(ep, rctx);
-    GETTIME(&_te);
-	ep->executionDuration += DURATION;
-
-	if(isDone){
-	    if(Cluster_IsClusterMode()){
-	        if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
-	            if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // wait for all the shards to complete the execution
-	                Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
-                    ExecutionPlan_DoExecutionDoneActions(ep, rctx);
-                }else{
-                    ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
-                }
-	        }else{
-	            Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
-	            ep->status = WAITING_FOR_CLUSTER_TO_COMPLETE;
-	        }
-	    }else{
-	        ExecutionPlan_DoExecutionDoneActions(ep, rctx);
-	    }
-	}
-	RedisModule_FreeThreadSafeContext(rctx);
+    ActionResult result;
+    ep->sentRunRequest = false;
+    while(true){
+        result = statusesActions[ep->status](ep);
+        switch(result){
+        case CONTINUE:
+            break;
+        case STOP:
+            return;
+        case COMPLETED:
+            return;
+        default:
+            assert(false);
+        }
+    }
 }
 
 static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
@@ -1250,6 +1320,7 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 }
 
 static void ExecutionPlan_ExecutionTerminate(ExecutionPlan* ep){
+    assert(ep->status == WAITING_FOR_INITIATOR_TERMINATION);
     ExecutionPlan_Main(ep);
 }
 
@@ -1319,8 +1390,8 @@ static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
 	    ExecutionPlan_ExecutionDone(msg->executionDone.ep);
 	    break;
 	case EXECUTION_TERMINATE:
-            ExecutionPlan_ExecutionTerminate(msg->executionDone.ep);
-            break;
+        ExecutionPlan_ExecutionTerminate(msg->executionDone.ep);
+        break;
 	case EXECUTION_FREE:
         ExecutionPlan_Free(msg->executionFree.ep, true);
         break;
