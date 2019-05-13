@@ -410,7 +410,7 @@ class CloudPickler(Pickler):
             self.save(obj.__dict__)
             write(pickle.TUPLE + pickle.REDUCE)
         else:
-            write(pickle.GLOBAL + modname + '\n' + name + '\n')
+            write(pickle.GLOBAL + modname.encode('utf-8') + b'\n' + name.encode('utf-8') + b'\n')
             self.memoize(obj)
 
     dispatch[types.FunctionType] = save_function

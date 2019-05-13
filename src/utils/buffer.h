@@ -23,7 +23,7 @@ typedef struct Gears_Buffer{
 
 Gears_Buffer* Gears_BufferNew(size_t initialCap);
 void Gears_BufferFree(Gears_Buffer* buff);
-void Gears_BufferAdd(Gears_Buffer* buff, char* data, size_t len);
+void Gears_BufferAdd(Gears_Buffer* buff, const char* data, size_t len);
 void Gears_BufferClear(Gears_Buffer* buff);
 
 typedef struct Gears_BufferWriter{
@@ -32,8 +32,8 @@ typedef struct Gears_BufferWriter{
 
 void Gears_BufferWriterInit(Gears_BufferWriter* bw, Gears_Buffer* buff);
 void Gears_BufferWriterWriteLong(Gears_BufferWriter* bw, long val);
-void Gears_BufferWriterWriteString(Gears_BufferWriter* bw, char* str);
-void Gears_BufferWriterWriteBuff(Gears_BufferWriter* bw, char* buff, size_t len);
+void Gears_BufferWriterWriteString(Gears_BufferWriter* bw, const char* str);
+void Gears_BufferWriterWriteBuff(Gears_BufferWriter* bw, const char* buff, size_t len);
 
 typedef struct Gears_BufferReader{
     Gears_Buffer* buff;

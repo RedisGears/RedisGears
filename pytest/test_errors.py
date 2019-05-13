@@ -20,7 +20,7 @@ class testGenericErrors:
 
 
     def testScriptError(self):
-        self.env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().equal("GearsBuilder instance has no attribute 'notexists'")
+        self.env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().equal("'GearsBuilder' object has no attribute 'notexists'")
 
 
     def testBuilderCreationWithUnexistingReader(self):
@@ -156,7 +156,7 @@ class testGetExecutionErrorReporting:
         res = self.env.cmd('RG.GETEXECUTION', id)
         errors = res[0][3][9]
         for error in errors:
-            self.env.assertContains("global name 'notexists' is not defined", error)
+            self.env.assertContains("name \'notexists\' is not defined", error)
         self.env.cmd('RG.DROPEXECUTION', id)
 
 
@@ -167,6 +167,6 @@ class testGetExecutionErrorReporting:
         res = self.env.cmd('RG.GETEXECUTION', id)
         errors = res[0][3][9]
         for error in errors:
-            self.env.assertContains("global name 'notexists' is not defined", error)
+            self.env.assertContains("name 'notexists' is not defined", error)
         self.env.cmd('RG.DROPEXECUTION', id)
         self.env.cmd('RG.CONFIGSET', 'PythonAttemptTraceback', 1)

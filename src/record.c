@@ -123,7 +123,7 @@ void RG_FreeRecord(Record* record){
     RG_FREE(record);
 }
 
-enum RecordType RG_RecordGetType(Record* r){
+int RG_RecordGetType(Record* r){
     return r->type;
 }
 Record* RG_KeyRecordCreate(){

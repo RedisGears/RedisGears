@@ -138,18 +138,27 @@ typedef struct ExecutionStep{
     long long executionDuration;
 }ExecutionStep;
 
-typedef struct FlatExecutionPlan FlatExecutionPlan;
+typedef enum ActionResult ActionResult;
+
+ActionResult EPStatus_CreatedAction(ExecutionPlan*);
+ActionResult EPStatus_RunningAction(ExecutionPlan*);
+ActionResult EPStatus_PendingReceiveAction(ExecutionPlan*);
+ActionResult EPStatus_PendingRunAction(ExecutionPlan*);
+ActionResult EPStatus_PendingClusterAction(ExecutionPlan*);
+ActionResult EPStatus_InitiatorTerminationAction(ExecutionPlan*);
+ActionResult EPStatus_DoneAction(ExecutionPlan*);
 
 #define EXECUTION_PLAN_STATUSES \
-    X(CREATED, "created") \
-    X(RUNNING, "running") \
-    X(WAITING_FOR_RECIEVED_NOTIFICATION, "pending_receive") \
-    X(WAITING_FOR_RUN_NOTIFICATION, "pending_run") \
-    X(WAITING_FOR_CLUSTER_TO_COMPLETE, "pending_cluster") \
-    X(DONE, "done")
+    X(CREATED=0, "created", EPStatus_CreatedAction) \
+    X(RUNNING, "running", EPStatus_RunningAction) \
+    X(WAITING_FOR_RECIEVED_NOTIFICATION, "pending_receive", EPStatus_PendingReceiveAction) \
+    X(WAITING_FOR_RUN_NOTIFICATION, "pending_run", EPStatus_PendingRunAction) \
+    X(WAITING_FOR_CLUSTER_TO_COMPLETE, "pending_cluster", EPStatus_PendingClusterAction) \
+    X(WAITING_FOR_INITIATOR_TERMINATION, "pending_termination", EPStatus_InitiatorTerminationAction) \
+    X(DONE, "done", EPStatus_DoneAction)
 
 typedef enum ExecutionPlanStatus{
-#define X(a, b) a,
+#define X(a, b, c) a,
     EXECUTION_PLAN_STATUSES
 #undef X
 }ExecutionPlanStatus;
