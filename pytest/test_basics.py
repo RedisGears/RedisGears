@@ -97,8 +97,8 @@ class testBasic:
                                           'groupby(lambda x: str(x["value"]), lambda key, a, vals: 1 + (a if a else 0)).'
                                           'map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        self.env.assertContains("{'value': 50, 'key': '100'}", res[0])
-        self.env.assertContains("{'value': 50, 'key': '0'}", res[0])
+        self.env.assertContains("{'key': '100', 'value': 50}", res[0])
+        self.env.assertContains("{'key': '0', 'value': 50}", res[0])
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicAccumulate(self):

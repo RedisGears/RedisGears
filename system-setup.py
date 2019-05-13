@@ -28,6 +28,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("lsb-release")
         self.install("zip unzip")
         self.install("python-psutil")
+        self.install("libffi-dev")
         self.pip_install("pipenv")
 
     def redhat_compat(self):
@@ -38,6 +39,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("vim-common") # for xxd
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
+        self.install("libffi-devel") # required for python 3.7
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil")
@@ -50,6 +52,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("autoconf automake libtool")
         self.install("zlib-devel openssl-devel readline-devel")
         self.install("vim-common") # for xxd
+        self.install("libffi-devel")
 
         self.pip_install("pipenv")
 

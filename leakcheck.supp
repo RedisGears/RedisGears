@@ -4,6 +4,41 @@
    fun:lzf_compress
 }
 {
+   <ignore_py_error0.1>
+   Memcheck:Cond
+   ...
+   fun:Py_InitializeEx
+   ...
+}
+{
+   <ignore_py_error0.2>
+   Memcheck:Cond
+   ...
+   fun:_PyEval_EvalFrameDefault
+   ...
+}
+{
+   <ignore_py_error0.3>
+   Memcheck:Leak
+   ...
+   fun:_PyEval_EvalFrameDefault
+   ...
+}
+{
+   <ignore_py_error0.4>
+   Memcheck:Cond
+   ...
+   fun:PySys_SetArgvEx
+   ...
+}
+{
+   <ignore_py_error0.5>
+   Memcheck:Cond
+   ...
+   fun:_PyMethodDef_RawFastCallKeywords
+   ...
+}
+{
    <ignore_py_error0>
    Memcheck:Value8
    fun:lzf_compress

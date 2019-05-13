@@ -250,11 +250,11 @@ static void RG_BWWriteLong(Gears_BufferWriter* bw, long val){
     Gears_BufferWriterWriteLong(bw, val);
 }
 
-static void RG_BWWriteString(Gears_BufferWriter* bw, char* str){
+static void RG_BWWriteString(Gears_BufferWriter* bw, const  char* str){
     Gears_BufferWriterWriteString(bw, str);
 }
 
-static void RG_BWWriteBuffer(Gears_BufferWriter* bw, char* buff, size_t len){
+static void RG_BWWriteBuffer(Gears_BufferWriter* bw, const char* buff, size_t len){
     Gears_BufferWriterWriteBuff(bw, buff, len);
 }
 

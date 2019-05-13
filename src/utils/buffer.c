@@ -23,7 +23,7 @@ void Gears_BufferFree(Gears_Buffer* buff){
     RG_FREE(buff);
 }
 
-void Gears_BufferAdd(Gears_Buffer* buff, char* data, size_t len){
+void Gears_BufferAdd(Gears_Buffer* buff, const char* data, size_t len){
     if (buff->size + len >= buff->cap){
         buff->cap = buff->size + len;
         buff->buff = RG_REALLOC(buff->buff, buff->cap);
@@ -44,11 +44,11 @@ void Gears_BufferWriterWriteLong(Gears_BufferWriter* bw, long val){
     Gears_BufferAdd(bw->buff, (char*)&val, sizeof(long));
 }
 
-void Gears_BufferWriterWriteString(Gears_BufferWriter* bw, char* str){
+void Gears_BufferWriterWriteString(Gears_BufferWriter* bw, const char* str){
     Gears_BufferWriterWriteBuff(bw, str, strlen(str) + 1);
 }
 
-void Gears_BufferWriterWriteBuff(Gears_BufferWriter* bw, char* buff, size_t len){
+void Gears_BufferWriterWriteBuff(Gears_BufferWriter* bw, const char* buff, size_t len){
     Gears_BufferWriterWriteLong(bw, len);
     Gears_BufferAdd(bw->buff, buff, len);
 }

@@ -58,8 +58,8 @@ typedef struct Reader{
 
 ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
 void MODULE_API_FUNC(RedisGears_BWWriteLong)(Gears_BufferWriter* bw, long val);
-void MODULE_API_FUNC(RedisGears_BWWriteString)(Gears_BufferWriter* bw, char* str);
-void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(Gears_BufferWriter* bw, char* buff, size_t len);
+void MODULE_API_FUNC(RedisGears_BWWriteString)(Gears_BufferWriter* bw, const char* str);
+void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(Gears_BufferWriter* bw, const char* buff, size_t len);
 long MODULE_API_FUNC(RedisGears_BRReadLong)(Gears_BufferReader* br);
 char* MODULE_API_FUNC(RedisGears_BRReadString)(Gears_BufferReader* br);
 char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* len);
