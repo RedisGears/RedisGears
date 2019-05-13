@@ -278,6 +278,14 @@ static long long RG_GetReadDuration(ExecutionPlan* ep){
 	return FlatExecutionPlan_GetReadDuration(ep);
 }
 
+static void RG_SetError(ExecutionCtx* ectx, char* err){
+    ectx->err = err;
+}
+
+static RedisModuleCtx* RG_GetRedisModuleCtx(ExecutionCtx* ectx){
+    return ectx->rctx;
+}
+
 
 static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     if(!RedisModule_ExportSharedAPI){
@@ -363,6 +371,9 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(GetTotalDuration, ctx);
     REGISTER_API(GetReadDuration, ctx);
+
+    REGISTER_API(SetError, ctx);
+    REGISTER_API(GetRedisModuleCtx, ctx);
 
     return REDISMODULE_OK;
 }

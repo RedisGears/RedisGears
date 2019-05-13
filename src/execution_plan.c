@@ -361,11 +361,15 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
             return record;
         }
 	    START_TIMER;
-        char* err = NULL;
-        bool filterRes = step->filter.filter(rctx, record, step->filter.stepArg.stepArg, &err);
-        if(err){
+        ExecutionCtx ectx = {
+                .rctx = rctx,
+                .ep = ep,
+                .err = NULL,
+        };
+        bool filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
+        if(ectx.err){
             RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
         }
         if(filterRes){
@@ -395,13 +399,17 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
         goto end;
     }
     if(record != NULL){
-        char* err = NULL;
-        record = step->map.map(rctx, record, step->map.stepArg.stepArg, &err);
-        if(err){
+        ExecutionCtx ectx = {
+                .rctx = rctx,
+                .ep = ep,
+                .err = NULL,
+        };
+        record = step->map.map(&ectx, record, step->map.stepArg.stepArg);
+        if(ectx.err){
             if(record){
                 RedisGears_FreeRecord(record);
             }
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
         }
     }
 end:
@@ -476,11 +484,15 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
         r = record;
         goto end;
     }
-    char* err = NULL;
-    char* buff = step->extractKey.extractor(rctx, record, step->extractKey.extractorArg.stepArg, &buffLen, &err);
-    if(err){
+    ExecutionCtx ectx = {
+            .rctx = rctx,
+            .ep = ep,
+            .err = NULL,
+    };
+    char* buff = step->extractKey.extractor(&ectx, record, step->extractKey.extractorArg.stepArg, &buffLen);
+    if(ectx.err){
         RedisGears_FreeRecord(record);
-        r = RG_ErrorRecordCreate(err, strlen(err) + 1);
+        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
         goto end;
     }
     r = RedisGears_KeyRecordCreate();
@@ -561,12 +573,16 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     assert(RedisGears_RecordGetType(record) == KEY_RECORD);
     size_t keyLen;
     char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
-    char* err = NULL;
-    Record* r = step->reduce.reducer(rctx, key, keyLen, RedisGears_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg, &err);
+    ExecutionCtx ectx = {
+            .rctx = rctx,
+            .ep = ep,
+            .err = NULL,
+    };
+    Record* r = step->reduce.reducer(&ectx, key, keyLen, RedisGears_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg);
     RedisGears_KeyRecordSetVal(record, r);
-    if(err){
+    if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
     }
 end:
 	ADD_DURATION(step->executionDuration);
@@ -747,11 +763,15 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     if(RedisGears_RecordGetType(record) == ERROR_RECORD){
         goto end;
     }
-    char* err = NULL;
-    step->forEach.forEach(rctx, record, step->forEach.stepArg.stepArg, &err);
-    if(err){
+    ExecutionCtx ectx = {
+            .rctx = rctx,
+            .ep = ep,
+            .err = NULL,
+    };
+    step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
+    if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
     }
 end:
 	ADD_DURATION(step->executionDuration);
@@ -809,13 +829,17 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
             goto end;
         }
-        char* err = NULL;
-        step->accumulate.accumulator = step->accumulate.accumulate(rctx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg, &err);
-        if(err){
+        ExecutionCtx ectx = {
+                .rctx = rctx,
+                .ep = ep,
+                .err = NULL,
+        };
+        step->accumulate.accumulator = step->accumulate.accumulate(&ectx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg);
+        if(ectx.err){
             if(step->accumulate.accumulator){
                 RedisGears_FreeRecord(step->accumulate.accumulator);
             }
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
         }
     	ADD_DURATION(step->executionDuration);
@@ -855,14 +879,18 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 			keyRecord = Gears_dictGetVal(entry);
 			accumulator = RedisGears_KeyRecordGetVal(keyRecord);
 		}
-		char* err = NULL;
-		accumulator = step->accumulateByKey.accumulate(rctx, key, accumulator, val, step->accumulate.stepArg.stepArg, &err);
-		if(err){
+		ExecutionCtx ectx = {
+                .rctx = rctx,
+                .ep = ep,
+                .err = NULL,
+        };
+		accumulator = step->accumulateByKey.accumulate(&ectx, key, accumulator, val, step->accumulate.stepArg.stepArg);
+		if(ectx.err){
 		    if(accumulator){
 		        RedisGears_FreeRecord(accumulator);
 		    }
 			RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
 		}
 		if(!keyRecord){

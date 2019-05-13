@@ -1108,7 +1108,7 @@ int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **ar
     return res;
 }
 
-void fetchPyError(char** err) {
+void fetchPyError(ExecutionCtx* rctx) {
     PyObject *pType, *pValue, *pTraceback;
     PyErr_Fetch(&pType, &pValue, &pTraceback);
     PyErr_NormalizeException(&pType, &pValue, &pTraceback);
@@ -1139,7 +1139,7 @@ void fetchPyError(char** err) {
         Py_DECREF(pStrFormat);
     }
     char *strTraceback = (char*)PyUnicode_AsUTF8AndSize(pStrTraceback, NULL);
-    *err = RG_STRDUP(strTraceback);
+    RedisGears_SetError(rctx, RG_STRDUP(strTraceback));
     Py_DECREF(pStrTraceback);
     Py_DECREF(pModuleName);
     Py_DECREF(pType);
@@ -1149,7 +1149,7 @@ void fetchPyError(char** err) {
     }
 }
 
-void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
@@ -1161,7 +1161,7 @@ void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* 
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        fetchPyError(err);
+        fetchPyError(rctx);
         PyGILState_Release(state);
         return;
     }
@@ -1171,7 +1171,7 @@ void RedisGearsPy_PyCallbackForEach(RedisModuleCtx* rctx, Record *record, void* 
     PyGILState_Release(state);
 }
 
-static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char* key, Record *accumulate, Record *r, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg){
 	PyGILState_STATE state = PyGILState_Ensure();
 	PyObject* pArgs = PyTuple_New(3);
 	PyObject* callback = arg;
@@ -1191,7 +1191,7 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char
 	PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
 	Py_DECREF(pArgs);
 	if(!newAccumulateObj){
-	    fetchPyError(err);
+	    fetchPyError(rctx);
 	    RedisGears_FreeRecord(accumulate);
 		RedisGears_FreeRecord(r);
 		PyGILState_Release(state);
@@ -1203,7 +1203,7 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(RedisModuleCtx* rctx, char
 	return accumulate;
 }
 
-static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *accumulate, Record *r, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     PyObject* pArgs = PyTuple_New(2);
     PyObject* callback = arg;
@@ -1221,7 +1221,7 @@ static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *a
     PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newAccumulateObj){
-        fetchPyError(err);
+        fetchPyError(rctx);
         RedisGears_FreeRecord(accumulate);
         RedisGears_FreeRecord(r);
         PyGILState_Release(state);
@@ -1233,7 +1233,7 @@ static Record* RedisGearsPy_PyCallbackAccumulate(RedisModuleCtx* rctx, Record *a
     return accumulate;
 }
 
-static Record* RedisGearsPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record, void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
@@ -1244,7 +1244,7 @@ static Record* RedisGearsPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *recor
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newObj){
-        fetchPyError(err);
+        fetchPyError(rctx);
         RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
@@ -1254,7 +1254,7 @@ static Record* RedisGearsPy_PyCallbackMapper(RedisModuleCtx* rctx, Record *recor
     return record;
 }
 
-static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *record, void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     // Call Python/C API functions...
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
@@ -1266,7 +1266,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *r
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!newObj){
-        fetchPyError(err);
+        fetchPyError(rctx);
         RedisGears_FreeRecord(record);
         PyGILState_Release(state);
         return NULL;
@@ -1290,7 +1290,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(RedisModuleCtx* rctx, Record *r
     return record;
 }
 
-static bool RedisGearsPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static bool RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* pArgs = PyTuple_New(1);
@@ -1301,7 +1301,7 @@ static bool RedisGearsPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, 
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        fetchPyError(err);
+        fetchPyError(rctx);
         PyGILState_Release(state);
         return false;
     }
@@ -1310,7 +1310,7 @@ static bool RedisGearsPy_PyCallbackFilter(RedisModuleCtx* rctx, Record *record, 
     return ret1;
 }
 
-static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *record, void* arg, size_t* len, char** err){
+static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record, void* arg, size_t* len){
 	PyGILState_STATE state = PyGILState_Ensure();
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
     PyObject* extractor = arg;
@@ -1321,7 +1321,7 @@ static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *reco
     PyObject* ret = PyObject_CallObject(extractor, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        fetchPyError(err);
+        fetchPyError(rctx);
         PyGILState_Release(state);
         return "";
     }
@@ -1343,7 +1343,7 @@ static char* RedisGearsPy_PyCallbackExtractor(RedisModuleCtx* rctx, Record *reco
     return retValue;
 }
 
-static Record* RedisGearsPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
+static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, size_t keyLen, Record *records, void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     assert(RedisGears_RecordGetType(records) == LIST_RECORD);
     PyObject* obj = PyList_New(0);
@@ -1361,7 +1361,7 @@ static Record* RedisGearsPy_PyCallbackReducer(RedisModuleCtx* rctx, char* key, s
     PyObject* ret = PyObject_CallObject(reducer, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        fetchPyError(err);
+        fetchPyError(rctx);
         RedisGears_FreeRecord(records);
         PyGILState_Release(state);
         return NULL;
@@ -1451,7 +1451,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     return res;
 }
 
-static Record* RedisGearsPy_ToPyRecordMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+static Record* RedisGearsPy_ToPyRecordMapper(ExecutionCtx* rctx, Record *record, void* arg){
     PyGILState_STATE state = PyGILState_Ensure();
     Record* res = RedisGearsPy_ToPyRecordMapperInternal(record, arg);
     RedisGears_FreeRecord(record);
@@ -1551,10 +1551,6 @@ static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br){
     PyGILState_Release(state);
     return callback;
 }
-
-void Py_SetAllocFunction(void *(*alloc)(size_t));
-void Py_SetReallocFunction(void *(*realloc)(void *, size_t));
-void Py_SetFreeFunction(void (*free)(void *));
 
 long long totalAllocated = 0;
 long long currAllocated = 0;

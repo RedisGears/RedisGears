@@ -214,6 +214,12 @@ typedef struct FlatExecutionPlan{
     FlatExecutionStep* steps;
 }FlatExecutionPlan;
 
+typedef struct ExecutionCtx{
+    RedisModuleCtx* rctx;
+    ExecutionPlan* ep;
+    char* err;
+}ExecutionCtx;
+
 FlatExecutionPlan* FlatExecutionPlan_New();
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
