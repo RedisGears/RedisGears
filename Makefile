@@ -65,6 +65,10 @@ else
 CC_FLAGS += -O2 -Wno-unused-result
 endif
 
+ifeq ($(OS),macosx)
+LD_FLAGS += -undefined dynamic_lookup
+endif
+
 #----------------------------------------------------------------------------------------------
 
 ifeq ($(WITHPYTHON), 1)
@@ -80,7 +84,11 @@ CC_FLAGS += \
 	-Ibin/$(FULL_VARIANT_REL)/cpython
 
 LD_FLAGS += 
-EMBEDDED_LIBS += $(LIBPYTHON) -lutil
+
+EMBEDDED_LIBS += $(LIBPYTHON)
+ifneq ($(OS),macosx)
+EMBEDDED_LIBS += -lutil
+endif
 
 endif # WITHPYTHON
 
@@ -130,13 +138,19 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
+ifeq ($(OS),macosx)
+EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
+else
+EMBEDDED_LIBS_FLAGS=-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+endif
+
 ifeq ($(DEPS),1)
 $(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 else
 $(TARGET): $(OBJECTS)
 endif
 	@echo Linking $@...
-	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
 
 static: $(TARGET:.so=.a)
@@ -173,7 +187,7 @@ $(LIBPYTHON):
 
 pyenv:
 	@echo Building pyenv...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython pyenv 
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython pyenv
 
 #----------------------------------------------------------------------------------------------
 
@@ -181,7 +195,7 @@ libevent: $(LIBEVENT)
 
 $(LIBEVENT):
 	@echo Building libevent...
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent
+	$(SHOW)$(MAKE) --no-print-directory -C build/libevent DEBUG=
 
 #----------------------------------------------------------------------------------------------
 

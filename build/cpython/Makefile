@@ -8,12 +8,18 @@ include $(ROOT)/build/mk/defs
 
 # include Makefile.defs
 
+ifeq ($(OS),macosx)
+export PATH:=$(PATH):$(HOME)/Library/Python/2.7/bin
+endif
+
 #----------------------------------------------------------------------------------------------
 
 BINDIR=$(BINROOT)/cpython
 BUILD_DIR=$(BINDIR)
 
 SRCDIR=$(ROOT)/deps/cpython
+
+# REDISLABS_DIR=$(BINROOT)/opt/redislabs
 
 export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27
 PYENV_DIR=$(CPYTHON_PREFIX)/.venv
@@ -58,7 +64,6 @@ CONFIGURE_FLAGS += \
 #----------------------------------------------------------------------------------------------
 
 export CFLAGS=-fPIC -DREDIS_ALLOC
-# -DPy_UNICODE_WIDE
 
 #----------------------------------------------------------------------------------------------
 
@@ -83,16 +88,30 @@ include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
 
-pyenv: $(CPYTHON_PREFIX) $(PYENV_DIR)
+ifeq ($(OS),macosx)
+/opt/redislabs:
+	$(SHOW)if [ ! -d /opt/redislabs ]; then \
+		sudo mkdir -p /opt/redislabs; \
+		sudo chown $$USER /opt/redislabs; \
+	fi
 
-$(CPYTHON_PREFIX):
+#/opt/redislabs:
+# 	$(SHOW)mkdir -p $(REDISLABS_DIR)
+# 	$(SHOW)sudo ln -sfn $(realpath $(REDISLABS_DIR)) /opt/redislabs
+else
+/opt/redislabs: ;
+endif
+
+pyenv: /opt/redislabs $(CPYTHON_PREFIX) $(PYENV_DIR)
+
+$(CPYTHON_PREFIX): /opt/redislabs
 	$(SHOW)make -C $(BUILD_DIR) install 2>&1 >$(BUILD_DIR)/python-install.log
 
-$(PYENV_DIR): $(CPYTHON_PREFIX)
+$(PYENV_DIR): /opt/redislabs $(CPYTHON_PREFIX)
 	$(SHOW)cp Pipfile* $(CPYTHON_PREFIX)
 	$(SHOW)cd $(CPYTHON_PREFIX); \
 	export PIPENV_VENV_IN_PROJECT=1; \
 	export LC_ALL=C.UTF-8; \
 	export LANG=C.UTF-8; \
-	pipenv install --python $(CPYTHON_PREFIX)/bin/python
+	pipenv --site-packages install --python $(CPYTHON_PREFIX)/bin/python
 	$(SHOW)cp $(CPYTHON_PREFIX)/Pipfile.lock .

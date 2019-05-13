@@ -45,6 +45,15 @@ class Setup(OnPlatform):
         self.os = self.platform.os
         self.dist = self.platform.dist
         self.ver = self.platform.os_ver
+        
+        if self.has_command("python"):
+            self.python = "python"
+        elif self.has_command("python2"):
+            self.python = "python2"
+        # this is required because osx pip installed are done with --user
+        if self.os == 'macosx':
+            os.environ["PATH"] = os.environ["PATH"] + ':' + '$HOME/Library/Python/2.7/bin'
+        os.environ["PYTHONWARNINGS"] = 'ignore:DEPRECATION::pip._internal.cli.base_command'
 
     def setup(self):
         RepoRefresh(self.runner).invoke()
@@ -80,7 +89,7 @@ class Setup(OnPlatform):
         self.run("pacman --noconfirm -S " + packs)
 
     def brew_install(self, packs, group=False):
-        self.run('brew install -y ' + packs)
+        self.run('brew install ' + packs)
 
     def install(self, packs, group=False):
         if self.os == 'linux':
@@ -107,16 +116,22 @@ class Setup(OnPlatform):
     #------------------------------------------------------------------------------------------
 
     def pip_install(self, cmd):
-        self.run("pip install " + cmd)
+        pip_user = ''
+        if self.os == 'macosx':
+            pip_user = '--user '
+        self.run("pip install --disable-pip-version-check " + pip_user + cmd)
 
     def pip3_install(self, cmd):
-        self.run("pip3 install " + cmd)
+        pip_user = ''
+        if self.os == 'macosx':
+            pip_user = '--user '
+        self.run("pip3 install --disable-pip-version-check " + pip_user + cmd)
 
     def setup_pip(self):
         get_pip = "set -e; cd /tmp; curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py"
         if not self.has_command("pip"):
             self.install("curl")
-            self.run(get_pip + "; python2 get-pip.py")
+            self.run(get_pip + "; " + self.python + " get-pip.py")
         ## fails on ubuntu 18:
         # if not has_command("pip3") and has_command("python3"):
         #     run(get_pip + "; python3 get-pip.py")

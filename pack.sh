@@ -1,12 +1,20 @@
 #!/bin/bash
 
+if (( $(./deps/readies/bin/platform --os) == macosx )); then
+	export PATH=$PATH:$HOME/Library/Python/2.7/bin
+
+	realpath() {
+    	[[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+	}
+fi
+
 pack() {
 	local artifact="$1"
 	local branch="$2"
 
 	local packfile=$PACKAGE_NAME.{os}-$OS_VERSION-{architecture}.$branch.zip
 
-	local packer=$(mktemp --tmpdir pack.XXXXXXX)
+	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
 	cat <<- EOF > $packer
 		cd $ROOT
 		ramp pack $GEARS -m ramp.yml -o $packfile | tail -1

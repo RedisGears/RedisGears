@@ -8,6 +8,8 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "deps/readies"))
 import paella
 
+os.environ["PYTHONWARNINGS"] = 'ignore:DEPRECATION::pip._internal.cli.base_command'
+
 #----------------------------------------------------------------------------------------------
 
 class RedisGearsSetup(paella.Setup):
@@ -59,6 +61,8 @@ class RedisGearsSetup(paella.Setup):
             fatal("Xcode tools are not installed. Please run xcode-select --install.")
         self.install("libtool autoconf automake")
         self.install("zlib openssl readline")
+        
+        self.pip_install("pipenv")
 
     def common_last(self):
         if not self.has_command("ramp"):
