@@ -195,11 +195,6 @@ typedef struct FlatBasicStep{
     ExecutionStepArg arg;
 }FlatBasicStep;
 
-typedef struct FlatAccumulatorStep{
-    FlatBasicStep ctr;
-    FlatBasicStep accumulator;
-}FlatAccumulatorStep;
-
 typedef struct FlatExecutionStep{
     FlatBasicStep bStep;
     enum StepType type;
@@ -210,8 +205,11 @@ typedef struct FlatExecutionReader{
 }FlatExecutionReader;
 
 typedef struct FlatExecutionPlan{
+    size_t refCount;
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
+    void* PD;
+    RedisGears_FreePrivateDataCallback freePD;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -222,6 +220,7 @@ typedef struct ExecutionCtx{
 
 FlatExecutionPlan* FlatExecutionPlan_New();
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
+void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, void* PD, RedisGears_FreePrivateDataCallback freePD);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);

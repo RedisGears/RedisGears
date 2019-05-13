@@ -73,7 +73,7 @@ char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* l
 
 /******************************* GroupByReducers ***********************/
 
-
+typedef void (*RedisGears_FreePrivateDataCallback)(void* privateData);
 typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
 typedef Reader* (*RedisGears_ReaderCallback)(void* arg);
 typedef void (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
@@ -142,6 +142,8 @@ int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCa
 FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* readerName);
 #define RGM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
 
+void MODULE_API_FUNC(RedisGears_SetFlatExecutionPrivateData)(FlatExecutionPlan* fep, void* PD, RedisGears_FreePrivateDataCallback freePD);
+
 /******************************* Execution plan operations *******************************/
 
 int MODULE_API_FUNC(RedisGears_Map)(FlatExecutionPlan* ctx, char* name, void* arg);
@@ -207,6 +209,7 @@ void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* gearsCtx);
 
 void MODULE_API_FUNC(RedisGears_SetError)(ExecutionCtx* ectx, char* err);
 static RedisModuleCtx* MODULE_API_FUNC(RedisGears_GetRedisModuleCtx)(ExecutionCtx* ectx);
+static void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx);
 
 int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
@@ -242,6 +245,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterGroupByExtractor);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterReducer);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CreateCtx);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionPrivateData);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Map);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Accumulate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AccumulateBy);
@@ -306,6 +310,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetError);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRedisModuleCtx);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFlatExecutionPrivateData);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

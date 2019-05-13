@@ -91,6 +91,10 @@ static FlatExecutionPlan* RG_CreateCtx(char* readerName){
     return fep;
 }
 
+static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, void* PD, RedisGears_FreePrivateDataCallback freePD){
+    FlatExecutionPlan_SetPrivateData(fep, PD, freePD);
+}
+
 static int RG_Map(FlatExecutionPlan* fep, char* name, void* arg){
     FlatExecutionPlan_AddMapStep(fep, name, arg);
     return 1;
@@ -286,6 +290,10 @@ static RedisModuleCtx* RG_GetRedisModuleCtx(ExecutionCtx* ectx){
     return ectx->rctx;
 }
 
+static void* RG_GetFlatExecutionPrivateData(ExecutionCtx* ectx){
+    return ectx->ep->fep->PD;
+}
+
 
 static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     if(!RedisModule_ExportSharedAPI){
@@ -310,6 +318,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterGroupByExtractor, ctx);
     REGISTER_API(RegisterReducer, ctx);
     REGISTER_API(CreateCtx, ctx);
+    REGISTER_API(SetFlatExecutionPrivateData, ctx);
     REGISTER_API(Map, ctx);
     REGISTER_API(Accumulate, ctx);
     REGISTER_API(AccumulateBy, ctx);
@@ -374,6 +383,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(SetError, ctx);
     REGISTER_API(GetRedisModuleCtx, ctx);
+    REGISTER_API(GetFlatExecutionPrivateData, ctx);
 
     return REDISMODULE_OK;
 }

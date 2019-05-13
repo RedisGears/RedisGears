@@ -1302,19 +1302,9 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
     fep->steps = array_append(fep->steps, s);
 }
 
-static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
-    FlatExecutionPlan* ret = FlatExecutionPlan_New();
-    bool res = FlatExecutionPlan_SetReader(ret, fep->reader->reader);
-    assert(res);
-    for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
-        FlatExecutionStep* s = fep->steps + i;
-        void* arg = NULL;
-        if(s->bStep.arg.type){
-            arg = s->bStep.arg.type->dup(s->bStep.arg.stepArg);
-        }
-        FlatExecutionPlan_AddBasicStep(ret, s->bStep.stepName, arg, s->type);
-    }
-    return ret;
+static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep){
+    __atomic_add_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST);
+    return fep;
 }
 
 static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1492,7 +1482,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
         Gears_BufferFree(buff);
     }
-    rs.r->registerTrigger(FlatExecutionPlan_Duplicate(fep), key);
+    rs.r->registerTrigger(FlatExecutionPlan_ShallowCopy(fep), key);
     return 1;
 }
 
@@ -1586,7 +1576,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
-    fep = FlatExecutionPlan_Duplicate(fep);
+    fep = FlatExecutionPlan_ShallowCopy(fep);
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ret->executionDuration = 0;
     ExecutionStep* last = NULL;
@@ -1768,8 +1758,11 @@ static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
 FlatExecutionPlan* FlatExecutionPlan_New(){
 #define STEPS_INITIAL_CAP 10
     FlatExecutionPlan* res = RG_ALLOC(sizeof(*res));
+    res->refCount = 1;
     res->reader = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
+    res->PD = NULL;
+    res->freePD = NULL;
     return res;
 }
 
@@ -1780,6 +1773,12 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
 }
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
+    if(__atomic_sub_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST) > 0){
+        return;
+    }
+    if(fep->PD && fep->freePD){
+        fep->freePD(fep->PD);
+    }
     if(fep->reader){
         RG_FREE(fep->reader->reader);
         RG_FREE(fep->reader);
@@ -1800,6 +1799,11 @@ bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
     }
     fep->reader = FlatExecutionPlan_NewReader(reader);
     return true;
+}
+
+void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, void* PD, RedisGears_FreePrivateDataCallback freePD){
+    fep->PD = PD;
+    fep->freePD = freePD;
 }
 
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){
