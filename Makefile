@@ -125,7 +125,7 @@ include $(MK)/rules
 -include $(CC_DEPS)
 
 $(BINDIR)/%.o: $(SRCDIR)/%.c
-	@echo Compiling $^...
+	@echo Compiling $<...
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
 
 $(SRCDIR)/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h

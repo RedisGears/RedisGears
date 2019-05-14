@@ -21,7 +21,7 @@ SRCDIR=$(ROOT)/deps/cpython
 
 # REDISLABS_DIR=$(BINROOT)/opt/redislabs
 
-export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27
+export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python3
 PYENV_DIR=$(CPYTHON_PREFIX)/.venv
 
 PYTHON_ENCODING ?= ucs4
@@ -112,5 +112,5 @@ $(PYENV_DIR): /opt/redislabs $(CPYTHON_PREFIX)
 	export PIPENV_VENV_IN_PROJECT=1; \
 	export LC_ALL=C.UTF-8; \
 	export LANG=C.UTF-8; \
-	pipenv --site-packages install --python $(CPYTHON_PREFIX)/bin/python3.7
+	pipenv --site-packages install --python $(CPYTHON_PREFIX)/bin/python3
 	$(SHOW)cp $(CPYTHON_PREFIX)/Pipfile.lock .

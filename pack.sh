@@ -46,7 +46,7 @@ if ! command -v redis-server > /dev/null; then
 fi
 
 export ROOT=`git rev-parse --show-toplevel`
-CPYTHON_PREFIX=${CPYTHON_PREFIX:-/opt/redislabs/lib/modules/python27}
+CPYTHON_PREFIX=${CPYTHON_PREFIX:-/opt/redislabs/lib/modules/python3}
 [[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
 [[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
 GEARS=$(realpath $1)
