@@ -58,6 +58,10 @@ static int RG_RegisterForEach(char* name, RedisGears_ForEachCallback writer, Arg
     return ForEachsMgmt_Add(name, writer, type);
 }
 
+static int RG_RegisterFlatExecutionPrivateDataType(ArgType* type){
+    return FepPrivateDatasMgmt_Add(type->type, NULL, type);
+}
+
 static int RG_RegisterMap(char* name, RedisGears_MapCallback map, ArgType* type){
     return MapsMgmt_Add(name, map, type);
 }
@@ -91,8 +95,8 @@ static FlatExecutionPlan* RG_CreateCtx(char* readerName){
     return fep;
 }
 
-static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, void* PD, RedisGears_FreePrivateDataCallback freePD){
-    FlatExecutionPlan_SetPrivateData(fep, PD, freePD);
+static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
+    FlatExecutionPlan_SetPrivateData(fep, type, PD);
 }
 
 static int RG_Map(FlatExecutionPlan* fep, char* name, void* arg){
@@ -318,6 +322,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterGroupByExtractor, ctx);
     REGISTER_API(RegisterReducer, ctx);
     REGISTER_API(CreateCtx, ctx);
+    REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
     REGISTER_API(SetFlatExecutionPrivateData, ctx);
     REGISTER_API(Map, ctx);
     REGISTER_API(Accumulate, ctx);

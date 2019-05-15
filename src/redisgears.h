@@ -74,6 +74,9 @@ char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* l
 /******************************* GroupByReducers ***********************/
 
 typedef void (*RedisGears_FreePrivateDataCallback)(void* privateData);
+typedef void (*RedisGears_SerializePrivateDataCallback)(void* privateData, Gears_BufferWriter* bw);
+typedef void* (*RedisGears_DeserializePrivateDataCallback)(Gears_BufferReader* br);
+
 typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
 typedef Reader* (*RedisGears_ReaderCallback)(void* arg);
 typedef void (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
@@ -83,6 +86,9 @@ typedef char* (*RedisGears_ExtractorCallback)(ExecutionCtx* rctx, Record *data, 
 typedef Record* (*RedisGears_ReducerCallback)(ExecutionCtx* rctx, char* key, size_t keyLen, Record *records, void* arg);
 typedef Record* (*RedisGears_AccumulateCallback)(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg);
 typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg);
+
+// not used
+typedef void (*RedisGears_FepPrivateDataCallback)();
 
 typedef struct KeysReaderCtx KeysReaderCtx;
 KeysReaderCtx* MODULE_API_FUNC(RedisGears_KeysReaderCtxCreate)(char* match);
@@ -117,6 +123,7 @@ Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, char* key);
 char** MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r, size_t* len);
 void MODULE_API_FUNC(RedisGears_HashSetRecordFreeKeysArray)(char** keyArr);
 
+int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionPrivateDataType)(ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterReader)(char* name, RedisGears_ReaderCallback reader);
 int MODULE_API_FUNC(RedisGears_RegisterForEach)(char* name, RedisGears_ForEachCallback reader, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterMap)(char* name, RedisGears_MapCallback map, ArgType* type);
@@ -142,7 +149,7 @@ int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCa
 FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* readerName);
 #define RGM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
 
-void MODULE_API_FUNC(RedisGears_SetFlatExecutionPrivateData)(FlatExecutionPlan* fep, void* PD, RedisGears_FreePrivateDataCallback freePD);
+void MODULE_API_FUNC(RedisGears_SetFlatExecutionPrivateData)(FlatExecutionPlan* fep, const char* type, void* PD);
 
 /******************************* Execution plan operations *******************************/
 
@@ -208,8 +215,8 @@ long long MODULE_API_FUNC(RedisGears_GetReadDuration)(ExecutionPlan* gearsCtx);
 void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* gearsCtx);
 
 void MODULE_API_FUNC(RedisGears_SetError)(ExecutionCtx* ectx, char* err);
-static RedisModuleCtx* MODULE_API_FUNC(RedisGears_GetRedisModuleCtx)(ExecutionCtx* ectx);
-static void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx);
+RedisModuleCtx* MODULE_API_FUNC(RedisGears_GetRedisModuleCtx)(ExecutionCtx* ectx);
+void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx);
 
 int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
@@ -245,6 +252,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterGroupByExtractor);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterReducer);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CreateCtx);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFlatExecutionPrivateDataType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionPrivateData);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Map);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Accumulate);

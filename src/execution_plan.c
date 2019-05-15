@@ -300,6 +300,16 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWrit
         FlatExecutionStep* step = fep->steps + i;
         FlatExecutionPlan_SerializeStep(step, bw);
     }
+
+    if(fep->PD){
+        RedisGears_BWWriteLong(bw, 1); // PD exists
+        RedisGears_BWWriteString(bw, fep->PDType);
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+        assert(type);
+        type->serialize(type, bw);
+    }else{
+        RedisGears_BWWriteLong(bw, 0); // PD do exists
+    }
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferReader* br){
@@ -327,6 +337,15 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
     for(int i = 0 ; i < numberOfSteps ; ++i){
         ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
     }
+
+    bool PDExists = RedisGears_BRReadLong(br);
+    if(PDExists){
+        ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
+        assert(type);
+        ret->PD = type->deserialize(br);
+    }
+
     return ret;
 }
 
@@ -1762,7 +1781,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->reader = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
     res->PD = NULL;
-    res->freePD = NULL;
+    res->PDType = NULL;
     return res;
 }
 
@@ -1776,8 +1795,10 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(__atomic_sub_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST) > 0){
         return;
     }
-    if(fep->PD && fep->freePD){
-        fep->freePD(fep->PD);
+    if(fep->PD){
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+        type->free(fep->PD);
+        RG_FREE(fep->PDType);
     }
     if(fep->reader){
         RG_FREE(fep->reader->reader);
@@ -1801,9 +1822,9 @@ bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
     return true;
 }
 
-void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, void* PD, RedisGears_FreePrivateDataCallback freePD){
+void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
     fep->PD = PD;
-    fep->freePD = freePD;
+    fep->PDType = RG_STRDUP(type);
 }
 
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){
