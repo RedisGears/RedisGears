@@ -2,6 +2,10 @@
 
 set -x
 
+if (( $(../deps/readies/bin/platform --os) == macosx )); then
+	export PATH=$PATH:$HOME/Library/Python/2.7/bin
+fi
+
 env_prefix=oss
 module_suffix=so
 

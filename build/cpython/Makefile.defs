@@ -5,4 +5,4 @@
 
 LIBPYTHON=$(CPYTHON_BINDIR)/libpython3.7m.a
 
-export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python27
+export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python3

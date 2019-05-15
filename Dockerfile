@@ -22,4 +22,4 @@ COPY --from=builder /redisgears/artifacts/release/redisgears-dependencies.*.tgz 
 
 RUN tar xzf /tmp/redisgears-dependencies.*.tgz -C /
 
-CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python27"]
+CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python3"]
