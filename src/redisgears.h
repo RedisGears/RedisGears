@@ -73,10 +73,6 @@ char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* l
 
 /******************************* GroupByReducers ***********************/
 
-typedef void (*RedisGears_FreePrivateDataCallback)(void* privateData);
-typedef void (*RedisGears_SerializePrivateDataCallback)(void* privateData, Gears_BufferWriter* bw);
-typedef void* (*RedisGears_DeserializePrivateDataCallback)(Gears_BufferReader* br);
-
 typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
 typedef Reader* (*RedisGears_ReaderCallback)(void* arg);
 typedef void (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
@@ -86,9 +82,6 @@ typedef char* (*RedisGears_ExtractorCallback)(ExecutionCtx* rctx, Record *data, 
 typedef Record* (*RedisGears_ReducerCallback)(ExecutionCtx* rctx, char* key, size_t keyLen, Record *records, void* arg);
 typedef Record* (*RedisGears_AccumulateCallback)(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg);
 typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg);
-
-// not used
-typedef void (*RedisGears_FepPrivateDataCallback)();
 
 typedef struct KeysReaderCtx KeysReaderCtx;
 KeysReaderCtx* MODULE_API_FUNC(RedisGears_KeysReaderCtxCreate)(char* match);

@@ -39,7 +39,7 @@ typedef struct PythonSubInterpreter{
 typedef struct PythonThreadCtx{
     int lockCounter;
     RedisModuleCtx* currentCtx;
-    PythonSubInterpreter* currSubInterpreter;
+    PythonSubInterpreter* subInterpreter;
     bool blockingExecute;
     bool executionTriggered;
     bool timeEventRegistered;
@@ -48,7 +48,7 @@ typedef struct PythonThreadCtx{
 
 static void onDone(ExecutionPlan* ep, void* privateData);
 
-static PythonSubInterpreter* _save;
+static PythonSubInterpreter* MainInterpreter;
 
 #define PYTHON_ERROR "error running python code"
 
@@ -68,7 +68,7 @@ static PythonThreadCtx* GetPythonThreadCtx(){
         *ptctx = (PythonThreadCtx){
                 .lockCounter = 0,
                 .currentCtx = NULL,
-                .currSubInterpreter = NULL,
+                .subInterpreter = NULL,
                 .blockingExecute = true,
                 .executionTriggered = false,
                 .timeEventRegistered = false,
@@ -85,7 +85,7 @@ void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
         if(interpreter){
             PyEval_RestoreThread(interpreter->subInterpreter);
         }else{
-            PyEval_RestoreThread(_save->subInterpreter);
+            PyEval_RestoreThread(MainInterpreter->subInterpreter);
         }
     }
     ++ptctx->lockCounter;
@@ -353,7 +353,7 @@ static void RedisGearsPy_FreeSubInterpreter(void* PD){
     if(--subInterpreter->refCount == 0){
         Py_EndInterpreter(subInterpreter->subInterpreter);
         RG_FREE(subInterpreter);
-        PyThreadState_Swap(_save->subInterpreter);
+        PyThreadState_Swap(MainInterpreter->subInterpreter);
     }
 
     RedisGearsPy_SaveThread();
@@ -370,7 +370,7 @@ static void RedisGearsPy_SubInterpreterSerialize(void* arg, Gears_BufferWriter* 
 }
 
 static void* RedisGearsPy_SubInterpreterDeserialize(Gears_BufferReader* br){
-    RedisGearsPy_RestoreThread(_save);
+    RedisGearsPy_RestoreThread(MainInterpreter);
 
     PythonSubInterpreter* subInterpreter = RedisGearsPy_SubInterpreterNew();
 
@@ -416,7 +416,7 @@ static PyObject* run(PyObject *self, PyObject *args){
         }
     }
     RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
-                                           RedisGearsPy_SubInterpreterShallowCopy(ptctx->currSubInterpreter));
+                                           RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
     ExecutionPlan* ep = RGM_Run(pfep->fep, arg, NULL, NULL);
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
@@ -447,7 +447,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
         regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
     }
     RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
-                                           RedisGearsPy_SubInterpreterShallowCopy(ptctx->currSubInterpreter));
+                                           RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
     int status = RGM_Register(pfep->fep, RG_STRDUP(regexStr));
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
@@ -1005,7 +1005,7 @@ typedef struct TimerData{
     RedisModuleTimerID id;
     PyObject* callback;
     TimeEventStatus status;
-    PythonSubInterpreter* currSubInterpreter;
+    PythonSubInterpreter* subInterpreter;
 }TimerData;
 
 #define RG_TIME_EVENT_TYPE "rg_timeev"
@@ -1015,8 +1015,8 @@ RedisModuleType *TimeEventType;
 static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     TimerData* td = data;
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    ptctx->currSubInterpreter = td->currSubInterpreter;
-    RedisGearsPy_RestoreThread(ptctx->currSubInterpreter);
+    ptctx->subInterpreter = td->subInterpreter;
+    RedisGearsPy_RestoreThread(ptctx->subInterpreter);
     PyObject* pArgs = PyTuple_New(0);
     PyObject_CallObject(td->callback, pArgs);
     if(PyErr_Occurred()){
@@ -1046,7 +1046,7 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
     RedisGearsPy_RestoreThread(NULL);
-    td->currSubInterpreter = RedisGearsPy_SubInterpreterNew();
+    td->subInterpreter = RedisGearsPy_SubInterpreterNew();
     RedisGearsPy_SaveThread();
     RedisModule_FreeThreadSafeContext(ctx);
     return td;
@@ -1065,9 +1065,9 @@ static void TimeEvent_RDBSave(RedisModuleIO *rdb, void *value){
 
 static void TimeEvent_Free(void *value){
     TimerData* td = value;
-    RedisGearsPy_RestoreThread(td->currSubInterpreter);
+    RedisGearsPy_RestoreThread(td->subInterpreter);
     Py_DECREF(td->callback);
-    RedisGearsPy_FreeSubInterpreter(td->currSubInterpreter);
+    RedisGearsPy_FreeSubInterpreter(td->subInterpreter);
     RedisGearsPy_SaveThread();
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_StopTimer(ctx, td->id, NULL);
@@ -1115,7 +1115,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     td->status = TE_STATUS_RUNNING;
     td->period = period;
     td->callback = callback;
-    td->currSubInterpreter = RedisGearsPy_SubInterpreterShallowCopy(ptctx->currSubInterpreter);
+    td->subInterpreter = RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter);
     ptctx->timeEventRegistered = true;
     Py_INCREF(callback);
 
@@ -1194,7 +1194,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     RedisGearsPy_RestoreThread(NULL);
 
-    ptctx->currSubInterpreter = RedisGearsPy_SubInterpreterNew();
+    ptctx->subInterpreter = RedisGearsPy_SubInterpreterNew();
 
     PyObject *v;
 
@@ -1222,7 +1222,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 Py_DECREF(ptraceback);
             }
         }
-        RedisGearsPy_FreeSubInterpreter(ptctx->currSubInterpreter);
+        RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
         RedisGearsPy_SaveThread();
         return REDISMODULE_OK;
     }
@@ -1232,8 +1232,8 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     }else if(!ptctx->executionTriggered){
         RedisModule_ReplyWithSimpleString(ctx, "OK");
     }
-    RedisGearsPy_FreeSubInterpreter(ptctx->currSubInterpreter);
-    PyThreadState_Swap(_save->subInterpreter);
+    RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
+    PyThreadState_Swap(MainInterpreter->subInterpreter);
     RedisGearsPy_SaveThread();
 
     ptctx->executionTriggered = false;
@@ -1569,7 +1569,6 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     char* key;
     char** keys;
     size_t len;
-    PyThreadState *state;
     switch(RedisGears_RecordGetType(record)){
     case STRING_RECORD:
         str = RedisGears_StringRecordGet(record, &len);
@@ -2067,8 +2066,8 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     }
 
     PyThreadState* mainInterpreter = PyEval_SaveThread();
-    _save = RG_ALLOC(sizeof(*_save));
-    *_save = (PythonSubInterpreter){
+    MainInterpreter = RG_ALLOC(sizeof(*MainInterpreter));
+    *MainInterpreter = (PythonSubInterpreter){
             .refCount = 1,
             .subInterpreter = mainInterpreter,
     };

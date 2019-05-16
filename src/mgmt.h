@@ -53,6 +53,7 @@ bool AccumulateByKeysMgmt_Add(const char* name, RedisGears_AccumulateByKeyCallba
 RedisGears_AccumulateByKeyCallback AccumulateByKeysMgmt_Get(const char* name);
 ArgType* AccumulateByKeysMgmt_GetArgType(const char* name);
 
+typedef void (*RedisGears_FepPrivateDataCallback)();
 bool FepPrivateDatasMgmt_Add(const char* name, RedisGears_FepPrivateDataCallback callback, ArgType* type);
 RedisGears_FepPrivateDataCallback FepPrivateDatasMgmt_Get(const char* name);
 ArgType* FepPrivateDatasMgmt_GetArgType(const char* name);

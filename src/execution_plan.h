@@ -210,8 +210,6 @@ typedef struct FlatExecutionPlan{
     FlatExecutionStep* steps;
     void* PD;
     char* PDType;
-    RedisGears_SerializePrivateDataCallback serializePD;
-    RedisGears_DeserializePrivateDataCallback deserializePD;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -219,6 +217,12 @@ typedef struct ExecutionCtx{
     ExecutionPlan* ep;
     char* err;
 }ExecutionCtx;
+
+#define ExecutionCtx_Initialize(rctx, ep) { \
+        .rctx = rctx,\
+        .ep = ep,\
+        .err = NULL,\
+    }
 
 FlatExecutionPlan* FlatExecutionPlan_New();
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);

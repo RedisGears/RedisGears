@@ -306,7 +306,7 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWrit
         RedisGears_BWWriteString(bw, fep->PDType);
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         assert(type);
-        type->serialize(type, bw);
+        type->serialize(fep->PD, bw);
     }else{
         RedisGears_BWWriteLong(bw, 0); // PD do exists
     }
@@ -380,11 +380,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
             return record;
         }
 	    START_TIMER;
-        ExecutionCtx ectx = {
-                .rctx = rctx,
-                .ep = ep,
-                .err = NULL,
-        };
+        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
         bool filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
         if(ectx.err){
             RedisGears_FreeRecord(record);
@@ -418,11 +414,7 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
         goto end;
     }
     if(record != NULL){
-        ExecutionCtx ectx = {
-                .rctx = rctx,
-                .ep = ep,
-                .err = NULL,
-        };
+        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
         record = step->map.map(&ectx, record, step->map.stepArg.stepArg);
         if(ectx.err){
             if(record){
@@ -503,11 +495,7 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
         r = record;
         goto end;
     }
-    ExecutionCtx ectx = {
-            .rctx = rctx,
-            .ep = ep,
-            .err = NULL,
-    };
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
     char* buff = step->extractKey.extractor(&ectx, record, step->extractKey.extractorArg.stepArg, &buffLen);
     if(ectx.err){
         RedisGears_FreeRecord(record);
@@ -592,11 +580,7 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     assert(RedisGears_RecordGetType(record) == KEY_RECORD);
     size_t keyLen;
     char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
-    ExecutionCtx ectx = {
-            .rctx = rctx,
-            .ep = ep,
-            .err = NULL,
-    };
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
     Record* r = step->reduce.reducer(&ectx, key, keyLen, RedisGears_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg);
     RedisGears_KeyRecordSetVal(record, r);
     if(ectx.err){
@@ -782,11 +766,7 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     if(RedisGears_RecordGetType(record) == ERROR_RECORD){
         goto end;
     }
-    ExecutionCtx ectx = {
-            .rctx = rctx,
-            .ep = ep,
-            .err = NULL,
-    };
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
     step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
     if(ectx.err){
         RedisGears_FreeRecord(record);
@@ -848,11 +828,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
             goto end;
         }
-        ExecutionCtx ectx = {
-                .rctx = rctx,
-                .ep = ep,
-                .err = NULL,
-        };
+        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
         step->accumulate.accumulator = step->accumulate.accumulate(&ectx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg);
         if(ectx.err){
             if(step->accumulate.accumulator){
@@ -898,11 +874,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 			keyRecord = Gears_dictGetVal(entry);
 			accumulator = RedisGears_KeyRecordGetVal(keyRecord);
 		}
-		ExecutionCtx ectx = {
-                .rctx = rctx,
-                .ep = ep,
-                .err = NULL,
-        };
+		ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
 		accumulator = step->accumulateByKey.accumulate(&ectx, key, accumulator, val, step->accumulate.stepArg.stepArg);
 		if(ectx.err){
 		    if(accumulator){
