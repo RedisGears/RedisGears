@@ -1,4 +1,4 @@
-# RedisGears Streaming
+# Examples
 
 ## Word Count
 Assumes that your data is located in redis keys, each key is a sentence (string). 
