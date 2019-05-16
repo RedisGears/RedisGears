@@ -28,14 +28,30 @@ typedef struct RAI_Error {
 static PyObject* pyGlobals;
 PyObject* GearsError;
 
-// TODO: wrap these global variables in their very own thread's private context
+/*
+ * Contains thread pacific data like:
+ * - the sub-interpreter
+ * - Does execution was triggered
+ * - Does time event was trigger
+ * - Does the execution is blocking or not
+ * - Lock counter, to allow thread to acquire the lock multiple times
+ * - doneFunction, in case execution was trigger we want to know what to do once its done
+ */
 pthread_key_t pythonThreadCtxKey;
 
+/*
+ * Sub-interpreter maybe shared between multiple python runners (registered, time events and normal execution).
+ * This is why it need to be refcounted and owned by multiple owners.
+ * We free sub-interpreter once its refcount reach zero
+ */
 typedef struct PythonSubInterpreter{
     size_t refCount;
     PyThreadState* subInterpreter;
 }PythonSubInterpreter;
 
+/*
+ * Thread spacific data
+ */
 typedef struct PythonThreadCtx{
     int lockCounter;
     RedisModuleCtx* currentCtx;
@@ -46,8 +62,10 @@ typedef struct PythonThreadCtx{
     DoneCallbackFunction doneFunction;
 }PythonThreadCtx;
 
+/* default onDone function */
 static void onDone(ExecutionPlan* ep, void* privateData);
 
+/* the main interpreter */
 static PythonSubInterpreter* MainInterpreter;
 
 #define PYTHON_ERROR "error running python code"
@@ -55,11 +73,6 @@ static PythonSubInterpreter* MainInterpreter;
 static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br);
 static void TimeEvent_Free(void *value);
-
-typedef struct PyFlatExecution{
-   PyObject_HEAD
-   FlatExecutionPlan* fep;
-} PyFlatExecution;
 
 static PythonThreadCtx* GetPythonThreadCtx(){
     PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
@@ -99,6 +112,74 @@ void RedisGearsPy_SaveThread(){
         PyEval_SaveThread();
     }
 }
+
+static PythonSubInterpreter* RedisGearsPy_SubInterpreterNew(){
+    PyThreadState * subInterpreter = Py_NewInterpreter();
+    PythonSubInterpreter* interp = RG_ALLOC(sizeof(*interp));
+    *interp = (PythonSubInterpreter){
+        .refCount = 1,
+        .subInterpreter = subInterpreter,
+    };
+    PyThreadState_Swap(interp->subInterpreter);
+    return interp;
+}
+
+static PythonSubInterpreter* RedisGearsPy_SubInterpreterShallowCopy(PythonSubInterpreter* subInterpreter){
+    RedisGearsPy_RestoreThread(subInterpreter);
+    subInterpreter->refCount++;
+    RedisGearsPy_SaveThread();
+    return subInterpreter;
+}
+
+static void RedisGearsPy_FreeSubInterpreter(void* PD){
+    PythonSubInterpreter* subInterpreter = PD;
+    assert(subInterpreter);
+
+    RedisGearsPy_RestoreThread(subInterpreter);
+
+    assert(subInterpreter->refCount > 0);
+
+    if(--subInterpreter->refCount == 0){
+        Py_EndInterpreter(subInterpreter->subInterpreter);
+        RG_FREE(subInterpreter);
+        PyThreadState_Swap(MainInterpreter->subInterpreter);
+    }
+
+    RedisGearsPy_SaveThread();
+}
+
+static void* RedisGearsPy_SubInterpreterDup(void* arg){
+    PythonSubInterpreter* subInterpreter = arg;
+    return RedisGearsPy_SubInterpreterShallowCopy(subInterpreter);
+}
+
+static void RedisGearsPy_SubInterpreterSerialize(void* arg, Gears_BufferWriter* bw){
+    // do nothing, we do not serialize subinterpreter, we will create new subinterpreter
+    // when deserialize will be called.
+}
+
+static void* RedisGearsPy_SubInterpreterDeserialize(Gears_BufferReader* br){
+    RedisGearsPy_RestoreThread(MainInterpreter);
+
+    PythonSubInterpreter* subInterpreter = RedisGearsPy_SubInterpreterNew();
+
+    RedisGearsPy_SaveThread();
+
+    return subInterpreter;
+}
+
+static char* RedisGearsPy_SubInterpreterToString(void* arg){
+    // todo: maybe add information about the subinterpreter !?
+    return RG_STRDUP("subinterpreter ToStr");
+}
+
+/*
+ * Wrapper for a flat execution that allows it leave inside the python interpreter.
+ */
+typedef struct PyFlatExecution{
+   PyObject_HEAD
+   FlatExecutionPlan* fep;
+} PyFlatExecution;
 
 static PyObject* map(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
@@ -324,66 +405,6 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
     RedisGears_DropExecution(ep);
 }
 
-static PythonSubInterpreter* RedisGearsPy_SubInterpreterNew(){
-    PyThreadState * subInterpreter = Py_NewInterpreter();
-    PythonSubInterpreter* interp = RG_ALLOC(sizeof(*interp));
-    *interp = (PythonSubInterpreter){
-        .refCount = 1,
-        .subInterpreter = subInterpreter,
-    };
-    PyThreadState_Swap(interp->subInterpreter);
-    return interp;
-}
-
-static PythonSubInterpreter* RedisGearsPy_SubInterpreterShallowCopy(PythonSubInterpreter* subInterpreter){
-    RedisGearsPy_RestoreThread(subInterpreter);
-    subInterpreter->refCount++;
-    RedisGearsPy_SaveThread();
-    return subInterpreter;
-}
-
-static void RedisGearsPy_FreeSubInterpreter(void* PD){
-    PythonSubInterpreter* subInterpreter = PD;
-    assert(subInterpreter);
-
-    RedisGearsPy_RestoreThread(subInterpreter);
-
-    assert(subInterpreter->refCount > 0);
-
-    if(--subInterpreter->refCount == 0){
-        Py_EndInterpreter(subInterpreter->subInterpreter);
-        RG_FREE(subInterpreter);
-        PyThreadState_Swap(MainInterpreter->subInterpreter);
-    }
-
-    RedisGearsPy_SaveThread();
-}
-
-static void* RedisGearsPy_SubInterpreterDup(void* arg){
-    PythonSubInterpreter* subInterpreter = arg;
-    return RedisGearsPy_SubInterpreterShallowCopy(subInterpreter);
-}
-
-static void RedisGearsPy_SubInterpreterSerialize(void* arg, Gears_BufferWriter* bw){
-    // do nothing, we do not serialize subinterpreter, we will create new subinterpreter
-    // when deserialize will be called.
-}
-
-static void* RedisGearsPy_SubInterpreterDeserialize(Gears_BufferReader* br){
-    RedisGearsPy_RestoreThread(MainInterpreter);
-
-    PythonSubInterpreter* subInterpreter = RedisGearsPy_SubInterpreterNew();
-
-    RedisGearsPy_SaveThread();
-
-    return subInterpreter;
-}
-
-static char* RedisGearsPy_SubInterpreterToString(void* arg){
-    // todo: maybe add information about the subinterpreter !?
-    return RG_STRDUP("subinterpreter ToStr");
-}
-
 static PyObject* run(PyObject *self, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
@@ -463,6 +484,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
     return Py_None;
 }
 
+/* Flat Execution operations */
 PyMethodDef PyFlatExecutionMethods[] = {
     {"map", map, METH_VARARGS, "map operation on each record"},
     {"filter", filter, METH_VARARGS, "filter operation on each record"},
