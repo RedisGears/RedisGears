@@ -53,6 +53,7 @@ GEARS=$(realpath $1)
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
+BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
 OS_VERSION=${OS_VERSION:-linux}
 
 export PYTHONWARNINGS=ignore
