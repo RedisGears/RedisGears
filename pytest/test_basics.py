@@ -384,6 +384,55 @@ def testOneKeyScan(env):
     env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['200000'])
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
 
+def testSubinterpreterIsolation(env):
+    env.skipOnCluster()
+    env.cmd('set', 'x', '1')
+    script = '''
+if 'x' not in globals().keys():
+    x = 1
+
+def returnX(a):
+    global x
+    x += 1
+    return x
+
+GB().map(returnX).run()
+    '''
+    env.expect('rg.pyexecute', script).equal([['2'], []])
+
+def testTimeEventSubinterpreterIsolation(env):
+    env.skipOnCluster()
+    script1 = '''
+if 'x' not in globals().keys():
+    x = 1
+def OnTime():
+    global x
+    x += 1
+    execute('set', 'x', str(x))
+def start():
+    global OnTime
+    redisgears.registerTimeEvent(2, OnTime)
+start()
+    '''
+    script2 = '''
+if 'x' not in globals().keys():
+    x = 1
+def OnTime():
+    global x
+    x += 1
+    execute('set', 'y', str(x))
+def start():
+    global OnTime
+    redisgears.registerTimeEvent(2, OnTime)
+start()
+    '''
+    env.cmd('rg.pyexecute', script1)
+    env.cmd('rg.pyexecute', script2)
+    env.assertIsNone(env.cmd('get', 'x'))
+    env.assertIsNone(env.cmd('get', 'y'))
+    time.sleep(3)
+    env.assertTrue(int(env.cmd('get', 'x')) < 3)
+    env.assertTrue(int(env.cmd('get', 'y')) < 3)
 
 class testConfig:
     def __init__(self):
