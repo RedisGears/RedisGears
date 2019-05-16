@@ -218,9 +218,9 @@ typedef struct ExecutionCtx{
     char* err;
 }ExecutionCtx;
 
-#define ExecutionCtx_Initialize(rctx, ep) { \
-        .rctx = rctx,\
-        .ep = ep,\
+#define ExecutionCtx_Initialize(c, e) (ExecutionCtx){ \
+        .rctx = c,\
+        .ep = e,\
         .err = NULL,\
     }
 

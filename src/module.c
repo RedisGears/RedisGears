@@ -295,7 +295,10 @@ static RedisModuleCtx* RG_GetRedisModuleCtx(ExecutionCtx* ectx){
 }
 
 static void* RG_GetFlatExecutionPrivateData(ExecutionCtx* ectx){
-    return ectx->ep->fep->PD;
+    if(ectx->ep){
+        return ectx->ep->fep->PD;
+    }
+    return NULL;
 }
 
 

@@ -922,7 +922,8 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     case READER:
     	if(array_len(ep->errors) == 0){
             GETTIME(&_ts);
-    	    r = step->reader.r->next(rctx, step->reader.r->ctx);
+            ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+    	    r = step->reader.r->next(&ectx, step->reader.r->ctx);
             GETTIME(&_te);
     	    step->executionDuration += DURATION;
     	}

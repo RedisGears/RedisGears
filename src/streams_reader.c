@@ -114,8 +114,9 @@ static void StreamReader_Free(void* ctx){
     RG_FREE(ctx);
 }
 
-static Record* StreamReader_Next(RedisModuleCtx* rctx, void* ctx){
+static Record* StreamReader_Next(ExecutionCtx* ectx, void* ctx){
     StreamReaderCtx* readerCtx = ctx;
+    RedisModuleCtx* rctx = RedisGears_GetRedisModuleCtx(ectx);
     if(!readerCtx->records){
         LockHandler_Acquire(rctx);
         StreamReader_ReadRecords(rctx, readerCtx);

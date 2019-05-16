@@ -46,7 +46,7 @@ typedef char* (*ArgToString)(void* arg);
 typedef struct Reader{
     void* ctx;
     void (*registerTrigger)(FlatExecutionPlan* fep, void* arg);
-    Record* (*next)(RedisModuleCtx* rctx, void* ctx);
+    Record* (*next)(ExecutionCtx* rctx, void* ctx);
     void (*free)(void* ctx);
     void (*serialize)(void* ctx, Gears_BufferWriter* bw);
     void (*deserialize)(void* ctx, Gears_BufferReader* br);

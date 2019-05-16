@@ -1829,9 +1829,12 @@ typedef struct PythonReaderCtx{
     PyObject* generator;
 }PythonReaderCtx;
 
-static Record* PythonReader_Next(RedisModuleCtx* rctx, void* ctx){
+static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
     PythonReaderCtx* pyCtx = ctx;
-    RedisGearsPy_RestoreThread(NULL);
+
+    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
+    RedisGearsPy_RestoreThread(subInterpreter);
+
     PyObject* pyRecord = NULL;
     if(!pyCtx->generator){
         PyObject* pArgs = PyTuple_New(0);
