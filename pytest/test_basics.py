@@ -399,6 +399,7 @@ def returnX(a):
 GB().map(returnX).run()
     '''
     env.expect('rg.pyexecute', script).equal([['2'], []])
+    env.expect('rg.pyexecute', script).equal([['2'], []])
 
 def testTimeEventSubinterpreterIsolation(env):
     env.skipOnCluster()
