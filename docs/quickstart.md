@@ -20,21 +20,22 @@ Install:
 
 ### Compile
 ```bash
-git submodule init
-git submodule update
+git submodule update --init --recursive
+sudo mkdir -p /opt/redislabs/lib
+sudo chmod 755 /opt/redislabs/lib
+python system-setup.py
 make get_deps
-make
+make deps
+make all
 ```
-It is possible to run without python support by just running `make`.
+Notice that part of the compilation is to create the gears virtual environment under `/opt/redislabs/lib/modules/python3/`
 
 ## Run
 If you running gears on the same machine on which it was compile then its enough just loading the RedisGears module:
 
 `--loamodule <path to redisgears.so`
 
-If you run RedisGears on another machine, some extra setup is needed. For Gears to run properly its need to have the cpython directory it was compiled with. All the required files are located in `/src/deps/cpython/` make sure to put this directory on the same machine where Redis running and use `PythonHomeDir` config variable to tell RedisGears where it should look for this cpython directory:
-
-`--loamodule <path to redisgears.so> PythonHomeDir <path to cpython direcotry>`
+If you run RedisGears on another machine, some extra setup is needed. For Gears to run properly its need to have the virtual environment which was created when it was compiled. All the required files are located in `/opt/redislabs/lib/modules/python3` make sure to put this directory on the same machine where Redis running and at the same path (i.e `/opt/redislabs/lib/modules/python3`).
 
 ## Tests
 Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
