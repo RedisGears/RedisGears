@@ -13,7 +13,6 @@ RedisGears supports full python syntax and low level c api. In addition you can 
     * [Latest Release](https://github.com/RedisLabsModules/RedisGears/releases)
     * [Docker Image: redislabs/redisgears](https://hub.docker.com/r/redislabs/redisgears/)
     * [Quick Start Guide](quickstart.md)
-    * [Mailing list / Forum](https://groups.google.com/forum/#!forum/redisgears)
 
 !!! tip "Supported Platforms"
     RedisGears is developed and tested on Linux x86_64 CPUs.
