@@ -300,6 +300,16 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWrit
         FlatExecutionStep* step = fep->steps + i;
         FlatExecutionPlan_SerializeStep(step, bw);
     }
+
+    if(fep->PD){
+        RedisGears_BWWriteLong(bw, 1); // PD exists
+        RedisGears_BWWriteString(bw, fep->PDType);
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+        assert(type);
+        type->serialize(fep->PD, bw);
+    }else{
+        RedisGears_BWWriteLong(bw, 0); // PD do exists
+    }
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferReader* br){
@@ -327,6 +337,15 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
     for(int i = 0 ; i < numberOfSteps ; ++i){
         ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
     }
+
+    bool PDExists = RedisGears_BRReadLong(br);
+    if(PDExists){
+        ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
+        assert(type);
+        ret->PD = type->deserialize(br);
+    }
+
     return ret;
 }
 
@@ -361,11 +380,11 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
             return record;
         }
 	    START_TIMER;
-        char* err = NULL;
-        bool filterRes = step->filter.filter(rctx, record, step->filter.stepArg.stepArg, &err);
-        if(err){
+        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+        bool filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
+        if(ectx.err){
             RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
         }
         if(filterRes){
@@ -395,13 +414,13 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
         goto end;
     }
     if(record != NULL){
-        char* err = NULL;
-        record = step->map.map(rctx, record, step->map.stepArg.stepArg, &err);
-        if(err){
+        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+        record = step->map.map(&ectx, record, step->map.stepArg.stepArg);
+        if(ectx.err){
             if(record){
                 RedisGears_FreeRecord(record);
             }
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
         }
     }
 end:
@@ -476,11 +495,11 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
         r = record;
         goto end;
     }
-    char* err = NULL;
-    char* buff = step->extractKey.extractor(rctx, record, step->extractKey.extractorArg.stepArg, &buffLen, &err);
-    if(err){
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+    char* buff = step->extractKey.extractor(&ectx, record, step->extractKey.extractorArg.stepArg, &buffLen);
+    if(ectx.err){
         RedisGears_FreeRecord(record);
-        r = RG_ErrorRecordCreate(err, strlen(err) + 1);
+        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
         goto end;
     }
     r = RedisGears_KeyRecordCreate();
@@ -561,12 +580,12 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     assert(RedisGears_RecordGetType(record) == KEY_RECORD);
     size_t keyLen;
     char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
-    char* err = NULL;
-    Record* r = step->reduce.reducer(rctx, key, keyLen, RedisGears_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg, &err);
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+    Record* r = step->reduce.reducer(&ectx, key, keyLen, RedisGears_KeyRecordGetVal(record), step->reduce.reducerArg.stepArg);
     RedisGears_KeyRecordSetVal(record, r);
-    if(err){
+    if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
     }
 end:
 	ADD_DURATION(step->executionDuration);
@@ -747,11 +766,11 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     if(RedisGears_RecordGetType(record) == ERROR_RECORD){
         goto end;
     }
-    char* err = NULL;
-    step->forEach.forEach(rctx, record, step->forEach.stepArg.stepArg, &err);
-    if(err){
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+    step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
+    if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
     }
 end:
 	ADD_DURATION(step->executionDuration);
@@ -809,13 +828,13 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
             goto end;
         }
-        char* err = NULL;
-        step->accumulate.accumulator = step->accumulate.accumulate(rctx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg, &err);
-        if(err){
+        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+        step->accumulate.accumulator = step->accumulate.accumulate(&ectx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg);
+        if(ectx.err){
             if(step->accumulate.accumulator){
                 RedisGears_FreeRecord(step->accumulate.accumulator);
             }
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
         }
     	ADD_DURATION(step->executionDuration);
@@ -855,14 +874,14 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 			keyRecord = Gears_dictGetVal(entry);
 			accumulator = RedisGears_KeyRecordGetVal(keyRecord);
 		}
-		char* err = NULL;
-		accumulator = step->accumulateByKey.accumulate(rctx, key, accumulator, val, step->accumulate.stepArg.stepArg, &err);
-		if(err){
+		ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+		accumulator = step->accumulateByKey.accumulate(&ectx, key, accumulator, val, step->accumulate.stepArg.stepArg);
+		if(ectx.err){
 		    if(accumulator){
 		        RedisGears_FreeRecord(accumulator);
 		    }
 			RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(err, strlen(err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
 		}
 		if(!keyRecord){
@@ -903,7 +922,8 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     case READER:
     	if(array_len(ep->errors) == 0){
             GETTIME(&_ts);
-    	    r = step->reader.r->next(rctx, step->reader.r->ctx);
+            ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+    	    r = step->reader.r->next(&ectx, step->reader.r->ctx);
             GETTIME(&_te);
     	    step->executionDuration += DURATION;
     	}
@@ -1274,19 +1294,9 @@ static void FlatExecutionPlan_AddBasicStep(FlatExecutionPlan* fep, const char* c
     fep->steps = array_append(fep->steps, s);
 }
 
-static FlatExecutionPlan* FlatExecutionPlan_Duplicate(FlatExecutionPlan* fep){
-    FlatExecutionPlan* ret = FlatExecutionPlan_New();
-    bool res = FlatExecutionPlan_SetReader(ret, fep->reader->reader);
-    assert(res);
-    for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
-        FlatExecutionStep* s = fep->steps + i;
-        void* arg = NULL;
-        if(s->bStep.arg.type){
-            arg = s->bStep.arg.type->dup(s->bStep.arg.stepArg);
-        }
-        FlatExecutionPlan_AddBasicStep(ret, s->bStep.stepName, arg, s->type);
-    }
-    return ret;
+static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep){
+    __atomic_add_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST);
+    return fep;
 }
 
 static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1464,7 +1474,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
         Gears_BufferFree(buff);
     }
-    rs.r->registerTrigger(FlatExecutionPlan_Duplicate(fep), key);
+    rs.r->registerTrigger(FlatExecutionPlan_ShallowCopy(fep), key);
     return 1;
 }
 
@@ -1558,7 +1568,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
 
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
-    fep = FlatExecutionPlan_Duplicate(fep);
+    fep = FlatExecutionPlan_ShallowCopy(fep);
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ret->executionDuration = 0;
     ExecutionStep* last = NULL;
@@ -1740,8 +1750,11 @@ static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
 FlatExecutionPlan* FlatExecutionPlan_New(){
 #define STEPS_INITIAL_CAP 10
     FlatExecutionPlan* res = RG_ALLOC(sizeof(*res));
+    res->refCount = 1;
     res->reader = NULL;
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
+    res->PD = NULL;
+    res->PDType = NULL;
     return res;
 }
 
@@ -1752,6 +1765,14 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
 }
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
+    if(__atomic_sub_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST) > 0){
+        return;
+    }
+    if(fep->PD){
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+        type->free(fep->PD);
+        RG_FREE(fep->PDType);
+    }
     if(fep->reader){
         RG_FREE(fep->reader->reader);
         RG_FREE(fep->reader);
@@ -1772,6 +1793,11 @@ bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
     }
     fep->reader = FlatExecutionPlan_NewReader(reader);
     return true;
+}
+
+void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
+    fep->PD = PD;
+    fep->PDType = RG_STRDUP(type);
 }
 
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){

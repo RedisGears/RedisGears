@@ -6,9 +6,9 @@
 #include "redisgears_memory.h"
 
 
-Record* GetValueMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err){
+Record* GetValueMapper(ExecutionCtx* rctx, Record *record, void* arg){
     if(RedisGears_RecordGetType(record) != KEY_RECORD_TYPE){
-        *err = "can not extract value for a none key value record.";
+        RedisGears_SetError(rctx, RG_STRDUP("can not extract value for a none key value record."));
         RedisGears_FreeRecord(record);
         return NULL;
     }

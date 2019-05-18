@@ -12,7 +12,7 @@
 #include "redismodule.h"
 
 int Example_CommandCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-bool Example_Filter(RedisModuleCtx* rctx, Record *r, void* arg, char** err);
+bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg);
 
 
 #endif /* SRC_EXAMPLE_H_ */

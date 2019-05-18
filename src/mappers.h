@@ -10,7 +10,7 @@
 
 #include "redisgears.h"
 
-Record* GetValueMapper(RedisModuleCtx* rctx, Record *record, void* arg, char** err);
+Record* GetValueMapper(ExecutionCtx* rctx, Record *record, void* arg);
 
 
 #endif /* SRC_MAPPERS_H_ */

@@ -58,6 +58,10 @@ static int RG_RegisterForEach(char* name, RedisGears_ForEachCallback writer, Arg
     return ForEachsMgmt_Add(name, writer, type);
 }
 
+static int RG_RegisterFlatExecutionPrivateDataType(ArgType* type){
+    return FepPrivateDatasMgmt_Add(type->type, NULL, type);
+}
+
 static int RG_RegisterMap(char* name, RedisGears_MapCallback map, ArgType* type){
     return MapsMgmt_Add(name, map, type);
 }
@@ -89,6 +93,10 @@ static FlatExecutionPlan* RG_CreateCtx(char* readerName){
         return NULL;
     }
     return fep;
+}
+
+static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
+    FlatExecutionPlan_SetPrivateData(fep, type, PD);
 }
 
 static int RG_Map(FlatExecutionPlan* fep, char* name, void* arg){
@@ -278,6 +286,21 @@ static long long RG_GetReadDuration(ExecutionPlan* ep){
 	return FlatExecutionPlan_GetReadDuration(ep);
 }
 
+static void RG_SetError(ExecutionCtx* ectx, char* err){
+    ectx->err = err;
+}
+
+static RedisModuleCtx* RG_GetRedisModuleCtx(ExecutionCtx* ectx){
+    return ectx->rctx;
+}
+
+static void* RG_GetFlatExecutionPrivateData(ExecutionCtx* ectx){
+    if(ectx->ep){
+        return ectx->ep->fep->PD;
+    }
+    return NULL;
+}
+
 
 static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     if(!RedisModule_ExportSharedAPI){
@@ -302,6 +325,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterGroupByExtractor, ctx);
     REGISTER_API(RegisterReducer, ctx);
     REGISTER_API(CreateCtx, ctx);
+    REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
+    REGISTER_API(SetFlatExecutionPrivateData, ctx);
     REGISTER_API(Map, ctx);
     REGISTER_API(Accumulate, ctx);
     REGISTER_API(AccumulateBy, ctx);
@@ -363,6 +388,10 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(GetTotalDuration, ctx);
     REGISTER_API(GetReadDuration, ctx);
+
+    REGISTER_API(SetError, ctx);
+    REGISTER_API(GetRedisModuleCtx, ctx);
+    REGISTER_API(GetFlatExecutionPrivateData, ctx);
 
     return REDISMODULE_OK;
 }
