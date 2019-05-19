@@ -22,6 +22,7 @@ xcode-select --install
 
 ### Compile
 ```bash
+sudo mkdir -p /opt
 make fetch # this will aquire git submodules
 make all
 ```
