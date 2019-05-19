@@ -52,7 +52,7 @@ $ make test
 
 ## Client libraries
 
-todo!!!
+Currently there is no special RedisGears client, that said, any client that allows sending custom commands to redis should be enough.
 
 ## Cluster Support
 RedisGears support all of the operations on oss and enterprise cluster. Notice that the module needs to be loaded on all the cluster nodes. In addition, on oss cluster, after setting up the cluster you need to run `rs.refreshcluster` on each node.
