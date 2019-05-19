@@ -39,7 +39,7 @@ Tells the python interpreter where to look for the default python libraries
 
 ### Default
 
-**[compiled dir]**/src/cpython/
+/opt/redislabs/lib/modules/python3/
 
 ### Configurable at Runitime
 

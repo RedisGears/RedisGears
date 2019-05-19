@@ -11,7 +11,16 @@ docker run redislabs/redisgears:latest
 
 ## Build
 ### Prerequisites
-Install [redis 5.0](https://redis.io/) on you machine.
+
+* Install [redis 5.0](https://redis.io/) on you machine.
+* On Mac OSX (High Sierra), install Xcode command line tools:
+
+```bash
+xcode-select --install
+```
+
+* Run: `make setup`
+
 
 Install:
 
@@ -20,12 +29,9 @@ Install:
 
 ### Compile
 ```bash
-git submodule update --init --recursive
 sudo mkdir -p /opt/redislabs/lib
 sudo chmod 755 /opt/redislabs/lib
-python system-setup.py
-make get_deps
-make deps
+make fetch # this will aquire git submodules
 make all
 ```
 Notice that part of the compilation is to create the gears virtual environment under `/opt/redislabs/lib/modules/python3/`
@@ -41,8 +47,7 @@ If you run RedisGears on another machine, some extra setup is needed. For Gears 
 Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
 ```
 $ pip install git+https://github.com/RedisLabsModules/RLTest.git@master # optional, use virtualenv
-$ cd pytest
-$ ./run_tests.sh
+$ make test
 ```
 
 ## Client libraries
