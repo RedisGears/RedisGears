@@ -41,7 +41,7 @@ If you running gears on the same machine on which it was compile then its enough
 
 `--loamodule <path to redisgears.so`
 
-If you run RedisGears on another machine, some extra setup is needed. For Gears to run properly its need to have the virtual environment which was created when it was compiled. All the required files are located in `/opt/redislabs/lib/modules/python3` make sure to put this directory on the same machine where Redis running and at the same path (i.e `/opt/redislabs/lib/modules/python3`).
+If you run RedisGears on another machine, some extra setup is needed. For RedisGears to run properly, it needs to have the virtual environment which was created when it was compiled. All the required files are located in `/opt/redislabs/lib/modules/python3` make sure to copy this directory to the machine where Redis is running and to the same path (i.e `/opt/redislabs/lib/modules/python3`).
 
 ## Tests
 Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
@@ -52,7 +52,7 @@ $ make test
 
 ## Client libraries
 
-Currently there is no special RedisGears client, that said, any client that allows sending custom commands to redis should be enough.
+Currently there is no special RedisGears client, that said, any client that allows sending custom commands to Redis should be enough.
 
 ## Cluster Support
-RedisGears support all of the operations on oss and enterprise cluster. Notice that the module needs to be loaded on all the cluster nodes. In addition, on oss cluster, after setting up the cluster you need to run `rs.refreshcluster` on each node.
+All of RedisGears' operations are fully supported on OSS and Enterprise clusters. Note that the module needs to be loaded on all the cluster nodes. In addition, on OSS cluster, after setting up the cluster you need to run `RG.REFRESHCLUSTER` on each node.
