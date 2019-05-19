@@ -31,6 +31,8 @@ pages:
   - 'Streaming API': 'gears_streaming.md'
   - 'Examples': 'examples.md'
   - 'Gears Configuration': 'configuration.md'
+  - Design Documents:
+    - 'Sub-Interpreters': 'subinterpreters.md'
 
 markdown_extensions:
   - admonition

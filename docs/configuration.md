@@ -24,7 +24,12 @@ From command line:
 $ redis-server --loadmodule ./redisgears.so OPT1 OPT2
 ```
 
-*Notice that currently its not possible to change configuration options at run time, but its planned to be supported soon.*
+## Passing configuration options at runtime
+
+It is possible to modify certain configuration parameters at runtime using `RG.CONFIGSET` command. The command receives the configuration parameter's name and its value. For example, the following will enable the excution profiler:
+```
+$ RG.CONFIGSET ProfileExecutions 1
+```
 
 ## RedisGears configuration options
 
@@ -34,7 +39,11 @@ Tells the python interpreter where to look for the default python libraries
 
 ### Default
 
-**[compiled dir]**/src/cpython/
+/opt/redislabs/lib/modules/python3/
+
+### Configurable at Runitime
+
+** No
 
 ### Example
 
@@ -51,6 +60,10 @@ The maximum amount of execution to save. When reach this number, old execution w
 ### Default
 
 1000
+
+### Configurable at Runitime
+
+** Yes
 
 ### Example
 
@@ -74,6 +87,10 @@ Possible values:
 
 0 (disabled)
 
+### Configurable at Runitime
+
+** Yes
+
 ## PythonAttemptTraceback
 
 Controls whether traceback is attempted onw Python errors.
@@ -85,3 +102,7 @@ Possible values:
 ## Default
 
 1 (enableds)
+
+### Configurable at Runitime
+
+** Yes
