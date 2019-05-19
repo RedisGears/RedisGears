@@ -2,7 +2,6 @@
 Dynamic execution framework for your Redis data:
 
 ## Docker
-
 To quickly tryout RedisGears, launch an instance using docker:
 
 ```sh
@@ -10,9 +9,9 @@ docker run redislabs/redisgears:latest
 ```
 
 ## Build
-### Prerequisites
 
-* Install [redis 5.0](https://redis.io/) on you machine.
+### Prerequisites
+* Install [Redis 5.0](https://redis.io/) on you machine.
 * On Mac OSX (High Sierra), install Xcode command line tools:
 
 ```bash
@@ -21,16 +20,8 @@ xcode-select --install
 
 * Run: `make setup`
 
-
-Install:
-
-* Linux (Ubuntu 18.4): You'll need to `sudo apt install build-essential autotools-dev autoconf libtool`
-* OSX (High Sierra): You'll need XCode and also `brew install autoconf libtool`
-
 ### Compile
 ```bash
-sudo mkdir -p /opt/redislabs/lib
-sudo chmod 755 /opt/redislabs/lib
 make fetch # this will aquire git submodules
 make all
 ```
@@ -46,12 +37,10 @@ If you run RedisGears on another machine, some extra setup is needed. For RedisG
 ## Tests
 Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
 ```
-$ pip install git+https://github.com/RedisLabsModules/RLTest.git@master # optional, use virtualenv
 $ make test
 ```
 
 ## Client libraries
-
 Currently there is no special RedisGears client, that said, any client that allows sending custom commands to Redis should be enough.
 
 ## Cluster Support
