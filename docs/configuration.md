@@ -26,9 +26,9 @@ $ redis-server --loadmodule ./redisgears.so OPT1 OPT2
 
 ## Passing configuration options at runtime
 
-It is possible to modify certain configuration parameters at runtime using `RG.CONFIGSET` command. The command received the configuration parameter name and its value, for example:
+It is possible to modify certain configuration parameters at runtime using `RG.CONFIGSET` command. The command receives the configuration parameter's name and its value. For example, the following will enable the excution profiler:
 ```
-$ RG.CONFIGSET ProfileExecutions 1 # will enable execution profiler
+$ RG.CONFIGSET ProfileExecutions 1
 ```
 
 ## RedisGears configuration options
