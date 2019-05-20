@@ -83,6 +83,20 @@ class testStepsWrongArgs:
     def __init__(self):
         self.env = Env()
 
+    def testRegisterWithWrongRegexType(self):
+        self.env.expect('rg.pyexecute', 'GB().register(1)').error().contains('register argument must be a string')
+
+    def testGearsBuilderWithWrongBuilderArgType(self):
+        self.env.expect('rg.pyexecute', 'GB(1).run()').error().contains('reader argument must be a string')
+
+    def testExecuteWithWrongCommandArgType(self):
+        self.env.expect('rg.pyexecute', 'execute(1)').error().contains('the given command must be a string')
+
+    def testTimeEventWithWrongCallbackArg(self):
+        self.env.expect('rg.pyexecute', 'registerTE(2, 2)').error().contains('callback must be a function')
+
+    def testTimeEventWithWrongTimeArg(self):
+        self.env.expect('rg.pyexecute', 'registerTE("2", lambda x: str(x))').error().contains('time argument must be a long')
 
     def testMapWrongArgs(self):
         self.env.expect('rg.pyexecute', 'GB().map(1, 2).run()').error().contains('wrong number of args')

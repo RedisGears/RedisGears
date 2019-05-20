@@ -465,7 +465,12 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
     char* defaultRegexStr = "*";
     const char* regexStr = defaultRegexStr;
     if(regex){
-        regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
+        if(PyUnicode_Check(regex)){
+            regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
+        }else{
+            PyErr_SetString(GearsError, "register argument must be a string");
+            return NULL;
+        }
     }
     RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
                                            RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
@@ -543,6 +548,10 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     const char* readerStr = "KeysReader";
     if(PyTuple_Size(args) > 0){
         PyObject* reader = PyTuple_GetItem(args, 0);
+        if(!PyUnicode_Check(reader)){
+            PyErr_SetString(GearsError, "reader argument must be a string");
+            return NULL;
+        }
         readerStr = PyUnicode_AsUTF8AndSize(reader, NULL);
     }
     PyFlatExecution* pyfep = PyObject_New(PyFlatExecution, &PyFlatExecutionType);
@@ -585,7 +594,12 @@ static PyObject* replyToPyList(RedisModuleCallReply *reply){
             RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
         size_t len;
         const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
-        return PyUnicode_FromStringAndSize(replyStr, len);
+        PyObject* ret = PyUnicode_FromStringAndSize(replyStr, len);
+        if(!ret){
+            PyErr_Clear();
+            ret = PyByteArray_FromStringAndSize(replyStr, len);
+        }
+        return ret;
     }
 
     if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER){
@@ -608,6 +622,10 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     RedisModule_AutoMemory(rctx);
 
     PyObject* command = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(command)){
+        PyErr_SetString(GearsError, "the given command must be a string");
+        return NULL;
+    }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
 
     RedisModuleString** argements = array_new(RedisModuleString*, 10);
@@ -693,7 +711,7 @@ static PyObject* tensorGetDataAsBlob(PyObject *cls, PyObject *args){
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
     size_t size = RedisAI_TensorByteSize(pyt->t);
     char* data = RedisAI_TensorData(pyt->t);
-    return PyUnicode_FromStringAndSize(data, size);
+    return PyByteArray_FromStringAndSize(data, size);
 }
 
 static PyObject* tensorToFlatList(PyObject *cls, PyObject *args){
@@ -760,17 +778,46 @@ static void getAllValues(PyObject *list, double** values){
 static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyObject* typeName = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(typeName)){
+        PyErr_SetString(GearsError, "type argument must be a string");
+        return NULL;
+    }
+    PyObject* pyBlob = PyTuple_GetItem(args, 2);
+    if(!PyByteArray_Check(pyBlob)){
+        PyErr_SetString(GearsError, "blob argument must be a byte array");
+        return NULL;
+    }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
     PyObject* pyDims = PyTuple_GetItem(args, 1);
-    size_t ndims = PyList_Size(pyDims);
-    long long* dims = array_new(long long, ndims);
-    for(long long i = 0; i < ndims; i++) {
-        dims = array_append(dims, PyLong_AsLong(PyList_GetItem(pyDims, i)));
+    if(!PyIter_Check(pyDims)){
+        PyErr_SetString(GearsError, "dims argument must be iterable");
+        return NULL;
     }
-    RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, ndims);
-    PyObject* pyBlob = PyTuple_GetItem(args, 2);
-    size_t size;
-    const char* blob = PyUnicode_AsUTF8AndSize(pyBlob, &size);
+    long long* dims = array_new(long long, 10);
+    PyObject* dimsIter = PyObject_GetIter(pyDims);
+    PyObject* currDim = NULL;
+    while((currDim = PyIter_Next(dimsIter)) != NULL){
+        if(!PyLong_Check(currDim)){
+            PyErr_SetString(GearsError, "dims arguments must be long");
+            Py_DECREF(currDim);
+            Py_DECREF(dimsIter);
+            array_free(dims);
+            return NULL;
+        }
+        if(PyErr_Occurred()){
+            Py_DECREF(currDim);
+            Py_DECREF(dimsIter);
+            array_free(dims);
+            return NULL;
+        }
+        dims = array_append(dims, PyLong_AsLong(currDim));
+        Py_DECREF(currDim);
+    }
+    Py_DECREF(dimsIter);
+
+    RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
+    size_t size = PyByteArray_Size(pyBlob);
+    const char* blob = PyByteArray_AsString(pyBlob);
     RedisAI_TensorSetData(t, blob, size);
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
@@ -780,26 +827,66 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
 
 static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    RAI_Tensor* t = NULL;
     PyObject* typeName = PyTuple_GetItem(args, 0);
-    const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
-    PyObject* pyDims = PyTuple_GetItem(args, 1);
-    size_t ndims = PyList_Size(pyDims);
-    long long* dims = array_new(long long, ndims);
-    for(long long i = 0; i < ndims; i++) {
-        dims = array_append(dims, PyLong_AsLong(PyList_GetItem(pyDims, i)));
+    if(!PyUnicode_Check(typeName)){
+        PyErr_SetString(GearsError, "type argument must be a string");
+        return NULL;
     }
+    const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
+    // todo: combine to a single function!!
+    PyObject* pyDims = PyTuple_GetItem(args, 1);
+    if(!PyIter_Check(pyDims)){
+        PyErr_SetString(GearsError, "dims argument must be iterable");
+        return NULL;
+    }
+    long long* dims = array_new(long long, 10);
+    PyObject* dimsIter = PyObject_GetIter(pyDims);
+    PyObject* currDim = NULL;
+    while((currDim = PyIter_Next(dimsIter)) != NULL){
+        if(!PyLong_Check(currDim)){
+            PyErr_SetString(GearsError, "dims arguments must be long");
+            Py_DECREF(currDim);
+            Py_DECREF(dimsIter);
+            goto error;
+        }
+        if(PyErr_Occurred()){
+            Py_DECREF(currDim);
+            Py_DECREF(dimsIter);
+            goto error;
+        }
+        dims = array_append(dims, PyLong_AsLong(currDim));
+        Py_DECREF(currDim);
+    }
+    Py_DECREF(dimsIter);
 
-    RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, ndims);
+    t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
 
     PyObject* values = PyTuple_GetItem(args, 2);
-    for(long long i = 0 ; i < PyList_Size(values) ; ++i){
-        PyObject* val = PyList_GetItem(values, i);
-        RedisAI_TensorSetValueFromDouble(t, i, PyFloat_AsDouble(val));
+    PyObject* valuesIter = PyObject_GetIter(pyDims);
+    PyObject* currValue = NULL;
+    size_t index = 0;
+    while((currValue = PyIter_Next(valuesIter)) != NULL){
+        if(!PyFloat_Check(currValue)){
+            PyErr_SetString(GearsError, "values arguments must be double");
+            Py_DECREF(currValue);
+            Py_DECREF(valuesIter);
+            goto error;
+        }
+        RedisAI_TensorSetValueFromDouble(t, index++, PyFloat_AsDouble(currValue));
+        Py_DECREF(currValue);
     }
+    Py_DECREF(valuesIter);
+
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
     array_free(dims);
     return (PyObject*)pyt;
+
+error:
+    array_free(dims);
+    if(t) RedisAI_TensorFree(t);
+    return NULL;
 }
 
 typedef struct PyGraphRunner{
@@ -845,7 +932,10 @@ static PyObject* createModelRunner(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyObject* keyName = PyTuple_GetItem(args, 0);
     const char* keyNameStr = PyUnicode_AsUTF8AndSize(keyName, NULL);
-
+    if(!PyUnicode_Check(keyNameStr)){
+        PyErr_SetString(GearsError, "key argument must be a string");
+        return NULL;
+    }
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
     // avoiding deadlock
     PyThreadState *_save = PyEval_SaveThread();
@@ -874,6 +964,10 @@ static PyObject* modelRunnerAddInput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     PyObject* inputName = PyTuple_GetItem(args, 1);
+    if(!PyUnicode_Check(inputName)){
+        PyErr_SetString(GearsError, "input name argument must be a string");
+        return NULL;
+    }
     const char* inputNameStr = PyUnicode_AsUTF8AndSize(inputName, NULL);
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 2);
     RedisAI_ModelRunCtxAddInput(pyg->g, inputNameStr, pyt->t);
@@ -884,6 +978,10 @@ static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     PyObject* outputName = PyTuple_GetItem(args, 1);
+    if(!PyUnicode_Check(outputName)){
+        PyErr_SetString(GearsError, "output name argument must be a string");
+        return NULL;
+    }
     const char* outputNameStr = PyUnicode_AsUTF8AndSize(outputName, NULL);
     RedisAI_ModelRunCtxAddOutput(pyg->g, outputNameStr);
     return PyLong_FromLong(1);
@@ -951,8 +1049,17 @@ static PyTypeObject PyTorchScriptRunnerType = {
 
 static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
-    assert(globals.redisAILoaded);
     PyObject* keyName = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(keyName)){
+        PyErr_SetString(GearsError, "key name argument must be a string");
+        return NULL;
+    }
+    PyObject* fnName = PyTuple_GetItem(args, 1);
+    if(!PyUnicode_Check(fnName)){
+        PyErr_SetString(GearsError, "function name argument must be a string");
+        return NULL;
+    }
+
     const char* keyNameStr = PyUnicode_AsUTF8AndSize(keyName, NULL);
 
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
@@ -967,7 +1074,6 @@ static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
     // todo: check for type, add api for this
     RAI_Script *s = RedisModule_ModuleTypeGetValue(key);
 
-    PyObject* fnName = PyTuple_GetItem(args, 1);
     const char* fnNameStr = PyUnicode_AsUTF8AndSize(fnName, NULL);
 
     RAI_ScriptRunCtx* runCtx = RedisAI_ScriptRunCtxCreate(s, fnNameStr);
@@ -986,8 +1092,7 @@ static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
 static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
-    PyObject* inputName = PyTuple_GetItem(args, 1);
-    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 2);
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
     RedisAI_ScriptRunCtxAddInput(pys->s, pyt->t);
     return PyLong_FromLong(1);
 }
@@ -995,7 +1100,6 @@ static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
 static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
-    PyObject* outputName = PyTuple_GetItem(args, 1);
     RedisAI_ScriptRunCtxAddOutput(pys->s);
     return PyLong_FromLong(1);
 }
@@ -1113,10 +1217,21 @@ static int TimeEvent_RegisterType(RedisModuleCtx* ctx){
 
 static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     if(PyTuple_Size(args) < 2 || PyTuple_Size(args) > 3){
-        return Py_False;
+        PyErr_SetString(GearsError, "not enough arguments for time event");
+        return NULL;
     }
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyObject* callback = PyTuple_GetItem(args, 1);
+    if(!PyFunction_Check(callback)){
+        PyErr_SetString(GearsError, "callback must be a function");
+        return NULL;
+    }
     PyObject* timeInSec = PyTuple_GetItem(args, 0);
+    if(!PyLong_Check(timeInSec)) {
+        PyErr_SetString(GearsError, "time argument must be a long");
+        return NULL;
+    }
+
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_AutoMemory(ctx);
     RedisModuleString* keyNameStr = NULL;
@@ -1128,11 +1243,8 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
             keyNameStr = RedisModule_CreateString(ctx, keyNameCStr, len);
         }
     }
-    if(!PyLong_Check(timeInSec)) {
-        return Py_False;
-    }
     long period = PyLong_AsLong(timeInSec);
-    PyObject* callback = PyTuple_GetItem(args, 1);
+
     TimerData* td = RG_ALLOC(sizeof(*td));
     td->status = TE_STATUS_RUNNING;
     td->period = period;
@@ -1594,7 +1706,12 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     switch(RedisGears_RecordGetType(record)){
     case STRING_RECORD:
         str = RedisGears_StringRecordGet(record, &len);
+        // try to first decode it as string, if fails create a byte array.
         obj = PyUnicode_FromStringAndSize(str, len);
+        if(!obj){
+            PyErr_Clear();
+            obj = PyByteArray_FromStringAndSize(str, len);
+        }
         break;
     case LONG_RECORD:
         longNum = RedisGears_LongRecordGet(record);
