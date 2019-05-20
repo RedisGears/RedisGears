@@ -92,6 +92,16 @@ static PythonThreadCtx* GetPythonThreadCtx(){
     return ptctx;
 }
 
+PyGILState_STATE PyGILState_Ensure(void){
+    RedisGearsPy_RestoreThread(NULL);
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    return ptctx->lockCounter == 1 ? PyGILState_UNLOCKED : PyGILState_LOCKED;
+}
+
+void PyGILState_Release(PyGILState_STATE oldstate){
+    RedisGearsPy_SaveThread();
+}
+
 void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     if(ptctx->lockCounter == 0){
@@ -789,13 +799,15 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
     PyObject* pyDims = PyTuple_GetItem(args, 1);
-    if(!PyIter_Check(pyDims)){
-        PyErr_SetString(GearsError, "dims argument must be iterable");
-        return NULL;
-    }
     long long* dims = array_new(long long, 10);
     PyObject* dimsIter = PyObject_GetIter(pyDims);
     PyObject* currDim = NULL;
+    if(dimsIter == NULL){
+        PyErr_Clear();
+        PyErr_SetString(GearsError, "dims argument must be iterable");
+        return NULL;
+    }
+
     while((currDim = PyIter_Next(dimsIter)) != NULL){
         if(!PyLong_Check(currDim)){
             PyErr_SetString(GearsError, "dims arguments must be long");
@@ -931,11 +943,11 @@ static PyTypeObject PyGraphRunnerType = {
 static PyObject* createModelRunner(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyObject* keyName = PyTuple_GetItem(args, 0);
-    const char* keyNameStr = PyUnicode_AsUTF8AndSize(keyName, NULL);
-    if(!PyUnicode_Check(keyNameStr)){
+    if(!PyUnicode_Check(keyName)){
         PyErr_SetString(GearsError, "key argument must be a string");
         return NULL;
     }
+    const char* keyNameStr = PyUnicode_AsUTF8AndSize(keyName, NULL);
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
     // avoiding deadlock
     PyThreadState *_save = PyEval_SaveThread();
@@ -2063,6 +2075,10 @@ static PyObject* PyInit_RedisGears(void) {
     return PyModule_Create(&EmbRedisGears);
 }
 
+static PyObject* PyInit_RedisAI(void) {
+    return PyModule_Create(&EmbRedisAI);
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
     int err = pthread_key_create(&pythonThreadCtxKey, NULL);
     if(err){
@@ -2084,7 +2100,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     EmbRedisAI.m_methods = EmbRedisAIMethods;
     EmbRedisAI.m_size = sizeof(EmbRedisAIMethods) / sizeof(*EmbRedisAIMethods);
-    PyImport_AppendInittab("redisAI", &PyInit_RedisGears);
+    PyImport_AppendInittab("redisAI", &PyInit_RedisAI);
 
     Py_Initialize();
     RedisGears_SetupPyEnv(ctx);
