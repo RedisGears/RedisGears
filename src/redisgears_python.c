@@ -1333,11 +1333,8 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     PyObject *v;
 
     PyObject* globalsDict = PyDict_Copy(pyGlobals);
-    PyObject* localsDict = PyDict_Copy(pyGlobals);
-    v = PyRun_StringFlags(script, Py_file_input, globalsDict, localsDict, NULL);
-
+    v = PyRun_StringFlags(script, Py_file_input, globalsDict, globalsDict, NULL);
     Py_DECREF(globalsDict);
-    Py_DECREF(localsDict);
 
     if(!v){
         PyObject *ptype, *pvalue, *ptraceback;
