@@ -151,6 +151,9 @@ $(TARGET): $(OBJECTS)
 endif
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
+ifneq ($(DEBUG),1)
+	$(SHOW)strip $@
+endif
 	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
 
 static: $(TARGET:.so=.a)

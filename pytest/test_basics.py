@@ -296,10 +296,8 @@ def func(x):
     var = int(redisgears.executeCommand('get',x['key'])) + 1
     redisgears.executeCommand('set',x['key'], var)
 def OnTime():
-    global func
     GearsBuilder().foreach(func).collect().run()
 def start():
-    global OnTime
     redisgears.registerTimeEvent(2, OnTime)
 start()
     '''
@@ -411,7 +409,6 @@ def OnTime():
     x += 1
     execute('set', 'x', str(x))
 def start():
-    global OnTime
     redisgears.registerTimeEvent(2, OnTime)
 start()
     '''
@@ -423,7 +420,6 @@ def OnTime():
     x += 1
     execute('set', 'y', str(x))
 def start():
-    global OnTime
     redisgears.registerTimeEvent(2, OnTime)
 start()
     '''

@@ -12,6 +12,8 @@
 #include "redismodule.h"
 #include "redisgears.h"
 
+PyGILState_STATE PyGILState_Ensure(void);
+void PyGILState_Release(PyGILState_STATE oldstate);
 
 typedef struct PythonSubInterpreter PythonSubInterpreter;
 

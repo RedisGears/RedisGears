@@ -105,6 +105,7 @@ pyenv: /opt/redislabs $(CPYTHON_PREFIX) $(PYENV_DIR)
 
 $(CPYTHON_PREFIX): /opt/redislabs
 	$(SHOW)make -C $(BUILD_DIR) install 2>&1 >$(BUILD_DIR)/python-install.log
+	$(SHOW)objcopy --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(BINDIR)/libpython3.7m.a
 
 $(PYENV_DIR): /opt/redislabs $(CPYTHON_PREFIX)
 	$(SHOW)cp Pipfile* $(CPYTHON_PREFIX)
