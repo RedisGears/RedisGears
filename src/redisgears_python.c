@@ -92,6 +92,20 @@ static PythonThreadCtx* GetPythonThreadCtx(){
     return ptctx;
 }
 
+/**
+ * This functions override the PyGILState_Ensure and PyGILState_Release of the interpreter.
+ * Those function are not working well with Sub-interpreters yet we do not want to deny
+ * the user from using them. We override them with our own implementation that operate as follow:
+ * 1. If the GIL is already acquired by the thread we continue the run (with the same Sub-interpreter)
+ * 2. If the GIL is not yet acquired we acquired it and run with the main interpreter.
+ *
+ * Notice that this is not a perfect solution. If an extension written in C open other threads,
+ * Then those threads, when acquiring the GIL, will be run on the main interpreter while the original
+ * thread runs on the Sub-interpreter.
+ *
+ * We believe that this solution will be good enough for most use-cases, but we are still operate under
+ * the best effort approach.
+ */
 PyGILState_STATE PyGILState_Ensure(void){
     RedisGearsPy_RestoreThread(NULL);
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
