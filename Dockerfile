@@ -1,4 +1,6 @@
-FROM redis:latest AS builder
+#----------------------------------------------------------------------------------------------
+# FROM redislabs/redis-arm:arm64-bionic AS builder
+FROM raffapen/redis:arm64-bionic AS builder
 
 RUN set -ex; \
     apt-get update; \
@@ -11,8 +13,10 @@ RUN python system-setup.py
 RUN make get_deps
 RUN make all SHOW=1 PYTHON_ENCODING=ucs4
 
-# Set up the runner
-FROM redis:latest
+#----------------------------------------------------------------------------------------------
+# FROM redislabs/redis-arm:arm64-bionic
+FROM raffapen/redis-arm:arm64-bionic
+
 ENV REDIS_MODULES /opt/redislabs/lib/modules
 
 RUN mkdir -p $REDIS_MODULES/
