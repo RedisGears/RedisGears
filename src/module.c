@@ -436,7 +436,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     	return REDISMODULE_ERR;
     }
 
-    if(RedisAI_Initialize() != REDISMODULE_OK){
+    if(RedisAI_Initialize(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not initialize RediAI api, running without AI support.");
     }else{
         RedisModule_Log(ctx, "notice", "RedisAI api loaded successfully.");
