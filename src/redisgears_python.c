@@ -702,10 +702,13 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
 
 static bool verifyOrLoadRedisAI(){
     if(!globals.redisAILoaded){
-        if(RedisAI_Initialize() != REDISMODULE_OK){
+        RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+        if(RedisAI_Initialize(ctx) != REDISMODULE_OK){
             PyErr_SetString(GearsError, "RedisAI is not loaded, it is not possible to use AI interface.");
+            RedisModule_FreeThreadSafeContext(ctx);
             return false;
         }
+        RedisModule_FreeThreadSafeContext(ctx);
         globals.redisAILoaded = true;
     }
     return true;
