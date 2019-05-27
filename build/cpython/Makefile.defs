@@ -3,6 +3,6 @@
 # $(error CPYTHON_BINDIR not defined. Aborting.)
 # endif
 
-LIBPYTHON=$(CPYTHON_BINDIR)/libpython3.7m.a
+LIBPYTHON=$(CPYTHON_BINDIR)/libpython3.7m-fixed.a
 
 export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python3
