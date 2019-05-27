@@ -170,7 +170,7 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     return REDISMODULE_OK;
 }
 
-static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
+static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
@@ -186,9 +186,10 @@ static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
         .fep = fep,
     };
     Gears_listAddNodeHead(streamsRegistration, srctx);
+    return 1;
 }
 
-Reader* StreamReader(void* arg){
+static Reader* StreamReader_Create(void* arg){
     StreamReaderCtx* readerCtx = arg;
     if(!readerCtx){
         readerCtx = StreamReaderCtx_Create(NULL, NULL);
@@ -196,7 +197,6 @@ Reader* StreamReader(void* arg){
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = readerCtx,
-        .registerTrigger = StreamReader_RegisrterTrigger,
         .next = StreamReader_Next,
         .free = StreamReader_Free,
         .serialize = StreamReader_CtxSerialize,
@@ -204,3 +204,8 @@ Reader* StreamReader(void* arg){
     };
     return r;
 }
+
+RedisGears_ReaderCallbacks StreamReader = {
+        .create = StreamReader_Create,
+        .registerTrigger = StreamReader_RegisrterTrigger,
+};

@@ -570,6 +570,7 @@ static PyTypeObject PyFlatExecutionType = {
 static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     const char* readerStr = "KeysReader";
+    const char* descStr = NULL;
     if(PyTuple_Size(args) > 0){
         PyObject* reader = PyTuple_GetItem(args, 0);
         if(!PyUnicode_Check(reader)){
@@ -578,12 +579,25 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
         }
         readerStr = PyUnicode_AsUTF8AndSize(reader, NULL);
     }
+    if(PyTuple_Size(args) > 1){
+        PyObject* desc = PyTuple_GetItem(args, 1);
+        if(desc != Py_None && !PyUnicode_Check(desc)){
+            PyErr_SetString(GearsError, "desc argument must be a string");
+            return NULL;
+        }
+        if(desc != Py_None){
+            descStr = PyUnicode_AsUTF8AndSize(desc, NULL);
+        }
+    }
     PyFlatExecution* pyfep = PyObject_New(PyFlatExecution, &PyFlatExecutionType);
     pyfep->fep = RedisGears_CreateCtx((char*)readerStr);
     if(!pyfep->fep){
         Py_DecRef((PyObject*)pyfep);
         PyErr_SetString(GearsError, "the given reader are not exists");
         return NULL;
+    }
+    if(descStr){
+        RedisGears_SetDesc(pyfep->fep, descStr);
     }
     RGM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     return (PyObject*)pyfep;
@@ -2019,7 +2033,7 @@ static void PythonReader_Deserialize(void* ctx, Gears_BufferReader* br){
     pyCtx->callback = RedisGearsPy_PyCallbackDeserialize(br);
 }
 
-static Reader* PythonReader(void* arg){
+static Reader* PythonReader_Create(void* arg){
     PyObject* callback = arg;
     if(callback){
         RedisGearsPy_RestoreThread(NULL);
@@ -2032,7 +2046,6 @@ static Reader* PythonReader(void* arg){
     Reader* ret = RG_ALLOC(sizeof(*ret));
     *ret = (Reader){
             .ctx = pyCtx,
-            .registerTrigger = NULL,
             .next = PythonReader_Next,
             .free = PythonReader_Free,
             .serialize = PythonReader_Serialize,
@@ -2040,6 +2053,10 @@ static Reader* PythonReader(void* arg){
     };
     return ret;
 }
+
+RedisGears_ReaderCallbacks PythonReader = {
+        .create = PythonReader_Create,
+};
 
 #define PYENV_DIR "/opt/redislabs/lib/modules/python3"
 #define PYENV_HOME_DIR PYENV_DIR "/.venv/bin"

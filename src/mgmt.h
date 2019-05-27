@@ -11,6 +11,7 @@
 #include <stdbool.h>
 
 #include "redisgears.h"
+#include "utils/dict.h"
 
 typedef struct ArgType{
     char* type;
@@ -29,8 +30,11 @@ bool MapsMgmt_Add(const char* name, RedisGears_MapCallback callback, ArgType* ty
 RedisGears_MapCallback MapsMgmt_Get(const char* name);
 ArgType* MapsMgmt_GetArgType(const char* name);
 
-bool ReadersMgmt_Add(const char* name, RedisGears_ReaderCallback callback, ArgType* type);
+typedef RedisGears_ReaderCallbacks* RedisGears_ReaderCallback;
+bool ReadersMgmt_Add(const char* name, RedisGears_ReaderCallback callbacks, ArgType* type);
 RedisGears_ReaderCallback ReadersMgmt_Get(const char* name);
+Gears_dictIterator* ReadersMgmt_GetIterator();
+RedisGears_ReaderCallbacks* ReadersMgmt_IteratorNext(Gears_dictIterator* iter, const char** readerName);
 ArgType* ReadersMgmt_GetArgType(const char* name);
 
 bool ForEachsMgmt_Add(const char* name, RedisGears_ForEachCallback callback, ArgType* type);

@@ -50,7 +50,7 @@ static int RG_GetLLApiVersion(){
     return REDISGEARS_LLAPI_VERSION;
 }
 
-static int RG_RegisterReader(char* name, RedisGears_ReaderCallback reader){
+static int RG_RegisterReader(char* name, RedisGears_ReaderCallbacks* reader){
     return ReadersMgmt_Add(name, reader, NULL);
 }
 
@@ -93,6 +93,11 @@ static FlatExecutionPlan* RG_CreateCtx(char* readerName){
         return NULL;
     }
     return fep;
+}
+
+static int RG_SetDesc(FlatExecutionPlan* fep, const char* desc){
+    FlatExecutionPlan_SetDesc(fep, desc);
+    return 1;
 }
 
 static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
@@ -164,10 +169,6 @@ static const char* RG_GetReader(FlatExecutionPlan* fep){
 
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
 	return FlatExecutionPlan_Run(fep, NULL, arg, callback, privateData);
-}
-
-static KeysReaderCtx* RG_KeysReaderCtxCreate(char* match){
-    return KeysReaderCtx_Create(match);
 }
 
 static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const char* streamId){
@@ -325,6 +326,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterGroupByExtractor, ctx);
     REGISTER_API(RegisterReducer, ctx);
     REGISTER_API(CreateCtx, ctx);
+    REGISTER_API(SetDesc, ctx);
     REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
     REGISTER_API(SetFlatExecutionPrivateData, ctx);
     REGISTER_API(Map, ctx);
@@ -343,7 +345,6 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(FreeFlatExecution, ctx);
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
-    REGISTER_API(KeysReaderCtxCreate, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);
@@ -509,6 +510,16 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.dumpexecutions");
 		return REDISMODULE_ERR;
 	}
+
+    if (RedisModule_CreateCommand(ctx, "rg.dumpregistrations", ExecutionPlan_DumpRegistrations, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.dumpregistrations");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.unregister", ExecutionPlan_UnregisterExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.unregister");
+        return REDISMODULE_ERR;
+    }
 
     if (RedisModule_CreateCommand(ctx, "rg.getexecution", ExecutionPlan_ExecutionGet, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.getexecution");
