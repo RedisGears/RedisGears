@@ -235,6 +235,11 @@ def testBasicStream(env):
         env.cmd('rg.dropexecution', e[1])
     env.assertEqual(set(conn.lrange('values', '0', '-1')), set(['1', '2', '3']))
 
+    # delete all registrations so valgrind check will pass
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
 
 def testBasicStreamRegisterOnPrefix(env):
     conn = getConnectionByEnv(env)
@@ -262,6 +267,11 @@ def testBasicStreamRegisterOnPrefix(env):
     conn.execute_command('xadd', 'rstream1', '*', 'name', 'test2')
     env.assertContains("{'name': 'test1', 'streamId': ", conn.get('new_key'))
 
+    # delete all registrations so valgrind check will pass
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
 
 def testBasicStreamProcessing(env):
     conn = getConnectionByEnv(env)
@@ -284,6 +294,11 @@ def testBasicStreamProcessing(env):
         env.cmd('rg.dropexecution', e[1])
     env.assertEqual(conn.get('f1'), 'v1')
     env.assertEqual(conn.get('f2'), 'v2')
+
+    # delete all registrations so valgrind check will pass
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 
 def testTimeEvent(env):
@@ -371,6 +386,11 @@ def testMaxExecutions():
     res = env.execute_command('RG.DUMPEXECUTIONS')
     env.assertTrue(map(lambda x: int(x[1].split('-')[1]), res) == [1, 2, 3])
     map(lambda x: env.cmd('rg.dropexecution', x[1]), res)
+
+    # delete all registrations so valgrind check will pass
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 def testOneKeyScan(env):
     env.skipOnCluster()
@@ -537,3 +557,75 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(res))
         self.env.cmd('RG.DROPEXECUTION', id)
 
+
+class testUnregister:
+    def __init__(self):
+        self.env = Env()
+        self.conn = getConnectionByEnv(self.env)
+
+    def testSimpleUnregister(self):
+        script = '''
+GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').foreach(lambda r: execute('sadd', 'all_keys', r['key'])).register()
+        '''
+        self.env.expect('RG.PYEXECUTE', script).equal('OK')
+        time.sleep(1) # waiting for the execution to reach all shard, in the future we will use acks and return reply only
+                      # when it reach all shards
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        self.env.assertEqual(len(registrations), 1)
+        registrationID = registrations[0][1]
+        
+        self.conn.execute_command('set', 'x', '1')
+        time.sleep(1)
+        res = self.conn.execute_command('smembers', 'all_keys')
+        self.env.assertEqual(res, ['x'])
+
+        self.env.expect('RG.UNREGISTER', registrationID).equal('OK')
+
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        self.env.assertEqual(len(registrations), 0)
+
+        self.conn.execute_command('set', 'y', '1')
+        time.sleep(1)
+        res = self.conn.execute_command('smembers', 'all_keys')
+        self.env.assertEqual(res, ['x'])
+
+        executions = self.env.cmd('RG.DUMPEXECUTIONS')
+        for e in executions:
+            self.env.cmd('RG.DROPEXECUTION', e[1])
+
+    def testUnregisterWithStreamReader(self):
+        res = self.env.cmd('rg.pyexecute', "GearsBuilder('StreamReader')."
+                                      "flatmap(lambda x: [(a[0], a[1]) for a in x.items()])."
+                                      "repartition(lambda x: x[0])."
+                                      "foreach(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
+                                      "map(lambda x: str(x))."
+                                      "register('stream1')", 'UNBLOCKING')
+        self.env.assertEqual(res, 'OK')
+        if(res != 'OK'):
+            return
+
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        self.env.assertEqual(len(registrations), 1)
+        registrationID = registrations[0][1]
+
+        time.sleep(1)  # make sure the execution reached to all shards
+        self.conn.execute_command('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
+        res = []
+        while len(res) < 1:
+            res = self.env.cmd('rg.dumpexecutions')
+        for e in res:
+            self.env.broadcast('rg.getresultsblocking', e[1])
+            self.env.cmd('rg.dropexecution', e[1])
+        self.env.assertEqual(self.conn.get('f1'), 'v1')
+        self.env.assertEqual(self.conn.get('f2'), 'v2')
+
+        self.env.expect('RG.UNREGISTER', registrationID).equal('OK')
+        time.sleep(1)  # make sure the unregister reached to all shards
+
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        self.env.assertEqual(len(registrations), 0)
+
+        self.conn.execute_command('XADD', 'stream1', '*', 'f3', 'v3', 'f4', 'v4')
+        self.env.assertEqual(self.conn.get('f3'), None)
+        self.env.assertEqual(self.conn.get('f4'), None)
+    

@@ -90,10 +90,15 @@ static ArgType LimitArgType = {
 };
 
 typedef struct ExecutionPlansData{
+    // protected by mutex, mutex must be acquire when access those vars
     Gears_dict* epDict;
     Gears_list* epList;
-    Gears_dict* registeredFepDict;
     pthread_mutex_t mutex;
+
+    // protected by the GIL, GIL must be acquire when access this dict
+    Gears_dict* registeredFepDict;
+
+    // array of workers
     WorkerData** workers;
 }ExecutionPlansData;
 
@@ -285,9 +290,7 @@ ExecutionPlan* ExecutionPlan_FindByStrId(const char* id){
 }
 
 static FlatExecutionPlan* FlatExecutionPlan_FindId(const char* id){
-    pthread_mutex_lock(&epData.mutex);
     FlatExecutionPlan* fep = Gears_dictFetchValue(epData.registeredFepDict, id);
-    pthread_mutex_unlock(&epData.mutex);
     return fep;
 }
 
@@ -1190,11 +1193,9 @@ static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, void* arg
     assert(callbacks->registerTrigger);
     callbacks->registerTrigger(fep, arg);
 
-    pthread_mutex_lock(&epData.mutex);
     // the registeredFepDict holds a weak pointer to the fep struct. If does not increase
     // the refcount and will be remove when the fep will be unregistered
     Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
-    pthread_mutex_unlock(&epData.mutex);
 
     LockHandler_Release(ctx);
     RedisModule_FreeThreadSafeContext(ctx);
@@ -1265,10 +1266,10 @@ static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatE
 
     callbacks->unregisterTrigger(fep);
 
-    pthread_mutex_lock(&epData.mutex);
     int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
     assert(res == DICT_OK);
-    pthread_mutex_unlock(&epData.mutex);
+
+    FlatExecutionPlan_Free(fep);
 }
 
 static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1539,7 +1540,6 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks); // todo: handle as error in future
-    ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
     if(!callbacks->registerTrigger){
         return 0;
     }
@@ -1962,28 +1962,31 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
 }
 
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-#define NO_DUMP_SUPPORT "reader does not expose dump callback"
-
-    Gears_dictIterator* readersIterator = ReadersMgmt_GetIterator();
-    RedisGears_ReaderCallbacks* callbacks = NULL;
-    const char* readerName;
-    size_t len = 0;
-    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
-
-    while((callbacks = ReadersMgmt_IteratorNext(readersIterator, &readerName)) != NULL){
-        RedisModule_ReplyWithArray(ctx, 2);
-        RedisModule_ReplyWithStringBuffer(ctx, readerName, strlen(readerName));
-        if(callbacks->dump){
-            callbacks->dump(ctx);
-        }else{
-            RedisModule_ReplyWithStringBuffer(ctx, NO_DUMP_SUPPORT, strlen(NO_DUMP_SUPPORT));
-        }
-        ++len;
+    if(argc < 1){
+        return RedisModule_WrongArity(ctx);
     }
-    Gears_dictReleaseIterator(readersIterator);
+    Gears_dictIterator* iter = Gears_dictGetIterator(epData.registeredFepDict);
+    Gears_dictEntry *curr = NULL;
+    size_t numElements = 0;
+    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+    while((curr = Gears_dictNext(iter))){
+        FlatExecutionPlan* fep = Gears_dictGetVal(curr);
+        RedisModule_ReplyWithArray(ctx, 6);
+        RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
+        RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
+        RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
+        RedisModule_ReplyWithStringBuffer(ctx, fep->reader->reader, strlen(fep->reader->reader));
+        RedisModule_ReplyWithStringBuffer(ctx, "desc", strlen("desc"));
+        if(fep->desc){
+            RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
+        }else{
+            RedisModule_ReplyWithNull(ctx);
+        }
+        ++numElements;
+    }
+    Gears_dictReleaseIterator(iter);
 
-    RedisModule_ReplySetArrayLength(ctx, len);
-
+    RedisModule_ReplySetArrayLength(ctx, numElements);
     return REDISMODULE_OK;
 }
 

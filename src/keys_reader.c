@@ -315,29 +315,6 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
     return REDISMODULE_OK;
 }
 
-static void KeysReader_Dump(RedisModuleCtx* ctx){
-    if(keysReaderRegistration == NULL){
-        RedisModule_ReplyWithArray(ctx, 0);
-        return;
-    }
-    Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
-    Gears_listNode* node = NULL;
-    RedisModule_ReplyWithArray(ctx, Gears_listLength(keysReaderRegistration));
-    while((node = Gears_listNext(iter))){
-        RedisModule_ReplyWithArray(ctx, 4);
-        FlatExecutionPlan* fep = Gears_listNodeValue(node);
-        RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
-        RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
-        RedisModule_ReplyWithStringBuffer(ctx, "desc", strlen("desc"));
-        if(fep->desc){
-            RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
-        }else{
-            RedisModule_ReplyWithNull(ctx);
-        }
-    }
-    Gears_listReleaseIterator(iter);
-}
-
 static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep){
     Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
@@ -461,6 +438,5 @@ static Reader* KeysReader_Create(void* arg){
 RedisGears_ReaderCallbacks KeysReader = {
         .create = KeysReader_Create,
         .registerTrigger = KeysReader_RegisrterTrigger,
-        .dump = KeysReader_Dump,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
 };

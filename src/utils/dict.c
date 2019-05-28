@@ -66,6 +66,15 @@ static void* stringsKeyDup(void *privdata, const void *key){
     return RG_STRDUP((char*)key);
 }
 
+Gears_dictType Gears_dictTypeHeapStringsVals = {
+        .hashFunction = stringsHashFunction,
+        .keyDup = stringsKeyDup,
+        .valDup = NULL,
+        .keyCompare = stringsKeyCompare,
+        .keyDestructor = stringsKeyDestructor,
+        .valDestructor = stringsKeyDestructor,
+};
+
 Gears_dictType Gears_dictTypeHeapStrings = {
         .hashFunction = stringsHashFunction,
         .keyDup = stringsKeyDup,

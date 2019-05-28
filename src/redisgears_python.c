@@ -116,6 +116,11 @@ void PyGILState_Release(PyGILState_STATE oldstate){
     RedisGearsPy_SaveThread();
 }
 
+bool RedisGearsPy_IsLockAcquired(){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    return ptctx->lockCounter > 0;
+}
+
 void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     if(ptctx->lockCounter == 0){
@@ -653,9 +658,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         return PyList_New(0);
     }
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
-    PyThreadState *_save = PyEval_SaveThread();
     LockHandler_Acquire(rctx);
-    PyEval_RestoreThread(_save);
 
     RedisModule_AutoMemory(rctx);
 
@@ -977,10 +980,7 @@ static PyObject* createModelRunner(PyObject *cls, PyObject *args){
     }
     const char* keyNameStr = PyUnicode_AsUTF8AndSize(keyName, NULL);
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    // avoiding deadlock
-    PyThreadState *_save = PyEval_SaveThread();
     LockHandler_Acquire(ctx);
-    PyEval_RestoreThread(_save);
 
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
 
@@ -1103,10 +1103,7 @@ static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
     const char* keyNameStr = PyUnicode_AsUTF8AndSize(keyName, NULL);
 
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    // avoiding deadlock
-    PyThreadState *_save = PyEval_SaveThread();
     LockHandler_Acquire(ctx);
-    PyEval_RestoreThread(_save);
 
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
 
@@ -1293,10 +1290,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     ptctx->timeEventRegistered = true;
     Py_INCREF(callback);
 
-    // avoiding deadlock
-    PyThreadState *_save = PyEval_SaveThread();
     LockHandler_Acquire(ctx);
-    PyEval_RestoreThread(_save);
 
     if(keyNameStr){
         RedisModuleKey* key = RedisModule_OpenKey(ctx, keyNameStr, REDISMODULE_WRITE);

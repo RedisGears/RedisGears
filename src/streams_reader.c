@@ -170,6 +170,23 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     return REDISMODULE_OK;
 }
 
+static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        StreamReaderTrigger* srctx = Gears_listNodeValue(node);
+        if(srctx->fep == fep){
+            Gears_listReleaseIterator(iter);
+            Gears_dictRelease(srctx->lastIds);
+            RG_FREE(srctx->streamKeyName);
+            RG_FREE(srctx);
+            Gears_listDelNode(streamsRegistration, node);
+            return;
+        }
+    }
+    assert(0);
+}
+
 static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
@@ -182,7 +199,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     StreamReaderTrigger* srctx = RG_ALLOC(sizeof(StreamReaderTrigger));
     *srctx = (StreamReaderTrigger){
         .streamKeyName = arg,
-        .lastIds = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
+        .lastIds = Gears_dictCreate(&Gears_dictTypeHeapStringsVals, NULL),
         .fep = fep,
     };
     Gears_listAddNodeHead(streamsRegistration, srctx);
@@ -208,4 +225,5 @@ static Reader* StreamReader_Create(void* arg){
 RedisGears_ReaderCallbacks StreamReader = {
         .create = StreamReader_Create,
         .registerTrigger = StreamReader_RegisrterTrigger,
+        .unregisterTrigger = StreamReader_UnregisrterTrigger,
 };

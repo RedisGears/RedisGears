@@ -34,15 +34,20 @@ typedef struct StreamReaderCtx StreamReaderCtx;
 
 typedef struct Gears_BufferWriter Gears_BufferWriter;
 typedef struct Gears_BufferReader Gears_BufferReader;
-
 typedef struct ArgType ArgType;
 
+/**
+ * Arguments callbacks definition
+ */
 typedef void (*ArgFree)(void* arg);
 typedef void* (*ArgDuplicate)(void* arg);
 typedef void (*ArgSerialize)(void* arg, Gears_BufferWriter* bw);
 typedef void* (*ArgDeserialize)(Gears_BufferReader* br);
 typedef char* (*ArgToString)(void* arg);
 
+/**
+ * Reader instance definition. There is a single reader instance for each execution
+ */
 typedef struct Reader{
     void* ctx;
     Record* (*next)(ExecutionCtx* rctx, void* ctx);
@@ -51,12 +56,20 @@ typedef struct Reader{
     void (*deserialize)(void* ctx, Gears_BufferReader* br);
 }Reader;
 
+/**
+ * Default readers to use
+ */
 #define KeysReader KeysReader
 #define StreamReader StreamReader
 
-/******************************* args *********************************/
-
+/**
+ * Create a new argument type with the given name and callbacks.
+ */
 ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
+
+/**
+ * Function that allows to read/write from buffers. Use when implementing serialize/deserialize
+ */
 void MODULE_API_FUNC(RedisGears_BWWriteLong)(Gears_BufferWriter* bw, long val);
 void MODULE_API_FUNC(RedisGears_BWWriteString)(Gears_BufferWriter* bw, const char* str);
 void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(Gears_BufferWriter* bw, const char* buff, size_t len);
@@ -72,19 +85,33 @@ char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* l
 
 /******************************* GroupByReducers ***********************/
 
+/**
+ * On done callback definition
+ */
 typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
 
+/**
+ * Reader callbacks definition.
+ */
 typedef Reader* (*RedisGears_CreateReaderCallback)(void* arg);
 typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, void* arg);
-typedef void (*RedisGears_ReaderDumpRegistrationsCallback)(RedisModuleCtx* ctx);
 typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep);
+
+/**
+ * callbacks for reader implementation.
+ * registerTrigger and unregisterTrigger are promissed to be called when the GIL is acquired
+ * while create might be called any time.
+ */
 typedef struct RedisGears_ReaderCallbacks{
     RedisGears_CreateReaderCallback create;
     RedisGears_ReaderRegisterCallback registerTrigger;
-    RedisGears_ReaderDumpRegistrationsCallback dump;
     RedisGears_ReaderUnregisterCallback unregisterTrigger;
 }RedisGears_ReaderCallbacks;
 
+
+/**
+ * Operations/Steps callbacks definition
+ */
 typedef void (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef Record* (*RedisGears_MapCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef bool (*RedisGears_FilterCallback)(ExecutionCtx* rctx, Record *data, void* arg);
@@ -96,6 +123,9 @@ typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* 
 typedef struct KeysReaderCtx KeysReaderCtx;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 
+/**
+ * Records handling functions
+ */
 void MODULE_API_FUNC(RedisGears_FreeRecord)(Record* record);
 int MODULE_API_FUNC(RedisGears_RecordGetType)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordCreate)();
@@ -125,6 +155,9 @@ Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, char* key);
 char** MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r, size_t* len);
 void MODULE_API_FUNC(RedisGears_HashSetRecordFreeKeysArray)(char** keyArr);
 
+/**
+ * Register operations functions
+ */
 int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionPrivateDataType)(ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterReader)(char* name, RedisGears_ReaderCallbacks* callbacks);
 int MODULE_API_FUNC(RedisGears_RegisterForEach)(char* name, RedisGears_ForEachCallback reader, ArgType* type);
@@ -154,7 +187,7 @@ int MODULE_API_FUNC(RedisGears_SetDesc)(FlatExecutionPlan* ctx, const char* desc
 
 void MODULE_API_FUNC(RedisGears_SetFlatExecutionPrivateData)(FlatExecutionPlan* fep, const char* type, void* PD);
 
-/******************************* Execution plan operations *******************************/
+/******************************* Flat Execution plan operations *******************************/
 
 int MODULE_API_FUNC(RedisGears_Map)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RGM_Map(ctx, name, arg) RedisGears_Map(ctx, #name, arg)
@@ -201,6 +234,8 @@ int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void
 const char* MODULE_API_FUNC(RedisGears_GetReader)(FlatExecutionPlan* fep);
 
 typedef void (*FreePrivateData)(void* privateData);
+
+/******************************* Execution plan operations *******************************/
 
 bool MODULE_API_FUNC(RedisGears_RegisterExecutionDoneCallback)(ExecutionPlan* ctx, RedisGears_OnExecutionDoneCallback callback);
 bool MODULE_API_FUNC(RedisGears_IsDone)(ExecutionPlan* ctx);
