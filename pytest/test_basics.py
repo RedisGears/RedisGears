@@ -580,6 +580,7 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         self.env.assertEqual(res, ['x'])
 
         self.env.expect('RG.UNREGISTER', registrationID).equal('OK')
+        time.sleep(1) # wait for dump registrations to reach all the shards
 
         registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
         self.env.assertEqual(len(registrations), 0)
