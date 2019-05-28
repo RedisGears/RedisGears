@@ -45,22 +45,6 @@ GENERATE(Accumulate)
 GENERATE(AccumulateByKey)
 GENERATE(FepPrivateData)
 
-Gears_dictIterator* ReadersMgmt_GetIterator(){
-    return Gears_dictGetIterator(Readerdict);
-}
-
-RedisGears_ReaderCallbacks* ReadersMgmt_IteratorNext(Gears_dictIterator* iter, const char** readerName){
-    Gears_dictEntry *entry = Gears_dictNext(iter);
-    if(!entry){
-        return NULL;
-    }
-    if(readerName){
-        *readerName = Gears_dictGetKey(entry);
-    }
-
-    return ((ReaderHolder*)Gears_dictGetVal(entry))->callback;
-}
-
 void Mgmt_Init(){
     FiltersMgmt_Init();
     MapsMgmt_Init();
