@@ -135,7 +135,7 @@ typedef struct ExecutionStep{
         AccumulateByKeyExecutionStep accumulateByKey;
     };
     enum StepType type;
-    long long executionDuration;
+    unsigned long long executionDuration;
 }ExecutionStep;
 
 typedef enum ActionResult ActionResult;

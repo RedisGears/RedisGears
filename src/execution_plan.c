@@ -16,15 +16,21 @@
 #include <event2/event.h>
 #include "lock_handler.h"
 
-#define INIT_TIMER  struct timespec _ts = {0}, _te = {0};
+#define INIT_TIMER  struct timespec _ts = {0}, _te = {0}; \
+                    bool timerInitialized = false;
 #define GETTIME(t)  clock_gettime(CLOCK_REALTIME, t);
-#define START_TIMER if(GearsConfig_GetProfileExecutions()) GETTIME(&_ts);
+#define START_TIMER if(GearsConfig_GetProfileExecutions()){ \
+                        timerInitialized = true; \
+                        GETTIME(&_ts); \
+                    }
 #define STOP_TIMER  if(GearsConfig_GetProfileExecutions()) GETTIME(&_te);
 #define DURATION    ((long long)1000000000 * (_te.tv_sec - _ts.tv_sec) \
                     + (_te.tv_nsec - _ts.tv_nsec))
 #define ADD_DURATION(d) if(GearsConfig_GetProfileExecutions()){ \
-                            STOP_TIMER; \
-                            d += DURATION; \
+                            if(timerInitialized){ \
+                                STOP_TIMER; \
+                                d += DURATION; \
+                            } \
                         }
 #define DURATION2MS(d)  (long long)(d/(long long)1000000)
 
