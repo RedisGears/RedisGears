@@ -68,11 +68,15 @@ static void onDone(ExecutionPlan* ep, void* privateData);
 /* the main interpreter */
 static PythonSubInterpreter* MainInterpreter;
 
+/* callback that get gears remote builder and run it, used for python client */
+static PyObject *runGearsRemoteBuilderCallback;
+
 #define PYTHON_ERROR "error running python code"
 
 static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br);
 static void TimeEvent_Free(void *value);
+static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 
 static PythonThreadCtx* GetPythonThreadCtx(){
     PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
@@ -420,6 +424,40 @@ static void onDone(ExecutionPlan* ep, void* privateData){
     RedisModuleBlockedClient *bc = privateData;
     RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
     Command_ReturnResultsAndErrors(ep, rctx);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisGears_DropExecution(ep);
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
+static void onDoneSerializeResults(ExecutionPlan* ep, void* privateData){
+    RedisModuleBlockedClient *bc = privateData;
+    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
+
+    RedisModule_ReplyWithArray(rctx, 2);
+
+    // sending results
+    long long len = RedisGears_GetRecordsLen(ep);
+    RedisModule_ReplyWithArray(rctx, len);
+    Gears_Buffer* buff = Gears_BufferCreate();
+    for(long long i = 0 ; i < len ; ++i){
+        Record* r = RedisGears_GetRecord(ep, i);
+        assert(RedisGears_RecordGetType(r) == PY_RECORD);
+        PyObject* obj = RG_PyObjRecordGet(r);
+        Gears_BufferWriter bw;
+        Gears_BufferWriterInit(&bw, buff);
+        RedisGearsPy_PyCallbackSerialize(obj, &bw);
+        Gears_BufferReader br;
+        Gears_BufferReaderInit(&br, buff);
+        size_t len;
+        char* serializedObj = RedisGears_BRReadBuffer(&br, &len);
+        RedisModule_ReplyWithStringBuffer(rctx, serializedObj, len);
+        Gears_BufferClear(buff);
+    }
+    Gears_BufferFree(buff);
+
+    // sending errors
+    Command_ReturnErrors(ep, rctx);
+
     RedisModule_UnblockClient(bc, NULL);
     RedisGears_DropExecution(ep);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1337,6 +1375,94 @@ static int RedisGearsPy_FreeInterpreter(RedisModuleCtx *ctx, RedisModuleString *
 	return REDISMODULE_OK;
 }
 
+static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    // deserialize gears remote builder
+    size_t len;
+    const char* serializedGRB = RedisModule_StringPtrLen(argv[1], &len);
+
+    Gears_Buffer* buff = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, buff);
+    RedisGears_BWWriteBuffer(&bw, serializedGRB, len);
+
+    Gears_BufferReader br;
+    Gears_BufferReaderInit(&br, buff);
+
+    PyObject * grb = RedisGearsPy_PyCallbackDeserialize(&br);
+
+    Gears_BufferFree(buff);
+
+    if(!grb){
+        RedisModule_ReplyWithError(ctx, "could not deserialize GearsRemoteBuilder");
+        return REDISMODULE_OK;
+    }
+
+    RedisGearsPy_RestoreThread(NULL);
+
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    DoneCallbackFunction oldDoneFunction = ptctx->doneFunction;
+    ptctx->doneFunction = onDoneSerializeResults;
+
+    ptctx->currentCtx = ctx;
+
+    ptctx->executionTriggered = false;
+
+    // create sub-interpreter
+    ptctx->subInterpreter = RedisGearsPy_SubInterpreterNew();
+
+    PyObject* pArgs = PyTuple_New(2);
+    PyTuple_SetItem(pArgs, 0, grb);
+    PyObject* globalsDict = PyDict_Copy(pyGlobals);
+    PyTuple_SetItem(pArgs, 1, globalsDict);
+    PyObject* v = PyObject_CallObject(runGearsRemoteBuilderCallback, pArgs);
+    Py_DECREF(pArgs);
+
+    ptctx->doneFunction = oldDoneFunction;
+
+    if(!v){
+        PyObject *ptype, *pvalue, *ptraceback;
+        PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+        if(!pvalue){
+            RedisModule_ReplyWithError(ctx, "failed running the given script");
+        }else{
+            PyObject* errStr = PyObject_Str(pvalue);
+            size_t s;
+            const char *pStrErrorMessage = PyUnicode_AsUTF8AndSize(errStr, &s);
+            RedisModule_ReplyWithError(ctx, pStrErrorMessage);
+            Py_DECREF(errStr);
+            Py_DECREF(ptype);
+            Py_DECREF(pvalue);
+            if(ptraceback){
+                Py_DECREF(ptraceback);
+            }
+        }
+        RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
+        PyThreadState_Swap(MainInterpreter->subInterpreter);
+        RedisGearsPy_SaveThread();
+        return REDISMODULE_OK;
+    }
+
+    if(ptctx->timeEventRegistered){
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }else if(!ptctx->executionTriggered){
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
+    RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
+    PyThreadState_Swap(MainInterpreter->subInterpreter);
+    RedisGearsPy_SaveThread();
+
+    ptctx->executionTriggered = false;
+    ptctx->blockingExecute = true;
+    ptctx->currentCtx = NULL;
+
+    return REDISMODULE_OK;
+}
+
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 2 || argc > 3){
         return RedisModule_WrongArity(ctx);
@@ -2147,7 +2273,14 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
     }
 
-    PyObject* pName = PyUnicode_FromString("redisgears");
+    PyObject* pName = PyUnicode_FromString("gearsclient");
+    PyObject* redisGearsClientModule = PyImport_Import(pName);
+    Py_DECREF(pName);
+    if(!redisGearsClientModule){
+        RedisModule_Log(ctx, "warning", "gearsclient is not installed on the virtual env, will not be able to run with the python client.");
+    }
+
+    pName = PyUnicode_FromString("redisgears");
     PyObject* redisGearsModule = PyImport_Import(pName);
     Py_DECREF(pName);
 
@@ -2227,6 +2360,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
+    if (RedisModule_CreateCommand(ctx, "rg.pyexecuteremote", RedisGearsPy_ExecuteRemote, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.pyexecuteremote");
+        return REDISMODULE_ERR;
+    }
+
     if (RedisModule_CreateCommand(ctx, "rg.pyfreeinterpreter", RedisGearsPy_FreeInterpreter, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
 		return REDISMODULE_ERR;
@@ -2236,6 +2374,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     	RedisModule_Log(ctx, "warning", "could not register command rg.pystats");
 		return REDISMODULE_ERR;
     }
+
+    runGearsRemoteBuilderCallback = PyDict_GetItemString(pyGlobals, "RunGearsRemoteBuilder");
+    assert(runGearsRemoteBuilderCallback);
+    Py_INCREF(runGearsRemoteBuilderCallback);
 
     PyThreadState* mainInterpreter = PyEval_SaveThread();
     MainInterpreter = RG_ALLOC(sizeof(*MainInterpreter));

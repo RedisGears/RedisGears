@@ -115,3 +115,4 @@ $(PYENV_DIR): /opt/redislabs $(CPYTHON_PREFIX)
 	export LANG=C.UTF-8; \
 	pipenv --site-packages install --python $(CPYTHON_PREFIX)/bin/python3
 	$(SHOW)cp $(CPYTHON_PREFIX)/Pipfile.lock .
+	cd $(PYENV_DIR);pipenv run pip install git+https://github.com/RedisGears/redisgears-py.git

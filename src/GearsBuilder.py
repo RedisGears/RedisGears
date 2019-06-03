@@ -10,7 +10,6 @@ globals()['str'] = str
 
 redisgears._saveGlobals()
 
-
 def CreatePythonReaderCallback(prefix):
     def PythonReaderCallback():
         pref = prefix
@@ -150,3 +149,8 @@ for k in PyFlatExecution.__dict__:
 
 
 GB = GearsBuilder
+
+def RunGearsRemoteBuilder(pipe, globalsDict):
+    gb = GB(pipe.reader, pipe.defaultArg)
+    for s in pipe.steps:
+        s.AddToGB(gb, globalsDict)
