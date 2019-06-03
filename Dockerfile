@@ -3,11 +3,7 @@ ARG OSNICK=bionic
 ARG ARCH=x64
 
 #----------------------------------------------------------------------------------------------
-FROM redislabs/redis-base-${ARCH}-${OSNICK}:latest AS redis
-# FROM ${OS}
-
-# ENV PATH="${PATH}:/opt/redis/bin"
-# COPY --from=redis /usr/local/bin/* /usr/local/bin/
+FROM redislabs/redis-base-${ARCH}-${OSNICK}:latest AS builder
 
 ADD . /build
 WORKDIR /build
