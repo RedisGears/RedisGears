@@ -118,3 +118,4 @@ $(PYENV_DIR): /opt/redislabs $(CPYTHON_PREFIX)
 	export LANG=C.UTF-8; \
 	pipenv --site-packages install --python $(CPYTHON_PREFIX)/bin/python3
 	$(SHOW)cp $(CPYTHON_PREFIX)/Pipfile.lock .
+	$(SHOW)echo /usr/local/lib/python3.7/site-packages > $(PYENV_DIR)/lib/python3.7/site-packages/local.pth
