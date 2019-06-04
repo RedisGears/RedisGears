@@ -73,7 +73,7 @@ class Setup(OnPlatform):
     #------------------------------------------------------------------------------------------
 
     def apt_install(self, packs, group=False):
-        self.run("apt-get -q install -y " + packs)
+        self.run("apt-get -qq install -y " + packs)
 
     def yum_install(self, packs, group=False):
         if not group:
