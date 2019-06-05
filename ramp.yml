@@ -1,4 +1,4 @@
-display_name: redisgears
+display_name: RedisGears
 author: RedisLabs
 email: meir@redislabs.com
 description: Dynamic execution framework for your Redis data
