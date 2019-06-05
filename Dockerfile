@@ -1,7 +1,10 @@
+# TAG raffapen/redisgears-${ARCH}-${OSNICK}:latest
+
 ARG OSNICK=bionic
+# ARG ARCH=x64|arm64|arm7l [no need to specify: using multi-arch]
 
 #----------------------------------------------------------------------------------------------
-FROM redislabs/redis-${OSNICK}:latest AS builder
+FROM raffapen/redis-${OSNICK}:5.0.5 AS builder
 
 ADD . /build
 WORKDIR /build
@@ -9,10 +12,10 @@ WORKDIR /build
 RUN ./deps/readies/bin/getpy2
 RUN python system-setup.py
 RUN make get_deps
-RUN make all SHOW=1 PYTHON_ENCODING=ucs4
+RUN make all SHOW=1
 
 #----------------------------------------------------------------------------------------------
-FROM redislabs/redis-${OSNICK}:latest
+FROM raffapen/redis-${OSNICK}:5.0.5
 
 ENV REDIS_MODULES /opt/redislabs/lib/modules
 
