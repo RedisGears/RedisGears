@@ -1,12 +1,15 @@
+# TAG raffapen/redisgears-${ARCH}-${OSNICK}:latest
+
+ARG OSNICK=bionic
+ARG ARCH=arm64
+
 #----------------------------------------------------------------------------------------------
-FROM raffapen/redis-arm64-bionic-qemu:latest AS builder
+FROM raffapen/redis-${ARCH}-${OSNICK}-xbuild:5.0.5 AS builder
 
 RUN [ "cross-build-start" ]
 
 ADD . /build
 WORKDIR /build
-
-# COPY --from=redis /usr/local/bin/* /usr/local/bin/
 
 RUN ./deps/readies/bin/getpy2
 RUN python system-setup.py
@@ -16,11 +19,9 @@ RUN make all SHOW=1 PYTHON_ENCODING=ucs4
 RUN [ "cross-build-end" ]
 
 #----------------------------------------------------------------------------------------------
-FROM raffapen/redis-arm64-bionic-qemu:latest
+FROM raffapen/redis-${ARCH}-${OSNICK}-xbuild:5.0.5
 
 RUN [ "cross-build-start" ]
-
-# COPY --from=redis /usr/local/bin/* /usr/local/bin/
 
 ENV REDIS_MODULES /opt/redislabs/lib/modules
 
