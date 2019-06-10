@@ -1,10 +1,10 @@
-# TAG raffapen/redisgears-${ARCH}-${OSNICK}:latest
+# TAG redisfab/redisgears-${ARCH}-${OSNICK}:latest
 
 ARG OSNICK=bionic
 ARG ARCH=arm64
 
 #----------------------------------------------------------------------------------------------
-FROM raffapen/redis-${ARCH}-${OSNICK}-xbuild:5.0.5 AS builder
+FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5 AS builder
 
 RUN [ "cross-build-start" ]
 
@@ -14,12 +14,12 @@ WORKDIR /build
 RUN ./deps/readies/bin/getpy2
 RUN python system-setup.py
 RUN make get_deps
-RUN make all SHOW=1 PYTHON_ENCODING=ucs4
+RUN make all SHOW=1
 
 RUN [ "cross-build-end" ]
 
 #----------------------------------------------------------------------------------------------
-FROM raffapen/redis-${ARCH}-${OSNICK}-xbuild:5.0.5
+FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5
 
 RUN [ "cross-build-start" ]
 

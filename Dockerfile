@@ -1,10 +1,10 @@
-# TAG raffapen/redisgears-${ARCH}-${OSNICK}:latest
+# BUILD redisfab/redisgears-${ARCH}-${OSNICK}:VERSION
 
 ARG OSNICK=bionic
 # ARG ARCH=x64|arm64|arm7l [no need to specify: using multi-arch]
 
 #----------------------------------------------------------------------------------------------
-FROM raffapen/redis-${OSNICK}:5.0.5 AS builder
+FROM redislabs/redis-${OSNICK}:5.0.5 AS builder
 
 ADD . /build
 WORKDIR /build
@@ -15,7 +15,7 @@ RUN make get_deps
 RUN make all SHOW=1
 
 #----------------------------------------------------------------------------------------------
-FROM raffapen/redis-${OSNICK}:5.0.5
+FROM redislabs/redis-${OSNICK}:5.0.5
 
 ENV REDIS_MODULES /opt/redislabs/lib/modules
 
