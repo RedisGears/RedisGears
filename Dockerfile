@@ -1,4 +1,4 @@
-# BUILD redisfab/redisgears-${ARCH}-${OSNICK}:VERSION
+# BUILD redisfab/redisgears-${ARCH}-${OSNICK}:M.m.b
 
 ARG OSNICK=bionic
 # ARG ARCH=x64|arm64|arm7l [no need to specify: using multi-arch]

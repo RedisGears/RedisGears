@@ -1,4 +1,4 @@
-# TAG redisfab/redisgears-${ARCH}-${OSNICK}:latest
+# BUILD redisfab/redisgears-${ARCH}-${OSNICK}:M.m.b
 
 ARG OSNICK=bionic
 ARG ARCH=arm64
