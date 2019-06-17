@@ -183,5 +183,6 @@ uint64_t Gears_dictGetHash(Gears_dict *d, const void *key);
 Gears_dictEntry **Gears_dictFindEntryRefByPtrAndHash(Gears_dict *d, const void *oldptr, uint64_t hash);
 
 extern Gears_dictType Gears_dictTypeHeapStrings;
+extern Gears_dictType Gears_dictTypeHeapStringsVals;
 
 #endif /* __DICT_H */

@@ -26,5 +26,6 @@ int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **ar
 int RedisGearsPy_Init(RedisModuleCtx *ctx);
 void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter);
 void RedisGearsPy_SaveThread();
+bool RedisGearsPy_IsLockAcquired();
 
 #endif /* SRC_REDISGEARG_PYTHON_H_ */

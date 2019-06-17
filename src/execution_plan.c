@@ -96,15 +96,22 @@ static ArgType LimitArgType = {
 };
 
 typedef struct ExecutionPlansData{
+    // protected by mutex, mutex must be acquire when access those vars
     Gears_dict* epDict;
     Gears_list* epList;
     pthread_mutex_t mutex;
+
+    // protected by the GIL, GIL must be acquire when access this dict
+    Gears_dict* registeredFepDict;
+
+    // array of workers
     WorkerData** workers;
 }ExecutionPlansData;
 
 ExecutionPlansData epData;
 
-static long long lastId = 0;
+static long long lastEPId = 0;
+static long long lastFEPId = 0;
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx);
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, void* arg);
@@ -113,6 +120,8 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep);
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg);
 static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len);
 static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len);
+static void ExecutionPlan_SetID(ExecutionPlan* ep, char* id);
+static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id);
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, EXECUTION_PLAN_ID_LEN);
@@ -286,6 +295,28 @@ ExecutionPlan* ExecutionPlan_FindByStrId(const char* id){
     return ExecutionPlan_FindById(realId);
 }
 
+static FlatExecutionPlan* FlatExecutionPlan_FindId(const char* id){
+    FlatExecutionPlan* fep = Gears_dictFetchValue(epData.registeredFepDict, id);
+    return fep;
+}
+
+static FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id){
+    char realId[EXECUTION_PLAN_ID_LEN] = {0};
+    if(strlen(id) < REDISMODULE_NODE_ID_LEN + 2){
+        return NULL;
+    }
+    if(id[REDISMODULE_NODE_ID_LEN] != '-'){
+        return NULL;
+    }
+    memcpy(realId, id, REDISMODULE_NODE_ID_LEN);
+    int match = sscanf(id + REDISMODULE_NODE_ID_LEN + 1, "%lld", (long long*)(&realId[REDISMODULE_NODE_ID_LEN]));
+    if(match != 1){
+        return NULL;
+    }
+
+    return FlatExecutionPlan_FindId(realId);
+}
+
 static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, Gears_BufferWriter* bw){
     RedisGears_BWWriteString(bw, rfep->reader);
 }
@@ -316,6 +347,9 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWrit
     }else{
         RedisGears_BWWriteLong(bw, 0); // PD do exists
     }
+
+    // serialize FEP id
+    RedisGears_BWWriteBuffer(bw, fep->id, EXECUTION_PLAN_ID_LEN);
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferReader* br){
@@ -351,6 +385,12 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
         assert(type);
         ret->PD = type->deserialize(br);
     }
+
+    // read FEP id
+    size_t len;
+    char* idBuff = RedisGears_BRReadBuffer(br, &len);
+    assert(len == EXECUTION_PLAN_ID_LEN);
+    FlatExecutionPlan_SetID(ret, idBuff);
 
     return ret;
 }
@@ -1150,6 +1190,23 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
+static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, void* arg){
+    RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(ctx);
+
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+    assert(callbacks);
+    assert(callbacks->registerTrigger);
+    callbacks->registerTrigger(fep, arg);
+
+    // the registeredFepDict holds a weak pointer to the fep struct. If does not increase
+    // the refcount and will be remove when the fep will be unregistered
+    Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
+
+    LockHandler_Release(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
+}
+
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     Gears_Buffer buff = (Gears_Buffer){
         .buff = (char*)payload,
@@ -1163,13 +1220,8 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
         // todo: big big warning
         return;
     }
-    ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
-    assert(rs.r->registerTrigger);
-    rs.r->registerTrigger(fep, RG_STRDUP(RedisGears_BRReadString(&br)));
-    if(rs.r->free){
-        rs.r->free(rs.r->ctx);
-    }
-    RG_FREE(rs.r);
+
+    FlatExecutionPlan_RegisterInternal(fep, RG_STRDUP(RedisGears_BRReadString(&br)));
 }
 
 static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
@@ -1212,6 +1264,29 @@ static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, 
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
 	assert(ep);
 	ExecutionPlan_RegisterForRun(ep);
+}
+
+static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatExecutionPlan* fep){
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+    assert(callbacks->unregisterTrigger);
+
+    callbacks->unregisterTrigger(fep);
+
+    int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
+    assert(res == DICT_OK);
+
+    FlatExecutionPlan_Free(fep);
+}
+
+static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    LockHandler_Acquire(ctx);
+    FlatExecutionPlan* fep = FlatExecutionPlan_FindId(payload);
+    if(!fep){
+        printf("warning: execution not found %s !!!\r\n", payload);
+        return;
+    }
+    ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
+    LockHandler_Release(ctx);
 }
 
 static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1441,10 +1516,12 @@ static WorkerData* ExecutionPlan_StartThread(){
 
 void ExecutionPlan_Initialize(size_t numberOfworkers){
     epData.epDict = Gears_dictCreate(&dictTypeHeapIds, NULL);
+    epData.registeredFepDict = Gears_dictCreate(&dictTypeHeapIds, NULL);
     epData.epList = Gears_listCreate();
     pthread_mutex_init(&epData.mutex, NULL);
     epData.workers = array_new(WorkerData*, numberOfworkers);
 
+    Cluster_RegisterMsgReceiverM(ExecutionPlan_UnregisterExecutionReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_OnReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_NotifyReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_NotifyRun);
@@ -1467,8 +1544,9 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
 }
 
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
-    ReaderStep rs = ExecutionPlan_NewReader(fep->reader, NULL);
-    if(!rs.r->registerTrigger){
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+    assert(callbacks); // todo: handle as error in future
+    if(!callbacks->registerTrigger){
         return 0;
     }
     if(Cluster_IsClusterMode()){
@@ -1480,7 +1558,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
         Gears_BufferFree(buff);
     }
-    rs.r->registerTrigger(FlatExecutionPlan_ShallowCopy(fep), key);
+    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), key);
     return 1;
 }
 
@@ -1489,9 +1567,9 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* ar
 }
 
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg){
-    RedisGears_ReaderCallback callback = ReadersMgmt_Get(reader->reader);
-    assert(callback); // todo: handle as error in future
-    return (ReaderStep){.r = callback(arg)};
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(reader->reader);
+    assert(callbacks); // todo: handle as error in future
+    return (ReaderStep){.r = callbacks->create(arg)};
 }
 
 static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
@@ -1572,6 +1650,34 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
     return es;
 }
 
+static void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID){
+    char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
+    if(!finalId){
+        char noneClusterId[REDISMODULE_NODE_ID_LEN] = {0};
+        char* id;
+        if(Cluster_IsClusterMode()){
+            id = Cluster_GetMyId();
+        }else{
+            memset(noneClusterId, '0', REDISMODULE_NODE_ID_LEN);
+            id = noneClusterId;
+        }
+        memcpy(generatedId, id, REDISMODULE_NODE_ID_LEN);
+        memcpy(generatedId + REDISMODULE_NODE_ID_LEN, lastID, sizeof(long long));
+        finalId = generatedId;
+        ++(*lastID);
+    }
+    memcpy(idBuf, finalId, EXECUTION_PLAN_ID_LEN);
+    snprintf(idStrBuf, EXECUTION_PLAN_STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, idBuf, *(long long*)&idBuf[REDISMODULE_NODE_ID_LEN]);
+}
+
+static void ExecutionPlan_SetID(ExecutionPlan* ep, char* id){
+    SetId(id, ep->id, ep->idStr, &lastEPId);
+}
+
+static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id){
+    SetId(id, fep->id, fep->idStr, &lastFEPId);
+}
+
 static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
     fep = FlatExecutionPlan_ShallowCopy(fep);
@@ -1603,23 +1709,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->callback = NULL;
     ret->privateData = NULL;
     ret->freeCallback = NULL;
-    char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
-    if(!finalId){
-        char noneClusterId[REDISMODULE_NODE_ID_LEN] = {0};
-        char* id;
-        if(Cluster_IsClusterMode()){
-            id = Cluster_GetMyId();
-        }else{
-            memset(noneClusterId, '0', REDISMODULE_NODE_ID_LEN);
-            id = noneClusterId;
-        }
-        memcpy(generatedId, id, REDISMODULE_NODE_ID_LEN);
-        memcpy(generatedId + REDISMODULE_NODE_ID_LEN, &lastId, sizeof(long long));
-        finalId = generatedId;
-        ++lastId;
-    }
-    memcpy(ret->id, finalId, EXECUTION_PLAN_ID_LEN);
-    snprintf(ret->idStr, EXECUTION_PLAN_STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, ret->id, *(long long*)&ret->id[REDISMODULE_NODE_ID_LEN]);
+    ExecutionPlan_SetID(ret, finalId);
     pthread_mutex_lock(&epData.mutex);
     while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
         Gears_listNode* n0 = Gears_listFirst(epData.epList);
@@ -1761,6 +1851,10 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->steps = array_new(FlatExecutionStep, STEPS_INITIAL_CAP);
     res->PD = NULL;
     res->PDType = NULL;
+    res->desc = NULL;
+
+    FlatExecutionPlan_SetID(res, NULL);
+
     return res;
 }
 
@@ -1774,6 +1868,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(__atomic_sub_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST) > 0){
         return;
     }
+
     if(fep->PD){
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         type->free(fep->PD);
@@ -1793,8 +1888,8 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
 }
 
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
-    RedisGears_ReaderCallback callback = ReadersMgmt_Get(reader);
-    if(!callback){
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(reader);
+    if(!callbacks){
         return false;
     }
     fep->reader = FlatExecutionPlan_NewReader(reader);
@@ -1804,6 +1899,10 @@ bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
     fep->PD = PD;
     fep->PDType = RG_STRDUP(type);
+}
+
+void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc){
+    fep->desc = RG_STRDUP(desc);
 }
 
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){
@@ -1866,6 +1965,66 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
     FlatExecutionPlan_AddBasicStep(fep, extraxtorName, extractorArg, EXTRACTKEY);
     FlatExecutionPlan_AddBasicStep(fep, stepsNames[REPARTITION], NULL, REPARTITION);
     FlatExecutionPlan_AddMapStep(fep, "GetValueMapper", NULL);
+}
+
+int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc < 1){
+        return RedisModule_WrongArity(ctx);
+    }
+    Gears_dictIterator* iter = Gears_dictGetIterator(epData.registeredFepDict);
+    Gears_dictEntry *curr = NULL;
+    size_t numElements = 0;
+    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+    while((curr = Gears_dictNext(iter))){
+        FlatExecutionPlan* fep = Gears_dictGetVal(curr);
+        RedisModule_ReplyWithArray(ctx, 6);
+        RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
+        RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
+        RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
+        RedisModule_ReplyWithStringBuffer(ctx, fep->reader->reader, strlen(fep->reader->reader));
+        RedisModule_ReplyWithStringBuffer(ctx, "desc", strlen("desc"));
+        if(fep->desc){
+            RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
+        }else{
+            RedisModule_ReplyWithNull(ctx);
+        }
+        ++numElements;
+    }
+    Gears_dictReleaseIterator(iter);
+
+    RedisModule_ReplySetArrayLength(ctx, numElements);
+    return REDISMODULE_OK;
+}
+
+int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc < 2 || argc > 3){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+    FlatExecutionPlan* fep = FlatExecutionPlan_FindByStrId(id);
+
+    if(!fep){
+        RedisModule_ReplyWithError(ctx, "execution does not registered");
+        return REDISMODULE_OK;
+    }
+
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+
+    if(!callbacks->unregisterTrigger){
+        RedisModule_ReplyWithError(ctx, "reader does not support unregister");
+        return REDISMODULE_OK;
+    }
+
+    if(Cluster_IsClusterMode()){
+        Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, fep->id, EXECUTION_PLAN_ID_LEN);
+    }
+
+    ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
+
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+
+    return REDISMODULE_OK;
 }
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){

@@ -21,7 +21,7 @@
    <ignore_py_error0.3>
    Memcheck:Leak
    ...
-   fun:_PyEval_EvalFrameDefault
+   fun:_imp_exec_builtin
    ...
 }
 {
@@ -75,20 +75,6 @@
    Memcheck:Leak
    ...
    fun:redisLibeventAttach
-   ...
-}
-{
-   <ignore_FlatExecutionPlan_RegisterKeySpaceEvent_for_now>
-   Memcheck:Leak
-   ...
-   fun:FlatExecutionPlan_RegisterKeySpaceEvent
-   ...
-}
-{  
-   <ignore_FlatExecutionPlan_Register_for_now>
-   Memcheck:Leak
-   ...
-   fun:FlatExecutionPlan_Register
    ...
 }
 {

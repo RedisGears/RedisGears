@@ -9,6 +9,9 @@
 #include "redisgears_memory.h"
 #include "pthread.h"
 #include <assert.h>
+#ifdef WITHPYTHON
+#include "redisgears_python.h"
+#endif
 
 pthread_key_t _lockKey;
 
@@ -35,7 +38,22 @@ void LockHandler_Acquire(RedisModuleCtx* ctx){
         pthread_setspecific(_lockKey, lh);
     }
     if(lh->lockCounter == 0){
+#ifdef WITHPYTHON
+        // to avoid deadlocks, when we try to acquire the redis GIL we first check
+        // if we hold the python GIL, if we do we first release it, then acquire the redis GIL
+        // and then re-acquire the python GIL.
+        PyThreadState *_save;
+        bool pythonLockAcquired = RedisGearsPy_IsLockAcquired();
+        if(pythonLockAcquired){
+            _save = PyEval_SaveThread();
+        }
+#endif
         RedisModule_ThreadSafeContextLock(ctx);
+#ifdef WITHPYTHON
+        if(pythonLockAcquired){
+            PyEval_RestoreThread(_save);
+        }
+#endif
     }
     ++lh->lockCounter;
 }

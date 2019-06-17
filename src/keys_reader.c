@@ -32,7 +32,7 @@ typedef struct KeysReaderCtx{
     RedisModuleDictIter* iter1;
 }KeysReaderCtx;
 
-KeysReaderCtx* KeysReaderCtx_Create(char* match){
+static KeysReaderCtx* KeysReaderCtx_Create(char* match){
 #define PENDING_KEYS_INIT_CAP 10
     KeysReaderCtx* krctx = RG_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
@@ -315,19 +315,32 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
     return REDISMODULE_OK;
 }
 
-static void KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
+static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep){
+    Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        FlatExecutionPlan* f = Gears_listNodeValue(node);
+        if(f == fep){
+            Gears_listDelNode(keysReaderRegistration, node);
+            Gears_listReleaseIterator(iter);
+            return;
+        }
+    }
+    assert(0);
+}
+
+static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
+    RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
     if(!keysReaderRegistration){
         keysReaderRegistration = Gears_listCreate();
-        RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
-        LockHandler_Acquire(ctx);
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_ALL, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
-        LockHandler_Release(ctx);
-        RedisModule_FreeThreadSafeContext(ctx);
     }
-    Gears_listAddNodeHead(keysReaderRegistration, fep);
+    Gears_listAddNodeTail(keysReaderRegistration, fep);
     RG_FREE(args); // currently we ignore the args
+    RedisModule_FreeThreadSafeContext(ctx);
+    return 1;
 }
 
 static int KeysReader_IndexAllKeysInRax(RedisModuleCtx *rctx, RedisModuleString **argv, int argc){
@@ -338,7 +351,7 @@ static int KeysReader_IndexAllKeysInRax(RedisModuleCtx *rctx, RedisModuleString 
 
     keysDict = RedisModule_CreateDict(rctx);
 
-    Reader* reader = KeysReader(RG_STRDUP("*"));
+    Reader* reader = KeysReader.create(RG_STRDUP("*"));
     Record* r = NULL;
     ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, NULL);
     while((r = reader->next(&ectx, reader->ctx))){
@@ -374,7 +387,7 @@ static int KeysReader_IndexAllKeysInRedisearch(RedisModuleCtx *rctx, RedisModule
 	};
 	keyIdx = RediSearch_CreateIndexSpec(KEYS_SPEC_NAME, &keyNameField, 1);
 
-	Reader* reader = KeysReader(RG_STRDUP("*"));
+	Reader* reader = KeysReader.create(RG_STRDUP("*"));
 	Record* r = NULL;
 	ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, NULL);
 	while((r = reader->next(&ectx, reader->ctx))){
@@ -409,12 +422,11 @@ int KeysReader_Initialize(RedisModuleCtx* ctx){
 	return REDISMODULE_OK;
 }
 
-Reader* KeysReader(void* arg){
+static Reader* KeysReader_Create(void* arg){
     KeysReaderCtx* ctx = KeysReaderCtx_Create(arg);
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
-        .registerTrigger = KeysReader_RegisrterTrigger,
         .next = KeysReader_NextCallback,
         .free = KeysReader_Free,
         .serialize = RG_KeysReaderCtxSerialize,
@@ -422,3 +434,9 @@ Reader* KeysReader(void* arg){
     };
     return r;
 }
+
+RedisGears_ReaderCallbacks KeysReader = {
+        .create = KeysReader_Create,
+        .registerTrigger = KeysReader_RegisrterTrigger,
+        .unregisterTrigger = KeysReader_UnregisterTrigger,
+};
