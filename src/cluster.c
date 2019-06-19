@@ -195,6 +195,7 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
     }
     assert(reply->type == REDIS_REPLY_STRING);
     Node* n = (Node*)b;
+    printf("got hello reply from : %s:%d\r\n", c->c.tcp.host, c->c.tcp.port);
     if(n->runId){
         if(strcmp(n->runId, reply->str) != 0){
             // here we know that the shard has crashed
@@ -359,6 +360,8 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         }
     }
     Cluster_ConnectToShards();
+
+    Gears_dictEmpty(nodesMsgIds, NULL);
 }
 
 static void Cluster_Refresh(RedisModuleCtx* ctx){
@@ -423,6 +426,8 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
     }
     RedisModule_FreeCallReply(allSlotsRelpy);
     Cluster_ConnectToShards();
+
+    Gears_dictEmpty(nodesMsgIds, NULL);
 }
 
 static void Cluster_FreeMsg(Msg* msg){

@@ -31,7 +31,7 @@ static ConsensusInstance* Consensus_InstanceCreate(Consensus* consensus, long lo
             assert(inst->consensusId != consensusInstance->consensusId);
             if(inst->consensusId < consensusInstance->consensusId){
                 Gears_listInsertNode(consensus->consensusInstances, node, consensusInstance, 0);
-                break;
+                return consensusInstance;
             }
         }while((node = Gears_listNextNode(node)));
         Gears_listAddNodeTail(consensus->consensusInstances, consensusInstance);
@@ -124,10 +124,10 @@ static void Consensus_LearnValueMessage(RedisModuleCtx *ctx, const char *sender_
             }
 
             if(isSameValue){
-                consensus->approvedCallback(consensus->privateData, val, len, instance->additionalData);
+                consensus->approvedCallback(consensus->privateData, val + REDISMODULE_NODE_ID_LEN, len - REDISMODULE_NODE_ID_LEN, instance->additionalData);
             }else{
-                consensus->approvedCallback(consensus->privateData, val, len, NULL);
-                Consensus_Send(consensus, instance->learner.originalVal, instance->learner.originalLen, instance->additionalData);
+                consensus->approvedCallback(consensus->privateData, val + REDISMODULE_NODE_ID_LEN, len - REDISMODULE_NODE_ID_LEN, NULL);
+                Consensus_Send(consensus, instance->learner.originalVal + REDISMODULE_NODE_ID_LEN, instance->learner.originalLen - REDISMODULE_NODE_ID_LEN, instance->additionalData);
             }
 
             instance->learner.valueLeared = true;
@@ -455,7 +455,32 @@ static void Consensus_StartInstance(RedisModuleCtx *ctx, const char *sender_id, 
 }
 
 static void Consensus_TestOnMsgAproved(void* privateData, const char* msg, size_t len, void* additionalData){
-    printf("message arrived : %s\r\n", msg);
+    printf("%s : message arrived : %s\r\n", Cluster_GetMyId(), msg);
+}
+
+static int Consensus_Info(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    RedisModule_ReplyWithArray(ctx, Gears_dictSize(consensusDict));
+    Gears_dictIterator *iter = Gears_dictGetIterator(consensusDict);
+    Gears_dictEntry *entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        RedisModule_ReplyWithArray(ctx, 2);
+        Consensus* consensus = Gears_dictGetVal(entry);
+        RedisModule_ReplyWithStringBuffer(ctx, consensus->name, strlen(consensus->name));
+        RedisModule_ReplyWithArray(ctx, Gears_listLength(consensus->consensusInstances));
+        Gears_listIter *listIter = Gears_listGetIterator(consensus->consensusInstances, AL_START_HEAD);
+        Gears_listNode *node = NULL;
+        while((node = Gears_listNext(listIter))){
+            ConsensusInstance* instance = Gears_listNodeValue(node);
+            RedisModule_ReplyWithArray(ctx, 4);
+            RedisModule_ReplyWithStringBuffer(ctx, "ConsensusId", strlen("ConsensusId"));
+            RedisModule_ReplyWithLongLong(ctx, instance->consensusId);
+            RedisModule_ReplyWithStringBuffer(ctx, "Phase", strlen("Phase"));
+            RedisModule_ReplyWithLongLong(ctx, instance->phase);
+        }
+        Gears_listReleaseIterator(listIter);
+    }
+    Gears_dictReleaseIterator(iter);
+    return REDISMODULE_OK;
 }
 
 static int Consensus_Test(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -497,6 +522,11 @@ int Consensus_Init(RedisModuleCtx* ctx){
         return REDISMODULE_ERR;
     }
 
+    if (RedisModule_CreateCommand(ctx, "rg.infoconsensus", Consensus_Info, "readonly", 0, 0, 0) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not register command rg.infoconsensus");
+        return REDISMODULE_ERR;
+    }
+
     return REDISMODULE_OK;
 }
 
@@ -516,9 +546,12 @@ Consensus* Consensus_Create(const char* name, Consensus_OnMsgAproved approvedCal
 void Consensus_Send(Consensus* consensus, const char* msg, size_t len, void* additionalData){
     ConsensusMsgCtx* cmctx = RG_ALLOC(sizeof(ConsensusMsgCtx));
     cmctx->consensus = consensus;
-    cmctx->msg = RG_ALLOC(len);
-    memcpy(cmctx->msg, msg, len);
-    cmctx->len = len;
+    cmctx->msg = RG_ALLOC(REDISMODULE_NODE_ID_LEN + len);
+    // we are adding the node_id to the message so messages from different nodes
+    // with the same value will be different.
+    memcpy(cmctx->msg, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN);
+    memcpy(cmctx->msg + REDISMODULE_NODE_ID_LEN, msg, len);
+    cmctx->len = REDISMODULE_NODE_ID_LEN + len;
     cmctx->additionalData = additionalData;
     Cluster_SendMsgToMySelfM(Consensus_StartInstance, (char*)&cmctx, sizeof(ConsensusMsgCtx*));
 }
