@@ -28,6 +28,7 @@
 #include "keys_reader.h"
 #include "streams_reader.h"
 #include "mappers.h"
+#include "consensus.h"
 #include <stdbool.h>
 #include "lock_handler.h"
 
@@ -459,6 +460,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     Mgmt_Init();
 
     Cluster_Init();
+
+    if(Consensus_Init(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not initialize consensus manager.");
+        return REDISMODULE_ERR;
+    }
 
     RGM_RegisterReader(KeysReader);
     RGM_RegisterReader(StreamReader);

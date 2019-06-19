@@ -118,6 +118,7 @@ static void FreeNode(Node* n){
     }
     RG_FREE(n->id);
     RG_FREE(n->ip);
+    RG_FREE(n->runId);
     if(n->unixSocket){
         RG_FREE(n->unixSocket);
     }
@@ -143,6 +144,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
     *n = (Node){
             .id = RG_STRDUP(id),
             .ip = RG_STRDUP(ip),
+            .runId = NULL,
             .port = port,
             .password = password ? RG_STRDUP(password) : NULL,
             .unixSocket = unixSocket ? RG_STRDUP(unixSocket) : NULL,
@@ -229,6 +231,10 @@ static void Cluster_ConnectToShard(Node* n){
 }
 
 static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int status){
+    if(status == REDIS_OK){
+        printf("disconnected : %s:%d, status : %d, disconnection was intentional, will not try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
+        return;
+    }
     printf("disconnected : %s:%d, status : %d, will try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
     Node* n = (Node*)c->data;
     n->c = NULL;
@@ -236,7 +242,7 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
 }
 
 static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status){
-    if(status == -1){
+    if(status == REDIS_ERR){
         // connection failed lets try again
         Cluster_ConnectToShard((Node*)c->data);
     }else{
@@ -471,6 +477,9 @@ static void Cluster_SendMessage(SendMsg* sendMsg){
         Gears_dictEntry *entry = NULL;
         while((entry = Gears_dictNext(iter))){
             Node* n = Gears_dictGetVal(entry);
+            if(strcmp(n->id, CurrCluster->myId) == 0){
+                continue;
+            }
             Cluster_SendMsgToNode(n, sendMsg);
         }
         Gears_dictReleaseIterator(iter);
@@ -591,7 +600,24 @@ void Cluster_SendClusterSet(RedisModuleCtx *ctx, RedisModuleString** argv, int a
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
 
-void Cluster_SendMsg(char* id, char* function, char* msg, size_t len){
+void Cluster_SendMsgToMySelf(const char* function, char* msg, size_t len){
+    Gears_dictEntry *entry = Gears_dictFind(RemoteCallbacks, function);
+    assert(entry);
+    RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
+
+    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(CurrCluster->myId, msg, len, receiver);
+
+    pthread_mutex_lock(&msgArriveLock);
+    Gears_listAddNodeTail(msgArriveList, msgArriveCtx);
+    pthread_mutex_unlock(&msgArriveLock);
+    pthread_cond_signal(&msgArriveCond);
+}
+
+void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len){
+    if(id && Cluster_IsMyId(id)){
+        Cluster_SendMsgToMySelf(function, msg, len);
+        return;
+    }
     Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
     if(id){
         memcpy(msgStruct->sendMsg.idToSend, id, REDISMODULE_NODE_ID_LEN);
@@ -605,6 +631,11 @@ void Cluster_SendMsg(char* id, char* function, char* msg, size_t len){
     msgStruct->sendMsg.msgLen = len;
     msgStruct->type = SEND_MSG;
     write(notify[1], &msgStruct, sizeof(Msg*));
+}
+
+void Cluster_SendMsgToAllAndMyself(char* function, char* msg, size_t len){
+    Cluster_SendMsgToMySelf(function, msg, len);
+    Cluster_SendMsg(NULL, function, msg, len);
 }
 
 bool Cluster_IsClusterMode(){
@@ -636,7 +667,7 @@ char* Cluster_GetNodeIdByKey(char* key){
     return CurrCluster->slots[slot]->id;
 }
 
-bool Cluster_IsMyId(char* id){
+bool Cluster_IsMyId(const char* id){
 	return memcmp(CurrCluster->myId, id, REDISMODULE_NODE_ID_LEN) == 0;
 }
 
