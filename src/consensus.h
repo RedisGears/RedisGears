@@ -32,9 +32,12 @@ typedef struct Acceptor{
 typedef struct Learner{
     long long proposalId;
     long long learnedNumber;
+    char* val;
+    size_t len;
     char* originalVal;
     size_t originalLen;
     bool valueLeared;
+    bool callbackTriggered;
 }Learner;
 
 typedef enum ConsensusPhase{
@@ -54,6 +57,8 @@ typedef struct Consensus{
     char* name;
     long long currConsensusId;
     Gears_list* consensusInstances;
+    Gears_listNode* pendingTrigger;
+    long long nextTriggeredId;
     Consensus_OnMsgAproved approvedCallback;
     void* privateData;
 }Consensus;

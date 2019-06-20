@@ -619,11 +619,12 @@ void Cluster_SendMsgToMySelf(const char* function, char* msg, size_t len){
 }
 
 void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len){
+    Msg* msgStruct = NULL;
     if(id && Cluster_IsMyId(id)){
         Cluster_SendMsgToMySelf(function, msg, len);
         return;
     }
-    Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
+    msgStruct = RG_ALLOC(sizeof(*msgStruct));
     if(id){
         memcpy(msgStruct->sendMsg.idToSend, id, REDISMODULE_NODE_ID_LEN);
         msgStruct->sendMsg.idToSend[REDISMODULE_NODE_ID_LEN] = '\0';

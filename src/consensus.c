@@ -9,6 +9,23 @@
 
 Gears_dict* consensusDict;
 
+static bool Consensus_ValEquals(const char* val1, const char* val2){
+    if(!val1){
+        return !val2;
+    }
+    if(!val2){
+        return !val1;
+    }
+    return memcmp(val1, val2, REDISMODULE_NODE_ID_LEN) == 0;
+}
+
+static char* Consensus_ValDup(const char* val, size_t len, size_t* outLen){
+    *outLen = len;
+    char* ret = RG_ALLOC(len);
+    memcpy(ret, val, len);
+    return ret;
+}
+
 static ConsensusInstance* Consensus_InstanceCreate(Consensus* consensus, long long consensusId){
     ConsensusInstance* consensusInstance = RG_CALLOC(1, sizeof(*consensusInstance));
     if(consensusId >= 0){
@@ -81,6 +98,37 @@ static ConsensusInstance* Consensus_InstanceGet(Consensus* consensus, long long 
     return NULL;
 }
 
+static void Consensus_TriggerCallbacks(Consensus* consensus){
+    Gears_listNode* instanceNode = NULL;
+    if(!consensus->pendingTrigger){
+        instanceNode = Gears_listLast(consensus->consensusInstances);
+    }else{
+        instanceNode = Gears_listPrevNode(consensus->pendingTrigger);
+    }
+    assert(instanceNode);
+    ConsensusInstance* instance = Gears_listNodeValue(instanceNode);
+    while(instance->consensusId == consensus->nextTriggeredId){
+        if(!instance->learner.valueLeared){
+            return;
+        }
+        void* additionalData = NULL;
+        if(instance->learner.val == instance->learner.originalVal){
+            additionalData = instance->additionalData;
+        }
+        instance->learner.callbackTriggered = true;
+        consensus->approvedCallback(consensus->privateData, instance->learner.val + REDISMODULE_NODE_ID_LEN, instance->learner.len - REDISMODULE_NODE_ID_LEN, additionalData);
+
+        consensus->pendingTrigger = instanceNode;
+        ++consensus->nextTriggeredId;
+
+        instanceNode = Gears_listPrevNode(instanceNode);
+        if(!instanceNode){
+            return;
+        }
+        instance = Gears_listNodeValue(instanceNode);
+    }
+}
+
 static void Consensus_LearnValueMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     Gears_Buffer buff;
     buff.buff = (char*)payload;
@@ -96,7 +144,7 @@ static void Consensus_LearnValueMessage(RedisModuleCtx *ctx, const char *sender_
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
 
-    ConsensusInstance* instance = Consensus_InstanceGet(consensus, consnsusId);
+    ConsensusInstance* instance = Consensus_InstanceGetOrCreate(consensus, consnsusId);
 
     if(instance->learner.proposalId > proposalId){
         return;
@@ -112,25 +160,18 @@ static void Consensus_LearnValueMessage(RedisModuleCtx *ctx, const char *sender_
 
     if(instance->learner.learnedNumber == (Cluster_GetSize() / 2) + 1){
         if(!instance->learner.valueLeared){
-            bool isSameValue = true;
+
+            instance->learner.val = Consensus_ValDup(val, valLen, &instance->learner.len);
+
             if(instance->learner.originalVal){
-                if(valLen != instance->learner.originalLen){
-                    isSameValue = false;
-                }else{
-                    if(memcmp(val, instance->learner.originalVal, valLen) != 0){
-                        isSameValue = false;
-                    }
+                if(!Consensus_ValEquals(instance->learner.originalVal, val)){
+                    Consensus_Send(consensus, instance->learner.originalVal + REDISMODULE_NODE_ID_LEN, instance->learner.originalLen - REDISMODULE_NODE_ID_LEN, instance->additionalData);
                 }
             }
 
-            if(isSameValue){
-                consensus->approvedCallback(consensus->privateData, val + REDISMODULE_NODE_ID_LEN, len - REDISMODULE_NODE_ID_LEN, instance->additionalData);
-            }else{
-                consensus->approvedCallback(consensus->privateData, val + REDISMODULE_NODE_ID_LEN, len - REDISMODULE_NODE_ID_LEN, NULL);
-                Consensus_Send(consensus, instance->learner.originalVal + REDISMODULE_NODE_ID_LEN, instance->learner.originalLen - REDISMODULE_NODE_ID_LEN, instance->additionalData);
-            }
-
             instance->learner.valueLeared = true;
+
+            Consensus_TriggerCallbacks(consensus);
         }
     }
 }
@@ -243,9 +284,12 @@ static void Consensus_AcceptMessage(RedisModuleCtx *ctx, const char *sender_id, 
     }
 
     // accepting the value
-    instance->acceptor.val = RG_ALLOC(valLen);
-    memcpy(instance->acceptor.val, val, valLen);
-    instance->acceptor.len = valLen;
+    if(!Consensus_ValEquals(instance->acceptor.val, val)){
+        if(instance->acceptor.val){
+            RG_FREE(instance->acceptor.val);
+        }
+        instance->acceptor.val = Consensus_ValDup(val, valLen, &instance->acceptor.len);
+    }
 
     Gears_Buffer *buf = Gears_BufferCreate();
     Gears_BufferWriter bw;
@@ -294,22 +338,15 @@ static void Consensus_RecruitedMessage(RedisModuleCtx *ctx, const char *sender_i
     }
 
     if(hasValue && instance->proposer.biggerProposalId < oldProposalId){
-        bool switchVals = false;
-        if(valLen != instance->proposer.len){
-            switchVals = true;
-        }else{
-            if(memcmp(instance->proposer.val, val, valLen) != 0){
-                switchVals = true;
-            }
-        }
 
-        if(switchVals){
-            RG_FREE(instance->proposer.val);
-            instance->proposer.val = RG_ALLOC(valLen);
-            memcpy(instance->proposer.val, val, valLen);
-            instance->proposer.len = valLen;
+        if(!Consensus_ValEquals(instance->proposer.val, val)){
+            if(instance->proposer.val){
+                RG_FREE(instance->proposer.val);
+            }
+            instance->proposer.val = Consensus_ValDup(val, valLen, &instance->proposer.len);
         }
         instance->proposer.biggerProposalId = oldProposalId;
+
     }
 
     instance->proposer.recruitedNumber++;
@@ -434,11 +471,10 @@ static void Consensus_StartInstance(RedisModuleCtx *ctx, const char *sender_id, 
 
     consensusInstance->proposer.val = (char*)cmctx->msg;
     consensusInstance->proposer.len = cmctx->len;
+
     consensusInstance->additionalData = cmctx->additionalData;
 
-    consensusInstance->learner.originalVal = RG_ALLOC(cmctx->len);
-    memcpy(consensusInstance->learner.originalVal, cmctx->msg, cmctx->len);
-    consensusInstance->learner.originalLen = cmctx->len;
+    consensusInstance->learner.originalVal = Consensus_ValDup(cmctx->msg, cmctx->len, &consensusInstance->learner.originalLen);
 
     Gears_Buffer *buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
@@ -471,11 +507,17 @@ static int Consensus_Info(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
         Gears_listNode *node = NULL;
         while((node = Gears_listNext(listIter))){
             ConsensusInstance* instance = Gears_listNodeValue(node);
-            RedisModule_ReplyWithArray(ctx, 4);
+            RedisModule_ReplyWithArray(ctx, 10);
             RedisModule_ReplyWithStringBuffer(ctx, "ConsensusId", strlen("ConsensusId"));
             RedisModule_ReplyWithLongLong(ctx, instance->consensusId);
             RedisModule_ReplyWithStringBuffer(ctx, "Phase", strlen("Phase"));
             RedisModule_ReplyWithLongLong(ctx, instance->phase);
+            RedisModule_ReplyWithStringBuffer(ctx, "IsValueLearned", strlen("IsValueLearned"));
+            RedisModule_ReplyWithLongLong(ctx, instance->learner.valueLeared);
+            RedisModule_ReplyWithStringBuffer(ctx, "LearnedValue", strlen("LearnedValue"));
+            RedisModule_ReplyWithStringBuffer(ctx, instance->learner.val, instance->learner.len);
+            RedisModule_ReplyWithStringBuffer(ctx, "CallbackTriggered", strlen("CallbackTriggered"));
+            RedisModule_ReplyWithLongLong(ctx, instance->learner.callbackTriggered);
         }
         Gears_listReleaseIterator(listIter);
     }
@@ -498,7 +540,7 @@ static int Consensus_Test(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, "TestConsensus");
 
-    Consensus_Send(consensus, msg, len, NULL);
+    Consensus_Send(consensus, msg, len + 1, NULL);
 
     RedisModule_ReplyWithSimpleString(ctx, "OK");
     return REDISMODULE_OK;
@@ -536,6 +578,8 @@ Consensus* Consensus_Create(const char* name, Consensus_OnMsgAproved approvedCal
     consensus->approvedCallback = approvedCallback;
     consensus->privateData = privateData;
     consensus->currConsensusId = 0;
+    consensus->pendingTrigger = NULL;
+    consensus->nextTriggeredId = 0;
     consensus->consensusInstances = Gears_listCreate();
 
     Gears_dictAdd(consensusDict, consensus->name, consensus);
