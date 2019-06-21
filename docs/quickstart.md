@@ -1,5 +1,5 @@
 # RedisGears Module
-Dynamic execution framework for your Redis data:
+Dynamic execution framework for your Redis data.
 
 ## Docker
 To quickly tryout RedisGears, launch an instance using docker:
@@ -11,7 +11,7 @@ docker run redislabs/redisgears:latest
 ## Build
 
 ### Prerequisites
-* Install [Redis 5.0](https://redis.io/) on you machine.
+* Install [Redis 5.0](https://redis.io/) on your machine.
 * On Mac OSX (High Sierra), install Xcode command line tools:
 
 ```bash
@@ -29,11 +29,11 @@ make all
 Notice that part of the compilation is to create the gears virtual environment under `/opt/redislabs/lib/modules/python3/`
 
 ## Run
-If you running gears on the same machine on which it was compile then its enough just loading the RedisGears module:
+If you run gears on the same machine on which it was compiled, then it's enough to load the RedisGears module:
 
 `--loamodule <path to redisgears.so`
 
-If you run RedisGears on another machine, some extra setup is needed. For RedisGears to run properly, it needs to have the virtual environment which was created when it was compiled. All the required files are located in `/opt/redislabs/lib/modules/python3` make sure to copy this directory to the machine where Redis is running and to the same path (i.e `/opt/redislabs/lib/modules/python3`).
+If you run RedisGears on another machine, some extra setup is needed. For RedisGears to run properly, it needs to have the virtual environment which was created when it was compiled. All the required files are located in `/opt/redislabs/lib/modules/python3`. Make sure to copy this directory to the machine where Redis is running and to the same path (i.e `/opt/redislabs/lib/modules/python3`).
 
 ## Tests
 Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
