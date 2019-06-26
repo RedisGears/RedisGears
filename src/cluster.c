@@ -74,7 +74,7 @@ static void MsgArriveCtx_Free(MsgArriveCtx* ctx){
 }
 
 typedef enum MsgType{
-    SEND_MSG, CLUSTER_REFRESH_MSG, CLUSTER_SET_MSG
+    SEND_MSG, CLUSTER_REFRESH_MSG, CLUSTER_SET_MSG, TIME_EVEMT_MSG
 }MsgType;
 
 typedef struct SendMsg{
@@ -99,6 +99,10 @@ typedef struct Msg{
         SendMsg sendMsg;
         ClusterRefreshMsg clusterRefresh;
         ClusterSetMsg clusterSet;
+        struct {
+            struct timeval time;
+            MsgArriveCtx* msgArriveCtx;
+        }timeEvent;
     };
     MsgType type;
 }Msg;
@@ -195,7 +199,6 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
     }
     assert(reply->type == REDIS_REPLY_STRING);
     Node* n = (Node*)b;
-    printf("got hello reply from : %s:%d\r\n", c->c.tcp.host, c->c.tcp.port);
     if(n->runId){
         if(strcmp(n->runId, reply->str) != 0){
             // here we know that the shard has crashed
@@ -325,13 +328,15 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         assert(RedisModule_StringToLongLong(argv[i + 4], &maxslot) == REDISMODULE_OK);
 
         const char* addr = RedisModule_StringPtrLen(argv[i + 6], NULL);
+        char* password = NULL;
         char* passEnd = strstr(addr, "@");
-        size_t passSize = passEnd - addr;
-        char password[passSize + 1];
-        memcpy(password, addr, passSize);
-        password[passSize] = '\0';
-
-        addr = passEnd + 1;
+        if(passEnd){
+            size_t passSize = passEnd - addr;
+            password = RG_ALLOC(passSize + 1);
+            memcpy(password, addr, passSize);
+            password[passSize] = '\0';
+            addr = passEnd + 1;
+        }
 
         char* ipEnd = strstr(addr, ":");
         size_t ipSize = ipEnd - addr;
@@ -346,6 +351,9 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         Node* n = GetNode(realId);
         if(!n){
             n = CreateNode(realId, ip, port, password, NULL);
+            if(password){
+                RG_FREE(password);
+            }
         }
         for(int i = minslot ; i <= maxslot ; ++i){
             CurrCluster->slots[i] = n;
@@ -438,6 +446,7 @@ static void Cluster_FreeMsg(Msg* msg){
         break;
     case CLUSTER_REFRESH_MSG:
     case CLUSTER_SET_MSG:
+    case TIME_EVEMT_MSG:
         break;
     default:
         assert(false);
@@ -491,9 +500,20 @@ static void Cluster_SendMessage(SendMsg* sendMsg){
     }
 }
 
+static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg);
+static void Cluster_TimeEvent(evutil_socket_t s, short what, void *arg){
+    MsgArriveCtx* msgArriveCtx = arg;
+
+    pthread_mutex_lock(&msgArriveLock);
+    Gears_listAddNodeTail(msgArriveList, msgArriveCtx);
+    pthread_mutex_unlock(&msgArriveLock);
+    pthread_cond_signal(&msgArriveCond);
+}
+
 static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
     Msg* msg;
     RedisModuleCtx* ctx;
+    struct event *readEvent;
     read(s, &msg, sizeof(Msg*));
     switch(msg->type){
     case SEND_MSG:
@@ -516,6 +536,10 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
         RedisModule_UnblockClient(msg->clusterRefresh.bc, NULL);
         LockHandler_Release(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
+        break;
+    case TIME_EVEMT_MSG:
+        readEvent = event_new(main_base, -1, 0, Cluster_TimeEvent, msg->timeEvent.msgArriveCtx);
+        event_add(readEvent, &msg->timeEvent.time);
         break;
     default:
         assert(false);
@@ -602,6 +626,20 @@ void Cluster_SendClusterSet(RedisModuleCtx *ctx, RedisModuleString** argv, int a
     msgStruct->clusterSet.argv = argv;
     msgStruct->clusterSet.argc = argc;
     msgStruct->type = CLUSTER_SET_MSG;
+    write(notify[1], &msgStruct, sizeof(Msg*));
+}
+
+void Cluster_SendMsgToMySelfWithDelay(const char* function, char* msg, size_t len, long long delay){
+    Gears_dictEntry *entry = Gears_dictFind(RemoteCallbacks, function);
+    assert(entry);
+    RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
+
+    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(CurrCluster->myId, msg, len, receiver);
+
+    Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
+    msgStruct->timeEvent.msgArriveCtx = msgArriveCtx;
+    msgStruct->timeEvent.time = (struct timeval){0, delay * 1000};
+    msgStruct->type = TIME_EVEMT_MSG;
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
 

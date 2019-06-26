@@ -251,6 +251,9 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* ar
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
+void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw);
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br);
+int FlatExecutionPlan_StrIdToId(const char* id, char* realId);
 
 void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);

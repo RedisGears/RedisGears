@@ -6,6 +6,9 @@
 #include "cluster.h"
 #include <stdbool.h>
 #include <assert.h>
+#include "lock_handler.h"
+#include "config.h"
+#include <time.h>
 
 Gears_dict* consensusDict;
 
@@ -112,7 +115,7 @@ static void Consensus_TriggerCallbacks(Consensus* consensus){
             return;
         }
         void* additionalData = NULL;
-        if(instance->learner.val == instance->learner.originalVal){
+        if(Consensus_ValEquals(instance->learner.val, instance->learner.originalVal)){
             additionalData = instance->additionalData;
         }
         instance->learner.callbackTriggered = true;
@@ -248,9 +251,8 @@ static void Consensus_AcceptDeniedMessage(RedisModuleCtx *ctx, const char *sende
     Gears_BufferWriterWriteLong(&bw, instance->consensusId);
     Gears_BufferWriterWriteLong(&bw, instance->proposer.proposalId);
 
-    Cluster_SendMsgToAllAndMyselfM(Consensus_RecruitMessage, buf->buff, buf->size);
-
-    Gears_BufferFree(buf);
+    int r = (rand() % (GearsConfig_GetConsensusIdleEndInterval() + 1 - GearsConfig_GetConsensusIdleStartInterval())) + GearsConfig_GetConsensusIdleStartInterval();
+    Cluster_SendMsgToMySelfWithDelatM(Consensus_ReRecruitMessage, (char*)&buf, sizeof(buf), r);
 }
 
 static void Consensus_AcceptMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -277,7 +279,7 @@ static void Consensus_AcceptMessage(RedisModuleCtx *ctx, const char *sender_id, 
         Gears_BufferWriterInit(&bw, buf);
         Gears_BufferWriterWriteString(&bw, consensus->name);
         Gears_BufferWriterWriteLong(&bw, instance->consensusId);
-        Gears_BufferWriterWriteLong(&bw, instance->proposer.proposalId);
+        Gears_BufferWriterWriteLong(&bw, proposalId);
         Cluster_SendMsgM(sender_id, Consensus_AcceptDeniedMessage, buf->buff, buf->size);
         Gears_BufferFree(buf);
         return;
@@ -368,6 +370,12 @@ static void Consensus_RecruitedMessage(RedisModuleCtx *ctx, const char *sender_i
     }
 }
 
+static void Consensus_ReRecruitMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    Gears_Buffer *buf = (*(Gears_Buffer**)payload);
+    Cluster_SendMsgToAllAndMyselfM(Consensus_RecruitMessage, buf->buff, buf->size);
+    Gears_BufferFree(buf);
+}
+
 static void Consensus_DeniedMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     // one deny tells us to restart
     Gears_Buffer buff;
@@ -406,9 +414,8 @@ static void Consensus_DeniedMessage(RedisModuleCtx *ctx, const char *sender_id, 
     Gears_BufferWriterWriteLong(&bw, instance->consensusId);
     Gears_BufferWriterWriteLong(&bw, instance->proposer.proposalId);
 
-    Cluster_SendMsgToAllAndMyselfM(Consensus_RecruitMessage, buf->buff, buf->size);
-
-    Gears_BufferFree(buf);
+    int r = (rand() % (GearsConfig_GetConsensusIdleEndInterval() + 1 - GearsConfig_GetConsensusIdleStartInterval())) + GearsConfig_GetConsensusIdleStartInterval();
+    Cluster_SendMsgToMySelfWithDelatM(Consensus_ReRecruitMessage, (char*)&buf, sizeof(buf), r);
 }
 
 static void Consensus_RecruitMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -490,8 +497,17 @@ static void Consensus_StartInstance(RedisModuleCtx *ctx, const char *sender_id, 
     Gears_BufferFree(buff);
 }
 
+char* TestConsensusVal = NULL;
+
 static void Consensus_TestOnMsgAproved(void* privateData, const char* msg, size_t len, void* additionalData){
-    printf("%s : message arrived : %s\r\n", Cluster_GetMyId(), msg);
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(ctx);
+    if(TestConsensusVal){
+        RG_FREE(TestConsensusVal);
+    }
+    TestConsensusVal = RG_STRDUP(msg);
+    LockHandler_Release(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
 }
 
 static int Consensus_Info(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -525,14 +541,18 @@ static int Consensus_Info(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
     return REDISMODULE_OK;
 }
 
-static int Consensus_Test(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int Consensus_TestGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(TestConsensusVal){
+        RedisModule_ReplyWithStringBuffer(ctx, TestConsensusVal, strlen(TestConsensusVal));
+    }else{
+        RedisModule_ReplyWithNull(ctx);
+    }
+    return REDISMODULE_OK;
+}
+
+static int Consensus_TestSet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc != 2){
         return RedisModule_WrongArity(ctx);
-    }
-
-    if(!Cluster_IsClusterMode()){
-        RedisModule_ReplyWithError(ctx, "can not test consensus on none cluster mode");
-        return REDISMODULE_OK;
     }
 
     size_t len;
@@ -547,7 +567,9 @@ static int Consensus_Test(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 }
 
 int Consensus_Init(RedisModuleCtx* ctx){
+    srand(time(NULL));
     consensusDict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
+    Cluster_RegisterMsgReceiverM(Consensus_ReRecruitMessage);
     Cluster_RegisterMsgReceiverM(Consensus_StartInstance);
     Cluster_RegisterMsgReceiverM(Consensus_RecruitMessage);
     Cluster_RegisterMsgReceiverM(Consensus_RecruitedMessage);
@@ -559,8 +581,13 @@ int Consensus_Init(RedisModuleCtx* ctx){
 
     Consensus_Create("TestConsensus", Consensus_TestOnMsgAproved, NULL);
 
-    if (RedisModule_CreateCommand(ctx, "rg.testconsensus", Consensus_Test, "readonly", 0, 0, 0) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "could not register command rg.testconsensus");
+    if (RedisModule_CreateCommand(ctx, "rg.testconsensusset", Consensus_TestSet, "readonly", 0, 0, 0) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not register command rg.testconsensusset");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.testconsensusget", Consensus_TestGet, "readonly", 0, 0, 0) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not register command rg.testconsensusget");
         return REDISMODULE_ERR;
     }
 
@@ -588,6 +615,11 @@ Consensus* Consensus_Create(const char* name, Consensus_OnMsgAproved approvedCal
 }
 
 void Consensus_Send(Consensus* consensus, const char* msg, size_t len, void* additionalData){
+    if(!Cluster_IsClusterMode()){
+        consensus->approvedCallback(consensus->privateData, msg, len, additionalData);
+        return;
+    }
+
     ConsensusMsgCtx* cmctx = RG_ALLOC(sizeof(ConsensusMsgCtx));
     cmctx->consensus = consensus;
     cmctx->msg = RG_ALLOC(REDISMODULE_NODE_ID_LEN + len);

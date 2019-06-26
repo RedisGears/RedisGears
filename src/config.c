@@ -44,6 +44,9 @@ typedef struct RedisGears_Config{
     ConfigVal maxExecutions;
 	ConfigVal profileExecutions;
 	ConfigVal pythonAttemptTraceback;
+	ConfigVal consensusIdleInterval;
+	int consensusIdleStartInterval;
+	int consensusIdleEndInterval;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -111,6 +114,37 @@ static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ConsensusIdleIntervalOnFailureGet(){
+    return &DefaultGearsConfig.consensusIdleInterval;
+}
+
+static bool ConfigVal_ConsensusIdleIntervalOnFailureSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+
+    const char* valStr = RedisModule_StringPtrLen(val, NULL);
+
+    int startInterval, endInterval;
+    int ret = sscanf(valStr, "%d-%d", &startInterval, &endInterval);
+    if(ret != 2) return false;
+
+    if(startInterval > endInterval){
+        return false;
+    }
+
+    if(startInterval < 0){
+        return false;
+    }
+
+    DefaultGearsConfig.consensusIdleStartInterval = startInterval;
+    DefaultGearsConfig.consensusIdleEndInterval = endInterval;
+
+    RG_FREE(DefaultGearsConfig.consensusIdleInterval.val.str);
+    DefaultGearsConfig.consensusIdleInterval.val.str = RG_STRDUP(valStr);
+
+    return true;
+}
+
 static const ConfigVal* ConfigVal_PythonAttemptTracebackGet(){
 	return &DefaultGearsConfig.pythonAttemptTraceback;
 }
@@ -151,6 +185,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "PythonAttemptTraceback",
         .getter = ConfigVal_PythonAttemptTracebackGet,
         .setter = ConfigVal_PythonAttemptTracebackSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "ConsensusIdleIntervalOnFailure",
+        .getter = ConfigVal_ConsensusIdleIntervalOnFailureGet,
+        .setter = ConfigVal_ConsensusIdleIntervalOnFailureSet,
         .configurableAtRunTime = true,
     },
     {
@@ -288,6 +328,14 @@ long long GearsConfig_GetPythonAttemptTraceback(){
 	return DefaultGearsConfig.pythonAttemptTraceback.val.longVal;
 }
 
+int GearsConfig_GetConsensusIdleStartInterval(){
+    return DefaultGearsConfig.consensusIdleStartInterval;
+}
+
+int GearsConfig_GetConsensusIdleEndInterval(){
+    return DefaultGearsConfig.consensusIdleEndInterval;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -337,6 +385,12 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 1,
             .type = LONG,
         },
+        .consensusIdleInterval = {
+            .val.str = RG_STRDUP("0-500"),
+            .type = STR,
+        },
+        .consensusIdleStartInterval = 0,
+        .consensusIdleEndInterval = 500,
     };
 
     DEF_COMMAND(configget, GearsConfig_Get);

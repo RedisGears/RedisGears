@@ -15,6 +15,7 @@
 #include "redisgears_memory.h"
 #include <event2/event.h>
 #include "lock_handler.h"
+#include "distributed_registrations_dict.h"
 
 #define INIT_TIMER  struct timespec _ts = {0}, _te = {0}; \
                     bool timerInitialized = false;
@@ -300,17 +301,24 @@ static FlatExecutionPlan* FlatExecutionPlan_FindId(const char* id){
     return fep;
 }
 
-static FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id){
-    char realId[EXECUTION_PLAN_ID_LEN] = {0};
+int FlatExecutionPlan_StrIdToId(const char* id, char* realId){
     if(strlen(id) < REDISMODULE_NODE_ID_LEN + 2){
-        return NULL;
+        return false;
     }
     if(id[REDISMODULE_NODE_ID_LEN] != '-'){
-        return NULL;
+        return false;
     }
     memcpy(realId, id, REDISMODULE_NODE_ID_LEN);
     int match = sscanf(id + REDISMODULE_NODE_ID_LEN + 1, "%lld", (long long*)(&realId[REDISMODULE_NODE_ID_LEN]));
     if(match != 1){
+        return false;
+    }
+    return true;
+}
+
+static FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id){
+    char realId[EXECUTION_PLAN_ID_LEN] = {0};
+    if(!FlatExecutionPlan_StrIdToId(id, realId)){
         return NULL;
     }
 
@@ -330,7 +338,7 @@ static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_Buffe
     }
 }
 
-static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw){
+void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw){
     FlatExecutionPlan_SerializeReader(fep->reader, bw);
     RedisGears_BWWriteLong(bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
@@ -370,7 +378,7 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(Gears_BufferReader* b
     return step;
 }
 
-static FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
     ret->reader = FlatExecutionPlan_DeserializeReader(br);
     long numberOfSteps = RedisGears_BRReadLong(br);
@@ -1549,16 +1557,17 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
     if(!callbacks->registerTrigger){
         return 0;
     }
-    if(Cluster_IsClusterMode()){
-        Gears_Buffer* buff = Gears_BufferCreate();
-        Gears_BufferWriter bw;
-        Gears_BufferWriterInit(&bw, buff);
-        FlatExecutionPlan_Serialize(fep, &bw);
-        RedisGears_BWWriteString(&bw, key);
-        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
-        Gears_BufferFree(buff);
-    }
-    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), key);
+    DistributedRegistrationsDict_Add(FlatExecutionPlan_ShallowCopy(fep), key);
+//    if(Cluster_IsClusterMode()){
+//        Gears_Buffer* buff = Gears_BufferCreate();
+//        Gears_BufferWriter bw;
+//        Gears_BufferWriterInit(&bw, buff);
+//        FlatExecutionPlan_Serialize(fep, &bw);
+//        RedisGears_BWWriteString(&bw, key);
+//        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
+//        Gears_BufferFree(buff);
+//    }
+//    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), key);
     return 1;
 }
 
@@ -1971,28 +1980,29 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     if(argc < 1){
         return RedisModule_WrongArity(ctx);
     }
-    Gears_dictIterator* iter = Gears_dictGetIterator(epData.registeredFepDict);
-    Gears_dictEntry *curr = NULL;
-    size_t numElements = 0;
-    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
-    while((curr = Gears_dictNext(iter))){
-        FlatExecutionPlan* fep = Gears_dictGetVal(curr);
-        RedisModule_ReplyWithArray(ctx, 6);
-        RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
-        RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
-        RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
-        RedisModule_ReplyWithStringBuffer(ctx, fep->reader->reader, strlen(fep->reader->reader));
-        RedisModule_ReplyWithStringBuffer(ctx, "desc", strlen("desc"));
-        if(fep->desc){
-            RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
-        }else{
-            RedisModule_ReplyWithNull(ctx);
-        }
-        ++numElements;
-    }
-    Gears_dictReleaseIterator(iter);
-
-    RedisModule_ReplySetArrayLength(ctx, numElements);
+    DistributedRegistrationsDict_Dump(ctx);
+//    Gears_dictIterator* iter = Gears_dictGetIterator(epData.registeredFepDict);
+//    Gears_dictEntry *curr = NULL;
+//    size_t numElements = 0;
+//    RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
+//    while((curr = Gears_dictNext(iter))){
+//        FlatExecutionPlan* fep = Gears_dictGetVal(curr);
+//        RedisModule_ReplyWithArray(ctx, 6);
+//        RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
+//        RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
+//        RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
+//        RedisModule_ReplyWithStringBuffer(ctx, fep->reader->reader, strlen(fep->reader->reader));
+//        RedisModule_ReplyWithStringBuffer(ctx, "desc", strlen("desc"));
+//        if(fep->desc){
+//            RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
+//        }else{
+//            RedisModule_ReplyWithNull(ctx);
+//        }
+//        ++numElements;
+//    }
+//    Gears_dictReleaseIterator(iter);
+//
+//    RedisModule_ReplySetArrayLength(ctx, numElements);
     return REDISMODULE_OK;
 }
 
@@ -2002,27 +2012,29 @@ int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **a
     }
 
     const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+    RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 10000000);
+    DistributedRegistrationsDict_Remove(id, bc);
     FlatExecutionPlan* fep = FlatExecutionPlan_FindByStrId(id);
-
-    if(!fep){
-        RedisModule_ReplyWithError(ctx, "execution does not registered");
-        return REDISMODULE_OK;
-    }
-
-    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-
-    if(!callbacks->unregisterTrigger){
-        RedisModule_ReplyWithError(ctx, "reader does not support unregister");
-        return REDISMODULE_OK;
-    }
-
-    if(Cluster_IsClusterMode()){
-        Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, fep->id, EXECUTION_PLAN_ID_LEN);
-    }
-
-    ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
-
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
+//
+//    if(!fep){
+//        RedisModule_ReplyWithError(ctx, "execution does not registered");
+//        return REDISMODULE_OK;
+//    }
+//
+//    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+//
+//    if(!callbacks->unregisterTrigger){
+//        RedisModule_ReplyWithError(ctx, "reader does not support unregister");
+//        return REDISMODULE_OK;
+//    }
+//
+//    if(Cluster_IsClusterMode()){
+//        Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, fep->id, EXECUTION_PLAN_ID_LEN);
+//    }
+//
+//    ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
+//
+//    RedisModule_ReplyWithSimpleString(ctx, "OK");
 
     return REDISMODULE_OK;
 }

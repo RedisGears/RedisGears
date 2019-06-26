@@ -31,6 +31,7 @@
 #include "consensus.h"
 #include <stdbool.h>
 #include "lock_handler.h"
+#include "distributed_registrations_dict.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -463,6 +464,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if(Consensus_Init(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not initialize consensus manager.");
+        return REDISMODULE_ERR;
+    }
+
+    if(DistributedRegistrationsDict_Init(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not initialize DistributedRegistrationsDict.");
         return REDISMODULE_ERR;
     }
 
