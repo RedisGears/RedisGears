@@ -12,6 +12,51 @@
 
 Gears_dict* consensusDict;
 
+typedef enum SendBuffPolicy{
+    ONLY_MYSELF, ALL, ALL_AND_MYSENF, SPACIFIC_NODE,
+}SendBuffPolicy;
+
+typedef struct SendBuffCtx{
+    Gears_Buffer *buf;
+    SendBuffPolicy policy;
+    char* nodeId; // in case policy is SPACIFIC_NODE
+    const char* function;
+}SendBuffCtx;
+
+#define SendBuffCtx_Init(b, p, n, f) \
+        (SendBuffCtx){ \
+            .buf = b, \
+            .policy = p, \
+            .nodeId = n, \
+            .function = #f, \
+        }
+
+static void Consensus_SendBuff(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    SendBuffCtx *sbctx = (*(SendBuffCtx**)payload);
+    switch(sbctx->policy){
+    case ONLY_MYSELF:
+        Cluster_SendMsgToMySelf(sbctx->function, sbctx->buf->buff, sbctx->buf->size);
+        return;
+    case ALL:
+        Cluster_SendMsg(NULL, sbctx->function, sbctx->buf->buff, sbctx->buf->size);
+        return;
+    case ALL_AND_MYSENF:
+        Cluster_SendMsgToAllAndMyself(sbctx->function, sbctx->buf->buff, sbctx->buf->size);
+        return;
+    case SPACIFIC_NODE:
+        assert(sbctx->nodeId);
+        Cluster_SendMsg(sbctx->nodeId, sbctx->function, sbctx->buf->buff, sbctx->buf->size);
+        return;
+    default:
+        assert(0);
+    }
+    Gears_BufferFree(sbctx->buf);
+    if(sbctx->nodeId){
+        RG_FREE(sbctx->nodeId);
+    }
+    RG_FREE(sbctx);
+}
+
 static bool Consensus_ValEquals(const char* val1, const char* val2){
     if(!val1){
         return !val2;
@@ -252,7 +297,11 @@ static void Consensus_AcceptDeniedMessage(RedisModuleCtx *ctx, const char *sende
     Gears_BufferWriterWriteLong(&bw, instance->proposer.proposalId);
 
     int r = (rand() % (GearsConfig_GetConsensusIdleEndInterval() + 1 - GearsConfig_GetConsensusIdleStartInterval())) + GearsConfig_GetConsensusIdleStartInterval();
-    Cluster_SendMsgToMySelfWithDelatM(Consensus_ReRecruitMessage, (char*)&buf, sizeof(buf), r);
+
+    SendBuffCtx* sbctx = RG_ALLOC(sizeof(*sbctx));
+    *sbctx = SendBuffCtx_Init(buf, ALL_AND_MYSENF, NULL, Consensus_RecruitMessage);
+
+    Cluster_SendMsgToMySelfWithDelayM(Consensus_SendBuff, (char*)&sbctx, sizeof(sbctx), r);
 }
 
 static void Consensus_AcceptMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -280,8 +329,8 @@ static void Consensus_AcceptMessage(RedisModuleCtx *ctx, const char *sender_id, 
         Gears_BufferWriterWriteString(&bw, consensus->name);
         Gears_BufferWriterWriteLong(&bw, instance->consensusId);
         Gears_BufferWriterWriteLong(&bw, proposalId);
+
         Cluster_SendMsgM(sender_id, Consensus_AcceptDeniedMessage, buf->buff, buf->size);
-        Gears_BufferFree(buf);
         return;
     }
 
@@ -370,12 +419,6 @@ static void Consensus_RecruitedMessage(RedisModuleCtx *ctx, const char *sender_i
     }
 }
 
-static void Consensus_ReRecruitMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-    Gears_Buffer *buf = (*(Gears_Buffer**)payload);
-    Cluster_SendMsgToAllAndMyselfM(Consensus_RecruitMessage, buf->buff, buf->size);
-    Gears_BufferFree(buf);
-}
-
 static void Consensus_DeniedMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     // one deny tells us to restart
     Gears_Buffer buff;
@@ -415,7 +458,11 @@ static void Consensus_DeniedMessage(RedisModuleCtx *ctx, const char *sender_id, 
     Gears_BufferWriterWriteLong(&bw, instance->proposer.proposalId);
 
     int r = (rand() % (GearsConfig_GetConsensusIdleEndInterval() + 1 - GearsConfig_GetConsensusIdleStartInterval())) + GearsConfig_GetConsensusIdleStartInterval();
-    Cluster_SendMsgToMySelfWithDelatM(Consensus_ReRecruitMessage, (char*)&buf, sizeof(buf), r);
+
+    SendBuffCtx* sbctx = RG_ALLOC(sizeof(*sbctx));
+    *sbctx = SendBuffCtx_Init(buf, ALL_AND_MYSENF, NULL, Consensus_RecruitMessage);
+
+    Cluster_SendMsgToMySelfWithDelayM(Consensus_SendBuff, (char*)&sbctx, sizeof(sbctx), r);
 }
 
 static void Consensus_RecruitMessage(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -478,6 +525,7 @@ static void Consensus_StartInstance(RedisModuleCtx *ctx, const char *sender_id, 
 
     consensusInstance->proposer.val = (char*)cmctx->msg;
     consensusInstance->proposer.len = cmctx->len;
+    consensusInstance->proposer.proposalId = 1; // we always start with proposal Id 1
 
     consensusInstance->additionalData = cmctx->additionalData;
 
@@ -567,9 +615,12 @@ static int Consensus_TestSet(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 }
 
 int Consensus_Init(RedisModuleCtx* ctx){
-    srand(time(NULL));
+    unsigned int seed;
+    RedisModule_GetRandomHexChars((char *)&seed, sizeof(unsigned int));
+    srand(seed);
+
     consensusDict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
-    Cluster_RegisterMsgReceiverM(Consensus_ReRecruitMessage);
+    Cluster_RegisterMsgReceiverM(Consensus_SendBuff);
     Cluster_RegisterMsgReceiverM(Consensus_StartInstance);
     Cluster_RegisterMsgReceiverM(Consensus_RecruitMessage);
     Cluster_RegisterMsgReceiverM(Consensus_RecruitedMessage);

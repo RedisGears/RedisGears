@@ -13,14 +13,16 @@
 
 #define RG_INNER_MSG_COMMAND "rg.innermsgcommand"
 
-void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len);
-void Cluster_SendMsgToAllAndMyself(char* function, char* msg, size_t len);
+unsigned int keyHashSlot(char *key, int keylen);
+
+void Cluster_SendMsg(const char* id, const char* function, char* msg, size_t len);
+void Cluster_SendMsgToAllAndMyself(const char* function, char* msg, size_t len);
 void Cluster_SendMsgToMySelf(const char* function, char* msg, size_t len);
 void Cluster_SendMsgToMySelfWithDelay(const char* function, char* msg, size_t len, long long delay);
 #define Cluster_SendMsgM(id, function, msg, len) Cluster_SendMsg(id, #function, msg, len);
 #define Cluster_SendMsgToAllAndMyselfM(function, msg, len) Cluster_SendMsgToAllAndMyself(#function, msg, len);
 #define Cluster_SendMsgToMySelfM(function, msg, len) Cluster_SendMsgToMySelf(#function, msg, len);
-#define Cluster_SendMsgToMySelfWithDelatM(function, msg, len, delay) Cluster_SendMsgToMySelfWithDelay(#function, msg, len, delay);
+#define Cluster_SendMsgToMySelfWithDelayM(function, msg, len, delay) Cluster_SendMsgToMySelfWithDelay(#function, msg, len, delay);
 void Cluster_RegisterMsgReceiver(char* function, RedisModuleClusterMessageReceiver receiver);
 #define Cluster_RegisterMsgReceiverM(function) Cluster_RegisterMsgReceiver(#function, function);
 bool Cluster_IsClusterMode();

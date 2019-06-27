@@ -27,11 +27,11 @@ class ConnectionProxy():
     def Stop(self):
         self.stream_server.stop()
 
-    def PassMessages(self):
+    def PassMessages(self, timeout=0.0001):
         isMessagesPassed = False
         try:
             while True:
-                req = self.pending_requests.get(block=True, timeout=0.1)
+                req = self.pending_requests.get(block=True, timeout=timeout)
                 isMessagesPassed = True
                 printableReq = req
                 if req[0] == 'rg.innermsgcommand':
@@ -72,10 +72,11 @@ class ShardProxy():
         for p in self.proxies.values():
             p.Stop()
 
-    def PassMessagesTo(self, *ids):
+    def PassMessagesTo(self, *ids, **dargs):
+        timeout = dargs['timeout'] if 'timeout' in dargs.keys() else 0.0001
         isMessagesPassed = False
         for i in ids:
-            isMessagesPassed |= self.proxies[i].PassMessages()
+            isMessagesPassed |= self.proxies[i].PassMessages(timeout=timeout)
         return isMessagesPassed
 
     def Execute(self, *command):
@@ -134,19 +135,21 @@ class ProxyManager():
     def Shard(self, id):
         return self.shardsProxies[id - 1]
 
-    def PassMessages(self):
+    def PassMessages(self, timeout=0.0001):
         IsMessagesSent = False
         for i in range(1, len(self.shardsProxies) + 1):
             proxies = [j for j in range(1, len(self.shardsProxies) + 1) if j != i]
-            IsMessagesSent |= self.Shard(i).PassMessagesTo(*proxies)
+            IsMessagesSent |= self.Shard(i).PassMessagesTo(*proxies, timeout=timeout)
         return IsMessagesSent
 
-    def PassAllMessages(self):
-        while self.PassMessages():
-            pass
+    def PassAllMessages(self, timeout=0.0001):
+        msgPassed = False
+        while self.PassMessages(timeout=timeout):
+            msgPassed = True
+        return msgPassed
 
 def testTermination():
-    env = Env(env='oss-cluster', shardsCount=7, moduleArgs='ConsensusIdleIntervalOnFailure 1000-4000')
+    env = Env(env='oss-cluster', shardsCount=9, moduleArgs='ConsensusIdleIntervalOnFailure 1-500')
     with ProxyManager(env) as pm:
         pm.Shard(1).Execute('rg.testconsensusset', 'foo1')
         pm.Shard(2).Execute('rg.testconsensusset', 'foo2')
@@ -160,12 +163,16 @@ def testTermination():
             val2 = pm.Shard(2).Execute('rg.testconsensusget')
             val3 = pm.Shard(3).Execute('rg.testconsensusget')
 
-        pm.PassAllMessages()
+        while pm.PassAllMessages():
+            pass
+        val1 = pm.Shard(1).Execute('rg.testconsensusget')
+        val2 = pm.Shard(2).Execute('rg.testconsensusget')
+        val3 = pm.Shard(3).Execute('rg.testconsensusget')
         env.assertEqual(val1, val2)
         env.assertEqual(val1, val3)
 
 def testSimple():
-    env = Env(env='oss-cluster', shardsCount=3 ,moduleArgs='ConsensusIdleIntervalOnFailure 0-0')
+    env = Env(env='oss-cluster', shardsCount=3, moduleArgs='ConsensusIdleIntervalOnFailure 0-0')
     with ProxyManager(env) as pm:
         pm.Shard(1).Execute('rg.testconsensusset', 'foo')
         pm.Shard(2).Execute('rg.testconsensusset', 'bar')
@@ -191,7 +198,7 @@ def testSimple():
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'foo')
 
         # node 2 should start another consensus cause it will see that it failed to achieve consensus the first time
-        pm.PassAllMessages()
+        pm.PassAllMessages(timeout=0.1)
 
         env.assertEqual(pm.Shard(1).Execute('rg.testconsensusget'), 'bar')
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'bar')
@@ -243,7 +250,7 @@ def testSimple2():
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'foo')
 
         # node 2 should start another consensus cause it will see that it failed to achieve consensus the first time
-        pm.PassAllMessages()
+        pm.PassAllMessages(timeout=0.1)
 
         env.assertEqual(pm.Shard(1).Execute('rg.testconsensusget'), 'bar')
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'bar')
@@ -269,7 +276,7 @@ def testRandom():
                 toShard = [j for j in range(1, 4) if j != fromShard][random.randint(0, 1)]
                 pm.Shard(fromShard).PassMessagesTo(toShard)
 
-        pm.PassAllMessages()
+        pm.PassAllMessages(timeout=0.1)
 
         va1 = pm.Shard(1).Execute('rg.testconsensusget')
         va2 = pm.Shard(2).Execute('rg.testconsensusget')

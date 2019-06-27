@@ -638,7 +638,7 @@ void Cluster_SendMsgToMySelfWithDelay(const char* function, char* msg, size_t le
 
     Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
     msgStruct->timeEvent.msgArriveCtx = msgArriveCtx;
-    msgStruct->timeEvent.time = (struct timeval){0, delay * 1000};
+    msgStruct->timeEvent.time = (struct timeval){delay / 1000, (delay % 1000) * 1000};
     msgStruct->type = TIME_EVEMT_MSG;
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
@@ -656,7 +656,7 @@ void Cluster_SendMsgToMySelf(const char* function, char* msg, size_t len){
     pthread_cond_signal(&msgArriveCond);
 }
 
-void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len){
+void Cluster_SendMsg(const char* id, const char* function, char* msg, size_t len){
     Msg* msgStruct = NULL;
     if(id && Cluster_IsMyId(id)){
         Cluster_SendMsgToMySelf(function, msg, len);
@@ -677,7 +677,7 @@ void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len){
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
 
-void Cluster_SendMsgToAllAndMyself(char* function, char* msg, size_t len){
+void Cluster_SendMsgToAllAndMyself(const char* function, char* msg, size_t len){
     Cluster_SendMsgToMySelf(function, msg, len);
     Cluster_SendMsg(NULL, function, msg, len);
 }
@@ -703,8 +703,6 @@ void Cluster_Init(){
 char* Cluster_GetMyId(){
     return CurrCluster->myId;
 }
-
-unsigned int keyHashSlot(char *key, int keylen);
 
 char* Cluster_GetNodeIdByKey(char* key){
     unsigned int slot = keyHashSlot(key, strlen(key));

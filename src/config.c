@@ -386,11 +386,11 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .type = LONG,
         },
         .consensusIdleInterval = {
-            .val.str = RG_STRDUP("0-500"),
+            .val.str = RG_STRDUP("0-5"),
             .type = STR,
         },
         .consensusIdleStartInterval = 0,
-        .consensusIdleEndInterval = 500,
+        .consensusIdleEndInterval = 5,
     };
 
     DEF_COMMAND(configget, GearsConfig_Get);
