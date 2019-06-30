@@ -7,6 +7,7 @@ import struct
 import random
 from connection import Connection
 import time
+import unittest
 
 class ConnectionProxy():
     def __init__(self, env, conn, port, fromId, toId):
@@ -39,9 +40,16 @@ class ConnectionProxy():
                         InvokeFunction = req[2]
                         consensusNameLen = struct.unpack('<ll', req[3][0:8])[0]
                         ConsensusName = req[3][8:8 + consensusNameLen - 1]
-                        InstanceId = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
-                        ProposalId = struct.unpack('<ll', req[3][16 + consensusNameLen: 24 + consensusNameLen])[0]
-                        printableReq = '%s - name:%s, id:%d, proposal:%d' % (InvokeFunction, ConsensusName, InstanceId, ProposalId)
+                        if InvokeFunction == 'Consensus_LastIdTriggered':
+                            InstanceId = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
+                            printableReq = '%s - name:%s, id:%d' % (InvokeFunction, ConsensusName, InstanceId)
+                        elif InvokeFunction == 'Consensus_CallbackTriggered':
+                            lastTrigger = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
+                            printableReq = '%s - name:%s, lastTrigger:%d' % (InvokeFunction, ConsensusName, lastTrigger)
+                        else:
+                            InstanceId = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
+                            ProposalId = struct.unpack('<ll', req[3][16 + consensusNameLen: 24 + consensusNameLen])[0]
+                            printableReq = '%s - name:%s, id:%d, proposal:%d' % (InvokeFunction, ConsensusName, InstanceId, ProposalId)
                     except Exception as e:
                         print e
 
@@ -123,14 +131,32 @@ class ProxyManager():
         for shardProxy in self.shardsProxies:
             shardProxy.SendClusterSetMessage()
 
+        time.sleep(0.5) # waiting for all the shards to connect and send the RG.HELLO message
+
         self.PassMessages()
 
         return self
 
     def __exit__(self, type, value, traceback):
+
+        while True:
+            self.env.debugPrint('waiting for cluster to converge')
+            hasMessages = self.PassAllMessages()
+            isConsensusesRunning = False
+            for i in range(self.env.shardsCount):
+                l = len(self.Shard(i + 1).Execute('RG.INFOCONSENSUS')[0][5])
+                if l > 0:
+                    isConsensusesRunning = True
+            if not isConsensusesRunning and not hasMessages:
+                break
+        vals = set()
+        for i in range(self.env.shardsCount):
+            val = self.Shard(i + 1).Execute('rg.testconsensusget')    
+            vals.add(val)
+        self.env.assertEqual(len(vals), 1)
+
         for shardProxy in self.shardsProxies:
             shardProxy.Stop()
-
 
     def Shard(self, id):
         return self.shardsProxies[id - 1]
@@ -163,15 +189,9 @@ def testTermination():
             val2 = pm.Shard(2).Execute('rg.testconsensusget')
             val3 = pm.Shard(3).Execute('rg.testconsensusget')
 
-        while pm.PassAllMessages():
-            pass
-        val1 = pm.Shard(1).Execute('rg.testconsensusget')
-        val2 = pm.Shard(2).Execute('rg.testconsensusget')
-        val3 = pm.Shard(3).Execute('rg.testconsensusget')
-        env.assertEqual(val1, val2)
-        env.assertEqual(val1, val3)
-
 def testSimple():
+    if Env.defaultDebugger is not None:
+        raise unittest.SkipTest() # we do not run this test on valgrind for now
     env = Env(env='oss-cluster', shardsCount=3, moduleArgs='ConsensusIdleIntervalOnFailure 0-0')
     with ProxyManager(env) as pm:
         pm.Shard(1).Execute('rg.testconsensusset', 'foo')
@@ -197,14 +217,10 @@ def testSimple():
 
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'foo')
 
-        # node 2 should start another consensus cause it will see that it failed to achieve consensus the first time
-        pm.PassAllMessages(timeout=0.1)
-
-        env.assertEqual(pm.Shard(1).Execute('rg.testconsensusget'), 'bar')
-        env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'bar')
-        env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), 'bar')
 
 def testSimple2():
+    if Env.defaultDebugger is not None:
+        raise unittest.SkipTest() # we do not run this test on valgrind for now
     env = Env(env='oss-cluster', shardsCount=3, moduleArgs='ConsensusIdleIntervalOnFailure 0-0')
     with ProxyManager(env) as pm:
         pm.Shard(1).Execute('rg.testconsensusset', 'foo')
@@ -217,11 +233,11 @@ def testSimple2():
         # node 2 recruited node 3 before node 1 sent the accept value message
         pm.Shard(2).PassMessagesTo(3) # try to recruited node 3 but failed
         pm.Shard(3).PassMessagesTo(2)
-
         pm.Shard(2).PassMessagesTo(3) # try again and succed
 
         # node 1 send the accept message which will be denied by node 3
         pm.Shard(1).PassMessagesTo(3) ## accept message
+       
         pm.Shard(3).PassMessagesTo(1) ## denied
 
         # no value has yet been accepted
@@ -232,9 +248,9 @@ def testSimple2():
         # node 1 raises the proposal number and try again
         pm.Shard(1).PassMessagesTo(3) ## try to recruited 3 but failed cause its already been recruited by 2
         pm.Shard(3).PassMessagesTo(1) ## deny message
-
         pm.Shard(1).PassMessagesTo(3) ## try again and succed
         pm.Shard(3).PassMessagesTo(1)
+
         pm.Shard(1).PassMessagesTo(3) ## send accept message
         pm.Shard(3).PassMessagesTo(1) ## value accepted and learn
 
@@ -244,20 +260,13 @@ def testSimple2():
         env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), 'foo')
 
         # None 2 should learned the 'foo' value immidiatly (cause he will get the learned messages)
-        pm.Shard(1).PassMessagesTo(2)
+        pm.Shard(1).PassMessagesTo(2)        
         pm.Shard(3).PassMessagesTo(2)
 
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'foo')
 
-        # node 2 should start another consensus cause it will see that it failed to achieve consensus the first time
-        pm.PassAllMessages(timeout=0.1)
-
-        env.assertEqual(pm.Shard(1).Execute('rg.testconsensusget'), 'bar')
-        env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'bar')
-        env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), 'bar')
-
 def testRandom():
-    env = Env(env='oss-cluster', shardsCount=3)
+    env = Env(env='oss-cluster', shardsCount=7, moduleArgs='ConsensusIdleIntervalOnFailure 0-5000')
     with ProxyManager(env) as pm:
         i = 1
         pm.Shard(1).Execute('rg.testconsensusset', 'foo%d' % i)
@@ -275,11 +284,3 @@ def testRandom():
             else:
                 toShard = [j for j in range(1, 4) if j != fromShard][random.randint(0, 1)]
                 pm.Shard(fromShard).PassMessagesTo(toShard)
-
-        pm.PassAllMessages(timeout=0.1)
-
-        va1 = pm.Shard(1).Execute('rg.testconsensusget')
-        va2 = pm.Shard(2).Execute('rg.testconsensusget')
-        va3 = pm.Shard(3).Execute('rg.testconsensusget')
-        env.assertEqual(va1, va2)
-        env.assertEqual(va1, va3)

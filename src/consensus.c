@@ -36,17 +36,17 @@ static void Consensus_SendBuff(RedisModuleCtx *ctx, const char *sender_id, uint8
     switch(sbctx->policy){
     case ONLY_MYSELF:
         Cluster_SendMsgToMySelf(sbctx->function, sbctx->buf->buff, sbctx->buf->size);
-        return;
+        break;
     case ALL:
         Cluster_SendMsg(NULL, sbctx->function, sbctx->buf->buff, sbctx->buf->size);
-        return;
+        break;
     case ALL_AND_MYSENF:
         Cluster_SendMsgToAllAndMyself(sbctx->function, sbctx->buf->buff, sbctx->buf->size);
-        return;
+        break;
     case SPACIFIC_NODE:
         assert(sbctx->nodeId);
         Cluster_SendMsg(sbctx->nodeId, sbctx->function, sbctx->buf->buff, sbctx->buf->size);
-        return;
+        break;
     default:
         assert(0);
     }
@@ -148,10 +148,10 @@ static ConsensusInstance* Consensus_InstanceGet(Consensus* consensus, long long 
 
 static void Consensus_TriggerCallbacks(Consensus* consensus){
     Gears_listNode* instanceNode = NULL;
-    if(!consensus->pendingTrigger){
+    if(!consensus->lastTrigger){
         instanceNode = Gears_listLast(consensus->consensusInstances);
     }else{
-        instanceNode = Gears_listPrevNode(consensus->pendingTrigger);
+        instanceNode = Gears_listPrevNode(consensus->lastTrigger);
     }
     assert(instanceNode);
     ConsensusInstance* instance = Gears_listNodeValue(instanceNode);
@@ -166,7 +166,7 @@ static void Consensus_TriggerCallbacks(Consensus* consensus){
         instance->learner.callbackTriggered = true;
         consensus->approvedCallback(consensus->privateData, instance->learner.val + REDISMODULE_NODE_ID_LEN, instance->learner.len - REDISMODULE_NODE_ID_LEN, additionalData);
 
-        consensus->pendingTrigger = instanceNode;
+        consensus->lastTrigger = instanceNode;
         ++consensus->nextTriggeredId;
 
         instanceNode = Gears_listPrevNode(instanceNode);
@@ -191,6 +191,11 @@ static void Consensus_LearnValueMessage(RedisModuleCtx *ctx, const char *sender_
     const char* val = Gears_BufferReaderReadBuff(&br, &valLen);
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
+
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
 
     ConsensusInstance* instance = Consensus_InstanceGetOrCreate(consensus, consnsusId);
 
@@ -237,6 +242,11 @@ static void Consensus_ValueAcceptedMessage(RedisModuleCtx *ctx, const char *send
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
 
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
+
     ConsensusInstance* instance = Consensus_InstanceGet(consensus, consnsusId);
 
     if(instance->phase != PHASE_TWO){
@@ -270,6 +280,11 @@ static void Consensus_AcceptDeniedMessage(RedisModuleCtx *ctx, const char *sende
     long long proposalId = Gears_BufferReaderReadLong(&br);
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
+
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
 
     ConsensusInstance* instance = Consensus_InstanceGet(consensus, consnsusId);
 
@@ -319,6 +334,11 @@ static void Consensus_AcceptMessage(RedisModuleCtx *ctx, const char *sender_id, 
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
 
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
+
     ConsensusInstance* instance = Consensus_InstanceGet(consensus, consnsusId);
 
     if(instance->acceptor.proposalId != proposalId){
@@ -331,6 +351,8 @@ static void Consensus_AcceptMessage(RedisModuleCtx *ctx, const char *sender_id, 
         Gears_BufferWriterWriteLong(&bw, proposalId);
 
         Cluster_SendMsgM(sender_id, Consensus_AcceptDeniedMessage, buf->buff, buf->size);
+
+        Gears_BufferFree(buf);
         return;
     }
 
@@ -374,6 +396,11 @@ static void Consensus_RecruitedMessage(RedisModuleCtx *ctx, const char *sender_i
     }
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
+
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
 
     ConsensusInstance* instance = Consensus_InstanceGet(consensus, consnsusId);
 
@@ -433,6 +460,11 @@ static void Consensus_DeniedMessage(RedisModuleCtx *ctx, const char *sender_id, 
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
 
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
+
     ConsensusInstance* instance = Consensus_InstanceGet(consensus, consnsusId);
 
     if(instance->phase != PHASE_ONE){
@@ -478,6 +510,11 @@ static void Consensus_RecruitMessage(RedisModuleCtx *ctx, const char *sender_id,
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
 
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
+
     ConsensusInstance* instance = Consensus_InstanceGetOrCreate(consensus, consnsusId);
 
     bool recruited = false;
@@ -517,6 +554,170 @@ typedef struct ConsensusMsgCtx{
     size_t len;
     void* additionalData;
 }ConsensusMsgCtx;
+
+static void Consensus_RecalculateMinConsensusTriggered(Consensus* consensus){
+    if(Gears_dictSize(consensus->lastTriggeredDict) != Cluster_GetSize()){
+        // we did not yet got information from all the nodes, there is not point calculating
+        return;
+    }
+    Gears_dictIterator* iter = Gears_dictGetIterator(consensus->lastTriggeredDict);
+    Gears_dictEntry *entry = NULL;
+    long long min = INT64_MAX;
+    while((entry = Gears_dictNext(iter))){
+        long long id = Gears_dictGetUnsignedIntegerVal(entry);
+        if (id < min){
+            min = id;
+        }
+    }
+    Gears_dictReleaseIterator(iter);
+
+    consensus->minTriggered = min;
+}
+
+static void Consensus_LastIdTriggered(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    Gears_Buffer buff;
+    buff.buff = (char*)payload;
+    buff.size = len;
+    buff.cap = len;
+    Gears_BufferReader br;
+    Gears_BufferReaderInit(&br, &buff);
+    const char* name = Gears_BufferReaderReadString(&br);
+    long long lastIdTriggered = Gears_BufferReaderReadLong(&br);
+
+    Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
+
+    Gears_dictEntry *val = Gears_dictAddOrFind(consensus->lastTriggeredDict, (char*)sender_id);
+    if(val->v.u64 != lastIdTriggered){
+        val->v.u64 = lastIdTriggered;
+        Consensus_RecalculateMinConsensusTriggered(consensus);
+    }
+}
+
+static void Consensus_CallbackTriggered(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    Gears_Buffer buff;
+    buff.buff = (char*)payload;
+    buff.size = len;
+    buff.cap = len;
+    Gears_BufferReader br;
+    Gears_BufferReaderInit(&br, &buff);
+    const char* name = Gears_BufferReaderReadString(&br);
+    long long consnsusId = Gears_BufferReaderReadLong(&br);
+    size_t msgLen = 0;
+    const char* msg = Gears_BufferReaderReadBuff(&br, &msgLen);
+
+    Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
+
+    if(consnsusId <= consensus->minTriggered){
+        // this is old and irelevent msg, ignore it!!
+        return;
+    }
+
+    ConsensusInstance* instance = Consensus_InstanceGetOrCreate(consensus, consnsusId);
+
+    if(!instance->learner.valueLeared){
+
+        instance->learner.val = Consensus_ValDup(msg, msgLen, &instance->learner.len);
+
+        if(instance->learner.originalVal){
+            if(!Consensus_ValEquals(instance->learner.originalVal, msg)){
+                Consensus_Send(consensus, instance->learner.originalVal + REDISMODULE_NODE_ID_LEN, instance->learner.originalLen - REDISMODULE_NODE_ID_LEN, instance->additionalData);
+            }
+        }
+
+        instance->learner.valueLeared = true;
+
+        Consensus_TriggerCallbacks(consensus);
+    }
+}
+
+static void Consensus_LongPeriodicTasks(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    Gears_Buffer *buff = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_dictIterator *consensusIter = Gears_dictGetIterator(consensusDict);
+    Gears_dictEntry *currEntry = NULL;
+    while((currEntry = Gears_dictNext(consensusIter))){
+        Consensus* consensus = Gears_dictGetVal(currEntry);
+        if(consensus->lastTrigger){
+            Gears_listNode* currNode = Gears_listLast(consensus->consensusInstances);
+            Gears_listNode* nodeToStop = consensus->lastTrigger->prev;
+            while(currNode != nodeToStop){
+                ConsensusInstance* instance = Gears_listNodeValue(currNode);
+                if(instance->consensusId > consensus->minTriggered){
+                    Gears_BufferClear(buff);
+                    Gears_BufferWriterInit(&bw, buff);
+                    Gears_BufferWriterWriteString(&bw, consensus->name);
+                    Gears_BufferWriterWriteLong(&bw, instance->consensusId);
+                    Gears_BufferWriterWriteBuff(&bw, instance->learner.val, instance->learner.len);
+
+                    Cluster_SendMsgM(NULL, Consensus_CallbackTriggered, buff->buff, buff->size);
+                }
+                currNode = Gears_listPrevNode(currNode);
+            }
+        }
+    }
+    Gears_BufferFree(buff);
+    Gears_dictReleaseIterator(consensusIter);
+}
+
+static void Consensus_ShortPeriodicTasks(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    Gears_Buffer *buff = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_dictIterator *consensusIter = Gears_dictGetIterator(consensusDict);
+    Gears_dictEntry *currEntry = NULL;
+    while((currEntry = Gears_dictNext(consensusIter))){
+        Consensus* consensus = Gears_dictGetVal(currEntry);
+
+        if(consensus->nextTriggeredId > 0){
+            Gears_BufferClear(buff);
+            Gears_BufferWriterInit(&bw, buff);
+            Gears_BufferWriterWriteString(&bw, consensus->name);
+            Gears_BufferWriterWriteLong(&bw, consensus->nextTriggeredId - 1);
+            Cluster_SendMsgToAllAndMyselfM(Consensus_LastIdTriggered, buff->buff, buff->size);
+        }
+
+        if(consensus->lastTrigger){
+            Gears_listNode* currNode = Gears_listLast(consensus->consensusInstances);
+            Gears_listNode* nodeToStop = consensus->lastTrigger->prev;
+            while(currNode != nodeToStop){
+                ConsensusInstance* instance = Gears_listNodeValue(currNode);
+                if(instance->consensusId <= consensus->minTriggered){
+                    if(consensus->appliedOnClusterCallback){
+                        void* additionalData = NULL;
+                        if(Consensus_ValEquals(instance->learner.val, instance->learner.originalVal)){
+                            additionalData = instance->additionalData;
+                        }
+                        consensus->appliedOnClusterCallback(consensus->privateData, instance->learner.val + REDISMODULE_NODE_ID_LEN, instance->learner.len - REDISMODULE_NODE_ID_LEN, additionalData);
+                    }
+                    if(instance->proposer.val){
+                        RG_FREE(instance->proposer.val);
+                    }
+                    if(instance->acceptor.val){
+                        RG_FREE(instance->acceptor.val);
+                    }
+                    assert(instance->learner.val);
+                    RG_FREE(instance->learner.val);
+                    if(instance->learner.originalVal){
+                        RG_FREE(instance->learner.originalVal);
+                    }
+                    RG_FREE(instance);
+                    if(currNode == consensus->lastTrigger){
+                        // we delete the consensus instance which consensus->pendingTrigger is
+                        // pointing on, we should now point it to NULL cause the first consensus instance
+                        // on our instances list is for sure not been triggered yet.
+                        consensus->lastTrigger = NULL;
+                    }
+                    Gears_listNode* tempNode = currNode;
+                    currNode = Gears_listPrevNode(currNode);
+                    Gears_listDelNode(consensus->consensusInstances, tempNode);
+                }else{
+                    break;
+                }
+            }
+        }
+    }
+    Gears_BufferFree(buff);
+    Gears_dictReleaseIterator(consensusIter);
+}
 
 static void Consensus_StartInstance(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ConsensusMsgCtx* cmctx = (*(ConsensusMsgCtx**)payload);
@@ -558,14 +759,21 @@ static void Consensus_TestOnMsgAproved(void* privateData, const char* msg, size_
     RedisModule_FreeThreadSafeContext(ctx);
 }
 
-static int Consensus_Info(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static void Consensus_ReplyInfo(RedisModuleCtx *unused, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    RedisModuleBlockedClient* bc = (*(RedisModuleBlockedClient**)payload);
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(bc);
+    RedisModule_ThreadSafeContextLock(ctx);
     RedisModule_ReplyWithArray(ctx, Gears_dictSize(consensusDict));
     Gears_dictIterator *iter = Gears_dictGetIterator(consensusDict);
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(iter))){
-        RedisModule_ReplyWithArray(ctx, 2);
+        RedisModule_ReplyWithArray(ctx, 6);
         Consensus* consensus = Gears_dictGetVal(entry);
+        RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
         RedisModule_ReplyWithStringBuffer(ctx, consensus->name, strlen(consensus->name));
+        RedisModule_ReplyWithStringBuffer(ctx, "MinTriggered", strlen("MinTriggered"));
+        RedisModule_ReplyWithLongLong(ctx, consensus->minTriggered);
+        RedisModule_ReplyWithStringBuffer(ctx, "ConsensusInstances", strlen("ConsensusInstances"));
         RedisModule_ReplyWithArray(ctx, Gears_listLength(consensus->consensusInstances));
         Gears_listIter *listIter = Gears_listGetIterator(consensus->consensusInstances, AL_START_HEAD);
         Gears_listNode *node = NULL;
@@ -586,6 +794,14 @@ static int Consensus_Info(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
         Gears_listReleaseIterator(listIter);
     }
     Gears_dictReleaseIterator(iter);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisModule_ThreadSafeContextUnlock(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
+}
+
+static int Consensus_Info(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 100000);
+    Cluster_SendMsgToMySelfM(Consensus_ReplyInfo, (char*)&bc, sizeof(RedisModuleBlockedClient*));
     return REDISMODULE_OK;
 }
 
@@ -629,8 +845,13 @@ int Consensus_Init(RedisModuleCtx* ctx){
     Cluster_RegisterMsgReceiverM(Consensus_AcceptDeniedMessage);
     Cluster_RegisterMsgReceiverM(Consensus_ValueAcceptedMessage);
     Cluster_RegisterMsgReceiverM(Consensus_LearnValueMessage);
+    Cluster_RegisterMsgReceiverM(Consensus_ShortPeriodicTasks);
+    Cluster_RegisterMsgReceiverM(Consensus_LongPeriodicTasks);
+    Cluster_RegisterMsgReceiverM(Consensus_CallbackTriggered);
+    Cluster_RegisterMsgReceiverM(Consensus_LastIdTriggered);
+    Cluster_RegisterMsgReceiverM(Consensus_ReplyInfo);
 
-    Consensus_Create("TestConsensus", Consensus_TestOnMsgAproved, NULL);
+    Consensus_Create("TestConsensus", Consensus_TestOnMsgAproved, NULL, NULL);
 
     if (RedisModule_CreateCommand(ctx, "rg.testconsensusset", Consensus_TestSet, "readonly", 0, 0, 0) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not register command rg.testconsensusset");
@@ -647,18 +868,26 @@ int Consensus_Init(RedisModuleCtx* ctx){
         return REDISMODULE_ERR;
     }
 
+    Cluster_SendPersisMsgToMySelfM(Consensus_ShortPeriodicTasks, NULL, 0, GearsConfig_GetConsensusShortPeriodicTasksInterval());
+    Cluster_SendPersisMsgToMySelfM(Consensus_LongPeriodicTasks, NULL, 0, GearsConfig_GetConsensusLongPeriodicTasksInterval());
+
     return REDISMODULE_OK;
 }
 
-Consensus* Consensus_Create(const char* name, Consensus_OnMsgAproved approvedCallback, void* privateData){
+Consensus* Consensus_Create(const char* name, Consensus_OnMsgAproved approvedCallback,
+                            Consensus_OnMsgAppliedOnCluster appliedOnClusterCallback,
+                            void* privateData){
     Consensus* consensus = RG_ALLOC(sizeof(*consensus));
     consensus->name = RG_STRDUP(name);
     consensus->approvedCallback = approvedCallback;
+    consensus->appliedOnClusterCallback = appliedOnClusterCallback;
     consensus->privateData = privateData;
     consensus->currConsensusId = 0;
-    consensus->pendingTrigger = NULL;
+    consensus->lastTrigger = NULL;
     consensus->nextTriggeredId = 0;
     consensus->consensusInstances = Gears_listCreate();
+    consensus->lastTriggeredDict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
+    consensus->minTriggered = -1;
 
     Gears_dictAdd(consensusDict, consensus->name, consensus);
 

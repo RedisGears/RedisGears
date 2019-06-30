@@ -48,6 +48,7 @@ typedef struct MsgArriveCtx{
     char* msg;
     size_t msgLen;
     RedisModuleClusterMessageReceiver receiver;
+    bool isPersist;
 }MsgArriveCtx;
 
 pthread_t messagesArriveThread;
@@ -56,12 +57,15 @@ pthread_mutex_t msgArriveLock;
 pthread_cond_t msgArriveCond;
 
 static MsgArriveCtx* MsgArriveCtx_Create(const char* sender, const char* msg,
-                                         size_t msgLen, RedisModuleClusterMessageReceiver receiver){
+                                         size_t msgLen,
+                                         RedisModuleClusterMessageReceiver receiver,
+                                         bool isPersist){
     MsgArriveCtx* ret = RG_ALLOC(sizeof(*ret));
-    ret->sender = RG_STRDUP(sender);
+    ret->sender = sender ? RG_STRDUP(sender) : NULL;
     ret->receiver = receiver;
     ret->msgLen = msgLen;
     ret->msg = RG_ALLOC(sizeof(char) * (msgLen + 1));
+    ret->isPersist = isPersist;
     memcpy(ret->msg, msg, msgLen);
     ret->msg[msgLen] = '\0';
     return ret;
@@ -74,7 +78,7 @@ static void MsgArriveCtx_Free(MsgArriveCtx* ctx){
 }
 
 typedef enum MsgType{
-    SEND_MSG, CLUSTER_REFRESH_MSG, CLUSTER_SET_MSG, TIME_EVEMT_MSG
+    SEND_MSG, CLUSTER_REFRESH_MSG, CLUSTER_SET_MSG, TIME_EVEMT_MSG, PERSIST_TIME_EVEMT_MSG
 }MsgType;
 
 typedef struct SendMsg{
@@ -447,6 +451,7 @@ static void Cluster_FreeMsg(Msg* msg){
     case CLUSTER_REFRESH_MSG:
     case CLUSTER_SET_MSG:
     case TIME_EVEMT_MSG:
+    case PERSIST_TIME_EVEMT_MSG:
         break;
     default:
         assert(false);
@@ -514,6 +519,7 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
     Msg* msg;
     RedisModuleCtx* ctx;
     struct event *readEvent;
+    short events = 0;
     read(s, &msg, sizeof(Msg*));
     switch(msg->type){
     case SEND_MSG:
@@ -537,8 +543,11 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
         LockHandler_Release(ctx);
         RedisModule_FreeThreadSafeContext(ctx);
         break;
+    case PERSIST_TIME_EVEMT_MSG:
+        events = EV_PERSIST;
+        // do not break here on purpose
     case TIME_EVEMT_MSG:
-        readEvent = event_new(main_base, -1, 0, Cluster_TimeEvent, msg->timeEvent.msgArriveCtx);
+        readEvent = event_new(main_base, -1, events, Cluster_TimeEvent, msg->timeEvent.msgArriveCtx);
         event_add(readEvent, &msg->timeEvent.time);
         break;
     default:
@@ -584,7 +593,9 @@ static void* Cluster_MessageArriveThread(void *arg){
             Gears_listDelNode(msgArriveList, node);
             pthread_mutex_unlock(&msgArriveLock);
             msgCtx->receiver(rctx, msgCtx->sender, 0, msgCtx->msg, msgCtx->msgLen);
-            MsgArriveCtx_Free(msgCtx);
+            if(!msgCtx->isPersist){
+                MsgArriveCtx_Free(msgCtx);
+            }
             pthread_mutex_lock(&msgArriveLock);
         }
     }
@@ -634,7 +645,7 @@ void Cluster_SendMsgToMySelfWithDelay(const char* function, char* msg, size_t le
     assert(entry);
     RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
 
-    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(CurrCluster->myId, msg, len, receiver);
+    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(CurrCluster->myId, msg, len, receiver, false);
 
     Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
     msgStruct->timeEvent.msgArriveCtx = msgArriveCtx;
@@ -643,12 +654,26 @@ void Cluster_SendMsgToMySelfWithDelay(const char* function, char* msg, size_t le
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
 
+void Cluster_SendPersisMsgToMySelf(const char* function, char* msg, size_t len, long long period){
+    Gears_dictEntry *entry = Gears_dictFind(RemoteCallbacks, function);
+    assert(entry);
+    RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
+
+    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(NULL, msg, len, receiver, true);
+
+    Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
+    msgStruct->timeEvent.msgArriveCtx = msgArriveCtx;
+    msgStruct->timeEvent.time = (struct timeval){period / 1000, (period % 1000) * 1000};
+    msgStruct->type = PERSIST_TIME_EVEMT_MSG;
+    write(notify[1], &msgStruct, sizeof(Msg*));
+}
+
 void Cluster_SendMsgToMySelf(const char* function, char* msg, size_t len){
     Gears_dictEntry *entry = Gears_dictFind(RemoteCallbacks, function);
     assert(entry);
     RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
 
-    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(CurrCluster->myId, msg, len, receiver);
+    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(CurrCluster->myId, msg, len, receiver, false);
 
     pthread_mutex_lock(&msgArriveLock);
     Gears_listAddNodeTail(msgArriveList, msgArriveCtx);
@@ -800,7 +825,7 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     }
     RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
 
-    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(senderIdStr, msgStr, msgLen, receiver);
+    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(senderIdStr, msgStr, msgLen, receiver, false);
 
     pthread_mutex_lock(&msgArriveLock);
     Gears_listAddNodeTail(msgArriveList, msgArriveCtx);

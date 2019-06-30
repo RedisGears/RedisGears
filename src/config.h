@@ -17,5 +17,8 @@ long long GearsConfig_GetProfileExecutions();
 long long consensusIdleStartInterval();
 int GearsConfig_GetConsensusIdleStartInterval();
 int GearsConfig_GetConsensusIdleEndInterval();
+long long GearsConfig_GetConsensusShortPeriodicTasksInterval();
+long long GearsConfig_GetConsensusLongPeriodicTasksInterval();
+long long GearsConfig_GetPythonAttemptTraceback();
 
 #endif /* SRC_CONFIG_H_ */

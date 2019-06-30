@@ -9,10 +9,12 @@
 #define CLUSTER_CONSENSUS_H_
 
 #include "utils/adlist.h"
+#include "utils/dict.h"
 #include <stddef.h>
 #include <stdbool.h>
 
 typedef void (*Consensus_OnMsgAproved)(void* privateData, const char* msg, size_t len, void* additionalData);
+typedef void (*Consensus_OnMsgAppliedOnCluster)(void* privateData, const char* msg, size_t len, void* additionalData);
 
 typedef struct Proposer{
     long long proposalId;
@@ -57,14 +59,21 @@ typedef struct Consensus{
     char* name;
     long long currConsensusId;
     Gears_list* consensusInstances;
-    Gears_listNode* pendingTrigger;
+    Gears_listNode* lastTrigger;
     long long nextTriggeredId;
     Consensus_OnMsgAproved approvedCallback;
+    Consensus_OnMsgAppliedOnCluster appliedOnClusterCallback;
     void* privateData;
+
+    // contains for each shard, the last consensus instance triggered on this shard
+    Gears_dict* lastTriggeredDict;
+    long long minTriggered;
 }Consensus;
 
 int Consensus_Init();
-Consensus* Consensus_Create(const char* name, Consensus_OnMsgAproved approvedCallback, void* privateData);
+Consensus* Consensus_Create(const char* name, Consensus_OnMsgAproved approvedCallback,
+                            Consensus_OnMsgAppliedOnCluster appliedOnClusterCallback,
+                            void* privateData);
 void Consensus_Send(Consensus* consensus, const char* msg, size_t len, void* additionalData);
 
 #endif /* CLUSTER_CONSENSUS_H_ */

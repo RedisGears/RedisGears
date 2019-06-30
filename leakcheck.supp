@@ -91,3 +91,10 @@
    fun:redisConnectNonBlock
    ...
 }
+{
+   <ignore_lib_event_leak>
+   Memcheck:Leak
+   ...
+   fun:event_new
+   ...
+}

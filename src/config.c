@@ -47,6 +47,8 @@ typedef struct RedisGears_Config{
 	ConfigVal consensusIdleInterval;
 	int consensusIdleStartInterval;
 	int consensusIdleEndInterval;
+	ConfigVal consensusShortPeriodicTasksInterval;
+	ConfigVal consensusLongPeriodicTasksInterval;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -114,8 +116,44 @@ static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ConsensusLongPeriodicTasksIntervalGet(){
+    return &DefaultGearsConfig.consensusLongPeriodicTasksInterval;
+}
+
+static const ConfigVal* ConfigVal_ConsensusShortPeriodicTasksIntervalGet(){
+    return &DefaultGearsConfig.consensusShortPeriodicTasksInterval;
+}
+
 static const ConfigVal* ConfigVal_ConsensusIdleIntervalOnFailureGet(){
     return &DefaultGearsConfig.consensusIdleInterval;
+}
+
+static bool ConfigVal_ConsensusLongPeriodicTasksIntervalSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.consensusLongPeriodicTasksInterval.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static bool ConfigVal_ConsensusShortPeriodicTasksIntervalSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.consensusShortPeriodicTasksInterval.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 static bool ConfigVal_ConsensusIdleIntervalOnFailureSet(ArgsIterator* iter){
@@ -192,6 +230,18 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_ConsensusIdleIntervalOnFailureGet,
         .setter = ConfigVal_ConsensusIdleIntervalOnFailureSet,
         .configurableAtRunTime = true,
+    },
+    {
+        .name = "ConsensusShortPeriodicTasksInterval",
+        .getter = ConfigVal_ConsensusShortPeriodicTasksIntervalGet,
+        .setter = ConfigVal_ConsensusShortPeriodicTasksIntervalSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "ConsensusLongPeriodicTasksInterval",
+        .getter = ConfigVal_ConsensusLongPeriodicTasksIntervalGet,
+        .setter = ConfigVal_ConsensusLongPeriodicTasksIntervalSet,
+        .configurableAtRunTime = false,
     },
     {
         NULL,
@@ -336,6 +386,14 @@ int GearsConfig_GetConsensusIdleEndInterval(){
     return DefaultGearsConfig.consensusIdleEndInterval;
 }
 
+long long GearsConfig_GetConsensusShortPeriodicTasksInterval(){
+    return DefaultGearsConfig.consensusShortPeriodicTasksInterval.val.longVal;
+}
+
+long long GearsConfig_GetConsensusLongPeriodicTasksInterval(){
+    return DefaultGearsConfig.consensusLongPeriodicTasksInterval.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -391,6 +449,14 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .consensusIdleStartInterval = 0,
         .consensusIdleEndInterval = 5,
+        .consensusShortPeriodicTasksInterval= {
+            .val.longVal = 1000,
+            .type = LONG,
+        },
+        .consensusLongPeriodicTasksInterval= {
+            .val.longVal = 10000,
+            .type = LONG,
+        }
     };
 
     DEF_COMMAND(configget, GearsConfig_Get);

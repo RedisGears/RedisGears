@@ -340,7 +340,7 @@ Gears_dictEntry *Gears_dictAddRaw(Gears_dict *d, void *key, Gears_dictEntry **ex
      * system it is more likely that recently added entries are accessed
      * more frequently. */
     ht = Gears_dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
-    entry = RG_ALLOC(sizeof(*entry));
+    entry = RG_CALLOC(sizeof(*entry), 1);
     entry->next = ht->table[index];
     ht->table[index] = entry;
     ht->used++;

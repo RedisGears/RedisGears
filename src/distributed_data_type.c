@@ -8,6 +8,10 @@ typedef struct DistributedDataTypeOperation{
     DataTypeAppliedOnClusterCallback appliedOnClusterCallback;
 }DistributedDataTypeOperation;
 
+static void DistributedDataType_OnMsgAppliedOnCluster(void* privateData, const char* msg, size_t len, void* additionalData){
+
+}
+
 static void DistributedDataType_OnMsgAproved(void* privateData, const char* msg, size_t len, void* additionalData){
     DistributedDataType* ddt = privateData;
     Gears_Buffer buff;
@@ -37,7 +41,7 @@ DistributedDataType* DistributedDataType_Create(const char* name, void* privateD
     ddt->free = free;
     ddt->privateData = privateData;
     ddt->operations = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
-    ddt->consensus = Consensus_Create(name, DistributedDataType_OnMsgAproved, ddt);
+    ddt->consensus = Consensus_Create(name, DistributedDataType_OnMsgAproved, DistributedDataType_OnMsgAppliedOnCluster, ddt);
     return ddt;
 }
 
