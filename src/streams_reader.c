@@ -170,7 +170,24 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     return REDISMODULE_OK;
 }
 
-static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
+static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        StreamReaderTrigger* srctx = Gears_listNodeValue(node);
+        if(srctx->fep == fep){
+            Gears_listReleaseIterator(iter);
+            Gears_dictRelease(srctx->lastIds);
+            RG_FREE(srctx->streamKeyName);
+            RG_FREE(srctx);
+            Gears_listDelNode(streamsRegistration, node);
+            return;
+        }
+    }
+    assert(0);
+}
+
+static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
@@ -182,13 +199,14 @@ static void StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
     StreamReaderTrigger* srctx = RG_ALLOC(sizeof(StreamReaderTrigger));
     *srctx = (StreamReaderTrigger){
         .streamKeyName = arg,
-        .lastIds = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
+        .lastIds = Gears_dictCreate(&Gears_dictTypeHeapStringsVals, NULL),
         .fep = fep,
     };
     Gears_listAddNodeHead(streamsRegistration, srctx);
+    return 1;
 }
 
-Reader* StreamReader(void* arg){
+static Reader* StreamReader_Create(void* arg){
     StreamReaderCtx* readerCtx = arg;
     if(!readerCtx){
         readerCtx = StreamReaderCtx_Create(NULL, NULL);
@@ -196,7 +214,6 @@ Reader* StreamReader(void* arg){
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = readerCtx,
-        .registerTrigger = StreamReader_RegisrterTrigger,
         .next = StreamReader_Next,
         .free = StreamReader_Free,
         .serialize = StreamReader_CtxSerialize,
@@ -204,3 +221,9 @@ Reader* StreamReader(void* arg){
     };
     return r;
 }
+
+RedisGears_ReaderCallbacks StreamReader = {
+        .create = StreamReader_Create,
+        .registerTrigger = StreamReader_RegisrterTrigger,
+        .unregisterTrigger = StreamReader_UnregisrterTrigger,
+};

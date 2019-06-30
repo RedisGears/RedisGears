@@ -1,4 +1,4 @@
-[![CircleCI](https://circleci.com/gh/RedisLabsModules/RediSearch/tree/master.svg?style=svg)](https://circleci.com/gh/RedisLabsModules/RedisGears/tree/master)
+[![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
 
 # RedisGears
 ![logo.png](docs/images/RedisGears.png)

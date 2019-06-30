@@ -38,12 +38,12 @@ def ShardReaderCallback():
 
 
 class GearsBuilder():
-    def __init__(self, reader='KeysReader', defaultArg='*'):
+    def __init__(self, reader='KeysReader', defaultArg='*', desc=None):
         self.realReader = reader
         if(reader == 'KeysOnlyReader' or reader == 'ShardsIDReader'):
             reader = 'PythonReader'
         self.reader = reader
-        self.gearsCtx = gearsCtx(self.reader)
+        self.gearsCtx = gearsCtx(self.reader, desc)
         self.defaultArg = defaultArg
 
     def __localAggregateby__(self, extractor, zero, aggregator):

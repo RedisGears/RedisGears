@@ -10,9 +10,9 @@
 
 #include "redisgears.h"
 
+extern RedisGears_ReaderCallbacks KeysReader;
+
 int KeysReader_Initialize(RedisModuleCtx* ctx);
-Reader* KeysReader(void* arg);
-KeysReaderCtx* KeysReaderCtx_Create(char* match);
 
 
 #endif /* SRC_KEYS_READER_H_ */

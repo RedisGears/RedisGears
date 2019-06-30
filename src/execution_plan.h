@@ -205,6 +205,9 @@ typedef struct FlatExecutionReader{
 }FlatExecutionReader;
 
 typedef struct FlatExecutionPlan{
+    char id[EXECUTION_PLAN_ID_LEN];
+    char idStr[EXECUTION_PLAN_STR_ID_LEN];
+    const char* desc;
     size_t refCount;
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;
@@ -227,6 +230,7 @@ typedef struct ExecutionCtx{
 FlatExecutionPlan* FlatExecutionPlan_New();
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
+void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -253,6 +257,8 @@ void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
 void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
 
 
+int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);

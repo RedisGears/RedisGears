@@ -9,8 +9,8 @@ GearsBuilder().filter(filter_function).map(map_function).groupby(key_extractor_f
 RedisGears supports full python syntax and low level c api. In addition you can run it on cluster.
 
 !!! note "Quick Links:"
-    * [Source Code at GitHub](https://github.com/RedisLabsModules/RedisGears).
-    * [Latest Release](https://github.com/RedisLabsModules/RedisGears/releases)
+    * [Source Code at GitHub](https://github.com/RedisGears/RedisGears).
+    * [Latest Release](https://github.com/RedisGears/RedisGears/releases)
     * [Docker Image: redislabs/redisgears](https://hub.docker.com/r/redislabs/redisgears/)
     * [Quick Start Guide](quickstart.md)
 
@@ -22,5 +22,5 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 
 # License
 
-Redis Source Available License Agreement - see [LICENSE](https://github.com/RedisLabsModules/RedisGears/blob/master/LICENSE)
+Redis Source Available License Agreement - see [LICENSE](https://github.com/RedisGears/RedisGears/blob/master/LICENSE)
 
