@@ -1,7 +1,7 @@
 # BUILD redisfab/redisgears-${ARCH}-${OSNICK}:M.m.b
 
-ARG OSNICK=bionic
-# ARG ARCH=x64|arm64|arm7l [no need to specify: using multi-arch]
+# stretch|bionic
+ARG OSNICK=stretch
 
 #----------------------------------------------------------------------------------------------
 FROM redislabs/redis-${OSNICK}:5.0.5 AS builder
