@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "7e7ef69da7248742e869378f8421880cf8f0017f96d94d086813baa518a65489"
+            "sha256": "3eed5604a20012d0849d33d5fcdfd23c4500c442509ebe44d42dc7af62c288a7"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -15,6 +15,11 @@
             }
         ]
     },
-    "default": {},
+    "default": {
+        "redisgears-py": {
+            "git": "https://github.com/RedisGears/redisgears-py.git",
+            "ref": "cdd6b8b997222e592e4c3a7ef151ec312ab08814"
+        }
+    },
     "develop": {}
 }

@@ -1,12 +1,17 @@
 # BUILD redisfab/redisgears-${ARCH}-${OSNICK}:M.m.b
 
+# OSNICK=stretch|bionic
 ARG OSNICK=bionic
-ARG ARCH=arm64
+
+# ARCH=arm64v8|arm32v7
+ARG ARCH=arm64v8
 
 #----------------------------------------------------------------------------------------------
 FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5 AS builder
 
 RUN [ "cross-build-start" ]
+
+ENV X_NPROC "cat /proc/cpuinfo|grep processor|wc -l"
 
 ADD . /build
 WORKDIR /build
@@ -14,7 +19,7 @@ WORKDIR /build
 RUN ./deps/readies/bin/getpy2
 RUN python system-setup.py
 RUN make get_deps
-RUN make all SHOW=1
+RUN make all SHOW=1 $(eval "$X_NPROC")
 
 RUN [ "cross-build-end" ]
 
