@@ -46,4 +46,6 @@ publish:
 		-a $(STEM)-x64-$(OSNICK):$(VERSION) \
 		-a $(STEM)-x64-$(OSNICK):$(VERSION) \
 		-a $(STEM)-arm32v7-$(OSNICK):$(VERSION)
+	docker tag $(STEM)-$(OSNICK):$(VERSION) $(STEM)-$(OSNICK):latest
 	docker manifest push -p $(STEM)-$(OSNICK):$(VERSION)
+	docker push $(STEM)-$(OSNICK):latest

@@ -4,7 +4,8 @@
 ARG OSNICK=stretch
 
 #----------------------------------------------------------------------------------------------
-FROM redislabs/redis-${OSNICK}:5.0.5 AS builder
+# FROM redisfab/redis-${OSNICK}:5.0.5 AS builder
+FROM redis:latest AS builder
 
 ADD . /build
 WORKDIR /build
@@ -15,7 +16,8 @@ RUN make get_deps
 RUN make all SHOW=1
 
 #----------------------------------------------------------------------------------------------
-FROM redislabs/redis-${OSNICK}:5.0.5
+# FROM redisfab/redis-${OSNICK}:5.0.5
+FROM redis:latest
 
 ENV REDIS_MODULES /opt/redislabs/lib/modules
 
