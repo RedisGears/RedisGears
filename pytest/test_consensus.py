@@ -28,39 +28,45 @@ class ConnectionProxy():
     def Stop(self):
         self.stream_server.stop()
 
+    def PassSingleMessage(self, timeout=None):
+        isMessagePass = False
+        try:
+            req = self.pending_requests.get(block=True, timeout=timeout)
+            isMessagePass = True
+            printableReq = req
+            if req[0] == 'rg.innermsgcommand':
+                try:
+                    InvokeFunction = req[2]
+                    consensusNameLen = struct.unpack('<ll', req[3][0:8])[0]
+                    ConsensusName = req[3][8:8 + consensusNameLen - 1]
+                    if InvokeFunction == 'Consensus_LastIdTriggered':
+                        InstanceId = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
+                        printableReq = '%s - name:%s, id:%d' % (InvokeFunction, ConsensusName, InstanceId)
+                    elif InvokeFunction == 'Consensus_CallbackTriggered':
+                        lastTrigger = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
+                        printableReq = '%s - name:%s, lastTrigger:%d' % (InvokeFunction, ConsensusName, lastTrigger)
+                    else:
+                        InstanceId = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
+                        ProposalId = struct.unpack('<ll', req[3][16 + consensusNameLen: 24 + consensusNameLen])[0]
+                        printableReq = '%s - name:%s, id:%d, proposal:%d' % (InvokeFunction, ConsensusName, InstanceId, ProposalId)
+                except Exception as e:
+                    print e
+
+            self.env.debugPrint('request  : %d -> %d : %s' % (self.fromId, self.toId, str(printableReq)))
+            res = self.toConn.execute_command(*req)
+            if res == 'OK':
+                self.fromConn.send_status(res)
+            else:
+                self.fromConn.send_bulk(res)
+        except Exception:
+            pass
+        return isMessagePass
+
+
     def PassMessages(self, timeout=0.0001):
         isMessagesPassed = False
-        try:
-            while True:
-                req = self.pending_requests.get(block=True, timeout=timeout)
-                isMessagesPassed = True
-                printableReq = req
-                if req[0] == 'rg.innermsgcommand':
-                    try:
-                        InvokeFunction = req[2]
-                        consensusNameLen = struct.unpack('<ll', req[3][0:8])[0]
-                        ConsensusName = req[3][8:8 + consensusNameLen - 1]
-                        if InvokeFunction == 'Consensus_LastIdTriggered':
-                            InstanceId = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
-                            printableReq = '%s - name:%s, id:%d' % (InvokeFunction, ConsensusName, InstanceId)
-                        elif InvokeFunction == 'Consensus_CallbackTriggered':
-                            lastTrigger = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
-                            printableReq = '%s - name:%s, lastTrigger:%d' % (InvokeFunction, ConsensusName, lastTrigger)
-                        else:
-                            InstanceId = struct.unpack('<ll', req[3][8 + consensusNameLen: 16 + consensusNameLen])[0]
-                            ProposalId = struct.unpack('<ll', req[3][16 + consensusNameLen: 24 + consensusNameLen])[0]
-                            printableReq = '%s - name:%s, id:%d, proposal:%d' % (InvokeFunction, ConsensusName, InstanceId, ProposalId)
-                    except Exception as e:
-                        print e
-
-                self.env.debugPrint('request  : %d -> %d : %s' % (self.fromId, self.toId, str(printableReq)))
-                res = self.toConn.execute_command(*req)
-                if res == 'OK':
-                    self.fromConn.send_status(res)
-                else:
-                    self.fromConn.send_bulk(res)
-        except Exception as e:
-            pass
+        while self.PassSingleMessage(timeout=timeout):
+            isMessagesPassed = True
         return isMessagesPassed
 
 class ShardProxy():
@@ -79,6 +85,13 @@ class ShardProxy():
     def Stop(self):
         for p in self.proxies.values():
             p.Stop()
+
+    def PassSingleMessageTo(self, *ids, **dargs):
+        timeout = dargs['timeout'] if 'timeout' in dargs.keys() else None
+        isMessagesPassed = False
+        for i in ids:
+            isMessagesPassed |= self.proxies[i].PassSingleMessage(timeout=timeout)
+        return isMessagesPassed
 
     def PassMessagesTo(self, *ids, **dargs):
         timeout = dargs['timeout'] if 'timeout' in dargs.keys() else 0.0001
@@ -131,9 +144,10 @@ class ProxyManager():
         for shardProxy in self.shardsProxies:
             shardProxy.SendClusterSetMessage()
 
-        time.sleep(0.5) # waiting for all the shards to connect and send the RG.HELLO message
-
-        self.PassMessages()
+        ## passing RG.HELLO
+        for i in range(1, len(self.shardsProxies) + 1):
+            proxies = [j for j in range(1, len(self.shardsProxies) + 1) if j != i]
+            self.Shard(i).PassSingleMessageTo(*proxies)
 
         return self
 
@@ -189,9 +203,7 @@ def testTermination():
             val2 = pm.Shard(2).Execute('rg.testconsensusget')
             val3 = pm.Shard(3).Execute('rg.testconsensusget')
 
-def testSimple():
-    if Env.defaultDebugger is not None:
-        raise unittest.SkipTest() # we do not run this test on valgrind for now
+def testSimple1():
     env = Env(env='oss-cluster', shardsCount=3, moduleArgs='ConsensusIdleIntervalOnFailure 0-0')
     with ProxyManager(env) as pm:
         pm.Shard(1).Execute('rg.testconsensusset', 'foo')
@@ -201,10 +213,14 @@ def testSimple():
         env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), None)
 
         # achieve consensus on a value require majority who talk to each other for 2 phases
-        pm.Shard(1).PassMessagesTo(3) ## phase 1 message
-        pm.Shard(3).PassMessagesTo(1) ## phase 1 reply
-        pm.Shard(1).PassMessagesTo(3) ## phase 2 message
-        pm.Shard(3).PassMessagesTo(1) ## phase 2 reply + learn
+        pm.Shard(1).PassSingleMessageTo(3) ## phase 1 message
+        pm.Shard(3).PassSingleMessageTo(1) ## phase 1 reply
+        pm.Shard(1).PassSingleMessageTo(3) ## phase 2 message
+        pm.Shard(3).PassSingleMessageTo(1) ## phase 2 reply
+        pm.Shard(1).PassSingleMessageTo(3) ## learn message
+        pm.Shard(3).PassSingleMessageTo(1) ## learn message
+
+        time.sleep(0.1) # wait for value to be updated
 
         # value did not yet arrived to Node 2
         env.assertEqual(pm.Shard(1).Execute('rg.testconsensusget'), 'foo')
@@ -212,33 +228,33 @@ def testSimple():
         env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), 'foo')
 
         # None 2 should learned the 'foo' value immidiatly (cause he will get the learned messages)
-        pm.Shard(1).PassMessagesTo(2)
-        pm.Shard(3).PassMessagesTo(2)
+        pm.Shard(1).PassSingleMessageTo(2) ## phase 1 message
+        pm.Shard(1).PassSingleMessageTo(2) ## accept message
+        pm.Shard(1).PassSingleMessageTo(2) ## learn message
+        pm.Shard(3).PassSingleMessageTo(2) ## learn message
 
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'foo')
 
 
 def testSimple2():
-    if Env.defaultDebugger is not None:
-        raise unittest.SkipTest() # we do not run this test on valgrind for now
     env = Env(env='oss-cluster', shardsCount=3, moduleArgs='ConsensusIdleIntervalOnFailure 0-0')
     with ProxyManager(env) as pm:
         pm.Shard(1).Execute('rg.testconsensusset', 'foo')
         pm.Shard(2).Execute('rg.testconsensusset', 'bar')
 
         # shard 1 achieved majority
-        pm.Shard(1).PassMessagesTo(3) ## phase 1 message
-        pm.Shard(3).PassMessagesTo(1) ## phase 1 reply
+        pm.Shard(1).PassSingleMessageTo(3) ## phase 1 message
+        pm.Shard(3).PassSingleMessageTo(1) ## phase 1 reply
 
         # node 2 recruited node 3 before node 1 sent the accept value message
-        pm.Shard(2).PassMessagesTo(3) # try to recruited node 3 but failed
-        pm.Shard(3).PassMessagesTo(2)
-        pm.Shard(2).PassMessagesTo(3) # try again and succed
+        pm.Shard(2).PassSingleMessageTo(3) # try to recruited node 3 but failed
+        pm.Shard(3).PassSingleMessageTo(2)
+        pm.Shard(2).PassSingleMessageTo(3) # try again and succed
 
         # node 1 send the accept message which will be denied by node 3
-        pm.Shard(1).PassMessagesTo(3) ## accept message
+        pm.Shard(1).PassSingleMessageTo(3) ## accept message
        
-        pm.Shard(3).PassMessagesTo(1) ## denied
+        pm.Shard(3).PassSingleMessageTo(1) ## denied
 
         # no value has yet been accepted
         env.assertEqual(pm.Shard(1).Execute('rg.testconsensusget'), None)
@@ -246,13 +262,20 @@ def testSimple2():
         env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), None)
 
         # node 1 raises the proposal number and try again
-        pm.Shard(1).PassMessagesTo(3) ## try to recruited 3 but failed cause its already been recruited by 2
-        pm.Shard(3).PassMessagesTo(1) ## deny message
-        pm.Shard(1).PassMessagesTo(3) ## try again and succed
-        pm.Shard(3).PassMessagesTo(1)
+        pm.Shard(1).PassSingleMessageTo(3) ## learn value which will be ignored by node 3
 
-        pm.Shard(1).PassMessagesTo(3) ## send accept message
-        pm.Shard(3).PassMessagesTo(1) ## value accepted and learn
+        pm.Shard(1).PassSingleMessageTo(3) ## try to recruited 3 but failed cause its already been recruited by 2
+        pm.Shard(3).PassSingleMessageTo(1) ## deny message
+        pm.Shard(1).PassSingleMessageTo(3) ## try again and succed
+        pm.Shard(3).PassSingleMessageTo(1)
+
+        pm.Shard(1).PassSingleMessageTo(3) ## send accept message
+        pm.Shard(3).PassSingleMessageTo(1) ## value accepted and learn
+
+        pm.Shard(1).PassSingleMessageTo(3) ## learn message
+        pm.Shard(3).PassSingleMessageTo(1) ## learn message
+
+        time.sleep(0.1) # wait for value to be updated
 
         # value did not yet arrived to Node 2
         env.assertEqual(pm.Shard(1).Execute('rg.testconsensusget'), 'foo')
@@ -260,10 +283,65 @@ def testSimple2():
         env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), 'foo')
 
         # None 2 should learned the 'foo' value immidiatly (cause he will get the learned messages)
-        pm.Shard(1).PassMessagesTo(2)        
-        pm.Shard(3).PassMessagesTo(2)
+        pm.Shard(1).PassSingleMessageTo(2) ## recruited message
+        pm.Shard(1).PassSingleMessageTo(2) ## accept message
+        pm.Shard(1).PassSingleMessageTo(2) ## learn message
+        pm.Shard(1).PassSingleMessageTo(2) ## recruited message
+        pm.Shard(1).PassSingleMessageTo(2) ## recruited message
+        pm.Shard(1).PassSingleMessageTo(2) ## accept message
+        pm.Shard(1).PassSingleMessageTo(2) ## learn message - this is the message we waited for
+        pm.Shard(3).PassSingleMessageTo(2)
 
         env.assertEqual(pm.Shard(2).Execute('rg.testconsensusget'), 'foo')
+
+def testSimple3():
+    env = Env(env='oss-cluster', shardsCount=5, moduleArgs='ConsensusIdleIntervalOnFailure 0-0')
+    with ProxyManager(env) as pm:
+        pm.Shard(1).Execute('rg.testconsensusset', 'foo1')
+        pm.Shard(4).Execute('rg.testconsensusset', 'foo2')
+
+        pm.Shard(1).PassSingleMessageTo(2) ## phase 1 message
+        pm.Shard(1).PassSingleMessageTo(3) ## phase 1 message
+
+        pm.Shard(3).PassSingleMessageTo(1) ## phase 1 reply 
+        pm.Shard(2).PassSingleMessageTo(1) ## phase 1 reply
+
+        pm.Shard(1).PassSingleMessageTo(2) ## phase 2 message
+        pm.Shard(1).PassSingleMessageTo(3) ## phase 2 message
+
+        # now we have a majority who accepted the value foo1 but not yet learned it
+
+        pm.Shard(4).PassSingleMessageTo(3) ## phase 1 message
+        pm.Shard(3).PassSingleMessageTo(4) ## learn message
+        pm.Shard(3).PassSingleMessageTo(4) ## phase 1 denied
+        pm.Shard(4).PassSingleMessageTo(3) ## phase 1 message
+        pm.Shard(3).PassSingleMessageTo(4) ## phase 1 accepted, should also send the accepted value.
+
+        pm.Shard(4).PassSingleMessageTo(5) ## phase 1 message
+        pm.Shard(4).PassSingleMessageTo(5) ## phase 1 message
+        pm.Shard(5).PassSingleMessageTo(4) ## phase 1 reply
+        pm.Shard(5).PassSingleMessageTo(4) ## phase 1 reply
+
+        # shard 4 should now send value foo1 and not foo2
+        pm.Shard(4).PassSingleMessageTo(3) ## phase 2 message
+        pm.Shard(4).PassSingleMessageTo(5) ## phase 2 message
+
+        pm.Shard(3).PassSingleMessageTo(4) ## value accepted
+        pm.Shard(3).PassSingleMessageTo(4) ## learn value
+        pm.Shard(5).PassSingleMessageTo(4) ## value accepted
+        pm.Shard(5).PassSingleMessageTo(4) ## learn value
+
+        pm.Shard(4).PassSingleMessageTo(3, 5) ## learn value
+
+        pm.Shard(5).PassSingleMessageTo(3) ## learn proposalid 2
+        pm.Shard(3).PassSingleMessageTo(5) ## learn proposalid 1
+        pm.Shard(3).PassSingleMessageTo(5) ## learn proposalid 2
+
+        time.sleep(0.1) # wait for value to be updated
+
+        env.assertEqual(pm.Shard(3).Execute('rg.testconsensusget'), 'foo1')
+        env.assertEqual(pm.Shard(4).Execute('rg.testconsensusget'), 'foo1')
+        env.assertEqual(pm.Shard(5).Execute('rg.testconsensusget'), 'foo1')
 
 def testRandom():
     env = Env(env='oss-cluster', shardsCount=7, moduleArgs='ConsensusIdleIntervalOnFailure 0-5000')
