@@ -158,7 +158,7 @@ class ProxyManager():
             hasMessages = self.PassAllMessages()
             isConsensusesRunning = False
             for i in range(self.env.shardsCount):
-                l = len(self.Shard(i + 1).Execute('RG.INFOCONSENSUS')[0][5])
+                l = len(self.Shard(i + 1).Execute('RG.INFOCONSENSUS')[0][7])
                 if l > 0:
                     isConsensusesRunning = True
             if not isConsensusesRunning and not hasMessages:
@@ -344,7 +344,7 @@ def testSimple3():
         env.assertEqual(pm.Shard(5).Execute('rg.testconsensusget'), 'foo1')
 
 def testRandom():
-    env = Env(env='oss-cluster', shardsCount=7, moduleArgs='ConsensusIdleIntervalOnFailure 0-5000')
+    env = Env(env='oss-cluster', shardsCount=7, moduleArgs='ConsensusIdleIntervalOnFailure 0-500 ConsensusLongPeriodicTasksInterval 60000')
     with ProxyManager(env) as pm:
         i = 1
         pm.Shard(1).Execute('rg.testconsensusset', 'foo%d' % i)

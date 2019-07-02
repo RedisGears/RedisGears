@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <redisgears_memory.h>
 #include "lock_handler.h"
+#include "config.h"
 
 #include <libevent.h>
 
@@ -86,6 +87,7 @@ typedef struct SendMsg{
     char* function;
     char* msg;
     size_t msgLen;
+    bool reliable;
 }SendMsg;
 
 typedef struct ClusterRefreshMsg{
@@ -249,10 +251,18 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
     Cluster_ConnectToShard((Node*)c->data);
 }
 
+static void Cluster_ReconnectCallback(evutil_socket_t s, short what, void *arg){
+    Cluster_ConnectToShard((Node*)arg);
+}
+
+
 static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status){
     if(status == REDIS_ERR){
-        // connection failed lets try again
-        Cluster_ConnectToShard((Node*)c->data);
+        // connection failed lets try again in 1 second
+        struct timeval time = {GearsConfig_GetClusterReconnectInterval() / 1000,
+                              (GearsConfig_GetClusterReconnectInterval() % 1000) * 1000};
+        struct event *readEvent = event_new(main_base, -1, 0, Cluster_ReconnectCallback, c->data);
+        event_add(readEvent, &time);
     }else{
         Node* n = (Node*)c->data;
         printf("connected : %s:%d, status = %d\r\n", c->c.tcp.host, c->c.tcp.port, status);
@@ -481,9 +491,13 @@ static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
     RedisModule_FreeString(NULL, msgIdStr);
 
     if(node->c){
-        redisAsyncCommandArgv(node->c, OnResponseArrived, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
+        redisAsyncCommandArgv(node->c, msg->reliable ? OnResponseArrived : NULL, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
     }
-    Gears_listAddNodeTail(node->pendingMessages, sentMsg);
+    if(msg->reliable){
+        Gears_listAddNodeTail(node->pendingMessages, sentMsg);
+    }else{
+        SentMessages_Free(sentMsg);
+    }
 }
 
 static void Cluster_SendMessage(SendMsg* sendMsg){
@@ -681,7 +695,7 @@ void Cluster_SendMsgToMySelf(const char* function, char* msg, size_t len){
     pthread_cond_signal(&msgArriveCond);
 }
 
-void Cluster_SendMsg(const char* id, const char* function, char* msg, size_t len){
+static void Cluster_InnerSendMsg(const char* id, const char* function, char* msg, size_t len, bool reliable){
     Msg* msgStruct = NULL;
     if(id && Cluster_IsMyId(id)){
         Cluster_SendMsgToMySelf(function, msg, len);
@@ -699,12 +713,27 @@ void Cluster_SendMsg(const char* id, const char* function, char* msg, size_t len
     memcpy(msgStruct->sendMsg.msg, msg, len);
     msgStruct->sendMsg.msgLen = len;
     msgStruct->type = SEND_MSG;
+    msgStruct->sendMsg.reliable = reliable;
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
+
+void Cluster_SendMsg(const char* id, const char* function, char* msg, size_t len){
+    Cluster_InnerSendMsg(id, function, msg, len, true);
+}
+
+void Cluster_SendMsgUnreliable(const char* id, const char* function, char* msg, size_t len){
+    Cluster_InnerSendMsg(id, function, msg, len, false);
+}
+
 
 void Cluster_SendMsgToAllAndMyself(const char* function, char* msg, size_t len){
     Cluster_SendMsgToMySelf(function, msg, len);
     Cluster_SendMsg(NULL, function, msg, len);
+}
+
+void Cluster_SendMsgToAllAndMyselfUnreliable(const char* function, char* msg, size_t len){
+    Cluster_SendMsgToMySelf(function, msg, len);
+    Cluster_SendMsgUnreliable(NULL, function, msg, len);
 }
 
 bool Cluster_IsClusterMode(){

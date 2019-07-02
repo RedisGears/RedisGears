@@ -586,10 +586,16 @@ static void Consensus_LastIdTriggered(RedisModuleCtx *ctx, const char *sender_id
 
     Consensus* consensus = Gears_dictFetchValue(consensusDict, name);
 
-    Gears_dictEntry *val = Gears_dictAddOrFind(consensus->lastTriggeredDict, (char*)sender_id);
-    if(val->v.u64 != lastIdTriggered){
+    Gears_dictEntry *exists;
+    Gears_dictEntry *val = Gears_dictAddRaw(consensus->lastTriggeredDict, (char*)sender_id, &exists);
+    if(val){
         val->v.u64 = lastIdTriggered;
         Consensus_RecalculateMinConsensusTriggered(consensus);
+    }else{
+        if(exists->v.u64 != lastIdTriggered){
+            exists->v.u64 = lastIdTriggered;
+            Consensus_RecalculateMinConsensusTriggered(consensus);
+        }
     }
 }
 
@@ -649,7 +655,7 @@ static void Consensus_LongPeriodicTasks(RedisModuleCtx *ctx, const char *sender_
                     Gears_BufferWriterWriteLong(&bw, instance->consensusId);
                     Gears_BufferWriterWriteBuff(&bw, instance->learner.val, instance->learner.len);
 
-                    Cluster_SendMsgM(NULL, Consensus_CallbackTriggered, buff->buff, buff->size);
+                    Cluster_SendMsgUnreliableM(NULL, Consensus_CallbackTriggered, buff->buff, buff->size);
                 }
                 currNode = Gears_listPrevNode(currNode);
             }
@@ -672,7 +678,7 @@ static void Consensus_ShortPeriodicTasks(RedisModuleCtx *ctx, const char *sender
             Gears_BufferWriterInit(&bw, buff);
             Gears_BufferWriterWriteString(&bw, consensus->name);
             Gears_BufferWriterWriteLong(&bw, consensus->nextTriggeredId - 1);
-            Cluster_SendMsgToAllAndMyselfM(Consensus_LastIdTriggered, buff->buff, buff->size);
+            Cluster_SendMsgToAllAndMyselfUnreliableM(Consensus_LastIdTriggered, buff->buff, buff->size);
         }
 
         if(consensus->lastTrigger){
@@ -767,12 +773,14 @@ static void Consensus_ReplyInfo(RedisModuleCtx *unused, const char *sender_id, u
     Gears_dictIterator *iter = Gears_dictGetIterator(consensusDict);
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(iter))){
-        RedisModule_ReplyWithArray(ctx, 6);
+        RedisModule_ReplyWithArray(ctx, 8);
         Consensus* consensus = Gears_dictGetVal(entry);
         RedisModule_ReplyWithStringBuffer(ctx, "name", strlen("name"));
         RedisModule_ReplyWithStringBuffer(ctx, consensus->name, strlen(consensus->name));
         RedisModule_ReplyWithStringBuffer(ctx, "MinTriggered", strlen("MinTriggered"));
         RedisModule_ReplyWithLongLong(ctx, consensus->minTriggered);
+        RedisModule_ReplyWithStringBuffer(ctx, "NextTrigger", strlen("NextTrigger"));
+        RedisModule_ReplyWithLongLong(ctx, consensus->nextTriggeredId);
         RedisModule_ReplyWithStringBuffer(ctx, "ConsensusInstances", strlen("ConsensusInstances"));
         RedisModule_ReplyWithArray(ctx, Gears_listLength(consensus->consensusInstances));
         Gears_listIter *listIter = Gears_listGetIterator(consensus->consensusInstances, AL_START_HEAD);

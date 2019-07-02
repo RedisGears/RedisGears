@@ -49,6 +49,7 @@ typedef struct RedisGears_Config{
 	int consensusIdleEndInterval;
 	ConfigVal consensusShortPeriodicTasksInterval;
 	ConfigVal consensusLongPeriodicTasksInterval;
+	ConfigVal clusterReconnectInterval;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -116,6 +117,10 @@ static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ClusterReconnectIntervalGet(){
+    return &DefaultGearsConfig.clusterReconnectInterval;
+}
+
 static const ConfigVal* ConfigVal_ConsensusLongPeriodicTasksIntervalGet(){
     return &DefaultGearsConfig.consensusLongPeriodicTasksInterval;
 }
@@ -128,6 +133,23 @@ static const ConfigVal* ConfigVal_ConsensusIdleIntervalOnFailureGet(){
     return &DefaultGearsConfig.consensusIdleInterval;
 }
 
+static bool ConfigVal_ClusterReconnectIntervalSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if (n < 0){
+            return false;
+        }
+        DefaultGearsConfig.clusterReconnectInterval.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static bool ConfigVal_ConsensusLongPeriodicTasksIntervalSet(ArgsIterator* iter){
     RedisModuleString* val = ArgsIterator_Next(iter);
     if(!val) return false;
@@ -135,6 +157,9 @@ static bool ConfigVal_ConsensusLongPeriodicTasksIntervalSet(ArgsIterator* iter){
     long long n;
 
     if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if (n < 0){
+            return false;
+        }
         DefaultGearsConfig.consensusLongPeriodicTasksInterval.val.longVal = n;
         return true;
     } else {
@@ -149,6 +174,9 @@ static bool ConfigVal_ConsensusShortPeriodicTasksIntervalSet(ArgsIterator* iter)
     long long n;
 
     if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if (n < 0){
+            return false;
+        }
         DefaultGearsConfig.consensusShortPeriodicTasksInterval.val.longVal = n;
         return true;
     } else {
@@ -242,6 +270,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_ConsensusLongPeriodicTasksIntervalGet,
         .setter = ConfigVal_ConsensusLongPeriodicTasksIntervalSet,
         .configurableAtRunTime = false,
+    },
+    {
+        .name = "ClusterReconnectInterval",
+        .getter = ConfigVal_ClusterReconnectIntervalGet,
+        .setter = ConfigVal_ClusterReconnectIntervalSet,
+        .configurableAtRunTime = true,
     },
     {
         NULL,
@@ -394,6 +428,10 @@ long long GearsConfig_GetConsensusLongPeriodicTasksInterval(){
     return DefaultGearsConfig.consensusLongPeriodicTasksInterval.val.longVal;
 }
 
+long long GearsConfig_GetClusterReconnectInterval(){
+    return DefaultGearsConfig.clusterReconnectInterval.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -456,7 +494,11 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         .consensusLongPeriodicTasksInterval= {
             .val.longVal = 10000,
             .type = LONG,
-        }
+        },
+        .clusterReconnectInterval= {
+            .val.longVal = 1000,
+            .type = LONG,
+        },
     };
 
     DEF_COMMAND(configget, GearsConfig_Get);

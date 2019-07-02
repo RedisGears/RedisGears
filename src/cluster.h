@@ -16,12 +16,16 @@
 unsigned int keyHashSlot(char *key, int keylen);
 
 void Cluster_SendMsg(const char* id, const char* function, char* msg, size_t len);
+void Cluster_SendMsgUnreliable(const char* id, const char* function, char* msg, size_t len);
 void Cluster_SendMsgToAllAndMyself(const char* function, char* msg, size_t len);
+void Cluster_SendMsgToAllAndMyselfUnreliable(const char* function, char* msg, size_t len);
 void Cluster_SendMsgToMySelf(const char* function, char* msg, size_t len);
 void Cluster_SendMsgToMySelfWithDelay(const char* function, char* msg, size_t len, long long delay);
 void Cluster_SendPersisMsgToMySelf(const char* function, char* msg, size_t len, long long period);
 #define Cluster_SendMsgM(id, function, msg, len) Cluster_SendMsg(id, #function, msg, len);
+#define Cluster_SendMsgUnreliableM(id, function, msg, len) Cluster_SendMsgUnreliable(id, #function, msg, len);
 #define Cluster_SendMsgToAllAndMyselfM(function, msg, len) Cluster_SendMsgToAllAndMyself(#function, msg, len);
+#define Cluster_SendMsgToAllAndMyselfUnreliableM(function, msg, len) Cluster_SendMsgToAllAndMyselfUnreliable(#function, msg, len);
 #define Cluster_SendMsgToMySelfM(function, msg, len) Cluster_SendMsgToMySelf(#function, msg, len);
 #define Cluster_SendMsgToMySelfWithDelayM(function, msg, len, delay) Cluster_SendMsgToMySelfWithDelay(#function, msg, len, delay);
 #define Cluster_SendPersisMsgToMySelfM(function, msg, len, period) Cluster_SendPersisMsgToMySelf(#function, msg, len, period);
