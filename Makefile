@@ -166,6 +166,7 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 
 setup:
 	@echo Setting up system...
+	$(SHOW)./deps/readies/bin/getpy2
 	$(SHOW)./system-setup.py
 
 fetch:
