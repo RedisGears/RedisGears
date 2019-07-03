@@ -192,7 +192,7 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     if(!reply){
         return;
     }
-    assert(reply->type == REDIS_REPLY_STATUS);
+    assert(reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_ERR);
     Node* n = (Node*)b;
     Gears_listNode* node = Gears_listFirst(n->pendingMessages);
     Gears_listDelNode(n->pendingMessages, node);
@@ -838,7 +838,7 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         entity = Gears_dictAddRaw(nodesMsgIds, (char*)senderIdStr, NULL);
     }
     if(msgId <= currId){
-        RedisModule_ReplyWithSimpleString(ctx, "duplicate message ignored");
+        RedisModule_ReplyWithError(ctx, "duplicate message ignored");
         return REDISMODULE_OK;
     }
     Gears_dictSetSignedIntegerVal(entity, msgId);

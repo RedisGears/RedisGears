@@ -75,7 +75,12 @@ static char* Consensus_ValDup(const char* val, size_t len, size_t* outLen){
 }
 
 static ConsensusInstance* Consensus_InstanceCreate(Consensus* consensus, long long consensusId){
-    ConsensusInstance* consensusInstance = RG_CALLOC(1, sizeof(*consensusInstance));
+    Gears_listNode* n = Gears_listFirst(consensus->consensusInstances);
+    ConsensusInstance* consensusInstance = n? n->value : NULL;
+    if(consensusId == -1 && consensusInstance && !consensusInstance->learner.valueLeared){
+        return consensusInstance;
+    }
+    consensusInstance = RG_CALLOC(1, sizeof(*consensusInstance));
     if(consensusId >= 0){
         consensusInstance->consensusId = consensusId;
         if(consensusId >= consensus->currConsensusId){

@@ -26,7 +26,9 @@ class ConnectionProxy():
         self.fromConn.handle_requests(self.pending_requests)
 
     def Stop(self):
+        print 'stopping proxy from %d to %d' % (self.fromId, self.toId)
         self.stream_server.stop()
+        self.fromConn.close()
 
     def PassSingleMessage(self, timeout=None):
         isMessagePass = False
@@ -75,16 +77,28 @@ class ShardProxy():
         self.shardId = shardId
         self.shardConn = self.env.getConnection(self.shardId)
         self.proxies = {}
-        for s in range(1, env.shardsCount + 1):
-            if shardId == s:
-                continue
-            self.sConn = env.getConnection(s)
-            self.proxies[s] = ConnectionProxy(env, self.sConn, initPort, self.shardId, s)
-            initPort += 2
+        self.initPort = initPort
+        self.Start()
 
-    def Stop(self):
-        for p in self.proxies.values():
-            p.Stop()
+    def Stop(self, id=None):
+        if id is None:
+            for p in self.proxies.values():
+                p.Stop()
+        else:
+            print 'stoping proxt' 
+            self.proxies[id].Stop()
+
+    def Start(self, id=None):
+        port = self.initPort
+        for s in range(1, self.env.shardsCount + 1):
+            if self.shardId == s:
+                continue
+            if id is not None and s != id:
+                continue
+            print 'start proxy'
+            self.sConn = self.env.getConnection(s)
+            self.proxies[s] = ConnectionProxy(self.env, self.sConn, port, self.shardId, s)
+            port += 2
 
     def PassSingleMessageTo(self, *ids, **dargs):
         timeout = dargs['timeout'] if 'timeout' in dargs.keys() else None
@@ -102,6 +116,13 @@ class ShardProxy():
 
     def Execute(self, *command):
         return self.shardConn.execute_command(*command)
+
+    def Restart(self):
+        self.env.restartAndReload(shardId=self.shardId)
+        self.SendClusterSetMessage()
+        proxies = [j for j in range(1, self.env.shardsCount + 1) if j != self.shardId]
+        self.PassSingleMessageTo(*proxies)
+
 
     def SendClusterSetMessage(self):
         msg = ['RG.CLUSTERSET',
@@ -174,6 +195,22 @@ class ProxyManager():
 
     def Shard(self, id):
         return self.shardsProxies[id - 1]
+
+    def RestartShards(self, *ids):
+        for id in ids:
+            for shardProxy in self.shardsProxies:
+                if shardProxy.shardId == id:
+                    continue
+                print 'stopping proxy from %d to %s' % (shardProxy.shardId, id)
+                shardProxy.Stop(id)
+            print 'restarted the shard'
+            self.Shard(id).Restart()
+            for shardProxy in self.shardsProxies:
+                if shardProxy.shardId == id:
+                    continue
+                print 'starting proxy from %d to %s' % (shardProxy.shardId, id)
+                shardProxy.Start(id)
+
 
     def PassMessages(self, timeout=0.0001):
         IsMessagesSent = False
@@ -362,3 +399,20 @@ def testRandom():
             else:
                 toShard = [j for j in range(1, 4) if j != fromShard][random.randint(0, 1)]
                 pm.Shard(fromShard).PassMessagesTo(toShard)
+
+def testShardFailure():
+    env = Env(env='oss-cluster', shardsCount=3)
+    with ProxyManager(env) as pm:
+        pm.Shard(1).Execute('rg.testconsensusset', 'foo')
+
+        pm.Shard(1).PassSingleMessageTo(2) ## phase 1 message
+        pm.Shard(1).PassSingleMessageTo(3) ## phase 1 message
+
+        raw_input()
+
+        try:
+            pm.RestartShards(1)
+        except Exception as e:
+            print 'exception: ' + str(e)
+
+        raw_input()

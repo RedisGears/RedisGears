@@ -1,5 +1,6 @@
 import signal
 import time
+from socket import SHUT_RDWR
 
 class TimeLimit(object):
     """
@@ -33,6 +34,7 @@ class Connection(object):
         if not self.closed:
             self.closed = True
             self.sockf.close()
+            self.sock.shutdown(SHUT_RDWR)
             self.sock.close()
             self.sockf = None
 
@@ -190,5 +192,4 @@ class Connection(object):
                     raise Exception("illegal request received, started with \0 :" + str(request))        
                 pending.put(request)
         except Exception as e:
-            if not self.server.stopped: # not already stopped
-               print e
+            pass
