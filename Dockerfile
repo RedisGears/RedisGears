@@ -13,7 +13,7 @@ WORKDIR /build
 RUN ./deps/readies/bin/getpy2
 RUN python ./system-setup.py 
 RUN make fetch SHOW=1
-RUN echo nproc=`nproc`; echo NPROC=$(eval "$X_NPROC"); make all SHOW=1 $(eval "$X_NPROC")
+RUN echo nproc=$(nproc); echo NPROC=$(eval "$X_NPROC"); make all SHOW=1 -j $(eval "$X_NPROC")
 
 #----------------------------------------------------------------------------------------------
 # FROM redisfab/redis-${OSNICK}:5.0.5
