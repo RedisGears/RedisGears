@@ -12,9 +12,9 @@ endif
 
 OSNICK ?= stretch
 
-STEM=redisfab/redisgears
-BUILD=docker build --rm --squash
-PUSH=docker push
+REPO=redisfab
+STEM=$(REPO)/redisgears
+BUILD_OPT=--rm --squash
 
 define build_x64
 docker build $(BUILD_OPT) -t $(STEM)-x64-$(OSNICK):$(VERSION) -f $(ROOT)/Dockerfile $(ROOT)
@@ -42,10 +42,13 @@ publish:
 	$(call push,x64)
 	$(call push,arm32v7)
 	$(call push,arm64v8)
+	docker manifest annotate $(STEM)-$(OSNICK):$(VERSION) $(STEM)-arm32v7-$(OSNICK):$(VERSION) --os linux --arch arm
+	docker manifest annotate $(STEM)-$(OSNICK):$(VERSION) $(STEM)-arm64v8-$(OSNICK):$(VERSION) --os linux --arch arm64 --variant armv8
 	docker manifest create -a $(STEM)-$(OSNICK):$(VERSION) \
 		-a $(STEM)-x64-$(OSNICK):$(VERSION) \
-		-a $(STEM)-x64-$(OSNICK):$(VERSION) \
+		-a $(STEM)-arm64v8-$(OSNICK):$(VERSION) \
 		-a $(STEM)-arm32v7-$(OSNICK):$(VERSION)
-	docker tag $(STEM)-$(OSNICK):$(VERSION) $(STEM)-$(OSNICK):latest
 	docker manifest push -p $(STEM)-$(OSNICK):$(VERSION)
-	docker push $(STEM)-$(OSNICK):latest
+
+show:
+	@curl -s -X "GET" https://cloud.docker.com/v2/repositories/$(STEM)-$(OSNICK)/tags/ | jq

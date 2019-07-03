@@ -32,7 +32,7 @@ class RepoRefresh(OnPlatform):
         pass
     
     def debian_compat(self):
-        self.runner.run("apt-get update -y")
+        self.runner.run("apt-get -qq update -y")
 
 #----------------------------------------------------------------------------------------------
 
@@ -50,13 +50,15 @@ class Setup(OnPlatform):
             self.python = "python"
         elif self.has_command("python2"):
             self.python = "python2"
-        # this is required because osx pip installed are done with --user
+
         if self.os == 'macosx':
+            # this is required because osx pip installed are done with --user
             os.environ["PATH"] = os.environ["PATH"] + ':' + '$HOME/Library/Python/2.7/bin'
         
         if self.platform.is_debian_compat():
             # prevents apt-get from interactively prompting
             os.environ["DEBIAN_FRONTEND"] = 'noninteractive'
+
         
         os.environ["PYTHONWARNINGS"] = 'ignore:DEPRECATION::pip._internal.cli.base_command'
 
