@@ -43,13 +43,12 @@ class RedisGearsSetup(paella.Setup):
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
         self.install("libffi-devel") # required for python 3.7
-        self.install("python2-gevent") # pip cannot build gevent on ARM
+        self.install("python-gevent") # pip cannot build gevent on ARM
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil")
         self.install("python2-psutil")
 
-        self.install("python2-gevent")
         self.pip_install("pipenv")
 
     def fedora(self):

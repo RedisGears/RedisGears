@@ -2,10 +2,13 @@
 
 # stretch|bionic
 ARG OSNICK=stretch
+ARG OS=redis:latest
+# ARG OS=redislabsmodules/rmbuildercentos:latest
+# ARG OS=redisfab/redis-${OSNICK}:5.0.5
 
 #----------------------------------------------------------------------------------------------
 # FROM redisfab/redis-${OSNICK}:5.0.5 AS builder
-FROM redis:latest AS builder
+FROM ${OS} AS builder
 
 ADD . /build
 WORKDIR /build
