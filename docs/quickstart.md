@@ -42,7 +42,8 @@ $ make test
 ```
 
 ## Client libraries
-Currently there is no special RedisGears client, that said, any client that allows sending custom commands to Redis should be enough.
+Gears python library can be found [here](https://github.com/RedisGears/redisgears-py).
+In addition, any client that allows sending custom commands to Redis should be enough.
 
 ## Cluster Support
 All of RedisGears' operations are fully supported on OSS and Enterprise clusters. Note that the module needs to be loaded on all the cluster nodes. In addition, on OSS cluster, after setting up the cluster you need to run `RG.REFRESHCLUSTER` on each node.
