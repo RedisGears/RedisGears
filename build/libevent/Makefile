@@ -23,7 +23,7 @@ build: __sep bindirs $(SRCDIR)/configure
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
-	@make -C $(BUILD_DIR)
+	@make -C $(BUILD_DIR) -j $$(nproc)
 
 clean:
 ifeq ($(ALL),1) 
