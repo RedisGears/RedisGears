@@ -1,4 +1,4 @@
-# BUILD redisfab/redisgears-x64-${OSNICK}:M.m.b
+# BUILD redisfab/redisgears-${OSNICK}:M.m.b-x64
 
 ARG OSNICK=buster
 
