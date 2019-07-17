@@ -24,7 +24,9 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 # Future plans
 * GearsQL - SQL like language for quering your data.
 
-# License
+## Mailing List / Forum
+Got questions? Feel free to ask at the [RedisGears mailing list](https://groups.google.com/forum/#!forum/redisgears).
 
+# License
 Redis Source Available License Agreement - see [LICENSE](LICENSE)
 
