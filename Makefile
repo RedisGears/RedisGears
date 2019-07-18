@@ -170,8 +170,12 @@ setup:
 	$(SHOW)./system-setup.py
 
 fetch:
-	-$(SHOW)ls -ld deps/cpython; ls -l deps/cpython
+ifeq ($(NO_FETCH),1)
+	@echo "No fetch."
+else
+	-$(SHOW)pwd; ls -ld deps/cpython; ls -l deps/cpython
 	$(SHOW)[ -z "$$(ls deps/cpython > /dev/nulll 2>&1)" ] && git submodule update --init --recursive
+endif
 
 get_deps:
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
