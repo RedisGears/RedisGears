@@ -170,7 +170,7 @@ setup:
 	$(SHOW)./system-setup.py
 
 fetch:
-	$(SHOW)git submodule update --init --recursive
+	$(SHOW)[[ -z "$$(ls deps/cpython)" ]] && git submodule update --init --recursive
 
 get_deps:
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
