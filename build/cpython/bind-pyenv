@@ -1,0 +1,17 @@
+#!/bin/bash
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT=$(cd $DIR/../../..; pwd)
+
+d1=$(findmnt -n --target /opt/redislabs -o SOURCE | grep -v /dev/mapper)
+if [[ -z $d1 ]]; then
+	[[ ! -d /opt/redislabs ]] && sudo mkdir -p /opt/redislabs
+else
+	# umount /opt/redislabs
+	echo $d1
+fi
+if [[ -f $ROOT/BINDIR ]]; then
+	mount --bind $ROOT/`cat $ROOT/BINDIR` /opt/redislabs
+else
+	echo "Cannot determine current Python environment."
+fi

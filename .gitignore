@@ -61,10 +61,11 @@ script_example.py
 /bin/
 /deps/libevent/
 /pytest/logs/
+/[0-9]*/
 *.pyc
 *.log
 *.rdb
 commit.txt
 *.zip
 *.tgz
-VARIANT
+/VARIANT

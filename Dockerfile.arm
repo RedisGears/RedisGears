@@ -1,25 +1,33 @@
-# BUILD redisfab/redisgears-${OSNICK}:M.m.b-x64
+# BUILD redisfab/redisgears-${OSNICK}:M.m.b-${ARCH}
 
+# stretch|bionic|buster
 ARG OSNICK=buster
 
+# ARCH=arm64v8|arm32v7
+ARG ARCH=arm64v8
+
 #----------------------------------------------------------------------------------------------
-# FROM redisfab/redis-x64-${OSNICK}:5.0.5 AS builder
-FROM redis:latest AS builder
+FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5 AS builder
+
+RUN [ "cross-build-start" ]
 
 ADD . /build
 WORKDIR /build
 
 RUN ./deps/readies/bin/getpy2
-RUN ./system-setup.py
+RUN ./system-setup.py 
 RUN make fetch SHOW=1
 
-ENV X_NPROC "cat /proc/cpuinfo|grep processor|wc -l" 
+ENV X_NPROC "cat /proc/cpuinfo|grep processor|wc -l"
 RUN echo nproc=$(nproc); echo NPROC=$(eval "$X_NPROC")
 RUN make all SHOW=1
 
+RUN [ "cross-build-end" ]
+
 #----------------------------------------------------------------------------------------------
-# FROM redisfab/redis-x64-${OSNICK}:5.0.5
-FROM redis:latest
+FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5
+
+RUN [ "cross-build-start" ]
 
 ENV REDIS_MODULES /opt/redislabs/lib/modules
 
@@ -31,3 +39,5 @@ COPY --from=builder /build/artifacts/release/redisgears-dependencies.*.tgz /tmp/
 RUN tar xzf /tmp/redisgears-dependencies.*.tgz -C /
 
 CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python3"]
+
+RUN [ "cross-build-end" ]

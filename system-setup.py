@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 import sys
 import os
@@ -30,6 +30,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("lsb-release")
         self.install("zip unzip")
         self.install("python-psutil")
+        self.install("python-gevent") # pip cannot build gevent on ARM
         self.install("libffi-dev")
         self.pip_install("pipenv")
 
@@ -42,6 +43,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
         self.install("libffi-devel") # required for python 3.7
+        self.install("python-gevent") # pip cannot build gevent on ARM
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil")
@@ -57,6 +59,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("libffi-devel")
 
         self.pip_install("pipenv")
+        self.pip_install("gevent")
 
     def macosx(self):
         r, w, e = popen2.popen3('xcode-select -p')
@@ -66,6 +69,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("zlib openssl readline")
         
         self.pip_install("pipenv")
+        self.pip_install("gevent")
 
     def common_last(self):
         if not self.has_command("ramp"):
@@ -73,7 +77,6 @@ class RedisGearsSetup(paella.Setup):
         if not self.has_command("RLTest"):
             self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("redis-py-cluster")
-        self.pip_install("gevent")
 
 #----------------------------------------------------------------------------------------------
 

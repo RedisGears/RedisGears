@@ -166,10 +166,11 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 
 setup:
 	@echo Setting up system...
+	$(SHOW)./deps/readies/bin/getpy2
 	$(SHOW)./system-setup.py
 
 fetch:
-	$(SHOW)git submodule update --init --recursive
+	-$(SHOW)git submodule update --init --recursive
 
 get_deps:
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
