@@ -1,6 +1,7 @@
 [![GitHub issues](https://img.shields.io/github/release/RedisGears/RedisGears.svg)](https://github.com/RedisGears/RedisGears/releases/latest)
 [![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
 [![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/redislabs/redisgears.svg)](https://hub.docker.com/r/redislabs/redisgears/builds/)
+[![Mailing List](https://img.shields.io/badge/Mailing%20List-RedisGears-blue)](https://groups.google.com/forum/#!forum/redisgears)
 
 # RedisGears
 ![logo.png](docs/images/RedisGears.png)
