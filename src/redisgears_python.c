@@ -148,6 +148,9 @@ void RedisGearsPy_SaveThread(){
 
 static PythonSubInterpreter* RedisGearsPy_SubInterpreterNew(){
     PyThreadState * subInterpreter = Py_NewInterpreter();
+    if(!subInterpreter){
+        return NULL; // we could not create a subinterpreter
+    }
     PythonSubInterpreter* interp = RG_ALLOC(sizeof(*interp));
     *interp = (PythonSubInterpreter){
         .refCount = 1,
@@ -1493,11 +1496,21 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     ptctx->subInterpreter = RedisGearsPy_SubInterpreterNew();
 
+    if(!ptctx->subInterpreter){
+        RedisGearsPy_SaveThread();
+        RedisModule_ReplyWithError(ctx, "could not create a subinterpreter for the python execution, this usually happened because oom issue.");
+        return REDISMODULE_OK;
+    }
+
     PyObject *v;
 
-    PyObject* globalsDict = PyDict_Copy(pyGlobals);
-    v = PyRun_StringFlags(script, Py_file_input, globalsDict, globalsDict, NULL);
-    Py_DECREF(globalsDict);
+    PyObject* callback = PyDict_GetItemString(pyGlobals, "RunRestricted");
+    PyObject* codePyStr = PyUnicode_FromStringAndSize(script, strlen(script));
+    PyObject* pArgs = PyTuple_New(1);
+    PyTuple_SetItem(pArgs, 0, codePyStr);
+//    v = PyRun_StringFlags(script, Py_file_input, globalsDict, globalsDict, NULL);
+    v = PyObject_CallObject(callback, pArgs);
+    Py_DECREF(pArgs);
 
     if(!v){
         PyObject *ptype, *pvalue, *ptraceback;
@@ -1516,7 +1529,9 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 Py_DECREF(ptraceback);
             }
         }
-        RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
+        if(ptctx->subInterpreter){
+            RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
+        }
         RedisGearsPy_SaveThread();
         return REDISMODULE_OK;
     }
@@ -1526,7 +1541,9 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     }else if(!ptctx->executionTriggered){
         RedisModule_ReplyWithSimpleString(ctx, "OK");
     }
-    RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
+    if(ptctx->subInterpreter){
+        RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
+    }
     PyThreadState_Swap(MainInterpreter->subInterpreter);
     RedisGearsPy_SaveThread();
 
@@ -2050,6 +2067,10 @@ typedef struct pymem{
 }pymem;
 
 static void* RedisGearsPy_Alloc(void* ctx, size_t size){
+    long long maxMemory = GearsConfig_GetMaxPythonMemory();
+    if(maxMemory > 0 && currAllocated > maxMemory){
+        return NULL;
+    }
 	pymem* m = RG_ALLOC(sizeof(pymem) + size);
 	m->size = size;
 	totalAllocated += size;
@@ -2065,6 +2086,10 @@ static void* RedisGearsPy_Calloc(void* ctx, size_t n_elements, size_t size){
 }
 
 static void* RedisGearsPy_Relloc(void* ctx, void * p, size_t size){
+    long long maxMemory = GearsConfig_GetMaxPythonMemory();
+    if(maxMemory > 0 && currAllocated > maxMemory){
+        return NULL;
+    }
 	if(!p){
 		return RedisGearsPy_Alloc(ctx, size);
 	}

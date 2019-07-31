@@ -44,6 +44,7 @@ typedef struct RedisGears_Config{
     ConfigVal maxExecutions;
 	ConfigVal profileExecutions;
 	ConfigVal pythonAttemptTraceback;
+	ConfigVal maxPythonMemory;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -115,6 +116,10 @@ static const ConfigVal* ConfigVal_PythonAttemptTracebackGet(){
 	return &DefaultGearsConfig.pythonAttemptTraceback;
 }
 
+static const ConfigVal* ConfigVal_MaxPythonMemoryGet(){
+    return &DefaultGearsConfig.maxPythonMemory;
+}
+
 static bool ConfigVal_PythonAttemptTracebackSet(ArgsIterator* iter){
 	RedisModuleString* val = ArgsIterator_Next(iter);
 	if(!val) return false;
@@ -122,6 +127,22 @@ static bool ConfigVal_PythonAttemptTracebackSet(ArgsIterator* iter){
 
 	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
         DefaultGearsConfig.pythonAttemptTraceback.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static bool ConfigVal_MaxPythonMemorySet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if(n < 0){
+            return false;
+        }
+        DefaultGearsConfig.maxPythonMemory.val.longVal = n;
         return true;
     } else {
         return false;
@@ -151,6 +172,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "PythonAttemptTraceback",
         .getter = ConfigVal_PythonAttemptTracebackGet,
         .setter = ConfigVal_PythonAttemptTracebackSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "MaxPythonMemory",
+        .getter = ConfigVal_MaxPythonMemoryGet,
+        .setter = ConfigVal_MaxPythonMemorySet,
         .configurableAtRunTime = true,
     },
     {
@@ -288,6 +315,10 @@ long long GearsConfig_GetPythonAttemptTraceback(){
 	return DefaultGearsConfig.pythonAttemptTraceback.val.longVal;
 }
 
+long long GearsConfig_GetMaxPythonMemory(){
+    return DefaultGearsConfig.maxPythonMemory.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -335,6 +366,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .pythonAttemptTraceback = {
             .val.longVal = 1,
+            .type = LONG,
+        },
+        .maxPythonMemory = {
+            .val.longVal = 0,
             .type = LONG,
         },
     };

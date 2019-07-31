@@ -5,6 +5,9 @@ from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
 from redisgears import PyFlatExecution
 
+from RestrictedPython import compile_restricted
+from RestrictedPython import safe_globals
+
 
 globals()['str'] = str
 
@@ -154,3 +157,10 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
     gb = GB(pipe.reader, pipe.defaultArg)
     for s in pipe.steps:
         s.AddToGB(gb, globalsDict)
+        
+def RunRestricted(code):
+    byte_code = compile_restricted(code, '<inline>', 'exec')
+    safe_globals['GB'] = GB
+    safe_globals['execute'] = execute
+    exec(byte_code, safe_globals, {})
+    
