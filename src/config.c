@@ -44,7 +44,8 @@ typedef struct RedisGears_Config{
     ConfigVal maxExecutions;
 	ConfigVal profileExecutions;
 	ConfigVal pythonAttemptTraceback;
-	ConfigVal maxPythonMemory;
+	ConfigVal maxPythonSubInterpreterMemory;
+	ConfigVal pythonExecutionTimeout;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -117,7 +118,27 @@ static const ConfigVal* ConfigVal_PythonAttemptTracebackGet(){
 }
 
 static const ConfigVal* ConfigVal_MaxPythonMemoryGet(){
-    return &DefaultGearsConfig.maxPythonMemory;
+    return &DefaultGearsConfig.maxPythonSubInterpreterMemory;
+}
+
+static const ConfigVal* ConfigVal_PythonExecutionTimeoutGet(){
+    return &DefaultGearsConfig.pythonExecutionTimeout;
+}
+
+static bool ConfigVal_PythonExecutionTimeoutSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if(n < 0){
+            return false;
+        }
+        DefaultGearsConfig.pythonExecutionTimeout.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 static bool ConfigVal_PythonAttemptTracebackSet(ArgsIterator* iter){
@@ -142,7 +163,7 @@ static bool ConfigVal_MaxPythonMemorySet(ArgsIterator* iter){
         if(n < 0){
             return false;
         }
-        DefaultGearsConfig.maxPythonMemory.val.longVal = n;
+        DefaultGearsConfig.maxPythonSubInterpreterMemory.val.longVal = n;
         return true;
     } else {
         return false;
@@ -178,7 +199,13 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "MaxPythonMemory",
         .getter = ConfigVal_MaxPythonMemoryGet,
         .setter = ConfigVal_MaxPythonMemorySet,
-        .configurableAtRunTime = true,
+        .configurableAtRunTime = false, // for security reasons
+    },
+    {
+        .name = "PythonExecutionTimeout",
+        .getter = ConfigVal_PythonExecutionTimeoutGet,
+        .setter = ConfigVal_PythonExecutionTimeoutSet,
+        .configurableAtRunTime = false, // for security reasons
     },
     {
         NULL,
@@ -315,8 +342,12 @@ long long GearsConfig_GetPythonAttemptTraceback(){
 	return DefaultGearsConfig.pythonAttemptTraceback.val.longVal;
 }
 
-long long GearsConfig_GetMaxPythonMemory(){
-    return DefaultGearsConfig.maxPythonMemory.val.longVal;
+long long GearsConfig_GetMaxMemoryForPythonSubInterpreter(){
+    return DefaultGearsConfig.maxPythonSubInterpreterMemory.val.longVal;
+}
+
+long long GearsConfig_GetPythonExecutionTimeout(){
+    return DefaultGearsConfig.pythonExecutionTimeout.val.longVal;
 }
 
 static void GearsConfig_Print(RedisModuleCtx* ctx){
@@ -368,8 +399,12 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 1,
             .type = LONG,
         },
-        .maxPythonMemory = {
-            .val.longVal = 0,
+        .maxPythonSubInterpreterMemory = {
+            .val.longVal = 536870912, // 512M
+            .type = LONG,
+        },
+        .pythonExecutionTimeout = {
+            .val.longVal = 5,
             .type = LONG,
         },
     };

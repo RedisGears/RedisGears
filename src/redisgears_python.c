@@ -12,6 +12,7 @@
 #include <redisgears_python.h>
 #include "utils/arr_rm_alloc.h"
 #include "utils/dict.h"
+#include "utils/thpool.h"
 #include "lock_handler.h"
 #include "GearsBuilder.auto.h"
 #include "cloudpickle.auto.h"
@@ -26,7 +27,9 @@ typedef struct RAI_Error {
 } RAI_Error;
 
 static PyObject* pyGlobals;
+static PyObject* RunRestrictedCallback;
 PyObject* GearsError;
+PyObject* TimeoutError;
 
 /*
  * Contains thread pacific data like:
@@ -47,7 +50,16 @@ pthread_key_t pythonThreadCtxKey;
 typedef struct PythonSubInterpreter{
     size_t refCount;
     PyThreadState* subInterpreter;
+    long long usedMemory;
 }PythonSubInterpreter;
+
+typedef struct GuardCtx{
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    volatile bool isDone;
+    struct timespec interval;
+    pthread_t threadId;
+}GuardCtx;
 
 /*
  * Thread spacific data
@@ -60,6 +72,7 @@ typedef struct PythonThreadCtx{
     bool executionTriggered;
     bool timeEventRegistered;
     DoneCallbackFunction doneFunction;
+    GuardCtx* guarder;
 }PythonThreadCtx;
 
 /* default onDone function */
@@ -92,9 +105,69 @@ static PythonThreadCtx* GetPythonThreadCtx(){
                 .doneFunction = onDone,
         };
         pthread_setspecific(pythonThreadCtxKey, ptctx);
+
+        ptctx->guarder = RG_ALLOC(sizeof(*ptctx->guarder));
+
+        pthread_cond_init(&ptctx->guarder->cond, NULL);
+        pthread_mutex_init(&ptctx->guarder->lock, NULL);
+
+        ptctx->guarder->interval = (struct timespec){GearsConfig_GetPythonExecutionTimeout(), 0};
+
     }
     return ptctx;
 }
+
+threadpool tp;
+
+static GuardCtx* GetGuarder(){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(!ptctx->subInterpreter){
+        ptctx->guarder->threadId = MainInterpreter->subInterpreter->thread_id;
+    }else{
+        ptctx->guarder->threadId = ptctx->subInterpreter->subInterpreter->thread_id;
+    }
+    ptctx->guarder->isDone = false;
+    return ptctx->guarder;
+}
+
+static struct timespec timespecAdd(struct timespec *a, struct timespec *b) {
+  struct timespec ret;
+  ret.tv_sec = a->tv_sec + b->tv_sec;
+
+  long long ns = a->tv_nsec + b->tv_nsec;
+  ret.tv_sec += ns / 1000000000;
+  ret.tv_nsec = ns % 1000000000;
+  return ret;
+}
+
+static void PyGuarder(void* ctx){
+    GuardCtx* gctx = ctx;
+    struct timespec ts;
+    pthread_mutex_lock(&gctx->lock);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    struct timespec timeout = timespecAdd(&ts, &gctx->interval);
+    int rc = pthread_cond_timedwait(&gctx->cond, &gctx->lock, &timeout);
+    if(!gctx->isDone){
+        PyThreadState_SetAsyncExc(gctx->threadId, TimeoutError);
+    }
+    pthread_mutex_unlock(&gctx->lock);
+}
+
+static GuardCtx* StartGuarder(){
+    GuardCtx* guarder = GetGuarder();
+    thpool_add_work(tp, PyGuarder, guarder);
+    return guarder;
+}
+
+static void StopGuarder(GuardCtx* guarder){
+    pthread_mutex_lock(&guarder->lock);
+    guarder->isDone = true;
+    pthread_mutex_unlock(&guarder->lock);
+    pthread_cond_signal(&guarder->cond);
+}
+
+#define START_GUARD GuardCtx* _g = StartGuarder();
+#define STOP_GUARD StopGuarder(_g);
 
 /**
  * This functions override the PyGILState_Ensure and PyGILState_Release of the interpreter.
@@ -130,8 +203,10 @@ void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
     if(ptctx->lockCounter == 0){
         if(interpreter){
             PyEval_RestoreThread(interpreter->subInterpreter);
+            ptctx->subInterpreter = interpreter;
         }else{
             PyEval_RestoreThread(MainInterpreter->subInterpreter);
+            ptctx->subInterpreter = NULL; // restoring main interpreter means we do not have subinterpreter!!
         }
     }
     ++ptctx->lockCounter;
@@ -155,6 +230,7 @@ static PythonSubInterpreter* RedisGearsPy_SubInterpreterNew(){
     *interp = (PythonSubInterpreter){
         .refCount = 1,
         .subInterpreter = subInterpreter,
+        .usedMemory = 0,
     };
     PyThreadState_Swap(interp->subInterpreter);
     return interp;
@@ -652,10 +728,16 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
 static PyObject* saveGlobals(PyObject *cls, PyObject *args){
     pyGlobals = PyEval_GetGlobals();
     Py_INCREF(pyGlobals);
+
+    RunRestrictedCallback = PyDict_GetItemString(pyGlobals, "RunRestricted");
+    assert(RunRestrictedCallback);
+    Py_INCREF(RunRestrictedCallback);
+
     // main var are not serialize, we want all the user define functions to
     // be serialize so we specify the module on which the user run as not_main!!
     PyDict_SetItemString(pyGlobals, "__name__", PyUnicode_FromString("not_main"));
-    return PyLong_FromLong(1);
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 static PyObject* replyToPyList(RedisModuleCallReply *reply){
@@ -1225,7 +1307,11 @@ static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     ptctx->subInterpreter = td->subInterpreter;
     RedisGearsPy_RestoreThread(ptctx->subInterpreter);
     PyObject* pArgs = PyTuple_New(0);
+
+    START_GUARD
     PyObject_CallObject(td->callback, pArgs);
+    STOP_GUARD
+
     if(PyErr_Occurred()){
         PyErr_Print();
         td->status =TE_STATUS_ERR;
@@ -1430,7 +1516,11 @@ static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **a
     PyTuple_SetItem(pArgs, 0, grb);
     PyObject* globalsDict = PyDict_Copy(pyGlobals);
     PyTuple_SetItem(pArgs, 1, globalsDict);
+
+    START_GUARD
     PyObject* v = PyObject_CallObject(runGearsRemoteBuilderCallback, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
 
     ptctx->doneFunction = oldDoneFunction;
@@ -1504,12 +1594,21 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     PyObject *v;
 
-    PyObject* callback = PyDict_GetItemString(pyGlobals, "RunRestricted");
     PyObject* codePyStr = PyUnicode_FromStringAndSize(script, strlen(script));
     PyObject* pArgs = PyTuple_New(1);
+
+    if(!codePyStr || !pArgs){
+        RedisGearsPy_SaveThread();
+        RedisModule_ReplyWithError(ctx, "could not run code, this usually happened because oom issue.");
+        return REDISMODULE_OK;
+    }
+
     PyTuple_SetItem(pArgs, 0, codePyStr);
-//    v = PyRun_StringFlags(script, Py_file_input, globalsDict, globalsDict, NULL);
-    v = PyObject_CallObject(callback, pArgs);
+
+    START_GUARD
+    v = PyObject_CallObject(RunRestrictedCallback, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
 
     if(!v){
@@ -1617,7 +1716,11 @@ void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* ar
     PyObject* obj = RG_PyObjRecordGet(record);
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
+
+    START_GUARD
     PyObject* ret = PyObject_CallObject(callback, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
     if(!ret){
         fetchPyError(rctx);
@@ -1652,7 +1755,11 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	PyTuple_SetItem(pArgs, 0, keyPyStr);
 	PyTuple_SetItem(pArgs, 1, oldAccumulateObj);
 	PyTuple_SetItem(pArgs, 2, currObj);
+
+	START_GUARD
 	PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
+	STOP_GUARD
+
 	Py_DECREF(pArgs);
 	if(!newAccumulateObj){
 	    fetchPyError(rctx);
@@ -1687,7 +1794,11 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     }
     PyTuple_SetItem(pArgs, 0, oldAccumulateObj);
     PyTuple_SetItem(pArgs, 1, currObj);
+
+    START_GUARD
     PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
     if(!newAccumulateObj){
         fetchPyError(rctx);
@@ -1715,7 +1826,11 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     PyObject* callback = arg;
     PyObject* oldObj = RG_PyObjRecordGet(record);
     PyTuple_SetItem(pArgs, 0, oldObj);
+
+    START_GUARD
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
     if(!newObj){
         fetchPyError(rctx);
@@ -1742,7 +1857,11 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     PyObject* oldObj = RG_PyObjRecordGet(record);
     RG_PyObjRecordSet(record, NULL);
     PyTuple_SetItem(pArgs, 0, oldObj);
+
+    START_GUARD
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
     if(!newObj){
         fetchPyError(rctx);
@@ -1782,7 +1901,11 @@ static bool RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, vo
     PyObject* obj = RG_PyObjRecordGet(record);
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
+
+    START_GUARD
     PyObject* ret = PyObject_CallObject(callback, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
     if(!ret){
         fetchPyError(rctx);
@@ -1807,7 +1930,11 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     PyObject* obj = RG_PyObjRecordGet(record);
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
+
+    START_GUARD
     PyObject* ret = PyObject_CallObject(extractor, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
     if(!ret){
         fetchPyError(rctx);
@@ -1852,7 +1979,11 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     PyObject* keyPyObj = PyUnicode_FromString(key);
     PyTuple_SetItem(pArgs, 0, keyPyObj);
     PyTuple_SetItem(pArgs, 1, obj);
+
+    START_GUARD
     PyObject* ret = PyObject_CallObject(reducer, pArgs);
+    STOP_GUARD
+
     Py_DECREF(pArgs);
     if(!ret){
         fetchPyError(rctx);
@@ -2066,18 +2197,37 @@ typedef struct pymem{
 	char data[];
 }pymem;
 
+static bool RedisGearsPy_IsMaxMemoryExceded(PythonThreadCtx* ptctx){
+    if(ptctx->subInterpreter){
+        long long maxMemory = GearsConfig_GetMaxMemoryForPythonSubInterpreter();
+        if(maxMemory > 0 && maxMemory < ptctx->subInterpreter->usedMemory){
+            return true;
+        }
+    }
+    return false;
+}
+
+static void RedisGearsPy_UpdateMemoryStats(PythonThreadCtx* ptctx, size_t size){
+    if(size > 0){
+        totalAllocated += size;
+    }
+    currAllocated += size;
+    if(ptctx->subInterpreter){
+        ptctx->subInterpreter->usedMemory += size;
+    }
+    if(currAllocated > peakAllocated){
+        peakAllocated = currAllocated;
+    }
+}
+
 static void* RedisGearsPy_Alloc(void* ctx, size_t size){
-    long long maxMemory = GearsConfig_GetMaxPythonMemory();
-    if(maxMemory > 0 && currAllocated > maxMemory){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(RedisGearsPy_IsMaxMemoryExceded(ptctx)){
         return NULL;
     }
 	pymem* m = RG_ALLOC(sizeof(pymem) + size);
 	m->size = size;
-	totalAllocated += size;
-	currAllocated += size;
-	if(currAllocated > peakAllocated){
-		peakAllocated = currAllocated;
-	}
+	RedisGearsPy_UpdateMemoryStats(ptctx, size);
 	return m->data;
 }
 
@@ -2086,23 +2236,18 @@ static void* RedisGearsPy_Calloc(void* ctx, size_t n_elements, size_t size){
 }
 
 static void* RedisGearsPy_Relloc(void* ctx, void * p, size_t size){
-    long long maxMemory = GearsConfig_GetMaxPythonMemory();
-    if(maxMemory > 0 && currAllocated > maxMemory){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(RedisGearsPy_IsMaxMemoryExceded(ptctx)){
         return NULL;
     }
 	if(!p){
 		return RedisGearsPy_Alloc(ctx, size);
 	}
 	pymem* m = p - sizeof(size_t);
-	currAllocated -= m->size;
-	totalAllocated -= m->size;
+	RedisGearsPy_UpdateMemoryStats(ptctx, m->size * -1);
 	m = RG_REALLOC(m, sizeof(pymem) + size);
 	m->size = size;
-	currAllocated += size;
-	totalAllocated += size;
-	if(currAllocated > peakAllocated){
-		peakAllocated = currAllocated;
-	}
+	RedisGearsPy_UpdateMemoryStats(ptctx, size);
 	return m->data;
 }
 
@@ -2110,8 +2255,9 @@ static void RedisGearsPy_Free(void* ctx, void * p){
 	if(!p){
 		return;
 	}
+	PythonThreadCtx* ptctx = GetPythonThreadCtx();
 	pymem* m = p - sizeof(size_t);
-	currAllocated -= m->size;
+	RedisGearsPy_UpdateMemoryStats(ptctx, m->size * -1);
 	RG_FREE(m);
 }
 
@@ -2141,7 +2287,11 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
     if(!pyCtx->generator){
         PyObject* pArgs = PyTuple_New(0);
         PyObject* callback = pyCtx->callback;
+
+        START_GUARD
         pyRecord = PyObject_CallObject(callback, pArgs);
+        STOP_GUARD
+
         if(PyGen_Check(pyRecord)) {
             pyCtx->generator = PyObject_GetIter(pyRecord);
             pyRecord = PyIter_Next(pyCtx->generator);
@@ -2334,9 +2484,13 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyModule_AddObject(redisAIModule, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
     PyModule_AddObject(redisGearsModule, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
 
-    GearsError = PyErr_NewException("spam.error", NULL, NULL);
+    GearsError = PyErr_NewException("gears.error", NULL, NULL);
     Py_INCREF(GearsError);
     PyModule_AddObject(redisGearsModule, "GearsError", GearsError);
+
+    TimeoutError = PyErr_NewException("gears.timeouterror", NULL, NULL);
+    Py_INCREF(TimeoutError);
+    PyModule_AddObject(redisGearsModule, "GearsTimeoutError", TimeoutError);
 
     char* script = RG_ALLOC(src_cloudpickle_py_len + 1);
     memcpy(script, src_cloudpickle_py, src_cloudpickle_py_len);
@@ -2421,6 +2575,8 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
             .refCount = 1,
             .subInterpreter = mainInterpreter,
     };
+
+    tp = thpool_init(1);
 
     return REDISMODULE_OK;
 }

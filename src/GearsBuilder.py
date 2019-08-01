@@ -7,11 +7,7 @@ from redisgears import PyFlatExecution
 
 from RestrictedPython import compile_restricted
 from RestrictedPython import safe_globals
-
-
-globals()['str'] = str
-
-redisgears._saveGlobals()
+from RestrictedPython import limited_builtins
 
 def CreatePythonReaderCallback(prefix):
     def PythonReaderCallback():
@@ -48,7 +44,7 @@ class GearsBuilder():
         self.gearsCtx = gearsCtx(self.reader, desc)
         self.defaultArg = defaultArg
 
-    def __localAggregateby__(self, extractor, zero, aggregator):
+    def localAggregateby(self, extractor, zero, aggregator):
         self.gearsCtx.localgroupby(lambda x: extractor(x), lambda k, a, r: aggregator(k, a if a else zero, r))
         return self
 
@@ -72,7 +68,7 @@ class GearsBuilder():
         seqOp - the local aggregate function (will be performed on each shard)
         combOp - the global aggregate function (will be performed on the results of seqOp from each shard)
         '''
-        self.__localAggregateby__(extractor, zero, seqOp)
+        self.localAggregateby(extractor, zero, seqOp)
         self.gearsCtx.groupby(lambda r: r['key'], lambda k, a, r: combOp(k, a if a else zero, r['value']))
         return self
 
@@ -158,9 +154,17 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
     for s in pipe.steps:
         s.AddToGB(gb, globalsDict)
         
+safe_globals['GB'] = GB
+safe_globals['GearsBuilder'] = GB
+safe_globals['execute'] = execute
+safe_globals['_getitem_'] = lambda x,i: x[i]
+
+safe_globals['__builtins__'].update(limited_builtins)
+
+print(safe_globals)
+
 def RunRestricted(code):
     byte_code = compile_restricted(code, '<inline>', 'exec')
-    safe_globals['GB'] = GB
-    safe_globals['execute'] = execute
     exec(byte_code, safe_globals, {})
-    
+
+redisgears._saveGlobals()

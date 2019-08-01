@@ -15,6 +15,7 @@ const char* GearsConfig_GetPythonHomeDir();
 long long GearsConfig_GetMaxExecutions();
 long long GearsConfig_GetProfileExecutions();
 long long GearsConfig_GetPythonAttemptTraceback();
-long long GearsConfig_GetMaxPythonMemory();
+long long GearsConfig_GetMaxMemoryForPythonSubInterpreter();
+long long GearsConfig_GetPythonExecutionTimeout();
 
 #endif /* SRC_CONFIG_H_ */
