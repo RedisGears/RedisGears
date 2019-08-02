@@ -31,7 +31,7 @@ Notice that part of the compilation is to create the gears virtual environment u
 ## Run
 If you run gears on the same machine on which it was compiled, then it's enough to load the RedisGears module:
 
-`--loamodule <path to redisgears.so`
+`--loamodule <path to redisgears.so>`
 
 If you run RedisGears on another machine, some extra setup is needed. For RedisGears to run properly, it needs to have the virtual environment which was created when it was compiled. All the required files are located in `/opt/redislabs/lib/modules/python3`. Make sure to copy this directory to the machine where Redis is running and to the same path (i.e `/opt/redislabs/lib/modules/python3`).
 
