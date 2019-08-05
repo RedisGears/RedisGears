@@ -8,6 +8,7 @@ from redisgears import PyFlatExecution
 from RestrictedPython import compile_restricted
 from RestrictedPython import safe_globals
 from RestrictedPython import limited_builtins
+from RestrictedPython.Guards import full_write_guard
 
 def CreatePythonReaderCallback(prefix):
     def PythonReaderCallback():
@@ -154,17 +155,55 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
     for s in pipe.steps:
         s.AddToGB(gb, globalsDict)
         
-safe_globals['GB'] = GB
-safe_globals['GearsBuilder'] = GB
-safe_globals['execute'] = execute
-safe_globals['_getitem_'] = lambda x,i: x[i]
+def SetItem(x, i, v):
+    x[i] = v
+    
+def GetItem(x, i):
+    return x[i]
 
-safe_globals['__builtins__'].update(limited_builtins)
+def write(ob):
+    return ob
 
-print(safe_globals)
+def metaclassCallback(name, bases, dict):
+    ob = type(name, bases, dict)
+    return ob
+
+def getiter(obj):
+    return iter(obj)
+
+ops = {}
+ops['+='] = lambda var1, var2: var1 + var2
+ops['-='] = lambda var1, var2: var1 - var2
+ops['*='] = lambda var1, var2: var1 * var2
+ops['/='] = lambda var1, var2: var1 / var2
+ops['|='] = lambda var1, var2: var1 | var2
+ops['&='] = lambda var1, var2: var1 & var2
+
+def inplacevar(op, var1, var2):
+    return ops[op](var1, var2)
+    
+safe_globals['__builtins__']['GB'] = GB
+safe_globals['__builtins__']['GearsBuilder'] = GB
+safe_globals['__builtins__']['gearsCtx'] = gearsCtx
+safe_globals['__builtins__']['RunGearsRemoteBuilder'] = RunGearsRemoteBuilder
+safe_globals['__builtins__']['CreatePythonReaderCallback'] = CreatePythonReaderCallback
+safe_globals['__builtins__']['execute'] = execute
+safe_globals['__builtins__']['__metaclass__'] = metaclassCallback
+safe_globals['__builtins__']['__name__'] = 'GearsExecution'
+safe_globals['__builtins__']['_write_'] = write
+safe_globals['__builtins__']['_getitem_'] = GetItem
+safe_globals['__builtins__']['_setitem_'] = SetItem
+safe_globals['__builtins__']['redisgears'] = redisgears
+safe_globals['__builtins__']['_getiter_'] = getiter
+safe_globals['__builtins__']['ShardReaderCallback'] = ShardReaderCallback
+safe_globals['__builtins__']['registerTE'] = registerTE
+safe_globals['__builtins__']['globals'] = globals
+safe_globals['__builtins__']['_inplacevar_'] = inplacevar
+
 
 def RunRestricted(code):
+    d = safe_globals.copy()
     byte_code = compile_restricted(code, '<inline>', 'exec')
-    exec(byte_code, safe_globals, {})
+    exec(byte_code, d, d)
 
 redisgears._saveGlobals()

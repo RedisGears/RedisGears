@@ -20,7 +20,7 @@ class testGenericErrors:
 
 
     def testScriptError(self):
-        self.env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().equal("'GearsBuilder' object has no attribute 'notexists'")
+        self.env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error()
 
 
     def testBuilderCreationWithUnexistingReader(self):

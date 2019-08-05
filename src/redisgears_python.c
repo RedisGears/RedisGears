@@ -57,6 +57,7 @@ typedef struct GuardCtx{
     pthread_mutex_t lock;
     pthread_cond_t cond;
     volatile bool isDone;
+    volatile bool isRunning;
     struct timespec interval;
     pthread_t threadId;
 }GuardCtx;
@@ -126,7 +127,6 @@ static GuardCtx* GetGuarder(){
     }else{
         ptctx->guarder->threadId = ptctx->subInterpreter->subInterpreter->thread_id;
     }
-    ptctx->guarder->isDone = false;
     return ptctx->guarder;
 }
 
@@ -144,19 +144,15 @@ static void PyGuarder(void* ctx){
     GuardCtx* gctx = ctx;
     struct timespec ts;
     pthread_mutex_lock(&gctx->lock);
+    gctx->isRunning = true;
     clock_gettime(CLOCK_REALTIME, &ts);
     struct timespec timeout = timespecAdd(&ts, &gctx->interval);
     int rc = pthread_cond_timedwait(&gctx->cond, &gctx->lock, &timeout);
     if(!gctx->isDone){
         PyThreadState_SetAsyncExc(gctx->threadId, TimeoutError);
     }
+    gctx->isRunning = false;
     pthread_mutex_unlock(&gctx->lock);
-}
-
-static GuardCtx* StartGuarder(){
-    GuardCtx* guarder = GetGuarder();
-    thpool_add_work(tp, PyGuarder, guarder);
-    return guarder;
 }
 
 static void StopGuarder(GuardCtx* guarder){
@@ -164,6 +160,16 @@ static void StopGuarder(GuardCtx* guarder){
     guarder->isDone = true;
     pthread_mutex_unlock(&guarder->lock);
     pthread_cond_signal(&guarder->cond);
+}
+
+static GuardCtx* StartGuarder(){
+    GuardCtx* guarder = GetGuarder();
+    while(guarder->isRunning){
+        StopGuarder(guarder);
+    }
+    guarder->isDone = false;
+    thpool_add_work(tp, PyGuarder, guarder);
+    return guarder;
 }
 
 #define START_GUARD GuardCtx* _g = StartGuarder();
