@@ -129,7 +129,7 @@ Dropping the given execution-id result, returns error if the execution does not 
 RG.DUMPREGISTRATIONS
 ```
 
-Return all the registered executions.
+Return all registered executions.
 
 ### Returns
 List of registered executions:
@@ -139,12 +139,12 @@ List of registered executions:
 
 ## RG.UNREGISTER
 ```sql
-RG.UNREGISTER registration-id
+RG.UNREGISTER registrationId
 ```
 
-* registration-id: the regitration id to drop.
+* registrationId: the regitrationId to drop.
 
 ### Returns
 `OK` on success or error when:
 * id not exists
-* reader do not support unregister
+* the reader does not support unregister functionality
