@@ -1,6 +1,8 @@
 <img src="images/RedisGears.png" alt="logo" width="200"/>
 
 # RedisGears
+[![Mailing List](https://img.shields.io/badge/Mailing%20List-RedisGears-blue)](https://groups.google.com/forum/#!forum/redisgears)
+[![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 A Dynamic Execution Framework for Redis, simply:
 ```
