@@ -123,3 +123,28 @@ Dropping the given execution-id result, returns error if the execution does not 
 
 * the script is still running
 * if the execution-id doesn't exist or is no longer available (see configuration, we keep by default the last 1000 results)
+
+## RG.DUMPREGISTRATIONS
+```sql
+RG.DUMPREGISTRATIONS
+```
+
+Return all the registered executions.
+
+### Returns
+List of registered executions:
+* registered executionId
+* execution reader
+* execution description
+
+## RG.UNREGISTER
+```sql
+RG.UNREGISTER registration-id
+```
+
+* registration-id: the regitration id to drop.
+
+### Returns
+`OK` on success or error when:
+* id not exists
+* reader do not support unregister
