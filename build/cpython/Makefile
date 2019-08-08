@@ -53,6 +53,12 @@ CONFIGURE_FLAGS.macosx += CPPFLAGS='$(CPPFLAGS)' LDFLAGS='$(LDFLAGS)'
 
 endif # macosx
 
+ifeq ($(OS),macosx)
+OBJCOPY=/usr/local/opt/llvm/bin/llvm-objcopy
+else
+OBJCOPY=objcopy
+endif
+
 #----------------------------------------------------------------------------------------------
 
 CONFIGURE_FLAGS += \
@@ -78,7 +84,11 @@ ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 endif
 	$(SHOW)make -C $(BUILD_DIR) -j $$(nproc)
 	$(SHOW)cp $(BINDIR)/libpython3.7m.a $(TARGET)
-	$(SHOW)objcopy --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
+ifeq ($(OS),macosx)
+	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
+else
+	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
+endif
 
 clean:
 ifeq ($(ALL),1) 
