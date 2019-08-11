@@ -70,7 +70,7 @@ CONFIGURE_FLAGS += \
 
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-export CFLAGS=-fPIC
+export CFLAGS=-fPIC -Wno-nullability-completeness
 
 #----------------------------------------------------------------------------------------------
 
