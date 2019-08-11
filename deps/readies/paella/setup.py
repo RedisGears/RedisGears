@@ -110,7 +110,9 @@ class Setup(OnPlatform):
         self.run("pacman --noconfirm -S " + packs, output_on_error=True)
 
     def brew_install(self, packs, group=False):
-        self.run('brew install ' + packs, output_on_error=True)
+        # brew will fail if package is already installed
+        for pack in packs.split():
+            self.run("brew list {} &>/dev/null || brew install {}".format(pack, pack), output_on_error=True)
 
     def install(self, packs, group=False):
         if self.os == 'linux':
