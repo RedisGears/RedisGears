@@ -45,7 +45,7 @@ class RepoRefresh(OnPlatform):
         self.runner.run("apt-get -qq update -y")
 
     def macosx(self):
-        slef.runner.run("brew update || true")
+        self.runner.run("brew update || true")
 
 #----------------------------------------------------------------------------------------------
 
