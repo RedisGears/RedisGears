@@ -26,7 +26,8 @@ class RedisGearsSetup(paella.Setup):
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool")
         self.install("zlib1g-dev libssl-dev libreadline-dev")
-        self.install("xxd")
+        # self.install("xxd")
+        self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
         self.install("python-psutil")
