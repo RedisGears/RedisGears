@@ -128,7 +128,7 @@ GearsBuilder().distinct().run() # will return all the distinct records
 ```
 
 ### Aggregate
-A better version of accumulate that receives a local aggregator (aggregator which will be performed on each shard localy), and a global aggregator (will be performed on the aggregated data collected from each shard). Using aggregate it is possible to increasing performance by reducing the number of records sent between the shards. In addition aggregate receives, as the first parameter, the zero value which will pass to the aggregate function on the first time it executed.
+A better version of accumulate that receives a local aggregator (aggregator which will be performed on each shard locally), and a global aggregator (will be performed on the aggregated data collected from each shard). Using aggregate it is possible to increasing performance by reducing the number of records sent between the shards. In addition aggregate receives, as the first parameter, the zero value which will pass to the aggregate function on the first time it executed.
 example:
 ```
 GearsBuilder().aggregate([], lambda a,x: a + [x], lambda a,x:a + x).run() # will put all values on a single python list
