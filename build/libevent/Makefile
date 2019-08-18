@@ -45,6 +45,12 @@ CONFIGURE_FLAGS += \
 
 #----------------------------------------------------------------------------------------------
 
+ifeq ($(OS),macosx)
+NPROC:=$(shell sysctl -n hw.physicalcpu)
+else
+NPROC:=$(shell nproc)
+endif
+
 .PHONY: all build source
 
 all: build
@@ -53,7 +59,7 @@ build: __sep bindirs $(SRCDIR)/configure
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
-	@make -C $(BUILD_DIR) -j $$(nproc)
+	@make -C $(BUILD_DIR) -j $(NPROC)
 
 clean:
 ifeq ($(ALL),1) 
