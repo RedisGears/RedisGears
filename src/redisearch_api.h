@@ -112,7 +112,6 @@ void REDISEARCH_API_FUNC(RediSearch_ResultsIteratorFree)(ResultsIterator* iter);
 
 #define REDISEARCH_MODULE_INIT_FUNCTION(name) \
         if (RedisModule_GetApi("RediSearch_" #name, ((void **)&RediSearch_ ## name))) { \
-            printf("could not initialize RediSearch_" #name "\r\n");\
             return REDISMODULE_ERR; \
         }
 
