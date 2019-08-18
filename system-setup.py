@@ -67,7 +67,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("libtool autoconf automake llvm")
         self.install("zlib openssl readline")
         self.install("redis")
-        slef.install("binutils") # into /usr/local/opt/binutils
+        self.install("binutils") # into /usr/local/opt/binutils
         
         self.pip_install("pipenv")
         self.pip_install("gevent")
