@@ -35,7 +35,7 @@ LIBSSL_PREFIX:=$(shell brew --prefix openssl)
 READLINE_PREFIX:=$(shell brew --prefix readline)
 SDK_PREFIX:=$(shell xcrun --show-sdk-path)
 
-export CPPFLAGS:=\
+export CFLAGS:=\
 	-I$(ZLIB_PREFIX)/include \
 	-I$(READLINE_PREFIX)/include \
 	-I$(LIBSSL_PREFIX)/include \
@@ -49,7 +49,7 @@ export LDFLAGS:=\
 
 export PKG_CONFIG_PATH:=$(ZLIB_PREFIX)/lib/pkgconfig:$(LIBSSL_PREFIX)/lib/pkgconfig:$(READLINE_PREFIX)/lib/pkgconfig
 
-CONFIGURE_FLAGS.macosx += CPPFLAGS='$(CPPFLAGS)' LDFLAGS='$(LDFLAGS)'
+CONFIGURE_FLAGS.macosx += CFLAGS='$(CFLAGS)' CPPFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'
 
 endif # macosx
 
