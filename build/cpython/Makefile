@@ -54,7 +54,7 @@ CONFIGURE_FLAGS.macosx += CPPFLAGS='$(CPPFLAGS)' LDFLAGS='$(LDFLAGS)'
 endif # macosx
 
 ifeq ($(OS),macosx)
-OBJCOPY=/usr/local/opt/llvm/bin/llvm-objcopy
+OBJCOPY=/usr/local/opt/binutils/bin/objcopy
 else
 OBJCOPY=objcopy
 endif
@@ -70,7 +70,8 @@ CONFIGURE_FLAGS += \
 
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-export CFLAGS=-fPIC -Wno-nullability-completeness
+export CFLAGS=-fPIC \
+	-Wno-nullability-completeness -Wno-expansion-to-defined
 
 #----------------------------------------------------------------------------------------------
 
@@ -78,14 +79,22 @@ export CFLAGS=-fPIC -Wno-nullability-completeness
 
 all: build pyenv
 
-build: __sep bindirs
+build: $(TARGET)
+
+$(BINDIR)/libpython3.7m.a: __sep bindirs
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
 	$(SHOW)make -C $(BUILD_DIR) -j $$(nproc)
+
+$(TARGET): $(BINDIR)/libpython3.7m.a
+	@echo Fixing libpython3.7m.a ...
 	$(SHOW)cp $(BINDIR)/libpython3.7m.a $(TARGET)
 ifeq ($(OS),macosx)
-	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
+	cp $(BINDIR)/Python/pystate.o $(BINDIR)/
+	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
+	$(SHOW)ar rs $(TARGET) $(BINDIR)/pystate.o
+	$(SHOW)rm $(BINDIR)/pystate.o
 else
 	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
 endif
