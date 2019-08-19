@@ -56,7 +56,7 @@ jobs:
 
   macos:
     macos:
-      xcode: 10.0.0
+      xcode: 10.2.1
     steps:
       - ci_steps:
           platform: macosx
