@@ -20,7 +20,11 @@ commands:
           command: python system-setup.py
       - run:
           name: Build
-          command: make get_deps; make all OS_VERSION=<<parameters.platform>> SHOW=1
+          command: >-
+            echo nproc=$(nproc);
+            echo NPROC=$(cat /proc/cpuinfo|grep processor|wc -l);
+            make get_deps;
+            make all OS_VERSION=<<parameters.platform>> SHOW=1
       - run:
           name: Test
           command: make test
@@ -50,7 +54,7 @@ jobs:
     steps:
       - run:
           name: Redis_5_upgrade
-          command: cd ../redis; git fetch; git checkout 5.0.1; make; make install
+          command: cd ../redis; git fetch; git checkout 5.0.5; make; make install
       - ci_steps:
           platform: redhat
 

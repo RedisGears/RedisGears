@@ -73,10 +73,11 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("gevent")
 
     def common_last(self):
-        if not self.has_command("ramp"):
-            self.pip_install("git+https://github.com/RedisLabs/RAMP --upgrade")
+        # RLTest before RAMP due to redis<->redis-py-cluster version dependency
         if not self.has_command("RLTest"):
             self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
+        if not self.has_command("ramp"):
+            self.pip_install("git+https://github.com/RedisLabs/RAMP@master")
 
 #----------------------------------------------------------------------------------------------
 
