@@ -20,10 +20,16 @@ commands:
           command: python system-setup.py
       - run:
           name: Build
-          command: make get_deps; make all OS_VERSION=<<parameters.platform>> SHOW=1
+          command: |
+            echo nproc=$(nproc)
+            echo NPROC=$(cat /proc/cpuinfo|grep processor|wc -l)
+            make get_deps
+            make all OS_VERSION=<<parameters.platform>> SHOW=1
       - run:
           name: Test
           command: make test
+      - store_test_results:
+          path: pytest/logs
       - persist_to_workspace:
           root: artifacts
           paths:
@@ -50,9 +56,27 @@ jobs:
     steps:
       - run:
           name: Redis_5_upgrade
-          command: cd ../redis; git fetch; git checkout 5.0.1; make; make install
+          command: cd ../redis; git fetch; git checkout 5.0.5; make; make install
       - ci_steps:
           platform: redhat
+
+  build-multiarch-docker:
+    machine:
+      enabled: true
+      image: ubuntu-1604:201903-01
+    steps:
+      - checkout
+      - run:
+          name: Setup Docker client experimental features
+          command: |
+            sudo ./deps/readies/bin/getdocker --just-enable-exp
+            docker version
+      - run:
+          name: Build
+          command: |
+            sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
+            make -C build/docker build
+            sudo make -C build/docker publish
 
   deploy_snapshots:
     docker:
@@ -90,9 +114,8 @@ jobs:
           command: mkdocs build
       - run:
           name: Deploy Docs to S3
-          command: >-
-            aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl
-            public-read --recursive
+          command: |
+            aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl public-read --recursive
 
 
 workflows:
@@ -112,6 +135,12 @@ workflows:
               only: /.*/
             tags:
               only: /.*/
+      - build-multiarch-docker:
+          filters:
+            tags:
+              only: /.*/
+#            branches:
+#              only: master
       - deploy_snapshots:
           requires: *default_jobs
           filters:
