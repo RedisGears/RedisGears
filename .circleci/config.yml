@@ -139,8 +139,8 @@ workflows:
           filters:
             tags:
               only: /.*/
-#            branches:
-#              only: master
+            branches:
+              only: master
       - deploy_snapshots:
           requires: *default_jobs
           filters:
