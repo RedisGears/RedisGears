@@ -19,12 +19,12 @@ RG.PYEXECUTE python-script [UNBLOCKING]
 Optional args:
    * UNBLOCKING: run the script in an unblocking mode, in this case an execution ID is returned.  If ran in unblocking mode you can get your result with `RG.GETRESULTSBLOCKING`
 
-Run the given python script. The python script may or may not run a `Gears` execution. 
+Run the given python script. The python script may or may not run a `Gears` execution.
 
 ### Returns
 When running in UNBLOCKING mode
 
-* an execution ID.  You can get the result with `RG.GETRESULTSBLOCKING` or `RG.GETRESULTS` 
+* an execution ID.  You can get the result with `RG.GETRESULTSBLOCKING` or `RG.GETRESULTS`
 
 When running in normal mode
 
@@ -42,8 +42,8 @@ Returns the results of the given execution id. Returns an error if the given exe
 ### Returns
 The [Execution Result](#execution-result) or an error when:
 
-* the script is still running 
-* if the script doesn't exist 
+* the script is still running
+* if the script doesn't exist
 * the execution result is no longer available (see configuration, we keep by default the last 1000 results)
 
 
@@ -98,8 +98,8 @@ Each shard's execution plan consists of the following:
 * shards_completed (integer) - the number of shards that had completed plan received from this shard
 * results (integer) - the number of results collected (-1 if status is not done)
 * errors (array) - the errors reported by the steps (empty array if not done)
-* total_duration (integer) - the total duration of the plan in milliseconds 
-* read_duration (integer) - the duration of the plan's read stage in milliseconds 
+* total_duration (integer) - the total duration of the plan in milliseconds
+* read_duration (integer) - the duration of the plan's read stage in milliseconds
 * steps (array) - the plan's steps
 
 A note about durations: the total duration is greater than the sum of step durations due to the execution's overheads.
@@ -123,3 +123,28 @@ Dropping the given execution-id result, returns error if the execution does not 
 
 * the script is still running
 * if the execution-id doesn't exist or is no longer available (see configuration, we keep by default the last 1000 results)
+
+## RG.DUMPREGISTRATIONS
+```sql
+RG.DUMPREGISTRATIONS
+```
+
+Return all registered executions.
+
+### Returns
+List of registered executions:
+* registrationId
+* execution reader
+* execution description
+
+## RG.UNREGISTER
+```sql
+RG.UNREGISTER registrationId
+```
+
+* registrationId: the registrationId to drop.
+
+### Returns
+`OK` on success or error when:
+* id not exists
+* the reader does not support unregister functionality
