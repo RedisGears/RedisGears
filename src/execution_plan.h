@@ -12,6 +12,7 @@
 #include "redisgears.h"
 #include "commands.h"
 #include "utils/dict.h"
+#include "utils/adlist.h"
 #ifdef WITHPYTHON
 #include <redisgears_python.h>
 #endif
@@ -167,9 +168,10 @@ typedef enum ExecutionPlanStatus{
 #define EXECUTION_PLAN_STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
 
 typedef struct WorkerData{
-	struct event_base* eb;
-	int notifyPipe[2];
-	pthread_t thread;
+    Gears_list* notifications;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    pthread_t thread;
 }WorkerData;
 
 typedef struct ExecutionPlan{
@@ -182,6 +184,7 @@ typedef struct ExecutionPlan{
     Record** results;
     Record** errors;
     ExecutionPlanStatus status;
+    bool isDone;
     bool sentRunRequest;
     RedisGears_OnExecutionDoneCallback callback;
     void* privateData;

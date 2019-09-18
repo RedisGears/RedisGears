@@ -191,7 +191,10 @@ typedef struct WorkerMsg{
 }WorkerMsg;
 
 static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
-	write(wd->notifyPipe[1], &msg, sizeof(WorkerMsg*));
+    pthread_mutex_lock(&wd->lock);
+	Gears_listAddNodeTail(wd->notifications, msg);
+	pthread_cond_signal(&wd->cond);
+	pthread_mutex_unlock(&wd->lock);
 }
 
 static void ExectuionPlan_WorkerMsgFree(WorkerMsg* msg){
@@ -1081,6 +1084,7 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
     FreePrivateData freeC = ep->freeCallback;
+    ep->isDone = true;
     void* pd = ep->privateData;
     if(ep->callback){
         ep->callback(ep, ep->privateData);
@@ -1464,9 +1468,7 @@ static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record
 	}
 }
 
-static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
-	WorkerMsg* msg;
-	read(s, &msg, sizeof(WorkerMsg*));
+static void ExecutionPlan_MsgArrive(WorkerMsg* msg){
 	switch(msg->type){
 	case RUN_MSG:
 		ExecutionPlan_Main(msg->runWM.ep);
@@ -1494,21 +1496,27 @@ static void ExecutionPlan_MsgArrive(evutil_socket_t s, short what, void *arg){
 
 static void* ExecutionPlan_MessageThreadMain(void *arg){
 	WorkerData* wd = arg;
-    event_base_loop(wd->eb, 0);
+	pthread_mutex_lock(&wd->lock);
+    while(true){
+        int rc = pthread_cond_wait(&wd->cond, &wd->lock);
+        while(Gears_listLength(wd->notifications) > 0){
+            Gears_listNode* n = Gears_listFirst(wd->notifications);
+            WorkerMsg* msg = Gears_listNodeValue(n);
+            Gears_listDelNode(wd->notifications, n);
+            pthread_mutex_unlock(&wd->lock);
+            ExecutionPlan_MsgArrive(msg);
+            pthread_mutex_lock(&wd->lock);
+        }
+    }
     return NULL;
 }
 
 static WorkerData* ExecutionPlan_StartThread(){
 	WorkerData* wd = RG_ALLOC(sizeof(WorkerData));
-    pipe(wd->notifyPipe);
-    wd->eb = (struct event_base*)event_base_new();
-    struct event *readEvent = event_new(wd->eb,
-    									wd->notifyPipe[0],
-                                        EV_READ | EV_PERSIST,
-										ExecutionPlan_MsgArrive,
-                                        NULL);
-    event_base_set(wd->eb, readEvent);
-    event_add(readEvent, 0);
+
+	pthread_cond_init(&wd->cond, NULL);
+    pthread_mutex_init(&wd->lock, NULL);
+	wd->notifications = Gears_listCreate();
 
     pthread_create(&wd->thread, NULL, ExecutionPlan_MessageThreadMain, wd);
     return wd;
@@ -1709,12 +1717,15 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->callback = NULL;
     ret->privateData = NULL;
     ret->freeCallback = NULL;
+    ret->isDone = false;
     ExecutionPlan_SetID(ret, finalId);
     pthread_mutex_lock(&epData.mutex);
-    while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
-        Gears_listNode* n0 = Gears_listFirst(epData.epList);
-        ExecutionPlan* ep0 = Gears_listNodeValue(n0);
-        ExecutionPlan_Free(ep0, false);
+    if(GearsConfig_GetMaxExecutions() > 0){
+        while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
+            Gears_listNode* n0 = Gears_listFirst(epData.epList);
+            ExecutionPlan* ep0 = Gears_listNodeValue(n0);
+            ExecutionPlan_Free(ep0, false);
+        }
     }
     Gears_listAddNodeTail(epData.epList, ret);
     Gears_dictAdd(epData.epDict, ret->id, ret);
