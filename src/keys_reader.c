@@ -177,22 +177,19 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
         return NULL;
     }
 
+    char* keyCStr = RG_ALLOC(keyLen + 1);
+    memcpy(keyCStr, keyStr, keyLen);
+    keyCStr[keyLen] = '\0';
+
     if(readerCtx->readValue){
 
         record = RedisGears_KeyRecordCreate();
-
-        char* keyCStr = RG_ALLOC(keyLen + 1);
-        memcpy(keyCStr, keyStr, keyLen);
-        keyCStr[keyLen] = '\0';
 
         RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
 
         ValueToRecordMapper(rctx, record, keyHandler);
     }else{
 
-        char* keyCStr = RG_ALLOC(keyLen + 1);
-        memcpy(keyCStr, keyStr, keyLen);
-        keyCStr[keyLen] = '\0';
         record = RedisGears_StringRecordCreate(keyCStr, keyLen);
 
     }
