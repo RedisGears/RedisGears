@@ -1,9 +1,3 @@
-/*
- * keys_reader.h
- *
- *  Created on: 9 Jan 2019
- *      Author: root
- */
 
 #ifndef SRC_KEYS_READER_H_
 #define SRC_KEYS_READER_H_
@@ -11,6 +5,7 @@
 #include "redisgears.h"
 
 extern RedisGears_ReaderCallbacks KeysReader;
+extern RedisGears_ReaderCallbacks KeysOnlyReader;
 
 int KeysReader_Initialize(RedisModuleCtx* ctx);
 

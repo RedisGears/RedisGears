@@ -60,6 +60,7 @@ typedef struct Reader{
  * Default readers to use
  */
 #define KeysReader KeysReader
+#define KeysOnlyReader KeysOnlyReader
 #define StreamReader StreamReader
 
 /**
