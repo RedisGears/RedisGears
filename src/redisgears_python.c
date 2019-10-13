@@ -703,6 +703,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     PyObject* command = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(command)){
         PyErr_SetString(GearsError, "the given command must be a string");
+        LockHandler_Release(rctx);
         return NULL;
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);

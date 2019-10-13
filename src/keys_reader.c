@@ -24,21 +24,35 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx);
 static Record* (*KeysReader_NextCallback)(ExecutionCtx* rctx, void* ctx) = KeysReader_Next;
 
 typedef struct KeysReaderCtx{
+    size_t matchLen;
     char* match;
     long long cursorIndex;
     bool isDone;
     Record** pendingRecords;
+    bool readValue;
+    bool isPrefix;
     ResultsIterator* iter;
     RedisModuleDictIter* iter1;
 }KeysReaderCtx;
 
-static KeysReaderCtx* KeysReaderCtx_Create(char* match){
+static KeysReaderCtx* KeysReaderCtx_Create(char* match, bool readValue){
 #define PENDING_KEYS_INIT_CAP 10
+    bool isPrefix = false;
+    size_t matchLen = 0;
+    if(match){
+        matchLen = strlen(match);
+        if(match[matchLen - 1] == '*'){
+            isPrefix = true;
+        }
+    }
     KeysReaderCtx* krctx = RG_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
+        .matchLen = matchLen,
         .match = match,
         .cursorIndex = 0,
         .isDone = false,
+        .readValue = readValue,
+        .isPrefix = isPrefix,
         .pendingRecords = array_new(Record*, PENDING_KEYS_INIT_CAP),
 		.iter = NULL,
 		.iter1 = NULL,
@@ -55,6 +69,10 @@ static void RG_KeysReaderCtxDeserialize(void* ctx, Gears_BufferReader* br){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     char* match = RedisGears_BRReadString(br);
     krctx->match = RG_STRDUP(match);
+    krctx->matchLen = strlen(krctx->match);
+    if(match[krctx->matchLen - 1] == '*'){
+        krctx->isPrefix = true;
+    }
 }
 
 static void KeysReader_Free(void* ctx){
@@ -149,7 +167,39 @@ static Record* ValueToRecordMapper(RedisModuleCtx* rctx, Record* record, RedisMo
     }
 }
 
-static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
+static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx, RedisModuleString* key){
+    size_t keyLen;
+    const char* keyStr = RedisModule_StringPtrLen(key, &keyLen);
+    Record* record = NULL;
+
+    RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
+    if(!keyHandler){
+        return NULL;
+    }
+
+    char* keyCStr = RG_ALLOC(keyLen + 1);
+    memcpy(keyCStr, keyStr, keyLen);
+    keyCStr[keyLen] = '\0';
+
+    if(readerCtx->readValue){
+
+        record = RedisGears_KeyRecordCreate();
+
+        RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
+
+        ValueToRecordMapper(rctx, record, keyHandler);
+    }else{
+
+        record = RedisGears_StringRecordCreate(keyCStr, keyLen);
+
+    }
+
+    RedisModule_CloseKey(keyHandler);
+
+    return record;
+}
+
+static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
     if(array_len(readerCtx->pendingRecords) > 0){
         return array_pop(readerCtx->pendingRecords);
     }
@@ -195,28 +245,12 @@ static Record* KeysReader_NextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
             RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
             assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
-            RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
-            if(!keyHandler){
-                RedisModule_FreeString(rctx, key);
+            Record* record = KeysReader_ReadKey(rctx, readerCtx, key);
+            if(record == NULL){
                 continue;
             }
-            size_t keyLen;
-            const char* keyStr = RedisModule_StringPtrLen(key, &keyLen);
-
-            Record* record = RedisGears_KeyRecordCreate();
-
-            char* keyCStr = RG_ALLOC(keyLen + 1);
-            memcpy(keyCStr, keyStr, keyLen);
-            keyCStr[keyLen] = '\0';
-
-            RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
-
-            ValueToRecordMapper(rctx, record, keyHandler);
-
-            readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
-
             RedisModule_FreeString(rctx, key);
-            RedisModule_CloseKey(keyHandler);
+            readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
         }
         RedisModule_FreeCallReply(reply);
         LockHandler_Release(rctx);
@@ -297,7 +331,21 @@ static Record* KeysReader_SearchIndexNext(ExecutionCtx* ectx, void* ctx){
 
 static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
-    Record* record = KeysReader_NextKey(RedisGears_GetRedisModuleCtx(ectx), readerCtx);
+    Record* record = NULL;
+    if(readerCtx->isPrefix){
+        record = KeysReader_ScanNextKey(RedisGears_GetRedisModuleCtx(ectx), readerCtx);
+    }else{
+        if(readerCtx->isDone){
+            return NULL;
+        }
+        RedisModuleString* key = RedisModule_CreateString(NULL, readerCtx->match, readerCtx->matchLen);
+        RedisModuleCtx* rctx = RedisGears_GetRedisModuleCtx(ectx);
+        LockHandler_Acquire(rctx);
+        record = KeysReader_ReadKey(rctx, readerCtx, key);
+        LockHandler_Release(rctx);
+        RedisModule_FreeString(NULL, key);
+        readerCtx->isDone = true;
+    }
     return record;
 }
 
@@ -423,7 +471,20 @@ int KeysReader_Initialize(RedisModuleCtx* ctx){
 }
 
 static Reader* KeysReader_Create(void* arg){
-    KeysReaderCtx* ctx = KeysReaderCtx_Create(arg);
+    KeysReaderCtx* ctx = KeysReaderCtx_Create(arg, true);
+    Reader* r = RG_ALLOC(sizeof(*r));
+    *r = (Reader){
+        .ctx = ctx,
+        .next = KeysReader_NextCallback,
+        .free = KeysReader_Free,
+        .serialize = RG_KeysReaderCtxSerialize,
+        .deserialize = RG_KeysReaderCtxDeserialize,
+    };
+    return r;
+}
+
+static Reader* KeysOnlyReader_Create(void* arg){
+    KeysReaderCtx* ctx = KeysReaderCtx_Create(arg, false);
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
@@ -437,6 +498,12 @@ static Reader* KeysReader_Create(void* arg){
 
 RedisGears_ReaderCallbacks KeysReader = {
         .create = KeysReader_Create,
+        .registerTrigger = KeysReader_RegisrterTrigger,
+        .unregisterTrigger = KeysReader_UnregisterTrigger,
+};
+
+RedisGears_ReaderCallbacks KeysOnlyReader = {
+        .create = KeysOnlyReader_Create,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
 };

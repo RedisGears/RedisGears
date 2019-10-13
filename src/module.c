@@ -188,7 +188,7 @@ static bool RG_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExe
 }
 
 static bool RG_IsDone(ExecutionPlan* ep){
-	return(ep->status == DONE);
+	return(ep->isDone);
 }
 
 static const char* RG_GetId(ExecutionPlan* ep){
@@ -461,6 +461,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     Cluster_Init();
 
     RGM_RegisterReader(KeysReader);
+    RGM_RegisterReader(KeysOnlyReader);
     RGM_RegisterReader(StreamReader);
     RGM_RegisterFilter(Example_Filter, NULL);
     RGM_RegisterMap(GetValueMapper, NULL);
