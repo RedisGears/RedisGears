@@ -1,2 +1,8 @@
 
+ifneq (,$(MK.configure))
+
 CONFIGURE_FLAGS=
+
+CONFIGURE_BUILD_DIR ?= $(BINDIR)
+
+endif # MK.configure

@@ -25,5 +25,13 @@ MK_ALL_TARGETS:=bindirs build
 
 include $(MK)/functions
 include $(MK)/common.defs
+
+ifeq ($(OS),macosx)
+include $(MK)/macosx.defs
+endif
+
+include $(MK)/platform.defs
+include $(MK)/git.defs
 include $(MK)/variant.defs
 include $(MK)/bindirs.defs
+include $(MK)/nproc.defs

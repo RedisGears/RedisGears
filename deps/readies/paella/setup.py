@@ -71,6 +71,8 @@ class Setup(OnPlatform):
         if self.os == 'macosx':
             # this is required because osx pip installed are done with --user
             os.environ["PATH"] = os.environ["PATH"] + ':' + '$HOME/Library/Python/2.7/bin'
+            # this prevents brew updating before each install
+            os.environ["HOMEBREW_NO_AUTO_UPDATE"] = "1"
 
         if self.platform.is_debian_compat():
             # prevents apt-get from interactively prompting

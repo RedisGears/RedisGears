@@ -8,4 +8,11 @@ include $(MK)/variant.rules
 include $(MK)/bindirs.rules
 include $(MK)/help.rules
 include $(MK)/build.rules
+
+ifneq ($(MK.cmake),)
 include $(MK)/cmake.rules
+endif
+
+ifneq ($(MK.configure),)
+include $(MK)/configure.rules
+endif
