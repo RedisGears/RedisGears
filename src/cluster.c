@@ -217,6 +217,9 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
 
 static void Cluster_ConnectToShard(Node* n){
     redisAsyncContext* c = redisAsyncConnect(n->ip, n->port);
+    if (!c) {
+        return;
+    }
     if (c->err) {
         /* Let *c leak for now... */
         printf("Error: %s\n", n->c->errstr);

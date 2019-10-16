@@ -2,10 +2,9 @@
 
 import sys
 import os
-import popen2
 import argparse
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "deps/readies"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import paella
 
 os.environ["PYTHONWARNINGS"] = 'ignore:DEPRECATION::pip._internal.cli.base_command'
@@ -21,8 +20,10 @@ class Redis5Setup(paella.Setup):
 
     def debian_compat(self):
         # https://chilts.org/installing-redis-from-chris-leas-ppa/
-        self.run("add-apt-repository -y ppa:chris-lea/redis-server")
+        self.add_repo("ppa:chris-lea/redis-server")
         self.install("redis-server")
+        # if not removed, might break apt-get update
+        self.run("add-apt-repository -r -y ppa:chris-lea/redis-server")
 
     def redhat_compat(self):
         # https://linuxize.com/post/how-to-install-and-configure-redis-on-centos-7/
@@ -53,4 +54,4 @@ parser = argparse.ArgumentParser(description='Set up system for build.')
 parser.add_argument('-n', '--nop', action="store_true", help='no operation')
 args = parser.parse_args()
 
-RedisTimeSeriesSetup(nop = args.nop).setup()
+Redis5Setup(nop = args.nop).setup()

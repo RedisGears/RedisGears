@@ -144,6 +144,8 @@ else
 EMBEDDED_LIBS_FLAGS=-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
 endif
 
+STRIP:=strip
+
 ifeq ($(DEPS),1)
 $(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 else
@@ -152,7 +154,9 @@ endif
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 ifneq ($(DEBUG),1)
-	$(SHOW)strip $@
+ifneq ($(OS),macosx)
+	$(SHOW)$(STRIP) $@
+endif
 endif
 	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
 

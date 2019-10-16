@@ -15,7 +15,7 @@ ADD . /build
 WORKDIR /build
 
 RUN ./deps/readies/bin/getpy2
-RUN ./system-setup.py 
+RUN ./system-setup.py
 RUN make fetch SHOW=1
 
 ENV X_NPROC "cat /proc/cpuinfo|grep processor|wc -l"

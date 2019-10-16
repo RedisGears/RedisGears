@@ -28,6 +28,9 @@ PYTHON_ENCODING ?= ucs4
 
 #----------------------------------------------------------------------------------------------
 
+export CFLAGS=-fPIC \
+	-Wno-nullability-completeness -Wno-expansion-to-defined
+
 ifeq ($(OS),macosx)
 
 ZLIB_PREFIX:=$(shell brew --prefix zlib)
@@ -35,13 +38,13 @@ LIBSSL_PREFIX:=$(shell brew --prefix openssl)
 READLINE_PREFIX:=$(shell brew --prefix readline)
 SDK_PREFIX:=$(shell xcrun --show-sdk-path)
 
-export CPPFLAGS:=\
+export CFLAGS +=\
 	-I$(ZLIB_PREFIX)/include \
 	-I$(READLINE_PREFIX)/include \
 	-I$(LIBSSL_PREFIX)/include \
 	-I$(SDK_PREFIX)/usr/include
 
-export LDFLAGS:=\
+export LDFLAGS +=\
 	-L$(ZLIB_PREFIX)/lib \
 	-L$(LIBSSL_PREFIX)/lib \
 	-L$(READLINE_PREFIX)/lib \
@@ -49,9 +52,17 @@ export LDFLAGS:=\
 
 export PKG_CONFIG_PATH:=$(ZLIB_PREFIX)/lib/pkgconfig:$(LIBSSL_PREFIX)/lib/pkgconfig:$(READLINE_PREFIX)/lib/pkgconfig
 
-CONFIGURE_FLAGS.macosx += CPPFLAGS='$(CPPFLAGS)' LDFLAGS='$(LDFLAGS)'
+CONFIGURE_FLAGS.macosx += CFLAGS='$(CFLAGS)' CPPFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' \
+	--with-openssl=$(LIBSSL_PREFIX)
 
 endif # macosx
+
+ifeq ($(OS),macosx)
+BINUTILS_PREFIX:=$(shell brew --prefix binutils)
+OBJCOPY:=$(BINUTILS_PREFIX)/bin/objcopy
+else
+OBJCOPY:=objcopy
+endif
 
 #----------------------------------------------------------------------------------------------
 
@@ -64,21 +75,37 @@ CONFIGURE_FLAGS += \
 
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-export CFLAGS=-fPIC
-
 #----------------------------------------------------------------------------------------------
+
+ifeq ($(OS),macosx)
+NPROC:=$(shell sysctl -n hw.physicalcpu)
+else
+NPROC:=$(shell nproc)
+endif
 
 .PHONY: all build pyenv
 
 all: build pyenv
 
-build: __sep bindirs
+build: $(TARGET)
+
+$(BINDIR)/libpython3.7m.a: __sep bindirs
 ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
 	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 endif
-	$(SHOW)make -C $(BUILD_DIR) -j $$(nproc)
+	$(SHOW)make -C $(BUILD_DIR) -j $(NPROC)
+
+$(TARGET): $(BINDIR)/libpython3.7m.a
+	@echo Fixing libpython3.7m.a ...
 	$(SHOW)cp $(BINDIR)/libpython3.7m.a $(TARGET)
-	$(SHOW)objcopy --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
+ifeq ($(OS),macosx)
+	cp $(BINDIR)/Python/pystate.o $(BINDIR)/
+	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
+	$(SHOW)ar rs $(TARGET) $(BINDIR)/pystate.o
+	$(SHOW)rm $(BINDIR)/pystate.o
+else
+	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
+endif
 
 clean:
 ifeq ($(ALL),1) 
