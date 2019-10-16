@@ -22,7 +22,9 @@ SRCDIR=$(ROOT)/deps/libevent
 
 TARGET=$(BINDIR)/.libs/libevent.a
 
-export CFLAGS=-fPIC
+export CFLAGS += -fPIC
+
+#----------------------------------------------------------------------------------------------
 
 include $(MK)/defs
 

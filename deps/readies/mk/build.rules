@@ -3,9 +3,9 @@
 
 build: $(MK_MAKEFILES) $(TARGET)
 
-#clean:
-#ifeq ($(ALL),1) 
-#	$(SHOW)rm -rf $(BINDIR)
-#else
-#	$(SHOW)$(MAKE) clean -C $(BUILD_DIR)
-#endif 
+clean:
+ifeq ($(ALL),1) 
+	$(SHOW)if [ ! -z "$(MK_CLEAN_ALL_DIRS)" ]; then rm -rf $(sort $(MK_CLEAN_ALL_DIRS)); fi
+else
+	$(SHOW)$(MAKE) clean -C $(MK_CLEAN_DIR)
+endif

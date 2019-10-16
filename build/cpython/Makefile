@@ -6,21 +6,34 @@ override MAKEFLAGS:=$(filter-out r -r no-builtin-rules --no-builtin-rules,$(MAKE
 ROOT=../..
 include $(ROOT)/deps/readies/mk/main
 
+MK.configure=1
+
 #----------------------------------------------------------------------------------------------
 
 BINDIR=$(BINROOT)/cpython
+
 CONFIGURE_BUILD_DIR=$(BINDIR)
 
 SRCDIR=$(ROOT)/deps/cpython
 
-# REDISLABS_DIR=$(BINROOT)/opt/redislabs
+CONFIGURE_TARGET=$(BINDIR)/libpython3.7m.a
+TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python3
+MK_ALL_TARGETS=build pyenv
+MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
+
+REDISLABS_DIR=/opt/redislabs
+export CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
 PYENV_DIR=$(CPYTHON_PREFIX)/.venv
 
-PYTHON_ENCODING ?= ucs4
-
 include $(MK)/defs
+
+#----------------------------------------------------------------------------------------------
+
+export CFLAGS=\
+	-fPIC \
+	-Wno-nullability-completeness \
+	-Wno-expansion-to-defined
 
 ifeq ($(OS),macosx)
 BINUTILS_PREFIX:=$(shell brew --prefix binutils)
@@ -31,75 +44,54 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
+PYTHON_ENCODING ?= ucs4
+
 CONFIGURE_FLAGS += \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
-	--prefix=$(CPYTHON_PREFIX) \
-	$(CONFIGURE_FLAGS.$(OS))
+	--prefix=$(CPYTHON_PREFIX)
 
 #----------------------------------------------------------------------------------------------
-
-TARGET=$(BINDIR)/libpython3.7m-fixed.a
-
-export CFLAGS=-fPIC \
-	-Wno-nullability-completeness -Wno-expansion-to-defined
-
-#----------------------------------------------------------------------------------------------
-
-.PHONY: all pyenv
-
-all: build pyenv
-
-
-$(BINDIR)/libpython3.7m.a: __sep bindirs
-ifeq (,$(wildcard $(CONFIGURE_BUILD_DIR)/Makefile))
-	$(SHOW)cd $(CONFIGURE_BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
-endif
-	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) -j $(NPROC)
-
-$(TARGET): $(BINDIR)/libpython3.7m.a
-	@echo Fixing libpython3.7m.a ...
-	$(SHOW)cp $(BINDIR)/libpython3.7m.a $(TARGET)
-ifeq ($(OS),macosx)
-	cp $(BINDIR)/Python/pystate.o $(BINDIR)/
-	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
-	$(SHOW)ar rs $(TARGET) $(BINDIR)/pystate.o
-	$(SHOW)rm $(BINDIR)/pystate.o
-else
-	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
-endif
-
-clean:
-ifeq ($(ALL),1) 
-	$(SHOW)rm -rf $(CONFIGURE_BUILD_DIR) $(CPYTHON_PREFIX)
-else
-	$(SHOW)$(MAKE) clean -C $(CONFIGURE_BUILD_DIR)
-endif
 
 include $(MK)/rules
 
+$(TARGET): $(CONFIGURE_TARGET)
+	@echo Fixing $@ ...
+	$(SHOW)cp $< $@
+ifeq ($(OS),macosx)
+	$(SHOW)cp $(BINDIR)/Python/pystate.o $(BINDIR)/
+	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
+	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
+	$(SHOW)rm $(BINDIR)/pystate.o
+else
+	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
+endif
+
 #----------------------------------------------------------------------------------------------
 
 ifeq ($(OS),macosx)
-/opt/redislabs:
-	$(SHOW)if [ ! -d /opt/redislabs ]; then \
-		sudo mkdir -p /opt/redislabs; \
-		sudo chown $$USER /opt/redislabs; \
+$(REDISLABS_DIR):
+	$(SHOW)set -e ;\
+	if [ ! -d $(REDISLABS_DIR) ]; then \
+		sudo mkdir -p $(REDISLABS_DIR); \
+		sudo chown $$USER $(REDISLABS_DIR); \
 	fi
 
-#/opt/redislabs:
+#$(REDISLABS_DIR):
 # 	$(SHOW)mkdir -p $(REDISLABS_DIR)
-# 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) /opt/redislabs
+# 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
 else
-/opt/redislabs: ;
+$(REDISLABS_DIR): ;
 endif
 
-pyenv: /opt/redislabs $(CPYTHON_PREFIX) $(PYENV_DIR)
+pyenv: $(REDISLABS_DIR) $(CPYTHON_PREFIX) $(PYENV_DIR)
 
-$(CPYTHON_PREFIX): /opt/redislabs
+.PHONY: pyenv
+
+$(CPYTHON_PREFIX): $(REDISLABS_DIR)
 	@echo Installing Python...
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
-$(PYENV_DIR): /opt/redislabs $(CPYTHON_PREFIX)
+$(PYENV_DIR): $(REDISLABS_DIR) $(CPYTHON_PREFIX)
 	$(SHOW)cp Pipfile* $(CPYTHON_PREFIX)
 	$(SHOW)cd $(CPYTHON_PREFIX); \
 	export PIPENV_VENV_IN_PROJECT=1; \

@@ -6,16 +6,7 @@ $(CONFIGURE_BUILD_DIR)/Makefile: $(SRCDIR)/configure
 		cd $(CONFIGURE_BUILD_DIR) ;\
 		$(abspath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 
-$(TARGET): $(CONFIGURE_BUILD_DIR)/Makefile
+$(CONFIGURE_TARGET): $(CONFIGURE_BUILD_DIR)/Makefile
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) -j $(NPROC)
-
-clean:
-ifeq ($(ALL),1) 
-	$(SHOW)rm -rf $(BINDIR)
-else
-	$(SHOW)$(MAKE) clean -C $(CONFIGURE_BUILD_DIR)
-endif
-
-.PHONY: clean
 
 endif # MK.configure

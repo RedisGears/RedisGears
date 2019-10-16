@@ -60,6 +60,13 @@ jobs:
       - ci_steps:
           platform: redhat
 
+  macos:
+    macos:
+      xcode: 10.2.1
+    steps:
+      - ci_steps:
+          platform: macosx
+
   build-multiarch-docker:
     machine:
       enabled: true
@@ -130,6 +137,12 @@ workflows:
             tags:
               only: /.*/
       - centos:
+          filters:
+            branches:
+              only: /.*/
+            tags:
+              only: /.*/
+      - macos:
           filters:
             branches:
               only: /.*/

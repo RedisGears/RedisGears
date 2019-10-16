@@ -25,7 +25,12 @@ export LDFLAGS:=\
 	-L$(READLINE_PREFIX)/lib \
 	-L$(SDK_PREFIX)/usr/lib
 
-export PKG_CONFIG_PATH:=$(ZLIB_PREFIX)/lib/pkgconfig:$(LIBSSL_PREFIX)/lib/pkgconfig:$(READLINE_PREFIX)/lib/pkgconfig:$(PKG_CONFIG_PATH)
+PKG_CONFIG_DIRS += \
+	$(ZLIB_PREFIX) \
+	$(LIBSSL_PREFIX) \
+	$(READLINE_PREFIX)
+
+export PKG_CONFIG_PATH:=$(subst $(__SPACE),:,$(strip $(addsuffix /lib/pkgconfig,$(PKG_CONFIG_DIRS)))):$(PKG_CONFIG_PATH)
 
 CONFIGURE_FLAGS.macosx += \
 	CPPFLAGS='$(CPPFLAGS)' \

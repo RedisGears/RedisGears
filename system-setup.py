@@ -8,8 +8,6 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "deps/readies"))
 import paella
 
-os.environ["PYTHONWARNINGS"] = 'ignore:DEPRECATION::pip._internal.cli.base_command'
-
 #----------------------------------------------------------------------------------------------
 
 class RedisGearsSetup(paella.Setup):
@@ -26,7 +24,8 @@ class RedisGearsSetup(paella.Setup):
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool")
         self.install("zlib1g-dev libssl-dev libreadline-dev")
-        self.install("xxd")
+        # self.install("xxd")
+        self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
         self.install("python-psutil")
@@ -65,18 +64,20 @@ class RedisGearsSetup(paella.Setup):
         r, w, e = popen2.popen3('xcode-select -p')
         if r.readlines() == []:
             fatal("Xcode tools are not installed. Please run xcode-select --install.")
-        self.install("libtool autoconf automake")
+        self.install("libtool autoconf automake llvm")
         self.install("zlib openssl readline")
+        self.install("redis")
+        self.install("binutils") # into /usr/local/opt/binutils
         
         self.pip_install("pipenv")
         self.pip_install("gevent")
 
     def common_last(self):
-        if not self.has_command("ramp"):
-            self.pip_install("git+https://github.com/RedisLabs/RAMP --upgrade")
+        # RLTest before RAMP due to redis<->redis-py-cluster version dependency
         if not self.has_command("RLTest"):
             self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
-        self.pip_install("redis-py-cluster")
+        if not self.has_command("ramp"):
+            self.pip_install("git+https://github.com/RedisLabs/RAMP@master")
 
 #----------------------------------------------------------------------------------------------
 
