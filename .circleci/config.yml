@@ -21,8 +21,6 @@ commands:
       - run:
           name: Build
           command: |
-            echo nproc=$(nproc)
-            echo NPROC=$(cat /proc/cpuinfo|grep processor|wc -l)
             make get_deps
             make all OS_VERSION=<<parameters.platform>> SHOW=1
       - run:
@@ -153,7 +151,8 @@ workflows:
             tags:
               only: /.*/
             branches:
-              only: master
+              only: /.*/
+              # only: master
       - deploy_snapshots:
           requires: *default_jobs
           filters:
