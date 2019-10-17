@@ -147,7 +147,7 @@ workflows:
             branches:
               only: /.*/
             tags:
-              only: /.*/
+              only: /^v[0-9].*/
       - build-multiarch-docker:
           filters:
             tags:
@@ -173,3 +173,14 @@ workflows:
           filters:
             branches:
               only: master
+
+  nightly:
+    triggers:
+      - schedule:
+          cron: "20 17 * * *"
+          filters:
+             branches:
+               only:
+                 - master
+    jobs:
+      - macos

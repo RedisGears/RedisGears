@@ -1,7 +1,5 @@
 
-.PHONY: all
-
-all: $(MK_ALL_TARGETS)
+default: build
 
 include $(MK)/common.rules
 include $(MK)/variant.rules
@@ -16,3 +14,7 @@ endif
 ifneq ($(MK.configure),)
 include $(MK)/configure.rules
 endif
+
+all: $(MK_ALL_TARGETS)
+
+.PHONY: all default

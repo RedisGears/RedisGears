@@ -24,7 +24,6 @@ class RedisGearsSetup(paella.Setup):
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool")
         self.install("zlib1g-dev libssl-dev libreadline-dev")
-        # self.install("xxd")
         self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
@@ -77,7 +76,8 @@ class RedisGearsSetup(paella.Setup):
         if not self.has_command("RLTest"):
             self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
         if not self.has_command("ramp"):
-            self.pip_install("git+https://github.com/RedisLabs/RAMP@master")
+            # self.pip_install("git+https://github.com/RedisLabs/RAMP@master")
+            self.pip_install("git+https://github.com/RedisLabs/RAMP@rafi-pydeps1")
 
 #----------------------------------------------------------------------------------------------
 

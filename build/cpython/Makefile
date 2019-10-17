@@ -19,7 +19,7 @@ SRCDIR=$(ROOT)/deps/cpython
 CONFIGURE_TARGET=$(BINDIR)/libpython3.7m.a
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-MK_ALL_TARGETS=build pyenv
+MK_ALL_TARGETS=bindirs build pyenv
 MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
 
 REDISLABS_DIR=/opt/redislabs
@@ -68,8 +68,14 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
+.PHONY: pyenv redislabs-dir cpython-dir pyenv-dir
+
+# pyenv: $(REDISLABS_DIR) $(CPYTHON_PREFIX) $(PYENV_DIR)
+pyenv: redislabs-dir cpython-dir pyenv-dir
+
 ifeq ($(OS),macosx)
-$(REDISLABS_DIR):
+# $(REDISLABS_DIR):
+redislabs-dir:
 	$(SHOW)set -e ;\
 	if [ ! -d $(REDISLABS_DIR) ]; then \
 		sudo mkdir -p $(REDISLABS_DIR); \
@@ -80,18 +86,19 @@ $(REDISLABS_DIR):
 # 	$(SHOW)mkdir -p $(REDISLABS_DIR)
 # 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
 else
-$(REDISLABS_DIR): ;
+# $(REDISLABS_DIR):
+redislabs-dir:
+	$(SHOW)rm -rf $(REDISLABS_DIR)
+	$(SHOW)mkdir -p $(REDISLABS_DIR)
 endif
 
-pyenv: $(REDISLABS_DIR) $(CPYTHON_PREFIX) $(PYENV_DIR)
-
-.PHONY: pyenv
-
-$(CPYTHON_PREFIX): $(REDISLABS_DIR)
+# $(CPYTHON_PREFIX): $(REDISLABS_DIR)
+cpython-dir: redislabs-dir
 	@echo Installing Python...
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
-$(PYENV_DIR): $(REDISLABS_DIR) $(CPYTHON_PREFIX)
+# $(PYENV_DIR): $(REDISLABS_DIR) $(CPYTHON_PREFIX)
+pyenv-dir: redislabs-dir cpython-dir
 	$(SHOW)cp Pipfile* $(CPYTHON_PREFIX)
 	$(SHOW)cd $(CPYTHON_PREFIX); \
 	export PIPENV_VENV_IN_PROJECT=1; \

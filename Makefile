@@ -22,7 +22,7 @@ make test       # run tests
 make pack
 endef
 
-MK_ALL_TARGETS=bindirs deps build pack
+MK_ALL_TARGETS=bindirs deps pyenv build pack
 
 include $(MK)/defs
 
@@ -124,6 +124,8 @@ EMBEDDED_LIBS += $(LIBEVENT)
 
 .NOTPARALLEL:
 
+MK_CUSTOM_CLEAN=1
+
 .PHONY: deps $(DEPENDENCIES) pyenv static pack ramp_pack test setup fetch
 
 # build: bindirs $(TARGET)
@@ -203,7 +205,7 @@ $(LIBPYTHON):
 
 pyenv:
 	@echo Building pyenv...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython pyenv
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython DEBUG= pyenv
 
 #----------------------------------------------------------------------------------------------
 
