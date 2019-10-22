@@ -1,12 +1,38 @@
 
 ROOT=.
-include build/mk/defs
+include deps/readies/mk/main
 
 BINDIR=$(BINROOT)/$(SRCDIR)
 
 #----------------------------------------------------------------------------------------------
 
+define HELP
+make setup      # install packages required for build
+make fetch      # download and prepare dependant modules (i.e., python, libevent)
+make build
+  DEBUG=1       # build debug variant
+  VARIANT=name
+  WITHPYTHON=1  # build and use embedded Python interpreter
+  DEPS=1        # also build dependant modules
+make clean      # remove binary files
+  ALL=1         # remove binary directories
+  DEPS=1        # also clean dependant modules
+make all        # build everything
+make test       # run tests
+make pack
+endef
+
+MK_ALL_TARGETS=bindirs deps pyenv build pack
+
+include $(MK)/defs
+
+#----------------------------------------------------------------------------------------------
+
 DEPENDENCIES=cpython libevent
+
+ifeq ($(and $(wildcard $(LIBPYTHON)),$(wildcard $(LIBEVENT))),)
+DEPS=1
+endif
 
 ifneq ($(filter all deps $(DEPENDENCIES) pyenv pack ramp_pack,$(MAKECMDGOALS)),)
 DEPS=1
@@ -19,14 +45,14 @@ WITHPYTHON ?= 1
 ifeq ($(WITHPYTHON),1)
 export PYTHON_ENCODING ?= ucs4
 
-CPYTHON_BINDIR=bin/$(FULL_VARIANT_REL)/cpython
+CPYTHON_BINDIR=bin/$(FULL_VARIANT.release)/cpython
 
 include build/cpython/Makefile.defs
 endif # WITHPYTHON
 
 #----------------------------------------------------------------------------------------------
 
-LIBEVENT_BINDIR=bin/$(FULL_VARIANT_REL)/libevent
+LIBEVENT_BINDIR=bin/$(FULL_VARIANT.release)/libevent
 
 include build/libevent/Makefile.defs
 
@@ -81,7 +107,7 @@ CC_FLAGS += \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
 	-I$(BINROOT)/cpython \
-	-Ibin/$(FULL_VARIANT_REL)/cpython
+	-Ibin/$(FULL_VARIANT.release)/cpython
 
 LD_FLAGS += 
 
@@ -96,27 +122,13 @@ EMBEDDED_LIBS += $(LIBEVENT)
 
 #----------------------------------------------------------------------------------------------
 
-define HELP
-
-Building RedisGears from scratch:
-
-make setup # install packages required for build
-make fetch # download and prepare dependant modules (i.e., python, libevent)
-make all   # build everything
-make test  # run tests
-
-
-endef
-
-#----------------------------------------------------------------------------------------------
-
 .NOTPARALLEL:
 
-.PHONY: all deps $(DEPENDENCIES) pyenv build static clean pack ramp_pack test setup
+MK_CUSTOM_CLEAN=1
 
-build: bindirs $(TARGET)
+.PHONY: deps $(DEPENDENCIES) pyenv static pack ramp_pack test setup fetch
 
-all: deps build pack
+# build: bindirs $(TARGET)
 
 include $(MK)/rules
 
@@ -144,7 +156,7 @@ else
 EMBEDDED_LIBS_FLAGS=-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
 endif
 
-STRIP:=strip
+STRIP:=strip --strip-debug --strip-unneeded
 
 ifeq ($(DEPS),1)
 $(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
@@ -173,10 +185,8 @@ setup:
 	$(SHOW)./deps/readies/bin/getpy2
 	$(SHOW)./system-setup.py
 
-fetch:
+fetch get_deps:
 	-$(SHOW)git submodule update --init --recursive
-
-get_deps:
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
 
 #----------------------------------------------------------------------------------------------
@@ -195,7 +205,7 @@ $(LIBPYTHON):
 
 pyenv:
 	@echo Building pyenv...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython pyenv
+	$(SHOW)$(MAKE) --no-print-directory -C build/cpython DEBUG= pyenv
 
 #----------------------------------------------------------------------------------------------
 
@@ -207,14 +217,22 @@ $(LIBEVENT):
 
 #----------------------------------------------------------------------------------------------
 
+else
+
+deps: ;
+
 endif # DEPS
 
 #----------------------------------------------------------------------------------------------
 
 clean:
+ifeq ($(ALL),1)
+	$(SHOW)rm -rf $(BINDIR)
+else
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) artifacts/release/* artifacts/snapshot/*
-ifeq ($(DEPS),1) 
+endif
+ifeq ($(DEPS),1)
 	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean;)
 endif
 

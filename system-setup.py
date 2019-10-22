@@ -24,12 +24,12 @@ class RedisGearsSetup(paella.Setup):
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool")
         self.install("zlib1g-dev libssl-dev libreadline-dev")
-        # self.install("xxd")
         self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
-        self.install("python-psutil")
-        self.install("python-gevent") # pip cannot build gevent on ARM
+
+        # pip cannot build gevent on ARM
+        self.install("python-psutil python-gevent")
         self.install("libffi-dev")
         self.pip_install("pipenv")
 
@@ -42,12 +42,14 @@ class RedisGearsSetup(paella.Setup):
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
         self.install("libffi-devel") # required for python 3.7
-        self.install("python-gevent") # pip cannot build gevent on ARM
+
+        # pip cannot build gevent on ARM
+        self.install("python-gevent python2-ujson")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil")
         self.install("python2-psutil")
-
+        
         self.pip_install("pipenv")
 
     def fedora(self):
@@ -57,8 +59,8 @@ class RedisGearsSetup(paella.Setup):
         self.install("vim-common") # for xxd
         self.install("libffi-devel")
 
-        self.pip_install("pipenv")
-        self.pip_install("gevent")
+        self.install("python2-ujson")
+        self.pip_install("pipenv gevent")
 
     def macosx(self):
         r, w, e = popen2.popen3('xcode-select -p')
@@ -69,15 +71,12 @@ class RedisGearsSetup(paella.Setup):
         self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
         
-        self.pip_install("pipenv")
-        self.pip_install("gevent")
+        self.pip_install("pipenv gevent")
 
     def common_last(self):
         # RLTest before RAMP due to redis<->redis-py-cluster version dependency
-        if not self.has_command("RLTest"):
-            self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
-        if not self.has_command("ramp"):
-            self.pip_install("git+https://github.com/RedisLabs/RAMP@master")
+        self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
+        self.pip_install("git+https://github.com/RedisLabs/RAMP@master")
 
 #----------------------------------------------------------------------------------------------
 

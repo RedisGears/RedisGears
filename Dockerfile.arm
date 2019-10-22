@@ -17,10 +17,11 @@ WORKDIR /build
 RUN ./deps/readies/bin/getpy2
 RUN ./system-setup.py
 RUN make fetch SHOW=1
-
-ENV X_NPROC "cat /proc/cpuinfo|grep processor|wc -l"
-RUN echo nproc=$(nproc); echo NPROC=$(eval "$X_NPROC")
 RUN make all SHOW=1
+
+ARG TEST=0
+
+RUN if [ "$TEST" = "1" ]; then make test; fi
 
 RUN [ "cross-build-end" ]
 

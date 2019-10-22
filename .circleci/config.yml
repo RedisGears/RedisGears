@@ -21,8 +21,6 @@ commands:
       - run:
           name: Build
           command: |
-            echo nproc=$(nproc)
-            echo NPROC=$(cat /proc/cpuinfo|grep processor|wc -l)
             make get_deps
             make all OS_VERSION=<<parameters.platform>> SHOW=1
       - run:
@@ -67,6 +65,24 @@ jobs:
       - ci_steps:
           platform: macosx
 
+  build-multiarch-docker:
+    machine:
+      enabled: true
+      image: ubuntu-1604:201903-01
+    steps:
+      - checkout
+      - run:
+          name: Setup Docker client experimental features
+          command: |
+            sudo ./deps/readies/bin/getdocker --just-enable-exp
+            docker version
+      - run:
+          name: Build
+          command: |
+            sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
+            make -C build/docker build
+            sudo make -C build/docker publish
+
   deploy_snapshots:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
@@ -103,7 +119,7 @@ jobs:
           command: mkdocs build
       - run:
           name: Deploy Docs to S3
-          command: >-
+          command: |
             aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl public-read --recursive
 
 
@@ -129,7 +145,14 @@ workflows:
             branches:
               only: /.*/
             tags:
+              only: /^v[0-9].*/
+      - build-multiarch-docker:
+          filters:
+            tags:
               only: /.*/
+            branches:
+              # only: /.*/
+              only: master
       - deploy_snapshots:
           requires: *default_jobs
           filters:
@@ -149,3 +172,14 @@ workflows:
           filters:
             branches:
               only: master
+
+  nightly:
+    triggers:
+      - schedule:
+          cron: "20 17 * * *"
+          filters:
+             branches:
+               only:
+                 - master
+    jobs:
+      - macos

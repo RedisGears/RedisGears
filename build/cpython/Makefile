@@ -4,58 +4,36 @@
 override MAKEFLAGS:=$(filter-out r -r no-builtin-rules --no-builtin-rules,$(MAKEFLAGS))
 
 ROOT=../..
-include $(ROOT)/build/mk/defs
+include $(ROOT)/deps/readies/mk/main
 
-# include Makefile.defs
-
-ifeq ($(OS),macosx)
-export PATH:=$(PATH):$(HOME)/Library/Python/2.7/bin
-endif
+MK.configure=1
 
 #----------------------------------------------------------------------------------------------
 
 BINDIR=$(BINROOT)/cpython
-BUILD_DIR=$(BINDIR)
+
+CONFIGURE_BUILD_DIR=$(BINDIR)
 
 SRCDIR=$(ROOT)/deps/cpython
 
-# REDISLABS_DIR=$(BINROOT)/opt/redislabs
+CONFIGURE_TARGET=$(BINDIR)/libpython3.7m.a
+TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-export CPYTHON_PREFIX=/opt/redislabs/lib/modules/python3
+MK_ALL_TARGETS=bindirs build pyenv
+MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
+
+REDISLABS_DIR=/opt/redislabs
+export CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
 PYENV_DIR=$(CPYTHON_PREFIX)/.venv
 
-PYTHON_ENCODING ?= ucs4
+include $(MK)/defs
 
 #----------------------------------------------------------------------------------------------
 
-export CFLAGS=-fPIC \
-	-Wno-nullability-completeness -Wno-expansion-to-defined
-
-ifeq ($(OS),macosx)
-
-ZLIB_PREFIX:=$(shell brew --prefix zlib)
-LIBSSL_PREFIX:=$(shell brew --prefix openssl)
-READLINE_PREFIX:=$(shell brew --prefix readline)
-SDK_PREFIX:=$(shell xcrun --show-sdk-path)
-
-export CFLAGS +=\
-	-I$(ZLIB_PREFIX)/include \
-	-I$(READLINE_PREFIX)/include \
-	-I$(LIBSSL_PREFIX)/include \
-	-I$(SDK_PREFIX)/usr/include
-
-export LDFLAGS +=\
-	-L$(ZLIB_PREFIX)/lib \
-	-L$(LIBSSL_PREFIX)/lib \
-	-L$(READLINE_PREFIX)/lib \
-	-L$(SDK_PREFIX)/usr/lib
-
-export PKG_CONFIG_PATH:=$(ZLIB_PREFIX)/lib/pkgconfig:$(LIBSSL_PREFIX)/lib/pkgconfig:$(READLINE_PREFIX)/lib/pkgconfig
-
-CONFIGURE_FLAGS.macosx += CFLAGS='$(CFLAGS)' CPPFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' \
-	--with-openssl=$(LIBSSL_PREFIX)
-
-endif # macosx
+export CFLAGS=\
+	-fPIC \
+	-Wno-nullability-completeness \
+	-Wno-expansion-to-defined
 
 ifeq ($(OS),macosx)
 BINUTILS_PREFIX:=$(shell brew --prefix binutils)
@@ -66,79 +44,57 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
+PYTHON_ENCODING ?= ucs4
+
 CONFIGURE_FLAGS += \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
-	--prefix=$(CPYTHON_PREFIX) \
-	$(CONFIGURE_FLAGS.$(OS))
+	--prefix=$(CPYTHON_PREFIX)
 
 #----------------------------------------------------------------------------------------------
-
-TARGET=$(BINDIR)/libpython3.7m-fixed.a
-
-#----------------------------------------------------------------------------------------------
-
-ifeq ($(OS),macosx)
-NPROC:=$(shell sysctl -n hw.physicalcpu)
-else
-NPROC:=$(shell nproc)
-endif
-
-.PHONY: all build pyenv
-
-all: build pyenv
-
-build: $(TARGET)
-
-$(BINDIR)/libpython3.7m.a: __sep bindirs
-ifeq (,$(wildcard $(BUILD_DIR)/Makefile))
-	$(SHOW)cd $(BUILD_DIR); $(realpath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
-endif
-	$(SHOW)make -C $(BUILD_DIR) -j $(NPROC)
-
-$(TARGET): $(BINDIR)/libpython3.7m.a
-	@echo Fixing libpython3.7m.a ...
-	$(SHOW)cp $(BINDIR)/libpython3.7m.a $(TARGET)
-ifeq ($(OS),macosx)
-	cp $(BINDIR)/Python/pystate.o $(BINDIR)/
-	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
-	$(SHOW)ar rs $(TARGET) $(BINDIR)/pystate.o
-	$(SHOW)rm $(BINDIR)/pystate.o
-else
-	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $(TARGET)
-endif
-
-clean:
-ifeq ($(ALL),1) 
-	$(SHOW)rm -rf $(BUILD_DIR) $(CPYTHON_PREFIX)
-else
-	$(SHOW)$(MAKE) clean -C $(BUILD_DIR)
-endif
 
 include $(MK)/rules
 
-#----------------------------------------------------------------------------------------------
-
+$(TARGET): $(CONFIGURE_TARGET)
+	@echo Fixing $@ ...
+	$(SHOW)cp $< $@
 ifeq ($(OS),macosx)
-/opt/redislabs:
-	$(SHOW)if [ ! -d /opt/redislabs ]; then \
-		sudo mkdir -p /opt/redislabs; \
-		sudo chown $$USER /opt/redislabs; \
-	fi
-
-#/opt/redislabs:
-# 	$(SHOW)mkdir -p $(REDISLABS_DIR)
-# 	$(SHOW)sudo ln -sfn $(realpath $(REDISLABS_DIR)) /opt/redislabs
+	$(SHOW)cp $(BINDIR)/Python/pystate.o $(BINDIR)/
+	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
+	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
+	$(SHOW)rm $(BINDIR)/pystate.o
 else
-/opt/redislabs: ;
+	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
 endif
 
-pyenv: /opt/redislabs $(CPYTHON_PREFIX) $(PYENV_DIR)
+#----------------------------------------------------------------------------------------------
 
-$(CPYTHON_PREFIX): /opt/redislabs
+.PHONY: pyenv redislabs-dir cpython-dir pyenv-dir
+
+# pyenv: $(REDISLABS_DIR) $(CPYTHON_PREFIX) $(PYENV_DIR)
+pyenv: redislabs-dir cpython-dir pyenv-dir
+
+ifeq ($(OS),macosx)
+redislabs-dir:
+	$(SHOW)set -e ;\
+	if [ ! -d $(REDISLABS_DIR) ]; then \
+		sudo mkdir -p $(REDISLABS_DIR); \
+		sudo chown $$USER $(REDISLABS_DIR); \
+	fi
+
+#redislabs-dir:
+# 	$(SHOW)mkdir -p $(REDISLABS_DIR)
+# 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
+else
+redislabs-dir:
+	$(SHOW)rm -rf $(REDISLABS_DIR)
+	$(SHOW)mkdir -p $(REDISLABS_DIR)
+endif
+
+cpython-dir: redislabs-dir
 	@echo Installing Python...
-	$(SHOW)make -C $(BUILD_DIR) install 2>&1 > $(abspath $(BUILD_DIR))/python-install.log
+	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
-$(PYENV_DIR): /opt/redislabs $(CPYTHON_PREFIX)
+pyenv-dir: redislabs-dir cpython-dir
 	$(SHOW)cp Pipfile* $(CPYTHON_PREFIX)
 	$(SHOW)cd $(CPYTHON_PREFIX); \
 	export PIPENV_VENV_IN_PROJECT=1; \
