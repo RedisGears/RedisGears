@@ -74,7 +74,6 @@ endif
 pyenv: redislabs-dir cpython-dir pyenv-dir
 
 ifeq ($(OS),macosx)
-# $(REDISLABS_DIR):
 redislabs-dir:
 	$(SHOW)set -e ;\
 	if [ ! -d $(REDISLABS_DIR) ]; then \
@@ -82,22 +81,19 @@ redislabs-dir:
 		sudo chown $$USER $(REDISLABS_DIR); \
 	fi
 
-#$(REDISLABS_DIR):
+#redislabs-dir:
 # 	$(SHOW)mkdir -p $(REDISLABS_DIR)
 # 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
 else
-# $(REDISLABS_DIR):
 redislabs-dir:
 	$(SHOW)rm -rf $(REDISLABS_DIR)
 	$(SHOW)mkdir -p $(REDISLABS_DIR)
 endif
 
-# $(CPYTHON_PREFIX): $(REDISLABS_DIR)
 cpython-dir: redislabs-dir
 	@echo Installing Python...
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
-# $(PYENV_DIR): $(REDISLABS_DIR) $(CPYTHON_PREFIX)
 pyenv-dir: redislabs-dir cpython-dir
 	$(SHOW)cp Pipfile* $(CPYTHON_PREFIX)
 	$(SHOW)cd $(CPYTHON_PREFIX); \
