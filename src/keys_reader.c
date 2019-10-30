@@ -13,6 +13,13 @@
 #define KEYS_SPEC_NAME "keys_spec"
 
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
+
+typedef struct KeysReadeRegisterData{
+    FlatExecutionPlan* fep;
+    void* args;
+    ExecutionMode mode;
+}KeysReadeRegisterData;
+
 Gears_list* keysReaderRegistration = NULL;
 
 IndexSpec* keyIdx = NULL;
@@ -353,9 +360,9 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
     Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(iter))){
-        FlatExecutionPlan* fep = Gears_listNodeValue(node);
+        KeysReadeRegisterData* rData = Gears_listNodeValue(node);
         char* keyStr = RG_STRDUP(RedisModule_StringPtrLen(key, NULL));
-        if(!RedisGears_Run(fep, keyStr, NULL, NULL)){
+        if(!RedisGears_Run(rData->fep, rData->mode, keyStr, NULL, NULL)){
             RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         }
     }
@@ -367,17 +374,19 @@ static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep){
     Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(iter))){
-        FlatExecutionPlan* f = Gears_listNodeValue(node);
-        if(f == fep){
+        KeysReadeRegisterData* rData = Gears_listNodeValue(node);
+        if(rData->fep == fep){
             Gears_listDelNode(keysReaderRegistration, node);
             Gears_listReleaseIterator(iter);
+            RG_FREE(rData->args);
+            RG_FREE(rData);
             return;
         }
     }
     assert(0);
 }
 
-static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
+static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args){
     RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
     if(!keysReaderRegistration){
         keysReaderRegistration = Gears_listCreate();
@@ -385,8 +394,15 @@ static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, void* args){
             // todo : print warning
         }
     }
-    Gears_listAddNodeTail(keysReaderRegistration, fep);
-    RG_FREE(args); // currently we ignore the args
+
+    KeysReadeRegisterData* rData = RG_ALLOC(sizeof(*rData));
+    *rData = (KeysReadeRegisterData){
+        .fep = fep,
+        .args = args,
+        .mode = mode,
+    };
+
+    Gears_listAddNodeTail(keysReaderRegistration, rData);
     RedisModule_FreeThreadSafeContext(ctx);
     return 1;
 }

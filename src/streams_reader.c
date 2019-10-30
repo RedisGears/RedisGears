@@ -19,6 +19,7 @@ typedef struct StreamReaderTrigger{
     char* streamKeyName;
     Gears_dict* lastIds;
     FlatExecutionPlan* fep;
+    ExecutionMode mode;
 }StreamReaderTrigger;
 
 StreamReaderCtx* StreamReaderCtx_Create(const char* streamName, const char* streamId){
@@ -160,7 +161,7 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
                 lastId = RG_STRDUP(lastStreamId);
                 Gears_dictEntry *entry = Gears_dictAddOrFind(srctx->lastIds, (char*)keyName);
                 Gears_dictSetVal(srctx->lastIds, entry, lastId);
-                if(!RedisGears_Run(srctx->fep, readerCtx, NULL, NULL)){
+                if(!RedisGears_Run(srctx->fep, srctx->mode, readerCtx, NULL, NULL)){
                     RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
                 }
             }
@@ -187,7 +188,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
     assert(0);
 }
 
-static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
+static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
@@ -201,6 +202,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, void* arg){
         .streamKeyName = arg,
         .lastIds = Gears_dictCreate(&Gears_dictTypeHeapStringsVals, NULL),
         .fep = fep,
+        .mode = mode,
     };
     Gears_listAddNodeHead(streamsRegistration, srctx);
     return 1;

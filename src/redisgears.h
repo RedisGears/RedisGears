@@ -30,6 +30,10 @@ typedef struct StreamReaderCtx StreamReaderCtx;
 #define KEY_RECORD_TYPE 6
 #define HASH_SET_RECORD_TYPE 7
 
+#define ExecutionMode int
+#define ExecutionModeSync 1
+#define ExecutionModeAsync 2
+
 /******************************* READERS *******************************/
 
 typedef struct Gears_BufferWriter Gears_BufferWriter;
@@ -95,7 +99,7 @@ typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* pri
  * Reader callbacks definition.
  */
 typedef Reader* (*RedisGears_CreateReaderCallback)(void* arg);
-typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, void* arg);
+typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg);
 typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep);
 
 /**
@@ -223,11 +227,11 @@ int MODULE_API_FUNC(RedisGears_FlatMap)(FlatExecutionPlan* ctx, char* name, void
 int MODULE_API_FUNC(RedisGears_Limit)(FlatExecutionPlan* ctx, size_t offset, size_t len);
 #define RGM_Limit(ctx, offset, len) RedisGears_Limit(ctx, offset, len)
 
-ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
-#define RGM_Run(ctx, arg, callback, privateData) RedisGears_Run(ctx, arg, callback, privateData)
+ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+#define RGM_Run(ctx, mode, arg, callback, privateData) RedisGears_Run(ctx, mode, arg, callback, privateData)
 
-int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, char* arg);
-#define RGM_Register(ctx, arg) RedisGears_Register(ctx, arg)
+int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, ExecutionMode mode, char* arg);
+#define RGM_Register(ctx, mode, arg) RedisGears_Register(ctx, mode, arg)
 
 int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RGM_ForEach(ctx, name, arg) RedisGears_ForEach(ctx, #name, arg)

@@ -114,7 +114,7 @@ static long long lastEPId = 0;
 static long long lastFEPId = 0;
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx);
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, void* arg);
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader);
 static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep);
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg);
@@ -646,7 +646,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
     Gears_Buffer* buff;
     Gears_BufferWriter bw;
 
-    if(!Cluster_IsClusterMode()){
+    if(!Cluster_IsClusterMode() || ep->mode == ExecutionModeSync){
         return ExecutionPlan_NextRecord(ep, step->prev, rctx);
     }
 
@@ -729,7 +729,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 	Gears_Buffer* buff;;
 	Gears_BufferWriter bw;
 
-	if(!Cluster_IsClusterMode()){
+	if(!Cluster_IsClusterMode() || ep->mode == ExecutionModeSync){
 		return ExecutionPlan_NextRecord(ep, step->prev, rctx);
 	}
 
@@ -1194,14 +1194,14 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
-static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, void* arg){
+static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
     RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(ctx);
 
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks);
     assert(callbacks->registerTrigger);
-    callbacks->registerTrigger(fep, arg);
+    callbacks->registerTrigger(fep, mode, arg);
 
     // the registeredFepDict holds a weak pointer to the fep struct. If does not increase
     // the refcount and will be remove when the fep will be unregistered
@@ -1220,16 +1220,18 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
     FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
+    char* key = RG_STRDUP(RedisGears_BRReadString(&br));
+    ExecutionMode mode = RedisGears_BRReadLong(&br);
     if(!fep){
         // todo: big big warning
         return;
     }
 
-    FlatExecutionPlan_RegisterInternal(fep, RG_STRDUP(RedisGears_BRReadString(&br)));
+    FlatExecutionPlan_RegisterInternal(fep, mode, key);
 }
 
-static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    ExecutionPlan* ep = ExecutionPlan_New(fep, eid, arg);
+static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    ExecutionPlan* ep = ExecutionPlan_New(fep, eid, mode, arg);
     if(!ep){
         return NULL;
     }
@@ -1249,9 +1251,29 @@ static void ExecutionPlan_Run(ExecutionPlan* ep){
     ExecutionPlan_RegisterForRun(ep);
 }
 
-static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, arg, callback, privateData);
-    ExecutionPlan_Run(ep);
+static void ExecutionPlan_RunSync(ExecutionPlan* ep){
+    assert(ep->mode == ExecutionModeSync);
+
+    INIT_TIMER;
+    GETTIME(&_ts);
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    bool isDone = ExecutionPlan_Execute(ep, rctx);
+    GETTIME(&_te);
+
+    // Sync execution can not stop in the middle
+    assert(isDone);
+    ep->executionDuration += DURATION;
+
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
+static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, mode, arg, callback, privateData);
+    if(mode == ExecutionModeAsync){
+        ExecutionPlan_Run(ep);
+    } else{
+        ExecutionPlan_RunSync(ep);
+    }
     return ep;
 }
 
@@ -1305,7 +1327,9 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
     assert(idLen == EXECUTION_PLAN_ID_LEN);
-    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, NULL, NULL, NULL);
+
+    // Execution recieved from another shards is always async
+    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, ExecutionModeAsync, NULL, NULL, NULL);
     ExecutionStep* rs = ep->steps[array_len(ep->steps) - 1];
     rs->reader.r->deserialize(rs->reader.r->ctx, &br);
     FlatExecutionPlan_Free(fep);
@@ -1551,7 +1575,7 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
     return fep->reader->reader;
 }
 
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, char* key){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks); // todo: handle as error in future
     if(!callbacks->registerTrigger){
@@ -1563,15 +1587,16 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
         Gears_BufferWriterInit(&bw, buff);
         FlatExecutionPlan_Serialize(fep, &bw);
         RedisGears_BWWriteString(&bw, key);
+        RedisGears_BWWriteLong(&bw, mode);
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
         Gears_BufferFree(buff);
     }
-    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), key);
+    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), mode, key);
     return 1;
 }
 
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    return FlatExecutionPlan_RunOnly(fep, eid, arg, callback, privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    return FlatExecutionPlan_RunOnly(fep, NULL, mode, arg, callback, privateData);
 }
 
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg){
@@ -1686,7 +1711,7 @@ static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id){
     SetId(id, fep->id, fep->idStr, &lastFEPId);
 }
 
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, ExecutionMode mode, void* arg){
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
     fep = FlatExecutionPlan_ShallowCopy(fep);
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
@@ -1718,6 +1743,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
     ret->privateData = NULL;
     ret->freeCallback = NULL;
     ret->isDone = false;
+    ret->mode = mode;
     ExecutionPlan_SetID(ret, finalId);
     pthread_mutex_lock(&epData.mutex);
     if(GearsConfig_GetMaxExecutions() > 0){

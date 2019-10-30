@@ -159,16 +159,16 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, char* key){
-    return FlatExecutionPlan_Register(fep, key);
+static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, char* key){
+    return FlatExecutionPlan_Register(fep, mode, key);
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
     return FlatExecutionPlan_GetReader(fep);
 }
 
-static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-	return FlatExecutionPlan_Run(fep, NULL, arg, callback, privateData);
+static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+	return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData);
 }
 
 static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const char* streamId){

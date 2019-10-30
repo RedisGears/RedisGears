@@ -505,7 +505,7 @@ static PyObject* run(PyObject *self, PyObject *args){
     }
     RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
                                            RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
-    ExecutionPlan* ep = RGM_Run(pfep->fep, arg, NULL, NULL);
+    ExecutionPlan* ep = RGM_Run(pfep->fep, ExecutionModeAsync, arg, NULL, NULL);
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
         RedisGears_RegisterExecutionDoneCallback(ep, dropExecutionOnDone);
@@ -529,8 +529,13 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
     if(PyTuple_Size(args) > 0){
         regex = PyTuple_GetItem(args, 0);
     }
+    PyObject* pymode = NULL;
+    if(PyTuple_Size(args) > 1){
+        pymode = PyTuple_GetItem(args, 1);
+    }
     char* defaultRegexStr = "*";
     const char* regexStr = defaultRegexStr;
+    ExecutionMode mode = ExecutionModeAsync;
     if(regex){
         if(PyUnicode_Check(regex)){
             regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
@@ -539,9 +544,27 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
             return NULL;
         }
     }
+
+    if(pymode){
+        if(PyUnicode_Check(pymode)){
+            const char* modeStr = PyUnicode_AsUTF8AndSize(pymode, NULL);
+            if(strcmp(modeStr, "async") == 0){
+                mode = ExecutionModeAsync;
+            }else if(strcmp(modeStr, "sync") == 0){
+                mode = ExecutionModeSync;
+            }else{
+                PyErr_SetString(GearsError, "unknown execution mode");
+                return NULL;
+            }
+        }else{
+            PyErr_SetString(GearsError, "execution mode must be a string");
+            return NULL;
+        }
+    }
+
     RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
                                            RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
-    int status = RGM_Register(pfep->fep, RG_STRDUP(regexStr));
+    int status = RGM_Register(pfep->fep, mode, RG_STRDUP(regexStr));
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
         Py_INCREF(Py_None);
@@ -570,7 +593,7 @@ PyMethodDef PyFlatExecutionMethods[] = {
     {"limit", limit, METH_VARARGS, "limit the results to a give size and offset"},
     {"accumulate", accumulate, METH_VARARGS, "accumulate the records to a single record"},
     {"run", run, METH_VARARGS, "start the execution"},
-    {"register", registerExecution, METH_VARARGS, "register the execution on an event"},
+    {"register", (PyCFunction)registerExecution, METH_VARARGS, "register the execution on an event"},
     {NULL, NULL, 0, NULL}
 };
 
