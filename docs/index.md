@@ -19,15 +19,11 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 !!! tip "Supported Platforms"
     RedisGears is developed and tested on Linux x86_64 CPUs.
 
-### Client libraries
-
-Some languages have client libraries that provide support for RedisTimeSeries commands:
+# Client libraries
 
 | Project | Language | License | Author | URL |
 | ------- | -------- | ------- | ------ | --- |
 | redisgears-py | Python | BSD-3 | [RedisLabs](https://redislabs.com/) | [Github](https://github.com/RedisGears/redisgears-py) |
-
-
 
 # Future plans
 * GearsQL - SQL like language for quering your data.
