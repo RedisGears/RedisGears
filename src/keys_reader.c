@@ -18,6 +18,7 @@ typedef struct KeysReadeRegisterData{
     FlatExecutionPlan* fep;
     void* args;
     ExecutionMode mode;
+    unsigned long long numTriggered;
 }KeysReadeRegisterData;
 
 Gears_list* keysReaderRegistration = NULL;
@@ -42,16 +43,37 @@ typedef struct KeysReaderCtx{
     RedisModuleDictIter* iter1;
 }KeysReaderCtx;
 
-static KeysReaderCtx* KeysReaderCtx_Create(char* match, bool readValue){
-#define PENDING_KEYS_INIT_CAP 10
+static bool KeysReaderCtx_AnalizeArg(char* match, size_t* matchLen){
     bool isPrefix = false;
-    size_t matchLen = 0;
     if(match){
-        matchLen = strlen(match);
-        if(match[matchLen - 1] == '*'){
+        *matchLen = strlen(match);
+        if(match[*matchLen - 1] == '*'){
             isPrefix = true;
         }
     }
+    return isPrefix;
+}
+
+static void KeysReaderCtx_Reset(void* ctx, void* arg){
+    KeysReaderCtx* krctx = ctx;
+    while(array_len(krctx->pendingRecords) > 0){
+        RedisGears_FreeRecord(array_pop(krctx->pendingRecords));
+    }
+    if(krctx->match){
+        RG_FREE(krctx->match);
+    }
+
+    krctx->cursorIndex = 0;
+    krctx->isDone = false;
+
+    krctx->isPrefix = KeysReaderCtx_AnalizeArg(arg, &krctx->matchLen);
+    krctx->match = arg;
+}
+
+static KeysReaderCtx* KeysReaderCtx_Create(char* match, bool readValue){
+#define PENDING_KEYS_INIT_CAP 10
+    size_t matchLen = 0;
+    bool isPrefix = KeysReaderCtx_AnalizeArg(match, &matchLen);
     KeysReaderCtx* krctx = RG_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
         .matchLen = matchLen,
@@ -356,13 +378,20 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
     return record;
 }
 
+static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
+    // we drop the execution only if we was asked to
+    if(privateData){
+        RedisGears_DropExecution(ctx);
+    }
+}
+
 static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
     Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(iter))){
         KeysReadeRegisterData* rData = Gears_listNodeValue(node);
         char* keyStr = RG_STRDUP(RedisModule_StringPtrLen(key, NULL));
-        if(!RedisGears_Run(rData->fep, rData->mode, keyStr, NULL, NULL)){
+        if(!RedisGears_Run(rData->fep, rData->mode, keyStr, KeysReader_ExecutionDone, (void*)(rData->mode == ExecutionModeSync ? NULL + 1 : NULL))){
             RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         }
     }
@@ -400,6 +429,7 @@ static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mod
         .fep = fep,
         .args = args,
         .mode = mode,
+        .numTriggered = 0,
     };
 
     Gears_listAddNodeTail(keysReaderRegistration, rData);
@@ -506,6 +536,7 @@ static Reader* KeysOnlyReader_Create(void* arg){
         .ctx = ctx,
         .next = KeysReader_NextCallback,
         .free = KeysReader_Free,
+        .reset = KeysReaderCtx_Reset,
         .serialize = RG_KeysReaderCtxSerialize,
         .deserialize = RG_KeysReaderCtxDeserialize,
     };

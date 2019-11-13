@@ -56,6 +56,7 @@ typedef struct Reader{
     void* ctx;
     Record* (*next)(ExecutionCtx* rctx, void* ctx);
     void (*free)(void* ctx);
+    void (*reset)(void* ctx, void * arg);
     void (*serialize)(void* ctx, Gears_BufferWriter* bw);
     void (*deserialize)(void* ctx, Gears_BufferReader* br);
 }Reader;

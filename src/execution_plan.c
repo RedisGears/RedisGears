@@ -114,7 +114,7 @@ static long long lastEPId = 0;
 static long long lastFEPId = 0;
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx);
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg);
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mode, void* arg);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader);
 static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep);
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg);
@@ -122,6 +122,7 @@ static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender
 static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len);
 static void ExecutionPlan_SetID(ExecutionPlan* ep, char* id);
 static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id);
+static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep);
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, EXECUTION_PLAN_ID_LEN);
@@ -1231,12 +1232,57 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
 }
 
 static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    ExecutionPlan* ep = ExecutionPlan_New(fep, eid, mode, arg);
+    ExecutionPlan* ep;
+    if(fep->executionPullSize > 0){
+        ep = fep->executionPull[--fep->executionPullSize];
+        ExecutionStep* readerStep = array_pop(ep->steps);
+        assert(readerStep->type == READER);
+        // we need to reset the reader with the new arguments
+        if(readerStep->reader.r->reset){
+            // reader is support reset, lets use it.
+            readerStep->reader.r->reset(readerStep->reader.r->ctx, arg);
+        }else{
+            // reader do not support reset, lets free and recreate
+            readerStep->reader.r->free(readerStep->reader.r->ctx);
+            RG_FREE(readerStep->reader.r);
+            ReaderStep rs = ExecutionPlan_NewReader(fep->reader, arg);
+            readerStep->reader = rs;
+        }
+        readerStep->executionDuration = 0;
+        if(array_len(ep->steps) > 0){
+            ep->steps[array_len(ep->steps) - 1]->prev = readerStep;
+        }
+        ep->steps = array_append(ep->steps, readerStep);
+
+        // set the mode
+        ep->mode = mode;
+    } else {
+        ep = ExecutionPlan_New(fep, mode, arg);
+    }
     if(!ep){
         return NULL;
     }
     ep->callback = callback;
     ep->privateData = privateData;
+    ep->fep = FlatExecutionPlan_ShallowCopy(fep);
+
+    ExecutionPlan_SetID(ep, eid);
+
+    if(ep->mode != ExecutionModeSync){
+        // todo: this is to spacific, currently we do not add sync executions to epList
+        pthread_mutex_lock(&epData.mutex);
+        if(GearsConfig_GetMaxExecutions() > 0){
+            while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
+                Gears_listNode* n0 = Gears_listFirst(epData.epList);
+                ExecutionPlan* ep0 = Gears_listNodeValue(n0);
+                ExecutionPlan_Free(ep0, false);
+            }
+        }
+        Gears_listAddNodeTail(epData.epList, ep);
+        Gears_dictAdd(epData.epDict, ep->id, ep);
+        pthread_mutex_unlock(&epData.mutex);
+    }
+
     return ep;
 }
 
@@ -1251,12 +1297,118 @@ static void ExecutionPlan_Run(ExecutionPlan* ep){
     ExecutionPlan_RegisterForRun(ep);
 }
 
+static void ExecutionStep_Reset(ExecutionStep* es){
+    Gears_dictIterator * iter = NULL;
+    Gears_dictEntry *entry = NULL;
+    if(es->prev){
+        ExecutionStep_Reset(es->prev);
+    }
+    switch(es->type){
+    case LIMIT:
+        es->limit.currRecordIndex = 0;
+        break;
+    case MAP:
+    case FILTER:
+    case EXTRACTKEY:
+    case REDUCE:
+    case FOREACH:
+        break;
+    case FLAT_MAP:
+        if(es->flatMap.pendings){
+            RedisGears_FreeRecord(es->flatMap.pendings);
+        }
+        es->flatMap.pendings = NULL;
+        break;
+    case REPARTITION:
+        if(es->repartion.pendings){
+            while(array_len(es->repartion.pendings) > 0){
+                Record* r = array_pop(es->repartion.pendings);
+                RedisGears_FreeRecord(r);
+            }
+        }
+        es->repartion.stoped = false;
+        es->repartion.totalShardsCompleted = 0;
+        break;
+    case COLLECT:
+        if(es->collect.pendings){
+            while(array_len(es->collect.pendings) > 0){
+                Record* r = array_pop(es->collect.pendings);
+                RedisGears_FreeRecord(r);
+            }
+        }
+        es->collect.totalShardsCompleted = 0;
+        es->collect.stoped = false;
+        break;
+    case GROUP:
+        if(es->group.groupedRecords){
+            while(array_len(es->group.groupedRecords) > 0){
+                Record* r = array_pop(es->group.groupedRecords);
+                RedisGears_FreeRecord(r);
+            }
+        }
+        Gears_dictEmpty(es->group.d, NULL);
+        es->group.isGrouped = false;
+        break;
+    case READER:
+        // the reader will be reset with the new args or will be freed ...
+        break;
+    case ACCUMULATE:
+        if(es->accumulate.accumulator){
+            RedisGears_FreeRecord(es->accumulate.accumulator);
+        }
+        es->accumulate.isDone = false;
+        break;
+    case ACCUMULATE_BY_KEY:
+        if(es->accumulateByKey.accumulators){
+            if(es->accumulateByKey.iter){
+                iter = es->accumulateByKey.iter;
+                es->accumulateByKey.iter = NULL;
+            }else{
+                iter = Gears_dictGetIterator(es->accumulateByKey.accumulators);
+            }
+            while((entry = Gears_dictNext(iter))){
+                Record* r = Gears_dictGetVal(entry);
+                RedisGears_FreeRecord(r);
+            }
+            Gears_dictReleaseIterator(iter);
+            Gears_dictEmpty(es->accumulateByKey.accumulators, NULL);
+
+        }
+        break;
+    default:
+        assert(false);
+    }
+}
+
+static void ExecutionPlan_Reset(ExecutionPlan* ep){
+    while(array_len(ep->results) > 0){
+        Record* record = array_pop(ep->results);
+        RedisGears_FreeRecord(record);
+    }
+
+    while(array_len(ep->errors) > 0){
+        Record* record = array_pop(ep->errors);
+        RedisGears_FreeRecord(record);
+    }
+
+    ep->executionDuration = 0;
+    ep->totalShardsRecieved = 0;
+    ep->totalShardsCompleted = 0;
+    ep->status = CREATED;
+    ep->sentRunRequest = false;
+    ep->isDone = false;
+
+    ExecutionStep_Reset(ep->steps[0]);
+}
+
 static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     assert(ep->mode == ExecutionModeSync);
 
     INIT_TIMER;
     GETTIME(&_ts);
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(rctx);
+
     bool isDone = ExecutionPlan_Execute(ep, rctx);
     GETTIME(&_te);
 
@@ -1264,6 +1416,18 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     assert(isDone);
     ep->executionDuration += DURATION;
 
+    ep->status = DONE;
+    FreePrivateData freeC = ep->freeCallback;
+    ep->isDone = true;
+    void* pd = ep->privateData;
+    if(ep->callback){
+        ep->callback(ep, ep->privateData);
+    }
+    if(freeC){
+        freeC(pd);
+    }
+
+    LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
 }
 
@@ -1711,9 +1875,8 @@ static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id){
     SetId(id, fep->id, fep->idStr, &lastFEPId);
 }
 
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, ExecutionMode mode, void* arg){
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
-    fep = FlatExecutionPlan_ShallowCopy(fep);
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ret->executionDuration = 0;
     ExecutionStep* last = NULL;
@@ -1732,7 +1895,6 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, E
         ret->steps[array_len(ret->steps) - 1]->prev = readerStep;
     }
     ret->steps = array_append(ret->steps, readerStep);
-    ret->fep = fep;
     ret->totalShardsRecieved = 0;
     ret->totalShardsCompleted = 0;
     ret->results = array_new(Record*, 100);
@@ -1744,18 +1906,6 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, E
     ret->freeCallback = NULL;
     ret->isDone = false;
     ret->mode = mode;
-    ExecutionPlan_SetID(ret, finalId);
-    pthread_mutex_lock(&epData.mutex);
-    if(GearsConfig_GetMaxExecutions() > 0){
-        while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
-            Gears_listNode* n0 = Gears_listFirst(epData.epList);
-            ExecutionPlan* ep0 = Gears_listNodeValue(n0);
-            ExecutionPlan_Free(ep0, false);
-        }
-    }
-    Gears_listAddNodeTail(epData.epList, ret);
-    Gears_dictAdd(epData.epDict, ret->id, ret);
-    pthread_mutex_unlock(&epData.mutex);
     return ret;
 }
 
@@ -1843,35 +1993,39 @@ void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep){
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
+static void ExecutionPlan_FreeRaw(ExecutionPlan* ep){
+    ExecutionStep_Free(ep->steps[0]);
+    array_free(ep->steps);
+    array_free(ep->results);
+    array_free(ep->errors);
+    RG_FREE(ep);
+}
+
 void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock){
-    FlatExecutionPlan_Free(ep->fep);
     if (needLock) pthread_mutex_lock(&epData.mutex);
     Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_TAIL);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(it))){
         ExecutionPlan* it_ep = Gears_listNodeValue(node);
-		if (!memcmp(it_ep->id, ep->id, EXECUTION_PLAN_ID_LEN)) {
-			Gears_listDelNode(epData.epList, node);
-			break;
-		}
+        if (!memcmp(it_ep->id, ep->id, EXECUTION_PLAN_ID_LEN)) {
+            Gears_listDelNode(epData.epList, node);
+            break;
+        }
     }
-    Gears_listReleaseIterator(it);  
+    Gears_listReleaseIterator(it);
     Gears_dictDelete(epData.epDict, ep->id);
     if (needLock) pthread_mutex_unlock(&epData.mutex);
 
-    ExecutionStep_Free(ep->steps[0]);
-    array_free(ep->steps);
+    ExecutionPlan_Reset(ep);
 
-    for(int i = 0 ; i < array_len(ep->results) ; ++i){
-        RedisGears_FreeRecord(ep->results[i]);
+    FlatExecutionPlan* fep = ep->fep;
+    if(fep->executionPullSize < EXECUTION_PULL_SIZE){
+        fep->executionPull[fep->executionPullSize++] = ep;
+    }else{
+        ExecutionPlan_FreeRaw(ep);
     }
-    array_free(ep->results);
 
-    for(int i = 0 ; i < array_len(ep->errors) ; ++i){
-        RedisGears_FreeRecord(ep->errors[i]);
-    }
-    array_free(ep->errors);
-    RG_FREE(ep);
+    FlatExecutionPlan_Free(fep);
 }
 
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
@@ -1889,6 +2043,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->PD = NULL;
     res->PDType = NULL;
     res->desc = NULL;
+    res->executionPullSize = 0;
 
     FlatExecutionPlan_SetID(res, NULL);
 
@@ -1904,6 +2059,10 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(__atomic_sub_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST) > 0){
         return;
+    }
+
+    for(size_t i = 0 ; i < fep->executionPullSize ; ++i){
+        ExecutionPlan_FreeRaw(fep->executionPull[i]);
     }
 
     if(fep->PD){

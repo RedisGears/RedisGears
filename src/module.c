@@ -231,7 +231,7 @@ static Record* RG_GetError(ExecutionPlan* ep, long long i){
 }
 
 static void RG_DropExecution(ExecutionPlan* ep){
-    if(Cluster_IsClusterMode()){
+    if(Cluster_IsClusterMode() && ep->mode != ExecutionModeSync){
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep, true);
@@ -417,6 +417,17 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
+void AddToList(ExecutionCtx* rctx, Record *data, void* arg){
+    const char* keyName = RedisGears_StringRecordGet(data, NULL);
+    if(strcmp(keyName, "AllKeysList") == 0){
+        return;
+    }
+    RedisModuleCtx* ctx = RedisGears_GetRedisModuleCtx(rctx);
+    LockHandler_Acquire(ctx);
+    RedisModule_Call(ctx, "lpush", "cc", "AllKeysList", keyName);
+    LockHandler_Release(ctx);
+}
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 	RedisModule_Log(ctx, "notice", "RedisGears version %d.%d.%d, git_sha=%s",
 			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
@@ -465,6 +476,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(StreamReader);
     RGM_RegisterFilter(Example_Filter, NULL);
     RGM_RegisterMap(GetValueMapper, NULL);
+    RGM_RegisterForEach(AddToList, NULL);
 
     ExecutionPlan_Initialize(1);
 
@@ -551,6 +563,10 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_Log(ctx, "warning", "could not register command rg.networktest");
         return REDISMODULE_ERR;
     }
+
+//    FlatExecutionPlan* fep = RGM_CreateCtx(KeysOnlyReader);
+//    RGM_ForEach(fep, AddToList, NULL);
+//    RGM_Register(fep, ExecutionModeSync, RG_STRDUP("*"));
 
     return REDISMODULE_OK;
 }
