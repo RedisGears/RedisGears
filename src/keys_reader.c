@@ -386,12 +386,13 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
 }
 
 static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
+#define PRIVATE_DATA(n) (NULL + (n))
     Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(iter))){
         KeysReadeRegisterData* rData = Gears_listNodeValue(node);
         char* keyStr = RG_STRDUP(RedisModule_StringPtrLen(key, NULL));
-        if(!RedisGears_Run(rData->fep, rData->mode, keyStr, KeysReader_ExecutionDone, (void*)(rData->mode == ExecutionModeSync ? NULL + 1 : NULL))){
+        if(!RedisGears_Run(rData->fep, rData->mode, keyStr, KeysReader_ExecutionDone, (void*)(rData->mode == ExecutionModeSync ? PRIVATE_DATA(1) : PRIVATE_DATA(0)))){
             RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         }
     }

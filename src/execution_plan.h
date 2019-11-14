@@ -208,7 +208,7 @@ typedef struct FlatExecutionReader{
     char* reader;
 }FlatExecutionReader;
 
-#define EXECUTION_PULL_SIZE 1
+#define EXECUTION_POOL_SIZE 1
 typedef struct FlatExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
     char idStr[EXECUTION_PLAN_STR_ID_LEN];
@@ -218,8 +218,8 @@ typedef struct FlatExecutionPlan{
     FlatExecutionStep* steps;
     void* PD;
     char* PDType;
-    ExecutionPlan* executionPull[EXECUTION_PULL_SIZE];
-    size_t executionPullSize;
+    ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
+    size_t executionPoolSize;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{

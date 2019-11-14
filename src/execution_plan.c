@@ -1233,8 +1233,8 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
 
 static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
     ExecutionPlan* ep;
-    if(fep->executionPullSize > 0){
-        ep = fep->executionPull[--fep->executionPullSize];
+    if(fep->executionPoolSize > 0){
+        ep = fep->executionPool[--fep->executionPoolSize];
         ExecutionStep* readerStep = array_pop(ep->steps);
         assert(readerStep->type == READER);
         // we need to reset the reader with the new arguments
@@ -2019,8 +2019,8 @@ void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock){
     ExecutionPlan_Reset(ep);
 
     FlatExecutionPlan* fep = ep->fep;
-    if(fep->executionPullSize < EXECUTION_PULL_SIZE){
-        fep->executionPull[fep->executionPullSize++] = ep;
+    if(fep->executionPoolSize < EXECUTION_POOL_SIZE){
+        fep->executionPool[fep->executionPoolSize++] = ep;
     }else{
         ExecutionPlan_FreeRaw(ep);
     }
@@ -2043,7 +2043,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->PD = NULL;
     res->PDType = NULL;
     res->desc = NULL;
-    res->executionPullSize = 0;
+    res->executionPoolSize = 0;
 
     FlatExecutionPlan_SetID(res, NULL);
 
@@ -2061,8 +2061,8 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         return;
     }
 
-    for(size_t i = 0 ; i < fep->executionPullSize ; ++i){
-        ExecutionPlan_FreeRaw(fep->executionPull[i]);
+    for(size_t i = 0 ; i < fep->executionPoolSize ; ++i){
+        ExecutionPlan_FreeRaw(fep->executionPool[i]);
     }
 
     if(fep->PD){
