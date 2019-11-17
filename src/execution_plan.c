@@ -1235,7 +1235,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     ExecutionPlan* ep;
     if(fep->executionPoolSize > 0){
         ep = fep->executionPool[--fep->executionPoolSize];
-        ExecutionStep* readerStep = array_pop(ep->steps);
+        ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
         assert(readerStep->type == READER);
         // we need to reset the reader with the new arguments
         if(readerStep->reader.r->reset){
@@ -1243,16 +1243,17 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
             readerStep->reader.r->reset(readerStep->reader.r->ctx, arg);
         }else{
             // reader do not support reset, lets free and recreate
+            ExecutionStep* readerStep = array_pop(ep->steps);
             readerStep->reader.r->free(readerStep->reader.r->ctx);
             RG_FREE(readerStep->reader.r);
             ReaderStep rs = ExecutionPlan_NewReader(fep->reader, arg);
             readerStep->reader = rs;
+            if(array_len(ep->steps) > 0){
+                ep->steps[array_len(ep->steps) - 1]->prev = readerStep;
+            }
+            ep->steps = array_append(ep->steps, readerStep);
         }
         readerStep->executionDuration = 0;
-        if(array_len(ep->steps) > 0){
-            ep->steps[array_len(ep->steps) - 1]->prev = readerStep;
-        }
-        ep->steps = array_append(ep->steps, readerStep);
 
         // set the mode
         ep->mode = mode;
@@ -2002,19 +2003,21 @@ static void ExecutionPlan_FreeRaw(ExecutionPlan* ep){
 }
 
 void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock){
-    if (needLock) pthread_mutex_lock(&epData.mutex);
-    Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_TAIL);
-    Gears_listNode* node = NULL;
-    while((node = Gears_listNext(it))){
-        ExecutionPlan* it_ep = Gears_listNodeValue(node);
-        if (!memcmp(it_ep->id, ep->id, EXECUTION_PLAN_ID_LEN)) {
-            Gears_listDelNode(epData.epList, node);
-            break;
+    if(ep->mode != ExecutionModeSync){
+        if (needLock) pthread_mutex_lock(&epData.mutex);
+        Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_TAIL);
+        Gears_listNode* node = NULL;
+        while((node = Gears_listNext(it))){
+            ExecutionPlan* it_ep = Gears_listNodeValue(node);
+            if (!memcmp(it_ep->id, ep->id, EXECUTION_PLAN_ID_LEN)) {
+                Gears_listDelNode(epData.epList, node);
+                break;
+            }
         }
+        Gears_listReleaseIterator(it);
+        Gears_dictDelete(epData.epDict, ep->id);
+        if (needLock) pthread_mutex_unlock(&epData.mutex);
     }
-    Gears_listReleaseIterator(it);
-    Gears_dictDelete(epData.epDict, ep->id);
-    if (needLock) pthread_mutex_unlock(&epData.mutex);
 
     ExecutionPlan_Reset(ep);
 
@@ -2173,7 +2176,7 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     while((curr = Gears_dictNext(iter))){
         FlatExecutionPlan* fep = Gears_dictGetVal(curr);
-        RedisModule_ReplyWithArray(ctx, 6);
+        RedisModule_ReplyWithArray(ctx, 8);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
         RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
@@ -2183,6 +2186,15 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
             RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
         }else{
             RedisModule_ReplyWithNull(ctx);
+        }
+        RedisModule_ReplyWithStringBuffer(ctx, "RegistrationData", strlen("RegistrationData"));
+
+        RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+
+        if(!callbacks->dumpRegistratioData){
+            RedisModule_ReplyWithNull(ctx);
+        } else {
+            callbacks->dumpRegistratioData(ctx, fep);
         }
         ++numElements;
     }
