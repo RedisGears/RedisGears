@@ -243,11 +243,15 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     memcpy(keyCStr, keyStr, keyLen);
     keyCStr[keyLen] = '\0';
 
-    record = RedisGears_KeyRecordCreate();
+    if(!readerCtx->readValue){
+        record = RedisGears_StringRecordCreate(keyCStr, keyLen);
+    }else{
+        record = RedisGears_KeyRecordCreate();
 
-    RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
+        RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
 
-    ValueToRecordMapper(rctx, record, keyHandler);
+        ValueToRecordMapper(rctx, record, keyHandler);
+    }
 
     RedisModule_CloseKey(keyHandler);
 
