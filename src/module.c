@@ -519,6 +519,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
+    if (RedisModule_CreateCommand(ctx, RG_INNER_REGISTER_COMMAND, ExecutionPlan_InnerRegister, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_MSG_COMMAND);
+        return REDISMODULE_ERR;
+    }
+
     if (RedisModule_CreateCommand(ctx, "rg.dumpexecutions", ExecutionPlan_ExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.dumpexecutions");
 		return REDISMODULE_ERR;

@@ -354,6 +354,12 @@ static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWrit
 
     // serialize FEP id
     RedisGears_BWWriteBuffer(bw, fep->id, EXECUTION_PLAN_ID_LEN);
+    if(fep->desc){
+        RedisGears_BWWriteLong(bw, 1); // has desc
+        RedisGears_BWWriteString(bw, fep->desc);
+    }else{
+        RedisGears_BWWriteLong(bw, 0); // no desc
+    }
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferReader* br){
@@ -396,6 +402,10 @@ static FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
     assert(len == EXECUTION_PLAN_ID_LEN);
     FlatExecutionPlan_SetID(ret, idBuff);
 
+    long long hasDesc = RedisGears_BRReadLong(br);
+    if(hasDesc){
+        ret->desc = RG_STRDUP(RedisGears_BRReadString(br));
+    }
     return ret;
 }
 
@@ -1196,9 +1206,6 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 }
 
 static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
-    RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
-    LockHandler_Acquire(ctx);
-
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks);
     assert(callbacks->registerTrigger);
@@ -1207,9 +1214,6 @@ static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, Execution
     // the registeredFepDict holds a weak pointer to the fep struct. If does not increase
     // the refcount and will be remove when the fep will be unregistered
     Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
-
-    LockHandler_Release(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
 }
 
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1229,6 +1233,10 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     }
 
     FlatExecutionPlan_RegisterInternal(fep, mode, key);
+
+    // replicate to oaf and slaves
+    RedisModule_SelectDb(ctx, 0);
+    RedisModule_Replicate(ctx, "RG.INTERNALREGISTER", "b", payload, len);
 }
 
 static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
@@ -1470,14 +1478,12 @@ static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatE
 }
 
 static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-    LockHandler_Acquire(ctx);
     FlatExecutionPlan* fep = FlatExecutionPlan_FindId(payload);
     if(!fep){
         printf("warning: execution not found %s !!!\r\n", payload);
         return;
     }
     ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
-    LockHandler_Release(ctx);
 }
 
 static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1746,17 +1752,25 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, char*
     if(!callbacks->registerTrigger){
         return 0;
     }
-    if(Cluster_IsClusterMode()){
-        Gears_Buffer* buff = Gears_BufferCreate();
-        Gears_BufferWriter bw;
-        Gears_BufferWriterInit(&bw, buff);
-        FlatExecutionPlan_Serialize(fep, &bw);
-        RedisGears_BWWriteString(&bw, key);
-        RedisGears_BWWriteLong(&bw, mode);
-        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
-        Gears_BufferFree(buff);
-    }
+
     FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), mode, key);
+
+    Gears_Buffer* buff = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, buff);
+    FlatExecutionPlan_Serialize(fep, &bw);
+    RedisGears_BWWriteString(&bw, key);
+    RedisGears_BWWriteLong(&bw, mode);
+    if(Cluster_IsClusterMode()){
+        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
+    }
+
+    // replicating to slave and aof
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_SelectDb(ctx, 0);
+    RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", buff->buff, buff->size);
+    RedisModule_FreeThreadSafeContext(ctx);
+    Gears_BufferFree(buff);
     return 1;
 }
 
@@ -2232,6 +2246,16 @@ int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **a
 
     RedisModule_ReplyWithSimpleString(ctx, "OK");
 
+    return REDISMODULE_OK;
+}
+
+int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+    size_t len;
+    const char* val = RedisModule_StringPtrLen(argv[1], &len);
+    FlatExecutionPlan_RegisterKeySpaceEvent(ctx, NULL, 0, val, len);
     return REDISMODULE_OK;
 }
 

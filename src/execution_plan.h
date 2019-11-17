@@ -38,6 +38,8 @@ enum StepType{
 #undef X
 };
 
+#define RG_INNER_REGISTER_COMMAND "RG.INNERREGISTER"
+
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct ExecutionPlan ExecutionPlan;
 
@@ -267,6 +269,7 @@ void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);

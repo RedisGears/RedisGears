@@ -742,7 +742,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         argements = array_append(argements, argumentRedisStr);
     }
 
-    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "v", argements, array_len(argements));
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", argements, array_len(argements));
 
     PyObject* res = replyToPyList(reply);
 

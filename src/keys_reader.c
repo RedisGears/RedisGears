@@ -359,7 +359,7 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         ++rData->numSuccess;
     }
 
-    // we drop the execution only if we was asked to
+    // we drop only sync executions
     if(rData->mode == ExecutionModeSync){
         RedisGears_DropExecution(ctx);
     }
@@ -367,17 +367,36 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     KeysReaderRegisterData_Free(rData);
 }
 
+static int KeysReader_IsKeyMatch(const char* prefix, const char* key){
+    size_t len = strlen(prefix);
+    const char* data = prefix;
+    int isPrefix = prefix[len - 1] == '*';
+    if(isPrefix){
+        --len;
+    }
+    if(isPrefix){
+        return strncmp(data, key, len) == 0;
+    }else{
+        return strcmp(data, key) == 0;
+    }
+}
+
 static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
-#define PRIVATE_DATA(n) (NULL + (n))
+    if(!(RedisModule_GetContextFlags(ctx) & REDISMODULE_CTX_FLAGS_MASTER)){
+        // we are not executing registrations on slave
+        return REDISMODULE_OK;
+    }
     Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
+    const char* keyCStr = RedisModule_StringPtrLen(key, NULL);
     while((node = Gears_listNext(iter))){
         KeysReaderRegisterData* rData = Gears_listNodeValue(node);
-        char* keyStr = RG_STRDUP(RedisModule_StringPtrLen(key, NULL));
-        ++rData->numTriggered;
-        if(!RedisGears_Run(rData->fep, rData->mode, keyStr, KeysReader_ExecutionDone, KeysReaderRegisterData_GetShallowCopy(rData))){
-            ++rData->numAborted;
-            RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
+        if(KeysReader_IsKeyMatch(rData->args, keyCStr)){
+            ++rData->numTriggered;
+            if(!RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), KeysReader_ExecutionDone, KeysReaderRegisterData_GetShallowCopy(rData))){
+                ++rData->numAborted;
+                RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
+            }
         }
     }
     Gears_listReleaseIterator(iter);
