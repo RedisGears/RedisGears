@@ -43,7 +43,9 @@ class RedisGearsSetup(paella.Setup):
         self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
 
-        self.install("zlib-devel bzip2-devel lzma-devel ncurses-devel compat-gdbm-devel sqlite-devel openssl-devel readline-devel libffi-devel")
+        # self.install("zlib-devel bzip2-devel lzma-devel ncurses-devel gdbm-devel compat-gdbm-devel sqlite-devel openssl-devel readline-devel libffi-devel")
+        self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
+            "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
         self.install("tcl-devel tix-devel tk-devel")
         
         self.install("redhat-lsb-core")
