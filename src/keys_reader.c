@@ -20,7 +20,7 @@
 typedef struct KeysReaderRegisterData{
     long long refCount;
     FlatExecutionPlan* fep;
-    void* args;
+    char* args;
     ExecutionMode mode;
     char* lastError;
     unsigned long long numTriggered;
@@ -53,6 +53,7 @@ static void KeysReaderRegisterData_Free(KeysReaderRegisterData* rData){
             RG_FREE(rData->lastError);
         }
         RG_FREE(rData->args);
+        FlatExecutionPlan_Free(rData->fep);
         RG_FREE(rData);
     }
 }
@@ -418,6 +419,7 @@ static KeysReaderRegisterData* KeysReader_FindRegistrationData(FlatExecutionPlan
             return rData;
         }
     }
+    Gears_listReleaseIterator(iter);
     return NULL;
 }
 
@@ -453,19 +455,23 @@ static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPl
     }
 }
 
-static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args){
-    RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
+static void KeysReader_RegisterKeySpaceEvent(){
     if(!keysReaderRegistration){
+	RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
         keysReaderRegistration = Gears_listCreate();
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_ALL, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
+	RedisModule_FreeThreadSafeContext(ctx);
     }
+}
+
+static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args){
+    KeysReader_RegisterKeySpaceEvent();
 
     KeysReaderRegisterData* rData = KeysReaderRegisterData_Create(fep, args, mode);
 
     Gears_listAddNodeTail(keysReaderRegistration, rData);
-    RedisModule_FreeThreadSafeContext(ctx);
     return 1;
 }
 
@@ -500,11 +506,101 @@ static Reader* KeysOnlyReader_Create(void* arg){
     return r;
 }
 
+static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(FlatExecutionPlan*)){
+    if(!keysReaderRegistration){
+        RedisModule_SaveUnsigned(rdb, 0); // done
+        return;
+    }
+    Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        KeysReaderRegisterData* rData = Gears_listNodeValue(node);
+        if(!shouldClear(rData->fep)){
+            continue;
+        }
+        RedisModule_SaveUnsigned(rdb, 1); // has more
+        Gears_Buffer* buff = Gears_BufferCreate();
+        Gears_BufferWriter bw;
+        Gears_BufferWriterInit(&bw, buff);
+        FlatExecutionPlan_Serialize(rData->fep, &bw);
+        RedisModule_SaveStringBuffer(rdb, buff->buff, buff->size);
+        RedisModule_SaveStringBuffer(rdb, rData->args, strlen(rData->args) + 1 /* for \0 */);
+        RedisModule_SaveUnsigned(rdb, rData->mode);
+
+    }
+    RedisModule_SaveUnsigned(rdb, 0); // done
+    Gears_listReleaseIterator(iter);
+}
+
+static bool KeysOnlyReader_ShouldContinue(FlatExecutionPlan* fep){
+    return strcmp(fep->reader->reader, "KeysOnlyReader") == 0;
+}
+
+static bool KeysReader_ShouldContinue(FlatExecutionPlan* fep){
+    return strcmp(fep->reader->reader, "KeysReader") == 0;
+}
+
+static void KeysReader_RdbSave(RedisModuleIO *rdb){
+    GenericKeysReader_RdbSave(rdb, KeysReader_ShouldContinue);
+}
+
+static void KeysOnlyReader_RdbSave(RedisModuleIO *rdb){
+    GenericKeysReader_RdbSave(rdb, KeysOnlyReader_ShouldContinue);
+}
+
+static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
+    while(RedisModule_LoadUnsigned(rdb)){
+        size_t len;
+        char* data = RedisModule_LoadStringBuffer(rdb, &len);
+        Gears_Buffer buff = {
+                .buff = data,
+                .size = len,
+                .cap = len,
+        };
+        Gears_BufferReader reader;
+        Gears_BufferReaderInit(&reader, &buff);
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader);
+        RedisModule_Free(data);
+        char* args = RedisModule_LoadStringBuffer(rdb, NULL);
+        int mode = RedisModule_LoadUnsigned(rdb);
+        KeysReader_RegisrterTrigger(fep, mode, args);
+        FlatExecutionPlan_AddToRegisterDict(fep);
+    }
+}
+
+static void GenricKeysReader_Clear(bool (*shouldClear)(FlatExecutionPlan*)){
+    if(!keysReaderRegistration){
+        return;
+    }
+    Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        KeysReaderRegisterData* rData = Gears_listNodeValue(node);
+        if(!shouldClear(rData->fep)){
+            continue;
+        }
+        FlatExecutionPlan_RemoveFromRegisterDict(rData->fep);
+        KeysReaderRegisterData_Free(rData);
+    }
+    Gears_listReleaseIterator(iter);
+}
+
+static void KeysReader_Clear(){
+    GenricKeysReader_Clear(KeysReader_ShouldContinue);
+}
+
+static void KeysOnlyReader_Clear(){
+    GenricKeysReader_Clear(KeysOnlyReader_ShouldContinue);
+}
+
 RedisGears_ReaderCallbacks KeysReader = {
         .create = KeysReader_Create,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
+        .rdbSave = KeysReader_RdbSave,
+        .rdbLoad = KeysReader_RdbLoad,
+        .clear = KeysReader_Clear,
 };
 
 RedisGears_ReaderCallbacks KeysOnlyReader = {
@@ -512,4 +608,7 @@ RedisGears_ReaderCallbacks KeysOnlyReader = {
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
+        .rdbSave = KeysOnlyReader_RdbSave,
+        .rdbLoad = KeysReader_RdbLoad,
+        .clear = KeysOnlyReader_Clear,
 };

@@ -237,6 +237,10 @@ typedef struct ExecutionCtx{
     }
 
 FlatExecutionPlan* FlatExecutionPlan_New();
+void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep);
+void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep);
+void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw);
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br);
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
@@ -264,7 +268,6 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
 void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
-
 
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

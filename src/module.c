@@ -302,6 +302,74 @@ static void* RG_GetFlatExecutionPrivateData(ExecutionCtx* ectx){
     return NULL;
 }
 
+static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
+    if(when == REDISMODULE_AUX_BEFORE_RDB){
+        return;
+    }
+    Gears_dictIterator* iter = Gears_dictGetIterator(Readerdict);
+    Gears_dictEntry *curr = NULL;
+    while((curr = Gears_dictNext(iter))){
+        const char* readerName = Gears_dictGetKey(curr);
+        MgmtDataHolder* holder = Gears_dictGetVal(curr);
+        RedisGears_ReaderCallbacks* callbacks = holder->callback;
+        if(!callbacks->rdbSave){
+            continue;
+        }
+        RedisModule_SaveStringBuffer(rdb, readerName, strlen(readerName) + 1 /* for \0 */);
+        callbacks->rdbSave(rdb);
+    }
+    RedisModule_SaveStringBuffer(rdb, "", 1); // empty str mean the end!
+}
+
+static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when){
+    if(encver > REDISGEARS_DATATYPE_VERSION){
+        RedisModule_LogIOError(rdb, "warning", "could not load rdb created with higher RedisGears version!");
+        return REDISMODULE_ERR; // could not load rdb created with higher Gears version!
+    }
+    if(when == REDISMODULE_AUX_BEFORE_RDB){
+        Gears_dictIterator* iter = Gears_dictGetIterator(Readerdict);
+        Gears_dictEntry *curr = NULL;
+        while((curr = Gears_dictNext(iter))){
+            MgmtDataHolder* holder = Gears_dictGetVal(curr);
+            RedisGears_ReaderCallbacks* callbacks = holder->callback;
+            if(!callbacks->clear){
+                continue;
+            }
+            callbacks->clear();
+        }
+    } else {
+        // when loading keys phase finished, we load the registrations.
+        for(char* readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
+                strlen(readerName) > 0 ;
+                readerName = RedisModule_LoadStringBuffer(rdb, NULL)){
+            RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(readerName);
+            assert(callbacks->rdbLoad);
+            callbacks->rdbLoad(rdb, encver);
+            RedisModule_Free(readerName);
+        }
+    }
+    return REDISMODULE_OK;
+}
+
+RedisModuleType *GearsType = NULL;
+
+static int RedisGears_CreateGearsDataType(RedisModuleCtx* ctx){
+    RedisModuleTypeMethods methods = {
+            .version = REDISMODULE_TYPE_METHOD_VERSION,
+            .rdb_load = NULL,
+            .rdb_save = NULL,
+            .aof_rewrite = NULL,
+            .mem_usage = NULL,
+            .digest = NULL,
+            .free = NULL,
+            .aux_load = RedisGears_LoadRegistrations,
+            .aux_save = RedisGears_SaveRegistrations,
+            .aux_save_triggers = REDISMODULE_AUX_BEFORE_RDB|REDISMODULE_AUX_AFTER_RDB,
+        };
+
+    GearsType = RedisModule_CreateDataType(ctx, REDISGEARS_DATATYPE_NAME, REDISGEARS_DATATYPE_VERSION, &methods);
+    return GearsType ? REDISMODULE_OK : REDISMODULE_ERR;
+}
 
 static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     if(!RedisModule_ExportSharedAPI){
@@ -488,6 +556,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     Cluster_RegisterMsgReceiverM(RG_OnDropExecutionMsgReceived);
     Cluster_RegisterMsgReceiverM(RG_NetworkTest);
+
+    if(RedisGears_CreateGearsDataType(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "failed create RedisGear DataType");
+        return REDISMODULE_ERR;
+    }
 
     if (RedisModule_CreateCommand(ctx, "rg.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.example");

@@ -3,16 +3,12 @@
 #include "redisgears_memory.h"
 
 #define GENERATE(apiName)\
-    typedef struct apiName ## Holder{\
-        ArgType* type;\
-        void* callback;\
-    }apiName ## Holder;\
     Gears_dict* apiName ## dict = NULL;\
     void apiName ## sMgmt_Init(){\
         apiName ## dict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);\
     }\
     bool apiName ## sMgmt_Add(const char* name, RedisGears_ ## apiName ## Callback callback, ArgType* type){\
-        apiName ## Holder* holder = RG_ALLOC(sizeof(*holder));\
+        MgmtDataHolder* holder = RG_ALLOC(sizeof(*holder));\
         holder->type = type;\
         holder->callback = callback;\
         return Gears_dictAdd(apiName ## dict, (void*)name, holder);\
@@ -22,7 +18,7 @@
         if(!entry){\
             return NULL;\
         }\
-        apiName ## Holder* holder = Gears_dictGetVal(entry);\
+        MgmtDataHolder* holder = Gears_dictGetVal(entry);\
         return holder->callback;\
     }\
     ArgType* apiName ## sMgmt_GetArgType(const char* name){\
@@ -30,7 +26,7 @@
         if(!entry){\
             return NULL;\
         }\
-        apiName ## Holder* holder = Gears_dictGetVal(entry);\
+        MgmtDataHolder* holder = Gears_dictGetVal(entry);\
         return holder->type;\
     }
 

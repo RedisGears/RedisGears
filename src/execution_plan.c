@@ -334,7 +334,7 @@ static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_Buffe
     }
 }
 
-static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw){
+void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw){
     FlatExecutionPlan_SerializeReader(fep->reader, bw);
     RedisGears_BWWriteLong(bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
@@ -380,7 +380,7 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(Gears_BufferReader* b
     return step;
 }
 
-static FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
     ret->reader = FlatExecutionPlan_DeserializeReader(br);
     long numberOfSteps = RedisGears_BRReadLong(br);
@@ -1205,15 +1205,24 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
+void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
+    Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
+}
+
+void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
+    int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
+    assert(res == DICT_OK);
+}
+
 static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks);
     assert(callbacks->registerTrigger);
     callbacks->registerTrigger(fep, mode, arg);
 
-    // the registeredFepDict holds a weak pointer to the fep struct. If does not increase
+    // the registeredFepDict holds a weak pointer to the fep struct. It does not increase
     // the refcount and will be remove when the fep will be unregistered
-    Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
+    FlatExecutionPlan_AddToRegisterDict(fep);
 }
 
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1469,12 +1478,8 @@ static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatE
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks->unregisterTrigger);
 
+    FlatExecutionPlan_RemoveFromRegisterDict(fep);
     callbacks->unregisterTrigger(fep);
-
-    int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
-    assert(res == DICT_OK);
-
-    FlatExecutionPlan_Free(fep);
 }
 
 static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
