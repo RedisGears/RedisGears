@@ -53,10 +53,10 @@ class RedisGearsSetup(paella.Setup):
         self.install("libatomic file")
         
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
-        self.run("rpm -ivh /tmp/epel-release-latest-7.noarch.rpm ")
+        self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
 
         # pip cannot build gevent on ARM
-        self.install("python-gevent python2-ujson")
+        self.install("python-gevent python-ujson")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil")
