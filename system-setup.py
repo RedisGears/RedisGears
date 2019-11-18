@@ -15,33 +15,45 @@ class RedisGearsSetup(paella.Setup):
         paella.Setup.__init__(self, nop)
 
     def common_first(self):
+        self.install_downloaders()
+        
         self.setup_pip()
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
-        
+
         self.install("git")
 
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool")
-        self.install("zlib1g-dev libssl-dev libreadline-dev")
+        self.install("libbz2-dev liblzma-dev lzma-dev libncurses5-dev libsqlite3-dev uuid-dev zlib1g-dev libssl-dev libreadline-dev libffi-dev")
+        if sh("apt-cache search libgdbm-compat-dev") != "":
+            self.install("libgdbm-compat-dev")
+        self.install("libgdbm-dev")
+        self.install("tcl-dev tix-dev tk-dev")
+        
         self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
 
         # pip cannot build gevent on ARM
         self.install("python-psutil python-gevent")
-        self.install("libffi-dev")
         self.pip_install("pipenv")
 
     def redhat_compat(self):
         self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
-        self.install("zlib-devel openssl-devel readline-devel")
+
+        self.install("zlib-devel bzip2-devel lzma-devel ncurses-devel compat-gdbm-devel sqlite-devel openssl-devel readline-devel libffi-devel")
+        self.install("tcl-devel tix-devel tk-devel")
+        
         self.install("redhat-lsb-core")
         self.install("vim-common") # for xxd
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
-        self.install("libffi-devel") # required for python 3.7
+        self.install("libatomic file")
+        
+        self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
+        self.run("rpm -ivh /tmp/epel-release-latest-7.noarch.rpm ")
 
         # pip cannot build gevent on ARM
         self.install("python-gevent python2-ujson")
@@ -49,15 +61,22 @@ class RedisGearsSetup(paella.Setup):
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil")
         self.install("python2-psutil")
-        
+
         self.pip_install("pipenv")
 
     def fedora(self):
         self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
-        self.install("zlib-devel openssl-devel readline-devel")
+        self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libnsl2-devel libuuid-devel ncurses-devel "
+            "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
+        self.install("tcl-devel tix-devel tk-devel")
+
         self.install("vim-common") # for xxd
-        self.install("libffi-devel")
+        self.install("which libatomic file")
+
+        # uninstall and install psutil (order is important), otherwise RLTest fails
+        self.run("pip uninstall -y psutil")
+        self.install("python2-psutil")
 
         self.install("python2-ujson")
         self.pip_install("pipenv gevent")
@@ -70,7 +89,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("zlib openssl readline")
         self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
-        
+
         self.pip_install("pipenv gevent")
 
     def common_last(self):
