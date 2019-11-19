@@ -6,6 +6,7 @@
 #include "lock_handler.h"
 #include "utils/dict.h"
 #include "execution_plan.h"
+#include "record.h"
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 Gears_list* streamsRegistration = NULL;
@@ -33,6 +34,11 @@ typedef struct StreamReaderTriggerCtx{
     Gears_dict* lastIdsAndEvents;
     FlatExecutionPlan* fep;
     ExecutionMode mode;
+    long long numTriggered;
+    long long numAborted;
+    long long numSuccess;
+    long long numFailures;
+    char* lastError;
 }StreamReaderTriggerCtx;
 
 StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize){
@@ -78,6 +84,11 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .lastIdsAndEvents = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .fep = fep,
         .mode = mode,
+        .numTriggered = 0,
+        .numAborted = 0,
+        .numSuccess = 0,
+        .numFailures = 0,
+        .lastError = NULL,
     };
     return srctx;
 }
@@ -213,9 +224,24 @@ static int StreamReader_IsKeyMatch(const char* prefix, const char* key){
 
 static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderTriggerCtx* srctx = privateData;
+    long long errorsLen = RedisGears_GetErrorsLen(ctx);
+
+    if(errorsLen > 0){
+        ++srctx->numFailures;
+        Record* r = RedisGears_GetError(ctx, 0);
+        assert(RedisGears_RecordGetType(r) == ERROR_RECORD);
+        if(srctx->lastError){
+            RG_FREE(srctx->lastError);
+        }
+        srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
+    } else {
+        ++srctx->numSuccess;
+    }
+
     if(srctx->mode == ExecutionModeSync){
         RedisGears_DropExecution(ctx);
     }
+
     StreamReaderTriggerCtx_Free(srctx);
 }
 
@@ -245,7 +271,9 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
                         callback = StreamReader_ExecutionDone;
                         privateData = StreamReaderTriggerCtx_GetShallowCopy(srctx);
                     }
+                    ++srctx->numTriggered;
                     if(!RedisGears_Run(srctx->fep, srctx->mode, readerCtx, callback, privateData)){
+                        ++srctx->numAborted;
                         RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
                     }
                 }
@@ -257,19 +285,28 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     return REDISMODULE_OK;
 }
 
-static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
+#define STREAM_TRIGGER_FLAG_POP 0x01
+static StreamReaderTriggerCtx* StreamReader_GetStreamTriggerCtxByFep(FlatExecutionPlan* fep, int flags){
     Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(iter))){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
         if(srctx->fep == fep){
             Gears_listReleaseIterator(iter);
-            StreamReaderTriggerCtx_Free(srctx);
-            Gears_listDelNode(streamsRegistration, node);
-            return;
+            if(flags & STREAM_TRIGGER_FLAG_POP){
+                Gears_listDelNode(streamsRegistration, node);
+            }
+            return srctx;
         }
     }
-    assert(0);
+    Gears_listReleaseIterator(iter);
+    return NULL;
+}
+
+static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
+    StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, STREAM_TRIGGER_FLAG_POP);
+    assert(srctx);
+    StreamReaderTriggerCtx_Free(srctx);
 }
 
 static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
@@ -314,10 +351,96 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
     return StreamReaderTriggerArgs_Create(stream, batchSize);
 }
 
+static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
+    StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
+    assert(srctx);
+    RedisModule_ReplyWithArray(ctx, 12);
+    RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
+    if(srctx->mode == ExecutionModeSync){
+        RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
+    } else {
+        RedisModule_ReplyWithStringBuffer(ctx, "async", strlen("async"));
+    }
+    RedisModule_ReplyWithStringBuffer(ctx, "numTriggered", strlen("numTriggered"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->numTriggered);
+    RedisModule_ReplyWithStringBuffer(ctx, "numSuccess", strlen("numSuccess"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->numSuccess);
+    RedisModule_ReplyWithStringBuffer(ctx, "numFailures", strlen("numFailures"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->numFailures);
+    RedisModule_ReplyWithStringBuffer(ctx, "numAborted", strlen("numAborted"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->numAborted);
+    RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
+    if(srctx->lastError){
+        RedisModule_ReplyWithStringBuffer(ctx, srctx->lastError, strlen(srctx->lastError));
+    }else{
+        RedisModule_ReplyWithNull(ctx);
+    }
+}
+
+static void StreamReader_RdbSave(RedisModuleIO *rdb){
+    if(!streamsRegistration){
+        RedisModule_SaveUnsigned(rdb, 0); // done
+        return;
+    }
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
+        RedisModule_SaveUnsigned(rdb, 1); // has more
+        Gears_Buffer* buff = Gears_BufferCreate();
+        Gears_BufferWriter bw;
+        Gears_BufferWriterInit(&bw, buff);
+        FlatExecutionPlan_Serialize(srctx->fep, &bw);
+        StreamReader_SerializeArgs(srctx->args, &bw);
+        RedisModule_SaveStringBuffer(rdb, buff->buff, buff->size);
+        RedisModule_SaveUnsigned(rdb, srctx->mode);
+    }
+    RedisModule_SaveUnsigned(rdb, 0); // done
+    Gears_listReleaseIterator(iter);
+}
+
+static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
+    while(RedisModule_LoadUnsigned(rdb)){
+        size_t len;
+        char* data = RedisModule_LoadStringBuffer(rdb, &len);
+        Gears_Buffer buff = {
+                .buff = data,
+                .size = len,
+                .cap = len,
+        };
+        Gears_BufferReader reader;
+        Gears_BufferReaderInit(&reader, &buff);
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader);
+        void* args = StreamReader_DeserializeArgs(&reader);
+        RedisModule_Free(data);
+        int mode = RedisModule_LoadUnsigned(rdb);
+        StreamReader_RegisrterTrigger(fep, mode, args);
+        FlatExecutionPlan_AddToRegisterDict(fep);
+    }
+}
+
+static void StreamReader_Clear(){
+    if(!streamsRegistration){
+        return;
+    }
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        StreamReaderTriggerCtx* srtctx = Gears_listNodeValue(node);
+        FlatExecutionPlan_RemoveFromRegisterDict(srtctx->fep);
+        StreamReaderTriggerCtx_Free(srtctx);
+    }
+    Gears_listReleaseIterator(iter);
+}
+
 RedisGears_ReaderCallbacks StreamReader = {
         .create = StreamReader_Create,
         .registerTrigger = StreamReader_RegisrterTrigger,
         .unregisterTrigger = StreamReader_UnregisrterTrigger,
         .serializeTriggerArgs = StreamReader_SerializeArgs,
         .deserializeTriggerArgs = StreamReader_DeserializeArgs,
+        .dumpRegistratioData = StreamReader_DumpRegistrationData,
+        .rdbSave = StreamReader_RdbSave,
+        .rdbLoad = StreamReader_RdbLoad,
+        .clear = StreamReader_Clear,
 };

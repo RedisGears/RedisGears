@@ -522,29 +522,44 @@ static PyObject* run(PyObject *self, PyObject *args){
     return Py_None;
 }
 
-static PyObject* registerExecution(PyObject *self, PyObject *args){
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    PyFlatExecution* pfep = (PyFlatExecution*)self;
-    PyObject* regex = NULL;
-    if(PyTuple_Size(args) > 0){
-        regex = PyTuple_GetItem(args, 0);
-    }
-    PyObject* pymode = NULL;
-    if(PyTuple_Size(args) > 1){
-        pymode = PyTuple_GetItem(args, 1);
-    }
+static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
     char* defaultRegexStr = "*";
     const char* regexStr = defaultRegexStr;
-    ExecutionMode mode = ExecutionModeAsync;
+    PyObject* regex = PyDict_GetItemString(kargs, "regex");
     if(regex){
         if(PyUnicode_Check(regex)){
             regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
         }else{
-            PyErr_SetString(GearsError, "register argument must be a string");
+            PyErr_SetString(GearsError, "regex argument must be a string");
             return NULL;
         }
     }
 
+    const char* reader = RedisGears_GetReader(fep);
+    if (strcmp(reader, "KeysReader") == 0 ||
+            strcmp(reader, "KeysOnlyReader") == 0) {
+        return RG_STRDUP(regexStr);
+    }
+
+    size_t batch = 1;
+    PyObject* pyBatch = PyDict_GetItemString(kargs, "batch");
+    if(pyBatch){
+        if(PyNumber_Check(pyBatch)){
+            batch = PyNumber_AsSsize_t(pyBatch, NULL);
+        }else{
+            PyErr_SetString(GearsError, "batch argument must be a number");
+            return NULL;
+        }
+    }
+
+    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch);
+}
+
+static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kargs){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyFlatExecution* pfep = (PyFlatExecution*)self;
+    PyObject* pymode = PyDict_GetItemString(kargs, "mode");
+    ExecutionMode mode = ExecutionModeAsync;
     if(pymode){
         if(PyUnicode_Check(pymode)){
             const char* modeStr = PyUnicode_AsUTF8AndSize(pymode, NULL);
@@ -562,9 +577,14 @@ static PyObject* registerExecution(PyObject *self, PyObject *args){
         }
     }
 
+    void* executionArgs = registerCreateArgs(pfep->fep, kargs);
+    if(executionArgs == NULL){
+        return NULL;
+    }
+
     RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
                                            RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
-    int status = RGM_Register(pfep->fep, mode, RG_STRDUP(regexStr));
+    int status = RGM_Register(pfep->fep, mode, executionArgs);
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
         Py_INCREF(Py_None);
@@ -593,7 +613,7 @@ PyMethodDef PyFlatExecutionMethods[] = {
     {"limit", limit, METH_VARARGS, "limit the results to a give size and offset"},
     {"accumulate", accumulate, METH_VARARGS, "accumulate the records to a single record"},
     {"run", run, METH_VARARGS, "start the execution"},
-    {"register", (PyCFunction)registerExecution, METH_VARARGS, "register the execution on an event"},
+    {"register", (PyCFunction)registerExecution, METH_VARARGS|METH_KEYWORDS, "register the execution on an event"},
     {NULL, NULL, 0, NULL}
 };
 

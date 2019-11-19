@@ -472,12 +472,12 @@ static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPl
 
 static void KeysReader_RegisterKeySpaceEvent(){
     if(!keysReaderRegistration){
-	RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
+        RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
         keysReaderRegistration = Gears_listCreate();
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_ALL, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             // todo : print warning
         }
-	RedisModule_FreeThreadSafeContext(ctx);
+        RedisModule_FreeThreadSafeContext(ctx);
     }
 }
 
