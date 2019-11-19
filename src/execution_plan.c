@@ -1214,9 +1214,7 @@ void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
     assert(res == DICT_OK);
 }
 
-static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
-    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-    assert(callbacks);
+static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg){
     assert(callbacks->registerTrigger);
     callbacks->registerTrigger(fep, mode, arg);
 
@@ -1234,14 +1232,19 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
     FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
-    char* key = RG_STRDUP(RedisGears_BRReadString(&br));
+
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+    assert(callbacks);
+    assert(callbacks->deserializeTriggerArgs);
+
+    void* args = callbacks->deserializeTriggerArgs(&br);
     ExecutionMode mode = RedisGears_BRReadLong(&br);
     if(!fep){
         // todo: big big warning
         return;
     }
 
-    FlatExecutionPlan_RegisterInternal(fep, mode, key);
+    FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args);
 
     // replicate to oaf and slaves
     RedisModule_SelectDb(ctx, 0);
@@ -1415,6 +1418,10 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
     ep->status = CREATED;
     ep->sentRunRequest = false;
     ep->isDone = false;
+
+    ep->callback = NULL;
+    ep->privateData = NULL;
+    ep->freeCallback = NULL;
 
     ExecutionStep_Reset(ep->steps[0]);
 }
@@ -1751,20 +1758,22 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
     return fep->reader->reader;
 }
 
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, char* key){
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* args){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks); // todo: handle as error in future
     if(!callbacks->registerTrigger){
         return 0;
     }
 
-    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), mode, key);
+    assert(callbacks->serializeTriggerArgs);
+
+    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), callbacks, mode, args);
 
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     FlatExecutionPlan_Serialize(fep, &bw);
-    RedisGears_BWWriteString(&bw, key);
+    callbacks->serializeTriggerArgs(args, &bw);
     RedisGears_BWWriteLong(&bw, mode);
     if(Cluster_IsClusterMode()){
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);

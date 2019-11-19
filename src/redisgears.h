@@ -20,6 +20,7 @@ typedef struct ExecutionCtx ExecutionCtx;
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
 typedef struct StreamReaderCtx StreamReaderCtx;
+typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
 
 
 #define KEY_HANDLER_RECORD_TYPE 1
@@ -102,6 +103,8 @@ typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* pri
 typedef Reader* (*RedisGears_CreateReaderCallback)(void* arg);
 typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg);
 typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep);
+typedef void (*RedisGears_ReaderSerializeRegisterArgsCallback)(void* arg, Gears_BufferWriter* bw);
+typedef void* (*RedisGears_ReaderDeserializeRegisterArgsCallback)(Gears_BufferReader* br);
 typedef void (*RedisGears_ReaderDumpRegistrationData)(RedisModuleCtx* ctx, FlatExecutionPlan* fep);
 typedef void (*RedisGears_ReaderRdbSave)(RedisModuleIO *rdb);
 typedef void (*RedisGears_ReaderRdbLoad)(RedisModuleIO *rdb, int encver);
@@ -116,6 +119,8 @@ typedef struct RedisGears_ReaderCallbacks{
     RedisGears_CreateReaderCallback create;
     RedisGears_ReaderRegisterCallback registerTrigger;
     RedisGears_ReaderUnregisterCallback unregisterTrigger;
+    RedisGears_ReaderSerializeRegisterArgsCallback serializeTriggerArgs;
+    RedisGears_ReaderDeserializeRegisterArgsCallback deserializeTriggerArgs;
     RedisGears_ReaderDumpRegistrationData dumpRegistratioData;
     RedisGears_ReaderRdbSave rdbSave;
     RedisGears_ReaderRdbLoad rdbLoad;
@@ -136,6 +141,7 @@ typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* 
 
 typedef struct KeysReaderCtx KeysReaderCtx;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
+StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize);
 
 /**
  * Records handling functions
@@ -239,7 +245,7 @@ int MODULE_API_FUNC(RedisGears_Limit)(FlatExecutionPlan* ctx, size_t offset, siz
 ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 #define RGM_Run(ctx, mode, arg, callback, privateData) RedisGears_Run(ctx, mode, arg, callback, privateData)
 
-int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, ExecutionMode mode, char* arg);
+int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg);
 #define RGM_Register(ctx, mode, arg) RedisGears_Register(ctx, mode, arg)
 
 int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void* arg);
@@ -323,6 +329,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, FreeFlatExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetReader);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsCreate);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);

@@ -162,9 +162,9 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 		RedisModuleBlockedClient **blockClients = RedisGears_GetPrivateData(gearsCtx);
 		if(!blockClients){
 			blockClients = array_new(RedisModuleBlockedClient*, 10);
-			RedisGears_SetPrivateData(gearsCtx, blockClients, Command_FreePrivateData);
 		}
 		blockClients = array_append(blockClients, bc);
+		RedisGears_SetPrivateData(gearsCtx, blockClients, Command_FreePrivateData);
 		return REDISMODULE_OK;
 	}
 	RedisModule_AbortBlock(bc);

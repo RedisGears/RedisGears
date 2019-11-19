@@ -394,7 +394,13 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
         KeysReaderRegisterData* rData = Gears_listNodeValue(node);
         if(KeysReader_IsKeyMatch(rData->args, keyCStr)){
             ++rData->numTriggered;
-            if(!RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), KeysReader_ExecutionDone, KeysReaderRegisterData_GetShallowCopy(rData))){
+            RedisGears_OnExecutionDoneCallback callback = NULL;
+            void* privateData = NULL;
+            if(rData->mode == ExecutionModeSync){
+                callback = KeysReader_ExecutionDone;
+                privateData = KeysReaderRegisterData_GetShallowCopy(rData);
+            }
+            if(!RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData)){
                 ++rData->numAborted;
                 RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
             }
@@ -421,6 +427,15 @@ static KeysReaderRegisterData* KeysReader_FindRegistrationData(FlatExecutionPlan
     }
     Gears_listReleaseIterator(iter);
     return NULL;
+}
+
+static void KeysReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
+    RedisGears_BWWriteString(bw, args);
+}
+
+static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
+    char* args = RG_STRDUP(RedisGears_BRReadString(br));
+    return args;
 }
 
 static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep){
@@ -597,6 +612,8 @@ RedisGears_ReaderCallbacks KeysReader = {
         .create = KeysReader_Create,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
+        .serializeTriggerArgs = KeysReader_SerializeArgs,
+        .deserializeTriggerArgs = KeysReader_DeserializeArgs,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
         .rdbSave = KeysReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,
@@ -607,6 +624,8 @@ RedisGears_ReaderCallbacks KeysOnlyReader = {
         .create = KeysOnlyReader_Create,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
+        .serializeTriggerArgs = KeysReader_SerializeArgs,
+        .deserializeTriggerArgs = KeysReader_DeserializeArgs,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
         .rdbSave = KeysOnlyReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,

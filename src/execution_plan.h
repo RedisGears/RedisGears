@@ -258,7 +258,7 @@ void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, char* key);
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);

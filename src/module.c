@@ -159,7 +159,7 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, char* key){
+static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key){
     return FlatExecutionPlan_Register(fep, mode, key);
 }
 
@@ -173,6 +173,10 @@ static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* a
 
 static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const char* streamId){
     return StreamReaderCtx_Create(streamName, streamId);
+}
+
+static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize){
+    return StreamReaderTriggerArgs_Create(streamName, batchSize);
 }
 
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
@@ -318,6 +322,7 @@ static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
         RedisModule_SaveStringBuffer(rdb, readerName, strlen(readerName) + 1 /* for \0 */);
         callbacks->rdbSave(rdb);
     }
+    Gears_dictReleaseIterator(iter);
     RedisModule_SaveStringBuffer(rdb, "", 1); // empty str mean the end!
 }
 
@@ -337,6 +342,7 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
             }
             callbacks->clear();
         }
+        Gears_dictReleaseIterator(iter);
     } else {
         // when loading keys phase finished, we load the registrations.
         for(char* readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
@@ -413,6 +419,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(FreeFlatExecution, ctx);
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
+    REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);
