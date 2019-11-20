@@ -396,10 +396,8 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
             ++rData->numTriggered;
             RedisGears_OnExecutionDoneCallback callback = NULL;
             void* privateData = NULL;
-            if(rData->mode == ExecutionModeSync){
-                callback = KeysReader_ExecutionDone;
-                privateData = KeysReaderRegisterData_GetShallowCopy(rData);
-            }
+            callback = KeysReader_ExecutionDone;
+            privateData = KeysReaderRegisterData_GetShallowCopy(rData);
             if(!RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData)){
                 ++rData->numAborted;
                 RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");

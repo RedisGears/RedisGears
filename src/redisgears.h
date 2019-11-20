@@ -257,12 +257,9 @@ typedef void (*FreePrivateData)(void* privateData);
 
 /******************************* Execution plan operations *******************************/
 
-bool MODULE_API_FUNC(RedisGears_RegisterExecutionDoneCallback)(ExecutionPlan* ctx, RedisGears_OnExecutionDoneCallback callback);
 bool MODULE_API_FUNC(RedisGears_IsDone)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetRecordsLen)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetErrorsLen)(ExecutionPlan* ctx);
-void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionPlan* ctx);
-void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionPlan* ctx, void* privateData, FreePrivateData freeCallback);
 const char* MODULE_API_FUNC(RedisGears_GetId)(ExecutionPlan* ctx);
 Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
 Record* MODULE_API_FUNC(RedisGears_GetError)(ExecutionPlan* ctx, long long i);
@@ -275,6 +272,7 @@ void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* gearsCtx);
 void MODULE_API_FUNC(RedisGears_SetError)(ExecutionCtx* ectx, char* err);
 RedisModuleCtx* MODULE_API_FUNC(RedisGears_GetRedisModuleCtx)(ExecutionCtx* ectx);
 void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx);
+bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 
 int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
@@ -337,9 +335,6 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetErrorsLen);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetError);
-    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionDoneCallback);
-    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetPrivateData);
-	REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetPrivateData);
 	REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
 	REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
 
@@ -371,6 +366,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGetAllKeys);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordFreeKeysArray);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetReadDuration);

@@ -108,13 +108,11 @@ void Command_ReturnResultsAndErrors(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx
 }
 
 static void Command_ExecutionDone(ExecutionPlan* gearsCtx, void *privateData){
-	RedisModuleBlockedClient** bc = privateData;
-	for(size_t i = 0 ; i < array_len(bc) ; ++i){
-		RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bc[i]);
-		Command_ReturnResultsAndErrors(gearsCtx, rctx);
-		RedisModule_UnblockClient(bc[i], NULL);
-		RedisModule_FreeThreadSafeContext(rctx);
-	}
+	RedisModuleBlockedClient* bc = privateData;
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bc);
+    Command_ReturnResultsAndErrors(gearsCtx, rctx);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisModule_FreeThreadSafeContext(rctx);
 }
 
 int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -139,11 +137,6 @@ int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	return REDISMODULE_OK;
 }
 
-static void Command_FreePrivateData(void* privateData){
-	RedisModuleBlockedClient **blockClients = privateData;
-	array_free(blockClients);
-}
-
 int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	if(argc != 2){
 		return RedisModule_WrongArity(ctx);
@@ -158,17 +151,10 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	}
 
 	RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 1000000);
-	if(RedisGears_RegisterExecutionDoneCallback(gearsCtx, Command_ExecutionDone)){
-		RedisModuleBlockedClient **blockClients = RedisGears_GetPrivateData(gearsCtx);
-		if(!blockClients){
-			blockClients = array_new(RedisModuleBlockedClient*, 10);
-		}
-		blockClients = array_append(blockClients, bc);
-		RedisGears_SetPrivateData(gearsCtx, blockClients, Command_FreePrivateData);
-		return REDISMODULE_OK;
+	if(!RedisGears_AddOnDoneCallback(gearsCtx, Command_ExecutionDone, bc)){
+	    RedisModule_AbortBlock(bc);
+        Command_ReturnResultsAndErrors(gearsCtx, ctx);
 	}
-	RedisModule_AbortBlock(bc);
-	Command_ReturnResultsAndErrors(gearsCtx, ctx);
 	return REDISMODULE_OK;
 }
 

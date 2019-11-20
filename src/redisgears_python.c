@@ -508,15 +508,14 @@ static PyObject* run(PyObject *self, PyObject *args){
     ExecutionPlan* ep = RGM_Run(pfep->fep, ExecutionModeAsync, arg, NULL, NULL);
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
-        RedisGears_RegisterExecutionDoneCallback(ep, dropExecutionOnDone);
+        RedisGears_AddOnDoneCallback(ep, dropExecutionOnDone, NULL);
     }
     else if(!ptctx->blockingExecute){
         const char* id = RedisGears_GetId(ep);
         RedisModule_ReplyWithStringBuffer(ptctx->currentCtx, id, strlen(id));
     }else{
         RedisModuleBlockedClient *bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 1000000);
-        RedisGears_RegisterExecutionDoneCallback(ep, ptctx->doneFunction);
-        RedisGears_SetPrivateData(ep, bc, NULL);
+        RedisGears_AddOnDoneCallback(ep, ptctx->doneFunction, bc);
     }
     Py_INCREF(Py_None);
     return Py_None;

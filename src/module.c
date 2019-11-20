@@ -183,14 +183,6 @@ static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
     FlatExecutionPlan_Free(fep);
 }
 
-static bool RG_RegisterExecutionDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback){
-	if(ep->status == DONE){
-		return false;
-	}
-	ep->callback = callback;
-	return true;
-}
-
 static bool RG_IsDone(ExecutionPlan* ep){
 	return(ep->isDone);
 }
@@ -211,13 +203,16 @@ static long long RG_GetErrorsLen(ExecutionPlan* ep){
 	return array_len(ep->errors);
 }
 
-static void* RG_GetPrivateData(ExecutionPlan* ep){
-	return ep->privateData;
-}
-
-static void RG_SetPrivateData(ExecutionPlan* ep, void* privateData, FreePrivateData freeCallback){
-	ep->privateData = privateData;
-	ep->freeCallback = freeCallback;
+static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    if(ep->isDone){
+        return false;
+    }
+    OnDoneData onDoneData = {
+            .callback = callback,
+            .privateData = privateData,
+    };
+    ep->onDoneData = array_append(ep->onDoneData, onDoneData);
+    return true;
 }
 
 static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
@@ -235,6 +230,10 @@ static Record* RG_GetError(ExecutionPlan* ep, long long i){
 }
 
 static void RG_DropExecution(ExecutionPlan* ep){
+    if(ep->isOnDoneCallback){
+        ep->freedOnDoneCallbacks = true;
+        return;
+    }
     if(Cluster_IsClusterMode() && ep->mode != ExecutionModeSync){
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
@@ -427,9 +426,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetRecord, ctx);
     REGISTER_API(GetErrorsLen, ctx);
     REGISTER_API(GetError, ctx);
-    REGISTER_API(RegisterExecutionDoneCallback, ctx);
-    REGISTER_API(GetPrivateData, ctx);
-	REGISTER_API(SetPrivateData, ctx);
+    REGISTER_API(AddOnDoneCallback, ctx);
 	REGISTER_API(DropExecution, ctx);
 	REGISTER_API(GetId, ctx);
 
@@ -492,14 +489,16 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
-void AddToList(ExecutionCtx* rctx, Record *data, void* arg){
-    const char* keyName = RedisGears_StringRecordGet(data, NULL);
-    if(strcmp(keyName, "AllKeysList") == 0){
+void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
+    const char* keyName = RedisGears_KeyRecordGetKey(data, NULL);
+    if(strcmp(keyName, "ChangedStream") == 0){
         return;
     }
+    Record* valRecord = RedisGears_KeyRecordGetVal(data);
+    const char* val = RedisGears_StringRecordGet(valRecord, NULL);
     RedisModuleCtx* ctx = RedisGears_GetRedisModuleCtx(rctx);
     LockHandler_Acquire(ctx);
-    RedisModule_Call(ctx, "lpush", "cc", "AllKeysList", keyName);
+    RedisModule_Call(ctx, "xadd", "cccccc", "ChangedStream", "*", "key", keyName, "value", val);
     LockHandler_Release(ctx);
 }
 
@@ -551,7 +550,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(StreamReader);
     RGM_RegisterFilter(Example_Filter, NULL);
     RGM_RegisterMap(GetValueMapper, NULL);
-    RGM_RegisterForEach(AddToList, NULL);
+    RGM_RegisterForEach(AddToStream, NULL);
 
     ExecutionPlan_Initialize(1);
 
@@ -649,8 +648,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
-//    FlatExecutionPlan* fep = RGM_CreateCtx(KeysOnlyReader);
-//    RGM_ForEach(fep, AddToList, NULL);
+//    FlatExecutionPlan* fep = RGM_CreateCtx(KeysReader);
+//    RGM_ForEach(fep, AddToStream, NULL);
 //    RGM_Register(fep, ExecutionModeSync, RG_STRDUP("*"));
 
     return REDISMODULE_OK;

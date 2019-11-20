@@ -176,6 +176,11 @@ typedef struct WorkerData{
     pthread_t thread;
 }WorkerData;
 
+typedef struct OnDoneData{
+    RedisGears_OnExecutionDoneCallback callback;
+    void* privateData;
+}OnDoneData;
+
 typedef struct ExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
     char idStr[EXECUTION_PLAN_STR_ID_LEN];
@@ -186,11 +191,15 @@ typedef struct ExecutionPlan{
     Record** results;
     Record** errors;
     ExecutionPlanStatus status;
+
+    // todo: turn all those to flags!!
     bool isDone;
+    bool isOnDoneCallback;
+    bool freedOnDoneCallbacks;
     bool sentRunRequest;
-    RedisGears_OnExecutionDoneCallback callback;
-    void* privateData;
-    FreePrivateData freeCallback;
+
+
+    OnDoneData* onDoneData;
     long long executionDuration;
     WorkerData* assignWorker;
     ExecutionMode mode;
@@ -276,5 +285,6 @@ int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, i
 int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
+Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
 
 #endif /* SRC_EXECUTION_PLAN_H_ */

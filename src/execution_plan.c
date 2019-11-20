@@ -1094,14 +1094,17 @@ ActionResult EPStatus_PendingRunAction(ExecutionPlan* ep){
 ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
-    FreePrivateData freeC = ep->freeCallback;
-    ep->isDone = true;
-    void* pd = ep->privateData;
-    if(ep->callback){
-        ep->callback(ep, ep->privateData);
+
+    // we set it to true so if execution will be freed during done callbacks we
+    // will free it only after all the callbacks are executed
+    ep->isOnDoneCallback = true;
+    for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
     }
-    if(freeC){
-        freeC(pd);
+    ep->isDone = true;
+    ep->isOnDoneCallback = false;
+    if(ep->freedOnDoneCallbacks){
+        RedisGears_DropExecution(ep);
     }
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1251,16 +1254,21 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     RedisModule_Replicate(ctx, "RG.INTERNALREGISTER", "b", payload, len);
 }
 
+Reader* ExecutionPlan_GetReader(ExecutionPlan* ep){
+    ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
+    assert(readerStep->type == READER);
+    return readerStep->reader.r;
+}
+
 static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
     ExecutionPlan* ep;
     if(fep->executionPoolSize > 0){
         ep = fep->executionPool[--fep->executionPoolSize];
-        ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
-        assert(readerStep->type == READER);
+        Reader* r = ExecutionPlan_GetReader(ep);
         // we need to reset the reader with the new arguments
-        if(readerStep->reader.r->reset){
+        if(r->reset){
             // reader is support reset, lets use it.
-            readerStep->reader.r->reset(readerStep->reader.r->ctx, arg);
+            r->reset(r->ctx, arg);
         }else{
             // reader do not support reset, lets free and recreate
             ExecutionStep* readerStep = array_pop(ep->steps);
@@ -1273,7 +1281,6 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
             }
             ep->steps = array_append(ep->steps, readerStep);
         }
-        readerStep->executionDuration = 0;
 
         // set the mode
         ep->mode = mode;
@@ -1283,8 +1290,11 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     if(!ep){
         return NULL;
     }
-    ep->callback = callback;
-    ep->privateData = privateData;
+
+    if(callback){
+        OnDoneData onDoneData = (OnDoneData){.callback = callback, .privateData = privateData};
+        ep->onDoneData = array_append(ep->onDoneData, onDoneData);
+    }
     ep->fep = FlatExecutionPlan_ShallowCopy(fep);
 
     ExecutionPlan_SetID(ep, eid);
@@ -1321,6 +1331,7 @@ static void ExecutionPlan_Run(ExecutionPlan* ep){
 static void ExecutionStep_Reset(ExecutionStep* es){
     Gears_dictIterator * iter = NULL;
     Gears_dictEntry *entry = NULL;
+    es->executionDuration = 0;
     if(es->prev){
         ExecutionStep_Reset(es->prev);
     }
@@ -1419,9 +1430,9 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
     ep->sentRunRequest = false;
     ep->isDone = false;
 
-    ep->callback = NULL;
-    ep->privateData = NULL;
-    ep->freeCallback = NULL;
+    ep->onDoneData = array_trimm_len(ep->onDoneData, 0);
+    ep->isOnDoneCallback = false;
+    ep->freedOnDoneCallbacks = false;
 
     ExecutionStep_Reset(ep->steps[0]);
 }
@@ -1442,15 +1453,12 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     ep->executionDuration += DURATION;
 
     ep->status = DONE;
-    FreePrivateData freeC = ep->freeCallback;
+
+    for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
+    }
+
     ep->isDone = true;
-    void* pd = ep->privateData;
-    if(ep->callback){
-        ep->callback(ep, ep->privateData);
-    }
-    if(freeC){
-        freeC(pd);
-    }
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1930,11 +1938,11 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     ret->errors = array_new(Record*, 1);
     ret->status = CREATED;
     ret->sentRunRequest = false;
-    ret->callback = NULL;
-    ret->privateData = NULL;
-    ret->freeCallback = NULL;
+    ret->onDoneData = array_new(OnDoneData, 10);
     ret->isDone = false;
     ret->mode = mode;
+    ret->freedOnDoneCallbacks = false;
+    ret->isOnDoneCallback = false;
     return ret;
 }
 
@@ -2027,6 +2035,7 @@ static void ExecutionPlan_FreeRaw(ExecutionPlan* ep){
     array_free(ep->steps);
     array_free(ep->results);
     array_free(ep->errors);
+    array_free(ep->onDoneData);
     RG_FREE(ep);
 }
 
