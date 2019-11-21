@@ -657,7 +657,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
     Gears_Buffer* buff;
     Gears_BufferWriter bw;
 
-    if(!Cluster_IsClusterMode() || ep->mode == ExecutionModeSync){
+    if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
         return ExecutionPlan_NextRecord(ep, step->prev, rctx);
     }
 
@@ -740,7 +740,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 	Gears_Buffer* buff;;
 	Gears_BufferWriter bw;
 
-	if(!Cluster_IsClusterMode() || ep->mode == ExecutionModeSync){
+	if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
 		return ExecutionPlan_NextRecord(ep, step->prev, rctx);
 	}
 
@@ -1097,13 +1097,13 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
 
     // we set it to true so if execution will be freed during done callbacks we
     // will free it only after all the callbacks are executed
-    ep->isOnDoneCallback = true;
+    EPTurnOnFlag(ep, EFIsOnDoneCallback);
     for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
         ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
     }
-    ep->isDone = true;
-    ep->isOnDoneCallback = false;
-    if(ep->freedOnDoneCallbacks){
+    EPTurnOnFlag(ep, EFDone);
+    EPTurnOffFlag(ep, EFIsOnDoneCallback);
+    if(EPIsFlagOn(ep, EFIsFreedOnDoneCallback)){
         RedisGears_DropExecution(ep);
     }
     LockHandler_Release(rctx);
@@ -1183,7 +1183,7 @@ ActionResult EPStatus_InitiatorTerminationAction(ExecutionPlan* ep){
 
 static void ExecutionPlan_Main(ExecutionPlan* ep){
     ActionResult result;
-    ep->sentRunRequest = false;
+    EPTurnOffFlag(ep, EFSentRunRequest);
     while(true){
         result = statusesActions[ep->status](ep);
         switch(result){
@@ -1200,11 +1200,11 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 }
 
 static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
-	if(ep->sentRunRequest){
+	if(EPIsFlagOn(ep, EFSentRunRequest)){
 		return;
 	}
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateRun(ep);
-	ep->sentRunRequest = true;
+	EPTurnOnFlag(ep, EFSentRunRequest);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
@@ -1284,6 +1284,11 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
 
         // set the mode
         ep->mode = mode;
+        if(ep->mode == ExecutionModeSync || ep->mode == ExecutionModeAsyncLocal){
+            EPTurnOnFlag(ep, EFIsLocal);
+        }else{
+            EPTurnOffFlag(ep, EFIsLocal);
+        }
     } else {
         ep = ExecutionPlan_New(fep, mode, arg);
     }
@@ -1427,12 +1432,12 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
     ep->totalShardsRecieved = 0;
     ep->totalShardsCompleted = 0;
     ep->status = CREATED;
-    ep->sentRunRequest = false;
-    ep->isDone = false;
+    EPTurnOffFlag(ep, EFSentRunRequest);
+    EPTurnOffFlag(ep, EFDone);
 
     ep->onDoneData = array_trimm_len(ep->onDoneData, 0);
-    ep->isOnDoneCallback = false;
-    ep->freedOnDoneCallbacks = false;
+    EPTurnOffFlag(ep, EFIsOnDoneCallback);
+    EPTurnOffFlag(ep, EFIsFreedOnDoneCallback);
 
     ExecutionStep_Reset(ep->steps[0]);
 }
@@ -1458,7 +1463,7 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
         ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
     }
 
-    ep->isDone = true;
+    EPTurnOnFlag(ep, EFDone);
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1466,10 +1471,10 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
 
 static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, mode, arg, callback, privateData);
-    if(mode == ExecutionModeAsync){
-        ExecutionPlan_Run(ep);
-    } else{
+    if(mode == ExecutionModeSync){
         ExecutionPlan_RunSync(ep);
+    } else{
+        ExecutionPlan_Run(ep);
     }
     return ep;
 }
@@ -1937,12 +1942,17 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     ret->results = array_new(Record*, 100);
     ret->errors = array_new(Record*, 1);
     ret->status = CREATED;
-    ret->sentRunRequest = false;
+    EPTurnOffFlag(ret, EFSentRunRequest);
     ret->onDoneData = array_new(OnDoneData, 10);
-    ret->isDone = false;
+    EPTurnOffFlag(ret, EFDone);
     ret->mode = mode;
-    ret->freedOnDoneCallbacks = false;
-    ret->isOnDoneCallback = false;
+    if(ret->mode == ExecutionModeSync || ret->mode == ExecutionModeAsyncLocal){
+        EPTurnOnFlag(ret, EFIsLocal);
+    }else{
+        EPTurnOffFlag(ret, EFIsLocal);
+    }
+    EPTurnOffFlag(ret, EFIsFreedOnDoneCallback);
+    EPTurnOffFlag(ret, EFIsOnDoneCallback);
     return ret;
 }
 

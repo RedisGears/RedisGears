@@ -34,6 +34,7 @@ typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
 #define ExecutionMode int
 #define ExecutionModeSync 1
 #define ExecutionModeAsync 2
+#define ExecutionModeAsyncLocal 3
 
 /******************************* READERS *******************************/
 

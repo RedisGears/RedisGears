@@ -566,6 +566,8 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
                 mode = ExecutionModeAsync;
             }else if(strcmp(modeStr, "sync") == 0){
                 mode = ExecutionModeSync;
+            }else if(strcmp(modeStr, "async_local") == 0){
+                mode = ExecutionModeAsyncLocal;
             }else{
                 PyErr_SetString(GearsError, "unknown execution mode");
                 return NULL;

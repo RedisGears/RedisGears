@@ -449,8 +449,12 @@ static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPl
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(rData->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
-    } else {
+    } else if(rData->mode == ExecutionModeAsync){
         RedisModule_ReplyWithStringBuffer(ctx, "async", strlen("async"));
+    } else if(rData->mode == ExecutionModeAsyncLocal){
+        RedisModule_ReplyWithStringBuffer(ctx, "async_local", strlen("async_local"));
+    } else{
+        RedisModule_ReplyWithNull(ctx);
     }
     RedisModule_ReplyWithStringBuffer(ctx, "numTriggered", strlen("numTriggered"));
     RedisModule_ReplyWithLongLong(ctx, rData->numTriggered);

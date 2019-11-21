@@ -181,6 +181,17 @@ typedef struct OnDoneData{
     void* privateData;
 }OnDoneData;
 
+#define ExecutionFlags int
+#define EFDone 0x01
+#define EFIsOnDoneCallback 0x02
+#define EFIsFreedOnDoneCallback 0x04
+#define EFSentRunRequest 0x08
+#define EFIsLocal 0x10
+
+#define EPTurnOnFlag(ep, f) ep->flags |= f
+#define EPTurnOffFlag(ep, f) ep->flags &= ~f
+#define EPIsFlagOn(ep, f) (ep->flags & f)
+
 typedef struct ExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
     char idStr[EXECUTION_PLAN_STR_ID_LEN];
@@ -191,14 +202,7 @@ typedef struct ExecutionPlan{
     Record** results;
     Record** errors;
     ExecutionPlanStatus status;
-
-    // todo: turn all those to flags!!
-    bool isDone;
-    bool isOnDoneCallback;
-    bool freedOnDoneCallbacks;
-    bool sentRunRequest;
-
-
+    ExecutionFlags flags;
     OnDoneData* onDoneData;
     long long executionDuration;
     WorkerData* assignWorker;

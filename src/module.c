@@ -184,7 +184,7 @@ static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
 }
 
 static bool RG_IsDone(ExecutionPlan* ep){
-	return(ep->isDone);
+	return EPIsFlagOn(ep, EFDone);
 }
 
 static const char* RG_GetId(ExecutionPlan* ep){
@@ -204,7 +204,7 @@ static long long RG_GetErrorsLen(ExecutionPlan* ep){
 }
 
 static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    if(ep->isDone){
+    if(EPIsFlagOn(ep, EFDone)){
         return false;
     }
     OnDoneData onDoneData = {
@@ -230,11 +230,11 @@ static Record* RG_GetError(ExecutionPlan* ep, long long i){
 }
 
 static void RG_DropExecution(ExecutionPlan* ep){
-    if(ep->isOnDoneCallback){
-        ep->freedOnDoneCallbacks = true;
+    if(EPIsFlagOn(ep, EFIsOnDoneCallback)){
+        EPTurnOnFlag(ep, EFIsFreedOnDoneCallback);
         return;
     }
-    if(Cluster_IsClusterMode() && ep->mode != ExecutionModeSync){
+    if(Cluster_IsClusterMode() && EPIsFlagOn(ep, EFIsLocal)){
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep, true);

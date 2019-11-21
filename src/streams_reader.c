@@ -437,8 +437,12 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(srctx->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
-    } else {
+    } else if(srctx->mode == ExecutionModeAsync){
         RedisModule_ReplyWithStringBuffer(ctx, "async", strlen("async"));
+    } else if(srctx->mode == ExecutionModeAsyncLocal){
+        RedisModule_ReplyWithStringBuffer(ctx, "async_local", strlen("async_local"));
+    } else {
+        RedisModule_ReplyWithNull(ctx);
     }
     RedisModule_ReplyWithStringBuffer(ctx, "numTriggered", strlen("numTriggered"));
     RedisModule_ReplyWithLongLong(ctx, srctx->numTriggered);
