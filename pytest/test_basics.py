@@ -1,7 +1,11 @@
+import sys
+import os
 from RLTest import Env
 import yaml
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
+import paella
 
 def getConnectionByEnv(env):
     conn = None
@@ -355,7 +359,7 @@ redisgears.registerTimeEvent(1, func, 'timeEvent')
 
 def testExecuteCommandWithNullTerminated(env):
     env.skipOnCluster()
-    env.expect('set', 'x', 'test\x00test').equal('OK')
+    env.expect('set', 'x', 'test\x00test').equal(True)
     env.expect('get', 'x').equal('test\x00test')
     env.cmd('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: redisgears.executeCommand('SET', 'bar', str(x['value']))).map(lambda x: str(x)).run()")
     env.expect('get', 'bar').equal('test\x00test')
@@ -573,11 +577,10 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
         self.env.assertEqual(len(registrations), 1)
         registrationID = registrations[0][1]
-        
         self.conn.execute_command('set', 'x', '1')
         time.sleep(1)
         res = self.conn.execute_command('smembers', 'all_keys')
-        self.env.assertEqual(res, ['x'])
+        self.env.assertEqual(res, {'x'})
 
         self.env.expect('RG.UNREGISTER', registrationID).equal('OK')
         time.sleep(1) # wait for dump registrations to reach all the shards
@@ -588,7 +591,7 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         self.conn.execute_command('set', 'y', '1')
         time.sleep(1)
         res = self.conn.execute_command('smembers', 'all_keys')
-        self.env.assertEqual(res, ['x'])
+        self.env.assertEqual(res, {'x'})
 
         executions = self.env.cmd('RG.DUMPEXECUTIONS')
         for e in executions:

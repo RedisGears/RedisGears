@@ -243,11 +243,19 @@ pack ramp_pack: __sep deps build $(CPYTHON_PREFIX)
 
 #----------------------------------------------------------------------------------------------
 
+ifeq ($(GDB),1)
+RLTEST_GDB=-i
+endif
+
 test: __sep
 ifeq ($(DEBUG),1)
 	$(SHOW)cd pytest; ./run_tests_valgrind.sh
 else
+ifneq ($(TEST),)
+	@cd pytest; PYDEBUG=1 RLTest --test $(TEST) $(RLTEST_GDB) -s --module $(abspath $(TARGET))
+else
 	$(SHOW)cd pytest; ./run_tests.sh
+endif
 endif
 
 #----------------------------------------------------------------------------------------------
