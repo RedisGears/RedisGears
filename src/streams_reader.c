@@ -23,12 +23,9 @@ typedef struct StreamReaderCtx{
 
 typedef struct StreamReaderTriggerArgs{
     size_t batchSize;
+    size_t durationMS;
     char* stream;
 }StreamReaderTriggerArgs;
-
-typedef struct SingleStreamReaderCtx{
-    size_t numTriggered;
-}SingleStreamReaderCtx;
 
 typedef struct StreamReaderTriggerCtx{
     size_t refCount;
@@ -43,10 +40,19 @@ typedef struct StreamReaderTriggerCtx{
     char* lastError;
 }StreamReaderTriggerCtx;
 
-StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize){
+typedef struct SingleStreamReaderCtx{
+    size_t numTriggered;
+    bool timerIsSet;
+    RedisModuleTimerID lastTimerId;
+    StreamReaderTriggerCtx* srtctx; // weak ptr to the StreamReaderCtx
+    char* keyName;
+}SingleStreamReaderCtx;
+
+StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS){
     StreamReaderTriggerArgs* readerArgs = RG_ALLOC(sizeof(StreamReaderTriggerArgs));
     readerArgs->stream = RG_STRDUP(streamName);
     readerArgs->batchSize = batchSize;
+    readerArgs->durationMS = durationMS;
     return readerArgs;
 }
 
@@ -66,6 +72,7 @@ static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
         Gears_dictEntry* entry = NULL;
         while((entry = Gears_dictNext(iter))){
             SingleStreamReaderCtx* ssrctx = Gears_dictGetVal(entry);
+            RG_FREE(ssrctx->keyName);
             RG_FREE(ssrctx);
         }
         Gears_dictReleaseIterator(iter);
@@ -331,6 +338,25 @@ static void StreamReader_CreateConsumersGroup(RedisModuleCtx *ctx, const char* k
     assert(r && RedisModule_CallReplyType(r) != REDISMODULE_REPLY_ERROR);
 }
 
+static void StreamReader_RunOnEvent(RedisModuleCtx *ctx, SingleStreamReaderCtx* ssrctx){
+    StreamReaderTriggerCtx* srtctx = ssrctx->srtctx;
+    StreamReaderCtx* readerCtx = StreamReaderCtx_CreateWithConsumerGroup(ssrctx->keyName, GEARS_CONSUMER_GROUP, srtctx->args->batchSize);
+    RedisGears_OnExecutionDoneCallback callback = StreamReader_ExecutionDone;
+    void* privateData = StreamReaderTriggerCtx_GetShallowCopy(srtctx);
+    ++srtctx->numTriggered;
+    if(!RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData)){
+        ++srtctx->numAborted;
+        RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
+    }
+    ssrctx->numTriggered = 0;
+}
+
+static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
+    SingleStreamReaderCtx* ssrctx = data;
+    StreamReader_RunOnEvent(ctx, ssrctx);
+    ssrctx->timerIsSet = false;
+}
+
 static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
     Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
@@ -343,20 +369,24 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
                 ssrctx = RG_ALLOC(sizeof(*ssrctx));
                 StreamReader_CreateConsumersGroup(ctx, keyName);
                 ssrctx->numTriggered = 0;
+                ssrctx->srtctx = srctx;
+                ssrctx->keyName = RG_STRDUP(keyName);
+                ssrctx->timerIsSet = false;
                 Gears_dictAdd(srctx->singleStreamData, (char*)keyName, ssrctx);
             }
             if(srctx->args->batchSize <= ++ssrctx->numTriggered){
-                StreamReaderCtx* readerCtx = StreamReaderCtx_CreateWithConsumerGroup(keyName, GEARS_CONSUMER_GROUP, srctx->args->batchSize);
-                RedisGears_OnExecutionDoneCallback callback = NULL;
-                void* privateData = NULL;
-                callback = StreamReader_ExecutionDone;
-                privateData = StreamReaderTriggerCtx_GetShallowCopy(srctx);
-                ++srctx->numTriggered;
-                if(!RedisGears_Run(srctx->fep, srctx->mode, readerCtx, callback, privateData)){
-                    ++srctx->numAborted;
-                    RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
+                StreamReader_RunOnEvent(ctx, ssrctx);
+                // we finish the run, if timer is set lets remove it.
+                if(!ssrctx->timerIsSet && srctx->args->durationMS > 0){
+                    RedisModule_StopTimer(ctx, ssrctx->lastTimerId, NULL);
+                    ssrctx->timerIsSet = true;
                 }
-                ssrctx->numTriggered = 0;
+            }else{
+                // if we did not run execution we need to set timer if its not already set
+                if(!ssrctx->timerIsSet && srctx->args->durationMS > 0){
+                    ssrctx->lastTimerId = RedisModule_CreateTimer(ctx, srctx->args->durationMS, StreamReader_OnTime, ssrctx);
+                    ssrctx->timerIsSet = true;
+                }
             }
         }
     }
@@ -422,12 +452,14 @@ static void StreamReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
     StreamReaderTriggerArgs* triggerArgs = args;
     RedisGears_BWWriteString(bw, triggerArgs->stream);
     RedisGears_BWWriteLong(bw, triggerArgs->batchSize);
+    RedisGears_BWWriteLong(bw, triggerArgs->durationMS);
 }
 
 static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
     char* stream = RedisGears_BRReadString(br);
     size_t batchSize = RedisGears_BRReadLong(br);
-    return StreamReaderTriggerArgs_Create(stream, batchSize);
+    size_t durationMS = RedisGears_BRReadLong(br);
+    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS);
 }
 
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){

@@ -175,8 +175,8 @@ static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const c
     return StreamReaderCtx_Create(streamName, streamId);
 }
 
-static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize){
-    return StreamReaderTriggerArgs_Create(streamName, batchSize);
+static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS){
+    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS);
 }
 
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
@@ -234,7 +234,7 @@ static void RG_DropExecution(ExecutionPlan* ep){
         EPTurnOnFlag(ep, EFIsFreedOnDoneCallback);
         return;
     }
-    if(Cluster_IsClusterMode() && EPIsFlagOn(ep, EFIsLocal)){
+    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal)){
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep, true);

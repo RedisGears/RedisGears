@@ -112,8 +112,8 @@ class GearsBuilder():
             arg = ShardReaderCallback
         self.gearsCtx.run(arg)
         
-    def register(self, regex='*', mode='async', batch=1):
-        self.gearsCtx.register(regex=regex, mode=mode, batch=batch)
+    def register(self, regex='*', mode='async', batch=1, duration=0):
+        self.gearsCtx.register(regex=regex, mode=mode, batch=batch, duration=duration)
 
 
 def createDecorator(f):

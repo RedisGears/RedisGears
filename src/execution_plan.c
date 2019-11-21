@@ -1272,6 +1272,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
         }else{
             // reader do not support reset, lets free and recreate
             ExecutionStep* readerStep = array_pop(ep->steps);
+            assert(readerStep->type == READER);
             readerStep->reader.r->free(readerStep->reader.r->ctx);
             RG_FREE(readerStep->reader.r);
             ReaderStep rs = ExecutionPlan_NewReader(fep->reader, arg);
@@ -1526,8 +1527,8 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
 
     // Execution recieved from another shards is always async
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, ExecutionModeAsync, NULL, NULL, NULL);
-    ExecutionStep* rs = ep->steps[array_len(ep->steps) - 1];
-    rs->reader.r->deserialize(rs->reader.r->ctx, &br);
+    Reader* reader = ExecutionPlan_GetReader(ep);
+    reader->deserialize(reader ->ctx, &br);
     FlatExecutionPlan_Free(fep);
     ExecutionPlan_Run(ep);
 }

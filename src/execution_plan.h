@@ -191,6 +191,7 @@ typedef struct OnDoneData{
 #define EPTurnOnFlag(ep, f) ep->flags |= f
 #define EPTurnOffFlag(ep, f) ep->flags &= ~f
 #define EPIsFlagOn(ep, f) (ep->flags & f)
+#define EPIsFlagOff(ep, f) (!(ep->flags & f))
 
 typedef struct ExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];

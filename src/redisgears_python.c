@@ -551,7 +551,18 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
         }
     }
 
-    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch);
+    size_t durationMS = 0;
+    PyObject* pydurationInSec = PyDict_GetItemString(kargs, "duration");
+    if(pydurationInSec){
+        if(PyNumber_Check(pydurationInSec)){
+            durationMS = PyNumber_AsSsize_t(pydurationInSec, NULL);
+        }else{
+            PyErr_SetString(GearsError, "duration argument must be a number");
+            return NULL;
+        }
+    }
+
+    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS);
 }
 
 static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kargs){
