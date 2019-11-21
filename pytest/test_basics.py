@@ -580,7 +580,7 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         self.conn.execute_command('set', 'x', '1')
         time.sleep(1)
         res = self.conn.execute_command('smembers', 'all_keys')
-        self.env.assertEqual(res, {'x'})
+        self.env.assertEqual(res.pop(), 'x')
 
         self.env.expect('RG.UNREGISTER', registrationID).equal('OK')
         time.sleep(1) # wait for dump registrations to reach all the shards
@@ -591,7 +591,7 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         self.conn.execute_command('set', 'y', '1')
         time.sleep(1)
         res = self.conn.execute_command('smembers', 'all_keys')
-        self.env.assertEqual(res, {'x'})
+        self.env.assertEqual(res.pop(), 'x')
 
         executions = self.env.cmd('RG.DUMPEXECUTIONS')
         for e in executions:

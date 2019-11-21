@@ -249,12 +249,12 @@ endif
 
 test: __sep
 ifeq ($(DEBUG),1)
-	$(SHOW)cd pytest; ./run_tests_valgrind.sh
+	$(SHOW)set -e; cd pytest; ./run_tests_valgrind.sh
 else
 ifneq ($(TEST),)
-	@cd pytest; PYDEBUG=1 RLTest --test $(TEST) $(RLTEST_GDB) -s --module $(abspath $(TARGET))
+	@set -e; cd pytest; PYDEBUG=1 RLTest --test $(TEST) $(RLTEST_GDB) -s --module $(abspath $(TARGET))
 else
-	$(SHOW)cd pytest; ./run_tests.sh
+	$(SHOW)set -e; cd pytest; ./run_tests.sh
 endif
 endif
 
