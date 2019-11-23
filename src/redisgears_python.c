@@ -73,10 +73,10 @@ static PyObject *runGearsRemoteBuilderCallback;
 
 #define PYTHON_ERROR "error running python code"
 
-static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
+static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br);
 static void TimeEvent_Free(void *value);
-static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
+static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 
 static PythonThreadCtx* GetPythonThreadCtx(){
     PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
@@ -186,9 +186,10 @@ static void* RedisGearsPy_SubInterpreterDup(void* arg){
     return RedisGearsPy_SubInterpreterShallowCopy(subInterpreter);
 }
 
-static void RedisGearsPy_SubInterpreterSerialize(void* arg, Gears_BufferWriter* bw){
+static int RedisGearsPy_SubInterpreterSerialize(void* arg, Gears_BufferWriter* bw){
     // do nothing, we do not serialize subinterpreter, we will create new subinterpreter
     // when deserialize will be called.
+    return REDISMODULE_OK;
 }
 
 static void* RedisGearsPy_SubInterpreterDeserialize(Gears_BufferReader* br){
@@ -2056,7 +2057,7 @@ void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br){
     return obj;
 }
 
-static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
+static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     RedisGearsPy_RestoreThread(NULL);
     PyObject* callback = arg;
     PyObject *pickleFunction = PyDict_GetItemString(pyGlobals, "dumps");
@@ -2066,7 +2067,7 @@ static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     PyObject * serializedStr = PyObject_CallObject(pickleFunction, args);
     if(!serializedStr || PyErr_Occurred()){
         PyErr_Print();
-        assert(false);
+        return REDISMODULE_ERR;
     }
     Py_DECREF(args);
     size_t len;
@@ -2075,7 +2076,7 @@ static void RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
     Py_DECREF(serializedStr);
     RedisGearsPy_SaveThread();
-    return;
+    return REDISMODULE_OK;
 }
 
 static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br){

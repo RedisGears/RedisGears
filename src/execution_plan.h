@@ -13,6 +13,7 @@
 #include "commands.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
+#include "utils/buffer.h"
 #ifdef WITHPYTHON
 #include <redisgears_python.h>
 #endif
@@ -236,6 +237,7 @@ typedef struct FlatExecutionPlan{
     char* PDType;
     ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
     size_t executionPoolSize;
+    Gears_Buffer* serializedFep;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -253,8 +255,8 @@ typedef struct ExecutionCtx{
 FlatExecutionPlan* FlatExecutionPlan_New();
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep);
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep);
-void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw);
-FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br);
+const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len);
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t len);
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);

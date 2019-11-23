@@ -75,10 +75,11 @@ static void* DupLimitArg(void* arg){
     return ret;
 }
 
-static void LimitArgSerialize(void* arg, Gears_BufferWriter* bw){
+static int LimitArgSerialize(void* arg, Gears_BufferWriter* bw){
     LimitExecutionStepArg* limitArg = arg;
     RedisGears_BWWriteLong(bw, limitArg->offset);
     RedisGears_BWWriteLong(bw, limitArg->len);
+    return REDISMODULE_OK;
 }
 
 static void* LimitArgDeserialize(Gears_BufferReader* br){
@@ -325,41 +326,68 @@ static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, Gears_B
     RedisGears_BWWriteString(bw, rfep->reader);
 }
 
-static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_BufferWriter* bw){
+static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, step->type);
     RedisGears_BWWriteString(bw, step->bStep.stepName);
     ArgType* type = step->bStep.arg.type;
     if(type && type->serialize){
-        type->serialize(step->bStep.arg.stepArg, bw);
+        return type->serialize(step->bStep.arg.stepArg, bw);
     }
+    return REDISMODULE_OK;
 }
 
-void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw){
-    FlatExecutionPlan_SerializeReader(fep->reader, bw);
-    RedisGears_BWWriteLong(bw, array_len(fep->steps));
+const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
+    if(fep->serializedFep){
+        // notice that this is not only an optimization,
+        // when calling register on fep we call this function to serialize
+        // The execution might changed durring run (for example, args might change).
+        // It is important to save the initial version of the execution.
+        if(len){
+            *len = fep->serializedFep->size;
+        }
+        return fep->serializedFep->buff;
+    }
+    fep->serializedFep = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, fep->serializedFep);
+    FlatExecutionPlan_SerializeReader(fep->reader, &bw);
+    RedisGears_BWWriteLong(&bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
-        FlatExecutionPlan_SerializeStep(step, bw);
+        if(FlatExecutionPlan_SerializeStep(step, &bw) != REDISMODULE_OK){
+            Gears_BufferFree(fep->serializedFep);
+            fep->serializedFep = NULL;
+            return NULL;
+        }
     }
 
     if(fep->PD){
-        RedisGears_BWWriteLong(bw, 1); // PD exists
-        RedisGears_BWWriteString(bw, fep->PDType);
+        RedisGears_BWWriteLong(&bw, 1); // PD exists
+        RedisGears_BWWriteString(&bw, fep->PDType);
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         assert(type);
-        type->serialize(fep->PD, bw);
+        if(type->serialize(fep->PD, &bw) != REDISMODULE_OK){
+            Gears_BufferFree(fep->serializedFep);
+            fep->serializedFep = NULL;
+            return NULL;
+        }
     }else{
-        RedisGears_BWWriteLong(bw, 0); // PD do exists
+        RedisGears_BWWriteLong(&bw, 0); // PD do exists
     }
 
     // serialize FEP id
-    RedisGears_BWWriteBuffer(bw, fep->id, EXECUTION_PLAN_ID_LEN);
+    RedisGears_BWWriteBuffer(&bw, fep->id, EXECUTION_PLAN_ID_LEN);
     if(fep->desc){
-        RedisGears_BWWriteLong(bw, 1); // has desc
-        RedisGears_BWWriteString(bw, fep->desc);
+        RedisGears_BWWriteLong(&bw, 1); // has desc
+        RedisGears_BWWriteString(&bw, fep->desc);
     }else{
-        RedisGears_BWWriteLong(bw, 0); // no desc
+        RedisGears_BWWriteLong(&bw, 0); // no desc
     }
+
+    if(len){
+        *len = fep->serializedFep->size;
+    }
+    return fep->serializedFep->buff;
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferReader* br){
@@ -380,32 +408,44 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(Gears_BufferReader* b
     return step;
 }
 
-FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLen){
+    Gears_Buffer buff = {
+            .buff = (char*)data,
+            .size = dataLen,
+            .cap = dataLen,
+    };
+    Gears_BufferReader br;
+    Gears_BufferReaderInit(&br, &buff);
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
-    ret->reader = FlatExecutionPlan_DeserializeReader(br);
-    long numberOfSteps = RedisGears_BRReadLong(br);
+    ret->reader = FlatExecutionPlan_DeserializeReader(&br);
+    long numberOfSteps = RedisGears_BRReadLong(&br);
     for(int i = 0 ; i < numberOfSteps ; ++i){
-        ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
+        ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(&br));
     }
 
-    bool PDExists = RedisGears_BRReadLong(br);
+    bool PDExists = RedisGears_BRReadLong(&br);
     if(PDExists){
-        ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
+        ret->PDType = RG_STRDUP(RedisGears_BRReadString(&br));
         ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
         assert(type);
-        ret->PD = type->deserialize(br);
+        ret->PD = type->deserialize(&br);
     }
 
     // read FEP id
     size_t len;
-    char* idBuff = RedisGears_BRReadBuffer(br, &len);
+    char* idBuff = RedisGears_BRReadBuffer(&br, &len);
     assert(len == EXECUTION_PLAN_ID_LEN);
     FlatExecutionPlan_SetID(ret, idBuff);
 
-    long long hasDesc = RedisGears_BRReadLong(br);
+    long long hasDesc = RedisGears_BRReadLong(&br);
     if(hasDesc){
-        ret->desc = RG_STRDUP(RedisGears_BRReadString(br));
+        ret->desc = RG_STRDUP(RedisGears_BRReadString(&br));
     }
+
+    // we need to deserialize the fep now so we will have the deserialize clean version of it.
+    // it might changed after to something we can not serialize
+    const char* d = FlatExecutionPlan_Serialize(ret, NULL);
+    assert(d);
     return ret;
 }
 
@@ -421,7 +461,10 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
-    FlatExecutionPlan_Serialize(ep->fep, &bw);
+    size_t len;
+    const char* serializedFep = FlatExecutionPlan_Serialize(ep->fep, &len);
+    assert(serializedFep); // if we reached here execution must be serialized
+    RedisGears_BWWriteBuffer(&bw, serializedFep, len);
     RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
@@ -1234,7 +1277,9 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
+    size_t dataLen;
+    char* data = RedisGears_BRReadBuffer(&br, &dataLen);
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
 
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks);
@@ -1520,7 +1565,9 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
+    size_t dataLen;
+    char* data = RedisGears_BRReadBuffer(&br, &dataLen);
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
     assert(idLen == EXECUTION_PLAN_ID_LEN);
@@ -1781,14 +1828,21 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
 
     assert(callbacks->serializeTriggerArgs);
 
-    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), callbacks, mode, args);
+    size_t len;
+    const char* serializedFep = FlatExecutionPlan_Serialize(fep, &len);
+    if(!serializedFep){
+        return 0;
+    }
 
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
-    FlatExecutionPlan_Serialize(fep, &bw);
+    RedisGears_BWWriteBuffer(&bw, serializedFep, len);
     callbacks->serializeTriggerArgs(args, &bw);
     RedisGears_BWWriteLong(&bw, mode);
+
+    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), callbacks, mode, args);
+
     if(Cluster_IsClusterMode()){
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
     }
@@ -1803,6 +1857,13 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
 }
 
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    if(Cluster_IsClusterMode()){
+        // on cluster mode, we must make sure we can distribute the execution to all shards.
+        if(!FlatExecutionPlan_Serialize(fep, NULL)){
+            return NULL;
+        }
+    }
+
     return FlatExecutionPlan_RunOnly(fep, NULL, mode, arg, callback, privateData);
 }
 
@@ -2095,6 +2156,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->PDType = NULL;
     res->desc = NULL;
     res->executionPoolSize = 0;
+    res->serializedFep = NULL;
 
     FlatExecutionPlan_SetID(res, NULL);
 
@@ -2131,6 +2193,9 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         FlatExecutionPlan_FreeArg(step);
     }
     array_free(fep->steps);
+    if(fep->serializedFep){
+        Gears_BufferFree(fep->serializedFep);
+    }
     RG_FREE(fep);
 }
 

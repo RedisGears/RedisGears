@@ -335,7 +335,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
 
 static void StreamReader_CreateConsumersGroup(RedisModuleCtx *ctx, const char* key){
     RedisModuleCallReply *r = RedisModule_Call(ctx, "XGROUP", "cccl", "CREATE", key, GEARS_CONSUMER_GROUP, 0);
-    assert(r && RedisModule_CallReplyType(r) != REDISMODULE_REPLY_ERROR);
+    assert(r);
 }
 
 static void StreamReader_RunOnEvent(RedisModuleCtx *ctx, SingleStreamReaderCtx* ssrctx){
@@ -465,7 +465,7 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
     assert(srctx);
-    RedisModule_ReplyWithArray(ctx, 12);
+    RedisModule_ReplyWithArray(ctx, 14);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(srctx->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -490,6 +490,14 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     }else{
         RedisModule_ReplyWithNull(ctx);
     }
+    RedisModule_ReplyWithStringBuffer(ctx, "agrs", strlen("args"));
+    RedisModule_ReplyWithArray(ctx, 6);
+    RedisModule_ReplyWithStringBuffer(ctx, "batchSize", strlen("batchSize"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->args->batchSize);
+    RedisModule_ReplyWithStringBuffer(ctx, "durationMS", strlen("durationMS"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->args->durationMS);
+    RedisModule_ReplyWithStringBuffer(ctx, "stream", strlen("stream"));
+    RedisModule_ReplyWithStringBuffer(ctx, srctx->args->stream, strlen(srctx->args->stream));
 }
 
 static void StreamReader_RdbSave(RedisModuleIO *rdb){
@@ -502,12 +510,17 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
     while((node = Gears_listNext(iter))){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
         RedisModule_SaveUnsigned(rdb, 1); // has more
+        size_t len;
+        const char* serializedFep = FlatExecutionPlan_Serialize(srctx->fep, &len);
+        assert(serializedFep); // fep already registered, must be serializable.
+        RedisModule_SaveStringBuffer(rdb, serializedFep, len);
+
         Gears_Buffer* buff = Gears_BufferCreate();
         Gears_BufferWriter bw;
         Gears_BufferWriterInit(&bw, buff);
-        FlatExecutionPlan_Serialize(srctx->fep, &bw);
         StreamReader_SerializeArgs(srctx->args, &bw);
         RedisModule_SaveStringBuffer(rdb, buff->buff, buff->size);
+
         RedisModule_SaveUnsigned(rdb, srctx->mode);
     }
     RedisModule_SaveUnsigned(rdb, 0); // done
@@ -518,6 +531,10 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
     while(RedisModule_LoadUnsigned(rdb)){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len);
+        RedisModule_Free(data);
+
+        data = RedisModule_LoadStringBuffer(rdb, &len);
         Gears_Buffer buff = {
                 .buff = data,
                 .size = len,
@@ -525,9 +542,9 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         };
         Gears_BufferReader reader;
         Gears_BufferReaderInit(&reader, &buff);
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader);
         void* args = StreamReader_DeserializeArgs(&reader);
         RedisModule_Free(data);
+
         int mode = RedisModule_LoadUnsigned(rdb);
         StreamReader_RegisrterTrigger(fep, mode, args);
         FlatExecutionPlan_AddToRegisterDict(fep);
