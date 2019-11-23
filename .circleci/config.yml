@@ -62,6 +62,11 @@ jobs:
     macos:
       xcode: 10.2.1
     steps:
+      - run:
+          name: Fix macOS Python installation
+          command: |
+            brew update || true
+            brew reinstall -f python2
       - ci_steps:
           platform: macosx
 
