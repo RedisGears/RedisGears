@@ -85,10 +85,16 @@ redislabs-dir:
 # 	$(SHOW)mkdir -p $(REDISLABS_DIR)
 # 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
 else
+ifeq ($(WITHSUDO),1)
 redislabs-dir:
 	$(SHOW) sudo rm -rf $(REDISLABS_DIR)
 	$(SHOW) sudo mkdir -p $(REDISLABS_DIR)
 	$(SHOW) sudo chown $$USER $(REDISLABS_DIR)
+else
+redislabs-dir:
+	$(SHOW) rm -rf $(REDISLABS_DIR)
+	$(SHOW) mkdir -p $(REDISLABS_DIR)
+endif
 endif
 
 cpython-dir: redislabs-dir
