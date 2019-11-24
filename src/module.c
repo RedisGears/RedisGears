@@ -160,15 +160,16 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
 }
 
 static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key){
+
     return FlatExecutionPlan_Register(fep, mode, key);
+}
+
+static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData);
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
     return FlatExecutionPlan_GetReader(fep);
-}
-
-static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-	return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData);
 }
 
 static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const char* streamId){
@@ -237,7 +238,7 @@ static void RG_DropExecution(ExecutionPlan* ep){
     if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal)){
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
-    ExecutionPlan_Free(ep, true);
+    ExecutionPlan_Free(ep);
 }
 
 static ExecutionPlan* RG_GetExecution(const char* id){
@@ -376,6 +377,10 @@ static int RedisGears_CreateGearsDataType(RedisModuleCtx* ctx){
     return GearsType ? REDISMODULE_OK : REDISMODULE_ERR;
 }
 
+static void RG_DropLocalyOnDone(ExecutionPlan* ctx, void* privateData){
+    EPTurnOnFlag(ctx, EFIsLocalyFreedOnDoneCallback);
+}
+
 static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     if(!RedisModule_ExportSharedAPI){
         RedisModule_Log(ctx, "warning", "redis version are not compatible with shared api, running without expose c level api to other modules.");
@@ -466,16 +471,25 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetRedisModuleCtx, ctx);
     REGISTER_API(GetFlatExecutionPrivateData, ctx);
 
+    REGISTER_API(DropLocalyOnDone, ctx);
+
     return REDISMODULE_OK;
 }
 
 static void RG_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = RedisGears_GetExecution(payload);
 	if(!ep){
-		printf("warning: execution not found %s !!!\r\n", payload);
+		RedisModule_Log(ctx, "notice", "got msg to drop an unexists execution : %s", payload);
 		return;
 	}
-	ExecutionPlan_SendFreeMsg(ep);
+	if(EPIsFlagOff(ep, EFDone)){
+	    // we are not done yet, we will drop the execution when it finished.
+	    // Notice that we got this from another shard that told us to drop the execution
+	    // so we only need to drop the local exeuciton when we done.
+	    RedisGears_AddOnDoneCallback(ep, RG_DropLocalyOnDone, NULL);
+	}else{
+	    ExecutionPlan_Free(ep);
+	}
 }
 
 static void RG_NetworkTest(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){

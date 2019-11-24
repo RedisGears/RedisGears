@@ -254,6 +254,8 @@ int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void
 
 const char* MODULE_API_FUNC(RedisGears_GetReader)(FlatExecutionPlan* fep);
 
+void MODULE_API_FUNC(RedisGears_DropLocalyOnDone)(ExecutionPlan* ctx, void* privateData);
+
 typedef void (*FreePrivateData)(void* privateData);
 
 /******************************* Execution plan operations *******************************/
@@ -375,6 +377,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetError);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRedisModuleCtx);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFlatExecutionPrivateData);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropLocalyOnDone);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

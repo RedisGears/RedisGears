@@ -153,7 +153,7 @@ Gears_dictType dictTypeHeapIds = {
 };
 
 typedef enum MsgType{
-    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_TERMINATE, EXECUTION_FREE
+    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_TERMINATE
 }MsgType;
 
 typedef struct RunWorkerMsg{
@@ -224,13 +224,6 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
     return ret;
 }
 
-static WorkerMsg* ExectuionPlan_WorkerMsgCreateFree(ExecutionPlan* ep){
-    WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
-    ret->type = EXECUTION_FREE;
-    ret->executionFree.ep = ep;
-    return ret;
-}
-
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = ADD_RECORD_MSG;
@@ -278,9 +271,7 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
 }
 
 ExecutionPlan* ExecutionPlan_FindById(const char* id){
-    pthread_mutex_lock(&epData.mutex);
     ExecutionPlan* ep = Gears_dictFetchValue(epData.epDict, id);
-    pthread_mutex_unlock(&epData.mutex);
     return ep;
 }
 
@@ -1148,6 +1139,8 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     EPTurnOffFlag(ep, EFIsOnDoneCallback);
     if(EPIsFlagOn(ep, EFIsFreedOnDoneCallback)){
         RedisGears_DropExecution(ep);
+    }else if(EPIsFlagOn(ep, EFIsLocalyFreedOnDoneCallback)){
+        ExecutionPlan_Free(ep);
     }
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1350,20 +1343,25 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
 
     ExecutionPlan_SetID(ep, eid);
 
-    if(ep->mode != ExecutionModeSync){
-        // todo: this is to spacific, currently we do not add sync executions to epList
-        pthread_mutex_lock(&epData.mutex);
-        if(GearsConfig_GetMaxExecutions() > 0){
-            while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
-                Gears_listNode* n0 = Gears_listFirst(epData.epList);
-                ExecutionPlan* ep0 = Gears_listNodeValue(n0);
-                ExecutionPlan_Free(ep0, false);
-            }
+    if(GearsConfig_GetMaxExecutions() > 0 && Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()){
+        Gears_listNode *head = Gears_listFirst(epData.epList);
+        ExecutionPlan* ep0 = Gears_listNodeValue(head);
+        if(EPIsFlagOff(ep0, EFDone)){
+            // we are not done yet, we will drop the execution when it finished.
+            // Notice that we got this from another shard that told us to drop the execution
+            // so we only need to drop the local exeuciton when we done.
+
+            // also lets delete this execution for the execution list
+            Gears_listDelNode(epData.epList, head);
+            ep0->nodeOnExecutionsList = NULL;
+            RedisGears_AddOnDoneCallback(ep0, RedisGears_DropLocalyOnDone, NULL);
+        }else{
+            ExecutionPlan_Free(ep0);
         }
-        Gears_listAddNodeTail(epData.epList, ep);
-        Gears_dictAdd(epData.epDict, ep->id, ep);
-        pthread_mutex_unlock(&epData.mutex);
     }
+    Gears_listAddNodeTail(epData.epList, ep);
+    ep->nodeOnExecutionsList = Gears_listLast(epData.epList);
+    Gears_dictAdd(epData.epDict, ep->id, ep);
 
     return ep;
 }
@@ -1484,6 +1482,7 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
     ep->onDoneData = array_trimm_len(ep->onDoneData, 0);
     EPTurnOffFlag(ep, EFIsOnDoneCallback);
     EPTurnOffFlag(ep, EFIsFreedOnDoneCallback);
+    EPTurnOffFlag(ep, EFIsLocalyFreedOnDoneCallback);
 
     ExecutionStep_Reset(ep->steps[0]);
 }
@@ -1753,9 +1752,6 @@ static void ExecutionPlan_MsgArrive(WorkerMsg* msg){
 	case EXECUTION_TERMINATE:
         ExecutionPlan_ExecutionTerminate(msg->executionDone.ep);
         break;
-	case EXECUTION_FREE:
-        ExecutionPlan_Free(msg->executionFree.ep, true);
-        break;
 	default:
 		assert(false);
 	}
@@ -2014,6 +2010,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
         EPTurnOffFlag(ret, EFIsLocal);
     }
     EPTurnOffFlag(ret, EFIsFreedOnDoneCallback);
+    EPTurnOffFlag(ret, EFIsLocalyFreedOnDoneCallback);
     EPTurnOffFlag(ret, EFIsOnDoneCallback);
     return ret;
 }
@@ -2097,11 +2094,6 @@ static void ExecutionStep_Free(ExecutionStep* es){
     RG_FREE(es);
 }
 
-void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep){
-    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateFree(ep);
-    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
-}
-
 static void ExecutionPlan_FreeRaw(ExecutionPlan* ep){
     ExecutionStep_Free(ep->steps[0]);
     array_free(ep->steps);
@@ -2111,22 +2103,12 @@ static void ExecutionPlan_FreeRaw(ExecutionPlan* ep){
     RG_FREE(ep);
 }
 
-void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock){
-    if(ep->mode != ExecutionModeSync){
-        if (needLock) pthread_mutex_lock(&epData.mutex);
-        Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_TAIL);
-        Gears_listNode* node = NULL;
-        while((node = Gears_listNext(it))){
-            ExecutionPlan* it_ep = Gears_listNodeValue(node);
-            if (!memcmp(it_ep->id, ep->id, EXECUTION_PLAN_ID_LEN)) {
-                Gears_listDelNode(epData.epList, node);
-                break;
-            }
-        }
-        Gears_listReleaseIterator(it);
-        Gears_dictDelete(epData.epDict, ep->id);
-        if (needLock) pthread_mutex_unlock(&epData.mutex);
+void ExecutionPlan_Free(ExecutionPlan* ep){
+
+    if(ep->nodeOnExecutionsList){
+        Gears_listDelNode(epData.epList, ep->nodeOnExecutionsList);
     }
+    Gears_dictDelete(epData.epDict, ep->id);
 
     ExecutionPlan_Reset(ep);
 
@@ -2359,13 +2341,12 @@ int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, i
 }
 
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    pthread_mutex_lock(&epData.mutex);
 	RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
 	size_t numOfEntries = 0;
-    Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_HEAD);
-    Gears_listNode* node = NULL;
-    while((node = Gears_listNext(it))) {
-        ExecutionPlan* ep = Gears_listNodeValue(node);
+    Gears_dictIterator* it = Gears_dictGetIterator(epData.epDict);
+    Gears_dictEntry *entry = NULL;
+    while((entry = Gears_dictNext(it))) {
+        ExecutionPlan* ep = Gears_dictGetVal(entry);
 		RedisModule_ReplyWithArray(ctx, 4);
 		RedisModule_ReplyWithStringBuffer(ctx, "executionId", strlen("executionId"));
 		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
@@ -2373,8 +2354,7 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
         RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
 		++numOfEntries;
     }
-    Gears_listReleaseIterator(it);  
-    pthread_mutex_unlock(&epData.mutex);
+    Gears_dictReleaseIterator(it);
 	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
 	return REDISMODULE_OK;
 }
@@ -2396,7 +2376,6 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
     bool bClusterPlan = Cluster_IsClusterMode();
 
-    // TODO: big potential issue if another thread releases the ep before we acquire the lock <- maybe just lock the eplist?
     ExecutionPlan* ep = RedisGears_GetExecution(id);
 
     if(!ep){
@@ -2442,8 +2421,6 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
         return res;
 #endif
     }else{
-
-        pthread_mutex_lock(&epData.mutex);
         RedisModule_ReplyWithArray(ctx, 1);
         RedisModule_ReplyWithArray(ctx, 4);
         RedisModule_ReplyWithStringBuffer(ctx, "shard_id", strlen("shard_id"));
@@ -2516,7 +2493,6 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
                 RedisModule_ReplyWithStringBuffer(ctx, "", strlen(""));
             }
         }
-        pthread_mutex_unlock(&epData.mutex);
     }
 	return REDISMODULE_OK;
 }

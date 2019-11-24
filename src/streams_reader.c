@@ -324,10 +324,6 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         ++srctx->numSuccess;
     }
 
-    if(srctx->mode == ExecutionModeSync){
-        RedisGears_DropExecution(ctx);
-    }
-
     StreamReaderTriggerCtx_Free(srctx);
 }
 
@@ -358,6 +354,15 @@ static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
 }
 
 static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
+    int flags = RedisModule_GetContextFlags(ctx);
+    if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
+        // we are not executing registrations on slave
+        return REDISMODULE_OK;
+    }
+    if(flags & REDISMODULE_CTX_FLAGS_LOADING){
+        // we are not executing registrations on slave
+        return REDISMODULE_OK;
+    }
     Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     const char* keyName = RedisModule_StringPtrLen(key, NULL);

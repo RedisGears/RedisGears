@@ -188,6 +188,7 @@ typedef struct OnDoneData{
 #define EFIsFreedOnDoneCallback 0x04
 #define EFSentRunRequest 0x08
 #define EFIsLocal 0x10
+#define EFIsLocalyFreedOnDoneCallback 0x20
 
 #define EPTurnOnFlag(ep, f) ep->flags |= f
 #define EPTurnOffFlag(ep, f) ep->flags &= ~f
@@ -209,6 +210,7 @@ typedef struct ExecutionPlan{
     long long executionDuration;
     WorkerData* assignWorker;
     ExecutionMode mode;
+    Gears_listNode* nodeOnExecutionsList;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -283,7 +285,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
-void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
+void ExecutionPlan_Free(ExecutionPlan* ep);
 
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

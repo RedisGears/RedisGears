@@ -360,11 +360,6 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         ++rData->numSuccess;
     }
 
-    // we drop only sync executions
-    if(rData->mode == ExecutionModeSync){
-        RedisGears_DropExecution(ctx);
-    }
-
     KeysReaderRegisterData_Free(rData);
 }
 
@@ -383,7 +378,12 @@ static int KeysReader_IsKeyMatch(const char* prefix, const char* key){
 }
 
 static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
-    if(!(RedisModule_GetContextFlags(ctx) & REDISMODULE_CTX_FLAGS_MASTER)){
+    int flags = RedisModule_GetContextFlags(ctx);
+    if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
+        // we are not executing registrations on slave
+        return REDISMODULE_OK;
+    }
+    if(flags & REDISMODULE_CTX_FLAGS_LOADING){
         // we are not executing registrations on slave
         return REDISMODULE_OK;
     }
