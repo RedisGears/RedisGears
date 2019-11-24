@@ -302,7 +302,7 @@ typedef struct ExecutionDoneCtx{
 
 static void StreamReader_AckStream(StreamReaderCtx* readerCtx){
     RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisModule_Call(rctx, "XACK", "ccv", readerCtx->streamKeyName, readerCtx->consumerGroup, readerCtx->batchIds, array_len(readerCtx->batchIds));
+    RedisModule_Call(rctx, "XACK", "ccv", readerCtx->streamKeyName, readerCtx->consumerGroup, readerCtx->batchIds, (size_t)array_len(readerCtx->batchIds));
     RedisModule_FreeThreadSafeContext(rctx);
 }
 
@@ -426,10 +426,11 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
 
 static void* StreamReader_ScanForStreams(void* pd){
     StreamReaderTriggerCtx* srctx = pd;
-    size_t len = strlen(srctx->args->stream);
-    if(srctx->args->stream[len - 1] != '*'){
-        // no a prefix mode, lets see if key exists
-    }
+    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_ThreadSafeContextLock(rctx);
+    // todo: implement scanning
+    StreamReaderTriggerCtx_Free(srctx);
+    RedisModule_ThreadSafeContextUnlock(rctx);
     return NULL;
 }
 
@@ -445,7 +446,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode m
     StreamReaderTriggerCtx* srctx = StreamReaderTriggerCtx_Create(fep, mode, arg);
     Gears_listAddNodeHead(streamsRegistration, srctx);
     pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
-    pthread_detach(&srctx->scanThread);
+    pthread_detach(srctx->scanThread);
     return 1;
 }
 
