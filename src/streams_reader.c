@@ -38,6 +38,7 @@ typedef struct StreamReaderTriggerCtx{
     long long numSuccess;
     long long numFailures;
     char* lastError;
+    pthread_t scanThread;
 }StreamReaderTriggerCtx;
 
 typedef struct SingleStreamReaderCtx{
@@ -330,7 +331,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
 #define GEARS_CONSUMER_GROUP "__gears_consumer_group__"
 
 static void StreamReader_CreateConsumersGroup(RedisModuleCtx *ctx, const char* key){
-    RedisModuleCallReply *r = RedisModule_Call(ctx, "XGROUP", "cccl", "CREATE", key, GEARS_CONSUMER_GROUP, 0);
+    RedisModuleCallReply *r = RedisModule_Call(ctx, "XGROUP", "cccc", "CREATE", key, GEARS_CONSUMER_GROUP, "0");
     assert(r);
 }
 
@@ -423,6 +424,15 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
     StreamReaderTriggerCtx_Free(srctx);
 }
 
+static void* StreamReader_ScanForStreams(void* pd){
+    StreamReaderTriggerCtx* srctx = pd;
+    size_t len = strlen(srctx->args->stream);
+    if(srctx->args->stream[len - 1] != '*'){
+        // no a prefix mode, lets see if key exists
+    }
+    return NULL;
+}
+
 static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
@@ -434,6 +444,8 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode m
     }
     StreamReaderTriggerCtx* srctx = StreamReaderTriggerCtx_Create(fep, mode, arg);
     Gears_listAddNodeHead(streamsRegistration, srctx);
+    pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+    pthread_detach(&srctx->scanThread);
     return 1;
 }
 
