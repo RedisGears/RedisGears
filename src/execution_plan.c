@@ -1289,7 +1289,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
 
     // replicate to oaf and slaves
     RedisModule_SelectDb(ctx, 0);
-    RedisModule_Replicate(ctx, "RG.INTERNALREGISTER", "b", payload, len);
+    RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", payload, len);
 }
 
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep){
@@ -1542,6 +1542,10 @@ static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, 
 static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatExecutionPlan* fep){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks->unregisterTrigger);
+
+    // replicate to slave and aof
+    RedisModule_SelectDb(ctx, 0);
+    RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "c", fep->idStr);
 
     FlatExecutionPlan_RemoveFromRegisterDict(fep);
     callbacks->unregisterTrigger(fep);
@@ -2299,7 +2303,7 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     return REDISMODULE_OK;
 }
 
-int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool sendOnCluster){
     if(argc < 2 || argc > 3){
         return RedisModule_WrongArity(ctx);
     }
@@ -2319,7 +2323,7 @@ int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **a
         return REDISMODULE_OK;
     }
 
-    if(Cluster_IsClusterMode()){
+    if(sendOnCluster && Cluster_IsClusterMode()){
         Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, fep->id, EXECUTION_PLAN_ID_LEN);
     }
 
@@ -2328,6 +2332,14 @@ int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **a
     RedisModule_ReplyWithSimpleString(ctx, "OK");
 
     return REDISMODULE_OK;
+}
+
+int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    return ExecutionPlan_UnregisterCommon(ctx, argv, argc, false);
+}
+
+int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    return ExecutionPlan_UnregisterCommon(ctx, argv, argc, true);
 }
 
 int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
