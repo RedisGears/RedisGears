@@ -570,9 +570,11 @@ static void* StreamReader_ScanForStreams(void* pd){
     RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(NULL);
     long long cursor = 0;
     do{
-        LockHandler_Acquire(rctx);
+        // we do not use the lockhandler cause this thread is temporary
+        // and we do not want to allocate any unneeded extra data.
+        RedisModule_ThreadSafeContextLock(rctx);
         RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", cursor, "COUNT", "10000", "MATCH", srctx->args->stream);
-        LockHandler_Release(rctx);
+        RedisModule_ThreadSafeContextUnlock(rctx);
 
         bool ret = StreamReader_VerifyCallReply(rctx, reply, "Failed scanning keys on background", "warning");
         assert(ret);
@@ -600,10 +602,10 @@ static void* StreamReader_ScanForStreams(void* pd){
             assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
 
-            LockHandler_Acquire(rctx);
+            RedisModule_ThreadSafeContextLock(rctx);
             RedisModuleKey *kp = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
             if(kp == NULL){
-                LockHandler_Release(rctx);
+                RedisModule_ThreadSafeContextUnlock(rctx);
                 continue;
             }
             if(RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp) == 6){
@@ -623,16 +625,16 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModule_FreeString(rctx, key);
             RedisModule_CloseKey(kp);
 
-            LockHandler_Release(rctx);
+            RedisModule_ThreadSafeContextUnlock(rctx);
         }
 
         RedisModule_FreeCallReply(reply);
     }while(cursor != 0);
 
-    LockHandler_Acquire(rctx);
+    RedisModule_ThreadSafeContextLock(rctx);
     srctx->allowStartExecution = true;
     StreamReaderTriggerCtx_Free(srctx);
-    LockHandler_Release(rctx);
+    RedisModule_ThreadSafeContextUnlock(rctx);
 
     RedisModule_FreeThreadSafeContext(rctx);
 
