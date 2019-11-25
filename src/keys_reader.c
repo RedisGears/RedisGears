@@ -235,14 +235,23 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     const char* keyStr = RedisModule_StringPtrLen(key, &keyLen);
     Record* record = NULL;
 
-    RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
-    if(!keyHandler){
-        return NULL;
-    }
-
     char* keyCStr = RG_ALLOC(keyLen + 1);
     memcpy(keyCStr, keyStr, keyLen);
     keyCStr[keyLen] = '\0';
+
+    RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
+    if(!keyHandler){
+        if(readerCtx->readValue){
+            // if we reached here and the key does not exists
+            // lets return a dictionary with only the key indicating that the key was deleted.
+            Record* keyRecord = RedisGears_StringRecordCreate(keyCStr, keyLen);
+            record = RedisGears_HashSetRecordCreate();
+            RedisGears_HashSetRecordSet(record, "key", keyRecord);
+            return record;
+        }
+        RG_FREE(keyCStr);
+        return NULL;
+    }
 
     if(!readerCtx->readValue){
         record = RedisGears_StringRecordCreate(keyCStr, keyLen);
