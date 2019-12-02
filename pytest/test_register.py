@@ -4,6 +4,7 @@ import os
 import time
 
 from common import getConnectionByEnv
+from common import TimeLimit
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
 import paella
@@ -133,10 +134,14 @@ def testBasicStreamRegisterOnPrefix(env):
     conn.execute_command('xadd', 'rstream1', '*', 'name', 'test2')
     env.assertContains("{'name': 'test1', 'streamId': ", conn.get('new_key'))
 
-    # delete all registrations so valgrind check will pass
+    # delete all registrations and executions so valgrind check will pass
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+        env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
-         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+        env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 
 def testBasicStreamProcessing(env):
@@ -161,7 +166,11 @@ def testBasicStreamProcessing(env):
     env.assertEqual(conn.get('f1'), 'v1')
     env.assertEqual(conn.get('f2'), 'v2')
 
-    # delete all registrations so valgrind check will pass
+    # delete all registrations and executions so valgrind check will pass
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
@@ -186,6 +195,14 @@ def testRegistersOnPrefix(env):
     env.assertEqual(conn.get('pref2:y'), '2')
     env.assertEqual(conn.get('pref2:z'), '3')
 
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
 def testRegistersSurviveRestart(env):
     env.skipOnCluster()
     ## todo : make this test work on cluster
@@ -201,30 +218,76 @@ def testRegistersSurviveRestart(env):
         for i in range(100):
             conn.delete(str(i))
 
+        # wait for all executions to finish
+        res = []
+        while len(res) < 3:
+            res = env.cmd('rg.dumpexecutions')
+            res = [r for r in res if r[3] == 'done']
+
         env.assertEqual(conn.get('NumOfKeys'), '0')
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+        env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 def testRegistersReplicatedToSlave():
     env = Env(useSlaves=True, env='oss')
+    if env.envRunner.debugger is not None:
+        env.skip() # valgrind is not working correctly with replication
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB().filter(lambda x: x['key'] != 'NumOfKeys')."
                             "foreach(lambda x: execute('incrby', 'NumOfKeys', ('1' if 'value' in x.keys() else '-1')))."
                             "register()")
 
-    time.sleep(0.1) # make sure registration got to slave
-
     slaveConn = env.getSlaveConnection()
-    res = slaveConn.execute_command('RG.DUMPREGISTRATIONS')
-    env.assertEqual(len(res), 1)
+    try:
+        with TimeLimit(5):
+            res = []
+            while len(res) < 1:
+                res = slaveConn.execute_command('RG.DUMPREGISTRATIONS')
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for Execution to reach slave')
 
-    for i in range(100):
+    for i in range(5):
         conn.set(str(i), str(i))
 
-    env.assertEqual(conn.get('NumOfKeys'), '100')
-
-    time.sleep(0.1) # make sure values got to slave
+    try:
+        with TimeLimit(5):
+            numOfKeys = '0'
+            while numOfKeys != '5':
+                numOfKeys = conn.get('NumOfKeys')
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for keys to update')
+    
 
     ## make sure registrations did not run on slave (if it did NumOfKeys would get to 200)
-    env.assertEqual(slaveConn.get('NumOfKeys'), '100')
+    try:
+        with TimeLimit(5):
+            numOfKeys = '0'
+            while numOfKeys != '5':
+                numOfKeys = slaveConn.get('NumOfKeys')
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for keys to update')
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+    try:
+        with TimeLimit(5):
+            res = slaveConn.execute_command('RG.DUMPREGISTRATIONS')
+            while len(res) > 0:
+                res = slaveConn.execute_command('RG.DUMPREGISTRATIONS')
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for registration to unregister on slave')
 
 def testSyncRegister(env):
     env.skipOnCluster()
@@ -237,6 +300,14 @@ def testSyncRegister(env):
         conn.set(str(i), str(i))
 
     env.assertEqual(conn.get('NumOfKeys'), '100')
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
     
 
 def testStreamReaderDoNotLoseValues(env):
@@ -267,11 +338,19 @@ def testStreamReaderDoNotLoseValues(env):
     # execution should be triggered on start for the rest of the elements
     # make sure it complited
     res = []
-    while len(res) < 1:
+    while len(res) < 2: ## we need to wait for 2 executions, one for pending and one for new.
         res = env.cmd('rg.dumpexecutions')
         res = [r for r in res if r[3] == 'done']    
 
     env.assertEqual(conn.get('NumOfElements'), '9')
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 def testStreamReaderWithAof():
     env = Env(env='oss', useAof=True)
@@ -306,3 +385,11 @@ def testStreamReaderWithAof():
         res = [r for r in res if r[3] == 'done']    
 
     env.assertEqual(conn.get('NumOfElements'), '9')
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')

@@ -585,7 +585,8 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         RedisModule_Free(data);
         char* args = RedisModule_LoadStringBuffer(rdb, NULL);
         int mode = RedisModule_LoadUnsigned(rdb);
-        KeysReader_RegisrterTrigger(fep, mode, args);
+        KeysReader_RegisrterTrigger(fep, mode, RG_STRDUP(args));
+        RedisModule_Free(args);
         FlatExecutionPlan_AddToRegisterDict(fep);
     }
 }
@@ -603,6 +604,7 @@ static void GenricKeysReader_Clear(bool (*shouldClear)(FlatExecutionPlan*)){
         }
         FlatExecutionPlan_RemoveFromRegisterDict(rData->fep);
         KeysReaderRegisterData_Free(rData);
+        Gears_listDelNode(keysReaderRegistration, node);
     }
     Gears_listReleaseIterator(iter);
 }

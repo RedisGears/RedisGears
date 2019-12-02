@@ -748,6 +748,7 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
         Gears_BufferWriterInit(&bw, buff);
         StreamReader_SerializeArgs(srctx->args, &bw);
         RedisModule_SaveStringBuffer(rdb, buff->buff, buff->size);
+        Gears_BufferFree(buff);
 
         RedisModule_SaveUnsigned(rdb, srctx->mode);
     }
@@ -789,6 +790,7 @@ static void StreamReader_Clear(){
         StreamReaderTriggerCtx* srtctx = Gears_listNodeValue(node);
         FlatExecutionPlan_RemoveFromRegisterDict(srtctx->fep);
         StreamReaderTriggerCtx_Free(srtctx);
+        Gears_listDelNode(streamsRegistration, node);
     }
     Gears_listReleaseIterator(iter);
 }
