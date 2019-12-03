@@ -315,7 +315,7 @@ def testStreamReaderDoNotLoseValues(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB('StreamReader')."
                             "foreach(lambda x: execute('incr', 'NumOfElements'))."
-                            "register(regex='s', batch=5, duration=5000)")
+                            "register(regex='s', batch=5)")
 
     for i in range(5):
         conn.execute_command('xadd', 's', '*', 'foo', 'bar')
@@ -357,7 +357,7 @@ def testStreamReaderWithAof():
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB('StreamReader')."
                             "foreach(lambda x: execute('incr', 'NumOfElements'))."
-                            "register(regex='s', batch=5, duration=5000)")
+                            "register(regex='s', batch=5)")
 
     for i in range(5):
         conn.execute_command('xadd', 's', '*', 'foo', 'bar')
@@ -380,7 +380,7 @@ def testStreamReaderWithAof():
     # execution should be triggered on start for the rest of the elements
     # make sure it complited
     res = []
-    while len(res) < 1:
+    while len(res) < 2:
         res = env.cmd('rg.dumpexecutions')
         res = [r for r in res if r[3] == 'done']    
 

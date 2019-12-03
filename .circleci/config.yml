@@ -43,6 +43,9 @@ jobs:
     environment:
       - BUILD_DIR: build-debian
     steps:
+      - run:
+          name: Redis_5_upgrade
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.6; make; make install
       - ci_steps:
           platform: ubuntu
   
@@ -54,7 +57,7 @@ jobs:
     steps:
       - run:
           name: Redis_5_upgrade
-          command: cd ../redis; git fetch; git checkout 5.0.5; make; make install
+          command: cd ../redis; git fetch; git checkout 5.0.6; make; make install
       - ci_steps:
           platform: redhat
 
@@ -67,6 +70,9 @@ jobs:
           command: |
             brew update || true
             brew reinstall -f python2
+      - run:
+          name: Redis_5_upgrade
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.6; make; make install
       - ci_steps:
           platform: macosx
 
