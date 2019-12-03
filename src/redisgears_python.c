@@ -747,6 +747,16 @@ static PyObject* replyToPyList(RedisModuleCallReply *reply){
     return Py_None;
 }
 
+static PyObject* getMyHashTag(PyObject *cls, PyObject *args){
+    const char* myHashTag = RedisGears_GetMyHashTag();
+    if(!myHashTag){
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+    PyObject* ret = PyUnicode_FromStringAndSize(myHashTag, strlen(myHashTag));
+    return ret;
+}
+
 static PyObject* executeCommand(PyObject *cls, PyObject *args){
     if(PyTuple_Size(args) < 1){
         return PyList_New(0);
@@ -1412,6 +1422,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
+    {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {NULL, NULL, 0, NULL}
 };

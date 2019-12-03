@@ -295,6 +295,10 @@ static void RG_SetError(ExecutionCtx* ectx, char* err){
     ectx->err = err;
 }
 
+static const char* RG_GetMyHashTag(){
+   return Cluster_GetMyHashTag();
+}
+
 static RedisModuleCtx* RG_GetRedisModuleCtx(ExecutionCtx* ectx){
     return ectx->rctx;
 }
@@ -472,6 +476,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetFlatExecutionPrivateData, ctx);
 
     REGISTER_API(DropLocalyOnDone, ctx);
+
+    REGISTER_API(GetMyHashTag, ctx);
 
     return REDISMODULE_OK;
 }

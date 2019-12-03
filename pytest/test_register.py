@@ -182,6 +182,8 @@ def testRegistersOnPrefix(env):
                             "foreach(lambda x: execute('set', x[0], x[1]))."
                             "register(regex='pref1:*')")
 
+    time.sleep(0.1) ## wait for execution to get to all shards
+
     conn.set('pref1:x', '1')
     conn.set('pref1:y', '2')
     conn.set('pref1:z', '3')
@@ -355,9 +357,11 @@ def testStreamReaderDoNotLoseValues(env):
 def testStreamReaderWithAof():
     env = Env(env='oss', useAof=True)
     conn = getConnectionByEnv(env)
-    env.cmd('rg.pyexecute', "GB('StreamReader')."
+    env.cmd('rg.pyexecute', "GB('StreamReader').repartition(lambda x: 'NumOfElements')."
                             "foreach(lambda x: execute('incr', 'NumOfElements'))."
                             "register(regex='s', batch=5)")
+
+    time.sleep(0.1) # wait for reach all shards
 
     for i in range(5):
         conn.execute_command('xadd', 's', '*', 'foo', 'bar')

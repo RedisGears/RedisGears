@@ -277,6 +277,8 @@ RedisModuleCtx* MODULE_API_FUNC(RedisGears_GetRedisModuleCtx)(ExecutionCtx* ectx
 void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx);
 bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 
+const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
+
 int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
@@ -379,6 +381,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFlatExecutionPrivateData);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropLocalyOnDone);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetMyHashTag);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

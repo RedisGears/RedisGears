@@ -10,10 +10,9 @@
 #include <pthread.h>
 #include <redisgears_memory.h>
 #include "lock_handler.h"
+#include "slots_table.h"
 
 #include <libevent.h>
-
-#define MAX_SLOT 16384
 
 typedef struct Node{
     char* id;
@@ -25,12 +24,15 @@ typedef struct Node{
     char* runId;
     unsigned long long msgId;
     Gears_list* pendingMessages;
+    size_t minSlot;
+    size_t maxSlot;
 }Node;
 
 Gears_dict* nodesMsgIds;
 
 typedef struct Cluster{
     char* myId;
+    const char* myHashTag;
     bool isClusterMode;
     Gears_dict* nodes;
     Node* slots[MAX_SLOT];
@@ -107,7 +109,7 @@ static void SentMessages_Free(void* ptr){
     RG_FREE(msg);
 }
 
-static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket){
+static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket, size_t minSlot, size_t maxSlot){
     assert(!GetNode(id));
     Node* n = RG_ALLOC(sizeof(*n));
     *n = (Node){
@@ -119,9 +121,14 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .c = NULL,
             .msgId = 0,
             .pendingMessages = Gears_listCreate(),
+            .minSlot = minSlot,
+            .maxSlot = maxSlot,
     };
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
+    if(strcmp(id, CurrCluster->myId)){
+        CurrCluster->myHashTag = slot_table[minSlot];
+    }
     return n;
 }
 
@@ -311,7 +318,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
 
         Node* n = GetNode(realId);
         if(!n){
-            n = CreateNode(realId, ip, port, password, NULL);
+            n = CreateNode(realId, ip, port, password, NULL, minslot, maxslot);
         }
         for(int i = minslot ; i <= maxslot ; ++i){
             CurrCluster->slots[i] = n;
@@ -382,7 +389,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
 
         Node* n = GetNode(nodeId);
         if(!n){
-            n = CreateNode(nodeId, nodeIp, (unsigned short)port, NULL, NULL);
+            n = CreateNode(nodeId, nodeIp, (unsigned short)port, NULL, NULL, minslot, maxslot);
         }
         for(int i = minslot ; i <= maxslot ; ++i){
             CurrCluster->slots[i] = n;
@@ -553,6 +560,13 @@ void Cluster_Init(){
 
 char* Cluster_GetMyId(){
     return CurrCluster->myId;
+}
+
+const char* Cluster_GetMyHashTag(){
+    if(!Cluster_IsClusterMode()){
+        return NULL;
+    }
+    return CurrCluster->myHashTag;
 }
 
 unsigned int keyHashSlot(char *key, int keylen);
