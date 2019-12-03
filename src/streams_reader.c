@@ -158,6 +158,7 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
 }
 
 static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
+    assert(srtctx->refCount > 0);
     if((--srtctx->refCount) == 0){
         Gears_dictIterator *iter = Gears_dictGetIterator(srtctx->singleStreamData);
         Gears_dictEntry* entry = NULL;
@@ -754,10 +755,13 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
     while(RedisModule_LoadUnsigned(rdb)){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
+        assert(data);
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len);
+        assert(fep);
         RedisModule_Free(data);
 
         data = RedisModule_LoadStringBuffer(rdb, &len);
+        assert(data);
         Gears_Buffer buff = {
                 .buff = data,
                 .size = len,

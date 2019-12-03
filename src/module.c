@@ -352,6 +352,7 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         for(char* readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
                 strlen(readerName) > 0 ;
                 readerName = RedisModule_LoadStringBuffer(rdb, NULL)){
+            assert(readerName);
             RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(readerName);
             assert(callbacks->rdbLoad);
             callbacks->rdbLoad(rdb, encver);

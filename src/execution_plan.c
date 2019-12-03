@@ -331,7 +331,7 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
     if(fep->serializedFep){
         // notice that this is not only an optimization,
         // when calling register on fep we call this function to serialize
-        // The execution might changed durring run (for example, args might change).
+        // The execution might changed during run (for example, args might change).
         // It is important to save the initial version of the execution.
         if(len){
             *len = fep->serializedFep->size;
@@ -1273,6 +1273,10 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     size_t dataLen;
     char* data = RedisGears_BRReadBuffer(&br, &dataLen);
     FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
+    if(!fep){
+        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s.", sender_id);
+        return;
+    }
 
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks);
@@ -1280,10 +1284,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
 
     void* args = callbacks->deserializeTriggerArgs(&br);
     ExecutionMode mode = RedisGears_BRReadLong(&br);
-    if(!fep){
-        // todo: big big warning
-        return;
-    }
+
 
     FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args);
 
