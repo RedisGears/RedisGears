@@ -46,7 +46,6 @@ typedef struct StreamReaderTriggerCtx{
     long long numFailures;
     char* lastError;
     pthread_t scanThread;
-    volatile bool allowStartExecution;
 }StreamReaderTriggerCtx;
 
 typedef struct SingleStreamReaderCtx{
@@ -189,7 +188,6 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .numSuccess = 0,
         .numFailures = 0,
         .lastError = NULL,
-        .allowStartExecution = false,
     };
     return srctx;
 }
@@ -514,9 +512,6 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     while((node = Gears_listNext(iter))){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
         if(StreamReader_IsKeyMatch(srctx->args->stream, keyName)){
-            if(!srctx->allowStartExecution){
-                continue;
-            }
             SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
             if(!ssrctx){
                 ssrctx = SingleStreamReaderCtx_Create(ctx, keyName, srctx);
@@ -632,7 +627,6 @@ static void* StreamReader_ScanForStreams(void* pd){
     }while(cursor != 0);
 
     RedisModule_ThreadSafeContextLock(rctx);
-    srctx->allowStartExecution = true;
     StreamReaderTriggerCtx_Free(srctx);
     RedisModule_ThreadSafeContextUnlock(rctx);
 

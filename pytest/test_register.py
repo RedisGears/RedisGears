@@ -322,14 +322,14 @@ def testStreamReaderDoNotLoseValues(env):
     for i in range(5):
         conn.execute_command('xadd', 's', '*', 'foo', 'bar')
 
-    # new a registration should be created with the 5 elements
-    # make sure it complited
-    res = []
-    while len(res) < 1:
-        res = env.cmd('rg.dumpexecutions')
-        res = [r for r in res if r[3] == 'done']
-
-    env.assertEqual(conn.get('NumOfElements'), '5')
+    try:
+        with TimeLimit(10):
+            num = 0
+            while num is None or int(num) != 5:
+                num = conn.get('NumOfElements')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 5')
 
     # lets add 4 more elements, no execution will be triggered.
     for i in range(4):
@@ -337,14 +337,14 @@ def testStreamReaderDoNotLoseValues(env):
 
     env.dumpAndReload()
 
-    # execution should be triggered on start for the rest of the elements
-    # make sure it complited
-    res = []
-    while len(res) < 2: ## we need to wait for 2 executions, one for pending and one for new.
-        res = env.cmd('rg.dumpexecutions')
-        res = [r for r in res if r[3] == 'done']    
-
-    env.assertEqual(conn.get('NumOfElements'), '9')
+    try:
+        with TimeLimit(10):
+            num = 0
+            while num is None or int(num) != 9:
+                num = conn.get('NumOfElements')
+                time.sleep(0.1)
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 5')
 
     executions = env.cmd('RG.DUMPEXECUTIONS')
     for r in executions:
