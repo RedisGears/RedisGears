@@ -126,7 +126,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
     };
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
-    if(strcmp(id, CurrCluster->myId)){
+    if(strcmp(id, CurrCluster->myId) == 0){
         CurrCluster->myHashTag = slot_table[minSlot];
     }
     return n;
@@ -601,7 +601,7 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(iter))){
         Node* n = Gears_dictGetVal(entry);
-        RedisModule_ReplyWithArray(ctx, 10);
+        RedisModule_ReplyWithArray(ctx, 14);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, n->id, strlen(n->id));
         RedisModule_ReplyWithStringBuffer(ctx, "ip", strlen("ip"));
@@ -622,6 +622,10 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             RedisModule_ReplyWithStringBuffer(ctx, runId, strlen(runId));
             RG_FREE(runId);
         }
+        RedisModule_ReplyWithStringBuffer(ctx, "minHslot", strlen("minHslot"));
+        RedisModule_ReplyWithLongLong(ctx, n->minSlot);
+        RedisModule_ReplyWithStringBuffer(ctx, "maxHslot", strlen("maxHslot"));
+        RedisModule_ReplyWithLongLong(ctx, n->maxSlot);
 
     }
     Gears_dictReleaseIterator(iter);

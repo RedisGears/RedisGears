@@ -173,9 +173,20 @@ static void RedisGearsPy_FreeSubInterpreter(void* PD){
     assert(subInterpreter->refCount > 0);
 
     if(--subInterpreter->refCount == 0){
+        PyThreadState *curr = PyThreadState_GET();
+        if(curr != subInterpreter->subInterpreter){
+            // it might be that we get here while other subinterpreter
+            // is the current, in this case we need to switch and then
+            // switch back.
+            PyThreadState_Swap(subInterpreter->subInterpreter);
+        }
         Py_EndInterpreter(subInterpreter->subInterpreter);
+        if(curr != subInterpreter->subInterpreter){
+            PyThreadState_Swap(curr);
+        }else{
+            PyThreadState_Swap(MainInterpreter->subInterpreter);
+        }
         RG_FREE(subInterpreter);
-        PyThreadState_Swap(MainInterpreter->subInterpreter);
     }
 
     RedisGearsPy_SaveThread();

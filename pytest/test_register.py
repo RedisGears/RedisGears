@@ -206,12 +206,12 @@ def testRegistersOnPrefix(env):
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 def testRegistersSurviveRestart(env):
-    env.skipOnCluster()
-    ## todo : make this test work on cluster
     conn = getConnectionByEnv(env)
-    env.cmd('rg.pyexecute', "GB().filter(lambda x: x['key'] != 'NumOfKeys')."
-                            "foreach(lambda x: execute('incrby', 'NumOfKeys', ('1' if 'value' in x.keys() else '-1')))."
-                            "register()")
+    env.cmd('rg.pyexecute', "GB().filter(lambda x: 'NumOfKeys' not in x['key'])."
+                            "foreach(lambda x: execute('incrby', 'NumOfKeys{%s}' % (hashtag()), ('1' if 'value' in x.keys() else '-1')))."
+                            "register(mode='async_local')")
+
+    time.sleep(0.1) # wait for execution to reach all the shards
 
     for _ in env.reloading_iterator():
         for i in range(100):
@@ -221,16 +221,16 @@ def testRegistersSurviveRestart(env):
             conn.delete(str(i))
 
         # wait for all executions to finish
-        res = []
-        while len(res) < 3:
-            res = env.cmd('rg.dumpexecutions')
-            res = [r for r in res if r[3] == 'done']
+        res = 0
+        while res < 200:
+            res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")
 
-        env.assertEqual(conn.get('NumOfKeys'), '0')
+        numOfKeys = env.cmd('rg.pyexecute', "GB().map(lambda x: int(x['value'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run('NumOfKeys*')")[0][0]
+        env.assertEqual(numOfKeys, '0')
 
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for r in executions:
-         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    # deleting all executions from all the shards, execution list are not identical so we use gears to clear it.
+    res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').flatmap(lambda x: [r[1] for r in execute('rg.dumpexecutions')]).foreach(lambda x: execute('RG.DROPEXECUTION', x)).run()")
 
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:

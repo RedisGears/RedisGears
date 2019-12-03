@@ -1096,7 +1096,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
 }
 
 ActionResult EPStatus_CreatedAction(ExecutionPlan* ep){
-    if(Cluster_IsClusterMode()){
+    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal)){
         // we are in a cluster mode, we must first distribute the exection to all the shards.
         if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
             ExecutionPlan_Distribute(ep);
@@ -1107,7 +1107,7 @@ ActionResult EPStatus_CreatedAction(ExecutionPlan* ep){
         }
         return STOP;
     }
-    // we are not in cluster mode, we can just start the execution
+    // we are not in cluster mode or local execution is requested, we can just start the execution
     ep->status = RUNNING;
     return CONTINUE;
 }
@@ -1163,8 +1163,8 @@ ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
     }
 
     // we are done :)
-    if(!Cluster_IsClusterMode()){
-        // no cluster mode, we can just complete the execution
+    if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
+        // no cluster mode or execution is local, we can just complete the execution
         ep->status = DONE;
         return CONTINUE;
     }
