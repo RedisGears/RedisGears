@@ -10,10 +10,9 @@
 #include <pthread.h>
 #include <redisgears_memory.h>
 #include "lock_handler.h"
+#include "slots_table.h"
 
 #include <libevent.h>
-
-#define MAX_SLOT 16384
 
 typedef struct Node{
     char* id;
@@ -25,12 +24,15 @@ typedef struct Node{
     char* runId;
     unsigned long long msgId;
     Gears_list* pendingMessages;
+    size_t minSlot;
+    size_t maxSlot;
 }Node;
 
 Gears_dict* nodesMsgIds;
 
 typedef struct Cluster{
     char* myId;
+    const char* myHashTag;
     bool isClusterMode;
     Gears_dict* nodes;
     Node* slots[MAX_SLOT];
@@ -42,36 +44,6 @@ Cluster* CurrCluster = NULL;
 int notify[2];
 pthread_t messagesThread;
 struct event_base *main_base = NULL;
-
-typedef struct MsgArriveCtx{
-    char* sender;
-    char* msg;
-    size_t msgLen;
-    RedisModuleClusterMessageReceiver receiver;
-}MsgArriveCtx;
-
-pthread_t messagesArriveThread;
-Gears_list* msgArriveList;
-pthread_mutex_t msgArriveLock;
-pthread_cond_t msgArriveCond;
-
-static MsgArriveCtx* MsgArriveCtx_Create(const char* sender, const char* msg,
-                                         size_t msgLen, RedisModuleClusterMessageReceiver receiver){
-    MsgArriveCtx* ret = RG_ALLOC(sizeof(*ret));
-    ret->sender = RG_STRDUP(sender);
-    ret->receiver = receiver;
-    ret->msgLen = msgLen;
-    ret->msg = RG_ALLOC(sizeof(char) * (msgLen + 1));
-    memcpy(ret->msg, msg, msgLen);
-    ret->msg[msgLen] = '\0';
-    return ret;
-}
-
-static void MsgArriveCtx_Free(MsgArriveCtx* ctx){
-    RG_FREE(ctx->sender);
-    RG_FREE(ctx->msg);
-    RG_FREE(ctx);
-}
 
 typedef enum MsgType{
     SEND_MSG, CLUSTER_REFRESH_MSG, CLUSTER_SET_MSG
@@ -137,7 +109,7 @@ static void SentMessages_Free(void* ptr){
     RG_FREE(msg);
 }
 
-static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket){
+static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket, size_t minSlot, size_t maxSlot){
     assert(!GetNode(id));
     Node* n = RG_ALLOC(sizeof(*n));
     *n = (Node){
@@ -149,9 +121,14 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .c = NULL,
             .msgId = 0,
             .pendingMessages = Gears_listCreate(),
+            .minSlot = minSlot,
+            .maxSlot = maxSlot,
     };
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
+    if(strcmp(id, CurrCluster->myId) == 0){
+        CurrCluster->myHashTag = slot_table[minSlot];
+    }
     return n;
 }
 
@@ -341,7 +318,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
 
         Node* n = GetNode(realId);
         if(!n){
-            n = CreateNode(realId, ip, port, password, NULL);
+            n = CreateNode(realId, ip, port, password, NULL, minslot, maxslot);
         }
         for(int i = minslot ; i <= maxslot ; ++i){
             CurrCluster->slots[i] = n;
@@ -412,7 +389,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
 
         Node* n = GetNode(nodeId);
         if(!n){
-            n = CreateNode(nodeId, nodeIp, (unsigned short)port, NULL, NULL);
+            n = CreateNode(nodeId, nodeIp, (unsigned short)port, NULL, NULL, minslot, maxslot);
         }
         for(int i = minslot ; i <= maxslot ; ++i){
             CurrCluster->slots[i] = n;
@@ -517,49 +494,6 @@ static void* Cluster_MessageThreadMain(void *arg){
     return NULL;
 }
 
-static struct timespec timespecAdd(struct timespec *a, struct timespec *b) {
-  struct timespec ret;
-  ret.tv_sec = a->tv_sec + b->tv_sec;
-
-  long long ns = a->tv_nsec + b->tv_nsec;
-  ret.tv_sec += ns / 1000000000;
-  ret.tv_nsec = ns % 1000000000;
-  return ret;
-}
-
-static void* Cluster_MessageArriveThread(void *arg){
-    struct timespec ts;
-    struct timespec interval;
-    interval.tv_sec = 1;
-    interval.tv_nsec = 0;
-    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(NULL);
-    pthread_mutex_lock(&msgArriveLock);
-    while (true) {
-        clock_gettime(CLOCK_REALTIME, &ts);
-        struct timespec timeout = timespecAdd(&ts, &interval);
-        int rc = pthread_cond_timedwait(&msgArriveCond, &msgArriveLock, &timeout);
-        if (rc == EINVAL) {
-            perror("Error waiting for condition");
-            assert(false);
-        }
-
-        while(Gears_listLength(msgArriveList) > 0){
-            Gears_listNode *node = Gears_listFirst(msgArriveList);
-            MsgArriveCtx* msgCtx = Gears_listNodeValue(node);
-            Gears_listDelNode(msgArriveList, node);
-            pthread_mutex_unlock(&msgArriveLock);
-            msgCtx->receiver(rctx, msgCtx->sender, 0, msgCtx->msg, msgCtx->msgLen);
-            MsgArriveCtx_Free(msgCtx);
-            pthread_mutex_lock(&msgArriveLock);
-        }
-    }
-    return NULL;
-}
-
-static void Cluster_StartMsgArriveThread(){
-    pthread_create(&messagesArriveThread, NULL, Cluster_MessageArriveThread, NULL);
-}
-
 static void Cluster_StartClusterThread(){
     pipe(notify);
     main_base = (struct event_base*)event_base_new();
@@ -621,15 +555,18 @@ size_t Cluster_GetSize(){
 void Cluster_Init(){
     RemoteCallbacks = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     nodesMsgIds = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
-    msgArriveList = Gears_listCreate();
-    pthread_cond_init(&msgArriveCond, NULL);
-    pthread_mutex_init(&msgArriveLock, NULL);
     Cluster_StartClusterThread();
-    Cluster_StartMsgArriveThread();
 }
 
 char* Cluster_GetMyId(){
     return CurrCluster->myId;
+}
+
+const char* Cluster_GetMyHashTag(){
+    if(!Cluster_IsClusterMode()){
+        return NULL;
+    }
+    return CurrCluster->myHashTag;
 }
 
 unsigned int keyHashSlot(char *key, int keylen);
@@ -664,7 +601,7 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(iter))){
         Node* n = Gears_dictGetVal(entry);
-        RedisModule_ReplyWithArray(ctx, 10);
+        RedisModule_ReplyWithArray(ctx, 14);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, n->id, strlen(n->id));
         RedisModule_ReplyWithStringBuffer(ctx, "ip", strlen("ip"));
@@ -685,6 +622,10 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
             RedisModule_ReplyWithStringBuffer(ctx, runId, strlen(runId));
             RG_FREE(runId);
         }
+        RedisModule_ReplyWithStringBuffer(ctx, "minHslot", strlen("minHslot"));
+        RedisModule_ReplyWithLongLong(ctx, n->minSlot);
+        RedisModule_ReplyWithStringBuffer(ctx, "maxHslot", strlen("maxHslot"));
+        RedisModule_ReplyWithLongLong(ctx, n->maxSlot);
 
     }
     Gears_dictReleaseIterator(iter);
@@ -729,13 +670,7 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         return REDISMODULE_OK;
     }
     RedisModuleClusterMessageReceiver receiver = Gears_dictGetVal(entry);
-
-    MsgArriveCtx* msgArriveCtx = MsgArriveCtx_Create(senderIdStr, msgStr, msgLen, receiver);
-
-    pthread_mutex_lock(&msgArriveLock);
-    Gears_listAddNodeTail(msgArriveList, msgArriveCtx);
-    pthread_mutex_unlock(&msgArriveLock);
-    pthread_cond_signal(&msgArriveCond);
+    receiver(ctx, senderIdStr, 0, msgStr, msgLen);
 
     RedisModule_ReplyWithSimpleString(ctx, "OK");
     return REDISMODULE_OK;

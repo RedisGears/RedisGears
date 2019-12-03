@@ -75,10 +75,11 @@ static void* DupLimitArg(void* arg){
     return ret;
 }
 
-static void LimitArgSerialize(void* arg, Gears_BufferWriter* bw){
+static int LimitArgSerialize(void* arg, Gears_BufferWriter* bw){
     LimitExecutionStepArg* limitArg = arg;
     RedisGears_BWWriteLong(bw, limitArg->offset);
     RedisGears_BWWriteLong(bw, limitArg->len);
+    return REDISMODULE_OK;
 }
 
 static void* LimitArgDeserialize(Gears_BufferReader* br){
@@ -114,7 +115,7 @@ static long long lastEPId = 0;
 static long long lastFEPId = 0;
 
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx);
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* eid, void* arg);
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mode, void* arg);
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader);
 static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep);
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg);
@@ -122,6 +123,7 @@ static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender
 static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len);
 static void ExecutionPlan_SetID(ExecutionPlan* ep, char* id);
 static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id);
+static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep);
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, EXECUTION_PLAN_ID_LEN);
@@ -151,7 +153,7 @@ Gears_dictType dictTypeHeapIds = {
 };
 
 typedef enum MsgType{
-    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_TERMINATE, EXECUTION_FREE
+    RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_TERMINATE
 }MsgType;
 
 typedef struct RunWorkerMsg{
@@ -222,13 +224,6 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
     return ret;
 }
 
-static WorkerMsg* ExectuionPlan_WorkerMsgCreateFree(ExecutionPlan* ep){
-    WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
-    ret->type = EXECUTION_FREE;
-    ret->executionFree.ep = ep;
-    return ret;
-}
-
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = ADD_RECORD_MSG;
@@ -276,9 +271,7 @@ static ArgType* FlatExecutionPlan_GetArgTypeByStepType(enum StepType type, const
 }
 
 ExecutionPlan* ExecutionPlan_FindById(const char* id){
-    pthread_mutex_lock(&epData.mutex);
     ExecutionPlan* ep = Gears_dictFetchValue(epData.epDict, id);
-    pthread_mutex_unlock(&epData.mutex);
     return ep;
 }
 
@@ -324,35 +317,68 @@ static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, Gears_B
     RedisGears_BWWriteString(bw, rfep->reader);
 }
 
-static void FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_BufferWriter* bw){
+static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, step->type);
     RedisGears_BWWriteString(bw, step->bStep.stepName);
     ArgType* type = step->bStep.arg.type;
     if(type && type->serialize){
-        type->serialize(step->bStep.arg.stepArg, bw);
+        return type->serialize(step->bStep.arg.stepArg, bw);
     }
+    return REDISMODULE_OK;
 }
 
-static void FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, Gears_BufferWriter* bw){
-    FlatExecutionPlan_SerializeReader(fep->reader, bw);
-    RedisGears_BWWriteLong(bw, array_len(fep->steps));
+const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
+    if(fep->serializedFep){
+        // notice that this is not only an optimization,
+        // when calling register on fep we call this function to serialize
+        // The execution might changed during run (for example, args might change).
+        // It is important to save the initial version of the execution.
+        if(len){
+            *len = fep->serializedFep->size;
+        }
+        return fep->serializedFep->buff;
+    }
+    fep->serializedFep = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, fep->serializedFep);
+    FlatExecutionPlan_SerializeReader(fep->reader, &bw);
+    RedisGears_BWWriteLong(&bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
-        FlatExecutionPlan_SerializeStep(step, bw);
+        if(FlatExecutionPlan_SerializeStep(step, &bw) != REDISMODULE_OK){
+            Gears_BufferFree(fep->serializedFep);
+            fep->serializedFep = NULL;
+            return NULL;
+        }
     }
 
     if(fep->PD){
-        RedisGears_BWWriteLong(bw, 1); // PD exists
-        RedisGears_BWWriteString(bw, fep->PDType);
+        RedisGears_BWWriteLong(&bw, 1); // PD exists
+        RedisGears_BWWriteString(&bw, fep->PDType);
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         assert(type);
-        type->serialize(fep->PD, bw);
+        if(type->serialize(fep->PD, &bw) != REDISMODULE_OK){
+            Gears_BufferFree(fep->serializedFep);
+            fep->serializedFep = NULL;
+            return NULL;
+        }
     }else{
-        RedisGears_BWWriteLong(bw, 0); // PD do exists
+        RedisGears_BWWriteLong(&bw, 0); // PD do exists
     }
 
     // serialize FEP id
-    RedisGears_BWWriteBuffer(bw, fep->id, EXECUTION_PLAN_ID_LEN);
+    RedisGears_BWWriteBuffer(&bw, fep->id, EXECUTION_PLAN_ID_LEN);
+    if(fep->desc){
+        RedisGears_BWWriteLong(&bw, 1); // has desc
+        RedisGears_BWWriteString(&bw, fep->desc);
+    }else{
+        RedisGears_BWWriteLong(&bw, 0); // no desc
+    }
+
+    if(len){
+        *len = fep->serializedFep->size;
+    }
+    return fep->serializedFep->buff;
 }
 
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferReader* br){
@@ -373,28 +399,44 @@ static FlatExecutionStep FlatExecutionPlan_DeserializeStep(Gears_BufferReader* b
     return step;
 }
 
-static FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br){
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLen){
+    Gears_Buffer buff = {
+            .buff = (char*)data,
+            .size = dataLen,
+            .cap = dataLen,
+    };
+    Gears_BufferReader br;
+    Gears_BufferReaderInit(&br, &buff);
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
-    ret->reader = FlatExecutionPlan_DeserializeReader(br);
-    long numberOfSteps = RedisGears_BRReadLong(br);
+    ret->reader = FlatExecutionPlan_DeserializeReader(&br);
+    long numberOfSteps = RedisGears_BRReadLong(&br);
     for(int i = 0 ; i < numberOfSteps ; ++i){
-        ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(br));
+        ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(&br));
     }
 
-    bool PDExists = RedisGears_BRReadLong(br);
+    bool PDExists = RedisGears_BRReadLong(&br);
     if(PDExists){
-        ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
+        ret->PDType = RG_STRDUP(RedisGears_BRReadString(&br));
         ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
         assert(type);
-        ret->PD = type->deserialize(br);
+        ret->PD = type->deserialize(&br);
     }
 
     // read FEP id
     size_t len;
-    char* idBuff = RedisGears_BRReadBuffer(br, &len);
+    char* idBuff = RedisGears_BRReadBuffer(&br, &len);
     assert(len == EXECUTION_PLAN_ID_LEN);
     FlatExecutionPlan_SetID(ret, idBuff);
 
+    long long hasDesc = RedisGears_BRReadLong(&br);
+    if(hasDesc){
+        ret->desc = RG_STRDUP(RedisGears_BRReadString(&br));
+    }
+
+    // we need to deserialize the fep now so we will have the deserialize clean version of it.
+    // it might changed after to something we can not serialize
+    const char* d = FlatExecutionPlan_Serialize(ret, NULL);
+    assert(d);
     return ret;
 }
 
@@ -410,7 +452,10 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
-    FlatExecutionPlan_Serialize(ep->fep, &bw);
+    size_t len;
+    const char* serializedFep = FlatExecutionPlan_Serialize(ep->fep, &len);
+    assert(serializedFep); // if we reached here execution must be serialized
+    RedisGears_BWWriteBuffer(&bw, serializedFep, len);
     RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
@@ -646,7 +691,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
     Gears_Buffer* buff;
     Gears_BufferWriter bw;
 
-    if(!Cluster_IsClusterMode()){
+    if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
         return ExecutionPlan_NextRecord(ep, step->prev, rctx);
     }
 
@@ -729,7 +774,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 	Gears_Buffer* buff;;
 	Gears_BufferWriter bw;
 
-	if(!Cluster_IsClusterMode()){
+	if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
 		return ExecutionPlan_NextRecord(ep, step->prev, rctx);
 	}
 
@@ -1051,7 +1096,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
 }
 
 ActionResult EPStatus_CreatedAction(ExecutionPlan* ep){
-    if(Cluster_IsClusterMode()){
+    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal)){
         // we are in a cluster mode, we must first distribute the exection to all the shards.
         if(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
             ExecutionPlan_Distribute(ep);
@@ -1062,7 +1107,7 @@ ActionResult EPStatus_CreatedAction(ExecutionPlan* ep){
         }
         return STOP;
     }
-    // we are not in cluster mode, we can just start the execution
+    // we are not in cluster mode or local execution is requested, we can just start the execution
     ep->status = RUNNING;
     return CONTINUE;
 }
@@ -1083,14 +1128,19 @@ ActionResult EPStatus_PendingRunAction(ExecutionPlan* ep){
 ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
-    FreePrivateData freeC = ep->freeCallback;
-    ep->isDone = true;
-    void* pd = ep->privateData;
-    if(ep->callback){
-        ep->callback(ep, ep->privateData);
+
+    // we set it to true so if execution will be freed during done callbacks we
+    // will free it only after all the callbacks are executed
+    EPTurnOnFlag(ep, EFIsOnDoneCallback);
+    for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
     }
-    if(freeC){
-        freeC(pd);
+    EPTurnOnFlag(ep, EFDone);
+    EPTurnOffFlag(ep, EFIsOnDoneCallback);
+    if(EPIsFlagOn(ep, EFIsFreedOnDoneCallback)){
+        RedisGears_DropExecution(ep);
+    }else if(EPIsFlagOn(ep, EFIsLocalyFreedOnDoneCallback)){
+        ExecutionPlan_Free(ep);
     }
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1113,8 +1163,8 @@ ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
     }
 
     // we are done :)
-    if(!Cluster_IsClusterMode()){
-        // no cluster mode, we can just complete the execution
+    if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
+        // no cluster mode or execution is local, we can just complete the execution
         ep->status = DONE;
         return CONTINUE;
     }
@@ -1169,7 +1219,7 @@ ActionResult EPStatus_InitiatorTerminationAction(ExecutionPlan* ep){
 
 static void ExecutionPlan_Main(ExecutionPlan* ep){
     ActionResult result;
-    ep->sentRunRequest = false;
+    EPTurnOffFlag(ep, EFSentRunRequest);
     while(true){
         result = statusesActions[ep->status](ep);
         switch(result){
@@ -1186,29 +1236,30 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
 }
 
 static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
-	if(ep->sentRunRequest){
+	if(EPIsFlagOn(ep, EFSentRunRequest)){
 		return;
 	}
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateRun(ep);
-	ep->sentRunRequest = true;
+	EPTurnOnFlag(ep, EFSentRunRequest);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
-static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, void* arg){
-    RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
-    LockHandler_Acquire(ctx);
-
-    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-    assert(callbacks);
-    assert(callbacks->registerTrigger);
-    callbacks->registerTrigger(fep, arg);
-
-    // the registeredFepDict holds a weak pointer to the fep struct. If does not increase
-    // the refcount and will be remove when the fep will be unregistered
+void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
     Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
+}
 
-    LockHandler_Release(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
+void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
+    int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
+    assert(res == DICT_OK);
+}
+
+static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg){
+    assert(callbacks->registerTrigger);
+    callbacks->registerTrigger(fep, mode, arg);
+
+    // the registeredFepDict holds a weak pointer to the fep struct. It does not increase
+    // the refcount and will be remove when the fep will be unregistered
+    FlatExecutionPlan_AddToRegisterDict(fep);
 }
 
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1219,22 +1270,100 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
+    size_t dataLen;
+    char* data = RedisGears_BRReadBuffer(&br, &dataLen);
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
     if(!fep){
-        // todo: big big warning
+        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s.", sender_id);
         return;
     }
 
-    FlatExecutionPlan_RegisterInternal(fep, RG_STRDUP(RedisGears_BRReadString(&br)));
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+    assert(callbacks);
+    assert(callbacks->deserializeTriggerArgs);
+
+    void* args = callbacks->deserializeTriggerArgs(&br);
+    ExecutionMode mode = RedisGears_BRReadLong(&br);
+
+
+    FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args);
+
+    // replicate to oaf and slaves
+    RedisModule_SelectDb(ctx, 0);
+    RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", payload, len);
 }
 
-static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    ExecutionPlan* ep = ExecutionPlan_New(fep, eid, arg);
+Reader* ExecutionPlan_GetReader(ExecutionPlan* ep){
+    ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
+    assert(readerStep->type == READER);
+    return readerStep->reader.r;
+}
+
+static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    ExecutionPlan* ep;
+    if(fep->executionPoolSize > 0){
+        ep = fep->executionPool[--fep->executionPoolSize];
+        Reader* r = ExecutionPlan_GetReader(ep);
+        // we need to reset the reader with the new arguments
+        if(r->reset){
+            // reader is support reset, lets use it.
+            r->reset(r->ctx, arg);
+        }else{
+            // reader do not support reset, lets free and recreate
+            ExecutionStep* readerStep = array_pop(ep->steps);
+            assert(readerStep->type == READER);
+            readerStep->reader.r->free(readerStep->reader.r->ctx);
+            RG_FREE(readerStep->reader.r);
+            ReaderStep rs = ExecutionPlan_NewReader(fep->reader, arg);
+            readerStep->reader = rs;
+            if(array_len(ep->steps) > 0){
+                ep->steps[array_len(ep->steps) - 1]->prev = readerStep;
+            }
+            ep->steps = array_append(ep->steps, readerStep);
+        }
+
+        // set the mode
+        ep->mode = mode;
+        if(ep->mode == ExecutionModeSync || ep->mode == ExecutionModeAsyncLocal){
+            EPTurnOnFlag(ep, EFIsLocal);
+        }else{
+            EPTurnOffFlag(ep, EFIsLocal);
+        }
+    } else {
+        ep = ExecutionPlan_New(fep, mode, arg);
+    }
     if(!ep){
         return NULL;
     }
-    ep->callback = callback;
-    ep->privateData = privateData;
+
+    if(callback){
+        OnDoneData onDoneData = (OnDoneData){.callback = callback, .privateData = privateData};
+        ep->onDoneData = array_append(ep->onDoneData, onDoneData);
+    }
+    ep->fep = FlatExecutionPlan_ShallowCopy(fep);
+
+    ExecutionPlan_SetID(ep, eid);
+
+    if(GearsConfig_GetMaxExecutions() > 0 && Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()){
+        Gears_listNode *head = Gears_listFirst(epData.epList);
+        ExecutionPlan* ep0 = Gears_listNodeValue(head);
+        if(EPIsFlagOff(ep0, EFDone)){
+            // we are not done yet, we will drop the execution when it finished.
+            // Notice that we got this from another shard that told us to drop the execution
+            // so we only need to drop the local exeuciton when we done.
+
+            // also lets delete this execution for the execution list
+            Gears_listDelNode(epData.epList, head);
+            ep0->nodeOnExecutionsList = NULL;
+            RedisGears_AddOnDoneCallback(ep0, RedisGears_DropLocalyOnDone, NULL);
+        }else{
+            ExecutionPlan_Free(ep0);
+        }
+    }
+    Gears_listAddNodeTail(epData.epList, ep);
+    ep->nodeOnExecutionsList = Gears_listLast(epData.epList);
+    Gears_dictAdd(epData.epDict, ep->id, ep);
+
     return ep;
 }
 
@@ -1249,9 +1378,150 @@ static void ExecutionPlan_Run(ExecutionPlan* ep){
     ExecutionPlan_RegisterForRun(ep);
 }
 
-static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, arg, callback, privateData);
-    ExecutionPlan_Run(ep);
+static void ExecutionStep_Reset(ExecutionStep* es){
+    Gears_dictIterator * iter = NULL;
+    Gears_dictEntry *entry = NULL;
+    es->executionDuration = 0;
+    if(es->prev){
+        ExecutionStep_Reset(es->prev);
+    }
+    switch(es->type){
+    case LIMIT:
+        es->limit.currRecordIndex = 0;
+        break;
+    case MAP:
+    case FILTER:
+    case EXTRACTKEY:
+    case REDUCE:
+    case FOREACH:
+        break;
+    case FLAT_MAP:
+        if(es->flatMap.pendings){
+            RedisGears_FreeRecord(es->flatMap.pendings);
+        }
+        es->flatMap.pendings = NULL;
+        break;
+    case REPARTITION:
+        if(es->repartion.pendings){
+            while(array_len(es->repartion.pendings) > 0){
+                Record* r = array_pop(es->repartion.pendings);
+                RedisGears_FreeRecord(r);
+            }
+        }
+        es->repartion.stoped = false;
+        es->repartion.totalShardsCompleted = 0;
+        break;
+    case COLLECT:
+        if(es->collect.pendings){
+            while(array_len(es->collect.pendings) > 0){
+                Record* r = array_pop(es->collect.pendings);
+                RedisGears_FreeRecord(r);
+            }
+        }
+        es->collect.totalShardsCompleted = 0;
+        es->collect.stoped = false;
+        break;
+    case GROUP:
+        if(es->group.groupedRecords){
+            while(array_len(es->group.groupedRecords) > 0){
+                Record* r = array_pop(es->group.groupedRecords);
+                RedisGears_FreeRecord(r);
+            }
+        }
+        Gears_dictEmpty(es->group.d, NULL);
+        es->group.isGrouped = false;
+        break;
+    case READER:
+        // the reader will be reset with the new args or will be freed ...
+        break;
+    case ACCUMULATE:
+        if(es->accumulate.accumulator){
+            RedisGears_FreeRecord(es->accumulate.accumulator);
+        }
+        es->accumulate.isDone = false;
+        break;
+    case ACCUMULATE_BY_KEY:
+        if(es->accumulateByKey.accumulators){
+            if(es->accumulateByKey.iter){
+                iter = es->accumulateByKey.iter;
+                es->accumulateByKey.iter = NULL;
+            }else{
+                iter = Gears_dictGetIterator(es->accumulateByKey.accumulators);
+            }
+            while((entry = Gears_dictNext(iter))){
+                Record* r = Gears_dictGetVal(entry);
+                RedisGears_FreeRecord(r);
+            }
+            Gears_dictReleaseIterator(iter);
+            Gears_dictEmpty(es->accumulateByKey.accumulators, NULL);
+
+        }
+        break;
+    default:
+        assert(false);
+    }
+}
+
+static void ExecutionPlan_Reset(ExecutionPlan* ep){
+    while(array_len(ep->results) > 0){
+        Record* record = array_pop(ep->results);
+        RedisGears_FreeRecord(record);
+    }
+
+    while(array_len(ep->errors) > 0){
+        Record* record = array_pop(ep->errors);
+        RedisGears_FreeRecord(record);
+    }
+
+    ep->executionDuration = 0;
+    ep->totalShardsRecieved = 0;
+    ep->totalShardsCompleted = 0;
+    ep->status = CREATED;
+    EPTurnOffFlag(ep, EFSentRunRequest);
+    EPTurnOffFlag(ep, EFDone);
+
+    ep->onDoneData = array_trimm_len(ep->onDoneData, 0);
+    EPTurnOffFlag(ep, EFIsOnDoneCallback);
+    EPTurnOffFlag(ep, EFIsFreedOnDoneCallback);
+    EPTurnOffFlag(ep, EFIsLocalyFreedOnDoneCallback);
+
+    ExecutionStep_Reset(ep->steps[0]);
+}
+
+static void ExecutionPlan_RunSync(ExecutionPlan* ep){
+    assert(ep->mode == ExecutionModeSync);
+
+    INIT_TIMER;
+    GETTIME(&_ts);
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(rctx);
+
+    bool isDone = ExecutionPlan_Execute(ep, rctx);
+    GETTIME(&_te);
+
+    // Sync execution can not stop in the middle
+    assert(isDone);
+    ep->executionDuration += DURATION;
+
+    ep->status = DONE;
+
+    for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
+    }
+
+    EPTurnOnFlag(ep, EFDone);
+
+    LockHandler_Release(rctx);
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
+static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, mode, arg, callback, privateData);
+    if(mode == ExecutionModeSync){
+        ExecutionPlan_RunSync(ep);
+    } else{
+        ExecutionPlan_Run(ep);
+    }
     return ep;
 }
 
@@ -1274,23 +1544,21 @@ static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatE
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks->unregisterTrigger);
 
+    // replicate to slave and aof
+    RedisModule_SelectDb(ctx, 0);
+    RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "c", fep->idStr);
+
+    FlatExecutionPlan_RemoveFromRegisterDict(fep);
     callbacks->unregisterTrigger(fep);
-
-    int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
-    assert(res == DICT_OK);
-
-    FlatExecutionPlan_Free(fep);
 }
 
 static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-    LockHandler_Acquire(ctx);
     FlatExecutionPlan* fep = FlatExecutionPlan_FindId(payload);
     if(!fep){
         printf("warning: execution not found %s !!!\r\n", payload);
         return;
     }
     ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
-    LockHandler_Release(ctx);
 }
 
 static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1301,13 +1569,17 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br);
+    size_t dataLen;
+    char* data = RedisGears_BRReadBuffer(&br, &dataLen);
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
     assert(idLen == EXECUTION_PLAN_ID_LEN);
-    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, NULL, NULL, NULL);
-    ExecutionStep* rs = ep->steps[array_len(ep->steps) - 1];
-    rs->reader.r->deserialize(rs->reader.r->ctx, &br);
+
+    // Execution recieved from another shards is always async
+    ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, ExecutionModeAsync, NULL, NULL, NULL);
+    Reader* reader = ExecutionPlan_GetReader(ep);
+    reader->deserialize(reader ->ctx, &br);
     FlatExecutionPlan_Free(fep);
     ExecutionPlan_Run(ep);
 }
@@ -1485,9 +1757,6 @@ static void ExecutionPlan_MsgArrive(WorkerMsg* msg){
 	case EXECUTION_TERMINATE:
         ExecutionPlan_ExecutionTerminate(msg->executionDone.ep);
         break;
-	case EXECUTION_FREE:
-        ExecutionPlan_Free(msg->executionFree.ep, true);
-        break;
 	default:
 		assert(false);
 	}
@@ -1551,27 +1820,52 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
     return fep->reader->reader;
 }
 
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key){
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* args){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks); // todo: handle as error in future
     if(!callbacks->registerTrigger){
         return 0;
     }
-    if(Cluster_IsClusterMode()){
-        Gears_Buffer* buff = Gears_BufferCreate();
-        Gears_BufferWriter bw;
-        Gears_BufferWriterInit(&bw, buff);
-        FlatExecutionPlan_Serialize(fep, &bw);
-        RedisGears_BWWriteString(&bw, key);
-        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
-        Gears_BufferFree(buff);
+
+    assert(callbacks->serializeTriggerArgs);
+
+    size_t len;
+    const char* serializedFep = FlatExecutionPlan_Serialize(fep, &len);
+    if(!serializedFep){
+        return 0;
     }
-    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), key);
+
+    Gears_Buffer* buff = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, buff);
+    RedisGears_BWWriteBuffer(&bw, serializedFep, len);
+    callbacks->serializeTriggerArgs(args, &bw);
+    RedisGears_BWWriteLong(&bw, mode);
+
+    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), callbacks, mode, args);
+
+    if(Cluster_IsClusterMode()){
+        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
+    }
+
+    // replicating to slave and aof
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_SelectDb(ctx, 0);
+    RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", buff->buff, buff->size);
+    RedisModule_FreeThreadSafeContext(ctx);
+    Gears_BufferFree(buff);
     return 1;
 }
 
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    return FlatExecutionPlan_RunOnly(fep, eid, arg, callback, privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+    if(Cluster_IsClusterMode()){
+        // on cluster mode, we must make sure we can distribute the execution to all shards.
+        if(!FlatExecutionPlan_Serialize(fep, NULL)){
+            return NULL;
+        }
+    }
+
+    return FlatExecutionPlan_RunOnly(fep, NULL, mode, arg, callback, privateData);
 }
 
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg){
@@ -1686,9 +1980,8 @@ static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id){
     SetId(id, fep->id, fep->idStr, &lastFEPId);
 }
 
-static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, void* arg){
+static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
     ExecutionPlan* ret = RG_ALLOC(sizeof(*ret));
-    fep = FlatExecutionPlan_ShallowCopy(fep);
     ret->steps = array_new(FlatExecutionStep*, array_len(fep->steps));
     ret->executionDuration = 0;
     ExecutionStep* last = NULL;
@@ -1707,29 +2000,23 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, char* finalId, v
         ret->steps[array_len(ret->steps) - 1]->prev = readerStep;
     }
     ret->steps = array_append(ret->steps, readerStep);
-    ret->fep = fep;
     ret->totalShardsRecieved = 0;
     ret->totalShardsCompleted = 0;
     ret->results = array_new(Record*, 100);
     ret->errors = array_new(Record*, 1);
     ret->status = CREATED;
-    ret->sentRunRequest = false;
-    ret->callback = NULL;
-    ret->privateData = NULL;
-    ret->freeCallback = NULL;
-    ret->isDone = false;
-    ExecutionPlan_SetID(ret, finalId);
-    pthread_mutex_lock(&epData.mutex);
-    if(GearsConfig_GetMaxExecutions() > 0){
-        while (Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()) {
-            Gears_listNode* n0 = Gears_listFirst(epData.epList);
-            ExecutionPlan* ep0 = Gears_listNodeValue(n0);
-            ExecutionPlan_Free(ep0, false);
-        }
+    EPTurnOffFlag(ret, EFSentRunRequest);
+    ret->onDoneData = array_new(OnDoneData, 10);
+    EPTurnOffFlag(ret, EFDone);
+    ret->mode = mode;
+    if(ret->mode == ExecutionModeSync || ret->mode == ExecutionModeAsyncLocal){
+        EPTurnOnFlag(ret, EFIsLocal);
+    }else{
+        EPTurnOffFlag(ret, EFIsLocal);
     }
-    Gears_listAddNodeTail(epData.epList, ret);
-    Gears_dictAdd(epData.epDict, ret->id, ret);
-    pthread_mutex_unlock(&epData.mutex);
+    EPTurnOffFlag(ret, EFIsFreedOnDoneCallback);
+    EPTurnOffFlag(ret, EFIsLocalyFreedOnDoneCallback);
+    EPTurnOffFlag(ret, EFIsOnDoneCallback);
     return ret;
 }
 
@@ -1812,40 +2099,32 @@ static void ExecutionStep_Free(ExecutionStep* es){
     RG_FREE(es);
 }
 
-void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep){
-    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateFree(ep);
-    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
-}
-
-void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock){
-    FlatExecutionPlan_Free(ep->fep);
-    if (needLock) pthread_mutex_lock(&epData.mutex);
-    Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_TAIL);
-    Gears_listNode* node = NULL;
-    while((node = Gears_listNext(it))){
-        ExecutionPlan* it_ep = Gears_listNodeValue(node);
-		if (!memcmp(it_ep->id, ep->id, EXECUTION_PLAN_ID_LEN)) {
-			Gears_listDelNode(epData.epList, node);
-			break;
-		}
-    }
-    Gears_listReleaseIterator(it);  
-    Gears_dictDelete(epData.epDict, ep->id);
-    if (needLock) pthread_mutex_unlock(&epData.mutex);
-
+static void ExecutionPlan_FreeRaw(ExecutionPlan* ep){
     ExecutionStep_Free(ep->steps[0]);
     array_free(ep->steps);
-
-    for(int i = 0 ; i < array_len(ep->results) ; ++i){
-        RedisGears_FreeRecord(ep->results[i]);
-    }
     array_free(ep->results);
-
-    for(int i = 0 ; i < array_len(ep->errors) ; ++i){
-        RedisGears_FreeRecord(ep->errors[i]);
-    }
     array_free(ep->errors);
+    array_free(ep->onDoneData);
     RG_FREE(ep);
+}
+
+void ExecutionPlan_Free(ExecutionPlan* ep){
+
+    if(ep->nodeOnExecutionsList){
+        Gears_listDelNode(epData.epList, ep->nodeOnExecutionsList);
+    }
+    Gears_dictDelete(epData.epDict, ep->id);
+
+    ExecutionPlan_Reset(ep);
+
+    FlatExecutionPlan* fep = ep->fep;
+    if(fep->executionPoolSize < EXECUTION_POOL_SIZE){
+        fep->executionPool[fep->executionPoolSize++] = ep;
+    }else{
+        ExecutionPlan_FreeRaw(ep);
+    }
+
+    FlatExecutionPlan_Free(fep);
 }
 
 static FlatExecutionReader* FlatExecutionPlan_NewReader(char* reader){
@@ -1863,6 +2142,8 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->PD = NULL;
     res->PDType = NULL;
     res->desc = NULL;
+    res->executionPoolSize = 0;
+    res->serializedFep = NULL;
 
     FlatExecutionPlan_SetID(res, NULL);
 
@@ -1880,6 +2161,10 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         return;
     }
 
+    for(size_t i = 0 ; i < fep->executionPoolSize ; ++i){
+        ExecutionPlan_FreeRaw(fep->executionPool[i]);
+    }
+
     if(fep->PD){
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         type->free(fep->PD);
@@ -1895,6 +2180,9 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         FlatExecutionPlan_FreeArg(step);
     }
     array_free(fep->steps);
+    if(fep->serializedFep){
+        Gears_BufferFree(fep->serializedFep);
+    }
     RG_FREE(fep);
 }
 
@@ -1988,7 +2276,7 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     while((curr = Gears_dictNext(iter))){
         FlatExecutionPlan* fep = Gears_dictGetVal(curr);
-        RedisModule_ReplyWithArray(ctx, 6);
+        RedisModule_ReplyWithArray(ctx, 8);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
         RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
@@ -1999,6 +2287,15 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
         }else{
             RedisModule_ReplyWithNull(ctx);
         }
+        RedisModule_ReplyWithStringBuffer(ctx, "RegistrationData", strlen("RegistrationData"));
+
+        RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+
+        if(!callbacks->dumpRegistratioData){
+            RedisModule_ReplyWithNull(ctx);
+        } else {
+            callbacks->dumpRegistratioData(ctx, fep);
+        }
         ++numElements;
     }
     Gears_dictReleaseIterator(iter);
@@ -2007,7 +2304,7 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     return REDISMODULE_OK;
 }
 
-int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool sendOnCluster){
     if(argc < 2 || argc > 3){
         return RedisModule_WrongArity(ctx);
     }
@@ -2027,7 +2324,7 @@ int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **a
         return REDISMODULE_OK;
     }
 
-    if(Cluster_IsClusterMode()){
+    if(sendOnCluster && Cluster_IsClusterMode()){
         Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, fep->id, EXECUTION_PLAN_ID_LEN);
     }
 
@@ -2038,14 +2335,31 @@ int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **a
     return REDISMODULE_OK;
 }
 
+int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    return ExecutionPlan_UnregisterCommon(ctx, argv, argc, false);
+}
+
+int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    return ExecutionPlan_UnregisterCommon(ctx, argv, argc, true);
+}
+
+int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+    size_t len;
+    const char* val = RedisModule_StringPtrLen(argv[1], &len);
+    FlatExecutionPlan_RegisterKeySpaceEvent(ctx, NULL, 0, val, len);
+    return REDISMODULE_OK;
+}
+
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    pthread_mutex_lock(&epData.mutex);
 	RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
 	size_t numOfEntries = 0;
-    Gears_listIter* it = Gears_listGetIterator(epData.epList, AL_START_HEAD);
-    Gears_listNode* node = NULL;
-    while((node = Gears_listNext(it))) {
-        ExecutionPlan* ep = Gears_listNodeValue(node);
+    Gears_dictIterator* it = Gears_dictGetIterator(epData.epDict);
+    Gears_dictEntry *entry = NULL;
+    while((entry = Gears_dictNext(it))) {
+        ExecutionPlan* ep = Gears_dictGetVal(entry);
 		RedisModule_ReplyWithArray(ctx, 4);
 		RedisModule_ReplyWithStringBuffer(ctx, "executionId", strlen("executionId"));
 		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
@@ -2053,8 +2367,7 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
         RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
 		++numOfEntries;
     }
-    Gears_listReleaseIterator(it);  
-    pthread_mutex_unlock(&epData.mutex);
+    Gears_dictReleaseIterator(it);
 	RedisModule_ReplySetArrayLength(ctx, numOfEntries);
 	return REDISMODULE_OK;
 }
@@ -2076,7 +2389,6 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
     bool bClusterPlan = Cluster_IsClusterMode();
 
-    // TODO: big potential issue if another thread releases the ep before we acquire the lock <- maybe just lock the eplist?
     ExecutionPlan* ep = RedisGears_GetExecution(id);
 
     if(!ep){
@@ -2122,8 +2434,6 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
         return res;
 #endif
     }else{
-
-        pthread_mutex_lock(&epData.mutex);
         RedisModule_ReplyWithArray(ctx, 1);
         RedisModule_ReplyWithArray(ctx, 4);
         RedisModule_ReplyWithStringBuffer(ctx, "shard_id", strlen("shard_id"));
@@ -2196,7 +2506,6 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
                 RedisModule_ReplyWithStringBuffer(ctx, "", strlen(""));
             }
         }
-        pthread_mutex_unlock(&epData.mutex);
     }
 	return REDISMODULE_OK;
 }

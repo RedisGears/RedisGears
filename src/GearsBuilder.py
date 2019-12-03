@@ -1,6 +1,7 @@
 import redisgears
 import redisgears as rg
 from redisgears import executeCommand as execute
+from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
 from redisgears import PyFlatExecution
@@ -111,6 +112,9 @@ class GearsBuilder():
         if(self.realReader == 'ShardsIDReader'):
             arg = ShardReaderCallback
         self.gearsCtx.run(arg)
+        
+    def register(self, regex='*', mode='async', batch=1, duration=0):
+        self.gearsCtx.register(regex=regex, mode=mode, batch=batch, duration=duration)
 
 
 def createDecorator(f):

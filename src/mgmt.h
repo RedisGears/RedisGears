@@ -22,6 +22,12 @@ typedef struct ArgType{
     ArgToString tostring;
 }ArgType;
 
+extern Gears_dict* Readerdict;
+typedef struct MgmtDataHolder{
+    ArgType* type;
+    void* callback;
+}MgmtDataHolder;
+
 bool FiltersMgmt_Add(const char* name, RedisGears_FilterCallback callback, ArgType* type);
 RedisGears_FilterCallback FiltersMgmt_Get(const char* name);
 ArgType* FiltersMgmt_GetArgType(const char* name);

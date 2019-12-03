@@ -11,6 +11,7 @@
 #include "redismodule.h"
 #include <stdbool.h>
 
+#define MAX_SLOT 16384
 #define RG_INNER_MSG_COMMAND "rg.innermsgcommand"
 
 void Cluster_SendMsg(char* id, char* function, char* msg, size_t len);
@@ -21,6 +22,7 @@ bool Cluster_IsClusterMode();
 size_t Cluster_GetSize();
 void Cluster_Init();
 char* Cluster_GetMyId();
+const char* Cluster_GetMyHashTag();
 bool Cluster_IsMyId(char* id);
 char* Cluster_GetNodeIdByKey(char* key);
 int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

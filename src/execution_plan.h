@@ -13,6 +13,7 @@
 #include "commands.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
+#include "utils/buffer.h"
 #ifdef WITHPYTHON
 #include <redisgears_python.h>
 #endif
@@ -37,6 +38,9 @@ enum StepType{
     STEP_TYPES
 #undef X
 };
+
+#define RG_INNER_REGISTER_COMMAND "RG.INNERREGISTER"
+#define RG_INNER_UNREGISTER_COMMAND "RG.INNERUNREGISTER"
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct ExecutionPlan ExecutionPlan;
@@ -174,6 +178,24 @@ typedef struct WorkerData{
     pthread_t thread;
 }WorkerData;
 
+typedef struct OnDoneData{
+    RedisGears_OnExecutionDoneCallback callback;
+    void* privateData;
+}OnDoneData;
+
+#define ExecutionFlags int
+#define EFDone 0x01
+#define EFIsOnDoneCallback 0x02
+#define EFIsFreedOnDoneCallback 0x04
+#define EFSentRunRequest 0x08
+#define EFIsLocal 0x10
+#define EFIsLocalyFreedOnDoneCallback 0x20
+
+#define EPTurnOnFlag(ep, f) ep->flags |= f
+#define EPTurnOffFlag(ep, f) ep->flags &= ~f
+#define EPIsFlagOn(ep, f) (ep->flags & f)
+#define EPIsFlagOff(ep, f) (!(ep->flags & f))
+
 typedef struct ExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
     char idStr[EXECUTION_PLAN_STR_ID_LEN];
@@ -184,13 +206,12 @@ typedef struct ExecutionPlan{
     Record** results;
     Record** errors;
     ExecutionPlanStatus status;
-    bool isDone;
-    bool sentRunRequest;
-    RedisGears_OnExecutionDoneCallback callback;
-    void* privateData;
-    FreePrivateData freeCallback;
+    ExecutionFlags flags;
+    OnDoneData* onDoneData;
     long long executionDuration;
     WorkerData* assignWorker;
+    ExecutionMode mode;
+    Gears_listNode* nodeOnExecutionsList;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -207,6 +228,7 @@ typedef struct FlatExecutionReader{
     char* reader;
 }FlatExecutionReader;
 
+#define EXECUTION_POOL_SIZE 1
 typedef struct FlatExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
     char idStr[EXECUTION_PLAN_STR_ID_LEN];
@@ -216,6 +238,9 @@ typedef struct FlatExecutionPlan{
     FlatExecutionStep* steps;
     void* PD;
     char* PDType;
+    ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
+    size_t executionPoolSize;
+    Gears_Buffer* serializedFep;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -231,6 +256,10 @@ typedef struct ExecutionCtx{
     }
 
 FlatExecutionPlan* FlatExecutionPlan_New();
+void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep);
+void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep);
+const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len);
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t len);
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
@@ -248,23 +277,25 @@ void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, char* key);
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, char* eid, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize(size_t numberOfworkers);
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
-void ExecutionPlan_Free(ExecutionPlan* ep, bool needLock);
-
+void ExecutionPlan_Free(ExecutionPlan* ep);
 
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
+Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
 
 #endif /* SRC_EXECUTION_PLAN_H_ */
