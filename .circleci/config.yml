@@ -70,9 +70,6 @@ jobs:
           command: |
             brew update || true
             brew reinstall -f python2
-      - run:
-          name: Redis_5_upgrade
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.6; make; make install
       - ci_steps:
           platform: macosx
 
