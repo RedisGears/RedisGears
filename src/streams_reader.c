@@ -154,6 +154,10 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     ssrctx->timerIsSet = false;
     StreamReader_ReadLastId(ctx, ssrctx);
     Gears_dictAdd(srtctx->singleStreamData, (char*)keyName, ssrctx);
+
+    // The moment we create the SingleStreamReaderCtx we must trigger execution to read
+    // pending messages to keep the read order correctly
+    StreamReader_RunOnEvent(ssrctx, 0, true);
     return ssrctx;
 }
 
@@ -484,13 +488,13 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
         RedisModule_FreeThreadSafeContext(ctx);
     }
-    ssrctx->numTriggered = 0;
 }
 
 static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
     SingleStreamReaderCtx* ssrctx = data;
     StreamReader_RunOnEvent(ssrctx, ssrctx->srtctx->args->batchSize,false);
     ssrctx->timerIsSet = false;
+    ssrctx->numTriggered = 0;
 }
 
 static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
@@ -519,10 +523,11 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             }
             if(srctx->args->batchSize <= ++ssrctx->numTriggered){
                 StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
+                ssrctx->numTriggered = 0;
                 // we finish the run, if timer is set lets remove it.
                 if(!ssrctx->timerIsSet && srctx->args->durationMS > 0){
                     RedisModule_StopTimer(ctx, ssrctx->lastTimerId, NULL);
-                    ssrctx->timerIsSet = true;
+                    ssrctx->timerIsSet = false;
                 }
             }else{
                 // if we did not run execution we need to set timer if its not already set
@@ -610,13 +615,8 @@ static void* StreamReader_ScanForStreams(void* pd){
                 const char* keyName = RedisModule_StringPtrLen(key, NULL);
                 SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
                 if(!ssrctx){
-                    // lets create an execution that will read all the current data from the stream
                     ssrctx = SingleStreamReaderCtx_Create(rctx, keyName, srctx);
                 }
-                // trigger execution for read pending anyway
-                // if needed, this will trigger more executions to read the rest
-                // of the unread data.
-                StreamReader_RunOnEvent(ssrctx, 0, true);
             }
             RedisModule_FreeString(rctx, key);
             RedisModule_CloseKey(kp);

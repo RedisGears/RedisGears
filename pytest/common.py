@@ -27,4 +27,4 @@ class TimeLimit(object):
         signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
     def handler(self, signum, frame):
-        raise Exception()
+        raise Exception('timeout')

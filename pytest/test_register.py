@@ -44,6 +44,11 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         for e in executions:
             self.env.cmd('RG.DROPEXECUTION', e[1])
 
+        # delete all registrations so valgrind check will pass
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        for r in registrations:
+            self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
     def testUnregisterWithStreamReader(self):
         res = self.env.cmd('rg.pyexecute', "GearsBuilder('StreamReader')."
                                       "flatmap(lambda x: [(a[0], a[1]) for a in x.items()])."
@@ -79,6 +84,15 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         self.conn.execute_command('XADD', 'stream1', '*', 'f3', 'v3', 'f4', 'v4')
         self.env.assertEqual(self.conn.get('f3'), None)
         self.env.assertEqual(self.conn.get('f4'), None)
+
+        executions = self.env.cmd('RG.DUMPEXECUTIONS')
+        for e in executions:
+            self.env.cmd('RG.DROPEXECUTION', e[1])
+
+        # delete all registrations so valgrind check will pass
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        for r in registrations:
+            self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 def testBasicStream(env):
     conn = getConnectionByEnv(env)
@@ -117,26 +131,34 @@ def testBasicStreamRegisterOnPrefix(env):
                                "register('s*')").ok()
     conn.execute_command('xadd', 'stream1', '*', 'name', 'test')
     res = []
-    while len(res) < 1:
-        res = env.cmd('rg.dumpexecutions')
-    env.broadcast('rg.getresultsblocking', res[0][1])
-    env.cmd('rg.dropexecution', res[0][1])
-    env.assertContains("{'name': 'test', 'streamId': ", conn.get('new_key'))
+
+    try:
+        with TimeLimit(5):
+            res = ''
+            while res is None or "{'name': 'test', 'streamId': " not in res:
+                res = conn.get('new_key')
+    except Exception:
+        env.assertTrue(False, message='Failed get correct data from new_key')
 
     conn.execute_command('xadd', 'stream2', '*', 'name', 'test1')
-    res = []
-    while len(res) < 1:
-        res = env.cmd('rg.dumpexecutions')
-    env.broadcast('rg.getresultsblocking', res[0][1])
-    env.cmd('rg.dropexecution', res[0][1])
-    env.assertContains("{'name': 'test1', 'streamId': ", conn.get('new_key'))
+
+    try:
+        with TimeLimit(5):
+            res = ''
+            while res is None or "{'name': 'test1', 'streamId': " not in res:
+                res = conn.get('new_key')
+    except Exception:
+        env.assertTrue(False, message='Failed get correct data from new_key')
 
     conn.execute_command('xadd', 'rstream1', '*', 'name', 'test2')
     env.assertContains("{'name': 'test1', 'streamId': ", conn.get('new_key'))
 
+    time.sleep(0.1) # waiting for all the execution to be fully created on all the shards
+
     # delete all registrations and executions so valgrind check will pass
     executions = env.cmd('RG.DUMPEXECUTIONS')
     for r in executions:
+        env.broadcast('rg.getresultsblocking', r[1])
         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
 
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
@@ -338,13 +360,13 @@ def testStreamReaderDoNotLoseValues(env):
     env.dumpAndReload()
 
     try:
-        with TimeLimit(10):
+        with TimeLimit(5):
             num = 0
             while num is None or int(num) != 9:
                 num = conn.get('NumOfElements')
                 time.sleep(0.1)
-    except Exception:
-        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 5')
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 9')
 
     executions = env.cmd('RG.DUMPEXECUTIONS')
     for r in executions:
@@ -366,14 +388,14 @@ def testStreamReaderWithAof():
     for i in range(5):
         conn.execute_command('xadd', 's', '*', 'foo', 'bar')
 
-    # new a registration should be created with the 5 elements
-    # make sure it complited
-    res = []
-    while len(res) < 1:
-        res = env.cmd('rg.dumpexecutions')
-        res = [r for r in res if r[3] == 'done']
-
-    env.assertEqual(conn.get('NumOfElements'), '5')
+    try:
+        with TimeLimit(10):
+            num = 0
+            while num is None or int(num) != 5:
+                num = conn.get('NumOfElements')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 5')
 
     # lets add 4 more elements, no execution will be triggered.
     for i in range(4):
@@ -383,12 +405,14 @@ def testStreamReaderWithAof():
 
     # execution should be triggered on start for the rest of the elements
     # make sure it complited
-    res = []
-    while len(res) < 2:
-        res = env.cmd('rg.dumpexecutions')
-        res = [r for r in res if r[3] == 'done']    
-
-    env.assertEqual(conn.get('NumOfElements'), '9')
+    try:
+        with TimeLimit(5):
+            num = 0
+            while num is None or int(num) != 9:
+                num = conn.get('NumOfElements')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 9')
 
     executions = env.cmd('RG.DUMPEXECUTIONS')
     for r in executions:
