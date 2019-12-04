@@ -57,6 +57,8 @@ typedef struct SingleStreamReaderCtx{
     StreamId lastId;
 }SingleStreamReaderCtx;
 
+static void* StreamReader_ScanForStreams(void* pd);
+
 static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallReply* reply, const char* msgPrefix, const char* logLevel){
     if (reply == NULL ||
             RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR ||
@@ -490,6 +492,31 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
     }
 }
 
+static bool turnedMasterTEOn = false;
+static RedisModuleTimerID turnedMasterTimer;
+
+static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
+    int flags = RedisModule_GetContextFlags(ctx);
+    if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
+        // we are still slave, lets check again in one second
+        turnedMasterTimer = RedisModule_CreateTimer(ctx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+        return;
+    }
+
+    RedisModule_Log(ctx, "notice", "Become master, trigger a scan on each stream registration.");
+
+    // we become master, we need to trigger a scan for each registration
+    turnedMasterTEOn = false;
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
+        pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+        pthread_detach(srctx->scanThread);
+    }
+
+}
+
 static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
     SingleStreamReaderCtx* ssrctx = data;
     StreamReader_RunOnEvent(ssrctx, ssrctx->srtctx->args->batchSize,false);
@@ -501,10 +528,15 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     int flags = RedisModule_GetContextFlags(ctx);
     if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
         // we are not executing registrations on slave
+        if(!turnedMasterTEOn){
+            // we need to trigger timer to check if we turned to master
+            turnedMasterTimer = RedisModule_CreateTimer(ctx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+            turnedMasterTEOn = true;
+        }
         return REDISMODULE_OK;
     }
     if(flags & REDISMODULE_CTX_FLAGS_LOADING){
-        // we are not executing registrations on slave
+        // we are not executing registrations on loading
         return REDISMODULE_OK;
     }
     if(strcmp(event, "xadd") != 0 && strcmp(event, "XADD") != 0){
@@ -637,21 +669,31 @@ static void* StreamReader_ScanForStreams(void* pd){
 }
 
 static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
+    RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
-        RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_STREAM, StreamReader_OnKeyTouched) != REDISMODULE_OK){
-            // todo : print warning
+            RedisModule_Log(ctx, "warning", "could not register key space even.");
         }
-        RedisModule_FreeThreadSafeContext(ctx);
     }
     StreamReaderTriggerCtx* srctx = StreamReaderTriggerCtx_Create(fep, mode, arg);
     Gears_listAddNodeHead(streamsRegistration, srctx);
 
     // we create a scan thread that will scan the key space for match streams
     // and trigger executions on them
-    pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
-    pthread_detach(srctx->scanThread);
+    int flags = RedisModule_GetContextFlags(ctx);
+    if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
+        // we are not executing registrations on slave
+        if(!turnedMasterTEOn){
+            turnedMasterTimer = RedisModule_CreateTimer(ctx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+            turnedMasterTEOn = true;
+        }
+    }else{
+        // we are master, lets run the scan thread.
+        pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+        pthread_detach(srctx->scanThread);
+    }
+    RedisModule_FreeThreadSafeContext(ctx);
     return 1;
 }
 
