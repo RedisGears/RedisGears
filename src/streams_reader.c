@@ -503,6 +503,8 @@ static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
         return;
     }
 
+    RedisModule_Log(ctx, "notice", "Become master, trigger a scan on each stream registration.");
+
     // we become master, we need to trigger a scan for each registration
     turnedMasterTEOn = false;
     Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
