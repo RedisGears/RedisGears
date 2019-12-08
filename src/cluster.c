@@ -287,9 +287,9 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         size_t shardIdLen;
         const char* shardId = RedisModule_StringPtrLen(argv[i + 1], &shardIdLen);
         char realId[REDISMODULE_NODE_ID_LEN + 1];
-        size_t zerosPadding = REDISMODULE_NODE_ID_LEN - myIdLen;
+        size_t zerosPadding = REDISMODULE_NODE_ID_LEN - shardIdLen;
         memset(realId, '0', zerosPadding);
-        memcpy(realId + zerosPadding, shardId, myIdLen);
+        memcpy(realId + zerosPadding, shardId, shardIdLen);
         realId[REDISMODULE_NODE_ID_LEN] = '\0';
 
         long long minslot;
