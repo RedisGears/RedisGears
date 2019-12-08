@@ -421,3 +421,31 @@ def testStreamReaderWithAof():
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testStreamReaderTrimming(env):
+    env.skipOnCluster()
+    env.cmd('rg.pyexecute', "GB('StreamReader')."
+                            "foreach(lambda x: execute('incr', 'NumOfElements'))."
+                            "register(regex='stream', batch=3)")
+
+    for i in range(3):
+        env.execute_command('xadd', 'stream', '*', 'foo', 'bar')
+
+    try:
+        with TimeLimit(10):
+            num = 0
+            while num is None or int(num) != 3:
+                num = env.execute_command('get', 'NumOfElements')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 3')
+
+    env.expect('XLEN', 'stream').equal(0)
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
