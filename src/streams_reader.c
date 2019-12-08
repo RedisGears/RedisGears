@@ -454,7 +454,7 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx){
 
     long long streamLen = RedisModule_CallReplyInteger(reply);
 
-    reply = RedisModule_Call(staticCtx, "XTRIM", "ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
+    reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
     ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
     assert(ret);
 }
