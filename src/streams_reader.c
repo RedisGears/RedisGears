@@ -183,6 +183,7 @@ static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
         Gears_dictRelease(srtctx->singleStreamData);
         StreamReaderTriggerArgs_Free(srtctx->args);
         FlatExecutionPlan_Free(srtctx->fep);
+        RG_FREE(srtctx->lastError);
         RG_FREE(srtctx);
     }
 }
