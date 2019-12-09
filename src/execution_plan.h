@@ -232,7 +232,7 @@ typedef struct FlatExecutionReader{
 typedef struct FlatExecutionPlan{
     char id[EXECUTION_PLAN_ID_LEN];
     char idStr[EXECUTION_PLAN_STR_ID_LEN];
-    const char* desc;
+    char* desc;
     size_t refCount;
     FlatExecutionReader* reader;
     FlatExecutionStep* steps;

@@ -2183,6 +2183,9 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(fep->serializedFep){
         Gears_BufferFree(fep->serializedFep);
     }
+    if(fep->desc){
+        RG_FREE(fep->desc);
+    }
     RG_FREE(fep);
 }
 
