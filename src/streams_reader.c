@@ -67,6 +67,7 @@ static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallRep
             RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_NULL) {
         if(!msgPrefix){
             // no log message requested, just return false
+            if(reply) RedisModule_FreeCallReply(reply);
             return false;
         }
         const char* err = "got null reply";
@@ -455,9 +456,13 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx){
 
     long long streamLen = RedisModule_CallReplyInteger(reply);
 
+    RedisModule_FreeCallReply(reply);
+
     reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
     ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
     assert(ret);
+
+    RedisModule_FreeCallReply(reply);
 }
 
 static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, StreamReaderCtx* readerCtx){
