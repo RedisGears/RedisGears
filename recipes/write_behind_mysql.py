@@ -116,7 +116,7 @@ def CreateMySqlDataWriter(config):
                 mycursor = mydb.cursor()
             except Exception as e:
                 mydb = None # next time we will reconnect to the database
-                Log('failed connecting to mysql database, will retry in %d second' % SLEEP_TIME)
+                Log('Failed connecting to mysql database, will retry in %d second.' % SLEEP_TIME)
                 time.sleep(SLEEP_TIME)
                 continue # lets retry
 
@@ -131,12 +131,12 @@ def CreateMySqlDataWriter(config):
                     vals = tuple([a[1] for a in vals])
                     mycursor.execute(query, vals)
             except mysql_var.connector.errors.ProgrammingError as e:
-                Log('got Programing Error when writing to mysql, query="%s", error="%s"' % (((query % vals) if query else 'None'), str(e)))
+                Log('Got programing error when writing to mysql, query="%s", error="%s".' % (((query % vals) if query else 'None'), str(e)))
                 mydb.rollback()
                 mycursor.close()
                 return
             except Exception as e:
-                Log('got exception when writing to mysql, query="%s", error="%s"' % (((query % vals) if query else 'None'), str(e)))
+                Log('Got exception when writing to mysql, query="%s", error="%s".' % (((query % vals) if query else 'None'), str(e)))
                 errorOccured = True
 
             try:
@@ -146,12 +146,12 @@ def CreateMySqlDataWriter(config):
                     mydb.commit()
                 mycursor.close()
             except Exception as e:
-                Log('got exception when try to commit transaction, error="%s"' % (str(e)))
+                Log('Got exception when try to commit/rollback transaction, error="%s".' % (str(e)))
                 errorOccured = True
 
             if errorOccured:
                 mydb = None # next time we will reconnect to the database
-                Log('failed connecting to mysql database, will retry in %d second' % SLEEP_TIME)
+                Log('Error occured while running the sql transaction, will retry in %d second.' % SLEEP_TIME)
                 time.sleep(SLEEP_TIME)
                 continue # lets retry
             return # we finished successfully, lets break the retry loop
