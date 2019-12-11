@@ -10,13 +10,6 @@ DEL_QUERY_KEY = '_delete_query'
 TABLE_KEY = '_table'
 KEY = '_key'
 
-# MYSQL_CONFIG = {
-#     'host': '172.31.52.0',
-#     'user': 'demouser',
-#     'password' : '*******',
-#     'database' : 'test',
-# }
-
 SLEEP_TIME=1
 
 MYSQL_CONFIG = {
@@ -26,20 +19,22 @@ MYSQL_CONFIG = {
     'database' : 'test',
 }
 
+# MYSQL_CONFIG = {
+#     'host': 'localhost',
+#     'user': 'demouser',
+#     'password' : '********',
+#     'database' : 'test',
+# }
+
 config = {
-    'person:id':{
+    'person2:id':{
+        TABLE_KEY: 'person1',
         'first_name':'first',
         'last_name':'last',
         'age':'age',
     },
-    'person1:id':{
-        'first_name':'first',
-        'last_name':'last',
-        'age':'age',
-    },
-    'car:license_id':{
+    'car:license':{
         'color':'color',
-        'model':'model',
     },
 }
 
@@ -61,7 +56,8 @@ def Connect():
 def PrepereQueries():
     for k,v in config.items():
         table, key = k.split(':')
-        v[TABLE_KEY] = table
+        if TABLE_KEY not in v:
+            v[TABLE_KEY] = table
         v[KEY] = key
         if table is None or key is None:
             raise Exception('failed to create query for %s', str(k))
@@ -179,3 +175,9 @@ PrepereQueries()
 PrintAllQueries()
 
 RegisterExecutions()
+
+
+def Register(conf):
+    pass
+
+RegisterCommand('write_begind', Register)
