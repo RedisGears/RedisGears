@@ -19,13 +19,6 @@ MYSQL_CONFIG = {
     'database' : 'test',
 }
 
-# MYSQL_CONFIG = {
-#     'host': 'localhost',
-#     'user': 'demouser',
-#     'password' : '********',
-#     'database' : 'test',
-# }
-
 config = {
     'person2:id':{
         TABLE_KEY: 'person1',
@@ -175,9 +168,3 @@ PrepereQueries()
 PrintAllQueries()
 
 RegisterExecutions()
-
-
-def Register(conf):
-    pass
-
-RegisterCommand('write_begind', Register)
