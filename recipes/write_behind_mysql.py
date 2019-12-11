@@ -151,8 +151,8 @@ def CreateMySqlDataWriter(config):
 
             if errorOccured:
                 mydb = None # next time we will reconnect to the database
-                Log('Failed writing to mysql, sleeping for one second and retry')
-                time.sleep(1)
+                Log('failed connecting to mysql database, will retry in %d second' % SLEEP_TIME)
+                time.sleep(SLEEP_TIME)
                 continue # lets retry
             return # we finished successfully, lets break the retry loop
     return WriteToMySql
