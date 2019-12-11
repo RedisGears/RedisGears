@@ -2,7 +2,7 @@ import redis
 import argparse
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-                                 description='Test Framework for redis and redis module')
+                                 description='Run gears scripts on Redis(Gear)')
 
 parser.add_argument(
     '--host', default='localhost',
