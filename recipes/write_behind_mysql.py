@@ -1,4 +1,7 @@
+import time
+
 mydb = None
+mysql_var = None
 # addQuery = "insert into test_table values (%s, %s) ON DUPLICATE KEY UPDATE value=%s"
 # deleteQuery = 'delete from test_table where test_table.key="%s"'
 
@@ -14,15 +17,22 @@ KEY = '_key'
 #     'database' : 'test',
 # }
 
+SLEEP_TIME=1
+
 MYSQL_CONFIG = {
     'host': 'localhost',
     'user': 'demouser',
-    'password' : '*******',
+    'password' : '********',
     'database' : 'test',
 }
 
 config = {
     'person:id':{
+        'first_name':'first',
+        'last_name':'last',
+        'age':'age',
+    },
+    'person1:id':{
         'first_name':'first',
         'last_name':'last',
         'age':'age',
@@ -41,7 +51,9 @@ def Log(msg, prefix='RedisGears - '):
         print(msg)
 
 def Connect():
+    global mysql_var
     import mysql.connector
+    mysql_var = mysql
     Log('connecting to database, host=%s, user=%s, password=********, database=%s' % (MYSQL_CONFIG['host'], MYSQL_CONFIG['user'], MYSQL_CONFIG['database']))
     mydb = mysql.connector.connect(host=MYSQL_CONFIG['host'], user=MYSQL_CONFIG['user'], passwd=MYSQL_CONFIG['password'], database=MYSQL_CONFIG['database'])
     return mydb
@@ -63,7 +75,7 @@ def PrepereQueries():
         v[ADD_QUERY_KEY] = query
 
         # create delete query
-        query = 'delete from %s where %s="%s"' % (table, key, '%s')
+        query = 'delete from %s where %s=%s' % (table, key, '%s')
         v[DEL_QUERY_KEY] = query
 
 def PrintAllQueries():
@@ -75,39 +87,74 @@ def GetStreamName(config):
 
 def CreateStreamInserter(config):
     def AddToStream(r):
-        keys = r['value'].keys()
         data = []
-        for kInHash, kInDB in config.items():
-            if kInHash.startswith('_'):
-                continue
-            if kInHash not in keys:
-                msg = 'Could not find %s in hash %s' % (kInHash, r['key'])
-                Log(msg)
-                raise Exception(msg)
-            data.append([kInDB, r['value'][kInHash]])
         data.append([config[KEY], r['key'].split(':')[1]])
+        if 'value' in r.keys():
+            keys = r['value'].keys()
+            for kInHash, kInDB in config.items():
+                if kInHash.startswith('_'):
+                    continue
+                if kInHash not in keys:
+                    msg = 'Could not find %s in hash %s' % (kInHash, r['key'])
+                    Log(msg)
+                    raise Exception(msg)
+                data.append([kInDB, r['value'][kInHash]])
         execute('xadd', GetStreamName(config), '*', *sum(data, []))
     return AddToStream
 
 def CreateMySqlDataWriter(config):
     def WriteToMySql(r):
         global mydb
-        if not mydb:
-            mydb = Connect()
-        try:
-            mycursor = mydb.cursor()
+        global mysql_var
+        while True:
+            query = None
+            errorOccured = False
+            
+            try:
+                if not mydb:
+                    mydb = Connect()
+                mycursor = mydb.cursor()
+            except Exception as e:
+                mydb = None # next time we will reconnect to the database
+                Log('failed connecting to mysql database, will retry in %d second' % SLEEP_TIME)
+                time.sleep(SLEEP_TIME)
+                continue # lets retry
 
-            for x in r:
-                vals = [(k, v) for k,v in x.items() if k != 'streamId']
-                vals.sort()
-                vals = tuple([a[1] for a in vals])
-                mycursor.execute(config[ADD_QUERY_KEY], vals)
-        except Exception as e:
-            Log('got exception when writing to mysql, query="%s", error="%s"' % ((config[ADD_QUERY_KEY] % vals), str(e)))
-            raise e
-        finally:
-            mydb.commit()
-            mycursor.close()
+            try:
+                for x in r:
+                    vals = [(k, v) for k,v in x.items() if k != 'streamId']
+                    if len(vals) == 1: # we have only key name, it means that the key was deleted
+                        query = config[DEL_QUERY_KEY]
+                    else:
+                        query = config[ADD_QUERY_KEY]
+                        vals.sort()
+                    vals = tuple([a[1] for a in vals])
+                    mycursor.execute(query, vals)
+            except mysql_var.connector.errors.ProgrammingError as e:
+                Log('got Programing Error when writing to mysql, query="%s", error="%s"' % (((query % vals) if query else 'None'), str(e)))
+                mydb.rollback()
+                mycursor.close()
+                return
+            except Exception as e:
+                Log('got exception when writing to mysql, query="%s", error="%s"' % (((query % vals) if query else 'None'), str(e)))
+                errorOccured = True
+
+            try:
+                if errorOccured:
+                    mydb.rollback()
+                else:
+                    mydb.commit()
+                mycursor.close()
+            except Exception as e:
+                Log('got exception when try to commit transaction, error="%s"' % (str(e)))
+                errorOccured = True
+
+            if errorOccured:
+                mydb = None # next time we will reconnect to the database
+                Log('Failed writing to mysql, sleeping for one second and retry')
+                time.sleep(1)
+                continue # lets retry
+            return # we finished successfully, lets break the retry loop
     return WriteToMySql
 
 def RegisterExecutions():
