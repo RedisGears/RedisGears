@@ -151,13 +151,15 @@ workflows:
       - macos:
           filters:
             branches:
-              only: /.*/
+              # only: /.*/
+              only: master
             tags:
               only: /^v[0-9].*/
       - build-multiarch-docker:
           filters:
             tags:
-              only: /.*/
+              # only: /.*/
+              only: /^v[0-9].*/
             branches:
               # only: /.*/
               only: master
