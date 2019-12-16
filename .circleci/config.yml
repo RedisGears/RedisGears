@@ -152,17 +152,17 @@ workflows:
           filters:
             branches:
               # only: /.*/
-              only: master
+              ignore: /.*/
             tags:
               only: /^v[0-9].*/
       - build-multiarch-docker:
           filters:
+            branches:
+              # only: /.*/
+              ignore: /.*/
             tags:
               # only: /.*/
               only: /^v[0-9].*/
-            branches:
-              # only: /.*/
-              only: master
       - deploy_snapshots:
           requires: *default_jobs
           filters:
