@@ -98,6 +98,8 @@ def CreateMySqlDataWriter(config):
         if(len(r) == 0):
             Log('Warning, got an empty batch')
             return
+        for x in r:
+            x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
         while True:
             query = None
             errorOccured = False
@@ -113,10 +115,9 @@ def CreateMySqlDataWriter(config):
 
             try:
                 batch = []
-                isAddBatch = True if len(r[0].keys()) > 2 else False ## 2 is because the streamid is still there
+                isAddBatch = True if len(r[0].keys()) > 1 else False # we have only key name, it means that the key was deleted
                 query = config[ADD_QUERY_KEY] if isAddBatch else config[DEL_QUERY_KEY]
                 for x in r:
-                    x.pop('streamId', None)
                     if len(x.keys()) == 1: # we have only key name, it means that the key was deleted
                         if isAddBatch:
                             conn.execute(sqlText(query), batch)
