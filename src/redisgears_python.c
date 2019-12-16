@@ -2128,19 +2128,28 @@ typedef struct pymem{
 	char data[];
 }pymem;
 
+static void* RedisGearsPy_AllocInternal(void* ctx, size_t size, bool useCalloc){
+    pymem* m = NULL;
+    if(useCalloc){
+        m = RG_CALLOC(1, sizeof(pymem) + size);
+    }else{
+        m = RG_ALLOC(sizeof(pymem) + size);
+    }
+    m->size = size;
+    totalAllocated += size;
+    currAllocated += size;
+    if(currAllocated > peakAllocated){
+        peakAllocated = currAllocated;
+    }
+    return m->data;
+}
+
 static void* RedisGearsPy_Alloc(void* ctx, size_t size){
-	pymem* m = RG_ALLOC(sizeof(pymem) + size);
-	m->size = size;
-	totalAllocated += size;
-	currAllocated += size;
-	if(currAllocated > peakAllocated){
-		peakAllocated = currAllocated;
-	}
-	return m->data;
+    return RedisGearsPy_AllocInternal(ctx, size, false);
 }
 
 static void* RedisGearsPy_Calloc(void* ctx, size_t n_elements, size_t size){
-    return RedisGearsPy_Alloc(ctx, n_elements * size);
+    return RedisGearsPy_AllocInternal(ctx, n_elements * size, true);
 }
 
 static void* RedisGearsPy_Relloc(void* ctx, void * p, size_t size){

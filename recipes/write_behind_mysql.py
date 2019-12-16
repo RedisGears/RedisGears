@@ -1,7 +1,7 @@
 import time
 
-mydb = None
-mysql_var = None
+conn = None
+sqlText = None
 # addQuery = "insert into test_table values (%s, %s) ON DUPLICATE KEY UPDATE value=%s"
 # deleteQuery = 'delete from test_table where test_table.key="%s"'
 
@@ -13,10 +13,8 @@ KEY = '_key'
 SLEEP_TIME=1
 
 MYSQL_CONFIG = {
-    'host': 'localhost',
-    'user': 'demouser',
-    'password' : '********',
-    'database' : 'test',
+    ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
+    'ConnectionStr': '<db(mysql)>://<user>:<pass>@<addr>/<dbname>',
 }
 
 config = {
@@ -39,32 +37,35 @@ def Log(msg, prefix='RedisGears - '):
         print(msg)
 
 def Connect():
-    global mysql_var
-    import mysql.connector
-    mysql_var = mysql
-    Log('connecting to database, host=%s, user=%s, password=********, database=%s' % (MYSQL_CONFIG['host'], MYSQL_CONFIG['user'], MYSQL_CONFIG['database']))
-    mydb = mysql.connector.connect(host=MYSQL_CONFIG['host'], user=MYSQL_CONFIG['user'], passwd=MYSQL_CONFIG['password'], database=MYSQL_CONFIG['database'])
-    return mydb
+    global conn
+    global sqlText
+    from sqlalchemy import create_engine
+    from sqlalchemy.sql import text
+    sqlText = text
+    Log('connecting to database, ConnectionStr=%s' % (MYSQL_CONFIG['ConnectionStr']))
+    conn = create_engine(MYSQL_CONFIG['ConnectionStr']).execution_options(autocommit=True)
+    return conn
 
 def PrepereQueries():
     for k,v in config.items():
         table, key = k.split(':')
-        if TABLE_KEY not in v:
+        print(v)
+        if TABLE_KEY not in v.keys():
             v[TABLE_KEY] = table
         v[KEY] = key
         if table is None or key is None:
             raise Exception('failed to create query for %s', str(k))
 
         # create insert query
-        query = 'REPLACE INTO %s' % table
+        query = 'REPLACE INTO %s' % v[TABLE_KEY]
         values = [val for kk, val in v.items() if not kk.startswith('_')]
         values = [key] + values
         values.sort()
-        query = '%s(%s) values(%s)' % (query, ','.join(values), ','.join(['%s' for a in values]))
+        query = '%s(%s) values(%s)' % (query, ','.join(values), ','.join([':%s' % a for a in values]))
         v[ADD_QUERY_KEY] = query
 
         # create delete query
-        query = 'delete from %s where %s=%s' % (table, key, '%s')
+        query = 'delete from %s where %s=:%s' % (v[TABLE_KEY], key, key)
         v[DEL_QUERY_KEY] = query
 
 def PrintAllQueries():
@@ -93,53 +94,51 @@ def CreateStreamInserter(config):
 
 def CreateMySqlDataWriter(config):
     def WriteToMySql(r):
-        global mydb
-        global mysql_var
+        global conn
+        if(len(r) == 0):
+            Log('Warning, got an empty batch')
+            return
         while True:
             query = None
             errorOccured = False
             
             try:
-                if not mydb:
-                    mydb = Connect()
-                mycursor = mydb.cursor()
+                if not conn:
+                    conn = Connect()
             except Exception as e:
-                mydb = None # next time we will reconnect to the database
-                Log('Failed connecting to mysql database, will retry in %d second.' % SLEEP_TIME)
+                conn = None # next time we will reconnect to the database
+                Log('Failed connecting to mysql database, will retry in %d second. error="%s"' % (SLEEP_TIME, str(e)))
                 time.sleep(SLEEP_TIME)
                 continue # lets retry
 
             try:
+                batch = []
+                isAddBatch = True if len(r[0].keys()) > 2 else False ## 2 is because the streamid is still there
+                query = config[ADD_QUERY_KEY] if isAddBatch else config[DEL_QUERY_KEY]
                 for x in r:
-                    vals = [(k, v) for k,v in x.items() if k != 'streamId']
-                    if len(vals) == 1: # we have only key name, it means that the key was deleted
-                        query = config[DEL_QUERY_KEY]
+                    x.pop('streamId', None)
+                    if len(x.keys()) == 1: # we have only key name, it means that the key was deleted
+                        if isAddBatch:
+                            conn.execute(sqlText(query), batch)
+                            batch = []
+                            isAddBatch = False
+                            query = config[DEL_QUERY_KEY]
+                        batch.append(x)
                     else:
-                        query = config[ADD_QUERY_KEY]
-                        vals.sort()
-                    vals = tuple([a[1] for a in vals])
-                    mycursor.execute(query, vals)
-            except mysql_var.connector.errors.ProgrammingError as e:
-                Log('Got programing error when writing to mysql, query="%s", error="%s".' % (((query % vals) if query else 'None'), str(e)))
-                mydb.rollback()
-                mycursor.close()
-                return
+                        if not isAddBatch:
+                            conn.execute(sqlText(query), batch)
+                            batch = []
+                            isAddBatch = True
+                            query = config[ADD_QUERY_KEY]
+                        batch.append(x)
+                if len(batch) > 0:
+                    conn.execute(sqlText(query), batch)
             except Exception as e:
-                Log('Got exception when writing to mysql, query="%s", error="%s".' % (((query % vals) if query else 'None'), str(e)))
-                errorOccured = True
-
-            try:
-                if errorOccured:
-                    mydb.rollback()
-                else:
-                    mydb.commit()
-                mycursor.close()
-            except Exception as e:
-                Log('Got exception when try to commit/rollback transaction, error="%s".' % (str(e)))
+                Log('Got exception when writing to mysql, query="%s", error="%s".' % ((query if query else 'None'), str(e)))
                 errorOccured = True
 
             if errorOccured:
-                mydb = None # next time we will reconnect to the database
+                conn = None # next time we will reconnect to the database
                 Log('Error occured while running the sql transaction, will retry in %d second.' % SLEEP_TIME)
                 time.sleep(SLEEP_TIME)
                 continue # lets retry
