@@ -1,0 +1,28 @@
+#!/bin/bash
+
+set -e
+
+# https://github.com/MaksymBilenko/docker-oracle-12c
+
+oracle=oracle
+# docker run --name=oracle --cid /tmp/oracle.cid -d -p 1521:1521 -p 8080:8080 orangehrm/oracle-xe-11g
+docker run --name=$oracle --cid /tmp/oracle.cid -d -p 1521:1521 -p 8080:8080 quay.io/maksymbilenko/oracle-12c
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $oracle> /tmp/oracle.ip
+cat /tmp/oracle.ip
+
+cat <<- 'EOF' > /tmp/setup-sqlplus
+	yum install -y libaio
+	rpm -i https://download.oracle.com/otn_software/linux/instantclient/195000/oracle-instantclient19.5-basic-19.5.0.0.0-1.x86_64.rpm
+	rpm -i https://download.oracle.com/otn_software/linux/instantclient/195000/oracle-instantclient19.5-sqlplus-19.5.0.0.0-1.x86_64.rpm
+	rpm -ivhy https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+	yum install -y rlwrap
+EOF
+docker cp /tmp/setup-sqlplus $oracle:/tmp/setup-sqlplus
+docker exec bash -c ". /tmp/setup-sqlplus"
+exit 0
+
+# and:
+# docker exec -it $oracle sqlplus system/oracle@//localhost:1521/xe
+# or:
+# docker exec -it $oracle bash
+# rlwrap sqlplus system/oracle@//localhost:1521/xe

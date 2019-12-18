@@ -1,0 +1,7 @@
+#!/bin/bash
+
+recipe=/opt/view/RedisGears/recipes/write_behind/oracle
+
+$recipe/install-oracle-client
+$recipe/install-oracle-python-client
+

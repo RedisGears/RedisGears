@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# run this as root
+
+set -e
+
+if [ ! -z $(command -v apt-get) ]; then
+	apt-get -qq update
+	apt-get install -y ca-certificates wget curl unzip
+	apt-get install -y libaio1 rlwrap
+
+	mkdir -p /opt/oracle
+	cd /opt/oracle
+
+	wget https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-basic-linux.x64-19.5.0.0.0dbru.zip
+	wget https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-sqlplus-linux.x64-19.5.0.0.0dbru.zip
+	unzip instantclient-basic-linux.x64-19.5.0.0.0dbru.zip
+	unzip instantclient-sqlplus-linux.x64-19.5.0.0.0dbru.zip
+	rm -f *.zip
+
+	echo /opt/oracle/instantclient_19_5 > /etc/ld.so.conf.d/oracle-instantclient.conf
+	ldconfig
+	# export PATH=$PATH:/opt/oracle/instantclient_19_5
+	
+elif [ ! -z $(command -v yum) ]; then
+	yum install -y ca-certificates libaio
+	rpm -i https://download.oracle.com/otn_software/linux/instantclient/195000/oracle-instantclient19.5-basic-19.5.0.0.0-1.x86_64.rpm
+	rpm -i https://download.oracle.com/otn_software/linux/instantclient/195000/oracle-instantclient19.5-sqlplus-19.5.0.0.0-1.x86_64.rpm
+	rpm -ivhy https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+	yum install -y rlwrap
+
+else
+	echo "%make love"
+	echo "Make:  Don't know how to make love.  Stop."
+	exit 1
+fi
+ 
+exit 0

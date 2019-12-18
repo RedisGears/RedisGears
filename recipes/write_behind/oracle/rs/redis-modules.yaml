@@ -1,0 +1,11 @@
+redisgears:
+    awspath: redisgears/snapshots/redisgears.Linux-ubuntu-x86_64.master.zip
+redisgears-deps:
+    awspath: redisgears/snapshots/redisgears-dependencies.Linux-ubuntu-x86_64.master.tgz
+    dest: /
+    unzip: yes
+redisgears-write-behind:
+    awspath: redisgears/opt/view/RedisGears/recipes/write_behind/redisgears-write-behind.tgz
+    dest: /opt/redislabs/lib/modules/gears_write_behind/
+    unzip: yes
+    exec: /opt/redislabs/lib/modules/gears_write_behind/oracle/rs/setup

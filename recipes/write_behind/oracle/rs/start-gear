@@ -1,0 +1,6 @@
+#!/bin/bash
+
+recipe=/opt/redislabs/lib/modules/gears_write_behind
+
+cd $recipe
+/opt/redislabs/bin/python ./gears.py ./oracle/write_behind.py
