@@ -1,5 +1,8 @@
 #!/bin/bash
 
+oracle=`cat /opt/view/rlec/ORACLE.ip`
+echo $oracle oracle > /etc/hosts
+
 recipe=/opt/view/RedisGears/recipes/write_behind/oracle
 
 $recipe/install-oracle-client

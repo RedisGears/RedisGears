@@ -24,7 +24,7 @@ SQLDB_CONFIG = {
     'ConnectionStr': 'oracle://{user}:{password}@{db}'.format(
         user='test',
         password='passwd',
-        db='oracle')
+        db='oracle/xe')
     ,
 }
 
@@ -67,24 +67,23 @@ def Connect():
 def PrepereQueries():
     for k,v in config.items():
         table, pkey = k.split(':')
-        print(v)
         if TABLE_KEY not in v.keys():
             v[TABLE_KEY] = table
         v[KEY] = pkey
-        if table is None or pkey is None:
+        if v[TABLE_KEY] is None or pkey is None:
             raise Exception('failed to create query for %s', str(k))
 
         # create upsert query
         values = [val for kk, val in v.items() if not kk.startswith('_')]
         values_with_pkey = [pkey] + values
-        merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (table, pkey, pkey)
+        merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (v[TABLE_KEY], pkey, pkey)
         not_matched = "WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)" % (','.join(values_with_pkey), ','.join([':%s' % a for a in values_with_pkey]))
         matched = "WHEN MATCHED THEN UPDATE SET %s" % (','.join(['%s=:%s' % (a,a) for a in values]))
         query = "%s %s %s" % (merge_into, not_matched, matched)
         v[ADD_QUERY_KEY] = query
 
         # create delete query
-        query = 'delete from %s where %s=:%s' % (table, pkey, pkey)
+        query = 'delete from %s where %s=:%s' % (v[TABLE_KEY], pkey, pkey)
         v[DEL_QUERY_KEY] = query
 
 def PrintAllQueries():
@@ -165,14 +164,22 @@ def CreateSQLDataWriter(config):
             return # we finished successfully, lets break the retry loop
     return WriteToSQLDB
 
-def RegisterExecutions():
-    for v in config.values():
+def CheckIfHash(r):
+    if 'value' not in r.keys() or isinstance(r['value'], dict) :
+        return True
+    Log('Got a none hash value, key="%s" value="%s"' % (str(r['key']), str(r['value'] if 'value' in r.keys() else 'None')))
+    return False
 
+def RegisterExecutions():
+    for k, v in config.items():
+
+        regex = k.split(':')[0]
         ## create the execution to write each changed key to stream
-        GB('KeysReader', desc='add each changed key with prefix %s* to Stream' % v[TABLE_KEY]).\
+        GB('KeysReader', desc='add each changed key with prefix %s:* to Stream' % regex).\
         filter(lambda x: x['key'] != GetStreamName(v)).\
+        filter(CheckIfHash).\
         foreach(CreateStreamInserter(v)).\
-        register(mode='sync', regex='%s:*' % v[TABLE_KEY])
+        register(mode='sync', regex='%s:*' % regex)
 
         ## create the execution to write each key from stream to DB
         GB('StreamReader', desc='read from stream and write to DB table %s' % v[TABLE_KEY]).\

@@ -3,7 +3,6 @@ CREATE TABLE test.person1 (
   id VARCHAR(100) NOT NULL,
   first VARCHAR(100) NOT NULL,
   last VARCHAR(100) NOT NULL,
-  value VARCHAR(100) NOT NULL,
   age VARCHAR(100) NOT NULL,
   PRIMARY KEY (id));
 

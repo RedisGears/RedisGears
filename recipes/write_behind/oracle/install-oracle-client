@@ -34,5 +34,6 @@ else
 	echo "Make:  Don't know how to make love.  Stop."
 	exit 1
 fi
- 
+
+echo "export PATH=$PATH:/opt/oracle/instantclient_19_5" > /etc/profile.d/oracle.sh
 exit 0
