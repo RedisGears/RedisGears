@@ -33,6 +33,7 @@ pages:
   - 'Gears Configuration': 'configuration.md'
   - Design Documents:
     - 'Sub-Interpreters': 'subinterpreters.md'
+  - 'Contributor agreement': contrib.md
 
 markdown_extensions:
   - admonition
