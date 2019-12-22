@@ -11,19 +11,40 @@
 
 TBD: key names and tables
 
-## Installing on Redis Enterprise Software host(s)
+## Installing with OSS Redis
 
-* Create a Redis cluster
+* Install [Docker](#insalling_docker) and git.
+* Clone the RedisGears repo: `git clone github.com/RedisGears/RedisGears.git`
+* Run:
+  ```
+docker run --name gears -d redisgears:latest
+docker run --name mysql -d mysql:latest
+  ```
+TBD
+
+## Installing on Redis Enterprise Software cluster
+
+* Create a Redis cluster.
 * Install RedisGears dependencies on all nodes.
 * Install RedisGears module.
 * Download and extract the RedisGears Write-Behind Recipe archive into `/opt/gears-wb` on one of the nodes, which we'll refer to as the "Controlling node".
 
-## Install and configure MySQL
+Depending on your favorite database, continue with either **Running with MySQL** or **Running with Oracle**.
 
-* Run `/opt/gears-wb/mysql/install-mysql-docker`. This will run an Oracle database in a container.
+### Running with MySQL
+
+#### Install and configure MySQL
+
+* Run `/opt/gears-wb/mysql/install-mysql-docker`. This will run an MySQL database in a container.
 ** Alternatively, run `/opt/gears-wb/mysql/install-mysql` to install MySQL directly on host.
 
 * On the controlling node, install Oracle client with `/opt/gears-wb/mysql/install-mysql-client`.
+
+* Add the following to `/etc/hosts`:
+
+  ```
+  127.0.0.1 mysql
+  ```
 
 * Create a database with `/opt/gears-wb/mysql/rs/create-db`.
 
@@ -34,7 +55,7 @@ TBD: key names and tables
   select * from car;
   ```
 
-### Configure cluster nodes
+#### Configure cluster nodes
 
 * For each node, add the following to its `/etc/hosts` file, where `MYSQL-IP` is the controlling node IP:
 
@@ -45,19 +66,26 @@ TBD: key names and tables
 * Install MySQL client with `/opt/gears-wb/mysql/install-mysql-client`.
 * Install Oracle python client with `/opt/gears-wb/mysql/install-mysql-python-client`.
 
-### Run the Gear
+#### Run the Gear
 
 * Run `/opt/gears-wb/mysql/start-gear`.
 * From within `redis-cli`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
 
+### Running with Oracle
 
-## Install and configure Oracle
+#### Install and configure Oracle
 
-* Install Docker on either one of the Redis cluster nodes or on a dedicated host.
+* [Install Docker](#insalling_docker) on either one of the Redis cluster nodes or on a dedicated host.
 
 * Run `/opt/gears-wb/oracle/install-oracle-docker`. This will run an Oracle database in a container.
 
 * On the controlling node, install Oracle client with `/opt/gears-wb/oracle/install-oracle-client`.
+
+* Add the following to `/etc/hosts`:
+
+  ```
+  127.0.0.1 oracle
+  ```
 
 * Create a database with `/opt/gears-wb/oracle/rs/create-db`.
 
@@ -68,7 +96,7 @@ TBD: key names and tables
   select * from car;
   ```
 
-### Configure cluster nodes
+#### Configure cluster nodes
 
 * For each node, add the following to its `/etc/hosts` file, where `ORACLE-IP` is the controlling node IP:
 
@@ -79,7 +107,7 @@ TBD: key names and tables
 * Install Oracle client with `/opt/gears-wb/oracle/install-oracle-client`.
 * Install Oracle python client with `/opt/gears-wb/oracle/install-oracle-python-client`.
 
-### Run the Gear
+#### Run the write-behind gear
 
 * Run `/opt/gears-wb/oracle/start-gear`.
 * From within `redis-cli`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
@@ -97,3 +125,15 @@ TBD: key names and tables
 ## Diagnostics
 
 TBD
+
+## Appendix
+
+### Installing Docker {#installing_docker}
+Run the following:
+```
+bash <(curl -fsSL https://get.docker.com)
+systemctl enable docker
+```
+
+Verify with ```docker version```.
+
