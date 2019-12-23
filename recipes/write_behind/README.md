@@ -16,17 +16,20 @@ TBD: key names and tables
 * Install [Docker](#insalling_docker) and git.
 * Clone the RedisGears repo: `git clone github.com/RedisGears/RedisGears.git`
 * Run:
-  ```
+```
 docker run --name gears -d redisgears:latest
 docker run --name mysql -d mysql:latest
-  ```
+```
 TBD
 
 ## Installing on Redis Enterprise Software cluster
 
-* Create a Redis cluster.
-* Install RedisGears dependencies on all nodes.
-* Install RedisGears module.
+* Create an un-bootstrapped Redis cluster.
+* Install RedisGears and dependencies on all nodes with:
+```
+bash <(curl -fsSL http://tiny.cc/redisgears-wb-setup)
+```
+* Bootstrap the cluster.
 * Download and extract the RedisGears Write-Behind Recipe archive into `/opt/gears-wb` on one of the nodes, which we'll refer to as the "Controlling node".
 
 Depending on your favorite database, continue with either **Running with MySQL** or **Running with Oracle**.
@@ -42,33 +45,33 @@ Depending on your favorite database, continue with either **Running with MySQL**
 
 * Add the following to `/etc/hosts`:
 
-  ```
-  127.0.0.1 mysql
-  ```
+```
+127.0.0.1 mysql
+```
 
 * Create a database with `/opt/gears-wb/mysql/rs/create-db`.
 
 * It's now possible connect to the database using `mysql test/passwd@/localhost` and check that the tables were created:
 
-  ```
-  select * from person1;
-  select * from car;
-  ```
+```
+select * from person1;
+select * from car;
+```
 
 #### Configure cluster nodes
 
 * For each node, add the following to its `/etc/hosts` file, where `MYSQL-IP` is the controlling node IP:
 
-  ```
-  MYSQL-IP mysql
-  ```
+```
+MYSQL-IP mysql
+```
 
 * Install MySQL client with `/opt/gears-wb/mysql/install-mysql-client`.
 * Install Oracle python client with `/opt/gears-wb/mysql/install-mysql-python-client`.
 
 #### Run the Gear
 
-* Run `/opt/gears-wb/mysql/start-gear`.
+* Run `/opt/gears-wb/mysql/rs/start-gear`.
 * From within `redis-cli`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
 
 ### Running with Oracle
@@ -83,33 +86,33 @@ Depending on your favorite database, continue with either **Running with MySQL**
 
 * Add the following to `/etc/hosts`:
 
-  ```
-  127.0.0.1 oracle
-  ```
+```
+127.0.0.1 oracle
+```
 
 * Create a database with `/opt/gears-wb/oracle/rs/create-db`.
 
 * It's now possible connect to the database using `rlwrap sqlplus test/passwd@//localhost/xe` and check that the tables were created:
 
-  ```
-  select * from person1;
-  select * from car;
-  ```
+```
+select * from person1;
+select * from car;
+```
 
 #### Configure cluster nodes
 
 * For each node, add the following to its `/etc/hosts` file, where `ORACLE-IP` is the controlling node IP:
 
-  ```
-  ORACLE-IP oracle
-  ```
+```
+ORACLE-IP oracle
+```
 
 * Install Oracle client with `/opt/gears-wb/oracle/install-oracle-client`.
 * Install Oracle python client with `/opt/gears-wb/oracle/install-oracle-python-client`.
 
 #### Run the write-behind gear
 
-* Run `/opt/gears-wb/oracle/start-gear`.
+* Run `/opt/gears-wb/oracle/rs/start-gear`.
 * From within `redis-cli`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
 
 ## Installing on RHEL-Docker
