@@ -98,7 +98,7 @@ endif
 $(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON)
 	@echo Installing Python...
 	$(SHOW)$(SUDO) mkdir -p $(REDISLABS_DIR)
-	$(SHOW)$(SUDO) chown $$USER $(REDISLABS_DIR)
+	$(SHOW)$(SUDO) chown $(USER) $(REDISLABS_DIR)
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
 # cpython: $(DEFAULT_TARGETS) $(REDISLABS_LIBPYTHON)

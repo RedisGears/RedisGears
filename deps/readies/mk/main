@@ -26,6 +26,7 @@ MK_ALL_TARGETS:=bindirs build
 DEFAULT_TARGETS:=bindirs
 
 SUDO:=$(shell [ $$( command -v sudo >/dev/null 2>&1; echo $$? ) = 0 ] && echo sudo)
+USER:=$(shell whoami)
 
 include $(MK)/functions
 include $(MK)/common.defs
