@@ -21,7 +21,7 @@ RUN make all SHOW=1
 
 ARG TEST=0
 
-RUN if [ "$TEST" = "1" ]; then make test; fi
+RUN if [ "$TEST" = "1" ]; then TEST= make test; fi
 
 RUN [ "cross-build-end" ]
 

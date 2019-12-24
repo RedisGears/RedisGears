@@ -16,7 +16,7 @@ class RedisGearsSetup(paella.Setup):
 
     def common_first(self):
         self.install_downloaders()
-        
+
         self.setup_pip()
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
@@ -30,7 +30,7 @@ class RedisGearsSetup(paella.Setup):
             self.install("libgdbm-compat-dev")
         self.install("libgdbm-dev")
         self.install("tcl-dev tix-dev tk-dev")
-        
+
         self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
@@ -43,17 +43,16 @@ class RedisGearsSetup(paella.Setup):
         self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
 
-        # self.install("zlib-devel bzip2-devel lzma-devel ncurses-devel gdbm-devel compat-gdbm-devel sqlite-devel openssl-devel readline-devel libffi-devel")
         self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
             "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
         self.install("tcl-devel tix-devel tk-devel")
-        
+
         self.install("redhat-lsb-core")
         self.install("vim-common") # for xxd
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
         self.install("libatomic file")
-        
+
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
         self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
 

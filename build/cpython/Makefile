@@ -17,14 +17,18 @@ CONFIGURE_BUILD_DIR=$(BINDIR)
 SRCDIR=$(ROOT)/deps/cpython
 
 CONFIGURE_TARGET=$(BINDIR)/libpython3.7m.a
+CONFIGURE_PYTHON=$(BINDIR)/python
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
 MK_ALL_TARGETS=bindirs build pyenv
-MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
+# MK_CLEAN_ALL_DIRS += $(REDISLABS_CPYTHON_PREFIX)
 
 REDISLABS_DIR=/opt/redislabs
-export CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
-PYENV_DIR=$(CPYTHON_PREFIX)/.venv
+export REDISLABS_CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
+REDISLABS_LIBPYTHON=$(REDISLABS_CPYTHON_PREFIX)/lib/libpython3.7m.a
+REDISLABS_PYTHON=$(REDISLABS_CPYTHON_PREFIX)/bin/python3
+PYENV_DIR=$(REDISLABS_CPYTHON_PREFIX)/.venv
+PYENV_PYTHON=$(PYENV_DIR)/bin/python3
 
 include $(MK)/defs
 
@@ -48,7 +52,7 @@ PYTHON_ENCODING ?= ucs4
 
 CONFIGURE_FLAGS += \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
-	--prefix=$(CPYTHON_PREFIX)
+	--prefix=$(REDISLABS_CPYTHON_PREFIX)
 
 #----------------------------------------------------------------------------------------------
 
@@ -70,43 +74,51 @@ endif
 
 .PHONY: pyenv redislabs-dir cpython-dir pyenv-dir
 
-# pyenv: $(REDISLABS_DIR) $(CPYTHON_PREFIX) $(PYENV_DIR)
-pyenv: redislabs-dir cpython-dir pyenv-dir
+# pyenv: $(REDISLABS_DIR) $(REDISLABS_CPYTHON_PREFIX) $(PYENV_DIR)
+# pyenv: redislabs-dir cpython-dir pyenv-dir
 
-ifeq ($(OS),macosx)
-redislabs-dir:
-	$(SHOW)set -e ;\
-	if [ ! -d $(REDISLABS_DIR) ]; then \
-		sudo mkdir -p $(REDISLABS_DIR); \
-		sudo chown $$USER $(REDISLABS_DIR); \
-	fi
+# ifeq ($(OS),macosx)
+# redislabs-dir:
+# 	$(SHOW)set -e ;\
+# 	if [ ! -d $(REDISLABS_DIR) ]; then \
+# 		sudo mkdir -p $(REDISLABS_DIR); \
+# 		sudo chown $$USER $(REDISLABS_DIR); \
+# 	fi
+# 
+# #redislabs-dir:
+# # 	$(SHOW)mkdir -p $(REDISLABS_DIR)
+# # 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
+# else
+# redislabs-dir:
+# 	$(SHOW)$(SUDO) rm -rf $(REDISLABS_DIR)
+# 	$(SHOW)$(SUDO) mkdir -p $(REDISLABS_DIR)
+# endif
 
-#redislabs-dir:
-# 	$(SHOW)mkdir -p $(REDISLABS_DIR)
-# 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
-else
-ifeq ($(WITHSUDO),1)
-redislabs-dir:
-	$(SHOW) sudo rm -rf $(REDISLABS_DIR)
-	$(SHOW) sudo mkdir -p $(REDISLABS_DIR)
-	$(SHOW) sudo chown $$USER $(REDISLABS_DIR)
-else
-redislabs-dir:
-	$(SHOW) rm -rf $(REDISLABS_DIR)
-	$(SHOW) mkdir -p $(REDISLABS_DIR)
-endif
-endif
-
-cpython-dir: redislabs-dir
+# cpython-dir: redislabs-dir
+$(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON)
 	@echo Installing Python...
+	$(SHOW)$(SUDO) mkdir -p $(REDISLABS_DIR)
+	$(SHOW)$(SUDO) chown $(USER) $(REDISLABS_DIR)
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
-pyenv-dir: redislabs-dir cpython-dir
-	$(SHOW)cp Pipfile* $(CPYTHON_PREFIX)
-	$(SHOW)cd $(CPYTHON_PREFIX); \
-	export PIPENV_VENV_IN_PROJECT=1; \
-	export LC_ALL=C.UTF-8; \
-	export LANG=C.UTF-8; \
-	pipenv --site-packages install --python $(CPYTHON_PREFIX)/bin/python3
-	$(SHOW)cp $(CPYTHON_PREFIX)/Pipfile.lock .
+# cpython: $(DEFAULT_TARGETS) $(REDISLABS_LIBPYTHON)
+
+# redislabs-dir cpython-dir
+$(PYENV_PYTHON) : $(REDISLABS_PYTHON)
+	$(SHOW)cp Pipfile* $(REDISLABS_CPYTHON_PREFIX)
+	$(SHOW)set -e ;\
+	cd $(REDISLABS_CPYTHON_PREFIX) ;\
+	export PIPENV_VENV_IN_PROJECT=1 ;\
+	export LC_ALL=C.UTF-8 ;\
+	export LANG=C.UTF-8 ;\
+	pipenv --site-packages install --python $(REDISLABS_PYTHON)
+	$(SHOW)cp $(REDISLABS_CPYTHON_PREFIX)/Pipfile.lock .
 	$(SHOW)echo /usr/local/lib/python3.7/site-packages > $(PYENV_DIR)/lib/python3.7/site-packages/local.pth
+	$(SHOW)echo /usr/lib/python3/dist-packages > $(PYENV_DIR)/lib/python3.7/site-packages/global.pth 
+
+ifeq ($(DIAG),1)
+$(info *** CONFIGURE_PYTHON=$(CONFIGURE_PYTHON))
+$(info *** CONFIGURE_TARGET=$(CONFIGURE_TARGET))
+endif
+
+pyenv: $(DEFAULT_TARGETS) $(PYENV_PYTHON)

@@ -23,6 +23,9 @@ $(error It seems build prerequisites have not been installed: please run 'make s
 endif
 
 MK_ALL_TARGETS:=bindirs build
+DEFAULT_TARGETS:=bindirs
+
+SUDO:=$(shell [ $$( command -v sudo >/dev/null 2>&1; echo $$? ) = 0 ] && echo sudo)
 
 include $(MK)/functions
 include $(MK)/common.defs

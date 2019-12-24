@@ -70,7 +70,7 @@ class Setup(OnPlatform):
 
         if self.os == 'macosx':
             # this is required because osx pip installed are done with --user
-            os.environ["PATH"] = os.environ["PATH"] + ':' + '$HOME/Library/Python/2.7/bin'
+            os.environ["PATH"] = os.environ["PATH"] + ':' + os.environ["HOME"] + '/Library/Python/2.7/bin'
             # this prevents brew updating before each install
             os.environ["HOMEBREW_NO_AUTO_UPDATE"] = "1"
 
@@ -205,7 +205,9 @@ class Setup(OnPlatform):
         if not self.has_command("pip"):
             # self.install("python3-distutils")
             self.install_downloaders()
-            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py", output_on_error=True, _try=_try)
+            if self.os == 'macosx':
+                pip_user = '--user '
+            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py " + pip_user, output_on_error=True, _try=_try)
 
     def install_downloaders(self, _try=False):
         if self.os == 'linux':

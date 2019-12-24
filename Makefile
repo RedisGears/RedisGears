@@ -9,15 +9,21 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 define HELP
 make setup      # install packages required for build
 make fetch      # download and prepare dependant modules (i.e., python, libevent)
+
 make build
   DEBUG=1       # build debug variant
   VARIANT=name
-  WITHPYTHON=1  # build and use embedded Python interpreter
+  WITHPYTHON=0  # build without embedded Python interpreter
   DEPS=1        # also build dependant modules
 make clean      # remove binary files
   ALL=1         # remove binary directories
   DEPS=1        # also clean dependant modules
-make all        # build everything
+
+make deps       # build dependant modules
+make libevent   # build libevent
+make cpython    # build cpython
+make all        # build all libraries and packages
+
 make test       # run tests
 make pack
 endef
@@ -29,10 +35,6 @@ include $(MK)/defs
 #----------------------------------------------------------------------------------------------
 
 DEPENDENCIES=cpython libevent
-
-ifeq ($(and $(wildcard $(LIBPYTHON)),$(wildcard $(LIBEVENT))),)
-DEPS=1
-endif
 
 ifneq ($(filter all deps $(DEPENDENCIES) pyenv pack ramp_pack,$(MAKECMDGOALS)),)
 DEPS=1
@@ -112,6 +114,11 @@ CC_FLAGS += \
 LD_FLAGS += 
 
 EMBEDDED_LIBS += $(LIBPYTHON)
+
+ifeq ($(wildcard $(LIBPYTHON)),)
+MISSING_DEPS += $(LIBPYTHON)
+endif
+
 ifneq ($(OS),macosx)
 EMBEDDED_LIBS += -lutil
 endif
@@ -119,6 +126,16 @@ endif
 endif # WITHPYTHON
 
 EMBEDDED_LIBS += $(LIBEVENT)
+
+ifeq ($(wildcard $(LIBEVENT)),)
+MISSING_DEPS += $(LIBEVENT)
+endif
+
+#----------------------------------------------------------------------------------------------
+
+ifneq ($(MISSING_DEPS),)
+DEPS=1
+endif
 
 #----------------------------------------------------------------------------------------------
 
@@ -158,11 +175,7 @@ endif
 
 STRIP:=strip --strip-debug --strip-unneeded
 
-ifeq ($(DEPS),1)
-$(TARGET): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
-else
-$(TARGET): $(OBJECTS)
-endif
+$(TARGET): $(MISSING_DEPS) $(OBJECTS)
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 ifneq ($(DEBUG),1)
@@ -224,6 +237,13 @@ deps: ;
 endif # DEPS
 
 #----------------------------------------------------------------------------------------------
+
+ifeq ($(DIAG),1)
+$(info *** MK_CLEAN_DIR=$(MK_CLEAN_DIR))
+$(info *** LIBPYTHON=$(LIBPYTHON))
+$(info *** LIBEVENT=$(LIBEVENT))
+$(info *** MISSING_DEPS=$(MISSING_DEPS))
+endif
 
 clean:
 ifeq ($(ALL),1)
