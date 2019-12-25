@@ -10,13 +10,13 @@
 
 TBD: key names and tables
 
-## Install and configure Oracle
+## Install and configure Oracle server
 
-* Designate a machine with at least 20GB of free disk space to host the Oracle database.
+* Designate a machine with at least 10GB free disk space to host the Oracle database server.
   * Find the IP address of the machine and make sure port 1521 is open for inbound TCP traffic.
 * [Install Docker](#insalling_docker).
 * Install git.
-* Setup Oracle container and create a database:
+* Setup Oracle server container and create a database:
 ```
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle)
 ```
@@ -42,9 +42,9 @@ ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node)
 
 On one of the Redis cluster nodes:
 
-* Run `PORT=<n> PASSWORD=<passwd> /opt/recipe/oracle/rs/start-gear`.
-* From within `redis-cli`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
-* Using ``redis-cli```, invoke:
+* Run `ID=<db-id> /opt/recipe/oracle/rs/start-gear`.
+* From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
+* Using `bdb-cli <db-id>`, invoke:
 ```
 HSET person2:johndoe first_name "John" last_name "Doe" age "42"
 ```
@@ -55,15 +55,18 @@ select * from person1;
 
 ## Testing
 
-* From the controlling node, run `/opt/recipe/test/test_write_behind.py`.
+* From a cluster node, run `ID=<db-id>/opt/recipe/oracle/rs/run-test`.
+* Run `echo "select count(*) from person1;" | /opt/recipe/oracle/sqlplus`
 
 ## Diagnostics
 
-Gear status
+### Gear status
 
-MySQL status
+* Check the Redis DB log for errors: `/var/opt/redislabs/log/redis-*.log`
 
-Oracle status
+### Oracle status
+
+* Run `echo "select count(*) from person1;" | /opt/recipe/oracle/sqlplus`
 
 ## Appendixes
 

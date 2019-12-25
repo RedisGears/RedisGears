@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[[ -z $WHO ]] WHO=test/passwd
+[[ -z $WHO ]] && WHO=test/passwd
 
 export PATH=$PATH:/opt/oracle/instantclient_19_5
 
