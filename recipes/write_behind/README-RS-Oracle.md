@@ -34,15 +34,14 @@ ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node)
 ```
 * Bootstrap the cluster.
 
-* Find out Redis DB port and password.
-
-  * You can verify those with: `redis-cli -p PORT -a PASSWORD`
-
 ## Running the write-behind gear
 
 On one of the Redis cluster nodes:
 
 * Run `ID=<db-id> /opt/recipe/oracle/rs/start-gear`.
+
+### Basic tests
+
 * From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
 * Using `bdb-cli <db-id>`, invoke:
 ```
