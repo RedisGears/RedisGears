@@ -1,4 +1,5 @@
 #!/bin/bash
 
-cd /opt/gears-wb
-/opt/redislabs/bin/python ./gears.py ./oracle/write_behind.py
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)" 
+cd $HERE/../..
+/opt/redislabs/bin/python ./gears.py --port $PORT --password $PASSWD ./oracle/write_behind.py

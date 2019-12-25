@@ -2,10 +2,10 @@
 
 ## System requirements
 
-* Redis v5.0.7 or above,
-* Relational database: MySQL (any version will do) or Oracle (tested with 11g and 12c) database,
-* Redis Enterprise Software v5.4.11-2 and above,
-* RedisGears module build for Ubuntu Bionic
+* Redis v5.0.7 or above
+* Relational database: MySQL (any version will do) or Oracle (tested with 11g and 12c) database
+* RedisGears module built for Ubuntu Bionic
+* Optional: Redis Enterprise Software v5.4.11-2 or above
 
 ## Configuration
 
@@ -25,12 +25,12 @@ TBD
 ## Installing on Redis Enterprise Software cluster
 
 * Create an un-bootstrapped Redis cluster.
-* Install RedisGears and dependencies on all nodes with:
+* Install RedisGears on all cluster nodes with:
 ```
 bash <(curl -fsSL http://tiny.cc/redisgears-wb-setup)
 ```
 * Bootstrap the cluster.
-* Download and extract the RedisGears Write-Behind Recipe archive into `/opt/gears-wb` on one of the nodes, which we'll refer to as the "Controlling node".
+* Download and extract the RedisGears Write-Behind Recipe archive into `/opt/gears-wb` on one of the nodes, which we'll refer to as the "**Controlling node**".
 
 Depending on your favorite database, continue with either **Running with MySQL** or **Running with Oracle**.
 
@@ -114,6 +114,7 @@ ORACLE-IP oracle
 
 * Run `/opt/gears-wb/oracle/rs/start-gear`.
 * From within `redis-cli`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
+* From redis-cli, 
 
 ## Installing on RHEL-Docker
 
@@ -127,7 +128,11 @@ ORACLE-IP oracle
 
 ## Diagnostics
 
-TBD
+Gear status
+
+MySQL status
+
+Oracle status
 
 ## Appendix
 
