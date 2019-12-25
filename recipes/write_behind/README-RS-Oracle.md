@@ -2,7 +2,7 @@
 
 ## System requirements
 
-* Redis Enterprise Software v5.4.11-2 or above
+* Redis Enterprise Software v5.4.11-2 or above running on Ubuntu Bionic
 * Oracle database (tested with 11g and 12c)
 * RedisGears module built for Ubuntu Bionic
 
@@ -15,33 +15,12 @@ TBD: key names and tables
 * Designate a machine with at least 20GB of free disk space to host the Oracle database.
   * Find the IP address of the machine and make sure port 1521 is open for inbound TCP traffic.
 * [Install Docker](#insalling_docker).
-* Clone the [RegisGears](https://github.com/RegisGears/RedisGears) repository:
+* Install git.
+* Setup Oracle container and create a database:
 ```
-mkdir -p /opt
-cd /opt
-git clone --branch rafi_behind-oracle-1 --single-branch https://github.com/RegisGears/RedisGears.git
+bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle)
 ```
-* Create symlinks to the recipe directory for easier access:
-```
-ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
-cd recipe
-ln -s ../gear.py
-```
-* Run `/opt/repice/oracle/install-oracle-docker`. This will run an Oracle database in a container.
-* Run the following:
-```
-echo "127.0.0.1 oracle" >> /etc/hosts
-```
-
-* Create a database with `/opt/recipe/oracle/rs/create-db`.
-
-* It's now possible connect to the database using:
-```
-. /etc/profile.d/oracle.sh
-rlwrap sqlplus test/passwd@//localhost/xe
-```
-* And check that the tables were created (the tables are obviously empty):
-
+* It's now possible connect to the database using `/opt/recipe/oracle/sqlplus`, and check that the tables were created (the tables are obviously empty):
 ```
 select * from person1;
 select * from car;
@@ -49,9 +28,9 @@ select * from car;
 ## Installing the Redis cluster
 
 * Create an un-bootstrapped Redis Enterprise cluster.
-* Install RedisGears on all cluster nodes with:
+* On each cluster node, run:
 ```
-bash <(curl -fsSL http://tiny.cc/redisgears-wb-setup)
+ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node)
 ```
 * Bootstrap the cluster.
 
@@ -59,35 +38,9 @@ bash <(curl -fsSL http://tiny.cc/redisgears-wb-setup)
 
   * You can verify those with: `redis-cli -p PORT -a PASSWORD`
 
-## Configure cluster nodes
-For each cluster node:
-
-* Clone the [RegisGears](https://github.com/RegisGears/RedisGears) repository:
-```
-mkdir -p /opt
-cd /opt
-git clone --branch rafi_behind-oracle-1 --single-branch https://github.com/RegisGears/RedisGears.git
-```
-* Create symlinks to the recipe directory for easier access:
-```
-ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
-cd recipe
-ln -s ../gear.py
-```
-* Install Oracle client with `/opt/recipe/oracle/install-oracle-client`.
-
-* For each node, add the following to its `/etc/hosts` file, where `ORACLE-IP` is the controlling node IP:
-
-```
-ORACLE-IP oracle
-```
-
-* Install Oracle client with `/opt/recipe/oracle/install-oracle-client`.
-* Install Oracle python client with `/opt/recipe/oracle/install-oracle-python-client`.
-
 ## Running the write-behind gear
 
-From one of the Redis cluster nodes:
+On one of the Redis cluster nodes:
 
 * Run `PORT=<n> PASSWORD=<passwd> /opt/recipe/oracle/rs/start-gear`.
 * From within `redis-cli`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
