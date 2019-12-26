@@ -449,3 +449,65 @@ def testStreamReaderTrimming(env):
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testStreamReaderRestartOnSlave():
+    script = '''
+import time
+def FailedOnMaster(r):
+    numSlaves = int(execute('info', 'replication').split('\\n')[2].split(':')[1])
+    currNum = execute('get', 'NumOfElements')
+    if currNum is not None:
+        currNum = int(currNum)
+    if currNum == 5 and numSlaves == 1:
+        execute('set', 'inside_loop', '1')    
+        while True:
+            time.sleep(1)
+    execute('incr', 'NumOfElements')
+GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3)
+'''
+    env = Env(env='oss', useSlaves=True)
+    slaveConn = env.getSlaveConnection()
+    masterConn = env.getConnection()
+    env.cmd('rg.pyexecute', script)
+
+    for i in range(3):
+        env.execute_command('xadd', 'stream', '*', 'foo', 'bar')
+
+    try:
+        with TimeLimit(10):
+            num = 0
+            while num is None or int(num) != 3:
+                num = env.execute_command('get', 'NumOfElements')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 3')
+
+    for i in range(3):
+        env.execute_command('xadd', 'stream', '*', 'foo', 'bar')
+
+    try:
+        with TimeLimit(10):
+            num = 0
+            while num is None or int(num) != 5:
+                num = env.execute_command('get', 'NumOfElements')
+                time.sleep(0.1)
+            inside_loop = False
+            while not inside_loop:
+                inside_loop = env.execute_command('get', 'inside_loop') == '1'
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 5')
+
+    slaveConn.execute_command('SLAVEOF', 'NO', 'ONE') # slave should become master here and continue the execution
+
+    try:
+        with TimeLimit(10):
+            num = 0
+            while num is None or int(num) != 8:
+                num = slaveConn.execute_command('get', 'NumOfElements')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for NumOfElements to reach 8 on slave')
+
+
+
