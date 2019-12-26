@@ -20,7 +20,7 @@ wget -q -O $DIR/redis-modules.yaml $REPO_PATH/redis-modules.yaml
 
 mkdir -p /opt
 cd /opt
-git clone --branch $BRANCH --single-branch https://github.com/RegisGears/RedisGears.git
+git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
 
 ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 cd recipe

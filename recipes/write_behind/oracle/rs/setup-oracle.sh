@@ -8,7 +8,7 @@ BRANCH=rafi_behind-oracle-1
 
 mkdir -p /opt
 cd /opt
-git clone --branch $BRANCH --single-branch https://github.com/RegisGears/RedisGears.git
+git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
 ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 
 /opt/repice/oracle/install-oracle-docker
