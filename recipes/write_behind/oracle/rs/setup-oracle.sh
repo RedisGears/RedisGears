@@ -12,6 +12,7 @@ git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGe
 ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 
 /opt/recipe/oracle/install-oracle-docker
+/opt/recipe/oracle/install-oracle-client
 
 echo "127.0.0.1 oracle" >> /etc/hosts
 
