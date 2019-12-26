@@ -23,8 +23,8 @@ cd /opt
 git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
 
 ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
-cd recipe
-ln -s ../gear.py
+cd /opt/RedisGears/recipes/write_behind
+ln -s ../gears.py .
 
 echo "$ORACLE oracle" >> /etc/hosts
 
