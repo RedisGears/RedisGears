@@ -4,7 +4,7 @@
 
 set -e
 
-if [[ -z $ORACLE]]; then
+if [[ -z $ORACLE ]]; then
 	echo "Error: no ORACLE IP address given. Aborting."
 	exit 1
 fi
