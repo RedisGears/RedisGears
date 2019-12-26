@@ -25,6 +25,7 @@ MK_ALL_TARGETS=bindirs build pyenv
 
 REDISLABS_DIR=/opt/redislabs
 export REDISLABS_CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
+BINDIR_CPYTHON_PREFIX=$(BINDIR)/redislabs/lib/modules/python3
 REDISLABS_LIBPYTHON=$(REDISLABS_CPYTHON_PREFIX)/lib/libpython3.7m.a
 REDISLABS_PYTHON=$(REDISLABS_CPYTHON_PREFIX)/bin/python3
 PYENV_DIR=$(REDISLABS_CPYTHON_PREFIX)/.venv
@@ -72,40 +73,16 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
-.PHONY: pyenv redislabs-dir cpython-dir pyenv-dir
+# ln -s `pwd`/redislabs/lib/modules/python3 /opt/redislabs/lib/modules/python3
 
-# pyenv: $(REDISLABS_DIR) $(REDISLABS_CPYTHON_PREFIX) $(PYENV_DIR)
-# pyenv: redislabs-dir cpython-dir pyenv-dir
-
-# ifeq ($(OS),macosx)
-# redislabs-dir:
-# 	$(SHOW)set -e ;\
-# 	if [ ! -d $(REDISLABS_DIR) ]; then \
-# 		sudo mkdir -p $(REDISLABS_DIR); \
-# 		sudo chown $$USER $(REDISLABS_DIR); \
-# 	fi
-# 
-# #redislabs-dir:
-# # 	$(SHOW)mkdir -p $(REDISLABS_DIR)
-# # 	$(SHOW)sudo ln -sfn $(abspath $(REDISLABS_DIR)) $(REDISLABS_DIR)
-# else
-# redislabs-dir:
-# 	$(SHOW)$(SUDO) rm -rf $(REDISLABS_DIR)
-# 	$(SHOW)$(SUDO) mkdir -p $(REDISLABS_DIR)
-# endif
-
-# cpython-dir: redislabs-dir
 $(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON)
 	@echo Installing Python...
-	$(SHOW)$(SUDO) mkdir -p $(REDISLABS_DIR)
-	$(SHOW)$(SUDO) chown $(USER) $(REDISLABS_DIR)
+	$(SHOW)mkdir -p $(BINDIR_CPYTHON_PREFIX)
+	$(SHOW)$(SUDO) mkdir -p $(basename $(REDISLABS_CPYTHON_PREFIX))
+	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
+	$(SHOW)$(SUDO) ln -s $(REDISLABS_CPYTHON_PREFIX) $(BINDIR_CPYTHON_PREFIX)
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
-# cpython: $(DEFAULT_TARGETS) $(REDISLABS_LIBPYTHON)
-
-pyenv: $(PYENV_PYTHON)
-
-# redislabs-dir cpython-dir
 $(PYENV_PYTHON) : $(REDISLABS_PYTHON)
 	$(SHOW)cp Pipfile* $(REDISLABS_CPYTHON_PREFIX)
 	$(SHOW)set -e ;\
@@ -124,3 +101,5 @@ $(info *** CONFIGURE_TARGET=$(CONFIGURE_TARGET))
 endif
 
 pyenv: $(DEFAULT_TARGETS) $(PYENV_PYTHON)
+
+.PHONY: pyenv 
