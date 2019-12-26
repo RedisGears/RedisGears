@@ -21,11 +21,11 @@ CONFIGURE_PYTHON=$(BINDIR)/python
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
 MK_ALL_TARGETS=bindirs build pyenv
-# MK_CLEAN_ALL_DIRS += $(REDISLABS_CPYTHON_PREFIX)
+MK_CLEAN_ALL_DIRS += $(BINDIR_CPYTHON_PREFIX) $(REDISLABS_CPYTHON_PREFIX)
 
 REDISLABS_DIR=/opt/redislabs
 export REDISLABS_CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
-BINDIR_CPYTHON_PREFIX=$(BINDIR)/redislabs/lib/modules/python3
+BINDIR_CPYTHON_PREFIX=$(BINROOT)/redislabs/lib/modules/python3
 REDISLABS_LIBPYTHON=$(REDISLABS_CPYTHON_PREFIX)/lib/libpython3.7m.a
 REDISLABS_PYTHON=$(REDISLABS_CPYTHON_PREFIX)/bin/python3
 PYENV_DIR=$(REDISLABS_CPYTHON_PREFIX)/.venv
@@ -78,15 +78,17 @@ endif
 $(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON)
 	@echo Installing Python...
 ifeq ($(PYENV_IN_SITU),1)
-	$(SHOW)-$(SUDO)find $(REDISLABS_CPYTHON_PREFIX) -type l -delete
+	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
 	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
 	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
 else
+	$(SHOW)set -e; if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
+	$(SHOW)[ -e $(BINDIR_CPYTHON_PREFIX) ] && rm -rf $(BINDIR_CPYTHON_PREFIX)
 	$(SHOW)mkdir -p $(BINDIR_CPYTHON_PREFIX)
-	$(SHOW)$(SUDO) mkdir -p $(basename $(REDISLABS_CPYTHON_PREFIX))
+	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
 	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
-	$(SHOW)[ -e $(REDISLABS_CPYTHON_PREFIX) ] && $(SUDO) rm -f $(REDISLABS_CPYTHON_PREFIX)
-	$(SHOW)$(SUDO) ln -s $(BINDIR_CPYTHON_PREFIX) $(REDISLABS_CPYTHON_PREFIX)
+	$(SHOW)set -e; if [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then $(SUDO) rm $(REDISLABS_CPYTHON_PREFIX); fi
+	$(SHOW)$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX)
 endif
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
@@ -109,4 +111,9 @@ endif
 
 pyenv: $(DEFAULT_TARGETS) $(PYENV_PYTHON)
 
-.PHONY: pyenv 
+clean-pyenv:
+	$(SHOW)set -e; if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
+	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
+	
+.PHONY: pyenv clean-pyenv
+
