@@ -9,7 +9,7 @@ if [[ -z $ORACLE]]; then
 	exit 1
 fi
 	
-BRANCH=rafi_behind-oracle-1
+BRANCH=rafi-behind_oracle-1
 REPO_PATH=https://raw.githubusercontent.com/RedisGears/RedisGears/$BRANCH/recipes/write_behind/oracle/rs
 DIR=/opt/redisgears-setup
 

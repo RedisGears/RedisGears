@@ -4,7 +4,7 @@
 
 set -e
 
-BRANCH=rafi_behind-oracle-1
+BRANCH=rafi-behind_oracle-1
 
 mkdir -p /opt
 cd /opt
