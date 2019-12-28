@@ -75,20 +75,23 @@ endif
 
 # ln -s `pwd`/redislabs/lib/modules/python3 /opt/redislabs/lib/modules/python3
 
-$(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON)
+$(REDISLABS_PYTHON) : $(CONFIGURE_PYTHON)
 	@echo Installing Python...
 ifeq ($(PYENV_IN_SITU),1)
 	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
 	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
 	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
 else
-	$(SHOW)set -e; if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
-	$(SHOW)[ -e $(BINDIR_CPYTHON_PREFIX) ] && rm -rf $(BINDIR_CPYTHON_PREFIX)
+	$(SHOW)if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
 	$(SHOW)mkdir -p $(BINDIR_CPYTHON_PREFIX)
 	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
 	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
-	$(SHOW)set -e; if [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then $(SUDO) rm $(REDISLABS_CPYTHON_PREFIX); fi
-	$(SHOW)$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX)
+	$(SHOW)if [ ! -e $(REDISLABS_CPYTHON_PREFIX) ]; then \
+		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
+	elif [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then \
+		$(SUDO) rm $(REDISLABS_CPYTHON_PREFIX); \
+		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
+	fi
 endif
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
@@ -109,10 +112,26 @@ $(info *** CONFIGURE_PYTHON=$(CONFIGURE_PYTHON))
 $(info *** CONFIGURE_TARGET=$(CONFIGURE_TARGET))
 endif
 
+# $(info pyenv: $(PYENV_PYTHON) : $(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON))
+
+ifneq ($(LINK),1)
 pyenv: $(DEFAULT_TARGETS) $(PYENV_PYTHON)
+else
+pyenv:
+	$(SHOW)if [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then \
+		$(SUDO) rm -f $(REDISLABS_CPYTHON_PREFIX); \
+	else \
+		if [ -d $(REDISLABS_CPYTHON_PREFIX) ]; then \
+			echo "$(REDISLABS_CPYTHON_PREFIX) is a directory." ;\
+			exit 1 ;\
+		fi ;\
+	fi
+	$(SHOW)$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX)
+endif
 
 clean-pyenv:
-	$(SHOW)set -e; if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
+	$(SHOW)if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
+	$(SHOW)if [ -d $(REDISLABS_CPYTHON_PREFIX) ]; then $(SUDO) rm -rf $(REDISLABS_CPYTHON_PREFIX); fi
 	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
 	
 .PHONY: pyenv clean-pyenv
