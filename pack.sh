@@ -74,7 +74,10 @@ fi
 
 stem=$(basename $RELEASE | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
 TAR=$PACKAGE_NAME-dependencies.$stem.tgz
-tar pczf artifacts/release/$TAR $CPYTHON_PREFIX/ 2> /dev/null
+TAR_PATH=$(realpath artifacts/release/$TAR))
+cd $CPYTHON_PREFIX/
+tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2> /dev/null
+cd -
 echo Created artifacts/release/$TAR
 
 stem=$(basename $SNAPSHOT | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
