@@ -61,16 +61,11 @@ class Setup(OnPlatform):
         self.dist = self.platform.dist
         self.ver = self.platform.os_ver
 
-        if self.has_command("python"):
-            self.python = "python"
-        elif self.has_command("python2"):
-            self.python = "python2"
-        elif self.has_command("python3"):
-            self.python = "python3"
+        self.python = sys.executable
 
         if self.os == 'macosx':
             # this is required because osx pip installed are done with --user
-            os.environ["PATH"] = os.environ["PATH"] + ':' + '$HOME/Library/Python/2.7/bin'
+            os.environ["PATH"] = os.environ["PATH"] + ':' + os.environ["HOME"] + '/Library/Python/2.7/bin'
             # this prevents brew updating before each install
             os.environ["HOMEBREW_NO_AUTO_UPDATE"] = "1"
 
@@ -120,11 +115,11 @@ class Setup(OnPlatform):
 
     def install(self, packs, group=False, _try=False):
         if self.os == 'linux':
-            if self.dist == 'fedora':
+            if self.dist == 'fedora': # also include centos 8
                 self.dnf_install(packs, group=group, _try=_try)
-            elif self.dist == 'ubuntu' or self.dist == 'debian':
+            elif self.platform.is_debian_compat():
                 self.apt_install(packs, group=group, _try=_try)
-            elif self.dist == 'centos' or self.dist == 'redhat':
+            elif self.platform.is_redhat_compat():
                 self.yum_install(packs, group=group, _try=_try)
             elif self.dist == 'suse':
                 self.zypper_install(packs, group=group, _try=_try)
@@ -198,12 +193,13 @@ class Setup(OnPlatform):
         pip_user = ''
         if self.os == 'macosx':
             pip_user = '--user '
-        self.run("pip3 install --disable-pip-version-check " + pip_user + cmd, output_on_error=True, _try=_try)
+        self.run(self.python + " -m pip install --disable-pip-version-check " + pip_user + cmd, output_on_error=True, _try=_try)
 
     def setup_pip(self, _try=False):
         get_pip = "set -e; wget -q https://bootstrap.pypa.io/get-pip.py -O /tmp/get-pip.py"
-        if not self.has_command("pip"):
-            # self.install("python3-distutils")
+        if self.run(self.python + " -m pip --version", _try=True) != 0:
+            if sys.version_info.major == 3:
+                self.install("python3-distutils")
             self.install_downloaders()
             self.run(get_pip + "; " + self.python + " /tmp/get-pip.py", output_on_error=True, _try=_try)
 
@@ -213,5 +209,9 @@ class Setup(OnPlatform):
         self.install("curl wget", _try=_try)
 
     def install_git_lfs_on_linux(self, _try=False):
-        self.run("curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash", _try=_try)
+        cmd = "curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.{}.sh | bash"
+        if self.dist == 'fedora' or self.dist == 'centos' or self.dist == 'redhat':
+            self.run(cmd.format('rpm'), _try=_try)
+        elif self.dist == 'ubuntu' or self.dist == 'debian':
+            self.run(cmd.format('deb'), _try=_try)
         self.install("git-lfs", _try=_try)

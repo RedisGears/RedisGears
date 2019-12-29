@@ -36,7 +36,7 @@ ARG PACK=0
 ARG TEST=0
 
 RUN if [ "$PACK" = "1" ]; then make pack; fi
-RUN if [ "$TEST" = "1" ]; then make test; fi
+RUN if [ "$TEST" = "1" ]; then TEST= make test; fi
 
 #----------------------------------------------------------------------------------------------
 FROM redisfab/redis:${REDIS_VER}-${ARCH}-${OSNICK}

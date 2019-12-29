@@ -1,7 +1,12 @@
 
 .PHONY: build clean
 
-build: $(MK_MAKEFILES) $(TARGET)
+ifeq ($(DIAG),1)
+$(info *** DEFAULT_TARGETS=$(DEFAULT_TARGETS))
+$(info *** MK_MAKEFILES=$(MK_MAKEFILES))
+endif
+
+build: $(DEFAULT_TARGETS) $(MK_MAKEFILES) $(TARGET)
 
 ifneq ($(MK_CUSTOM_CLEAN),1)
 

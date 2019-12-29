@@ -7,5 +7,6 @@ BIN_DIRS=$(sort $(patsubst %/,%,$(BINDIR) $(dir $(OBJECTS))) $(BINDIRS))
 
 define mkdir_rule
 $(1):
+	@echo Creating $(1)
 	$$(SHOW)mkdir -p $(1)
 endef

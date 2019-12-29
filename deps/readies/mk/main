@@ -19,13 +19,23 @@ MK.pyver ?= 2
 MK.getpy=getpy$(MK.pyver)
 
 ifneq ($(shell { CHECK=1 $(READIES)/bin/$(MK.getpy); echo -n $$?; }),0)
-$(error It seems build prerequisites have not been installed: please run 'make setup'.)
+ifneq ($(filter setup,$(MAKECMDGOALS)),) 
+$(error It seems build prerequisites have not been installed: please run 'sudo make setup'.)
+endif
+__NO_PYTHON=1
 endif
 
 MK_ALL_TARGETS:=bindirs build
+DEFAULT_TARGETS:=bindirs
+
+SUDO:=$(shell [ $$( command -v sudo >/dev/null 2>&1; echo $$? ) = 0 ] && echo sudo)
+USER:=$(shell whoami)
 
 include $(MK)/functions
 include $(MK)/common.defs
+
+ifneq ($(__NO_PYTHON),1)
+
 include $(MK)/platform.defs
 
 ifeq ($(OS),macosx)
@@ -36,3 +46,5 @@ include $(MK)/git.defs
 include $(MK)/variant.defs
 include $(MK)/bindirs.defs
 include $(MK)/nproc.defs
+
+endif # __NO_PYTHON
