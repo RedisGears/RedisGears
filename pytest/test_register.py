@@ -466,6 +466,8 @@ def FailedOnMaster(r):
 GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3)
 '''
     env = Env(env='oss', useSlaves=True)
+    if env.envRunner.debugger is not None:
+        env.skip() # valgrind is not working correctly with replication
     slaveConn = env.getSlaveConnection()
     masterConn = env.getConnection()
     env.cmd('rg.pyexecute', script)
@@ -508,6 +510,3 @@ GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3)
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for NumOfElements to reach 8 on slave')
-
-
-
