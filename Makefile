@@ -22,10 +22,11 @@ make clean      # remove binary files
 make deps       # build dependant modules
 make libevent   # build libevent
 make cpython    # build cpython
+make pyenv      # install cpython and virtual environment
 make all        # build all libraries and packages
 
 make test       # run tests
-make pack
+make pack       # build packages (ramp & dependencies)
 endef
 
 MK_ALL_TARGETS=bindirs deps pyenv build pack
@@ -195,8 +196,8 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 
 setup:
 	@echo Setting up system...
-	$(SHOW)./deps/readies/bin/getpy2
-	$(SHOW)./system-setup.py
+	$(SHOW)$(SUDO) ./deps/readies/bin/getpy2
+	$(SHOW)$(SUDO) ./system-setup.py
 
 fetch get_deps:
 	-$(SHOW)git submodule update --init --recursive
@@ -247,7 +248,7 @@ endif
 
 clean:
 ifeq ($(ALL),1)
-	$(SHOW)rm -rf $(BINDIR)
+	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(notdir $(TARGET)) $(BINROOT)/redislabs
 else
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) artifacts/release/* artifacts/snapshot/*
