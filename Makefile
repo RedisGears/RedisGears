@@ -194,10 +194,12 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
 
 #----------------------------------------------------------------------------------------------
 
+# we avoid $(SUDO) here since we expect 'sudo make setup'
+
 setup:
 	@echo Setting up system...
-	$(SHOW)$(SUDO) ./deps/readies/bin/getpy2
-	$(SHOW)$(SUDO) ./system-setup.py
+	$(SHOW)./deps/readies/bin/getpy2
+	$(SHOW)./system-setup.py
 
 fetch get_deps:
 	-$(SHOW)git submodule update --init --recursive
