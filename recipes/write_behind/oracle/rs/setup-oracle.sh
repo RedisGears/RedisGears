@@ -14,7 +14,7 @@ ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 /opt/recipe/oracle/install-oracle-docker
 /opt/recipe/oracle/install-oracle-client
 
-echo "127.0.0.1 oracle" >> /etc/hosts
+printf "\n127.0.0.1 oracle\n" >> /etc/hosts
 
 /opt/recipe/oracle/rs/create-db
 

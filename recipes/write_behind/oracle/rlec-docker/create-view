@@ -6,6 +6,8 @@ if [[ -d $RLEC ]]; then
 	exit 1
 fi
 
+echo "Creating view $RLEC ..."
+
 mkdir -p $RLEC
 cd $RLEC
 git clone --recursive --jobs $(nproc) https://github.com/RedisGears/RedisGears.git
@@ -17,6 +19,8 @@ git clone ssh://git@github.com/RedisLabsModules/modullaneous.git
 mkdir rlec
 chmod 777 rlec
 
-recpie=$RLEC/RedisGears/recipes/write_behind/oracle
+recpie=$RLEC/RedisGears/recipes/write_behind
 cd rlec
-cp  $/rlec/* .
+cp -R $recpie/oracle/rlec-docker/rlec/* .
+
+echo "run to enable rlec-docker: source $RLEC/modullaneous/rlec-docker/aliases"
