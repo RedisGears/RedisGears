@@ -9,9 +9,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 cd $HERE/../..
 
 CONF="/var/opt/redislabs/redis/redis-$ID.conf"
-PORT=$(grep "^port" $CONF | gawk '{print $2}')
-PWD=$(grep "^requirepass" $CONF | gawk '{print $2}')
+PORT=$(grep "^port" $CONF | awk '{print $2}')
+PWD=$(grep "^requirepass" $CONF | awk '{print $2;}')
 
-/opt/redislabs/bin/python ./tests/test_write_behind.py --port $PORT --password $PWD
+/opt/redislabs/bin/python /opt/view/RedisGears/recipes/gears.py --port $PORT --password $PWD ./oracle/write_behind.py
 
 exit 0

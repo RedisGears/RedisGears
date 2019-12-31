@@ -26,7 +26,7 @@ ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 cd /opt/RedisGears/recipes/write_behind
 ln -s ../gears.py .
 
-echo "$ORACLE oracle" >> /etc/hosts
+printf "\n$ORACLE oracle\n" >> /etc/hosts
 
 /opt/recipe/oracle/install-oracle-client
 /opt/recipe/oracle/install-oracle-python-client

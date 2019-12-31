@@ -1,14 +1,7 @@
 # note that the following should be built for ubuntu:bionic to work with rlec-docker
 redisgears:
-    path: /opt/view/RedisGears/artifacts/release/redisgears.Linux-generic-x86_64.99.99.99.zip
+    path: /opt/view/RedisGears/artifacts/bionic/redisgears.Linux-bionic-x86_64.99.99.99.zip
 redisgears-deps:
-    path: /opt/view/RedisGears/artifacts/release/redisgears-dependencies.Linux-generic-x86_64.99.99.99.tgz
+    path: /opt/view/RedisGears/artifacts/bionic/redisgears-dependencies.Linux-bionic-x86_64.99.99.99.tgz
     dest: /
     unzip: yes
-
-# redisgears:
-#    awspath: lab/08-gears-write-behind/redisgears.linux-bionic-x86_64.99.99.99.zip
-# redisgears-deps:
-#     awspath: lab/08-gears-write-behind/redisgears-dependencies.linux-bionic-x86_64.99.99.99.zip
-#     dest: /
-#     unzip: yes

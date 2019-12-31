@@ -2,8 +2,11 @@
 
 import time
 
+engine = None
 conn = None
 sqlText = None
+dbtype = None
+_debug=True
 
 # addQuery =
 #   MERGE INTO table d USING (SELECT 1 FROM DUAL) ON (d.pkey_col = 'pkey')
@@ -19,14 +22,26 @@ KEY = '_key'
 
 SLEEP_TIME=1
 
-SQLDB_CONFIG = {
-    ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
-    'ConnectionStr': 'oracle://{user}:{password}@{db}'.format(
-        user='test',
-        password='passwd',
-        db='oracle/xe')
-    ,
+#----------------------------------------------------------------------------------------------
+# Database configuration
+
+## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
+
+MYSQL_CONFIG = {
+    'ConnectionStr': '<mysql>://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql'),
 }
+
+ORACLE_CONFIG = {
+    'ConnectionStr': 'oracle://{user}:{password}@{db}'.format(user='test', password='passwd', db='oracle/xe'),
+}
+
+DATABASES = {
+    'oracle': ORACLE_CONFIG,
+    'mysql': MYSQL_CONFIG,
+}
+
+#----------------------------------------------------------------------------------------------
+# Key mapping
 
 # config = {
 #     'redis-hash-key:pkey-column': {
@@ -47,6 +62,8 @@ config = {
     },
 }
 
+#----------------------------------------------------------------------------------------------
+
 def Log(msg, prefix='RedisGears - '):
     msg = prefix + msg
     try:
@@ -54,17 +71,62 @@ def Log(msg, prefix='RedisGears - '):
     except Exception:
         print(msg)
 
+def Debug(msg, prefix='RedisGears - '):
+    if not _debug:
+        return
+    msg = prefix + msg
+    try:
+        execute('debug', 'log', msg)
+    except Exception:
+        print(msg)
+
+#----------------------------------------------------------------------------------------------
+
 def Connect():
     global conn
+    global engine
+    global dbtype
     global sqlText
     from sqlalchemy import create_engine
-    from sqlalchemy.sql import text
-    sqlText = text
-    Log('connecting to database, ConnectionStr=%s' % (SQLDB_CONFIG['ConnectionStr']))
-    engine = create_engine(SQLDB_CONFIG['ConnectionStr']).execution_options(autocommit=True)
-    return engine.connect()
+
+    if dbtype is None:
+        Log('Connect: determining dbtype')
+        for type, config in DATABASES.items():
+            connstr = config['ConnectionStr']
+            Log('Connect: trying conntecting %s, ConnectionStr=%s' % (type, connstr))
+            engine1 = create_engine(connstr).execution_options(autocommit=True)
+            try:
+                conn1 = engine1.connect()
+                Log('DB detected: %s' % (type))
+                dbtype = type
+                conn1.close()
+                return None
+            except:
+                Debug('Connect: no ' + type)
+        Log('Connect: Cannot determine DB engine')
+        raise Exception('Connect: Cannot determine DB engine')
+
+    if dbtype in DATABASES:
+        config = DATABASES[dbtype]
+        connstr = config['ConnectionStr']
+        Log('Connect: connecting %s, ConnectionStr=%s' % (dbtype, connstr))
+        engine = create_engine(connstr).execution_options(autocommit=True)
+        conn = engine.connect()
+        Log('Connect: Connected to ' + dbtype)
+        return conn
+    else:
+        Log('Connect: invalid db engine: ' + dbtype)
+        raise Exception('Connect: invalid db engine: ' + dbtype)
+        
+    return None
 
 def PrepereQueries():
+    global conn
+    global dbtype
+
+    Log('Determining dbtype')
+    Connect() # determine dbtype
+
     for k,v in config.items():
         table, pkey = k.split(':')
         if TABLE_KEY not in v.keys():
@@ -74,12 +136,22 @@ def PrepereQueries():
             raise Exception('failed to create query for %s', str(k))
 
         # create upsert query
-        values = [val for kk, val in v.items() if not kk.startswith('_')]
-        values_with_pkey = [pkey] + values
-        merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (v[TABLE_KEY], pkey, pkey)
-        not_matched = "WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)" % (','.join(values_with_pkey), ','.join([':%s' % a for a in values_with_pkey]))
-        matched = "WHEN MATCHED THEN UPDATE SET %s" % (','.join(['%s=:%s' % (a,a) for a in values]))
-        query = "%s %s %s" % (merge_into, not_matched, matched)
+        if dbtype == 'oracle':
+            values = [val for kk, val in v.items() if not kk.startswith('_')]
+            values_with_pkey = [pkey] + values
+            merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (v[TABLE_KEY], pkey, pkey)
+            not_matched = "WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)" % (','.join(values_with_pkey), ','.join([':%s' % a for a in values_with_pkey]))
+            matched = "WHEN MATCHED THEN UPDATE SET %s" % (','.join(['%s=:%s' % (a,a) for a in values]))
+            query = "%s %s %s" % (merge_into, not_matched, matched)
+        elif dbtype == 'mysql':
+            query = 'REPLACE INTO %s' % v[TABLE_KEY]
+            values = [val for kk, val in v.items() if not kk.startswith('_')]
+            values = [pkey] + values
+            values.sort()
+            query = '%s(%s) values(%s)' % (query, ','.join(values), ','.join([':%s' % a for a in values]))
+        else:
+            raise Exception('invalid db type')
+
         v[ADD_QUERY_KEY] = query
 
         # create delete query
@@ -95,6 +167,7 @@ def GetStreamName(config):
 
 def CreateStreamInserter(config):
     def AddToStream(r):
+        # Debug('In AddToStream: ' + r['key'])
         data = []
         data.append([config[KEY], r['key'].split(':')[1]])
         if 'value' in r.keys():
@@ -108,22 +181,30 @@ def CreateStreamInserter(config):
                     raise Exception(msg)
                 data.append([kInDB, r['value'][kInHash]])
         execute('xadd', GetStreamName(config), '*', *sum(data, []))
+    # Debug('In CreateStreamInserter')
     return AddToStream
 
 def CreateSQLDataWriter(config):
     def WriteToSQLDB(r):
+        # Debug('In WriteToSQLDB')
+        
         global conn
-        if(len(r) == 0):
+        global sqlText
+
+        if len(r) == 0:
             Log('Warning, got an empty batch')
             return
         for x in r:
             x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
         while True:
+            Debug('WriteToSQLDB: in loop')
             query = None
             errorOccured = False
 
             try:
                 if not conn:
+                    from sqlalchemy.sql import text
+                    sqlText = text
                     conn = Connect()
             except Exception as e:
                 conn = None # next time we will reconnect to the database
@@ -162,6 +243,8 @@ def CreateSQLDataWriter(config):
                 time.sleep(SLEEP_TIME)
                 continue # lets retry
             return # we finished successfully, lets break the retry loop
+
+    # Debug('In CreateSQLDataWriter')
     return WriteToSQLDB
 
 def CheckIfHash(r):
@@ -172,7 +255,8 @@ def CheckIfHash(r):
 
 def RegisterExecutions():
     for k, v in config.items():
-
+        regs0 = execute('rg.dumpregistrations')
+        
         regex = k.split(':')[0]
         ## create the execution to write each changed key to stream
         GB('KeysReader', desc='add each changed key with prefix %s:* to Stream' % regex).\
@@ -181,16 +265,35 @@ def RegisterExecutions():
         foreach(CreateStreamInserter(v)).\
         register(mode='sync', regex='%s:*' % regex)
 
+        regs1 = execute('rg.dumpregistrations')
+        if len(regs0) == len(regs1):
+            Log("Reader failed to register: k=%s v=%s" % (k, str(v)))
+        
         ## create the execution to write each key from stream to DB
         GB('StreamReader', desc='read from stream and write to DB table %s' % v[TABLE_KEY]).\
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
         count().\
         register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000)
+        
+        regs2 = execute('rg.dumpregistrations')
+        if len(regs1) == len(regs2):
+            Log("Writer failed to register: k=%s v=%s" % (k, str(v)))
+        
+    # Debug('-' * 80)
+    # regs = execute('rg.dumpregistrations')
+    # Debug('regs: ' + str(regs))
+    # Debug('-' * 80)
 
+#----------------------------------------------------------------------------------------------
+
+Debug('-' * 80)
+Log('Starting gear')
 
 PrepereQueries()
 
+Debug('-' * 80)
 PrintAllQueries()
 
 RegisterExecutions()
+Debug('-' * 80)

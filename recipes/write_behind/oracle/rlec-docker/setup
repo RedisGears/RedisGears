@@ -1,27 +1,18 @@
 #!/bin/bash
 
-oracle=`cat /opt/view/rlec/ORACLE.ip`
-echo $oracle oracle > /etc/hosts
+if [[ $STAGE == precluster ]]; then
+	oracle=`cat /opt/view/rlec/ORACLE.ip`
+	printf "\n$oracle oracle\n" >> /etc/hosts
 
-# apt-get -qq update
-apt-get install -y unzip libaio1 rlwrap
-mkdir -p /opt/oracle
-cd /opt/oracle
+	cd /opt
+	ln -s /opt/view/RedisGears/recipes/write_behind recipe
 
-# wget https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-basic-linux.x64-19.5.0.0.0dbru.zip
-# wget https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-sqlplus-linux.x64-19.5.0.0.0dbru.zip
-# unzip instantclient-basic-linux.x64-19.5.0.0.0dbru.zip
-# unzip instantclient-sqlplus-linux.x64-19.5.0.0.0dbru.zip
+	/opt/recipe/oracle/install-oracle-client
+	/opt/recipe/oracle/install-oracle-python-client
 
-unzip /opt/view/oracle/instantclient-basic-linuxx64.zip
-unzip /opt/view/oracle/instantclient-sqlplus-linuxx64.zip
-echo /opt/oracle/instantclient_19_5 > /etc/ld.so.conf.d/oracle-instantclient.conf
-ldconfig
-export PATH=$PATH:/opt/oracle/instantclient_19_5
+elif [[ $STAGE == postcluster ]]; then
+	ID=1 /opt/recipe/oracle/rlec-docker/start-gear
+fi
 
-bash -c ". /opt/redislabs/lib/modules/python3/.venv/bin/activate; python -m pip install SQLAlchemy cx-oracle"
-
-# RECIPE=/opt/redislabs/lib/modules/write_behind/
-RECIPE=/opt/view/RedisGears/recipes/write_behind/oracle
-cat $RECIPE/create-user.sql | sqlplus system/oracle@$oracle
-cat $RECIPE/create-db.sql | sqlplus test/passwd@$oracle
+## RECIPE=cat /opt/recipe/oracle/create-user.sql | sqlplus system/oracle@$oracle
+## cat /opt/recipe/oracle/create-db.sql | sqlplus test/passwd@$oracle
