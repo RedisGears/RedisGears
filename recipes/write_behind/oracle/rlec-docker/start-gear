@@ -12,6 +12,6 @@ CONF="/var/opt/redislabs/redis/redis-$ID.conf"
 PORT=$(grep "^port" $CONF | awk '{print $2}')
 PWD=$(grep "^requirepass" $CONF | awk '{print $2;}')
 
-/opt/redislabs/bin/python /opt/view/RedisGears/recipes/gears.py --port $PORT --password $PWD ./oracle/write_behind.py
+/opt/redislabs/bin/python /opt/view/RedisGears/recipes/gears.py --port $PORT --password $PWD ./write_behind.py
 
 exit 0
