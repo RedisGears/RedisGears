@@ -77,35 +77,38 @@ endif
 
 $(REDISLABS_PYTHON) : $(CONFIGURE_PYTHON)
 	@echo Installing Python...
-ifeq ($(PYENV_IN_SITU),1)
-	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
-	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
-	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
-else
-	$(SHOW)if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
-	$(SHOW)mkdir -p $(BINDIR_CPYTHON_PREFIX)
-	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
-	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
-	$(SHOW)if [ ! -e $(REDISLABS_CPYTHON_PREFIX) ]; then \
-		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
-	elif [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then \
-		$(SUDO) rm $(REDISLABS_CPYTHON_PREFIX); \
-		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
-	fi
-endif
+	$(SHOW)SUDO=$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) ./prepare-python
+# ifeq ($(PYENV_IN_SITU),1)
+# 	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
+# 	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
+# 	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
+# else
+# 	$(SHOW)if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
+# 	$(SHOW)mkdir -p $(BINDIR_CPYTHON_PREFIX)
+# 	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
+# 	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
+# 	$(SHOW)if [ ! -e $(REDISLABS_CPYTHON_PREFIX) ]; then \
+# 		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
+# 	elif [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then \
+# 		$(SUDO) rm $(REDISLABS_CPYTHON_PREFIX); \
+# 		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
+# 	fi
+# endif
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
 $(PYENV_PYTHON) : $(REDISLABS_PYTHON)
-	$(SHOW)cp Pipfile* $(REDISLABS_CPYTHON_PREFIX)
-	$(SHOW)set -e ;\
-	cd $(REDISLABS_CPYTHON_PREFIX) ;\
-	export PIPENV_VENV_IN_PROJECT=1 ;\
-	export LC_ALL=C.UTF-8 ;\
-	export LANG=C.UTF-8 ;\
-	pipenv --site-packages install --python $(REDISLABS_PYTHON)
-	$(SHOW)cp $(REDISLABS_CPYTHON_PREFIX)/Pipfile.lock .
-	$(SHOW)echo /usr/local/lib/python3.7/site-packages > $(PYENV_DIR)/lib/python3.7/site-packages/local.pth
-	$(SHOW)echo /usr/lib/python3/dist-packages > $(PYENV_DIR)/lib/python3.7/site-packages/global.pth 
+	$(SHOW)PYTHON_PATH=$(REDISLABS_CPYTHON_PREFIX) ./install-pyenv
+#	$(SHOW)cp Pipfile* $(REDISLABS_CPYTHON_PREFIX)
+#	$(SHOW)set -e ;\
+#	cd $(REDISLABS_CPYTHON_PREFIX) ;\
+#	export PIPENV_VENV_IN_PROJECT=1 ;\
+#	export LC_ALL=C.UTF-8 ;\
+#	export LANG=C.UTF-8 ;\
+#	pipenv --site-packages install --python $(REDISLABS_PYTHON)
+#	$(SHOW)./fix-pyenv
+#	$(SHOW)cp $(REDISLABS_CPYTHON_PREFIX)/Pipfile.lock .
+#	$(SHOW)echo /usr/local/lib/python3.7/site-packages > $(PYENV_DIR)/lib/python3.7/site-packages/local.pth
+#	$(SHOW)echo /usr/lib/python3/dist-packages > $(PYENV_DIR)/lib/python3.7/site-packages/global.pth
 
 ifeq ($(DIAG),1)
 $(info *** CONFIGURE_PYTHON=$(CONFIGURE_PYTHON))
@@ -135,4 +138,3 @@ clean-pyenv:
 	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
 	
 .PHONY: pyenv clean-pyenv
-
