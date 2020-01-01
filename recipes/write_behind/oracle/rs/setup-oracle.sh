@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# https://raw.githubusercontent.com/RedisGears/RedisGears/rafi-behind_oracle-1/recipes/write_behind/oracle/rs/setup-oracle.sh
+# https://raw.githubusercontent.com/RedisGears/RedisGears/master/recipes/write_behind/oracle/rs/setup-oracle.sh
 
 set -e
 
-BRANCH=rafi-behind_oracle-1
+BRANCH=master
 
 mkdir -p /opt
 cd /opt
