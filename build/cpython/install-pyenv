@@ -1,12 +1,12 @@
-$!/bin/bash
+#!/bin/bash
+
+set -e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-ROOT=$HERE/../..
+ROOT=$(cd $HERE/../..; pwd)
 
 [[ -z $PYTHON_ROOT ]] && PYTHON_ROOT=/opt/redislabs/lib/modules/python3
 PYTHON=$PYTHON_ROOT/bin/python3
-
-set -e
 
 cp $HERE/Pipfile* $PYTHON_ROOT
 
@@ -18,9 +18,9 @@ pipenv --site-packages install --python $PYTHON
 
 cd .venv
 
-./fix-pyenv
+$HERE/fix-pyenv
 
-cp Pipfile.lock $HERE
+cp ../Pipfile.lock $HERE
 
 echo /usr/local/lib/python3.7/site-packages > lib/python3.7/site-packages/local.pth
 echo /usr/lib/python3/dist-packages > lib/python3.7/site-packages/global.pth

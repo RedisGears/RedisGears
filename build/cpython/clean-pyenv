@@ -1,0 +1,16 @@
+#!/bin/bash
+
+REDISLABS_DIR=/opt/redislabs
+
+if [[ -z $LOCAL ]]; then
+	echo "LOCAL argument undefined. Aborting."
+	exit 1
+fi
+
+[[ -z $GLOBAL ]] && GLOBAL=$REDISLABS_DIR/lib/modules/python3
+
+[[ -e $LOCAL ]] && rm -rf $LOCAL
+[[ -d $GLOBAL ]]; rm -rf $GLOBAL
+find $(dirname $GLOBAL) -name $(basename $GLOBAL) -type l -delete
+
+exit 0
