@@ -6,8 +6,8 @@ if [[ -z $BINDIR ]]; then
 	exit 1
 fi
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-ROOT=$(cd $DIR/../..; pwd)
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT=$(cd $HERE/../..; pwd)
 
 echo $ROOT
 exit 0

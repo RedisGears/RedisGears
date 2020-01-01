@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 . $HERE/../../deps/readies/shibumi/functions
 
@@ -20,6 +22,7 @@ if [[ $PYENV_IN_SITU == 1 ]]; then
 else
 	[[ -e $LOCAL ]] && rm -rf $LOCAL
 	mkdir -p $LOCAL
+	
 	$SUDO mkdir -p $(dirname $GLOBAL)
 	$SUDO chown -R $USER $REDISLABS_DIR
 	if [[ ! -e $GLOBAL ]]; then
