@@ -1,0 +1,33 @@
+#!/bin/bash
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+. $HERE/../../deps/readies/shibumi/functions
+
+REDISLABS_DIR=/opt/redislabs
+USER=`whoami`
+
+if [[ -z $LOCAL ]]; then
+	echo "LOCAL argument undefined. Aborting."
+	exit 1
+fi
+
+[[ -z $GLOBAL ]] && GLOBAL=$REDISLABS_DIR/lib/modules/python3
+
+if [[ $PYENV_IN_SITU == 1 ]]; then
+	$SUDO find $(dirname $GLOBAL) -name $(basename $GLOBAL) -type l -delete
+	$SUDO mkdir -p $(dirname $GLOBAL)
+	$SUDO chown -R $USER $REDISLABS_DIR
+else
+	[[ -e $LOCAL ]] && rm -rf $LOCAL
+	mkdir -p $LOCAL
+	$SUDO mkdir -p $(dirname $GLOBAL)
+	$SUDO chown -R $USER $REDISLABS_DIR
+	if [[ ! -e $GLOBAL ]]; then
+		$SUDO ln -s $(realpath $LOCAL) $GLOBAL
+	elif [[ -L $GLOBAL ]]; then
+		$SUDO rm $GLOBAL
+		$SUDO ln -s $(realpath $LOCAL) $GLOBAL
+	fi
+fi
+
+exit 0
