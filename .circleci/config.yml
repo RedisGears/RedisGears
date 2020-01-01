@@ -140,12 +140,16 @@ workflows:
           filters:
             branches:
               only: /.*/
+              ignore:
+                - rafi-behind_oracle-1
             tags:
               only: /.*/
       - centos:
           filters:
             branches:
               only: /.*/
+              ignore:
+                - rafi-behind_oracle-1
             tags:
               only: /.*/
       - macos:

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+RLEC="${RLEC:-/v/gears_1}"
+if [[ -d $RLEC ]]; then
+	echo "$RLEC exists. Aborting."
+	exit 1
+fi
+
+echo "Creating view $RLEC ..."
+
+mkdir -p $RLEC
+cd $RLEC
+git clone --recursive --jobs $(nproc) https://github.com/RedisGears/RedisGears.git
+git clone https://github.com/RedisLabsModules/readies.git
+# modullaneous is a private repo, requires providinging $HOME/.ssh/id_rsa
+# or setting: export GIT_SSH_COMMAND="ssh -i path/to/id_rsa"
+git clone ssh://git@github.com/RedisLabsModules/modullaneous.git
+
+mkdir rlec
+chmod 777 rlec
+
+recpie=$RLEC/RedisGears/recipes/write_behind
+cd rlec
+cp -R $recpie/oracle/rlec-docker/rlec/* .
+
+echo "run to enable rlec-docker: source $RLEC/modullaneous/rlec-docker/aliases"

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+dnf install -y community-mysql
+pwd="p@ssw0rd"
+id=$(docker run -q -d orangehrm/oracle-xe-11g)
+ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}') $id
+mysql -h $ip -u root --password="$pwd" -D <database> -e 'source create-db'

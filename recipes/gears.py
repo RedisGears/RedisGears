@@ -1,8 +1,10 @@
+#!/usr/bin/env python
+
 import redis
 import argparse
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-                                 description='Run gears scripts on Redis(Gear)')
+                                 description='Run gears scripts on Redis(Gears)')
 
 parser.add_argument(
     '--host', default='localhost',

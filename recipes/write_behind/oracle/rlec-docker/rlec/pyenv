@@ -1,0 +1,4 @@
+#!/bin/bash
+
+bash --rcfile /opt/redislabs/lib/modules/python3/.venv/bin/activate
+

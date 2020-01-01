@@ -1,0 +1,8 @@
+#!/bin/bash
+
+export PATH=$PATH:/opt/oracle/instantclient_19_5
+
+recipe=/opt/view/RedisGears/recipes/write_behind
+
+cat $recipe/create-user.sql | sqlplus system/oracle@//oracle/xe
+cat $recipe/create-db.sql | sqlplus test/passwd@//oracle/xe
