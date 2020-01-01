@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# https://raw.githubusercontent.com/RedisGears/RedisGears/rafi-behind_oracle-1/recipes/write_behind/oracle/rs/setup-node.sh
+# https://raw.githubusercontent.com/RedisGears/RedisGears/master/recipes/write_behind/oracle/rs/setup-node.sh
 
 set -e
 
@@ -9,7 +9,7 @@ if [[ -z $ORACLE ]]; then
 	exit 1
 fi
 	
-BRANCH=rafi-behind_oracle-1
+BRANCH=master
 REPO_PATH=https://raw.githubusercontent.com/RedisGears/RedisGears/$BRANCH/recipes/write_behind/oracle/rs
 DIR=/opt/redisgears-setup
 
