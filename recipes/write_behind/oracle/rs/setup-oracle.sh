@@ -4,7 +4,7 @@
 
 set -e
 
-BRANCH=master
+BRANCH=write_behind_1
 
 mkdir -p /opt
 cd /opt
@@ -16,6 +16,6 @@ ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 
 printf "\n127.0.0.1 oracle\n" >> /etc/hosts
 
-/opt/recipe/oracle/rs/create-db
+TIMEOUT=120 /opt/recipe/oracle/rs/wait-for-oracle && /opt/recipe/oracle/rs/create-db
 
 exit 0
