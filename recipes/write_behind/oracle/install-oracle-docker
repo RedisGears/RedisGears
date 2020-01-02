@@ -9,7 +9,7 @@ ORACLE_IMAGE=quay.io/maksymbilenko/oracle-12c
 
 oracle=oracle
 rm -f /tmp/oracle.cid
-docker run --name=$oracle --cidfile /tmp/oracle.cid -d -p 1521:1521 -p 8080:8080 $ORACLE_IMAGE
+docker run --name=$oracle --cidfile /tmp/oracle.cid --rm -d -p 1521:1521 -p 8080:8080 $ORACLE_IMAGE
 docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $oracle> /tmp/oracle.ip
 cat /tmp/oracle.ip
 

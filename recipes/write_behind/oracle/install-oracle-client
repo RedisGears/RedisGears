@@ -9,11 +9,12 @@ if [ ! -z $(command -v apt-get) ]; then
 	apt-get install -y ca-certificates wget curl unzip
 	apt-get install -y libaio1 rlwrap
 
-	mkdir -p /opt/oracle
+	rm -rf /opt/oracle
+	mkdir /opt/oracle
 	cd /opt/oracle
 
-	wget https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-basic-linux.x64-19.5.0.0.0dbru.zip
-	wget https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-sqlplus-linux.x64-19.5.0.0.0dbru.zip
+	wget -q https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-basic-linux.x64-19.5.0.0.0dbru.zip
+	wget -q https://download.oracle.com/otn_software/linux/instantclient/195000/instantclient-sqlplus-linux.x64-19.5.0.0.0dbru.zip
 	unzip instantclient-basic-linux.x64-19.5.0.0.0dbru.zip
 	unzip instantclient-sqlplus-linux.x64-19.5.0.0.0dbru.zip
 	rm -f *.zip
