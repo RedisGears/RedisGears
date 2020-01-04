@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # https://raw.githubusercontent.com/RedisGears/RedisGears/master/recipes/write_behind/oracle/rs/setup-oracle.sh
+# via: bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle)
+# to be executed on a host running the Oracle Docker container
 
 set -e
 

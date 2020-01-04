@@ -11,8 +11,8 @@ if [[ $STAGE == precluster ]]; then
 	/opt/recipe/oracle/install-oracle-python-client
 
 elif [[ $STAGE == postcluster ]]; then
+	/opt/recipe/oracle/rlec-docker/create-db || exit 1
 	ID=1 /opt/recipe/oracle/rlec-docker/start-gear
 fi
 
-## RECIPE=cat /opt/recipe/oracle/create-user.sql | sqlplus system/oracle@$oracle
-## cat /opt/recipe/oracle/create-db.sql | sqlplus test/passwd@$oracle
+exit 0
