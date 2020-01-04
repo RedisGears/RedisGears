@@ -12,7 +12,12 @@ pack() {
 	local artifact="$1"
 	local branch="$2"
 
-	local packfile=$PACKAGE_NAME.{os}-$OS_VERSION-{architecture}.$branch.zip
+	# local packfile=$PACKAGE_NAME.{os}-$OS_VERSION-{architecture}.$branch.zip
+	local ARCH=$(./deps/readies/bin/platform --arch)
+	local OS=$(./deps/readies/bin/platform --os)
+	# local OSNICK=${OS_VERSION}
+	local OSNICK=$(./deps/readies/bin/platform --osnick)
+	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$branch.zip
 
 	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
 	cat <<- EOF > $packer
@@ -77,7 +82,7 @@ TAR=$PACKAGE_NAME-dependencies.$stem.tgz
 TAR_PATH=$(realpath artifacts/release/$TAR)
 cd $CPYTHON_PREFIX/
 tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2> /dev/null
-cd -
+cd - > /dev/null
 echo Created artifacts/release/$TAR
 
 stem=$(basename $SNAPSHOT | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
