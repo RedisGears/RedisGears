@@ -5,7 +5,7 @@ import time
 engine = None
 conn = None
 sqlText = None
-dbtype = None
+dbtype = 'oracle'
 _debug=True
 
 # addQuery =
@@ -28,7 +28,7 @@ SLEEP_TIME=1
 ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
 
 MYSQL_CONFIG = {
-    'ConnectionStr': '<mysql>://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql'),
+    'ConnectionStr': 'mysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql'),
 }
 
 ORACLE_CONFIG = {
@@ -94,8 +94,8 @@ def Connect():
         for type, config in DATABASES.items():
             connstr = config['ConnectionStr']
             Log('Connect: trying conntecting %s, ConnectionStr=%s' % (type, connstr))
-            engine1 = create_engine(connstr).execution_options(autocommit=True)
             try:
+                engine1 = create_engine(connstr).execution_options(autocommit=True)
                 conn1 = engine1.connect()
                 Log('DB detected: %s' % (type))
                 dbtype = type
