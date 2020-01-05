@@ -510,3 +510,90 @@ GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3)
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for NumOfElements to reach 8 on slave')
+
+def testKeysReaderEventTypeFilter(env):
+    conn = getConnectionByEnv(env)
+
+    # count how many lpush and rpush happened
+    env.cmd('rg.pyexecute', "GB().repartition(lambda x: 'counter')."
+                            "filter(lambda x: 'value' in x.keys())."
+                            "foreach(lambda x: execute('incr', 'counter'))."
+                            "register(regex='*', eventTypes=['lpush', 'rpush'])")
+
+    time.sleep(0.1) # wait for reach all shards
+
+    conn.lpush('l', '1')
+    conn.rpush('l', '1')
+
+    try:
+        with TimeLimit(10):
+            counter = 0
+            while counter is None or int(counter) != 2:
+                counter = conn.get('counter')
+                time.sleep(0.1)
+    except Exception as e:
+        print e
+        env.assertTrue(False, message='Failed waiting for counter to reach 2')
+        raw_input('stopped')
+
+    ## make sure other commands are not triggers executions
+    conn.set('x', '1')
+
+    try:
+        with TimeLimit(2):
+            counter = 0
+            while counter is None or int(counter) != 3:
+                counter = conn.get('counter')
+                time.sleep(0.1)
+            env.assertTrue(False, message='Counter reached 3 while not expected')
+    except Exception as e:
+        pass
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testKeysReaderKeyTypeFilter(env):
+    conn = getConnectionByEnv(env)
+
+    # count how many lpush and rpush happened
+    env.cmd('rg.pyexecute', "GB().repartition(lambda x: 'counter')."
+                            "filter(lambda x: 'value' in x.keys())."
+                            "foreach(lambda x: execute('incr', 'counter'))."
+                            "register(regex='*', keyTypes=['list'])")
+    conn.lpush('l', '1')
+    conn.rpush('l', '1')
+
+    try:
+        with TimeLimit(10):
+            counter = 0
+            while counter is None or int(counter) != 2:
+                counter = conn.get('counter')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for counter to reach 2')
+
+    ## make sure other commands are not triggers executions
+    conn.set('x', '1')
+
+    try:
+        with TimeLimit(2):
+            counter = 0
+            while counter is None or int(counter) != 3:
+                counter = conn.get('counter')
+                time.sleep(0.1)
+            env.assertTrue(False, message='Counter reached 3 while not expected')
+    except Exception as e:
+        pass
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')

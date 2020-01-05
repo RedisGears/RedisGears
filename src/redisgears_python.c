@@ -561,7 +561,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr){
 
     // getting even types white list (no list == all event types)
     PyObject* pyEventTypes = PyDict_GetItemString(kargs, "eventTypes");
-    if(pyEventTypes){
+    if(pyEventTypes && pyEventTypes != Py_None){
         PyObject* eventTypesIterator = PyObject_GetIter(pyEventTypes);
         if(!eventTypesIterator){
             return NULL;
@@ -576,14 +576,15 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr){
                 return NULL;
             }
             const char* eventTypeStr = PyUnicode_AsUTF8AndSize(event, NULL);
-            eventTypes = array_append(eventTypes, RG_STRDUP(eventTypeStr));
+            char* eventTypeStr1 = RG_STRDUP(eventTypeStr);
+            eventTypes = array_append(eventTypes, eventTypeStr1);
         }
         Py_DECREF(eventTypesIterator);
     }
 
     // getting key types white list (no list == all key types)
     PyObject* pyKeyTypes = PyDict_GetItemString(kargs, "keyTypes");
-    if(pyKeyTypes){
+    if(pyKeyTypes && pyKeyTypes != Py_None){
         PyObject* keyTypesIterator = PyObject_GetIter(pyKeyTypes);
         if(!keyTypesIterator){
             return NULL;
