@@ -20,7 +20,7 @@
 typedef struct KeysReaderRegisterData{
     long long refCount;
     FlatExecutionPlan* fep;
-    char* args;
+    void* args;
     ExecutionMode mode;
     char* lastError;
     unsigned long long numTriggered;
@@ -47,12 +47,25 @@ typedef struct KeysReaderCtx{
     bool isPrefix;
 }KeysReaderCtx;
 
+typedef struct KeysReaderTriggerArgs{
+    char* regex;
+    char** eventTypes;
+    int* keyTypes;
+}KeysReaderTriggerArgs;
+
+static void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args){
+    RG_FREE(args->regex);
+    array_free_ex(args->eventTypes, RG_FREE);
+    array_free(args->keyTypes);
+    RG_FREE(args);
+}
+
 static void KeysReaderRegisterData_Free(KeysReaderRegisterData* rData){
     if((--rData->refCount) == 0){
         if(rData->lastError){
             RG_FREE(rData->lastError);
         }
-        RG_FREE(rData->args);
+        KeysReaderTriggerArgs_Free(rData->args);
         FlatExecutionPlan_Free(rData->fep);
         RG_FREE(rData);
     }
@@ -386,6 +399,40 @@ static int KeysReader_IsKeyMatch(const char* prefix, const char* key){
     }
 }
 
+static int KeysReader_ShouldFire(RedisModuleCtx *ctx, KeysReaderTriggerArgs* args, RedisModuleString* key, const char* event){
+    if(args->eventTypes){
+        bool evenFound = false;
+        for(size_t i = 0 ; i < array_len(args->eventTypes) ; i++){
+            if(strcmp(args->eventTypes[i], event) == 0){
+                evenFound = true;
+                break;
+            }
+        }
+        if(!evenFound){
+            return 0;
+        }
+    }
+    if(args->keyTypes){
+        RedisModuleKey *kp = RedisModule_OpenKey(ctx, key, REDISMODULE_READ);
+        int type = RedisModule_KeyType(kp);
+        RedisModule_CloseKey(kp);
+        if(type != REDISMODULE_KEYTYPE_EMPTY){
+            bool typeFound = false;
+            for(size_t i = 0 ; i < array_len(args->keyTypes) ; i++){
+                if(type == args->keyTypes[i]){
+                    typeFound = true;
+                    break;
+                }
+            }
+            if(!typeFound){
+                return 0;
+            }
+        }
+    }
+    const char* keyCStr = RedisModule_StringPtrLen(key, NULL);
+    return KeysReader_IsKeyMatch(args->regex, keyCStr);
+}
+
 static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
     int flags = RedisModule_GetContextFlags(ctx);
     if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
@@ -401,7 +448,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
     const char* keyCStr = RedisModule_StringPtrLen(key, NULL);
     while((node = Gears_listNext(iter))){
         KeysReaderRegisterData* rData = Gears_listNodeValue(node);
-        if(KeysReader_IsKeyMatch(rData->args, keyCStr)){
+        if(KeysReader_ShouldFire(ctx, rData->args, key, event)){
             ++rData->numTriggered;
             RedisGears_OnExecutionDoneCallback callback = NULL;
             void* privateData = NULL;
@@ -507,6 +554,16 @@ static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mod
 
 int KeysReader_Initialize(RedisModuleCtx* ctx){
 	return REDISMODULE_OK;
+}
+
+KeysReaderTriggerArgs* KeysReaderTriggerArgs_Create(const char* regex, char** eventTypes, int* keyTypes){
+    KeysReaderTriggerArgs* ret = RG_ALLOC(sizeof(*ret));
+    *ret = (KeysReaderTriggerArgs){
+        .regex = RG_STRDUP(regex),
+        .eventTypes = eventTypes,
+        .keyTypes = keyTypes,
+    };
+    return ret;
 }
 
 static Reader* KeysReader_Create(void* arg){

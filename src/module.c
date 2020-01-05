@@ -180,6 +180,10 @@ static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* str
     return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS);
 }
 
+static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
+    return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+}
+
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
     FlatExecutionPlan_Free(fep);
 }
@@ -429,6 +433,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
+    REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);

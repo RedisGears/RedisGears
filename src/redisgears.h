@@ -21,6 +21,7 @@ typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
 typedef struct StreamReaderCtx StreamReaderCtx;
 typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
+typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 
 
 #define KEY_HANDLER_RECORD_TYPE 1
@@ -143,6 +144,7 @@ typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* 
 typedef struct KeysReaderCtx KeysReaderCtx;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS);
+KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, char** eventTypes, int* keyTypes);
 
 /**
  * Records handling functions
@@ -333,6 +335,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetReader);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsCreate);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);
