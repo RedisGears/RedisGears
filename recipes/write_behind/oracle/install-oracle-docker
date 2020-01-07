@@ -7,10 +7,12 @@ set -e
 # ORACLE_IMAGE=orangehrm/oracle-xe-11g
 ORACLE_IMAGE=quay.io/maksymbilenko/oracle-12c
 
-oracle=oracle
+ORACLE=oracle
 rm -f /tmp/oracle.cid
-docker run --name=$oracle --cidfile /tmp/oracle.cid --rm -d -p 1521:1521 -p 8080:8080 $ORACLE_IMAGE
-docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $oracle> /tmp/oracle.ip
+docker stop $ORACLE > /dev/null 2>&1
+docker rm $ORACLE > /dev/null 2>&1
+docker run --name=$ORACLE --cidfile /tmp/oracle.cid --rm -d -p 1521:1521 -p 8080:8080 $ORACLE_IMAGE
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $ORACLE> /tmp/oracle.ip
 cat /tmp/oracle.ip
 
 cat <<- 'EOF' > /tmp/setup-sqlplus
@@ -20,12 +22,12 @@ cat <<- 'EOF' > /tmp/setup-sqlplus
 	rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 	yum install -y rlwrap
 EOF
-docker cp /tmp/setup-sqlplus $oracle:/tmp/setup-sqlplus
-docker exec $oracle bash -c ". /tmp/setup-sqlplus"
+docker cp /tmp/setup-sqlplus $ORACLE:/tmp/setup-sqlplus
+docker exec $ORACLE bash -c ". /tmp/setup-sqlplus"
 exit 0
 
 # and:
-# docker exec -it $oracle sqlplus system/oracle@//localhost/xe
+# docker exec -it $ORACLE sqlplus system/oracle@//localhost/xe
 # or:
-# docker exec -it $oracle bash
+# docker exec -it $ORACLE bash
 # rlwrap sqlplus system/oracle@//localhost/xe

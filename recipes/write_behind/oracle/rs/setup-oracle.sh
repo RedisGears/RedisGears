@@ -18,6 +18,13 @@ ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 
 printf "\n127.0.0.1 oracle\n" >> /etc/hosts
 
-TIMEOUT=120 /opt/recipe/oracle/rs/wait-for-oracle && /opt/recipe/oracle/rs/create-db
+TIMEOUT=240 /opt/recipe/oracle/rs/wait-for-oracle
+if [[ $? == 0 ]]; then
+	/opt/recipe/oracle/rs/create-db
+	echo "Oracle database created."
+else
+	echo "ERROR: Oracle not ready, database not created."
+	exit 1
+fi
 
 exit 0
