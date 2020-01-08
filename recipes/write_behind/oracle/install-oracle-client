@@ -2,7 +2,8 @@
 
 # run this as root
 
-set -e
+[[ $VERBOSE == 1] && set -x
+[[ $IGNERR == 1 ]] || set -e
 
 if [ ! -z $(command -v apt-get) ]; then
 	apt-get -qq update

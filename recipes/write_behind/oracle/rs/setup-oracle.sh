@@ -4,7 +4,8 @@
 # via: bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle)
 # to be executed on a host running the Oracle Docker container
 
-set -e
+[[ $VERBOSE == 1] && set -x
+[[ $IGNERR == 1 ]] || set -e
 
 BRANCH=write_behind_1
 
