@@ -11,6 +11,7 @@ BRANCH=write_behind_1
 
 mkdir -p /opt
 cd /opt
+rm -rf RedisGears recipe || true
 git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
 ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 
