@@ -22,7 +22,7 @@ if [[ $DIAG != 1 ]]; then
 		# if it does not come back within a second
 		echo "select * from dual" | sqlplus -S -L system/oracle@//$ORACLE:1521/xe > /dev/null 2>&1
 		[[ $? == 0 ]] && exit 0
-		sleep 1
+		sleep 30
 	done
 	echo "Oracle is not ready. Aborting."
 	exit 1
