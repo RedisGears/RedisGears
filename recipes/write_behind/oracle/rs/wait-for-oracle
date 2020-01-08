@@ -2,6 +2,8 @@
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
+[[ $VERBOSE == 1 ]] && set -x
+
 TIMEOUT=${TIMEOUT:-120}
 ORACLE=${ORACLE:-oracle}
 
