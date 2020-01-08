@@ -2,6 +2,8 @@
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
+export PATH=/opt/oracle/instantclient_19_5:$PATH
+
 [[ $VERBOSE == 1 ]] && set -x
 
 TIMEOUT=${TIMEOUT:-120}
