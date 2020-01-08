@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[[ $VERBOSE == 1] && set -x
+[[ $VERBOSE == 1 ]] && set -x
 [[ $IGNERR == 1 ]] || set -e
 
 # https://github.com/MaksymBilenko/docker-oracle-12c

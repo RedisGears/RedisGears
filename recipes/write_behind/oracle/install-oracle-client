@@ -2,7 +2,7 @@
 
 # run this as root
 
-[[ $VERBOSE == 1] && set -x
+[[ $VERBOSE == 1 ]] && set -x
 [[ $IGNERR == 1 ]] || set -e
 
 if [ ! -z $(command -v apt-get) ]; then
