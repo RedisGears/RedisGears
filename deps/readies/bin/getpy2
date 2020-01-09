@@ -27,6 +27,7 @@ elif [ ! -z $(command -v apk) ]; then
 	runn apk add python2
 elif [ ! -z $(command -v brew) ]; then
 	runn brew install python2
+	[ ! -z $(command -v python2) ] && ln -s `which python` /usr/local/bin/python2
 fi
 
 if [ -z $(command -v python) ]; then
