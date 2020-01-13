@@ -19,7 +19,7 @@ else
 	exit 1
 fi
 
-rm /tmp/snowsql.sh
+rm -f /tmp/snowsql.sh
 curl -s -o /tmp/snowsql.sh https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.2-linux_x86_64.bash
 printf "/usr/local/bin\n\n" | bash /tmp/snowsql.sh
 
