@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# https://raw.githubusercontent.com/RedisGears/RedisGears/master/recipes/write_behind/snowflake/rs/setup-node.sh
-# via: ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
+# https://raw.githubusercontent.com/RedisGears/RedisGears/write_behind_snowflake_1/recipes/write_behind/snowflake/rs/setup-node.sh
+# via: bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 # to be executed on RS nodes
 
 set -e
