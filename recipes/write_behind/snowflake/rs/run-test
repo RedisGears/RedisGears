@@ -1,0 +1,17 @@
+#!/bin/bash
+
+if [[ -z $ID ]]; then
+	echo "Error: database ID not given. Aborting."
+	exit 1
+fi
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)" 
+cd $HERE/../..
+
+CONF="/var/opt/redislabs/redis/redis-$ID.conf"
+PORT=$(grep "^port" $CONF | gawk '{print $2}')
+PWD=$(grep "^requirepass" $CONF | gawk '{print $2}')
+
+/opt/redislabs/bin/python ./tests/test_write_behind.py --port $PORT --password $PWD
+
+exit 0

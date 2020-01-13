@@ -5,7 +5,7 @@ import time
 engine = None
 conn = None
 sqlText = None
-dbtype = 'oracle'
+dbtype = 'snowflake'
 _debug=True
 
 # addQuery =
@@ -35,7 +35,25 @@ ORACLE_CONFIG = {
     'ConnectionStr': 'oracle://{user}:{password}@{db}'.format(user='test', password='passwd', db='oracle/xe'),
 }
 
+def get_snowflake_conn_str():
+    import configparser
+    c = configparser.ConfigParser()
+    c.read('/root/.snowsql/config')
+    username = c['connections']['username']
+    password = c['connections']['password']
+    account = c['connections']['accountname']
+    return 'snowflake://{user}:{password}@{account}/{db}'.format(
+        user=username,
+        password=password,
+        account=account,
+        db='test')
+
+SNOWFLAKE_CONFIG = {
+    'ConnectionStr': get_snowflake_conn_str(),
+}
+
 DATABASES = {
+    'snowflake': SNOWFLAKE_CONFIG,
     'oracle': ORACLE_CONFIG,
     'mysql': MYSQL_CONFIG,
 }
