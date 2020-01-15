@@ -73,9 +73,13 @@ _SOURCES += redisgears_python.c
 endif
 
 SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
-OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
+ifeq ($(DEBUG),1)
+SOURCES += deps/readies/cetara/diag/gdb.c
+endif
 
-CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
+OBJECTS=$(patsubst %.c,$(BINROOT)/%.o,$(SOURCES))
+
+CC_DEPS = $(patsubst %.c, $(BINROOT)/%.d, $(SOURCES))
 
 CC_FLAGS += \
 	-fPIC -std=gnu99 \
@@ -88,7 +92,7 @@ CC_FLAGS += \
 TARGET=$(BINROOT)/redisgears.so
 
 ifeq ($(DEBUG),1)
-CC_FLAGS += -g -O0 -DVALGRIND
+CC_FLAGS += -g -O0 -DVALGRIND -DDEBUG -D_DEBUG
 LD_FLAGS += -g
 else
 CC_FLAGS += -O2 -Wno-unused-result
@@ -121,7 +125,7 @@ MISSING_DEPS += $(LIBPYTHON)
 endif
 
 ifneq ($(OS),macosx)
-EMBEDDED_LIBS += -lutil
+EMBEDDED_STD_LIBS += -lutil
 endif
 
 endif # WITHPYTHON
@@ -154,29 +158,31 @@ include $(MK)/rules
 
 -include $(CC_DEPS)
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
+$(OBJECTS) : $(BINROOT)/%.o : %.c
 	@echo Compiling $<...
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
 
 $(SRCDIR)/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h
 
-$(BINDIR)/GearsBuilder.auto.h: $(SRCDIR)/GearsBuilder.py
+$(BINDIR)/GearsBuilder.auto.h : $(SRCDIR)/GearsBuilder.py
 	$(SHOW)xxd -i $< > $@
 
-$(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
+$(BINDIR)/cloudpickle.auto.h : $(SRCDIR)/cloudpickle.py
 	$(SHOW)xxd -i $< > $@
 
 #----------------------------------------------------------------------------------------------
 
+ALL_EMBEDDED_LIBS=$(EMBEDDED_STD_LIBS) $(EMBEDDED_LIBS)
+
 ifeq ($(OS),macosx)
-EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
+EMBEDDED_LIBS_FLAGS=$(foreach L,$(ALL_EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
-EMBEDDED_LIBS_FLAGS=-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+EMBEDDED_LIBS_FLAGS=-Wl,--whole-archive $(ALL_EMBEDDED_LIBS) -Wl,--no-whole-archive
 endif
 
 STRIP:=strip --strip-debug --strip-unneeded
 
-$(TARGET): $(MISSING_DEPS) $(OBJECTS)
+$(TARGET): $(EMBEDDED_LIBS) $(OBJECTS)
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 ifneq ($(DEBUG),1)

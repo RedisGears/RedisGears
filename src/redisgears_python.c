@@ -53,6 +53,7 @@ typedef struct PythonSubInterpreter{
  * Thread spacific data
  */
 typedef struct PythonThreadCtx{
+    unsigned long signature;
     int lockCounter;
     RedisModuleCtx* currentCtx;
     PythonSubInterpreter* subInterpreter;
@@ -81,19 +82,35 @@ static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 static PythonThreadCtx* GetPythonThreadCtx(){
     PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
     if(!ptctx){
-        ptctx = RG_ALLOC(sizeof(*ptctx));
-        *ptctx = (PythonThreadCtx){
-                .lockCounter = 0,
-                .currentCtx = NULL,
-                .subInterpreter = NULL,
-                .blockingExecute = true,
-                .executionTriggered = false,
-                .timeEventRegistered = false,
-                .doneFunction = onDone,
-        };
-        pthread_setspecific(pythonThreadCtxKey, ptctx);
+        BB;
+        RedisModule_Log(0, "error", "unregistered gears thread");
+        assert(0);
     }
     return ptctx;
+}
+
+void RegisterGearsThread() {
+    PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
+    if(ptctx){
+        if (ptctx->signature != 0xdeadbeef) {
+            RedisModule_Log(0, "warning", "wrong gears context signature: this is strange");
+        } else {
+            RedisModule_Log(0, "warning", "gears thread already registered"); //@@
+        }
+        return;
+    }
+    ptctx = RG_ALLOC(sizeof(*ptctx));
+    *ptctx = (PythonThreadCtx){
+            .signature = 0xdeadbeef,
+            .lockCounter = 0,
+            .currentCtx = NULL,
+            .subInterpreter = NULL,
+            .blockingExecute = true,
+            .executionTriggered = false,
+            .timeEventRegistered = false,
+            .doneFunction = onDone,
+    };
+    pthread_setspecific(pythonThreadCtxKey, ptctx);
 }
 
 /**
@@ -110,23 +127,64 @@ static PythonThreadCtx* GetPythonThreadCtx(){
  * We believe that this solution will be good enough for most use-cases, but we are still operate under
  * the best effort approach.
  */
+ 
+// Ensure that the current thread is ready to call the Python C API regardless of the current state of Python, or of the global interpreter lock.
+// This may be called as many times as desired by a thread as long as each call is matched with a call to PyGILState_Release().
+// In general, other thread-related APIs may be used between PyGILState_Ensure() and PyGILState_Release() calls as long as the thread state is 
+// restored to its previous state before the Release().
+// 
+// The return value is an opaque handle to the thread state when PyGILState_Ensure() was called, 
+// and must be passed to PyGILState_Release() to ensure Python is left in the same state. 
+// 
+// Even though recursive calls are allowed, these handles cannot be shared - each unique call 
+// to PyGILState_Ensure() must save the handle for its call to PyGILState_Release().
+// 
+// When the function returns, the current thread will hold the GIL and be able to call arbitrary Python code. 
+// Failure is a fatal error.
+
 PyGILState_STATE PyGILState_Ensure(void){
-    RedisGearsPy_RestoreThread(NULL);
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    // first, check if this is a Gears thread
+    PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
+    if (!ptctx || ptctx->signature != 0xdeadbeef) {
+        BB;
+        // not a Gears thread, so treat is the good old way
+        return _PyGILState_Ensure();
+    }
+    RedisGearsPy_RestoreThread(NULL); // take GIL
+    ptctx = GetPythonThreadCtx();
     return ptctx->lockCounter == 1 ? PyGILState_UNLOCKED : PyGILState_LOCKED;
 }
 
+// Release any resources previously acquired. 
+// After this call, Python’s state will be the same as it was prior to the corresponding PyGILState_Ensure() call.
+// Every call to PyGILState_Ensure() must be matched by a call to PyGILState_Release() on the same thread.
+
 void PyGILState_Release(PyGILState_STATE oldstate){
+    // first, check if this is a Gears thread
+    PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
+    if (!ptctx || ptctx->signature != 0xdeadbeef) {
+        BB;
+        // not a Gears thread, so treat is the good old way
+        _PyGILState_Release(oldstate);
+        return;
+    }
     RedisGearsPy_SaveThread();
 }
 
 bool RedisGearsPy_IsLockAcquired(){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    assert(ptctx);
     return ptctx->lockCounter > 0;
 }
 
+// Acquire the global interpreter lock and set the sub-interpreter (i.e. thread state) to `interpreter`.
+// If `interpreter` is NULL, the main interpreter is restored.
+// If the lock has been created, the current thread must not have acquired it, otherwise deadlock ensues.
+// This function practically replaces the CPython standard PyGILState_Ensure() for Gears threads.
+
 void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    assert(ptctx);
     if(ptctx->lockCounter == 0){
         if(interpreter){
             PyEval_RestoreThread(interpreter->subInterpreter);
@@ -137,12 +195,23 @@ void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
     ++ptctx->lockCounter;
 }
 
+// Release the global interpreter lock and reset the sub-interpreter (i.e. thread state) state to NULL,
+// returning the previous thread state (which is not NULL).
+// If the lock has been created, the current thread must have acquired it.
+// This function pracrically replaces the CPython standard PyGILState_Release() for Gears threads.
+
 void RedisGearsPy_SaveThread(){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    assert(ptctx);
-    assert(ptctx->lockCounter > 0);
-    if(--ptctx->lockCounter == 0){
+    if (!ptctx || ptctx->lockCounter == 0) {
+        BB;
+        //assert(0);
         PyEval_SaveThread();
+        return;
+    }
+
+    //assert(ptctx->lockCounter > 0);
+    if(--ptctx->lockCounter == 0){
+        PyEval_SaveThread(); // release GIL
     }
 }
 
@@ -1554,6 +1623,8 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     if(argc < 2 || argc > 3){
         return RedisModule_WrongArity(ctx);
     }
+    
+    RegisterGearsThread();
 
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
     PythonThreadCtx* ptctx = GetPythonThreadCtx();

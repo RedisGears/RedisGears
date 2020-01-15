@@ -10,8 +10,8 @@ cd $HERE/../..
 
 CONF="/var/opt/redislabs/redis/redis-$ID.conf"
 PORT=$(grep "^port" $CONF | gawk '{print $2}')
-PWD=$(grep "^requirepass" $CONF | gawk '{print $2}')
+PASSWD=$(grep "^requirepass" $CONF | gawk '{print $2}')
 
-/opt/redislabs/bin/python ./gears.py --port $PORT --password $PWD ./write_behind.py
+/opt/redislabs/bin/python ./gears.py --port $PORT --password "$PASSWD" ./write_behind.py
 
 exit 0

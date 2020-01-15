@@ -490,6 +490,7 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
 }
 
 static void* Cluster_MessageThreadMain(void *arg){
+    RegisterGearsThread();
     event_base_loop(main_base, 0);
     return NULL;
 }

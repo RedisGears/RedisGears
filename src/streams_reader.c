@@ -623,6 +623,8 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
 }
 
 static void* StreamReader_ScanForStreams(void* pd){
+    RegisterGearsThread();
+
     StreamReaderTriggerCtx* srctx = pd;
     long long cursor = 0;
     do{

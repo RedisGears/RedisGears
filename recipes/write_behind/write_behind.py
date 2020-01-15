@@ -135,7 +135,7 @@ def Connect():
     else:
         Log('Connect: invalid db engine: ' + dbtype)
         raise Exception('Connect: invalid db engine: ' + dbtype)
-        
+
     return None
 
 def PrepereQueries():
@@ -154,7 +154,7 @@ def PrepereQueries():
             raise Exception('failed to create query for %s', str(k))
 
         # create upsert query
-        if dbtype == 'oracle':
+        if dbtype == 'oracle' or dbtype == 'snowflake':
             values = [val for kk, val in v.items() if not kk.startswith('_')]
             values_with_pkey = [pkey] + values
             merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (v[TABLE_KEY], pkey, pkey)
@@ -205,7 +205,7 @@ def CreateStreamInserter(config):
 def CreateSQLDataWriter(config):
     def WriteToSQLDB(r):
         # Debug('In WriteToSQLDB')
-        
+
         global conn
         global sqlText
 
@@ -274,7 +274,7 @@ def CheckIfHash(r):
 def RegisterExecutions():
     for k, v in config.items():
         regs0 = execute('rg.dumpregistrations')
-        
+
         regex = k.split(':')[0]
         ## create the execution to write each changed key to stream
         GB('KeysReader', desc='add each changed key with prefix %s:* to Stream' % regex).\
@@ -286,24 +286,26 @@ def RegisterExecutions():
         regs1 = execute('rg.dumpregistrations')
         if len(regs0) == len(regs1):
             Log("Reader failed to register: k=%s v=%s" % (k, str(v)))
-        
+
         ## create the execution to write each key from stream to DB
         GB('StreamReader', desc='read from stream and write to DB table %s' % v[TABLE_KEY]).\
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
         count().\
         register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000)
-        
+
         regs2 = execute('rg.dumpregistrations')
         if len(regs1) == len(regs2):
             Log("Writer failed to register: k=%s v=%s" % (k, str(v)))
-        
+
     # Debug('-' * 80)
     # regs = execute('rg.dumpregistrations')
     # Debug('regs: ' + str(regs))
     # Debug('-' * 80)
 
 #----------------------------------------------------------------------------------------------
+
+Connect()
 
 Debug('-' * 80)
 Log('Starting gear')

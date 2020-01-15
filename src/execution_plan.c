@@ -1781,6 +1781,8 @@ static void* ExecutionPlan_MessageThreadMain(void *arg){
 }
 
 static WorkerData* ExecutionPlan_StartThread(){
+    RegisterGearsThread();
+
 	WorkerData* wd = RG_ALLOC(sizeof(WorkerData));
 
 	pthread_cond_init(&wd->cond, NULL);
