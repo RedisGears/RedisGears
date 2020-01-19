@@ -19,8 +19,13 @@ TBD: key names and tables
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 ```
 
-* [Bootstrap the Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/administering/cluster-operations/new-cluster-setup/).
+* [Bootstrap the Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/administering/cluster-operations/new-cluster-setup/):
+```
+/opt/redislabs/bin/rladmin cluster create name cluster1 username a@a.com password a
+```
+
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
+
 * Configure Snowflake DB connection:
   * Run `sudo /opt/redislabs/bin/snowsql`. This will create the default configuration file in `/root/.snowsql/config`.
   * Configure Snowflake connection details in `/root/.snowsql/config`. This should be in a form similar to:
