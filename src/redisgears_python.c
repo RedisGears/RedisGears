@@ -7,6 +7,7 @@
 #include <marshal.h>
 #include <assert.h>
 #include <dirent.h>
+#include <sys/syscall.h>
 #include <redisgears.h>
 #include <redisgears_memory.h>
 #include <redisgears_python.h>
@@ -15,6 +16,13 @@
 #include "lock_handler.h"
 #include "GearsBuilder.auto.h"
 #include "cloudpickle.auto.h"
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+PyGILState_STATE _PyGILState_Ensure(void);
+void _PyGILState_Release(PyGILState_STATE oldstate);
+
+extern RedisModuleCtx *staticCtx;
 
 #define SUB_INTERPRETER_TYPE "subInterpreterType"
 
@@ -56,6 +64,7 @@ typedef struct PythonThreadCtx{
     unsigned long signature;
     int lockCounter;
     RedisModuleCtx* currentCtx;
+    PyThreadState* pythreadstate;
     PythonSubInterpreter* subInterpreter;
     bool blockingExecute;
     bool executionTriggered;
@@ -79,13 +88,18 @@ static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br);
 static void TimeEvent_Free(void *value);
 static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+
 static PythonThreadCtx* GetPythonThreadCtx(){
     PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
     if(!ptctx){
         BB;
-        RedisModule_Log(0, "error", "unregistered gears thread");
+        RedisModule_Log(staticCtx, "error", "unregistered gears thread");
         assert(0);
     }
+    if (ptctx->signature != 0xdeadbeef) {
+        RedisModule_Log(staticCtx, "warning", "wrong gears context signature: this is strange");
+	}
     return ptctx;
 }
 
@@ -93,9 +107,10 @@ void RegisterGearsThread() {
     PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
     if(ptctx){
         if (ptctx->signature != 0xdeadbeef) {
-            RedisModule_Log(0, "warning", "wrong gears context signature: this is strange");
+            BB;
+            RedisModule_Log(staticCtx, "warning", "wrong gears context signature: this is strange");
         } else {
-            RedisModule_Log(0, "warning", "gears thread already registered"); //@@
+            RedisModule_Log(staticCtx, "warning", "gears thread already registered"); //@@
         }
         return;
     }
@@ -104,6 +119,7 @@ void RegisterGearsThread() {
             .signature = 0xdeadbeef,
             .lockCounter = 0,
             .currentCtx = NULL,
+            .pythreadstate = NULL,
             .subInterpreter = NULL,
             .blockingExecute = true,
             .executionTriggered = false,
@@ -142,16 +158,19 @@ void RegisterGearsThread() {
 // When the function returns, the current thread will hold the GIL and be able to call arbitrary Python code. 
 // Failure is a fatal error.
 
+bool at_child = false;
+
 PyGILState_STATE PyGILState_Ensure(void){
+	pid_t tid = syscall(SYS_gettid);
+	RedisModule_Log(staticCtx, "info", "PyGILState_Ensure on tid=%d", tid);
+	
     // first, check if this is a Gears thread
-    PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
+    PythonThreadCtx* ptctx = !at_child ? pthread_getspecific(pythonThreadCtxKey) : 0;
     if (!ptctx || ptctx->signature != 0xdeadbeef) {
-        BB;
-        // not a Gears thread, so treat is the good old way
+        // not a Gears thread, treat it the good old way
         return _PyGILState_Ensure();
     }
-    RedisGearsPy_RestoreThread(NULL); // take GIL
-    ptctx = GetPythonThreadCtx();
+    RedisGearsPy_RestoreThread(NULL); // take GIL, increases lockCounter
     return ptctx->lockCounter == 1 ? PyGILState_UNLOCKED : PyGILState_LOCKED;
 }
 
@@ -160,15 +179,21 @@ PyGILState_STATE PyGILState_Ensure(void){
 // Every call to PyGILState_Ensure() must be matched by a call to PyGILState_Release() on the same thread.
 
 void PyGILState_Release(PyGILState_STATE oldstate){
+    BB;
+	pid_t tid = syscall(SYS_gettid);
+	RedisModule_Log(staticCtx, "info", "PyGILState_Release on tid=%d", tid);
+
     // first, check if this is a Gears thread
-    PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
+    PythonThreadCtx* ptctx = !at_child ? pthread_getspecific(pythonThreadCtxKey) : 0;
     if (!ptctx || ptctx->signature != 0xdeadbeef) {
         BB;
-        // not a Gears thread, so treat is the good old way
+        // not a Gears thread, treat it the good old way
         _PyGILState_Release(oldstate);
         return;
     }
-    RedisGearsPy_SaveThread();
+    if (ptctx->lockCounter == 0 && oldstate == PyGILState_UNLOCKED)
+        return;
+    RedisGearsPy_SaveThread(oldstate);
 }
 
 bool RedisGearsPy_IsLockAcquired(){
@@ -189,7 +214,11 @@ void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
         if(interpreter){
             PyEval_RestoreThread(interpreter->subInterpreter);
         }else{
-            PyEval_RestoreThread(MainInterpreter->subInterpreter);
+            if (!ptctx->pythreadstate) {
+                PyEval_RestoreThread(MainInterpreter->subInterpreter);
+            } else {
+                PyEval_RestoreThread(ptctx->pythreadstate);
+            }
         }
     }
     ++ptctx->lockCounter;
@@ -202,16 +231,14 @@ void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
 
 void RedisGearsPy_SaveThread(){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    if (!ptctx || ptctx->lockCounter == 0) {
-        BB;
-        //assert(0);
-        PyEval_SaveThread();
+    if (!ptctx) {
         return;
     }
-
-    //assert(ptctx->lockCounter > 0);
-    if(--ptctx->lockCounter == 0){
-        PyEval_SaveThread(); // release GIL
+    if (ptctx->lockCounter == 0) {
+        return;
+    }
+    if (--ptctx->lockCounter == 0) {
+        ptctx->pythreadstate = PyEval_SaveThread(); // release GIL
     }
 }
 
@@ -222,7 +249,11 @@ static PythonSubInterpreter* RedisGearsPy_SubInterpreterNew(){
         .refCount = 1,
         .subInterpreter = subInterpreter,
     };
-    PyThreadState_Swap(interp->subInterpreter);
+    PyThreadState *state = PyThreadState_Swap(interp->subInterpreter);
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if (ptctx && !ptctx->pythreadstate) {
+        ptctx->pythreadstate = state;
+    }
     return interp;
 }
 
@@ -286,6 +317,8 @@ static char* RedisGearsPy_SubInterpreterToString(void* arg){
     // todo: maybe add information about the subinterpreter !?
     return RG_STRDUP("subinterpreter ToStr");
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
  * Wrapper for a flat execution that allows it leave inside the python interpreter.
@@ -2159,7 +2192,15 @@ static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     PyTuple_SetItem(args, 0, callback);
     PyObject * serializedStr = PyObject_CallObject(pickleFunction, args);
     if(!serializedStr || PyErr_Occurred()){
-        PyErr_Print();
+        //PyErr_Print();
+        
+        PyObject *errf = PyDict_GetItemString(pyGlobals, "diag");
+        PyObject * pickle_diag = PyObject_CallObject(errf, NULL);
+        puts("\n");
+        PyObject_Print(pickle_diag, stdout, Py_PRINT_RAW);
+        puts("\n");
+        Py_DECREF(pickle_diag);
+        
         return REDISMODULE_ERR;
     }
     Py_DECREF(args);
@@ -2392,12 +2433,43 @@ static PyObject* PyInit_RedisAI(void) {
     return PyModule_Create(&EmbRedisAI);
 }
 
-int RedisGearsPy_Init(RedisModuleCtx *ctx){
+#if 0
+void fork_prepare() {
+    BB;
+    PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
+    PyOS_BeforeFork();
+}
+
+void fork_at_parent() {
+    PyOS_AfterFork_Parent();
+}
+
+void fork_at_child() {
+    BB;
+    at_child = true;
+    FILE *f = fopen("/proc/self/status", "r");
+    char s[1024];
+    fgets(s, sizeof(s), f);
+    FILE *g = fopen("/tmp/plog", "a+");
+    fprintf(g, "%s\n", s);
+    fclose(f);
+    fclose(g);
+    PyOS_AfterFork_Child();
+    //Py_FinalizeEx();
+}
+#endif // 0
+
+int RedisGearsPy_InitThreadCtx() {
     int err = pthread_key_create(&pythonThreadCtxKey, NULL);
     if(err){
         return REDISMODULE_ERR;
     }
+    
+    //pthread_atfork(fork_prepare, fork_at_parent, fork_at_child);
+    return REDISMODULE_OK;
+}
 
+int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
     PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
     PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);

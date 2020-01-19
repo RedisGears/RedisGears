@@ -345,6 +345,7 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
     RedisGears_BWWriteLong(&bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
+        printf("Serializing step %s\n", step->bStep.stepName);
         if(FlatExecutionPlan_SerializeStep(step, &bw) != REDISMODULE_OK){
             Gears_BufferFree(fep->serializedFep);
             fep->serializedFep = NULL;
@@ -1764,6 +1765,7 @@ static void ExecutionPlan_MsgArrive(WorkerMsg* msg){
 }
 
 static void* ExecutionPlan_MessageThreadMain(void *arg){
+    RegisterGearsThread();
 	WorkerData* wd = arg;
 	pthread_mutex_lock(&wd->lock);
     while(true){

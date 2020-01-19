@@ -165,9 +165,11 @@ $(OBJECTS) : $(BINROOT)/%.o : %.c
 $(SRCDIR)/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h
 
 $(BINDIR)/GearsBuilder.auto.h : $(SRCDIR)/GearsBuilder.py
+	@echo Generating $@ ...
 	$(SHOW)xxd -i $< > $@
 
 $(BINDIR)/cloudpickle.auto.h : $(SRCDIR)/cloudpickle.py
+	@echo Generating $@ ...
 	$(SHOW)xxd -i $< > $@
 
 #----------------------------------------------------------------------------------------------

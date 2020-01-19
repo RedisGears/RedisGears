@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
 import time
+import os
 
 engine = None
 conn = None
 sqlText = None
 dbtype = 'snowflake'
+# dbtype = 'mysql'
 _debug=True
 
 # addQuery =
@@ -28,7 +30,7 @@ SLEEP_TIME=1
 ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
 
 MYSQL_CONFIG = {
-    'ConnectionStr': 'mysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql'),
+    'ConnectionStr': 'mysql+pymysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='ranch1/test'),
 }
 
 ORACLE_CONFIG = {
@@ -105,15 +107,17 @@ def Connect():
     global engine
     global dbtype
     global sqlText
-    from sqlalchemy import create_engine
+    import sqlalchemy
+    # import snowflake.connector
+    # from sqlalchemy import create_engine
 
     if dbtype is None:
-        Log('Connect: determining dbtype')
+        Log('Connect: dbtype not specified - determining dbtype')
         for type, config in DATABASES.items():
             connstr = config['ConnectionStr']
             Log('Connect: trying conntecting %s, ConnectionStr=%s' % (type, connstr))
             try:
-                engine1 = create_engine(connstr).execution_options(autocommit=True)
+                engine1 = sqlalchemy.create_engine(connstr).execution_options(autocommit=True)
                 conn1 = engine1.connect()
                 Log('DB detected: %s' % (type))
                 dbtype = type
@@ -127,8 +131,9 @@ def Connect():
     if dbtype in DATABASES:
         config = DATABASES[dbtype]
         connstr = config['ConnectionStr']
+
         Log('Connect: connecting %s, ConnectionStr=%s' % (dbtype, connstr))
-        engine = create_engine(connstr).execution_options(autocommit=True)
+        engine = sqlalchemy.create_engine(connstr).execution_options(autocommit=True)
         conn = engine.connect()
         Log('Connect: Connected to ' + dbtype)
         return conn
@@ -142,8 +147,8 @@ def PrepereQueries():
     global conn
     global dbtype
 
-    Log('Determining dbtype')
-    Connect() # determine dbtype
+    # Log('PrepereQueries: determining dbtype')
+    # Connect() # determine dbtype
 
     for k,v in config.items():
         table, pkey = k.split(':')
@@ -288,6 +293,9 @@ def RegisterExecutions():
             Log("Reader failed to register: k=%s v=%s" % (k, str(v)))
 
         ## create the execution to write each key from stream to DB
+        # print('conn = %s' % str(conn))
+        # print('sqlText = %s' % str(sqlText))
+
         GB('StreamReader', desc='read from stream and write to DB table %s' % v[TABLE_KEY]).\
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
@@ -304,8 +312,6 @@ def RegisterExecutions():
     # Debug('-' * 80)
 
 #----------------------------------------------------------------------------------------------
-
-Connect()
 
 Debug('-' * 80)
 Log('Starting gear')

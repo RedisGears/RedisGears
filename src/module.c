@@ -528,6 +528,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
 			REDISGEARS_GIT_SHA);
 
+    if (RedisGearsPy_InitThreadCtx() != REDISMODULE_OK) {
+	    RedisModule_Log(ctx, "warning", "could not initialize gears thread context");
+        return REDISMODULE_ERR;
+    }
+    
 	if(LockHandler_Initialize() != REDISMODULE_OK){
 	    RedisModule_Log(ctx, "warning", "could not initialize lock handler");
         return REDISMODULE_ERR;
