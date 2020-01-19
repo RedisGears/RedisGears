@@ -65,7 +65,7 @@ select * from person1;
 ## Testing
 <<TODO do we need this ??? can we point to a more general "testing your gear documentation">>>
 * From a cluster node, run `ID=<db-id> /opt/recipe/snowflake/rs/run-test`.
-* Run `echo "select count(*) from person1;" | snowsql`
+* From a cluster node, run `/opt/recipe/snowflake/sample-snowsql-db`
 
 ## Diagnostics
 <<TODO do we need this ??? can we point to a more general "diagnosing your recipe">>>
