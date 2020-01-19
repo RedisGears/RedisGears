@@ -14,7 +14,7 @@ TBD: key names and tables
 
 * [Create an un-bootstrapped Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
 
-* On each cluster node, run:
+* On each cluster node, run (as root):
 ```
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 ```
@@ -40,7 +40,7 @@ password = "PASSWORD"
 ```
 sudo -u redislabs /opt/redislabs/bin/snowsql
 sudo cp /root/.snowsql/config /opt/redislabs/.snowsql/
-sudo chmod redislabs:redislabs /opt/redislabs/.snowsql/config
+sudo chown redislabs:redislabs /opt/redislabs/.snowsql/config
 ```
 * Make sure your database in snowflake is up and running.  An example script can be run
 <<TODO>>  or can be adopted to reflect your database schema.
