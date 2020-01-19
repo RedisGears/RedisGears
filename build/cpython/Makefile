@@ -68,7 +68,7 @@ ifeq ($(OS),macosx)
 	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
 	$(SHOW)rm $(BINDIR)/pystate.o
 else
-	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
+# 	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release --localize-symbol PyGILState_GetThisThreadState $@
 endif
 
 #----------------------------------------------------------------------------------------------

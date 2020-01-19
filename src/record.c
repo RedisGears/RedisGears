@@ -109,11 +109,11 @@ void RG_FreeRecord(Record* record){
 #ifdef WITHPYTHON
     case PY_RECORD:
     	if(record->pyRecord.obj){
-    	    RedisGearsPy_RestoreThread(NULL);
+    	    PyGILState_STATE oldstate = RedisGearsPy_RestoreThread(NULL);
     		if(record->pyRecord.obj != Py_None){
     		    Py_DECREF(record->pyRecord.obj);
     		}
-    		RedisGearsPy_SaveThread();
+    		RedisGearsPy_SaveThread(oldstate);
     	}
         break;
 #endif
