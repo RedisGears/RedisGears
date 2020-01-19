@@ -22,7 +22,7 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 * [Bootstrap the Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/administering/cluster-operations/new-cluster-setup/).
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
 * Configure Snowflake DB connection:
-  * Run `sudo snowsql`. This will create the default configuration file in `/root/.snowsql/config`.
+  * Run `sudo /opt/redislabs/bin/snowsql`. This will create the default configuration file in `/root/.snowsql/config`.
   * Configure Snowflake connection details in `/root/.snowsql/config`. This should be in a form similar to:
 
 ```
@@ -31,10 +31,14 @@ accountname = "CODE.eu-west-1"
 username = "USERNAME"
 password = "PASSWORD"
 ```
-
+  * Execute the following:
+```
+sudo -u redislabs /opt/redislabs/bin/snowsql
+sudo cp /root/.snowsql/config /opt/redislabs/.snowsql/
+sudo chmod redislabs:redislabs /opt/redislabs/.snowsql/config
+```
 * Make sure your database in snowflake is up and running.  An example script can be run
 <<TODO>>  or can be adopted to reflect your database schema.
-
 
 ## Configure the gear to reflect your database schema
 <<TODO>>
