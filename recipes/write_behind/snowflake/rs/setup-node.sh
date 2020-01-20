@@ -26,7 +26,7 @@ ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 cd /opt/RedisGears/recipes/write_behind
 ln -s ../gears.py .
 
-/opt/redislabs/bin/python2 /opt/recipe/snowflake/rs/install-modules.py --yaml /opt/recipe/snowflake/rs/redis-modules.yaml
+/opt/redislabs/bin/python2 /opt/recipe/snowflake/rs/install-modules.py --no-bootstrap-check --yaml /opt/recipe/snowflake/rs/redis-modules.yaml
 
 /opt/recipe/snowflake/install-snowflake-client
 /opt/recipe/snowflake/install-snowflake-python-client
