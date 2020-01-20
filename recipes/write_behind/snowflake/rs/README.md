@@ -1,9 +1,9 @@
-# RedisGears Write-Behind Recipe on Redis Enterprise Software cluster
+# RedisGears Write-Behind Recipe on Redis Enterprise Software cluster for Snowflake DB
 
 ## System requirements
 
 * Redis Enterprise Software v5.4.11-2 or above running on RHEL7
-* Snowflake DB account
+* Snowflake DB account (you'll need an account name, username and password)
 * RedisGears module built for RHEL7/CentOS7
 
 ## Configuration
@@ -14,8 +14,9 @@ TBD: key names and tables
 
 * [Create an un-bootstrapped Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
 
-* On each cluster node, run (as root):
+* On each cluster node, run (as root, via `sudo bash`):
 ```
+SNOW_USER="..." SNOW_PASSWD="..." SNOW_ACCT="CODE.eu-west-1" \
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 ```
 
@@ -26,22 +27,6 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
 
-* Configure Snowflake DB connection:
-  * Run `sudo /opt/redislabs/bin/snowsql`. This will create the default configuration file in `/root/.snowsql/config`.
-  * Configure Snowflake connection details in `/root/.snowsql/config`. This should be in a form similar to:
-
-```
-[connections]
-accountname = "CODE.eu-west-1"
-username = "USERNAME"
-password = "PASSWORD"
-```
-  * Execute the following:
-```
-sudo -u redislabs /opt/redislabs/bin/snowsql
-sudo cp /root/.snowsql/config /opt/redislabs/.snowsql/
-sudo chown redislabs:redislabs /opt/redislabs/.snowsql/config
-```
 * Make sure your database in snowflake is up and running.  An example script can be run
 <<TODO>>  or can be adopted to reflect your database schema.
 

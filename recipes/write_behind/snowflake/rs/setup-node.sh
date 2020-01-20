@@ -6,6 +6,8 @@
 
 set -e
 
+[[ -z $SNOW_USER || -z $SNOW_PASSWD || -z $SNOW_ACCT ]] && { echo "Please define SNOW_USER, SNOW_PASSWD, and SNOW_ACCT for your Snowflake DB account."; exit 1; }
+
 if [ ! -z $(command -v apt-get) ]; then
 	apt-get -qq update
 	apt-get install -yq git
