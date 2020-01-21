@@ -1,4 +1,7 @@
 
+CREATE DATABASE test;
+USE DATABASE test;
+
 CREATE SCHEMA test;
 USE SCHEMA test;
 
