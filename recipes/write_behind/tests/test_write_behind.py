@@ -23,20 +23,20 @@ dels = ['del person2:%d' % i for i in range(NUM_REQ)]
 start = time.time()
 i = 0
 for r in reqs:
-	p = conn.pipeline(transaction=False)
-	p.execute_command(r)
-	p.wait(1, 10)
-	p.execute()
+    p = conn.pipeline(transaction=False)
+    p.execute_command(r)
+    p.wait(1, 10)
+    p.execute()
     i += 1
     if i % 100 == 0:
         print("hset " + str(i))
 
 i = 0
 for d in dels:
-	p = conn.pipeline(transaction=False)
-	p.execute_command(d)
-	p.wait(1, 10)
-	p.execute()
+    p = conn.pipeline(transaction=False)
+    p.execute_command(d)
+    p.wait(1, 10)
+    p.execute()
     i += 1
     if i % 100 == 0:
         print("del " + str(i))

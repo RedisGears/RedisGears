@@ -8,15 +8,15 @@
 
 ## Installing the Redis cluster
 
-* [Create an un-bootstrapped Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
-* On each cluster node, run (as root, via `sudo bash`):
+* [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
+* On each cluster node, run (as root, via `sudo bash`) - fill your account code and credentials:
 
 ```
 SNOW_USER="..." SNOW_PASSWD="..." SNOW_ACCT="CODE.eu-west-1" \
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 ```
 
-* Download [Redis Gears](http://redismodules.s3.amazonaws.com/lab/11-gears-write-behind-sf/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
+* Download the [Redis Gears module](http://redismodules.s3.amazonaws.com/lab/11-gears-write-behind-sf/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
 * Create a Snowflake database using the following script:
 ```
