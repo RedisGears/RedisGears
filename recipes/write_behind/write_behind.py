@@ -28,7 +28,7 @@ SLEEP_TIME=1
 ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
 
 MYSQL_CONFIG = {
-    'ConnectionStr': 'mysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql'),
+    'ConnectionStr': 'mysql+pymysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql/test'),
 }
 
 ORACLE_CONFIG = {
@@ -38,7 +38,7 @@ ORACLE_CONFIG = {
 def get_snowflake_conn_str():
     import configparser
     c = configparser.ConfigParser()
-    c.read('/root/.snowsql/config')
+    c.read('/opt/redislabs/.snowsql/config')
     username = c['connections']['username']
     password = c['connections']['password']
     account = c['connections']['accountname']
@@ -215,7 +215,7 @@ def CreateSQLDataWriter(config):
         for x in r:
             x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
         while True:
-            Debug('WriteToSQLDB: in loop')
+            # Debug('WriteToSQLDB: in loop')
             query = None
             errorOccured = False
 

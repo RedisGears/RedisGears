@@ -27,8 +27,7 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
 
-* Make sure your database in snowflake is up and running.  An example script can be run
-<<TODO>>  or can be adopted to reflect your database schema.
+* Create a Snowflake database using `/opt/recipe/snowflake/rs/create-exmaple-db`. This will set up a user and tables for testing.
 
 ## Configure the gear to reflect your database schema
 <<TODO>>
