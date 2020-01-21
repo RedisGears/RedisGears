@@ -202,7 +202,7 @@ class Setup(OnPlatform):
                 self.install("python3-distutils")
             self.install_downloaders()
             pip_user = ' --user' if self.os == 'macosx' else ''
-            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py" + pip_user, output_on_error=True, _try=_try)
+            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py" + pip_user + " 'pip==19.3.1'", output_on_error=True, _try=_try)
 
     def install_downloaders(self, _try=False):
         if self.os == 'linux':
