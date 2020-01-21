@@ -6,31 +6,22 @@
 * Snowflake DB account (you'll need an account name, username and password)
 * RedisGears module built for RHEL7/CentOS7
 
-## Configuration
-
-TBD: key names and tables
-
 ## Installing the Redis cluster
 
 * [Create an un-bootstrapped Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
-
 * On each cluster node, run (as root, via `sudo bash`):
+
 ```
 SNOW_USER="..." SNOW_PASSWD="..." SNOW_ACCT="CODE.eu-west-1" \
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 ```
 
-* [Bootstrap the Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/administering/cluster-operations/new-cluster-setup/):
-```
-/opt/redislabs/bin/rladmin cluster create name cluster1 username a@a.com password a
-```
-
+* Download [Redis Gears](http://redismodules.s3.amazonaws.com/lab/11-gears-write-behind-sf/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
-
-* Create a Snowflake database using `/opt/recipe/snowflake/rs/create-exmaple-db`. This will set up a user and tables for testing.
-
-## Configure the gear to reflect your database schema
-<<TODO>>
+* Create a Snowflake database using the following script:
+```
+/opt/recipe/snowflake/rs/create-exmaple-db
+```
 
 ## Running the write-behind gear
 
@@ -52,16 +43,35 @@ select * from person1;
 ```
 
 ## Testing
-<<TODO do we need this ??? can we point to a more general "testing your gear documentation">>>
-* From a cluster node, run `ID=<db-id> /opt/recipe/snowflake/rs/run-test`.
-* From a cluster node, run `/opt/recipe/snowflake/sample-snowsql-db`
+* Log on via SSH to a cluster node.
+* Examine `/var/opt/redislabs/redis` for Redis servers running on the node.
+  * You can also examine `ps ax | grep redis-server` for that perpose.
+* With one of the Redis IDs above, run `ID=<db-id> /opt/recipe/snowflake/rs/run-test`.
+* Open another connection to that node and run `/opt/recipe/snowflake/sample-snowsql-db`
 
 ## Diagnostics
-<<TODO do we need this ??? can we point to a more general "diagnosing your recipe">>>
-### Gear status
 
-* Check the Redis DB log for errors: `/var/opt/redislabs/log/redis-*.log`
+### Redis status
+
+* `rladmin status` command
+* Redis configuration files at `/var/opt/redislabs/redis`
+* Redis log at `/var/opt/redislabs/log/redis-#.log`
+* Restart Redis shards (do that to restart Gears):
+```
+rlutil redis_restart redis=<Redis shard IDs> force=yes
+```
+
+### Gears status
+
+* redis-cli via bdb-cli DB-ID
+  * `RG.DUMPEXECUTIONS` command
 
 ### Snowflake status
 
-* Run `echo "select count(*) from person1;" | snowflake`
+* `/opt/recipe/snowflake/sample-snowsql-db` will repeatedly print number of records in the Snowlake test table.
+
+* Snowflake CLI: `snowsql` 
+
+## Configure the gear to reflect your database schema
+TBD
+

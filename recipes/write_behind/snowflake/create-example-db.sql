@@ -2,8 +2,8 @@
 CREATE DATABASE test;
 USE DATABASE test;
 
-CREATE SCHEMA test;
-USE SCHEMA test;
+# CREATE SCHEMA test;
+# USE SCHEMA test;
 
 CREATE TABLE test.person1 (
   id VARCHAR(100) NOT NULL,
