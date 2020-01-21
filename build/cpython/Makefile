@@ -62,14 +62,14 @@ include $(MK)/rules
 $(TARGET): $(CONFIGURE_TARGET)
 	@echo Fixing $@ ...
 	$(SHOW)cp $< $@
-ifeq ($(OS),macosx)
-	$(SHOW)cp $(BINDIR)/Python/pystate.o $(BINDIR)/
-	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
-	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
-	$(SHOW)rm $(BINDIR)/pystate.o
-else
-	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
-endif
+# ifeq ($(OS),macosx)
+# 	$(SHOW)cp $(BINDIR)/Python/pystate.o $(BINDIR)/
+# 	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
+# 	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
+# 	$(SHOW)rm $(BINDIR)/pystate.o
+# else
+# 	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
+# endif
 
 #----------------------------------------------------------------------------------------------
 

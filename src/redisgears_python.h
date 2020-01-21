@@ -12,11 +12,6 @@
 #include "redismodule.h"
 #include "redisgears.h"
 
-PyGILState_STATE PyGILState_Ensure(void);
-void PyGILState_Release(PyGILState_STATE oldstate);
-
-typedef struct PythonSubInterpreter PythonSubInterpreter;
-
 typedef void (*DoneCallbackFunction)(ExecutionPlan*, void*); 
 
 void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw);
@@ -25,8 +20,8 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, DoneCallbackFunction callback);
 int RedisGearsPy_Init(RedisModuleCtx *ctx);
 void RedisGearsPy_ForceStop(ExecutionCtx* ep);
-void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter);
-void RedisGearsPy_SaveThread();
+void RedisGearsPy_Lock();
+void RedisGearsPy_Unlock();
 bool RedisGearsPy_IsLockAcquired();
 
 #endif /* SRC_REDISGEARG_PYTHON_H_ */

@@ -41,22 +41,11 @@ PyObject* ForceStoppedError;
 pthread_key_t pythonThreadCtxKey;
 
 /*
- * Sub-interpreter maybe shared between multiple python runners (registered, time events and normal execution).
- * This is why it need to be refcounted and owned by multiple owners.
- * We free sub-interpreter once its refcount reach zero
- */
-typedef struct PythonSubInterpreter{
-    size_t refCount;
-    PyThreadState* subInterpreter;
-}PythonSubInterpreter;
-
-/*
  * Thread spacific data
  */
 typedef struct PythonThreadCtx{
     int lockCounter;
     RedisModuleCtx* currentCtx;
-    PythonSubInterpreter* subInterpreter;
     bool blockingExecute;
     bool executionTriggered;
     bool timeEventRegistered;
@@ -65,9 +54,6 @@ typedef struct PythonThreadCtx{
 
 /* default onDone function */
 static void onDone(ExecutionPlan* ep, void* privateData);
-
-/* the main interpreter */
-static PythonSubInterpreter* MainInterpreter;
 
 /* callback that get gears remote builder and run it, used for python client */
 static PyObject *runGearsRemoteBuilderCallback;
@@ -86,7 +72,6 @@ static PythonThreadCtx* GetPythonThreadCtx(){
         *ptctx = (PythonThreadCtx){
                 .lockCounter = 0,
                 .currentCtx = NULL,
-                .subInterpreter = NULL,
                 .blockingExecute = true,
                 .executionTriggered = false,
                 .timeEventRegistered = false,
@@ -97,126 +82,27 @@ static PythonThreadCtx* GetPythonThreadCtx(){
     return ptctx;
 }
 
-/**
- * This functions override the PyGILState_Ensure and PyGILState_Release of the interpreter.
- * Those function are not working well with Sub-interpreters yet we do not want to deny
- * the user from using them. We override them with our own implementation that operate as follow:
- * 1. If the GIL is already acquired by the thread we continue the run (with the same Sub-interpreter)
- * 2. If the GIL is not yet acquired we acquired it and run with the main interpreter.
- *
- * Notice that this is not a perfect solution. If an extension written in C open other threads,
- * Then those threads, when acquiring the GIL, will be run on the main interpreter while the original
- * thread runs on the Sub-interpreter.
- *
- * We believe that this solution will be good enough for most use-cases, but we are still operate under
- * the best effort approach.
- */
-PyGILState_STATE PyGILState_Ensure(void){
-    RedisGearsPy_RestoreThread(NULL);
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    return ptctx->lockCounter == 1 ? PyGILState_UNLOCKED : PyGILState_LOCKED;
-}
-
-void PyGILState_Release(PyGILState_STATE oldstate){
-    RedisGearsPy_SaveThread();
-}
-
 bool RedisGearsPy_IsLockAcquired(){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     return ptctx->lockCounter > 0;
 }
 
-void RedisGearsPy_RestoreThread(PythonSubInterpreter* interpreter){
+void RedisGearsPy_Lock(){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     if(ptctx->lockCounter == 0){
-        if(interpreter){
-            PyEval_RestoreThread(interpreter->subInterpreter);
-        }else{
-            PyEval_RestoreThread(MainInterpreter->subInterpreter);
-        }
+        PyGILState_STATE oldState = PyGILState_Ensure();
+        assert(oldState == PyGILState_UNLOCKED);
     }
     ++ptctx->lockCounter;
 }
 
-void RedisGearsPy_SaveThread(){
+void RedisGearsPy_Unlock(){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     assert(ptctx);
     assert(ptctx->lockCounter > 0);
     if(--ptctx->lockCounter == 0){
-        PyEval_SaveThread();
+        PyGILState_Release(PyGILState_UNLOCKED);
     }
-}
-
-static PythonSubInterpreter* RedisGearsPy_SubInterpreterNew(){
-    PyThreadState * subInterpreter = Py_NewInterpreter();
-    PythonSubInterpreter* interp = RG_ALLOC(sizeof(*interp));
-    *interp = (PythonSubInterpreter){
-        .refCount = 1,
-        .subInterpreter = subInterpreter,
-    };
-    PyThreadState_Swap(interp->subInterpreter);
-    return interp;
-}
-
-static PythonSubInterpreter* RedisGearsPy_SubInterpreterShallowCopy(PythonSubInterpreter* subInterpreter){
-    RedisGearsPy_RestoreThread(subInterpreter);
-    subInterpreter->refCount++;
-    RedisGearsPy_SaveThread();
-    return subInterpreter;
-}
-
-static void RedisGearsPy_FreeSubInterpreter(void* PD){
-    PythonSubInterpreter* subInterpreter = PD;
-    assert(subInterpreter);
-
-    RedisGearsPy_RestoreThread(subInterpreter);
-
-    assert(subInterpreter->refCount > 0);
-
-    if(--subInterpreter->refCount == 0){
-        PyThreadState *curr = PyThreadState_GET();
-        if(curr != subInterpreter->subInterpreter){
-            // it might be that we get here while other subinterpreter
-            // is the current, in this case we need to switch and then
-            // switch back.
-            PyThreadState_Swap(subInterpreter->subInterpreter);
-        }
-        Py_EndInterpreter(subInterpreter->subInterpreter);
-        if(curr != subInterpreter->subInterpreter){
-            PyThreadState_Swap(curr);
-        }else{
-            PyThreadState_Swap(MainInterpreter->subInterpreter);
-        }
-        RG_FREE(subInterpreter);
-    }
-
-    RedisGearsPy_SaveThread();
-}
-
-static void* RedisGearsPy_SubInterpreterDup(void* arg){
-    PythonSubInterpreter* subInterpreter = arg;
-    return RedisGearsPy_SubInterpreterShallowCopy(subInterpreter);
-}
-
-static int RedisGearsPy_SubInterpreterSerialize(void* arg, Gears_BufferWriter* bw){
-    // do nothing, we do not serialize subinterpreter, we will create new subinterpreter
-    // when deserialize will be called.
-    return REDISMODULE_OK;
-}
-
-static void* RedisGearsPy_SubInterpreterDeserialize(Gears_BufferReader* br){
-    RedisGearsPy_RestoreThread(MainInterpreter);
-
-    PythonSubInterpreter* subInterpreter = RedisGearsPy_SubInterpreterNew();
-
-    RedisGearsPy_SaveThread();
-
-    return subInterpreter;
-}
-
-static char* RedisGearsPy_SubInterpreterToString(void* arg){
-    // todo: maybe add information about the subinterpreter !?
-    return RG_STRDUP("subinterpreter ToStr");
 }
 
 /*
@@ -516,8 +402,7 @@ static PyObject* run(PyObject *self, PyObject *args){
             arg = RG_STRDUP(regexStr);
         }
     }
-    RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
-                                           RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
+
     ExecutionPlan* ep = RGM_Run(pfep->fep, ExecutionModeAsync, arg, NULL, NULL);
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
@@ -695,8 +580,6 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         return NULL;
     }
 
-    RedisGears_SetFlatExecutionPrivateData(pfep->fep, SUB_INTERPRETER_TYPE,
-                                           RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter));
     int status = RGM_Register(pfep->fep, mode, executionArgs);
     ptctx->executionTriggered = true;
     if(!ptctx->currentCtx){
@@ -1375,7 +1258,6 @@ typedef struct TimerData{
     RedisModuleTimerID id;
     PyObject* callback;
     TimeEventStatus status;
-    PythonSubInterpreter* subInterpreter;
 }TimerData;
 
 #define RG_TIME_EVENT_TYPE "rg_timeev"
@@ -1385,8 +1267,7 @@ RedisModuleType *TimeEventType;
 static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     TimerData* td = data;
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    ptctx->subInterpreter = td->subInterpreter;
-    RedisGearsPy_RestoreThread(ptctx->subInterpreter);
+    RedisGearsPy_Lock();
     PyObject* pArgs = PyTuple_New(0);
     PyObject_CallObject(td->callback, pArgs);
     if(PyErr_Occurred()){
@@ -1396,7 +1277,7 @@ static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
         td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
     }
     Py_DECREF(pArgs);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
 }
 
 static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
@@ -1416,9 +1297,6 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     RedisModule_Free(buff);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
-    RedisGearsPy_RestoreThread(NULL);
-    td->subInterpreter = RedisGearsPy_SubInterpreterNew();
-    RedisGearsPy_SaveThread();
     RedisModule_FreeThreadSafeContext(ctx);
     return td;
 }
@@ -1436,10 +1314,9 @@ static void TimeEvent_RDBSave(RedisModuleIO *rdb, void *value){
 
 static void TimeEvent_Free(void *value){
     TimerData* td = value;
-    RedisGearsPy_RestoreThread(td->subInterpreter);
+    RedisGearsPy_Lock();
     Py_DECREF(td->callback);
-    RedisGearsPy_FreeSubInterpreter(td->subInterpreter);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_StopTimer(ctx, td->id, NULL);
     RedisModule_FreeThreadSafeContext(ctx);
@@ -1494,7 +1371,6 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     td->status = TE_STATUS_RUNNING;
     td->period = period;
     td->callback = callback;
-    td->subInterpreter = RedisGearsPy_SubInterpreterShallowCopy(ptctx->subInterpreter);
     ptctx->timeEventRegistered = true;
     Py_INCREF(callback);
 
@@ -1545,7 +1421,7 @@ PyMethodDef EmbRedisAIMethods[] = {
 };
 
 static int RedisGearsPy_FreeInterpreter(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
 	Py_Finalize();
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 	return REDISMODULE_OK;
@@ -1577,7 +1453,7 @@ static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **a
         return REDISMODULE_OK;
     }
 
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
@@ -1587,9 +1463,6 @@ static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **a
     ptctx->currentCtx = ctx;
 
     ptctx->executionTriggered = false;
-
-    // create sub-interpreter
-    ptctx->subInterpreter = RedisGearsPy_SubInterpreterNew();
 
     PyObject* pArgs = PyTuple_New(2);
     PyTuple_SetItem(pArgs, 0, grb);
@@ -1617,9 +1490,7 @@ static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **a
                 Py_DECREF(ptraceback);
             }
         }
-        RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
-        PyThreadState_Swap(MainInterpreter->subInterpreter);
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         return REDISMODULE_OK;
     }
 
@@ -1628,9 +1499,7 @@ static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **a
     }else if(!ptctx->executionTriggered){
         RedisModule_ReplyWithSimpleString(ctx, "OK");
     }
-    RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
-    PyThreadState_Swap(MainInterpreter->subInterpreter);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
 
     ptctx->executionTriggered = false;
     ptctx->blockingExecute = true;
@@ -1657,9 +1526,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     ptctx->executionTriggered = false;
 
-    RedisGearsPy_RestoreThread(NULL);
-
-    ptctx->subInterpreter = RedisGearsPy_SubInterpreterNew();
+    RedisGearsPy_Lock();
 
     PyObject *v;
 
@@ -1684,8 +1551,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 Py_DECREF(ptraceback);
             }
         }
-        RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         return REDISMODULE_OK;
     }
 
@@ -1694,9 +1560,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     }else if(!ptctx->executionTriggered){
         RedisModule_ReplyWithSimpleString(ctx, "OK");
     }
-    RedisGearsPy_FreeSubInterpreter(ptctx->subInterpreter);
-    PyThreadState_Swap(MainInterpreter->subInterpreter);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
 
     ptctx->executionTriggered = false;
     ptctx->blockingExecute = true;
@@ -1761,8 +1625,7 @@ void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* ar
     // Call Python/C API functions...
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
 
     PyObject* pArgs = PyTuple_New(1);
@@ -1775,20 +1638,19 @@ void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* ar
     if(!ret){
         fetchPyError(rctx);
 
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         return;
     }
     if(ret != Py_None){
     	Py_DECREF(ret);
     }
 
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
 }
 
 static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg){
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-	RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
 	PyObject* pArgs = PyTuple_New(3);
 	PyObject* callback = arg;
@@ -1810,22 +1672,21 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	if(!newAccumulateObj){
 	    fetchPyError(rctx);
 
-	    RedisGearsPy_SaveThread();
+	    RedisGearsPy_Unlock();
 		RedisGears_FreeRecord(accumulate);
         RedisGears_FreeRecord(r);
 		return NULL;
 	}
 	RG_PyObjRecordSet(accumulate, newAccumulateObj);
 
-	RedisGearsPy_SaveThread();
+	RedisGearsPy_Unlock();
     RedisGears_FreeRecord(r);
 	return accumulate;
 }
 
 static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg){
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     PyObject* pArgs = PyTuple_New(2);
     PyObject* callback = arg;
@@ -1845,14 +1706,14 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     if(!newAccumulateObj){
         fetchPyError(rctx);
 
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         RedisGears_FreeRecord(accumulate);
         RedisGears_FreeRecord(r);
         return NULL;
     }
     RG_PyObjRecordSet(accumulate, newAccumulateObj);
 
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
 
     RedisGears_FreeRecord(r);
     return accumulate;
@@ -1861,8 +1722,7 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
 static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record, void* arg){
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -1873,13 +1733,13 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     if(!newObj){
         fetchPyError(rctx);
 
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         RedisGears_FreeRecord(record);
         return NULL;
     }
     RG_PyObjRecordSet(record, newObj);
 
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return record;
 }
 
@@ -1887,8 +1747,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     // Call Python/C API functions...
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -1900,7 +1759,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     if(!newObj){
         fetchPyError(rctx);
 
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         RedisGears_FreeRecord(record);
         return NULL;
     }
@@ -1920,15 +1779,14 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
         RG_PyObjRecordSet(record, newObj);
     }
 
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return record;
 }
 
 static bool RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, void* arg){
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -1940,20 +1798,19 @@ static bool RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, vo
     if(!ret){
         fetchPyError(rctx);
 
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         return false;
     }
     bool ret1 = PyObject_IsTrue(ret);
 
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return ret1;
 }
 
 static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record, void* arg, size_t* len){
     assert(RedisGears_RecordGetType(record) == PY_RECORD);
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     PyObject* extractor = arg;
     PyObject* pArgs = PyTuple_New(1);
@@ -1965,7 +1822,7 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     if(!ret){
         fetchPyError(rctx);
 
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         return "";
     }
     PyObject* retStr;
@@ -1983,15 +1840,14 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     //Py_DECREF(retStr); todo: we should uncomment it after we will pass bool
     //                         that will tell the extractor to free the memory!!
 
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return retValue;
 }
 
 static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, size_t keyLen, Record *records, void* arg){
     assert(RedisGears_RecordGetType(records) == LIST_RECORD);
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     PyObject* obj = PyList_New(0);
     for(size_t i = 0 ; i < RedisGears_ListRecordLen(records) ; ++i){
@@ -2010,14 +1866,14 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     if(!ret){
         fetchPyError(rctx);
 
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         RedisGears_FreeRecord(records);
         return NULL;
     }
     Record* retRecord = RG_PyObjRecordCreate();
     RG_PyObjRecordSet(retRecord, ret);
 
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     RedisGears_FreeRecord(records);
     return retRecord;
 }
@@ -2106,11 +1962,10 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
 }
 
 static Record* RedisGearsPy_ToPyRecordMapper(ExecutionCtx* rctx, Record *record, void* arg){
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     Record* res = RedisGearsPy_ToPyRecordMapperInternal(record, arg);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
 
     RedisGears_FreeRecord(record);
 
@@ -2118,34 +1973,34 @@ static Record* RedisGearsPy_ToPyRecordMapper(ExecutionCtx* rctx, Record *record,
 }
 
 static void* RedisGearsPy_PyObjectDup(void* arg){
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     PyObject* obj = arg;
     Py_INCREF(obj);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return arg;
 }
 
 static void RedisGearsPy_PyObjectFree(void* arg){
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     PyObject* obj = arg;
     Py_DECREF(obj);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
 }
 
 static char* RedisGearsPy_PyObjectToString(void* arg){
     char* objCstr = NULL;
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     PyObject* obj = arg;
     PyObject *objStr = PyObject_Str(obj);
     const char* objTempCstr = PyUnicode_AsUTF8AndSize(objStr, NULL);
     objCstr = RG_STRDUP(objTempCstr);
     Py_DECREF(objStr);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return objCstr;
 }
 
 void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     PyObject* obj = arg;
     PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
     if(!objStr){
@@ -2157,21 +2012,21 @@ void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
     PyBytes_AsStringAndSize(objStr, &objStrCstr, &len);
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
     Py_DECREF(objStr);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return;
 }
 
 void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br){
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject* obj = PyMarshal_ReadObjectFromString(data, len);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return obj;
 }
 
 static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     PyObject* callback = arg;
     PyObject *pickleFunction = PyDict_GetItemString(pyGlobals, "dumps");
     PyObject *args = PyTuple_New(1);
@@ -2180,6 +2035,7 @@ static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     PyObject * serializedStr = PyObject_CallObject(pickleFunction, args);
     if(!serializedStr || PyErr_Occurred()){
         PyErr_Print();
+        RedisGearsPy_Unlock();
         return REDISMODULE_ERR;
     }
     Py_DECREF(args);
@@ -2188,12 +2044,12 @@ static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw){
     PyBytes_AsStringAndSize(serializedStr, &objStrCstr, &len);
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
     Py_DECREF(serializedStr);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return REDISMODULE_OK;
 }
 
 static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br){
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject *dataStr = PyBytes_FromStringAndSize(data, len);
@@ -2206,7 +2062,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br){
         assert(false);
     }
     Py_DECREF(args);
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     return callback;
 }
 
@@ -2288,8 +2144,7 @@ typedef struct PythonReaderCtx{
 static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
     PythonReaderCtx* pyCtx = ctx;
 
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(rctx);
-    RedisGearsPy_RestoreThread(subInterpreter);
+    RedisGearsPy_Lock();
 
     PyObject* pyRecord = NULL;
     if(!pyCtx->generator){
@@ -2304,10 +2159,10 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
         pyRecord = PyIter_Next(pyCtx->generator);
     }
     if(pyRecord == Py_None || pyRecord == NULL){
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
         return NULL;
     }
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     Record* record = RG_PyObjRecordCreate();
     RG_PyObjRecordSet(record, pyRecord);
     return record;
@@ -2316,12 +2171,12 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
 static void PythonReader_Free(void* ctx){
     PythonReaderCtx* pyCtx = ctx;
     PyObject* callback = pyCtx->callback;
-    RedisGearsPy_RestoreThread(NULL);
+    RedisGearsPy_Lock();
     Py_DECREF(callback);
     if(pyCtx->generator){
         Py_DECREF(pyCtx->generator);
     }
-    RedisGearsPy_SaveThread();
+    RedisGearsPy_Unlock();
     RG_FREE(pyCtx);
 }
 
@@ -2338,9 +2193,9 @@ static void PythonReader_Deserialize(void* ctx, Gears_BufferReader* br){
 static Reader* PythonReader_Create(void* arg){
     PyObject* callback = arg;
     if(callback){
-        RedisGearsPy_RestoreThread(NULL);
+        RedisGearsPy_Lock();
         Py_INCREF(callback);
-        RedisGearsPy_SaveThread();
+        RedisGearsPy_Unlock();
     }
     PythonReaderCtx* pyCtx = RG_ALLOC(sizeof(*pyCtx));
     pyCtx->callback = callback;
@@ -2531,14 +2386,6 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
                                                     RedisGearsPy_PyCallbackSerialize,
                                                     RedisGearsPy_PyCallbackDeserialize,
                                                     RedisGearsPy_PyObjectToString);
-    ArgType* subInterpreterType = RedisGears_CreateType(SUB_INTERPRETER_TYPE,
-                                                        RedisGearsPy_FreeSubInterpreter,
-                                                        RedisGearsPy_SubInterpreterDup,
-                                                        RedisGearsPy_SubInterpreterSerialize,
-                                                        RedisGearsPy_SubInterpreterDeserialize,
-                                                        RedisGearsPy_SubInterpreterToString);
-
-    RedisGears_RegisterFlatExecutionPrivateDataType(subInterpreterType);
 
     RGM_RegisterReader(PythonReader);
     RGM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
@@ -2580,12 +2427,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     assert(runGearsRemoteBuilderCallback);
     Py_INCREF(runGearsRemoteBuilderCallback);
 
-    PyThreadState* mainInterpreter = PyEval_SaveThread();
-    MainInterpreter = RG_ALLOC(sizeof(*MainInterpreter));
-    *MainInterpreter = (PythonSubInterpreter){
-            .refCount = 1,
-            .subInterpreter = mainInterpreter,
-    };
+    PyEval_SaveThread();
 
     return REDISMODULE_OK;
 }
