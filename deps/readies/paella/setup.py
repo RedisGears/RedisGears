@@ -187,7 +187,7 @@ class Setup(OnPlatform):
         pip_user = ''
         if self.os == 'macosx':
             pip_user = '--user '
-        self.run("pip install --disable-pip-version-check " + pip_user + cmd, output_on_error=True, _try=_try)
+        self.run(self.python + " -m pip install --disable-pip-version-check " + pip_user + cmd, output_on_error=True, _try=_try)
 
     def pip3_install(self, cmd, _try=False):
         pip_user = ''
@@ -197,11 +197,12 @@ class Setup(OnPlatform):
 
     def setup_pip(self, _try=False):
         get_pip = "set -e; wget -q https://bootstrap.pypa.io/get-pip.py -O /tmp/get-pip.py"
-        if self.run(self.python + " -m pip --version", _try=True) != 0:
+        if self.run(self.python + " -m pip --version", _try=True, output_on_error=False) != 0:
             if sys.version_info.major == 3:
                 self.install("python3-distutils")
             self.install_downloaders()
-            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py", output_on_error=True, _try=_try)
+            pip_user = ' --user' if self.os == 'macosx' else ''
+            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py" + pip_user, output_on_error=True, _try=_try)
 
     def install_downloaders(self, _try=False):
         if self.os == 'linux':
@@ -210,8 +211,8 @@ class Setup(OnPlatform):
 
     def install_git_lfs_on_linux(self, _try=False):
         cmd = "curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.{}.sh | bash"
-        if self.dist == 'fedora' or self.dist == 'centos' or self.dist == 'redhat':
+        if self.platform.is_redhat_compat():
             self.run(cmd.format('rpm'), _try=_try)
-        elif self.dist == 'ubuntu' or self.dist == 'debian':
+        elif self.platform.is_debian_compat():
             self.run(cmd.format('deb'), _try=_try)
         self.install("git-lfs", _try=_try)
