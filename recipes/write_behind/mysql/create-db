@@ -1,4 +1,10 @@
-CREATE TABLE `test`.`test_table1` (
-  `key` VARCHAR(100) NOT NULL,
-  `value` VARCHAR(100) NOT NULL,
-  PRIMARY KEY (`key`));
+#!/bin/bash
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+MYSQL=${MYSQL:-mysql}
+
+cd $HERE/..
+
+cat create-user.sql | mysql -h $MYSQL -ppasswd
+cat create-db.sql | mysql -h $MYSQL -utest -ppasswd

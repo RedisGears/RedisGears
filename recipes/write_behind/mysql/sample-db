@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# this relies on mysql credentials being defined in $HOME/.my.cnf
+
+MYSQL=${MYSQL:-mysql}
+
+while true; do
+	echo "select count(*) from test.person1;" | mysql -h $MYSQL -s
+	sleep 1
+done
