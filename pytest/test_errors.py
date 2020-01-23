@@ -86,6 +86,12 @@ class testStepsWrongArgs:
     def testRegisterWithWrongRegexType(self):
         self.env.expect('rg.pyexecute', 'GB().register(1)').error().contains('regex argument must be a string')
 
+    def testRegisterWithWrongEventKeysTypesList(self):
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=1)').error().contains('object is not iterable')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=1)').error().contains('object is not iterable')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=[1, 2, 3])').error().contains('type is not string')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=[1, 2, 3])').error().contains('type is not string')
+
     def testGearsBuilderWithWrongBuilderArgType(self):
         self.env.expect('rg.pyexecute', 'GB(1).run()').error().contains('reader argument must be a string')
 

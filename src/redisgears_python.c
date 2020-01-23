@@ -533,25 +533,89 @@ static PyObject* run(PyObject *self, PyObject *args){
     return Py_None;
 }
 
-static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
-    char* defaultRegexStr = "*";
-    const char* regexStr = defaultRegexStr;
-    PyObject* regex = PyDict_GetItemString(kargs, "regex");
-    if(regex){
-        if(PyUnicode_Check(regex)){
-            regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
-        }else{
-            PyErr_SetString(GearsError, "regex argument must be a string");
+static int registerStrKeyTypeToInt(const char* keyType){
+    if(strcmp(keyType, "string") == 0){
+        return REDISMODULE_KEYTYPE_STRING;
+    }
+    if(strcmp(keyType, "list") == 0){
+        return REDISMODULE_KEYTYPE_LIST;
+    }
+    if(strcmp(keyType, "hash") == 0){
+        return REDISMODULE_KEYTYPE_HASH;
+    }
+    if(strcmp(keyType, "set") == 0){
+        return REDISMODULE_KEYTYPE_SET;
+    }
+    if(strcmp(keyType, "zset") == 0){
+        return REDISMODULE_KEYTYPE_ZSET;
+    }
+    if(strcmp(keyType, "module") == 0){
+        return REDISMODULE_KEYTYPE_MODULE;
+    }
+    return -1;
+}
+
+static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr){
+    char** eventTypes = NULL;
+    int* keyTypes = NULL;
+
+    // getting even types white list (no list == all event types)
+    PyObject* pyEventTypes = PyDict_GetItemString(kargs, "eventTypes");
+    if(pyEventTypes && pyEventTypes != Py_None){
+        PyObject* eventTypesIterator = PyObject_GetIter(pyEventTypes);
+        if(!eventTypesIterator){
             return NULL;
         }
+        eventTypes = array_new(char*, 10);
+        PyObject* event = NULL;
+        while((event = PyIter_Next(eventTypesIterator))){
+            if(!PyUnicode_Check(event)){
+                Py_DECREF(eventTypesIterator);
+                array_free_ex(eventTypes, RG_FREE);
+                PyErr_SetString(GearsError, "given event type is not string");
+                return NULL;
+            }
+            const char* eventTypeStr = PyUnicode_AsUTF8AndSize(event, NULL);
+            char* eventTypeStr1 = RG_STRDUP(eventTypeStr);
+            eventTypes = array_append(eventTypes, eventTypeStr1);
+        }
+        Py_DECREF(eventTypesIterator);
     }
 
-    const char* reader = RedisGears_GetReader(fep);
-    if (strcmp(reader, "KeysReader") == 0 ||
-            strcmp(reader, "KeysOnlyReader") == 0) {
-        return RG_STRDUP(regexStr);
+    // getting key types white list (no list == all key types)
+    PyObject* pyKeyTypes = PyDict_GetItemString(kargs, "keyTypes");
+    if(pyKeyTypes && pyKeyTypes != Py_None){
+        PyObject* keyTypesIterator = PyObject_GetIter(pyKeyTypes);
+        if(!keyTypesIterator){
+            return NULL;
+        }
+        keyTypes = array_new(char*, 10);
+        PyObject* keyType = NULL;
+        while((keyType = PyIter_Next(keyTypesIterator))){
+            if(!PyUnicode_Check(keyType)){
+                Py_DECREF(keyTypesIterator);
+                array_free_ex(eventTypes, RG_FREE);
+                array_free(keyTypes);
+                PyErr_SetString(GearsError, "given key type is not string");
+                return NULL;
+            }
+            const char* keyTypeStr = PyUnicode_AsUTF8AndSize(keyType, NULL);
+            int keyTypeInt = registerStrKeyTypeToInt(keyTypeStr);
+            if(keyTypeInt == -1){
+                Py_DECREF(keyTypesIterator);
+                array_free_ex(eventTypes, RG_FREE);
+                array_free(keyTypes);
+                PyErr_SetString(GearsError, "unknown key type");
+                return NULL;
+            }
+            keyTypes = array_append(keyTypes, keyTypeInt);
+        }
+        Py_DECREF(keyTypesIterator);
     }
+    return RedisGears_KeysReaderTriggerArgsCreate(regexStr, eventTypes, keyTypes);
+}
 
+static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
     size_t batch = 1;
     PyObject* pyBatch = PyDict_GetItemString(kargs, "batch");
     if(pyBatch){
@@ -575,6 +639,30 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
     }
 
     return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS);
+}
+
+static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
+    char* defaultRegexStr = "*";
+    const char* regexStr = defaultRegexStr;
+    PyObject* regex = PyDict_GetItemString(kargs, "regex");
+    if(regex){
+        if(PyUnicode_Check(regex)){
+            regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
+        }else{
+            PyErr_SetString(GearsError, "regex argument must be a string");
+            return NULL;
+        }
+    }
+
+    const char* reader = RedisGears_GetReader(fep);
+    if (strcmp(reader, "KeysReader") == 0 ||
+            strcmp(reader, "KeysOnlyReader") == 0) {
+        return registerCreateKeysArgs(kargs, regexStr);
+    }else if (strcmp(reader, "StreamReader") == 0){
+        return registerCreateStreamArgs(kargs, regexStr);
+    }
+    PyErr_SetString(GearsError, "given reader does not exists or does not support register");
+    return NULL;
 }
 
 static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kargs){
@@ -775,12 +863,11 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
 
-    RedisModule_AutoMemory(rctx);
-
     PyObject* command = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(command)){
         PyErr_SetString(GearsError, "the given command must be a string");
         LockHandler_Release(rctx);
+        RedisModule_FreeThreadSafeContext(rctx);
         return NULL;
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
@@ -803,7 +890,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     if(reply){
         RedisModule_FreeCallReply(reply);
     }
-    array_free(argements);
+    array_free_ex(argements, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1325,6 +1412,7 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     Gears_BufferReader reader;
     Gears_BufferReaderInit(&reader, &b);
     td->callback = RedisGearsPy_PyCallbackDeserialize(&reader);
+    RedisModule_Free(buff);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
     RedisGearsPy_RestoreThread(NULL);

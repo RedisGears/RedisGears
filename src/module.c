@@ -180,6 +180,10 @@ static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* str
     return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS);
 }
 
+static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
+    return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+}
+
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
     FlatExecutionPlan_Free(fep);
 }
@@ -349,7 +353,8 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         Gears_dictReleaseIterator(iter);
     } else {
         // when loading keys phase finished, we load the registrations.
-        for(char* readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
+        char* readerName = NULL;
+        for(readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
                 strlen(readerName) > 0 ;
                 readerName = RedisModule_LoadStringBuffer(rdb, NULL)){
             assert(readerName);
@@ -358,6 +363,7 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
             callbacks->rdbLoad(rdb, encver);
             RedisModule_Free(readerName);
         }
+        RedisModule_Free(readerName);
     }
     return REDISMODULE_OK;
 }
@@ -429,6 +435,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
+    REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);
