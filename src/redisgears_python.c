@@ -658,7 +658,7 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
     if (strcmp(reader, "KeysReader") == 0 ||
             strcmp(reader, "KeysOnlyReader") == 0) {
         return registerCreateKeysArgs(kargs, regexStr);
-    }else {
+    }else if (strcmp(reader, "StreamReader")){
         return registerCreateStreamArgs(kargs, regexStr);
     }
     PyErr_SetString(GearsError, "given reader does not exists");
