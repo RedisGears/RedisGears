@@ -16,22 +16,37 @@ parser.add_argument('--password', default=None, help='Redis password')
 args = parser.parse_args()
 
 conn = redis.Redis(args.host, args.port, password=args.password)
+conn1 = redis.Redis(args.host, args.port + 2, password=args.password)
 
 reqs = ['hset person2:%d first_name foo last_name bar age 31' % i for i in range(NUM_REQ)]
 dels = ['del person2:%d' % i for i in range(NUM_REQ)]
 
 start = time.time()
+i = 0
 for r in reqs:
-	p = conn.pipeline(transaction=False)
-	p.execute_command(r)
-	p.wait(1, 10)
-	p.execute()
+    p = conn.pipeline(transaction=False)
+    p1 = conn1.pipeline(transaction=False)
+    try:
+        p.execute_command(r)
+        p.wait(1, 10)
+        p.execute()
+    except:
+        p1.execute_command(r)
+        p1.wait(1, 10)
+        p1.execute()
+    i += 1
+    if i % 100 == 0:
+        print("hset " + str(i))
 
+i = 0
 for d in dels:
-	p = conn.pipeline(transaction=False)
-	p.execute_command(d)
-	p.wait(1, 10)
-	p.execute()
+    p = conn.pipeline(transaction=False)
+    p.execute_command(d)
+    p.wait(1, 10)
+    p.execute()
+    i += 1
+    if i % 100 == 0:
+        print("del " + str(i))
 
 end = time.time()
 

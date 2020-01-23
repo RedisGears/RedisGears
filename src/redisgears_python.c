@@ -111,6 +111,7 @@ static PythonThreadCtx* GetPythonThreadCtx(){
  * the best effort approach.
  */
 //PyGILState_STATE PyGILState_Ensure(void){
+//	return _PyGILState_Ensure();
 //    PythonThreadCtx* ptctx = GetPythonThreadCtx();
 //    if(ptctx->subInterpreter->subInterpreter->gilstate_counter == 0){
 //        RedisGearsPy_RestoreThread(NULL);
@@ -119,6 +120,7 @@ static PythonThreadCtx* GetPythonThreadCtx(){
 //}
 //
 //void PyGILState_Release(PyGILState_STATE oldstate){
+//	PyGILState_Release(oldstate);
 //    PythonThreadCtx* ptctx = GetPythonThreadCtx();
 //    if(ptctx->subInterpreter->subInterpreter->gilstate_counter == 1){
 //        RedisGearsPy_SaveThread();

@@ -5,7 +5,8 @@ import time
 engine = None
 conn = None
 sqlText = None
-dbtype = 'snowflake'
+dbtype = 'mysql'
+# dbtype = 'snowflake'
 _debug=True
 
 # addQuery =
@@ -28,7 +29,7 @@ SLEEP_TIME=1
 ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
 
 MYSQL_CONFIG = {
-    'ConnectionStr': 'mysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql'),
+    'ConnectionStr': 'mysql+pymysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql/test'),
 }
 
 ORACLE_CONFIG = {
@@ -38,7 +39,7 @@ ORACLE_CONFIG = {
 def get_snowflake_conn_str():
     import configparser
     c = configparser.ConfigParser()
-    c.read('/root/.snowsql/config')
+    c.read('/opt/redislabs/.snowsql/config')
     username = c['connections']['username']
     password = c['connections']['password']
     account = c['connections']['accountname']
@@ -135,15 +136,15 @@ def Connect():
     else:
         Log('Connect: invalid db engine: ' + dbtype)
         raise Exception('Connect: invalid db engine: ' + dbtype)
-        
+
     return None
 
 def PrepereQueries():
     global conn
     global dbtype
 
-    Log('Determining dbtype')
-    Connect() # determine dbtype
+    # Log('Determining dbtype')
+    # Connect() # determine dbtype
 
     for k,v in config.items():
         table, pkey = k.split(':')
@@ -154,7 +155,7 @@ def PrepereQueries():
             raise Exception('failed to create query for %s', str(k))
 
         # create upsert query
-        if dbtype == 'oracle':
+        if dbtype == 'oracle' or dbtype == 'snowflake':
             values = [val for kk, val in v.items() if not kk.startswith('_')]
             values_with_pkey = [pkey] + values
             merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (v[TABLE_KEY], pkey, pkey)
@@ -205,7 +206,7 @@ def CreateStreamInserter(config):
 def CreateSQLDataWriter(config):
     def WriteToSQLDB(r):
         # Debug('In WriteToSQLDB')
-        
+
         global conn
         global sqlText
 
@@ -215,7 +216,7 @@ def CreateSQLDataWriter(config):
         for x in r:
             x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
         while True:
-            Debug('WriteToSQLDB: in loop')
+            # Debug('WriteToSQLDB: in loop')
             query = None
             errorOccured = False
 
@@ -274,7 +275,7 @@ def CheckIfHash(r):
 def RegisterExecutions():
     for k, v in config.items():
         regs0 = execute('rg.dumpregistrations')
-        
+
         regex = k.split(':')[0]
         ## create the execution to write each changed key to stream
         GB('KeysReader', desc='add each changed key with prefix %s:* to Stream' % regex).\
@@ -286,18 +287,18 @@ def RegisterExecutions():
         regs1 = execute('rg.dumpregistrations')
         if len(regs0) == len(regs1):
             Log("Reader failed to register: k=%s v=%s" % (k, str(v)))
-        
+
         ## create the execution to write each key from stream to DB
         GB('StreamReader', desc='read from stream and write to DB table %s' % v[TABLE_KEY]).\
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
         count().\
         register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000)
-        
+
         regs2 = execute('rg.dumpregistrations')
         if len(regs1) == len(regs2):
             Log("Writer failed to register: k=%s v=%s" % (k, str(v)))
-        
+
     # Debug('-' * 80)
     # regs = execute('rg.dumpregistrations')
     # Debug('regs: ' + str(regs))

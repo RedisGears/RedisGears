@@ -1,43 +1,27 @@
-# RedisGears Write-Behind Recipe on Redis Enterprise Software cluster
+# RedisGears Write-Behind Recipe on Redis Enterprise Software cluster for Snowflake DB
 
 ## System requirements
 
 * Redis Enterprise Software v5.4.11-2 or above running on RHEL7
-* Snowflake DB account
+* Snowflake DB account (you'll need an account name, username and password)
 * RedisGears module built for RHEL7/CentOS7
-
-## Configuration
-
-TBD: key names and tables
 
 ## Installing the Redis cluster
 
-* [Create an un-bootstrapped Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
+* [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
+* On each cluster node, run (as root, via `sudo bash`) - fill your account code and credentials:
 
-* On each cluster node, run:
 ```
+SNOW_USER="..." SNOW_PASSWD="..." SNOW_ACCT="CODE.eu-west-1" \
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 ```
 
-* [Bootstrap the Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/administering/cluster-operations/new-cluster-setup/).
+* Download the [Redis Gears module](http://redismodules.s3.amazonaws.com/lab/11-gears-write-behind-sf/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
-* Configure Snowflake DB connection:
-  * Run `sudo snowsql`. This will create the default configuration file in `/root/.snowsql/config`.
-  * Configure Snowflake connection details in `/root/.snowsql/config`. This should be in a form similar to:
-
+* Create a Snowflake database using the following script:
 ```
-[connections]
-accountname = "CODE.eu-west-1"
-username = "USERNAME"
-password = "PASSWORD"
+/opt/recipe/snowflake/rs/create-exmaple-db
 ```
-
-* Make sure your database in snowflake is up and running.  An example script can be run
-<<TODO>>  or can be adopted to reflect your database schema.
-
-
-## Configure the gear to reflect your database schema
-<<TODO>>
 
 ## Running the write-behind gear
 
@@ -59,16 +43,35 @@ select * from person1;
 ```
 
 ## Testing
-<<TODO do we need this ??? can we point to a more general "testing your gear documentation">>>
-* From a cluster node, run `ID=<db-id> /opt/recipe/snowflake/rs/run-test`.
-* Run `echo "select count(*) from person1;" | snowsql`
+* Log on via SSH to a cluster node.
+* Examine `/var/opt/redislabs/redis` for Redis servers running on the node.
+  * You can also examine `ps ax | grep redis-server` for that perpose.
+* With one of the Redis IDs above, run `ID=<db-id> /opt/recipe/snowflake/rs/run-test`.
+* Open another connection to that node and run `/opt/recipe/snowflake/sample-snowsql-db`
 
 ## Diagnostics
-<<TODO do we need this ??? can we point to a more general "diagnosing your recipe">>>
-### Gear status
 
-* Check the Redis DB log for errors: `/var/opt/redislabs/log/redis-*.log`
+### Redis status
+
+* `rladmin status` command
+* Redis configuration files at `/var/opt/redislabs/redis`
+* Redis log at `/var/opt/redislabs/log/redis-#.log`
+* Restart Redis shards (do that to restart Gears):
+```
+rlutil redis_restart redis=<Redis shard IDs> force=yes
+```
+
+### Gears status
+
+* redis-cli via bdb-cli DB-ID
+  * `RG.DUMPEXECUTIONS` command
 
 ### Snowflake status
 
-* Run `echo "select count(*) from person1;" | snowflake`
+* `/opt/recipe/snowflake/sample-snowsql-db` will repeatedly print number of records in the Snowlake test table.
+
+* Snowflake CLI: `snowsql` 
+
+## Configure the gear to reflect your database schema
+TBD
+

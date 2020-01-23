@@ -6,6 +6,8 @@
 
 set -e
 
+[[ -z $SNOW_USER || -z $SNOW_PASSWD || -z $SNOW_ACCT ]] && { echo "Please define SNOW_USER, SNOW_PASSWD, and SNOW_ACCT for your Snowflake DB account."; exit 1; }
+
 if [ ! -z $(command -v apt-get) ]; then
 	apt-get -qq update
 	apt-get install -yq git
@@ -24,7 +26,7 @@ ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 cd /opt/RedisGears/recipes/write_behind
 ln -s ../gears.py .
 
-/opt/redislabs/bin/python2 /opt/recipe/snowflake/rs/install-modules.py --yaml /opt/recipe/snowflake/rs/redis-modules.yaml
+/opt/redislabs/bin/python2 /opt/recipe/snowflake/rs/install-modules.py --no-bootstrap-check --yaml /opt/recipe/snowflake/rs/redis-modules.yaml
 
 /opt/recipe/snowflake/install-snowflake-client
 /opt/recipe/snowflake/install-snowflake-python-client
