@@ -511,7 +511,7 @@ static void KeysReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
 }
 
 static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
-    char* regex = RG_STRDUP(RedisGears_BRReadString(br));
+    char* regex = RedisGears_BRReadString(br);
     char** eventTypes = NULL;
     int* keyTypes = NULL;
     if(RedisGears_BRReadLong(br)){

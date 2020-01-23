@@ -353,7 +353,8 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         Gears_dictReleaseIterator(iter);
     } else {
         // when loading keys phase finished, we load the registrations.
-        for(char* readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
+        char* readerName = NULL;
+        for(readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
                 strlen(readerName) > 0 ;
                 readerName = RedisModule_LoadStringBuffer(rdb, NULL)){
             assert(readerName);
@@ -362,6 +363,7 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
             callbacks->rdbLoad(rdb, encver);
             RedisModule_Free(readerName);
         }
+        RedisModule_Free(readerName);
     }
     return REDISMODULE_OK;
 }

@@ -863,12 +863,11 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
 
-    RedisModule_AutoMemory(rctx);
-
     PyObject* command = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(command)){
         PyErr_SetString(GearsError, "the given command must be a string");
         LockHandler_Release(rctx);
+        RedisModule_FreeThreadSafeContext(rctx);
         return NULL;
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
@@ -891,7 +890,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     if(reply){
         RedisModule_FreeCallReply(reply);
     }
-    array_free(argements);
+    array_free_ex(argements, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1413,6 +1412,7 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     Gears_BufferReader reader;
     Gears_BufferReaderInit(&reader, &b);
     td->callback = RedisGearsPy_PyCallbackDeserialize(&reader);
+    RedisModule_Free(buff);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
     RedisGearsPy_RestoreThread(NULL);

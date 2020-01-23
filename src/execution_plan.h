@@ -207,7 +207,7 @@ typedef struct ExecutionPlan{
     Record** errors;
     ExecutionPlanStatus status;
     ExecutionFlags flags;
-    OnDoneData* onDoneData;
+    OnDoneData* onDoneData; // Array of callbacks to run on done
     long long executionDuration;
     WorkerData* assignWorker;
     ExecutionMode mode;

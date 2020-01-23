@@ -2432,7 +2432,7 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
             ".run(convertToStr=False, collect=False)", eid);
         // TODO: we create the fake args array with size 2 because the first should be the commmand but we only use the second one.
         int res = RedisGearsPy_ExecuteWithCallback(ctx, fargv, 2, onDoneResultsOnly);
-        RedisModule_Free(fargv[1]);
+        RedisModule_FreeString(ctx, fargv[1]);
         RG_FREE(fargv);
         return res;
 #endif

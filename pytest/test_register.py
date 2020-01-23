@@ -565,6 +565,9 @@ def testKeysReaderKeyTypeFilter(env):
                             "filter(lambda x: 'value' in x.keys())."
                             "foreach(lambda x: execute('incr', 'counter'))."
                             "register(regex='*', keyTypes=['list'])")
+
+    time.sleep(0.1) # wait for registration reach all shards
+
     conn.lpush('l', '1')
     conn.rpush('l', '1')
 
