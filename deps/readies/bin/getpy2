@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
@@ -6,12 +6,28 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 [ "$VERBOSE" = "1" ] && set -x
 
-if [ ! -z $(command -v python) ]; then
+check_variants() {
+	PYTHON=$(command -v python)
+	PYTHON2=$(command -v python2)
+	PYTHON27=$(command -v python2.7)
+
+	if [ ! -z $FIX ]; then
+		if [ ! -z $PYTHON2 ]; then
+			[ -z $PYTHON ] && ln -s $PYTHON2 /usr/local/bin/python
+		fi
+
+		if [ ! -z $PYTHON27 ]; then
+			[ -z $PYTHON2 ] && ln -s $PYTHON27 /usr/local/bin/python2
+			[ -z $PYTHON ]  && ln -s $PYTHON27 /usr/local/bin/python
+		fi
+	fi
+}
+
+check_variants
+
+if [ ! -z $PYTHON ]; then
 	[ "$(python --version 2>&1 | cut -d" " -f2 | cut -d. -f1)" = "2" ] && exit 0
 fi
-
-[ ! -z $(command -v python2) ] && exit 0
-[ ! -z $(command -v python2.7) ] && exit 0
 
 [[ $CHECK == 1 ]] && exit 1
 
@@ -27,10 +43,14 @@ elif [ ! -z $(command -v apk) ]; then
 	runn apk add python2
 elif [ ! -z $(command -v brew) ]; then
 	runn brew install python2
-	[ ! -z $(command -v python2) ] && ln -s `which python` /usr/local/bin/python2
+elif [ ! -z $(command -v pkg) ]; then
+	runn pkg install -y python2
 fi
 
 if [ -z $(command -v python) ]; then
 	>&2 echo "Cannot install Python2. Aborting."
 	exit 1
 fi
+
+check_variants
+exit 0

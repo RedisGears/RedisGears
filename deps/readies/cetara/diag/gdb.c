@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
