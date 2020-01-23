@@ -661,7 +661,7 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
     }else if (strcmp(reader, "StreamReader")){
         return registerCreateStreamArgs(kargs, regexStr);
     }
-    PyErr_SetString(GearsError, "given reader does not exists");
+    PyErr_SetString(GearsError, "given reader does not exists or does not support register");
     return NULL;
 }
 
