@@ -90,6 +90,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("zlib openssl readline")
         self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
+        self.install_gnu_utils()
 
         self.pip_install("pipenv gevent")
 

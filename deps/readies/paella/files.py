@@ -65,3 +65,6 @@ def mkdir_p(dir):
         os.makedirs(dir, exist_ok=True)
 
 #----------------------------------------------------------------------------------------------
+
+def relpath(dir, rel):
+    return os.path.abspath(os.path.join(dir, rel))
