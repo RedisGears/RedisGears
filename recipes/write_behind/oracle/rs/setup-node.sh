@@ -23,10 +23,11 @@ cd /opt/RedisGears/recipes/write_behind
 ln -s ../gears.py .
 
 OSNICK=`/opt/redislabs/bin/python2 /opt/RedisGears/deps/readies/bin/platform --osnick`
-if [[ $OSNICK != 'centos7' || $OSNICK != 'bionic' ]]; then
+if [[ $OSNICK != 'centos7' || $OSNICK != 'bionic' || not 'rhel7' in $OSNICK ]]; then
 	echo "$OSNICK: incompatible platform. Aborting."
 	exit 1
 fi
+[[ 'rhel7' in $OSNICK ]] && OSNICK='centos7'
 
 MOD_DIR=/opt/recipe/oracle/rs
 /opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml

@@ -2,9 +2,9 @@
 
 ## System requirements
 
-* Redis Enterprise Software v5.4.11-2 or above running on Ubuntu Bionic
+* Redis Enterprise Software v5.4.11-2 or above running on Ubuntu Bionic or RHEL 7
 * Oracle database (tested with 11g and 12c)
-* RedisGears module built for Ubuntu Bionic
+* RedisGears module built for Ubuntu Bionic or RHEL 7
 
 ## Configuration
 
