@@ -9,6 +9,7 @@
 #include "globals.h"
 #include "lock_handler.h"
 #include "record.h"
+#include "config.h"
 
 #include <assert.h>
 
@@ -27,6 +28,8 @@ typedef struct KeysReaderRegisterData{
     unsigned long long numSuccess;
     unsigned long long numFailures;
     unsigned long long numAborted;
+    Gears_list* localPendingExecutions;
+    Gears_list* localDoneExecutions;
 }KeysReaderRegisterData;
 
 Gears_list* keysReaderRegistration = NULL;
@@ -66,6 +69,29 @@ static void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args){
 
 static void KeysReaderRegisterData_Free(KeysReaderRegisterData* rData){
     if((--rData->refCount) == 0){
+
+        Gears_listNode* n = NULL;
+
+        // if we free registration there must not be any pending executions.
+        // either all executions was finished or aborted
+        assert(Gears_listLength(rData->localPendingExecutions) == 0);
+
+        while((n = Gears_listFirst(rData->localDoneExecutions))){
+            char* epIdStr = Gears_listNodeValue(n);
+            Gears_listDelNode(rData->localDoneExecutions, n);
+            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+            RG_FREE(epIdStr);
+            if(!ep){
+                RedisModule_Log(NULL, "info", "Failed finding done execution to drop on unregister. Execution was probably already dropped.");
+                continue;
+            }
+            // all the executions here are done, will just drop it.
+            RedisGears_DropExecution(ep);
+        }
+
+        Gears_listRelease(rData->localPendingExecutions);
+        Gears_listRelease(rData->localDoneExecutions);
+
         if(rData->lastError){
             RG_FREE(rData->lastError);
         }
@@ -87,6 +113,8 @@ static KeysReaderRegisterData* KeysReaderRegisterData_Create(FlatExecutionPlan* 
         .numSuccess = 0,
         .numFailures = 0,
         .numAborted = 0,
+        .localPendingExecutions = Gears_listCreate(),
+        .localDoneExecutions = Gears_listCreate(),
     };
     return rData;
 }
@@ -372,6 +400,42 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
 static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     KeysReaderRegisterData* rData = privateData;
 
+    Gears_listNode *head = Gears_listFirst(rData->localPendingExecutions);
+    char* epIdStr = NULL;
+    while(head){
+        epIdStr = Gears_listNodeValue(head);
+        Gears_listDelNode(rData->localPendingExecutions, head);
+        if(strcmp(epIdStr, ctx->idStr) != 0){
+            RedisModule_Log(NULL, "warning", "Got an out of order execution on registration, ignoring execution.");
+            RG_FREE(epIdStr);
+            head = Gears_listFirst(rData->localPendingExecutions);
+            continue;
+        }
+        // Found the execution id, we can stop iterating
+        break;
+    }
+    if(!epIdStr){
+        epIdStr = RG_STRDUP(ctx->idStr);
+    }
+
+    if(EPIsFlagOn(ctx, EFIsLocal)){
+        // Add the execution id to the localDoneExecutions list
+        Gears_listAddNodeTail(rData->localDoneExecutions, epIdStr);
+        if(GearsConfig_GetMaxExecutionsPerRegistration() > 0 && Gears_listLength(rData->localDoneExecutions) > GearsConfig_GetMaxExecutionsPerRegistration()){
+            Gears_listNode *head = Gears_listFirst(rData->localDoneExecutions);
+            epIdStr = Gears_listNodeValue(head);
+            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+            if(ep){
+                assert(EPIsFlagOn(ep, EFDone));
+                RedisGears_DropExecution(ep);
+            }
+            RG_FREE(epIdStr);
+            Gears_listDelNode(rData->localDoneExecutions, head);
+        }
+    }else{
+        RG_FREE(epIdStr);
+    }
+
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
 
     if(errorsLen > 0){
@@ -382,6 +446,8 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             RG_FREE(rData->lastError);
         }
         rData->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
+    } else if(ctx->status == ABORTED){
+        ++rData->numAborted;
     } else {
         ++rData->numSuccess;
     }
@@ -458,9 +524,21 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
             void* privateData = NULL;
             callback = KeysReader_ExecutionDone;
             privateData = KeysReaderRegisterData_GetShallowCopy(rData);
-            if(!RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData)){
+            ExecutionPlan* ep = RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData);
+            if(!ep){
                 ++rData->numAborted;
                 RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
+                continue;
+            }
+            if(EPIsFlagOn(ep, EFIsLocal) && rData->mode != ExecutionModeSync){
+                // execution is local
+                // If execution is SYNC it will be added to localDoneExecutions on done
+                // Otherwise, save it to the registration pending execution list.
+                // currently we are not save global executions and those will not be listed
+                // in the registration execution list nor will be drop on unregister.
+                // todo: handle none local executions
+                char* idStr = RG_STRDUP(ep->idStr);
+                Gears_listAddNodeTail(rData->localPendingExecutions, idStr);
             }
         }
     }
@@ -534,6 +612,26 @@ static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
 static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPending){
     KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, FindRegistrationDataFlagPop);
     assert(rData);
+
+    if(abortPending){
+        // unregister require aborting all pending executions
+        Gears_listNode* n = NULL;
+        Gears_listIter *iter = Gears_listGetIterator(rData->localPendingExecutions, AL_START_HEAD);
+        while((n = Gears_listNext(iter))){
+            char* epIdStr = Gears_listNodeValue(n);
+            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+            if(!ep){
+                RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
+                continue;
+            }
+            // we can not free while iterating so we add to the epArr and free after
+            if(RedisGears_AbortExecution(ep) != REDISMODULE_OK){
+                RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
+            }
+        }
+        Gears_listReleaseIterator(iter);
+    }
+
     KeysReaderRegisterData_Free(rData);
 }
 
