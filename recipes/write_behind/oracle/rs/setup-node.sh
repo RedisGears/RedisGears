@@ -11,7 +11,7 @@ if [[ -z $ORACLE ]]; then
 	exit 1
 fi
 
-if [ ! -z $(command -v git) ]; then
+if [ -z $(command -v git) ]; then
 	if [ ! -z $(command -v apt-get) ]; then
 		apt-get -qq update
 		apt-get install -y git
