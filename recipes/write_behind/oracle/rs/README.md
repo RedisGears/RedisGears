@@ -27,12 +27,13 @@ select * from car;
 ```
 ## Installing the Redis cluster
 
-* Create an un-bootstrapped Redis Enterprise cluster.
+* Create Redis Enterprise cluster.
 * On each cluster node, run:
 ```
 ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 ```
-* Bootstrap the cluster.
+* Download the [Redis Gears module](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
+* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
 
 ## Running the write-behind gear
 
