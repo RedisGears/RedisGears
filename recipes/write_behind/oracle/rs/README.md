@@ -30,7 +30,7 @@ select * from car;
 * Create an un-bootstrapped Redis Enterprise cluster.
 * On each cluster node, run:
 ```
-ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node)
+ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 ```
 * Bootstrap the cluster.
 
