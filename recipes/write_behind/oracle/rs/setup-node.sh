@@ -10,7 +10,20 @@ if [[ -z $ORACLE ]]; then
 	echo "Error: no ORACLE IP address given. Aborting."
 	exit 1
 fi
-	
+
+if [ ! -z $(command -v git) ]; then
+	if [ ! -z $(command -v apt-get) ]; then
+		apt-get -qq update
+		apt-get install -y git
+	elif [ ! -z $(command -v yum) ]; then
+		yum install -y git
+	else
+		echo "%make love"
+		echo "Make:  Don't know how to make love.  Stop."
+		exit 1
+	fi
+fi
+
 BRANCH=write_behind_1
 
 mkdir -p /opt
