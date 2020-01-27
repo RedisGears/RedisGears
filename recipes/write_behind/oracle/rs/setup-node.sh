@@ -24,7 +24,7 @@ ln -s ../gears.py .
 
 OSNICK=`/opt/redislabs/bin/python2 /opt/RedisGears/deps/readies/bin/platform --osnick`
 [[ $OSNICK =~ 'rhel7' ]] && OSNICK='centos7'
-if [[ $OSNICK != 'centos7' || $OSNICK != 'bionic' ]]; then
+if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' ]]; then
 	echo "$OSNICK: incompatible platform. Aborting."
 	exit 1
 fi
