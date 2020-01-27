@@ -615,6 +615,8 @@ static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPendi
 
     if(abortPending){
         // unregister require aborting all pending executions
+        ExecutionPlan** abortEpArray = array_new(ExecutionPlan*, 10);
+
         Gears_listNode* n = NULL;
         Gears_listIter *iter = Gears_listGetIterator(rData->localPendingExecutions, AL_START_HEAD);
         while((n = Gears_listNext(iter))){
@@ -624,12 +626,22 @@ static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPendi
                 RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
                 continue;
             }
+
+            // we can not abort right now cause aborting might cause values to be deleted
+            // from localPendingExecutions and it will mess up with the iterator
+            // so we must collect all the exeuctions first and then abort one by one
+            abortEpArray = array_append(abortEpArray, ep);
+        }
+        Gears_listReleaseIterator(iter);
+
+        for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
             // we can not free while iterating so we add to the epArr and free after
-            if(RedisGears_AbortExecution(ep) != REDISMODULE_OK){
+            if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
                 RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
             }
         }
-        Gears_listReleaseIterator(iter);
+
+        array_free(abortEpArray);
     }
 
     KeysReaderRegisterData_Free(rData);
