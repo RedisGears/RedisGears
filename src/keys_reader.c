@@ -531,7 +531,7 @@ static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
     return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
 }
 
-static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep){
+static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPending){
     KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, FindRegistrationDataFlagPop);
     assert(rData);
     KeysReaderRegisterData_Free(rData);

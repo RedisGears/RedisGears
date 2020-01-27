@@ -2,6 +2,7 @@
 #include "utils/arr_rm_alloc.h"
 #include "cluster.h"
 #include "record.h"
+#include "execution_plan.h"
 #ifdef WITHPYTHON
 #include <Python.h>
 #include <object.h>
@@ -158,6 +159,39 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	return REDISMODULE_OK;
 }
 
+int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+    ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
+
+    if(!gearsCtx){
+        RedisModule_ReplyWithError(ctx, "Execution plan does not exits");
+        return REDISMODULE_OK;
+    }
+
+    if(RedisGears_IsDone(gearsCtx)){
+        RedisModule_ReplyWithError(ctx, "Execution already finished.");
+        return REDISMODULE_OK;
+    }
+
+    if(EPIsFlagOff(gearsCtx, EFIsLocal)){
+        RedisModule_ReplyWithError(ctx, "Can not abort none local execution.");
+        return REDISMODULE_OK;
+    }
+
+    if(RedisGears_AbortExecution(gearsCtx) != REDISMODULE_OK){
+        RedisModule_ReplyWithError(ctx, "Failed aborting execution.");
+        return REDISMODULE_OK;
+    }
+
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+
+    return REDISMODULE_OK;
+}
+
 int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 	if(argc != 2){
 		return RedisModule_WrongArity(ctx);
@@ -172,7 +206,7 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	}
 
 	if(!RedisGears_IsDone(gearsCtx)){
-		RedisModule_ReplyWithError(ctx, "can not drop a running execution");
+		RedisModule_ReplyWithError(ctx, "can not drop a not yet finished execution, abort it first.");
 		return REDISMODULE_OK;
 	}
 
@@ -181,28 +215,6 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 
 	return REDISMODULE_OK;
-}
-
-int Command_ReExecute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    return REDISMODULE_OK;
-    // todo : implement by opening redis key
-//    if(argc != 3){
-//        return RedisModule_WrongArity(ctx);
-//    }
-//
-//    const char* name = RedisModule_StringPtrLen(argv[1], NULL);
-//    char* arg = RG_STRDUP(RedisModule_StringPtrLen(argv[2], NULL));;
-//    FlatExecutionPlan* gearsCtx = RedisGears_GetFlatExecution(name);
-//
-//    if(!gearsCtx){
-//        RedisModule_ReplyWithError(ctx, "flat execution plan does not exits");
-//        return REDISMODULE_OK;
-//    }
-//
-//    ExecutionPlan* ep = RedisGears_Run(gearsCtx, arg, NULL, NULL);
-//    const char* id = RedisGears_GetId(ep);
-//    RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
-//    return REDISMODULE_OK;
 }
 
 

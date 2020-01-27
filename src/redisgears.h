@@ -104,7 +104,7 @@ typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* pri
  */
 typedef Reader* (*RedisGears_CreateReaderCallback)(void* arg);
 typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg);
-typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep);
+typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep, bool abortPending);
 typedef void (*RedisGears_ReaderSerializeRegisterArgsCallback)(void* arg, Gears_BufferWriter* bw);
 typedef void* (*RedisGears_ReaderDeserializeRegisterArgsCallback)(Gears_BufferReader* br);
 typedef void (*RedisGears_ReaderDumpRegistrationData)(RedisModuleCtx* ctx, FlatExecutionPlan* fep);
@@ -269,7 +269,18 @@ const char* MODULE_API_FUNC(RedisGears_GetId)(ExecutionPlan* ctx);
 Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
 Record* MODULE_API_FUNC(RedisGears_GetError)(ExecutionPlan* ctx, long long i);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
+
+/**
+ * Will drop the execution once the execution is done
+ */
 void MODULE_API_FUNC(RedisGears_DropExecution)(ExecutionPlan* gearsCtx);
+
+/**
+ * Aborting execution even if its already running or not even started
+ * Supported only for local exeuctions
+ */
+int MODULE_API_FUNC(RedisGears_AbortExecution)(ExecutionPlan* gearsCtx);
+
 long long MODULE_API_FUNC(RedisGears_GetTotalDuration)(ExecutionPlan* gearsCtx);
 long long MODULE_API_FUNC(RedisGears_GetReadDuration)(ExecutionPlan* gearsCtx);
 void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* gearsCtx);

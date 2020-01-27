@@ -42,8 +42,9 @@ typedef struct ConfigVal{
 typedef struct RedisGears_Config{
     ConfigVal pythonHomeDir;
     ConfigVal maxExecutions;
-	ConfigVal profileExecutions;
-	ConfigVal pythonAttemptTraceback;
+    ConfigVal maxExecutionsPerRegistration;
+    ConfigVal profileExecutions;
+    ConfigVal pythonAttemptTraceback;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -88,6 +89,23 @@ static bool ConfigVal_MaxExecutionsSet(ArgsIterator* iter){
 
     if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
         DefaultGearsConfig.maxExecutions.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static const ConfigVal* ConfigVal_MaxExecutionsPerRegistrationGet(){
+    return &DefaultGearsConfig.maxExecutionsPerRegistration;
+}
+
+static bool ConfigVal_MaxExecutionsPerRegistrationSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.maxExecutionsPerRegistration.val.longVal = n;
         return true;
     } else {
         return false;
@@ -139,6 +157,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "MaxExecutions",
         .getter = ConfigVal_MaxExecutionsGet,
         .setter = ConfigVal_MaxExecutionsSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "MaxExecutionsPerRegistration",
+        .getter = ConfigVal_MaxExecutionsPerRegistrationGet,
+        .setter = ConfigVal_MaxExecutionsPerRegistrationSet,
         .configurableAtRunTime = true,
     },
     {
@@ -276,6 +300,10 @@ const char* GearsConfig_GetPythonHomeDir(){
     return DefaultGearsConfig.pythonHomeDir.val.str;
 }
 
+long long GearsConfig_GetMaxExecutionsPerRegistration(){
+    return DefaultGearsConfig.maxExecutionsPerRegistration.val.longVal;
+}
+
 long long GearsConfig_GetMaxExecutions(){
     return DefaultGearsConfig.maxExecutions.val.longVal;
 }
@@ -327,6 +355,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .maxExecutions = {
             .val.longVal = 1000,
+            .type = LONG,
+        },
+        .maxExecutionsPerRegistration = {
+            .val.longVal = 100,
             .type = LONG,
         },
         .profileExecutions = {

@@ -3,6 +3,7 @@ import os
 from RLTest import Env
 import yaml
 import time
+from common import TimeLimit
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
 import paella
@@ -335,6 +336,44 @@ GB().map(returnX).run()
     '''
     env.expect('rg.pyexecute', script).equal([['2'], []])
     env.expect('rg.pyexecute', script).equal([['2'], []])
+
+def testAbortExecution(env):
+    env.skipOnCluster()
+    infinitScript = '''
+def InfinitLoop(r):
+    import time
+    while True:
+        time.sleep(0.1)
+    return r
+GB().map(InfinitLoop).run()
+    '''
+    env.cmd('set', 'x', '1')
+
+    executionId1 = env.cmd('rg.pyexecute', infinitScript, 'unblocking')
+    executionId2 = env.cmd('rg.pyexecute', infinitScript, 'unblocking')
+    try:
+        with TimeLimit(2):
+            status = None
+            while status != 'running':
+                status = env.cmd('RG.GETEXECUTION', executionId1)[0][3][1]
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for execution to start running')
+
+    status2 = env.cmd('RG.GETEXECUTION', executionId2)[0][3][1]
+    env.assertEqual(status2, 'created')
+
+    env.expect('rg.abortexecution', executionId2).ok()
+    res = env.cmd('RG.GETEXECUTION', executionId2)
+    env.assertEqual(res[0][3][1], 'aborted')
+
+    env.expect('rg.abortexecution', executionId1).ok()
+    res = env.cmd('RG.GETEXECUTION', executionId1)
+    env.assertEqual(res[0][3][1], 'done')
+    env.assertEqual(len(res[0][3][9]), 1)
+    
+    env.expect('rg.dropexecution', executionId1).ok()
+    env.expect('rg.dropexecution', executionId2).ok()
 
 def testTimeEventSubinterpreterIsolation(env):
     env.skipOnCluster()

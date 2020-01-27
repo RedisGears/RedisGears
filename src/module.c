@@ -198,13 +198,13 @@ static const char* RG_GetId(ExecutionPlan* ep){
 
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	return array_len(ep->results);
 }
 
 static long long RG_GetErrorsLen(ExecutionPlan* ep){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	return array_len(ep->errors);
 }
 
@@ -222,18 +222,64 @@ static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCa
 
 static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	assert(i >= 0 && i < array_len(ep->results));
 	return ep->results[i];
 }
 
 static Record* RG_GetError(ExecutionPlan* ep, long long i){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	assert(i >= 0 && i < array_len(ep->errors));
 	return ep->errors[i];
 }
 
+/**
+ * Abort a running or created (and not yet started) local execution
+ *
+ * The reason its only supported for local executions is that aborting a distributed
+ * execution while its running require a consensus from all the cluster to abort the
+ * exeuction and this is not yet implemented. Without consensus some shards might get
+ * stuck with the execution pending forever
+ *
+ * return REDISMODULE_OK if the execution was aborted and REDISMODULE_ERR otherwise
+ */
+static int RG_AbortExecution(ExecutionPlan* ep){
+    // execution is not local, we do not allow force dropping it
+    if(EPIsFlagOff(ep, EFIsLocal)){
+        return REDISMODULE_ERR;
+    }
+
+    // exection did not yet started, we can just simulate its done actions.
+    if(EPIsFlagOff(ep, EFStarted)){
+        ep->status = ABORTED;
+        EPStatus_DoneAction(ep);
+        return REDISMODULE_OK;
+    }
+
+    // execution is done, no need to abort
+    if(RedisGears_IsDone(ep)){
+        return REDISMODULE_OK;
+    }
+
+    // execution is running
+    ExecutionCtx epCtx = {
+            .ep = ep,
+    };
+    while(ep->status != DONE){
+        // we are checking for DONE status cause this one is set without getting the lock.
+        // Once status changed to DONE we know that no more python code will be executed and
+        // we can finish sending cancel signal
+        RedisGearsPy_ForceStop(&epCtx);
+        usleep(1000);
+    }
+
+    return REDISMODULE_OK;
+}
+
+/**
+ * Drop the execution once the execution is done
+ */
 static void RG_DropExecution(ExecutionPlan* ep){
     if(EPIsFlagOn(ep, EFIsOnDoneCallback)){
         EPTurnOnFlag(ep, EFIsFreedOnDoneCallback);
@@ -444,8 +490,9 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetErrorsLen, ctx);
     REGISTER_API(GetError, ctx);
     REGISTER_API(AddOnDoneCallback, ctx);
-	REGISTER_API(DropExecution, ctx);
-	REGISTER_API(GetId, ctx);
+    REGISTER_API(DropExecution, ctx);
+    REGISTER_API(AbortExecution, ctx);
+    REGISTER_API(GetId, ctx);
 
     REGISTER_API(FreeRecord, ctx);
     REGISTER_API(RecordGetType, ctx);
@@ -671,8 +718,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 		return REDISMODULE_ERR;
 	}
 
-    if (RedisModule_CreateCommand(ctx, "rg.reexecute", Command_ReExecute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.reexecute");
+    if (RedisModule_CreateCommand(ctx, "rg.abortexecution", Command_AbortExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.abortexecution");
         return REDISMODULE_ERR;
     }
 

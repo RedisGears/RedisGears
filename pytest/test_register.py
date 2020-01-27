@@ -94,6 +94,86 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         for r in registrations:
             self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
+def testMaxExecutionPerRegistration(env):
+    env.skipOnCluster()
+    env.cmd('RG.CONFIGSET', 'MaxExecutionsPerRegistration', 1)
+    env.expect('rg.pyexecute', "GB('StreamReader').register('s')").ok()
+
+    for i in range(20):
+        env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    try:
+        with TimeLimit(2):
+            currLen = 0
+            while currLen != 1:
+                currLen = len(env.cmd('rg.dumpexecutions'))
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for all executions to be dropped')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+        env.expect('RG.UNREGISTER', r[1], ).equal('OK')
+
+
+def testUnregisterStreamReaderWithAbortExecutions(env):
+    env.skipOnCluster()
+    infinitScript = '''
+counter = 0
+def InfinitLoop(r):
+    import time
+    global counter
+    counter+=1
+    while counter > 3: # enter an infinit loop on the third time
+        time.sleep(0.1)
+    return r
+GB('StreamReader').map(InfinitLoop).register('s', mode='async_local')
+    '''
+    env.expect('rg.pyexecute', infinitScript).ok()
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.cmd('xadd', 's', '*', 'foo', 'bar') # infinit loop
+    env.cmd('xadd', 's', '*', 'foo', 'bar') # pending execution
+
+    # create another execution, make sure its pending
+    eid = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()', 'UNBLOCKING')
+
+    registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
+    registrationId = registrationInfo[0][1]
+
+    try:
+        with TimeLimit(2):
+            done = False
+            while not done:
+                registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
+                if registrationInfo[0][7][3] == 7 and registrationInfo[0][7][5] == 5:
+                    done = True
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for all executions')
+
+    executionsInfo = env.cmd('RG.DUMPEXECUTIONS')
+    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'done']), 5)
+    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'running']), 1)
+    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'created']), 2)
+
+    env.expect('RG.UNREGISTER', registrationId, 'abortpending').ok()
+
+    env.assertEqual(len(env.cmd('RG.DUMPEXECUTIONS')), 1)
+
+    try:
+        with TimeLimit(2):
+            executionStatus = None
+            while executionStatus != 'done':
+                time.sleep(0.1)
+                executionStatus = env.cmd('RG.GETEXECUTION', eid)[0][3][1]
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for execution to finish')
+
+    env.cmd('RG.DROPEXECUTION', eid)
+
 def testBasicStream(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rg.pyexecute', "GearsBuilder()."

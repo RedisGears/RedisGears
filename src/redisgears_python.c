@@ -27,6 +27,7 @@ typedef struct RAI_Error {
 
 static PyObject* pyGlobals;
 PyObject* GearsError;
+PyObject* ForceStoppedError;
 
 /*
  * Contains thread pacific data like:
@@ -1725,8 +1726,10 @@ void fetchPyError(ExecutionCtx* rctx) {
         if(pFunc != NULL){
             if(PyCallable_Check(pFunc)){
                 PyObject *pCall = PyObject_CallFunctionObjArgs(pFunc, pType, pValue, pTraceback, NULL);
-                pStrTraceback = PyObject_Str(pCall);
-                Py_DECREF(pCall);
+                if(pCall){
+                    pStrTraceback = PyObject_Str(pCall);
+                    Py_DECREF(pCall);
+                }
             }
             Py_DECREF(pFunc);
         }
@@ -2409,6 +2412,13 @@ static PyObject* PyInit_RedisAI(void) {
     return PyModule_Create(&EmbRedisAI);
 }
 
+void RedisGearsPy_ForceStop(ExecutionCtx* epCtx){
+    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(epCtx);
+    RedisGearsPy_RestoreThread(subInterpreter);
+    PyThreadState_SetAsyncExc(subInterpreter->subInterpreter->thread_id, ForceStoppedError);
+    RedisGearsPy_SaveThread();
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
     int err = pthread_key_create(&pythonThreadCtxKey, NULL);
     if(err){
@@ -2488,6 +2498,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     GearsError = PyErr_NewException("spam.error", NULL, NULL);
     Py_INCREF(GearsError);
     PyModule_AddObject(redisGearsModule, "GearsError", GearsError);
+
+    ForceStoppedError = PyErr_NewException("gears.forcestopped", NULL, NULL);
+    Py_INCREF(ForceStoppedError);
+    PyModule_AddObject(redisGearsModule, "GearsForceStopped", ForceStoppedError);
 
     char* script = RG_ALLOC(src_cloudpickle_py_len + 1);
     memcpy(script, src_cloudpickle_py, src_cloudpickle_py_len);

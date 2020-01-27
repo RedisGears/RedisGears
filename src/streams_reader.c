@@ -7,6 +7,7 @@
 #include "utils/dict.h"
 #include "execution_plan.h"
 #include "record.h"
+#include "config.h"
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 Gears_list* streamsRegistration = NULL;
@@ -48,11 +49,14 @@ typedef struct StreamReaderTriggerCtx{
     long long numFailures;
     char* lastError;
     pthread_t scanThread;
+    Gears_list* localPendingExecutions;
+    Gears_list* localDoneExecutions;
 }StreamReaderTriggerCtx;
 
 typedef struct SingleStreamReaderCtx{
     size_t numTriggered;
     bool timerIsSet;
+    bool freeOnNextTimeEvent;
     RedisModuleTimerID lastTimerId;
     StreamReaderTriggerCtx* srtctx; // weak ptr to the StreamReaderCtx
     char* keyName;
@@ -161,6 +165,7 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     ssrctx->srtctx = srtctx;
     ssrctx->keyName = RG_STRDUP(keyName);
     ssrctx->timerIsSet = false;
+    ssrctx->freeOnNextTimeEvent = false;
     StreamReader_ReadLastId(ctx, ssrctx);
     Gears_dictAdd(srtctx->singleStreamData, (char*)keyName, ssrctx);
 
@@ -172,13 +177,40 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
 
 static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
     assert(srtctx->refCount > 0);
+
     if((--srtctx->refCount) == 0){
+        Gears_listNode* n = NULL;
+
+        // if we free registration there must not be any pending executions.
+        // either all executions was finished or aborted
+        assert(Gears_listLength(srtctx->localPendingExecutions) == 0);
+
+        while((n = Gears_listFirst(srtctx->localDoneExecutions))){
+            char* epIdStr = Gears_listNodeValue(n);
+            Gears_listDelNode(srtctx->localDoneExecutions, n);
+            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+            RG_FREE(epIdStr);
+            if(!ep){
+                RedisModule_Log(NULL, "info", "Failed finding done execution to drop on unregister. Execution was probably already dropped.");
+                continue;
+            }
+            // all the executions here are done, will just drop it.
+            RedisGears_DropExecution(ep);
+        }
+
+        Gears_listRelease(srtctx->localPendingExecutions);
+        Gears_listRelease(srtctx->localDoneExecutions);
+
         Gears_dictIterator *iter = Gears_dictGetIterator(srtctx->singleStreamData);
         Gears_dictEntry* entry = NULL;
         while((entry = Gears_dictNext(iter))){
             SingleStreamReaderCtx* ssrctx = Gears_dictGetVal(entry);
-            RG_FREE(ssrctx->keyName);
-            RG_FREE(ssrctx);
+            if(ssrctx->timerIsSet){
+                ssrctx->freeOnNextTimeEvent = true;
+            }else{
+                RG_FREE(ssrctx->keyName);
+                RG_FREE(ssrctx);
+            }
         }
         Gears_dictReleaseIterator(iter);
         Gears_dictRelease(srtctx->singleStreamData);
@@ -203,6 +235,8 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .numSuccess = 0,
         .numFailures = 0,
         .lastError = NULL,
+        .localPendingExecutions = Gears_listCreate(),
+        .localDoneExecutions = Gears_listCreate(),
     };
     return srctx;
 }
@@ -483,6 +517,43 @@ static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx*
 
 static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderTriggerCtx* srctx = privateData;
+
+    Gears_listNode *head = Gears_listFirst(srctx->localPendingExecutions);
+    char* epIdStr = NULL;
+    while(head){
+        epIdStr = Gears_listNodeValue(head);
+        Gears_listDelNode(srctx->localPendingExecutions, head);
+        if(strcmp(epIdStr, ctx->idStr) != 0){
+            RedisModule_Log(NULL, "warning", "Got an out of order execution on registration, ignoring execution.");
+            RG_FREE(epIdStr);
+            head = Gears_listFirst(srctx->localPendingExecutions);
+            continue;
+        }
+        // Found the execution id, we can stop iterating
+        break;
+    }
+    if(!epIdStr){
+        epIdStr = RG_STRDUP(ctx->idStr);
+    }
+
+    if(EPIsFlagOn(ctx, EFIsLocal)){
+        // Add the execution id to the localDoneExecutions list
+        Gears_listAddNodeTail(srctx->localDoneExecutions, epIdStr);
+        if(GearsConfig_GetMaxExecutionsPerRegistration() > 0 && Gears_listLength(srctx->localDoneExecutions) > GearsConfig_GetMaxExecutionsPerRegistration()){
+            Gears_listNode *head = Gears_listFirst(srctx->localDoneExecutions);
+            epIdStr = Gears_listNodeValue(head);
+            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+            if(ep){
+                assert(EPIsFlagOn(ep, EFDone));
+                RedisGears_DropExecution(ep);
+            }
+            RG_FREE(epIdStr);
+            Gears_listDelNode(srctx->localDoneExecutions, head);
+        }
+    }else{
+        RG_FREE(epIdStr);
+    }
+
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
 
     Reader* reader = ExecutionPlan_GetReader(ctx);
@@ -497,6 +568,8 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             RG_FREE(srctx->lastError);
         }
         srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
+    } else if(ctx->status == ABORTED){
+        ++srctx->numAborted;
     } else {
         ++srctx->numSuccess;
     }
@@ -510,9 +583,21 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
     RedisGears_OnExecutionDoneCallback callback = StreamReader_ExecutionDone;
     void* privateData = StreamReaderTriggerCtx_GetShallowCopy(srtctx);
     ++srtctx->numTriggered;
-    if(!RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData)){
+    ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData);
+    if(!ep){
         ++srtctx->numAborted;
         RedisModule_Log(staticCtx, "warning", "could not execute flat execution on trigger");
+        return;
+    }
+    if(EPIsFlagOn(ep, EFIsLocal) && srtctx->mode != ExecutionModeSync){
+        // execution is local
+        // If execution is SYNC it will be added to localDoneExecutions on done
+        // Otherwise, save it to the registration pending execution list.
+        // currently we are not save global executions and those will not be listed
+        // in the registration execution list nor will be drop on unregister.
+        // todo: handle none local executions
+        char* idStr = RG_STRDUP(ep->idStr);
+        Gears_listAddNodeTail(srtctx->localPendingExecutions, idStr);
     }
 }
 
@@ -543,6 +628,11 @@ static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
 
 static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
     SingleStreamReaderCtx* ssrctx = data;
+    if(ssrctx->freeOnNextTimeEvent){
+        RG_FREE(ssrctx->keyName);
+        RG_FREE(ssrctx);
+        return;
+    }
     StreamReader_RunOnEvent(ssrctx, ssrctx->srtctx->args->batchSize,false);
     ssrctx->timerIsSet = false;
     ssrctx->numTriggered = 0;
@@ -616,9 +706,29 @@ static StreamReaderTriggerCtx* StreamReader_GetStreamTriggerCtxByFep(FlatExecuti
     return NULL;
 }
 
-static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep){
+static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPending){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, STREAM_TRIGGER_FLAG_POP);
     assert(srctx);
+
+    if(abortPending){
+        // unregister require aborting all pending executions
+        Gears_listNode* n = NULL;
+        Gears_listIter *iter = Gears_listGetIterator(srctx->localPendingExecutions, AL_START_HEAD);
+        while((n = Gears_listNext(iter))){
+            char* epIdStr = Gears_listNodeValue(n);
+            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+            if(!ep){
+                RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
+                continue;
+            }
+            // we can not free while iterating so we add to the epArr and free after
+            if(RedisGears_AbortExecution(ep) != REDISMODULE_OK){
+                RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
+            }
+        }
+        Gears_listReleaseIterator(iter);
+    }
+
     StreamReaderTriggerCtx_Free(srctx);
 }
 
@@ -776,7 +886,7 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     }else{
         RedisModule_ReplyWithNull(ctx);
     }
-    RedisModule_ReplyWithStringBuffer(ctx, "agrs", strlen("args"));
+    RedisModule_ReplyWithStringBuffer(ctx, "args", strlen("args"));
     RedisModule_ReplyWithArray(ctx, 6);
     RedisModule_ReplyWithStringBuffer(ctx, "batchSize", strlen("batchSize"));
     RedisModule_ReplyWithLongLong(ctx, srctx->args->batchSize);
