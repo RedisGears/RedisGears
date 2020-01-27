@@ -12,15 +12,20 @@ if [[ -z $ORACLE ]]; then
 fi
 	
 BRANCH=write_behind_1
-REPO_PATH=https://raw.githubusercontent.com/RedisGears/RedisGears/$BRANCH/recipes/write_behind/oracle/rs
 
 mkdir -p /opt
 cd /opt
-git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
+if [[ ! -d RedisGears ]]; then
+	git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
+else
+	cd RedisGears
+	git pull
+	cd ..
+fi
 
-ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
+ln -sf /opt/RedisGears/recipes/write_behind /opt/recipe
 cd /opt/RedisGears/recipes/write_behind
-ln -s ../gears.py .
+ln -sf ../gears.py .
 
 OSNICK=`/opt/redislabs/bin/python2 /opt/RedisGears/deps/readies/bin/platform --osnick`
 [[ $OSNICK =~ 'rhel7' ]] && OSNICK='centos7'
