@@ -27,8 +27,8 @@ select * from car;
 ```
 ## Installing the Redis cluster
 
-* Create Redis Enterprise cluster.
-* On each cluster node, run:
+* [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
+* On each cluster node, run (as root, via `sudo bash`):
 ```
 ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 ```
@@ -42,6 +42,7 @@ On one of the Redis cluster nodes:
 * Run `ID=<db-id> /opt/recipe/oracle/rs/start-gear`.
 
 ### Basic tests
+If you created the example database, you can run the following tests to verify if your setup is working correctly.
 
 * From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
 * Using `bdb-cli <db-id>`, invoke:
@@ -60,9 +61,20 @@ select * from person1;
 
 ## Diagnostics
 
-### Gear status
+### Redis status
 
-* Check the Redis DB log for errors: `/var/opt/redislabs/log/redis-*.log`
+* `rladmin status` command
+* Redis configuration files at `/var/opt/redislabs/redis`
+* Redis log at `/var/opt/redislabs/log/redis-#.log`
+* Restart Redis shards (do that to restart Gears):
+```
+rlutil redis_restart redis=<Redis shard IDs> force=yes
+```
+
+### Gears status
+
+* redis-cli via bdb-cli DB-ID
+  * `RG.DUMPEXECUTIONS` command
 
 ### Oracle status
 
