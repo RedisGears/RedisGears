@@ -1324,6 +1324,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
         }else{
             EPTurnOffFlag(ep, EFIsLocal);
         }
+
     } else {
         ep = ExecutionPlan_New(fep, mode, arg);
     }
@@ -1336,6 +1337,13 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
         ep->onDoneData = array_append(ep->onDoneData, onDoneData);
     }
     ep->fep = FlatExecutionPlan_ShallowCopy(fep);
+
+    // set onStartCallback
+    if(fep->onStartStep.stepName){
+        ep->onStartCallback = ExecutionOnStartsReducersMgmt_Get(fep->onStartStep.stepName);
+    }else{
+        ep->onStartCallback = NULL;
+    }
 
     ExecutionPlan_SetID(ep, eid);
 
@@ -1763,6 +1771,16 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     if(msg->type == RUN_MSG){
         // lets mark execution as started, dropping it now require some extra work.
         EPTurnOnFlag(ep, EFStarted);
+
+        // calling the onStart callback if exists
+        if(ep->onStartCallback){
+            ExecutionCtx ectx = {
+                    .rctx = ctx,
+                    .ep = ep,
+                    .err = NULL,
+            };
+            ep->onStartCallback(&ectx, ep->fep->onStartStep.arg.stepArg);
+        }
     }
     RedisModule_ThreadSafeContextUnlock(ctx);
 	switch(msg->type){
@@ -2172,6 +2190,13 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->desc = NULL;
     res->executionPoolSize = 0;
     res->serializedFep = NULL;
+    res->onStartStep = (FlatBasicStep){
+            .stepName = NULL,
+            .arg = {
+                    .stepArg = NULL,
+                    .type = NULL,
+            },
+    };
 
     FlatExecutionPlan_SetID(res, NULL);
 
@@ -2195,7 +2220,9 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
 
     if(fep->PD){
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
-        type->free(fep->PD);
+        if(type && type->free){
+            type->free(fep->PD);
+        }
         RG_FREE(fep->PDType);
     }
     if(fep->reader){
@@ -2237,6 +2264,13 @@ void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc){
 
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg){
     FlatExecutionPlan_AddBasicStep(fep, forEach, writerArg, FOREACH);
+}
+
+void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg){
+    fep->onStartStep.stepName = onStartCallback;
+    fep->onStartStep.arg.stepArg = onStartArg;
+    fep->onStartStep.arg.type = ExecutionOnStartsMgmt_GetArgType(onStartCallback);
+    assert(fep->onStartStep.arg.type);
 }
 
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg){

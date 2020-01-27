@@ -66,6 +66,10 @@ bool FepPrivateDatasMgmt_Add(const char* name, RedisGears_FepPrivateDataCallback
 RedisGears_FepPrivateDataCallback FepPrivateDatasMgmt_Get(const char* name);
 ArgType* FepPrivateDatasMgmt_GetArgType(const char* name);
 
+bool ExecutionOnStartsMgmt_Add(const char* name, RedisGears_ExecutionOnStartCallback callback, ArgType* type);
+RedisGears_ExecutionOnStartCallback ExecutionOnStartsReducersMgmt_Get(const char* name);
+ArgType* ExecutionOnStartsMgmt_GetArgType(const char* name);
+
 void Mgmt_Init();
 
 

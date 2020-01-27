@@ -213,6 +213,8 @@ typedef struct ExecutionPlan{
     volatile ExecutionPlanStatus status;
     ExecutionFlags flags;
     OnDoneData* onDoneData; // Array of callbacks to run on done
+    RedisGears_ExecutionOnStartCallback onStartCallback;
+    void* executionPD;
     long long executionDuration;
     WorkerData* assignWorker;
     ExecutionMode mode;
@@ -246,6 +248,7 @@ typedef struct FlatExecutionPlan{
     ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
     size_t executionPoolSize;
     Gears_Buffer* serializedFep;
+    FlatBasicStep onStartStep;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -269,6 +272,7 @@ bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
+void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);

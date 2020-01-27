@@ -40,6 +40,7 @@ GENERATE(Reducer)
 GENERATE(Accumulate)
 GENERATE(AccumulateByKey)
 GENERATE(FepPrivateData)
+GENERATE(ExecutionOnStart)
 
 void Mgmt_Init(){
     FiltersMgmt_Init();
@@ -51,4 +52,5 @@ void Mgmt_Init(){
     AccumulatesMgmt_Init();
     AccumulateByKeysMgmt_Init();
     FepPrivateDatasMgmt_Init();
+    ExecutionOnStartsMgmt_Init();
 }

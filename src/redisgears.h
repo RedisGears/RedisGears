@@ -98,6 +98,7 @@ char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* l
  * On done callback definition
  */
 typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
+typedef void (*RedisGears_ExecutionOnStartCallback)(ExecutionCtx* ctx, void* arg);
 
 /**
  * Reader callbacks definition.
@@ -190,6 +191,7 @@ int MODULE_API_FUNC(RedisGears_RegisterAccumulatorByKey)(char* name, RedisGears_
 int MODULE_API_FUNC(RedisGears_RegisterFilter)(char* name, RedisGears_FilterCallback filter, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterGroupByExtractor)(char* name, RedisGears_ExtractorCallback extractor, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCallback reducer, ArgType* type);
+int MODULE_API_FUNC(RedisGears_RegisterExecutionOnStartCallback)(char* name, RedisGears_ExecutionOnStartCallback callback, ArgType* type);
 
 #define RGM_RegisterReader(name) RedisGears_RegisterReader(#name, &name);
 #define RGM_RegisterMap(name, type) RedisGears_RegisterMap(#name, name, type);
@@ -199,6 +201,7 @@ int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCa
 #define RGM_RegisterForEach(name, type) RedisGears_RegisterForEach(#name, name, type);
 #define RGM_RegisterGroupByExtractor(name, type) RedisGears_RegisterGroupByExtractor(#name, name, type);
 #define RGM_RegisterReducer(name, type) RedisGears_RegisterReducer(#name, name, type);
+#define RGM_RegisterExecutionOnStartCallback(name, type) RedisGears_RegisterExecutionOnStartCallback(#name, name, type);
 
 /**
  * Create flat execution plan with the given reader.
@@ -208,7 +211,16 @@ FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* readerName);
 int MODULE_API_FUNC(RedisGears_SetDesc)(FlatExecutionPlan* ctx, const char* desc);
 #define RGM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
 
+/**
+ * Private data will be available on all the execution steps
+ */
 void MODULE_API_FUNC(RedisGears_SetFlatExecutionPrivateData)(FlatExecutionPlan* fep, const char* type, void* PD);
+
+/**
+ * On register, each execution that will be created, will fire this callback on start.
+ */
+int MODULE_API_FUNC(RedisGears_SetFlatExecutionOnStartCallback)(FlatExecutionPlan* fep, const char* callback, void* arg);
+#define RGM_SetFlatExecutionOnStartCallback(ctx, name, arg) RedisGears_SetFlatExecutionOnStartCallback(ctx, #name, arg)
 
 /******************************* Flat Execution plan operations *******************************/
 
@@ -288,6 +300,9 @@ void MODULE_API_FUNC(RedisGears_FreeFlatExecution)(FlatExecutionPlan* gearsCtx);
 void MODULE_API_FUNC(RedisGears_SetError)(ExecutionCtx* ectx, char* err);
 RedisModuleCtx* MODULE_API_FUNC(RedisGears_GetRedisModuleCtx)(ExecutionCtx* ectx);
 void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx);
+void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionCtx* ectx);
+void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionCtx* ctx, void* PD);
+
 bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 
 const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();

@@ -65,6 +65,13 @@ static void* RedisGearsPy_PyCallbackDeserialize(Gears_BufferReader* br);
 static void TimeEvent_Free(void *value);
 static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 
+static void RedisGearsPy_OnExecutionStartCallback(ExecutionCtx* ctx, void* arg){
+    RedisGearsPy_Lock();
+    PyThreadState *state = PyGILState_GetThisThreadState();
+    RedisGears_SetPrivateData(ctx, (void*)state->thread_id);
+    RedisGearsPy_Unlock();
+}
+
 static PythonThreadCtx* GetPythonThreadCtx(){
     PythonThreadCtx* ptctx = pthread_getspecific(pythonThreadCtxKey);
     if(!ptctx){
@@ -554,6 +561,12 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
 static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+
+    if(RGM_SetFlatExecutionOnStartCallback(pfep->fep, RedisGearsPy_OnExecutionStartCallback, NULL) != REDISMODULE_OK){
+        PyErr_SetString(GearsError, "Failed setting on start callback");
+        return NULL;
+    }
+
     PyObject* pymode = PyDict_GetItemString(kargs, "mode");
     ExecutionMode mode = ExecutionModeAsync;
     if(pymode){
@@ -2268,10 +2281,10 @@ static PyObject* PyInit_RedisAI(void) {
 }
 
 void RedisGearsPy_ForceStop(ExecutionCtx* epCtx){
-    PythonSubInterpreter* subInterpreter = RedisGears_GetFlatExecutionPrivateData(epCtx);
-    RedisGearsPy_RestoreThread(subInterpreter);
-    PyThreadState_SetAsyncExc(subInterpreter->subInterpreter->thread_id, ForceStoppedError);
-    RedisGearsPy_SaveThread();
+    unsigned long threadID = (unsigned long)RedisGears_GetPrivateData(epCtx);
+    RedisGearsPy_Lock();
+    PyThreadState_SetAsyncExc(threadID, ForceStoppedError);
+    RedisGearsPy_Unlock();
 }
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
@@ -2397,6 +2410,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RGM_RegisterAccumulatorByKey(RedisGearsPy_PyCallbackAccumulateByKey, pyCallbackType);
     RGM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
     RGM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
+    RGM_RegisterExecutionOnStartCallback(RedisGearsPy_OnExecutionStartCallback, pyCallbackType);
 
     if(TimeEvent_RegisterType(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not register command timer datatype");

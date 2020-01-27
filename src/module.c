@@ -86,6 +86,19 @@ static int RG_RegisterReducer(char* name, RedisGears_ReducerCallback reducer, Ar
     return ReducersMgmt_Add(name, reducer, type);
 }
 
+static int RG_RegisterExecutionOnStartCallback(char* name, RedisGears_ExecutionOnStartCallback callback, ArgType* type){
+    return ExecutionOnStartsMgmt_Add(name, callback, type);
+}
+
+static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char* callback, void* arg){
+    RedisGears_ExecutionOnStartCallback c = ExecutionOnStartsReducersMgmt_Get(callback);
+    if(!c){
+        return REDISMODULE_ERR;
+    }
+    FlatExecutionPlan_SetOnStartStep(fep, RG_STRDUP(callback), arg);
+    return REDISMODULE_OK;
+}
+
 static FlatExecutionPlan* RG_CreateCtx(char* readerName){
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
     if(!FlatExecutionPlan_SetReader(fep, readerName)){
@@ -360,6 +373,14 @@ static void* RG_GetFlatExecutionPrivateData(ExecutionCtx* ectx){
     return NULL;
 }
 
+static void* RG_GetPrivateData(ExecutionCtx* ectx){
+    return ectx->ep->executionPD;
+}
+
+static void RG_SetPrivateData(ExecutionCtx* ectx, void* PD){
+    ectx->ep->executionPD = PD;
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
         return;
@@ -529,6 +550,10 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(SetError, ctx);
     REGISTER_API(GetRedisModuleCtx, ctx);
     REGISTER_API(GetFlatExecutionPrivateData, ctx);
+    REGISTER_API(GetPrivateData, ctx);
+    REGISTER_API(SetPrivateData, ctx);
+    REGISTER_API(RegisterExecutionOnStartCallback, ctx);
+    REGISTER_API(SetFlatExecutionOnStartCallback, ctx);
 
     REGISTER_API(DropLocalyOnDone, ctx);
 
