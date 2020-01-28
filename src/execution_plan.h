@@ -248,7 +248,7 @@ typedef struct FlatExecutionPlan{
     ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
     size_t executionPoolSize;
     Gears_Buffer* serializedFep;
-    FlatBasicStep onStartStep;
+    FlatBasicStep onExecutionStartStep;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{

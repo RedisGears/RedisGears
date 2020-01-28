@@ -409,6 +409,11 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRedisModuleCtx);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFlatExecutionPrivateData);
 
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetPrivateData);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetPrivateData);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnStartCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionOnStartCallback);
+
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropLocalyOnDone);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetMyHashTag);

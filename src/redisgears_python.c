@@ -381,6 +381,12 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
 static PyObject* run(PyObject *self, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+
+    if(RGM_SetFlatExecutionOnStartCallback(pfep->fep, RedisGearsPy_OnExecutionStartCallback, NULL) != REDISMODULE_OK){
+        PyErr_SetString(GearsError, "Failed setting on start callback");
+        return NULL;
+    }
+
     char* defaultRegexStr = "*";
     char* regexStr = defaultRegexStr;
     void* arg;

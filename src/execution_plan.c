@@ -367,9 +367,26 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
         RedisGears_BWWriteLong(&bw, 0); // no desc
     }
 
+    if(fep->onExecutionStartStep.stepName){
+        RedisGears_BWWriteLong(&bw, 1); // has onExecutionStartStep
+        RedisGears_BWWriteString(&bw, fep->onExecutionStartStep.stepName);
+        ArgType* type = fep->onExecutionStartStep.arg.type;
+        if(fep->onExecutionStartStep.arg.stepArg){
+            RedisGears_BWWriteLong(&bw, 1); // args exists
+            if(type && type->serialize){
+                type->serialize(fep->onExecutionStartStep.arg.stepArg, &bw);
+            }
+        }else{
+            RedisGears_BWWriteLong(&bw, 0); // NULL args
+        }
+    }else{
+        RedisGears_BWWriteLong(&bw, 0); // no onExecutionStartStep
+    }
+
     if(len){
         *len = fep->serializedFep->size;
     }
+
     return fep->serializedFep->buff;
 }
 
@@ -423,6 +440,24 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
     long long hasDesc = RedisGears_BRReadLong(&br);
     if(hasDesc){
         ret->desc = RG_STRDUP(RedisGears_BRReadString(&br));
+    }
+
+    long long hasOnExecutionStartCallback = RedisGears_BRReadLong(&br);
+    if(hasOnExecutionStartCallback){
+        const char* onStartCallbackName = RedisGears_BRReadString(&br);
+        ArgType* type = ExecutionOnStartsMgmt_GetArgType(onStartCallbackName);
+        void* arg = NULL;
+        long long hasArg = RedisGears_BRReadLong(&br);
+        if(hasArg){
+            arg = type->deserialize(&br);
+        }
+        ret->onExecutionStartStep = (FlatBasicStep){
+                .stepName = RG_STRDUP(onStartCallbackName),
+                .arg = {
+                        .stepArg = arg,
+                        .type = type,
+                },
+        };
     }
 
     // we need to deserialize the fep now so we will have the deserialize clean version of it.
@@ -1339,8 +1374,8 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     ep->fep = FlatExecutionPlan_ShallowCopy(fep);
 
     // set onStartCallback
-    if(fep->onStartStep.stepName){
-        ep->onStartCallback = ExecutionOnStartsReducersMgmt_Get(fep->onStartStep.stepName);
+    if(fep->onExecutionStartStep.stepName){
+        ep->onStartCallback = ExecutionOnStartsMgmt_Get(fep->onExecutionStartStep.stepName);
     }else{
         ep->onStartCallback = NULL;
     }
@@ -1779,7 +1814,7 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
                     .ep = ep,
                     .err = NULL,
             };
-            ep->onStartCallback(&ectx, ep->fep->onStartStep.arg.stepArg);
+            ep->onStartCallback(&ectx, ep->fep->onExecutionStartStep.arg.stepArg);
         }
     }
     RedisModule_ThreadSafeContextUnlock(ctx);
@@ -2190,7 +2225,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->desc = NULL;
     res->executionPoolSize = 0;
     res->serializedFep = NULL;
-    res->onStartStep = (FlatBasicStep){
+    res->onExecutionStartStep = (FlatBasicStep){
             .stepName = NULL,
             .arg = {
                     .stepArg = NULL,
@@ -2241,6 +2276,15 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(fep->desc){
         RG_FREE(fep->desc);
     }
+
+    if(fep->onExecutionStartStep.stepName){
+        RG_FREE(fep->onExecutionStartStep.stepName);
+        if(fep->onExecutionStartStep.arg.stepArg){
+            assert(fep->onExecutionStartStep.arg.type);
+            fep->onExecutionStartStep.arg.type->free(fep->onExecutionStartStep.arg.stepArg);
+        }
+    }
+
     RG_FREE(fep);
 }
 
@@ -2267,10 +2311,10 @@ void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, voi
 }
 
 void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg){
-    fep->onStartStep.stepName = onStartCallback;
-    fep->onStartStep.arg.stepArg = onStartArg;
-    fep->onStartStep.arg.type = ExecutionOnStartsMgmt_GetArgType(onStartCallback);
-    assert(fep->onStartStep.arg.type);
+    fep->onExecutionStartStep.stepName = onStartCallback;
+    fep->onExecutionStartStep.arg.stepArg = onStartArg;
+    fep->onExecutionStartStep.arg.type = ExecutionOnStartsMgmt_GetArgType(onStartCallback);
+    assert(fep->onExecutionStartStep.arg.type);
 }
 
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg){

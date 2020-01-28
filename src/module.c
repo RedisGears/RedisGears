@@ -91,7 +91,7 @@ static int RG_RegisterExecutionOnStartCallback(char* name, RedisGears_ExecutionO
 }
 
 static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char* callback, void* arg){
-    RedisGears_ExecutionOnStartCallback c = ExecutionOnStartsReducersMgmt_Get(callback);
+    RedisGears_ExecutionOnStartCallback c = ExecutionOnStartsMgmt_Get(callback);
     if(!c){
         return REDISMODULE_ERR;
     }

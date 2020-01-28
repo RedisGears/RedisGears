@@ -222,7 +222,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local')
     registrationId = registrationInfo[0][1]
 
     try:
-        with TimeLimit(2):
+        with TimeLimit(4):
             done = False
             while not done:
                 registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
