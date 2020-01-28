@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 import sys
 import os
@@ -49,4 +49,5 @@ if ret == "":
     else:
         nick = ""
     ret = os + " " + platform.os_ver + nick + " " + platform.arch
-print(ret.strip())
+if ret.strip() != "":
+	print(ret.strip())

@@ -43,7 +43,8 @@ pack() {
 	echo Created $packname
 }
 
-set -e
+[[ $VERBOSE == 1 ]] && set -x
+[[ $IGNERR == 1 ]] || set -e
 
 if ! command -v redis-server > /dev/null; then
 	echo Cannot find redis-server. Aborting.
@@ -81,7 +82,8 @@ stem=$(basename $RELEASE | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
 TAR=$PACKAGE_NAME-dependencies.$stem.tgz
 TAR_PATH=$(realpath artifacts/release/$TAR)
 cd $CPYTHON_PREFIX/
-tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2> /dev/null
+tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err
+[[ $? != 0 ]] && cat /tmp/pack.err
 cd - > /dev/null
 echo Created artifacts/release/$TAR
 
