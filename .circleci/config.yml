@@ -17,7 +17,7 @@ commands:
           command: git submodule update --init --recursive
       - run:
           name: System setup
-          command: python system-setup.py
+          command: BREW_NO_UPDATE=1 python system-setup.py
       - run:
           name: Build
           command: |
