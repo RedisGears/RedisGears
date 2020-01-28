@@ -4,7 +4,7 @@
 [[ $IGNERR == 1 ]] || set -e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-. $HERE/opt/readies/shibumi/functions
+. $HERE/deps/readies/shibumi/functions
 
 pack() {
 	local artifact="$1"
