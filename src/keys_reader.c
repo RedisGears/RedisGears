@@ -173,7 +173,7 @@ static void RG_KeysReaderCtxSerialize(void* ctx, Gears_BufferWriter* bw){
     RedisGears_BWWriteString(bw, krctx->match);
 }
 
-static void RG_KeysReaderCtxDeserialize(void* ctx, Gears_BufferReader* br){
+static void RG_KeysReaderCtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     char* match = RedisGears_BRReadString(br);
     krctx->match = RG_STRDUP(match);

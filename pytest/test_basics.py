@@ -320,6 +320,25 @@ def testOneKeyScan(env):
     env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['200000'])
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
 
+def testGlobalsSharedBetweenFunctions(env):
+    script = '''
+counter = 0
+
+def func1(r):
+    global counter
+    counter += 1
+    return counter
+
+def func2(a):
+    global counter
+    counter += 1
+    return counter
+
+GB('ShardsIDReader').map(func1).map(func2).collect().distinct().run()
+    '''
+    env.expect('rg.pyexecute', script).equal([['2'], []])
+    env.expect('rg.pyexecute', script).equal([['2'], []])
+
 def testSubinterpreterIsolation(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')

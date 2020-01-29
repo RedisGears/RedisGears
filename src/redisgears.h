@@ -49,7 +49,7 @@ typedef struct ArgType ArgType;
 typedef void (*ArgFree)(void* arg);
 typedef void* (*ArgDuplicate)(void* arg);
 typedef int (*ArgSerialize)(void* arg, Gears_BufferWriter* bw);
-typedef void* (*ArgDeserialize)(Gears_BufferReader* br);
+typedef void* (*ArgDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br);
 typedef char* (*ArgToString)(void* arg);
 
 /**
@@ -61,7 +61,7 @@ typedef struct Reader{
     void (*free)(void* ctx);
     void (*reset)(void* ctx, void * arg);
     void (*serialize)(void* ctx, Gears_BufferWriter* bw);
-    void (*deserialize)(void* ctx, Gears_BufferReader* br);
+    void (*deserialize)(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br);
 }Reader;
 
 /**
@@ -215,6 +215,7 @@ int MODULE_API_FUNC(RedisGears_SetDesc)(FlatExecutionPlan* ctx, const char* desc
  * Private data will be available on all the execution steps
  */
 void MODULE_API_FUNC(RedisGears_SetFlatExecutionPrivateData)(FlatExecutionPlan* fep, const char* type, void* PD);
+void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateDataFromFep)(FlatExecutionPlan* fep);
 
 /**
  * On register, each execution that will be created, will fire this callback on start.
@@ -344,6 +345,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetDesc);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFlatExecutionPrivateDataType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionPrivateData);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFlatExecutionPrivateDataFromFep);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Map);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Accumulate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AccumulateBy);

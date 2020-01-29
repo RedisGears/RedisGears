@@ -117,6 +117,10 @@ static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, const char* t
     FlatExecutionPlan_SetPrivateData(fep, type, PD);
 }
 
+static void* RG_GetFlatExecutionPrivateDataFromFep(FlatExecutionPlan* fep){
+    return FlatExecutionPlan_GetPrivateData(fep);
+}
+
 static int RG_Map(FlatExecutionPlan* fep, char* name, void* arg){
     FlatExecutionPlan_AddMapStep(fep, name, arg);
     return 1;
@@ -485,6 +489,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(SetDesc, ctx);
     REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
     REGISTER_API(SetFlatExecutionPrivateData, ctx);
+    REGISTER_API(GetFlatExecutionPrivateDataFromFep, ctx);
     REGISTER_API(Map, ctx);
     REGISTER_API(Accumulate, ctx);
     REGISTER_API(AccumulateBy, ctx);

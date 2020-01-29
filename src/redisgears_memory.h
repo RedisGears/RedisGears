@@ -9,7 +9,7 @@
 #define SRC_REDISGEARG_MEMORY_H_
 
 #include "redismodule.h"
-#include "stdlib.h"
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef VALGRIND

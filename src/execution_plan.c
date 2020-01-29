@@ -78,7 +78,7 @@ static int LimitArgSerialize(void* arg, Gears_BufferWriter* bw){
     return REDISMODULE_OK;
 }
 
-static void* LimitArgDeserialize(Gears_BufferReader* br){
+static void* LimitArgDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     LimitExecutionStepArg* limitArg = RG_ALLOC(sizeof(*limitArg));
     limitArg->offset = RedisGears_BRReadLong(br);
     limitArg->len = RedisGears_BRReadLong(br);
@@ -121,33 +121,6 @@ static void ExecutionPlan_SetID(ExecutionPlan* ep, char* id);
 static void FlatExecutionPlan_SetID(FlatExecutionPlan* fep, char* id);
 static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep);
 
-static uint64_t idHashFunction(const void *key){
-    return Gears_dictGenHashFunction(key, EXECUTION_PLAN_ID_LEN);
-}
-
-static int idKeyCompare(void *privdata, const void *key1, const void *key2){
-    return memcmp(key1, key2, EXECUTION_PLAN_ID_LEN) == 0;
-}
-
-static void idKeyDestructor(void *privdata, void *key){
-    RG_FREE(key);
-}
-
-static void* idKeyDup(void *privdata, const void *key){
-	char* ret = RG_ALLOC(EXECUTION_PLAN_ID_LEN);
-	memcpy(ret, key , EXECUTION_PLAN_ID_LEN);
-    return ret;
-}
-
-Gears_dictType dictTypeHeapIds = {
-        .hashFunction = idHashFunction,
-        .keyDup = idKeyDup,
-        .valDup = NULL,
-        .keyCompare = idKeyCompare,
-        .keyDestructor = idKeyDestructor,
-        .valDestructor = NULL,
-};
-
 typedef enum MsgType{
     RUN_MSG, ADD_RECORD_MSG, SHARD_COMPLETED_MSG, EXECUTION_DONE, EXECUTION_TERMINATE
 }MsgType;
@@ -173,7 +146,7 @@ typedef struct AddRecordWorkerMsg{
 }AddRecordWorkerMsg;
 
 typedef struct WorkerMsg{
-    char id[EXECUTION_PLAN_ID_LEN];
+    char id[ID_LEN];
     union{
     	RunWorkerMsg runWM;
     	AddRecordWorkerMsg addRecordWM;
@@ -198,28 +171,28 @@ static void ExectuionPlan_WorkerMsgFree(WorkerMsg* msg){
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateRun(ExecutionPlan* ep){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = RUN_MSG;
-	memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
+	memcpy(ret->id, ep->id, ID_LEN);
 	return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateTerminate(ExecutionPlan* ep){
     WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
     ret->type = EXECUTION_TERMINATE;
-    memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
+    memcpy(ret->id, ep->id, ID_LEN);
     return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
     WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
     ret->type = EXECUTION_DONE;
-    memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
+    memcpy(ret->id, ep->id, ID_LEN);
     return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = ADD_RECORD_MSG;
-	memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
+	memcpy(ret->id, ep->id, ID_LEN);
 	ret->addRecordWM.record = r;
 	ret->addRecordWM.stepId = stepId;
 	ret->addRecordWM.stepType = stepType;
@@ -229,7 +202,7 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateShardCompleted(ExecutionPlan* ep, size_t stepId, enum StepType stepType){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = SHARD_COMPLETED_MSG;
-	memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
+	memcpy(ret->id, ep->id, ID_LEN);
 	ret->shardCompletedWM.stepId = stepId;
 	ret->shardCompletedWM.stepType = stepType;
 	return ret;
@@ -268,7 +241,7 @@ ExecutionPlan* ExecutionPlan_FindById(const char* id){
 }
 
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id){
-    char realId[EXECUTION_PLAN_ID_LEN] = {0};
+    char realId[ID_LEN] = {0};
     if(strlen(id) < REDISMODULE_NODE_ID_LEN + 2){
         return NULL;
     }
@@ -289,7 +262,7 @@ static FlatExecutionPlan* FlatExecutionPlan_FindId(const char* id){
 }
 
 static FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id){
-    char realId[EXECUTION_PLAN_ID_LEN] = {0};
+    char realId[ID_LEN] = {0};
     if(strlen(id) < REDISMODULE_NODE_ID_LEN + 2){
         return NULL;
     }
@@ -333,17 +306,9 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
     fep->serializedFep = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, fep->serializedFep);
-    FlatExecutionPlan_SerializeReader(fep->reader, &bw);
-    RedisGears_BWWriteLong(&bw, array_len(fep->steps));
-    for(int i = 0 ; i < array_len(fep->steps) ; ++i){
-        FlatExecutionStep* step = fep->steps + i;
-        if(FlatExecutionPlan_SerializeStep(step, &bw) != REDISMODULE_OK){
-            Gears_BufferFree(fep->serializedFep);
-            fep->serializedFep = NULL;
-            return NULL;
-        }
-    }
 
+    // Private data must serialize and deserialized first cause other
+    // stages of the deserialization process might need it.
     if(fep->PD){
         RedisGears_BWWriteLong(&bw, 1); // PD exists
         RedisGears_BWWriteString(&bw, fep->PDType);
@@ -358,8 +323,19 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
         RedisGears_BWWriteLong(&bw, 0); // PD do exists
     }
 
+    FlatExecutionPlan_SerializeReader(fep->reader, &bw);
+    RedisGears_BWWriteLong(&bw, array_len(fep->steps));
+    for(int i = 0 ; i < array_len(fep->steps) ; ++i){
+        FlatExecutionStep* step = fep->steps + i;
+        if(FlatExecutionPlan_SerializeStep(step, &bw) != REDISMODULE_OK){
+            Gears_BufferFree(fep->serializedFep);
+            fep->serializedFep = NULL;
+            return NULL;
+        }
+    }
+
     // serialize FEP id
-    RedisGears_BWWriteBuffer(&bw, fep->id, EXECUTION_PLAN_ID_LEN);
+    RedisGears_BWWriteBuffer(&bw, fep->id, ID_LEN);
     if(fep->desc){
         RedisGears_BWWriteLong(&bw, 1); // has desc
         RedisGears_BWWriteString(&bw, fep->desc);
@@ -396,14 +372,14 @@ static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferRead
     return reader;
 }
 
-static FlatExecutionStep FlatExecutionPlan_DeserializeStep(Gears_BufferReader* br){
+static FlatExecutionStep FlatExecutionPlan_DeserializeStep(FlatExecutionPlan* fep, Gears_BufferReader* br){
     FlatExecutionStep step;
     step.type = RedisGears_BRReadLong(br);
     step.bStep.stepName = RG_STRDUP(RedisGears_BRReadString(br));
     step.bStep.arg.stepArg = NULL;
     step.bStep.arg.type = FlatExecutionPlan_GetArgTypeByStepType(step.type, step.bStep.stepName);
     if(step.bStep.arg.type && step.bStep.arg.type->deserialize){
-        step.bStep.arg.stepArg = step.bStep.arg.type->deserialize(br);
+        step.bStep.arg.stepArg = step.bStep.arg.type->deserialize(fep, br);
     }
     return step;
 }
@@ -417,24 +393,25 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
-    ret->reader = FlatExecutionPlan_DeserializeReader(&br);
-    long numberOfSteps = RedisGears_BRReadLong(&br);
-    for(int i = 0 ; i < numberOfSteps ; ++i){
-        ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(&br));
-    }
 
     bool PDExists = RedisGears_BRReadLong(&br);
     if(PDExists){
         ret->PDType = RG_STRDUP(RedisGears_BRReadString(&br));
         ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
         assert(type);
-        ret->PD = type->deserialize(&br);
+        ret->PD = type->deserialize(ret, &br);
+    }
+
+    ret->reader = FlatExecutionPlan_DeserializeReader(&br);
+    long numberOfSteps = RedisGears_BRReadLong(&br);
+    for(int i = 0 ; i < numberOfSteps ; ++i){
+        ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(ret, &br));
     }
 
     // read FEP id
     size_t len;
     char* idBuff = RedisGears_BRReadBuffer(&br, &len);
-    assert(len == EXECUTION_PLAN_ID_LEN);
+    assert(len == ID_LEN);
     FlatExecutionPlan_SetID(ret, idBuff);
 
     long long hasDesc = RedisGears_BRReadLong(&br);
@@ -449,7 +426,7 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
         void* arg = NULL;
         long long hasArg = RedisGears_BRReadLong(&br);
         if(hasArg){
-            arg = type->deserialize(&br);
+            arg = type->deserialize(ret, &br);
         }
         ret->onExecutionStartStep = (FlatBasicStep){
                 .stepName = RG_STRDUP(onStartCallbackName),
@@ -468,11 +445,11 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
 }
 
 static void ExecutionPlan_SendRunRequest(ExecutionPlan* ep){
-	Cluster_SendMsgM(NULL, ExecutionPlan_NotifyRun, ep->id, EXECUTION_PLAN_ID_LEN);
+	Cluster_SendMsgM(NULL, ExecutionPlan_NotifyRun, ep->id, ID_LEN);
 }
 
 static void ExecutionPlan_SendRecievedNotification(ExecutionPlan* ep){
-	Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyReceived, ep->id, EXECUTION_PLAN_ID_LEN);
+	Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyReceived, ep->id, ID_LEN);
 }
 
 static void ExecutionPlan_Distribute(ExecutionPlan* ep){
@@ -483,7 +460,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     const char* serializedFep = FlatExecutionPlan_Serialize(ep->fep, &len);
     assert(serializedFep); // if we reached here execution must be serialized
     RedisGears_BWWriteBuffer(&bw, serializedFep, len);
-    RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution id
+    RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
     Cluster_SendMsgM(NULL, ExecutionPlan_OnReceived, buff->buff, buff->size);
@@ -761,7 +738,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         else{
             // we need to send the record to another shard
             Gears_BufferWriterInit(&bw, buff);
-            RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+            RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
             RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
             RG_SerializeRecord(&bw, record);
             RedisGears_FreeRecord(record);
@@ -775,7 +752,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
 
     START_TIMER;
     Gears_BufferWriterInit(&bw, buff);
-    RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+    RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
     RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
     Cluster_SendMsgM(NULL, ExecutionPlan_DoneRepartition, buff->buff, buff->size);
@@ -834,7 +811,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			goto end; // record should stay here, just return it.
 		}else{
 			Gears_BufferWriterInit(&bw, buff);
-			RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+			RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
 			RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 			RG_SerializeRecord(&bw, record);
 			RedisGears_FreeRecord(record);
@@ -862,7 +839,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 		record = &StopRecord; // now we should wait for record to arrive from the other shards
 	}else{
 		Gears_BufferWriterInit(&bw, buff);
-		RedisGears_BWWriteBuffer(&bw, ep->id, EXECUTION_PLAN_ID_LEN); // serialize execution plan id
+		RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
 		RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 
 		Cluster_SendMsgM(ep->id, ExecutionPlan_CollectDoneSendingRecords, buff->buff, buff->size);
@@ -1213,7 +1190,7 @@ ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
             // todo: check if this can really happened (I think it can not)
             // all the shards are done
             // notify them that its safe to complete the execution
-            Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+            Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, ID_LEN);
             ep->status = DONE;
             return CONTINUE;
         }else{
@@ -1222,7 +1199,7 @@ ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
     }else{
         // we are not the initiator, notifying the initiator that we are done and wait
         // for him to tell us that it safe to complete the execution
-        Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyExecutionDone, ep->id, EXECUTION_PLAN_ID_LEN);
+        Cluster_SendMsgM(ep->id, ExecutionPlan_NotifyExecutionDone, ep->id, ID_LEN);
         ep->status = WAITING_FOR_INITIATOR_TERMINATION;
     }
     return STOP;
@@ -1233,7 +1210,7 @@ ActionResult EPStatus_PendingClusterAction(ExecutionPlan* ep){
     assert(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0);
 
     // we are the initiator, lets notify everyone that its safe to complete the execution
-    Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, EXECUTION_PLAN_ID_LEN);
+    Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, ID_LEN);
 
     ep->status = DONE;
     return CONTINUE;
@@ -1604,7 +1581,7 @@ static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const
     Gears_BufferReaderInit(&br, &buff);
     size_t idLen;
     char* id = RedisGears_BRReadBuffer(&br, &idLen);
-    assert(idLen == EXECUTION_PLAN_ID_LEN);
+    assert(idLen == ID_LEN);
     bool abortPendind = RedisGears_BRReadLong(&br);
     FlatExecutionPlan* fep = FlatExecutionPlan_FindId(id);
     if(!fep){
@@ -1627,12 +1604,12 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
-    assert(idLen == EXECUTION_PLAN_ID_LEN);
+    assert(idLen == ID_LEN);
 
     // Execution recieved from another shards is always async
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, ExecutionModeAsync, NULL, NULL, NULL);
     Reader* reader = ExecutionPlan_GetReader(ep);
-    reader->deserialize(reader ->ctx, &br);
+    reader->deserialize(fep, reader->ctx, &br);
     FlatExecutionPlan_Free(fep);
     ExecutionPlan_Run(ep);
 }
@@ -1647,7 +1624,7 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     size_t epIdLen;
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     size_t stepId = RedisGears_BRReadLong(&br);
-    assert(epIdLen == EXECUTION_PLAN_ID_LEN);
+    assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
@@ -1681,7 +1658,7 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     size_t epIdLen;
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     size_t stepId = RedisGears_BRReadLong(&br);
-    assert(epIdLen == EXECUTION_PLAN_ID_LEN);
+    assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     assert(ep);
@@ -1870,8 +1847,8 @@ static WorkerData* ExecutionPlan_StartThread(){
 }
 
 void ExecutionPlan_Initialize(size_t numberOfworkers){
-    epData.epDict = Gears_dictCreate(&dictTypeHeapIds, NULL);
-    epData.registeredFepDict = Gears_dictCreate(&dictTypeHeapIds, NULL);
+    epData.epDict = Gears_dictCreate(dictTypeHeapIdsPtr, NULL);
+    epData.registeredFepDict = Gears_dictCreate(dictTypeHeapIdsPtr, NULL);
     epData.epList = Gears_listCreate();
     pthread_mutex_init(&epData.mutex, NULL);
     epData.workers = array_new(WorkerData*, numberOfworkers);
@@ -2028,26 +2005,6 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
     es->prev = NULL;
     es->executionDuration = 0;
     return es;
-}
-
-static void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID){
-    char generatedId[EXECUTION_PLAN_ID_LEN] = {0};
-    if(!finalId){
-        char noneClusterId[REDISMODULE_NODE_ID_LEN] = {0};
-        char* id;
-        if(Cluster_IsClusterMode()){
-            id = Cluster_GetMyId();
-        }else{
-            memset(noneClusterId, '0', REDISMODULE_NODE_ID_LEN);
-            id = noneClusterId;
-        }
-        memcpy(generatedId, id, REDISMODULE_NODE_ID_LEN);
-        memcpy(generatedId + REDISMODULE_NODE_ID_LEN, lastID, sizeof(long long));
-        finalId = generatedId;
-        ++(*lastID);
-    }
-    memcpy(idBuf, finalId, EXECUTION_PLAN_ID_LEN);
-    snprintf(idStrBuf, EXECUTION_PLAN_STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, idBuf, *(long long*)&idBuf[REDISMODULE_NODE_ID_LEN]);
 }
 
 static void ExecutionPlan_SetID(ExecutionPlan* ep, char* id){
@@ -2249,6 +2206,8 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         return;
     }
 
+    assert(fep->refCount == 0);
+
     for(size_t i = 0 ; i < fep->executionPoolSize ; ++i){
         ExecutionPlan_FreeRaw(fep->executionPool[i]);
     }
@@ -2295,6 +2254,10 @@ bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader){
     }
     fep->reader = FlatExecutionPlan_NewReader(reader);
     return true;
+}
+
+void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep){
+    return fep->PD;
 }
 
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
@@ -2445,7 +2408,7 @@ static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString
         Gears_Buffer* buff = Gears_BufferNew(50);
         Gears_BufferWriter bw;
         Gears_BufferWriterInit(&bw, buff);
-        RedisGears_BWWriteBuffer(&bw, fep->id, EXECUTION_PLAN_ID_LEN);
+        RedisGears_BWWriteBuffer(&bw, fep->id, ID_LEN);
         RedisGears_BWWriteLong(&bw, abortPending);
         Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, buff->buff, buff->size);
         Gears_BufferFree(buff);

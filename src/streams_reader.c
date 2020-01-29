@@ -374,7 +374,7 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
     readerCtx->isDone = true;
 }
 
-static void StreamReader_CtxDeserialize(void* ctx, Gears_BufferReader* br){
+static void StreamReader_CtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
     StreamReaderCtx* readerCtx = ctx;
     readerCtx->streamKeyName = RG_STRDUP(RedisGears_BRReadString(br));
     if(RedisGears_BRReadLong(br)){

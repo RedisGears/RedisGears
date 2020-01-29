@@ -14,6 +14,7 @@
 #include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
+#include "common.h"
 #ifdef WITHPYTHON
 #include <redisgears_python.h>
 #endif
@@ -172,9 +173,6 @@ typedef enum ExecutionPlanStatus{
 #undef X
 }ExecutionPlanStatus;
 
-#define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
-#define EXECUTION_PLAN_STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
-
 typedef struct WorkerData{
     Gears_list* notifications;
     pthread_mutex_t lock;
@@ -202,8 +200,8 @@ typedef struct OnDoneData{
 #define EPIsFlagOff(ep, f) (!(ep->flags & f))
 
 typedef struct ExecutionPlan{
-    char id[EXECUTION_PLAN_ID_LEN];
-    char idStr[EXECUTION_PLAN_STR_ID_LEN];
+    char id[ID_LEN];
+    char idStr[STR_ID_LEN];
     ExecutionStep** steps;
     FlatExecutionPlan* fep;
     size_t totalShardsRecieved;
@@ -237,8 +235,8 @@ typedef struct FlatExecutionReader{
 
 #define EXECUTION_POOL_SIZE 1
 typedef struct FlatExecutionPlan{
-    char id[EXECUTION_PLAN_ID_LEN];
-    char idStr[EXECUTION_PLAN_STR_ID_LEN];
+    char id[ID_LEN];
+    char idStr[STR_ID_LEN];
     char* desc;
     size_t refCount;
     FlatExecutionReader* reader;
@@ -270,6 +268,7 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len);
 FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t len);
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
+void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
 void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
