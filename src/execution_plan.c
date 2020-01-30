@@ -359,6 +359,22 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
         RedisGears_BWWriteLong(&bw, 0); // no onExecutionStartStep
     }
 
+    if(fep->onRegisteredStep.stepName){
+        RedisGears_BWWriteLong(&bw, 1); // has onExecutionStartStep
+        RedisGears_BWWriteString(&bw, fep->onRegisteredStep.stepName);
+        ArgType* type = fep->onRegisteredStep.arg.type;
+        if(fep->onRegisteredStep.arg.stepArg){
+            RedisGears_BWWriteLong(&bw, 1); // args exists
+            if(type && type->serialize){
+                type->serialize(fep->onRegisteredStep.arg.stepArg, &bw);
+            }
+        }else{
+            RedisGears_BWWriteLong(&bw, 0); // NULL args
+        }
+    }else{
+        RedisGears_BWWriteLong(&bw, 0); // no onExecutionStartStep
+    }
+
     if(len){
         *len = fep->serializedFep->size;
     }
@@ -430,6 +446,24 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
         }
         ret->onExecutionStartStep = (FlatBasicStep){
                 .stepName = RG_STRDUP(onStartCallbackName),
+                .arg = {
+                        .stepArg = arg,
+                        .type = type,
+                },
+        };
+    }
+
+    long long hasOnRegisteredCallback = RedisGears_BRReadLong(&br);
+    if(hasOnRegisteredCallback){
+        const char* onRegisteredCallbackName = RedisGears_BRReadString(&br);
+        ArgType* type = FlatExecutionOnRegisteredsMgmt_GetArgType(onRegisteredCallbackName);
+        void* arg = NULL;
+        long long hasArg = RedisGears_BRReadLong(&br);
+        if(hasArg){
+            arg = type->deserialize(ret, &br);
+        }
+        ret->onRegisteredStep = (FlatBasicStep){
+                .stepName = RG_STRDUP(onRegisteredCallbackName),
                 .arg = {
                         .stepArg = arg,
                         .type = type,
@@ -1265,6 +1299,13 @@ static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGear
     // the registeredFepDict holds a weak pointer to the fep struct. It does not increase
     // the refcount and will be remove when the fep will be unregistered
     FlatExecutionPlan_AddToRegisterDict(fep);
+
+    // call the on registered callback if set
+    if(fep->onRegisteredStep.stepName){
+        RedisGears_FlatExecutionOnRegisteredCallback onRegistered = FlatExecutionOnRegisteredsMgmt_Get(fep->onRegisteredStep.stepName);
+        assert(onRegistered);
+        onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
+    }
 }
 
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -2190,6 +2231,14 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
             },
     };
 
+    res->onRegisteredStep = (FlatBasicStep){
+            .stepName = NULL,
+            .arg = {
+                    .stepArg = NULL,
+                    .type = NULL,
+            },
+    };
+
     FlatExecutionPlan_SetID(res, NULL);
 
     return res;
@@ -2244,6 +2293,14 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         }
     }
 
+    if(fep->onRegisteredStep.stepName){
+        RG_FREE(fep->onRegisteredStep.stepName);
+        if(fep->onRegisteredStep.arg.stepArg){
+            assert(fep->onRegisteredStep.arg.type);
+            fep->onRegisteredStep.arg.type->free(fep->onRegisteredStep.arg.stepArg);
+        }
+    }
+
     RG_FREE(fep);
 }
 
@@ -2278,6 +2335,13 @@ void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallb
     fep->onExecutionStartStep.arg.stepArg = onStartArg;
     fep->onExecutionStartStep.arg.type = ExecutionOnStartsMgmt_GetArgType(onStartCallback);
     assert(fep->onExecutionStartStep.arg.type);
+}
+
+void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg){
+    fep->onRegisteredStep.stepName = onRegisteredCallback;
+    fep->onRegisteredStep.arg.stepArg = onRegisteredArg;
+    fep->onRegisteredStep.arg.type = FlatExecutionOnRegisteredsMgmt_GetArgType(onRegisteredCallback);
+    assert(fep->onRegisteredStep.arg.type);
 }
 
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg){

@@ -321,6 +321,7 @@ def testOneKeyScan(env):
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
 
 def testGlobalsSharedBetweenFunctions(env):
+    conn = getConnectionByEnv(env)
     script = '''
 counter = 0
 

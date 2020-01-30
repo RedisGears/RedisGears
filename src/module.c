@@ -90,12 +90,25 @@ static int RG_RegisterExecutionOnStartCallback(char* name, RedisGears_ExecutionO
     return ExecutionOnStartsMgmt_Add(name, callback, type);
 }
 
+static int RG_RegisterFlatExecutionOnRegisteredCallback(char* name, RedisGears_FlatExecutionOnRegisteredCallback callback, ArgType* type){
+    return FlatExecutionOnRegisteredsMgmt_Add(name, callback, type);
+}
+
 static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char* callback, void* arg){
     RedisGears_ExecutionOnStartCallback c = ExecutionOnStartsMgmt_Get(callback);
     if(!c){
         return REDISMODULE_ERR;
     }
     FlatExecutionPlan_SetOnStartStep(fep, RG_STRDUP(callback), arg);
+    return REDISMODULE_OK;
+}
+
+static int RG_SetFlatExecutionOnRegisteredCallback(FlatExecutionPlan* fep, const char* callback, void* arg){
+    RedisGears_FlatExecutionOnRegisteredCallback c = FlatExecutionOnRegisteredsMgmt_Get(callback);
+    if(!c){
+        return REDISMODULE_ERR;
+    }
+    FlatExecutionPlan_SetOnRegisteredStep(fep, RG_STRDUP(callback), arg);
     return REDISMODULE_OK;
 }
 
@@ -558,7 +571,9 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetPrivateData, ctx);
     REGISTER_API(SetPrivateData, ctx);
     REGISTER_API(RegisterExecutionOnStartCallback, ctx);
+    REGISTER_API(RegisterFlatExecutionOnRegisteredCallback, ctx);
     REGISTER_API(SetFlatExecutionOnStartCallback, ctx);
+    REGISTER_API(SetFlatExecutionOnRegisteredCallback, ctx);
 
     REGISTER_API(DropLocalyOnDone, ctx);
 

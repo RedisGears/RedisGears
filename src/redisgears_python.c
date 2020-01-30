@@ -68,6 +68,7 @@ static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
 static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br);
 static void TimeEvent_Free(void *value);
 static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw);
+static PythonThreadCtx* GetPythonThreadCtx();
 
 static long long CurrSessionId = 0;
 
@@ -134,6 +135,34 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
 
 static char* PythonSessionCtx_ToString(void* arg){
     return RG_STRDUP("session ToStr");
+}
+
+static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
+    PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+    assert(sctx);
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    ptctx->currSession = sctx;
+
+    PyObject* callback = arg;
+
+    RedisGearsPy_Lock();
+
+    assert(PyFunction_Check(callback));
+
+    PyObject* pArgs = PyTuple_New(0);
+    PyObject* ret = PyObject_CallObject(callback, pArgs);
+    Py_DECREF(pArgs);
+    if(!ret){
+        PyErr_Print();
+        RedisGearsPy_Unlock();
+        return;
+    }
+    if(ret != Py_None){
+        Py_DECREF(ret);
+    }
+
+    RedisGearsPy_Unlock();
+
 }
 
 static void RedisGearsPy_OnExecutionStartCallback(ExecutionCtx* ctx, void* arg){
@@ -665,6 +694,20 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         }
     }
 
+    PyObject* onRegistered = PyDict_GetItemString(kargs, "OnRegistered");
+    if(onRegistered && onRegistered != Py_None){
+        if(!PyFunction_Check(onRegistered)){
+            PyErr_SetString(GearsError, "OnRegistered argument must be a function");
+            return NULL;
+        }
+        Py_INCREF(onRegistered);
+        if(RGM_SetFlatExecutionOnRegisteredCallback(pfep->fep, RedisGearsPy_OnRegistered, onRegistered) != REDISMODULE_OK){
+            PyErr_SetString(GearsError, "Failed setting on OnRegistered callback");
+            Py_DECREF(onRegistered);
+            return NULL;
+        }
+    }
+
     void* executionArgs = registerCreateArgs(pfep->fep, kargs);
     if(executionArgs == NULL){
         return NULL;
@@ -829,6 +872,47 @@ static PyObject* getMyHashTag(PyObject *cls, PyObject *args){
     }
     PyObject* ret = PyUnicode_FromStringAndSize(myHashTag, strlen(myHashTag));
     return ret;
+}
+
+static PyObject* RedisLog(PyObject *cls, PyObject *args){
+    PyObject* logLevel = NULL;
+    PyObject* logMsg = NULL;
+    if(PyTuple_Size(args) < 1 || PyTuple_Size(args) > 2){
+        PyErr_SetString(GearsError, "log function must get a log message as input");
+        return NULL;
+    }
+    if(PyTuple_Size(args) == 2){
+        logLevel = PyTuple_GetItem(args, 0);
+        logMsg = PyTuple_GetItem(args, 1);
+    }else{
+        logMsg = PyTuple_GetItem(args, 0);
+    }
+
+    if(!PyUnicode_Check(logMsg)){
+        PyErr_SetString(GearsError, "Log message must be a string");
+        return NULL;
+    }
+
+    const char* logMsgCStr = PyUnicode_AsUTF8AndSize(logMsg, NULL);
+    const char* logLevelCStr = "notice";
+
+    if(logLevel){
+        if(!PyUnicode_Check(logLevel)){
+            PyErr_SetString(GearsError, "Log level must be a sting (debug/verbose/notice/warning)");
+            return NULL;
+        }
+        logLevelCStr = PyUnicode_AsUTF8AndSize(logLevel, NULL);
+        if(strcmp(logLevelCStr, "debug") != 0 &&
+                strcmp(logLevelCStr, "verbose") != 0 &&
+                strcmp(logLevelCStr, "notice") != 0 &&
+                strcmp(logLevelCStr, "warning") != 0){
+            PyErr_SetString(GearsError, "Log level should be one of the following : debug,verbose,notice,warning");
+            return NULL;
+        }
+    }
+
+    RedisModule_Log(NULL, logLevelCStr, "GEARS_FUNCTION_LOG - %s", logMsgCStr);
+    return Py_None;
 }
 
 static PyObject* executeCommand(PyObject *cls, PyObject *args){
@@ -1507,6 +1591,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
+    {"log", RedisLog, METH_VARARGS, "write a message into the redis log file"},
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {NULL, NULL, 0, NULL}
@@ -2582,6 +2667,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RGM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
     RGM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
     RGM_RegisterExecutionOnStartCallback(RedisGearsPy_OnExecutionStartCallback, pyCallbackType);
+    RGM_RegisterFlatExecutionOnRegisteredCallback(RedisGearsPy_OnRegistered, pyCallbackType);
 
     if(TimeEvent_RegisterType(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not register command timer datatype");
