@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Check that Python 2 is installed (by checking for python, python2, and python2.7 commands).
+# If so, verify that python2 and python2.7 commands are present.
+# If Python 2 is not found on the system, try to install it and repeat the abose checks.
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 . $HERE/../shibumi/functions
@@ -24,6 +28,9 @@ check_variants() {
 }
 
 check_variants
+
+[ ! -z $PYTHON27 ] && exit 0
+[ ! -z $PYTHON2 ] && exit 0
 
 if [ ! -z $PYTHON ]; then
 	[ "$(python --version 2>&1 | cut -d" " -f2 | cut -d. -f1)" = "2" ] && exit 0

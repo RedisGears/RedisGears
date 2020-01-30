@@ -1,12 +1,10 @@
 #!/bin/bash
 
-if (( $(./deps/readies/bin/platform --os) == macosx )); then
-	export PATH=$PATH:$HOME/Library/Python/2.7/bin
+[[ $VERBOSE == 1 ]] && set -x
+[[ $IGNERR == 1 ]] || set -e
 
-	realpath() {
-    	[[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-	}
-fi
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+. $HERE/deps/readies/shibumi/functions
 
 pack() {
 	local artifact="$1"
@@ -42,8 +40,6 @@ pack() {
 	packname="artifacts/$artifact/$packname"
 	echo Created $packname
 }
-
-set -e
 
 if ! command -v redis-server > /dev/null; then
 	echo Cannot find redis-server. Aborting.
@@ -81,7 +77,8 @@ stem=$(basename $RELEASE | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
 TAR=$PACKAGE_NAME-dependencies.$stem.tgz
 TAR_PATH=$(realpath artifacts/release/$TAR)
 cd $CPYTHON_PREFIX/
-tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2> /dev/null
+{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
+[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 cd - > /dev/null
 echo Created artifacts/release/$TAR
 

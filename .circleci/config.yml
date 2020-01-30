@@ -17,7 +17,7 @@ commands:
           command: git submodule update --init --recursive
       - run:
           name: System setup
-          command: python system-setup.py
+          command: BREW_NO_UPDATE=1 python system-setup.py
       - run:
           name: Build
           command: |
@@ -140,32 +140,25 @@ workflows:
           filters:
             branches:
               only: /.*/
-              ignore:
-                - rafi-behind_oracle-1
             tags:
               only: /.*/
       - centos:
           filters:
             branches:
               only: /.*/
-              ignore:
-                - rafi-behind_oracle-1
             tags:
               only: /.*/
       - macos:
           filters:
             branches:
-              # only: /.*/
               ignore: /.*/
             tags:
               only: /^v[0-9].*/
       - build-multiarch-docker:
           filters:
             branches:
-              # only: /.*/
               ignore: /.*/
             tags:
-              # only: /.*/
               only: /^v[0-9].*/
       - deploy_snapshots:
           requires: *default_jobs
