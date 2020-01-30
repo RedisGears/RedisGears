@@ -189,13 +189,13 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key){
+static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
 
-    return FlatExecutionPlan_Register(fep, mode, key);
+    return FlatExecutionPlan_Register(fep, mode, key, err);
 }
 
-static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData);
+static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err){
+    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, err);
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
@@ -204,6 +204,10 @@ static const char* RG_GetReader(FlatExecutionPlan* fep){
 
 static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const char* streamId){
     return StreamReaderCtx_Create(streamName, streamId);
+}
+
+static void RG_StreamReaderCtxFree(StreamReaderCtx* readerCtx){
+    StreamReaderCtx_Free(readerCtx);
 }
 
 static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS){
@@ -519,6 +523,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(FreeFlatExecution, ctx);
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
+    REGISTER_API(StreamReaderCtxFree, ctx);
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
 

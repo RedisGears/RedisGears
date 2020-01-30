@@ -71,7 +71,7 @@ static void* DupLimitArg(void* arg){
     return ret;
 }
 
-static int LimitArgSerialize(void* arg, Gears_BufferWriter* bw){
+static int LimitArgSerialize(void* arg, Gears_BufferWriter* bw, char** err){
     LimitExecutionStepArg* limitArg = arg;
     RedisGears_BWWriteLong(bw, limitArg->offset);
     RedisGears_BWWriteLong(bw, limitArg->len);
@@ -282,17 +282,17 @@ static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, Gears_B
     RedisGears_BWWriteString(bw, rfep->reader);
 }
 
-static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_BufferWriter* bw){
+static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_BufferWriter* bw, char** err){
     RedisGears_BWWriteLong(bw, step->type);
     RedisGears_BWWriteString(bw, step->bStep.stepName);
     ArgType* type = step->bStep.arg.type;
     if(type && type->serialize){
-        return type->serialize(step->bStep.arg.stepArg, bw);
+        return type->serialize(step->bStep.arg.stepArg, bw, err);
     }
     return REDISMODULE_OK;
 }
 
-const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
+const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len, char** err){
     if(fep->serializedFep){
         // notice that this is not only an optimization,
         // when calling register on fep we call this function to serialize
@@ -314,7 +314,7 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
         RedisGears_BWWriteString(&bw, fep->PDType);
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         assert(type);
-        if(type->serialize(fep->PD, &bw) != REDISMODULE_OK){
+        if(type->serialize(fep->PD, &bw, err) != REDISMODULE_OK){
             Gears_BufferFree(fep->serializedFep);
             fep->serializedFep = NULL;
             return NULL;
@@ -327,7 +327,7 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
     RedisGears_BWWriteLong(&bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
-        if(FlatExecutionPlan_SerializeStep(step, &bw) != REDISMODULE_OK){
+        if(FlatExecutionPlan_SerializeStep(step, &bw, err) != REDISMODULE_OK){
             Gears_BufferFree(fep->serializedFep);
             fep->serializedFep = NULL;
             return NULL;
@@ -350,7 +350,11 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
         if(fep->onExecutionStartStep.arg.stepArg){
             RedisGears_BWWriteLong(&bw, 1); // args exists
             if(type && type->serialize){
-                type->serialize(fep->onExecutionStartStep.arg.stepArg, &bw);
+                if(type->serialize(fep->onExecutionStartStep.arg.stepArg, &bw, err) != REDISMODULE_OK){
+                    Gears_BufferFree(fep->serializedFep);
+                    fep->serializedFep = NULL;
+                    return NULL;
+                }
             }
         }else{
             RedisGears_BWWriteLong(&bw, 0); // NULL args
@@ -366,7 +370,11 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len){
         if(fep->onRegisteredStep.arg.stepArg){
             RedisGears_BWWriteLong(&bw, 1); // args exists
             if(type && type->serialize){
-                type->serialize(fep->onRegisteredStep.arg.stepArg, &bw);
+                if(type->serialize(fep->onRegisteredStep.arg.stepArg, &bw, err) != REDISMODULE_OK){
+                    Gears_BufferFree(fep->serializedFep);
+                    fep->serializedFep = NULL;
+                    return NULL;
+                }
             }
         }else{
             RedisGears_BWWriteLong(&bw, 0); // NULL args
@@ -473,7 +481,7 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
 
     // we need to deserialize the fep now so we will have the deserialize clean version of it.
     // it might changed after to something we can not serialize
-    const char* d = FlatExecutionPlan_Serialize(ret, NULL);
+    const char* d = FlatExecutionPlan_Serialize(ret, NULL, NULL);
     assert(d);
     return ret;
 }
@@ -491,7 +499,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     size_t len;
-    const char* serializedFep = FlatExecutionPlan_Serialize(ep->fep, &len);
+    const char* serializedFep = FlatExecutionPlan_Serialize(ep->fep, &len, NULL);
     assert(serializedFep); // if we reached here execution must be serialized
     RedisGears_BWWriteBuffer(&bw, serializedFep, len);
     RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution id
@@ -1916,7 +1924,7 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
     return fep->reader->reader;
 }
 
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* args){
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks); // todo: handle as error in future
     if(!callbacks->registerTrigger){
@@ -1926,7 +1934,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     assert(callbacks->serializeTriggerArgs);
 
     size_t len;
-    const char* serializedFep = FlatExecutionPlan_Serialize(fep, &len);
+    const char* serializedFep = FlatExecutionPlan_Serialize(fep, &len, err);
     if(!serializedFep){
         return 0;
     }
@@ -1953,10 +1961,10 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     return 1;
 }
 
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err){
     if(Cluster_IsClusterMode()){
         // on cluster mode, we must make sure we can distribute the execution to all shards.
-        if(!FlatExecutionPlan_Serialize(fep, NULL)){
+        if(!FlatExecutionPlan_Serialize(fep, NULL, err)){
             return NULL;
         }
     }

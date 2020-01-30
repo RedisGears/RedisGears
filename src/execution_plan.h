@@ -265,7 +265,7 @@ typedef struct ExecutionCtx{
 FlatExecutionPlan* FlatExecutionPlan_New();
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep);
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep);
-const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len);
+const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len, char** err);
 FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t len);
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
@@ -287,9 +287,9 @@ void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key);
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);

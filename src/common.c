@@ -10,6 +10,7 @@
 #include "redisgears_memory.h"
 #include "redismodule.h"
 #include <string.h>
+#include <stdarg.h>
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, ID_LEN);
@@ -58,4 +59,29 @@ void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID){
     }
     memcpy(idBuf, finalId, ID_LEN);
     snprintf(idStrBuf, STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, idBuf, *(long long*)&idBuf[REDISMODULE_NODE_ID_LEN]);
+}
+
+int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg) {
+  va_list args_copy;
+  va_copy(args_copy, __arg);
+
+  size_t needed = vsnprintf(NULL, 0, __fmt, __arg) + 1;
+  *__ptr = RG_ALLOC(needed);
+
+  int res = vsprintf(*__ptr, __fmt, args_copy);
+
+  va_end(args_copy);
+
+  return res;
+}
+
+int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...) {
+  va_list ap;
+  va_start(ap, __fmt);
+
+  int res = rg_vasprintf(__ptr, __fmt, ap);
+
+  va_end(ap);
+
+  return res;
 }

@@ -524,7 +524,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
             void* privateData = NULL;
             callback = KeysReader_ExecutionDone;
             privateData = KeysReaderRegisterData_GetShallowCopy(rData);
-            ExecutionPlan* ep = RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData);
+            ExecutionPlan* ep = RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData, NULL);
             if(!ep){
                 ++rData->numAborted;
                 RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
@@ -795,7 +795,7 @@ static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(Fl
         }
         RedisModule_SaveUnsigned(rdb, 1); // has more
         size_t len;
-        const char* serializedFep = FlatExecutionPlan_Serialize(rData->fep, &len);
+        const char* serializedFep = FlatExecutionPlan_Serialize(rData->fep, &len, NULL);
         assert(serializedFep); // fep already registered, must be serializable.
         RedisModule_SaveStringBuffer(rdb, serializedFep, len);
 

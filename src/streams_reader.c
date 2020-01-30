@@ -64,6 +64,7 @@ typedef struct SingleStreamReaderCtx{
 }SingleStreamReaderCtx;
 
 static void* StreamReader_ScanForStreams(void* pd);
+static void StreamReader_Free(void* ctx);
 
 static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallReply* reply, const char* msgPrefix, const char* logLevel){
     if (reply == NULL ||
@@ -255,6 +256,10 @@ StreamReaderCtx* StreamReaderCtx_Create(const char* streamName, const char* stre
             .lastReadId = StreamIdZero,
     };
     return readerCtx;
+}
+
+void StreamReaderCtx_Free(StreamReaderCtx* readerCtx){
+    StreamReader_Free(readerCtx);
 }
 
 StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* streamName, const char* consumerGroup, size_t batchSize, bool readPenging){
@@ -583,7 +588,7 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
     RedisGears_OnExecutionDoneCallback callback = StreamReader_ExecutionDone;
     void* privateData = StreamReaderTriggerCtx_GetShallowCopy(srtctx);
     ++srtctx->numTriggered;
-    ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData);
+    ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData, NULL);
     if(!ep){
         ++srtctx->numAborted;
         RedisModule_Log(staticCtx, "warning", "could not execute flat execution on trigger");
@@ -919,7 +924,7 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
         RedisModule_SaveUnsigned(rdb, 1); // has more
         size_t len;
-        const char* serializedFep = FlatExecutionPlan_Serialize(srctx->fep, &len);
+        const char* serializedFep = FlatExecutionPlan_Serialize(srctx->fep, &len, NULL);
         assert(serializedFep); // fep already registered, must be serializable.
         RedisModule_SaveStringBuffer(rdb, serializedFep, len);
 
