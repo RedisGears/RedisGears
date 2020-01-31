@@ -1413,10 +1413,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
         ExecutionPlan* ep0 = Gears_listNodeValue(head);
         if(EPIsFlagOff(ep0, EFDone)){
             // we are not done yet, we will drop the execution when it finished.
-            // Notice that we got this from another shard that told us to drop the execution
-            // so we only need to drop the local exeuciton when we done.
-
-            // also lets delete this execution for the execution list
+            // also lets delete this execution from the execution list
             Gears_listDelNode(epData.epList, head);
             ep0->nodeOnExecutionsList = NULL;
             RedisGears_AddOnDoneCallback(ep0, RedisGears_DropLocalyOnDone, NULL);

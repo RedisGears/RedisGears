@@ -772,3 +772,21 @@ def testKeysReaderKeyTypeFilter(env):
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testSteamReaderStopOnFailure(env):
+    env.skipOnCluster()
+
+    # count how many lpush and rpush happened
+    env.cmd('rg.pyexecute', "GB('StreamReader').foreach(lambda r: blalala)."
+                            "register(regex='s', mode='async_local')")
+
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+
+    registrations = env.cmd('rg.DUMPREGISTRATIONS')
+
+    env.assertEqual(registrations[0][7][15], 'STOPPED_ON_ERROR')
+
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')

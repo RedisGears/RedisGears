@@ -165,7 +165,7 @@ ActionResult EPStatus_AbortedAction(ExecutionPlan*);
     X(WAITING_FOR_CLUSTER_TO_COMPLETE, "pending_cluster", EPStatus_PendingClusterAction) \
     X(WAITING_FOR_INITIATOR_TERMINATION, "pending_termination", EPStatus_InitiatorTerminationAction) \
     X(DONE, "done", EPStatus_DoneAction) \
-    X(ABORTED, "aborted", EPStatus_DoneAction)
+    X(ABORTED, "aborted", EPStatus_AbortedAction)
 
 typedef enum ExecutionPlanStatus{
 #define X(a, b, c) a,
