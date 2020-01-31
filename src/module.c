@@ -214,8 +214,16 @@ static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* str
     return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS);
 }
 
+static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
+    return StreamReaderTriggerArgs_Free(args);
+}
+
 static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
     return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+}
+
+static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
+    return KeysReaderTriggerArgs_Free(args);
 }
 
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
@@ -269,26 +277,33 @@ static Record* RG_GetError(ExecutionPlan* ep, long long i){
 }
 
 /**
- * Abort a running or created (and not yet started) local execution
+ * Abort a running or created (and not yet started) execution
  *
- * The reason its only supported for local executions is that aborting a distributed
- * execution while its running require a consensus from all the cluster to abort the
- * exeuction and this is not yet implemented. Without consensus some shards might get
- * stuck with the execution pending forever
+ * Currently we can only abort a local execution or execution that did not
+ * yet started. Aborting a global started execution require consensus
+ * and not yet supported.
  *
  * return REDISMODULE_OK if the execution was aborted and REDISMODULE_ERR otherwise
  */
 static int RG_AbortExecution(ExecutionPlan* ep){
-    // execution is not local, we do not allow force dropping it
-    if(EPIsFlagOff(ep, EFIsLocal)){
-        return REDISMODULE_ERR;
-    }
 
-    // exection did not yet started, we can just simulate its done actions.
+    // exection did not yet started.
     if(EPIsFlagOff(ep, EFStarted)){
+        if(EPIsFlagOff(ep, EFIsLocal) &&
+                memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) != 0){
+            // we did not created the execution,  which mean its already started
+            // on some other node and can not be aborted
+            return REDISMODULE_ERR;
+        }
+        // abort the execution and execute its Done Actions
         ep->status = ABORTED;
         EPStatus_DoneAction(ep);
         return REDISMODULE_OK;
+    }
+
+    // execution is not local and already started, we can not abort it now.
+    if(EPIsFlagOff(ep, EFIsLocal)){
+        return REDISMODULE_ERR;
     }
 
     // execution is done, no need to abort
@@ -319,7 +334,10 @@ static void RG_DropExecution(ExecutionPlan* ep){
         EPTurnOnFlag(ep, EFIsFreedOnDoneCallback);
         return;
     }
-    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal)){
+    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal) && ep->status != ABORTED){
+        // We need to distributed the drop execution to all the shards
+        // only if execution is not local and not aborted (aborted exectuion is eather
+        // local or not yet distributed to all the shards)
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep);
@@ -525,7 +543,9 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(StreamReaderCtxCreate, ctx);
     REGISTER_API(StreamReaderCtxFree, ctx);
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
+    REGISTER_API(StreamReaderTriggerArgsFree, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
+    REGISTER_API(KeysReaderTriggerArgsFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);

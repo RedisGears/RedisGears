@@ -654,7 +654,13 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
 }
 
 static void registerFreeArgs(FlatExecutionPlan* fep, void* args){
-    // todo: implement it!!!
+    const char* reader = RedisGears_GetReader(fep);
+    if (strcmp(reader, "KeysReader") == 0 ||
+            strcmp(reader, "KeysOnlyReader") == 0) {
+        RedisGears_KeysReaderTriggerArgsFree(args);
+    }else if (strcmp(reader, "StreamReader") == 0){
+        RedisGears_StreamReaderTriggerArgsFree(args);
+    }
 }
 
 static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
@@ -1775,8 +1781,10 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         }
 
         if(ptctx->createdExecution){
-            // make sure created execution will be deleted (we can not abort it now)
-            RedisGears_AddOnDoneCallback(ptctx->createdExecution, dropExecutionOnDone, NULL);
+            // error occured, we need to abort the created execution.
+            int res = RedisGears_AbortExecution(ptctx->createdExecution);
+            assert(res == REDISMODULE_OK);
+            RedisGears_DropExecution(ptctx->createdExecution);
         }
 
         RedisGearsPy_Unlock();

@@ -56,7 +56,7 @@ typedef struct KeysReaderTriggerArgs{
     int* keyTypes;
 }KeysReaderTriggerArgs;
 
-static void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args){
+void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args){
     RG_FREE(args->regex);
     if(args->eventTypes){
         array_free_ex(args->eventTypes, RG_FREE(*(char**)ptr));

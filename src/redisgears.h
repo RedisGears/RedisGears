@@ -147,7 +147,9 @@ typedef struct KeysReaderCtx KeysReaderCtx;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
 StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS);
+void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
 KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, char** eventTypes, int* keyTypes);
+void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
 /**
  * Records handling functions
@@ -374,7 +376,9 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsFree);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);

@@ -127,7 +127,7 @@ StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, 
     return readerArgs;
 }
 
-static void StreamReaderTriggerArgs_Free(StreamReaderTriggerArgs* args){
+void StreamReaderTriggerArgs_Free(StreamReaderTriggerArgs* args){
     RG_FREE(args->stream);
     RG_FREE(args);
 }
@@ -520,6 +520,37 @@ static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx*
     }
 }
 
+static void StreamReader_AbortPendings(StreamReaderTriggerCtx* srctx){
+    // unregister require aborting all pending executions
+    ExecutionPlan** abortEpArray = array_new(ExecutionPlan*, 10);
+
+    Gears_listNode* n = NULL;
+    Gears_listIter *iter = Gears_listGetIterator(srctx->localPendingExecutions, AL_START_HEAD);
+    while((n = Gears_listNext(iter))){
+        char* epIdStr = Gears_listNodeValue(n);
+        ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+        if(!ep){
+            RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
+            continue;
+        }
+
+        // we can not abort right now cause aborting might cause values to be deleted
+        // from localPendingExecutions and it will mess up with the iterator
+        // so we must collect all the exeuctions first and then abort one by one
+        abortEpArray = array_append(abortEpArray, ep);
+    }
+    Gears_listReleaseIterator(iter);
+
+    for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
+        // we can not free while iterating so we add to the epArr and free after
+        if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
+            RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
+        }
+    }
+
+    array_free(abortEpArray);
+}
+
 static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderTriggerCtx* srctx = privateData;
 
@@ -716,34 +747,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPe
     assert(srctx);
 
     if(abortPending){
-        // unregister require aborting all pending executions
-        ExecutionPlan** abortEpArray = array_new(ExecutionPlan*, 10);
-
-        Gears_listNode* n = NULL;
-        Gears_listIter *iter = Gears_listGetIterator(srctx->localPendingExecutions, AL_START_HEAD);
-        while((n = Gears_listNext(iter))){
-            char* epIdStr = Gears_listNodeValue(n);
-            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
-            if(!ep){
-                RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
-                continue;
-            }
-
-            // we can not abort right now cause aborting might cause values to be deleted
-            // from localPendingExecutions and it will mess up with the iterator
-            // so we must collect all the exeuctions first and then abort one by one
-            abortEpArray = array_append(abortEpArray, ep);
-        }
-        Gears_listReleaseIterator(iter);
-
-        for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
-            // we can not free while iterating so we add to the epArr and free after
-            if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
-                RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
-            }
-        }
-
-        array_free(abortEpArray);
+        StreamReader_AbortPendings(srctx);
     }
 
     StreamReaderTriggerCtx_Free(srctx);
