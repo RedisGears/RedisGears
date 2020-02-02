@@ -73,7 +73,7 @@ Gear status
 
 MySQL status
 
-Oracle status
+MySQL status
 
 ## Appendix
 
