@@ -238,7 +238,7 @@ static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
             Gears_dictEntry *existing = NULL;
             Gears_dictEntry *entry = Gears_dictAddRaw(Gears_ExtraConfig, (char*)configName, &existing);
             if(!entry){
-                char* val = Gears_dictGetVal(entry);
+                char* val = Gears_dictGetVal(existing);
                 RG_FREE(val);
                 entry = existing;
             }

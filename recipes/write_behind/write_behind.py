@@ -1,19 +1,27 @@
 #!/usr/bin/env python
 
+VERSION = '99.99.99'
+NAME = 'WriteBehind'
+
 import time
+import json
 
 engine = None
 conn = None
 sqlText = None
-dbtype = None
-_debug=True
 
-# addQuery =
-#   MERGE INTO table d USING (SELECT 1 FROM DUAL) ON (d.pkey_col = 'pkey')
-#   WHEN NOT MATCHED THEN INSERT (pkey_col, col2) VALUES ('pkey', 'v2')
-#   WHEN MATCHED THEN UPDATE SET col2='v2'
+def WriteBehindGetConfig(name):
+    val = GearsConfigGet(name)
+    if val is None:
+        raise Exception('%s config value was not given' % name)
+    return val    
 
-# deleteQuery = 'delete from test_table where test_table.key="%s"'
+dbtype = WriteBehindGetConfig('%s:dbtype' % NAME)
+user = WriteBehindGetConfig('%s:user' % NAME)
+passwd = WriteBehindGetConfig('%s:passwd' % NAME)
+db = WriteBehindGetConfig('%s:db' % NAME)
+account = None
+
 
 ADD_QUERY_KEY = '_add_query'
 DEL_QUERY_KEY = '_delete_query'
@@ -27,36 +35,20 @@ SLEEP_TIME=1
 
 ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
 
-MYSQL_CONFIG = {
-    'ConnectionStr': 'mysql+pymysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql/test'),
-}
+ConnectionStr = None
 
-ORACLE_CONFIG = {
-    'ConnectionStr': 'oracle://{user}:{password}@{db}'.format(user='test', password='passwd', db='oracle/xe'),
-}
-
-def get_snowflake_conn_str():
-    import configparser
-    c = configparser.ConfigParser()
-    c.read('/opt/redislabs/.snowsql/config')
-    username = c['connections']['username']
-    password = c['connections']['password']
-    account = c['connections']['accountname']
-    return 'snowflake://{user}:{password}@{account}/{db}'.format(
-        user=username,
-        password=password,
-        account=account,
-        db='test')
-
-SNOWFLAKE_CONFIG = {
-    'ConnectionStr': get_snowflake_conn_str(),
-}
-
-DATABASES = {
-    'snowflake': SNOWFLAKE_CONFIG,
-    'oracle': ORACLE_CONFIG,
-    'mysql': MYSQL_CONFIG,
-}
+if dbtype == 'mysql':
+    ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
+elif dbtype == 'oracle':
+    ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
+elif dbtype == 'snowflake':
+    account = WriteBehindGetConfig('%s:account' % NAME)
+    ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=username,
+                                                                          password=password,
+                                                                          account=account,
+                                                                          db=db)
+else:
+    raise Exception('given backend not supported')
 
 #----------------------------------------------------------------------------------------------
 # Key mapping
@@ -82,68 +74,29 @@ config = {
 
 #----------------------------------------------------------------------------------------------
 
-def Log(msg, prefix='RedisGears - '):
+def WriteBehindLog(msg, prefix='RedisGears - '):
     msg = prefix + msg
-    try:
-        execute('debug', 'log', msg)
-    except Exception:
-        print(msg)
+    Log('notice', msg)    
 
-def Debug(msg, prefix='RedisGears - '):
-    if not _debug:
-        return
+def WriteBehindDebug(msg, prefix='RedisGears - '):
     msg = prefix + msg
-    try:
-        execute('debug', 'log', msg)
-    except Exception:
-        print(msg)
+    Log('debug', msg)
 
 #----------------------------------------------------------------------------------------------
 
 def Connect():
-    global conn
-    global engine
     global dbtype
-    global sqlText
+    global ConnectionStr
     from sqlalchemy import create_engine
 
-    if dbtype is None:
-        Log('Connect: determining dbtype')
-        for type, config in DATABASES.items():
-            connstr = config['ConnectionStr']
-            Log('Connect: trying conntecting %s, ConnectionStr=%s' % (type, connstr))
-            try:
-                engine1 = create_engine(connstr).execution_options(autocommit=True)
-                conn1 = engine1.connect()
-                Log('DB detected: %s' % (type))
-                dbtype = type
-                conn1.close()
-                return None
-            except:
-                Debug('Connect: no ' + type)
-        Log('Connect: Cannot determine DB engine')
-        raise Exception('Connect: Cannot determine DB engine')
-
-    if dbtype in DATABASES:
-        config = DATABASES[dbtype]
-        connstr = config['ConnectionStr']
-        Log('Connect: connecting %s, ConnectionStr=%s' % (dbtype, connstr))
-        engine = create_engine(connstr).execution_options(autocommit=True)
-        conn = engine.connect()
-        Log('Connect: Connected to ' + dbtype)
-        return conn
-    else:
-        Log('Connect: invalid db engine: ' + dbtype)
-        raise Exception('Connect: invalid db engine: ' + dbtype)
-
-    return None
+    WriteBehindLog('Connect: connecting %s, ConnectionStr=%s' % (dbtype, ConnectionStr))
+    engine = create_engine(ConnectionStr).execution_options(autocommit=True)
+    conn = engine.connect()
+    WriteBehindLog('Connect: Connected to ' + dbtype)
+    return conn
 
 def PrepereQueries():
-    global conn
     global dbtype
-
-    # Log('Determining dbtype')
-    # Connect() # determine dbtype
 
     for k,v in config.items():
         table, pkey = k.split(':')
@@ -178,14 +131,13 @@ def PrepereQueries():
 
 def PrintAllQueries():
     for v in config.values():
-        Log('add_query="%s", del_query="%s"' % (v[ADD_QUERY_KEY], v[DEL_QUERY_KEY]))
+        WriteBehindLog('add_query="%s", del_query="%s"' % (v[ADD_QUERY_KEY], v[DEL_QUERY_KEY]))
 
 def GetStreamName(config):
     return '_%s-stream-{%s}' % (config[TABLE_KEY], hashtag())
 
 def CreateStreamInserter(config):
     def AddToStream(r):
-        # Debug('In AddToStream: ' + r['key'])
         data = []
         data.append([config[KEY], r['key'].split(':')[1]])
         if 'value' in r.keys():
@@ -195,27 +147,26 @@ def CreateStreamInserter(config):
                     continue
                 if kInHash not in keys:
                     msg = 'Could not find %s in hash %s' % (kInHash, r['key'])
-                    Log(msg)
+                    WriteBehindLog(msg)
                     raise Exception(msg)
                 data.append([kInDB, r['value'][kInHash]])
         execute('xadd', GetStreamName(config), '*', *sum(data, []))
-    # Debug('In CreateStreamInserter')
     return AddToStream
 
 def CreateSQLDataWriter(config):
     def WriteToSQLDB(r):
-        # Debug('In WriteToSQLDB')
+        # WriteBehindDebug('In WriteToSQLDB')
 
         global conn
         global sqlText
 
         if len(r) == 0:
-            Log('Warning, got an empty batch')
+            WriteBehindLog('Warning, got an empty batch')
             return
         for x in r:
             x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
         while True:
-            # Debug('WriteToSQLDB: in loop')
+            # WriteBehindDebug('WriteToSQLDB: in loop')
             query = None
             errorOccured = False
 
@@ -226,7 +177,7 @@ def CreateSQLDataWriter(config):
                     conn = Connect()
             except Exception as e:
                 conn = None # next time we will reconnect to the database
-                Log('Failed connecting to SQL database, will retry in %d second. error="%s"' % (SLEEP_TIME, str(e)))
+                WriteBehindLog('Failed connecting to SQL database, will retry in %d second. error="%s"' % (SLEEP_TIME, str(e)))
                 time.sleep(SLEEP_TIME)
                 continue # lets retry
 
@@ -252,66 +203,123 @@ def CreateSQLDataWriter(config):
                 if len(batch) > 0:
                     conn.execute(sqlText(query), batch)
             except Exception as e:
-                Log('Got exception when writing to DB, query="%s", error="%s".' % ((query if query else 'None'), str(e)))
+                WriteBehindLog('Got exception when writing to DB, query="%s", error="%s".' % ((query if query else 'None'), str(e)))
                 errorOccured = True
 
             if errorOccured:
                 conn = None # next time we will reconnect to the database
-                Log('Error occured while running the sql transaction, will retry in %d second.' % SLEEP_TIME)
+                WriteBehindLog('Error occured while running the sql transaction, will retry in %d second.' % SLEEP_TIME)
                 time.sleep(SLEEP_TIME)
                 continue # lets retry
             return # we finished successfully, lets break the retry loop
 
-    # Debug('In CreateSQLDataWriter')
+    # WriteBehindDebug('In CreateSQLDataWriter')
     return WriteToSQLDB
 
 def CheckIfHash(r):
     if 'value' not in r.keys() or isinstance(r['value'], dict) :
         return True
-    Log('Got a none hash value, key="%s" value="%s"' % (str(r['key']), str(r['value'] if 'value' in r.keys() else 'None')))
+    WriteBehindLog('Got a none hash value, key="%s" value="%s"' % (str(r['key']), str(r['value'] if 'value' in r.keys() else 'None')))
     return False
 
 def RegisterExecutions():
     for k, v in config.items():
-        regs0 = execute('rg.dumpregistrations')
 
         regex = k.split(':')[0]
+
         ## create the execution to write each changed key to stream
-        GB('KeysReader', desc='add each changed key with prefix %s:* to Stream' % regex).\
+        descJson = {
+            'name':NAME,
+            'version':VERSION,
+            'desc':'add each changed key with prefix %s:* to Stream' % regex,
+        }
+        GB('KeysReader', desc=json.dumps(descJson)).\
         filter(lambda x: x['key'] != GetStreamName(v)).\
         filter(CheckIfHash).\
         foreach(CreateStreamInserter(v)).\
-        register(mode='sync', regex='%s:*' % regex)
+        register(mode='sync', regex='%s:*' % regex, eventTypes=['hset', 'hmset', 'del'])
 
-        regs1 = execute('rg.dumpregistrations')
-        if len(regs0) == len(regs1):
-            Log("Reader failed to register: k=%s v=%s" % (k, str(v)))
 
         ## create the execution to write each key from stream to DB
-        GB('StreamReader', desc='read from stream and write to DB table %s' % v[TABLE_KEY]).\
+        descJson = {
+            'name':NAME,
+            'version':VERSION,
+            'desc':'read from stream and write to DB table %s' % v[TABLE_KEY],
+        }
+        GB('StreamReader', desc=json.dumps(descJson)).\
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
         count().\
-        register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000)
-
-        regs2 = execute('rg.dumpregistrations')
-        if len(regs1) == len(regs2):
-            Log("Writer failed to register: k=%s v=%s" % (k, str(v)))
-
-    # Debug('-' * 80)
-    # regs = execute('rg.dumpregistrations')
-    # Debug('regs: ' + str(regs))
-    # Debug('-' * 80)
+        register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000, OnRegistered=Connect)
 
 #----------------------------------------------------------------------------------------------
 
-Debug('-' * 80)
-Log('Starting gear')
+def RegistrationArrToDict(registration, depth):
+    if depth >= 2:
+        return registration
+    if type(registration) is not list:
+        return registration
+    d = {}
+    for i in range(0, len(registration), 2):
+        d[registration[i]] = RegistrationArrToDict(registration[i + 1], depth + 1)
+    return d
+
+def IsVersionLess(v):
+    if VERSION == '99.99.99':
+        return True # 99.99.99 is greater then all versions
+    major, minor, patch = VERSION.split('.')
+    v_major, v_minot, v_patch = v.split('.')
+
+    if int(major) > int(v_major):
+        return True
+    elif int(major) < int(v_major):
+        return False
+
+    if int(minor) > int(v_major):
+        return True
+    elif int(minor) > int(v_major):
+        return False
+
+    if int(patch) > int(v_patch):
+        return True
+    elif int(patch) > int(v_patch):
+        return False
+
+    return False
+
+
+def UnregisterOldVersions():
+    WriteBehindLog('Unregistering old versions of %s' % NAME)
+    registrations = execute('rg.dumpregistrations')
+    for registration in registrations:
+        registrationDict = RegistrationArrToDict(registration, 0)
+        descStr = registrationDict['desc']
+        try:
+            desc = json.loads(descStr)
+        except Exception as e:
+            continue
+        if 'name' in desc.keys() and desc['name'] == NAME:
+            if 'version' not in desc.keys():
+                execute('rg.unregister', registrationDict['id'])
+                WriteBehindLog('Unregistered %s' % registrationDict['id'])
+            version = desc['version']
+            if IsVersionLess(version):
+                execute('rg.unregister', registrationDict['id'])
+                WriteBehindLog('Unregistered %s' % registrationDict['id'])
+            else:
+                raise Exception('Found a version which is greater or equals current version, aborting.')
+
+
+
+WriteBehindDebug('-' * 80)
+WriteBehindLog('Starting gear')
+
+UnregisterOldVersions()
 
 PrepereQueries()
 
-Debug('-' * 80)
+WriteBehindDebug('-' * 80)
 PrintAllQueries()
 
 RegisterExecutions()
-Debug('-' * 80)
+WriteBehindDebug('-' * 80)
