@@ -178,7 +178,7 @@ int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     }
 
     if(EPIsFlagOff(gearsCtx, EFIsLocal)){
-        RedisModule_ReplyWithError(ctx, "Can not abort none local execution.");
+        RedisModule_ReplyWithError(ctx, "Can not abort non-local execution.");
         return REDISMODULE_OK;
     }
 

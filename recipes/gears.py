@@ -21,7 +21,7 @@ parser.add_argument(
     help='redis password')
 
 parser.add_argument(
-    '--unblocking', default=False, type=bool,
+    '--nonblocking', default=False, type=bool,
     help='set unblocking run')
 
 args = parser.parse_args()

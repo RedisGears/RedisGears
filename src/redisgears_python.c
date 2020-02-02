@@ -56,6 +56,7 @@ typedef struct PythonThreadCtx{
 
 /* default onDone function */
 static void onDone(ExecutionPlan* ep, void* privateData);
+char* getPyError();
 
 /* callback that get gears remote builder and run it, used for python client */
 static PyObject *runGearsRemoteBuilderCallback;
@@ -150,7 +151,9 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
     if(!ret){
-        PyErr_Print();
+        char* error = getPyError();
+        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_OnRegistered, error=%s", error);
+        RG_FREE(error);
         RedisGearsPy_Unlock();
         return;
     }
@@ -966,7 +969,7 @@ static PyObject* RedisLog(PyObject *cls, PyObject *args){
         }
     }
 
-    RedisModule_Log(NULL, logLevelCStr, "GEARS_FUNCTION_LOG - %s", logMsgCStr);
+    RedisModule_Log(NULL, logLevelCStr, "GEARS: %s", logMsgCStr);
     Py_INCREF(Py_None);
     return Py_None;
 }
@@ -1504,7 +1507,9 @@ static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     PyObject* pArgs = PyTuple_New(0);
     PyObject_CallObject(td->callback, pArgs);
     if(PyErr_Occurred()){
-        PyErr_Print();
+        char* error = getPyError();
+        RedisModule_Log(NULL, "warning", "Error occured on TimeEvent_Callback, error=%s", error);
+        RG_FREE(error);
         td->status =TE_STATUS_ERR;
     }else{
         td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
@@ -1742,8 +1747,10 @@ static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **a
             }
         }
         if(ptctx->createdExecution){
-            // make sure created execution will be deleted (we can not abort it now)
-            RedisGears_AddOnDoneCallback(ptctx->createdExecution, dropExecutionOnDone, NULL);
+            // error occured, we need to abort the created execution.
+            int res = RedisGears_AbortExecution(ptctx->createdExecution);
+            assert(res == REDISMODULE_OK);
+            RedisGears_DropExecution(ptctx->createdExecution);
         }
 
         RedisGearsPy_Unlock();
@@ -2333,7 +2340,9 @@ void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
     PyObject* obj = arg;
     PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
     if(!objStr){
-        PyErr_Print();
+        char* error = getPyError();
+        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_PyObjectSerialize, error=%s", error);
+        RG_FREE(error);
         assert(false);
     }
     size_t len;
@@ -2392,7 +2401,9 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
     PyTuple_SetItem(args, 0, dataStr);
     PyObject * callback = PyObject_CallObject(loadFunction, args);
     if(!callback || PyErr_Occurred()){
-        PyErr_Print();
+        char* error = getPyError();
+        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_PyCallbackDeserialize, error=%s", error);
+        RG_FREE(error);
         assert(false);
     }
     Py_DECREF(args);
@@ -2724,12 +2735,16 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RG_FREE(script);
 
     if(PyErr_Occurred()){
-        PyErr_Print();
+        char* error = getPyError();
+        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_Init, error=%s", error);
+        RG_FREE(error);
         return REDISMODULE_ERR;
     }
 
     if(PyErr_Occurred()){
-        PyErr_Print();
+        char* error = getPyError();
+        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_Init, error=%s", error);
+        RG_FREE(error);
         return REDISMODULE_ERR;
     }
 

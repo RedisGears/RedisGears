@@ -390,7 +390,7 @@ GB().map(InfinitLoop).run()
     env.expect('rg.abortexecution', executionId1).ok()
     res = env.cmd('RG.GETEXECUTION', executionId1)
     env.assertEqual(res[0][3][1], 'done')
-    env.assertEqual(len(res[0][3][9]), 1)
+    env.assertEqual(len(res[0][3][9]), 1) # number if error is one
     
     env.expect('rg.dropexecution', executionId1).ok()
     env.expect('rg.dropexecution', executionId2).ok()

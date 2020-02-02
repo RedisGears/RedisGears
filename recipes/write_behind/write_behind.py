@@ -74,13 +74,12 @@ config = {
 
 #----------------------------------------------------------------------------------------------
 
-def WriteBehindLog(msg, prefix='RedisGears - '):
+def WriteBehindLog(msg, prefix='%s - ' % NAME, logLevel='notice'):
     msg = prefix + msg
-    Log('notice', msg)    
+    Log(logLevel, msg)    
 
-def WriteBehindDebug(msg, prefix='RedisGears - '):
-    msg = prefix + msg
-    Log('debug', msg)
+def WriteBehindDebug(msg):
+    WriteBehindLog(msg, logLevel='debug')
 
 #----------------------------------------------------------------------------------------------
 

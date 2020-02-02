@@ -400,40 +400,40 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
 static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     KeysReaderRegisterData* rData = privateData;
 
-    Gears_listNode *head = Gears_listFirst(rData->localPendingExecutions);
-    char* epIdStr = NULL;
-    while(head){
-        epIdStr = Gears_listNodeValue(head);
-        Gears_listDelNode(rData->localPendingExecutions, head);
-        if(strcmp(epIdStr, ctx->idStr) != 0){
-            RedisModule_Log(NULL, "warning", "Got an out of order execution on registration, ignoring execution.");
-            RG_FREE(epIdStr);
-            head = Gears_listFirst(rData->localPendingExecutions);
-            continue;
-        }
-        // Found the execution id, we can stop iterating
-        break;
-    }
-    if(!epIdStr){
-        epIdStr = RG_STRDUP(ctx->idStr);
-    }
-
     if(EPIsFlagOn(ctx, EFIsLocal)){
-        // Add the execution id to the localDoneExecutions list
-        Gears_listAddNodeTail(rData->localDoneExecutions, epIdStr);
-        if(GearsConfig_GetMaxExecutionsPerRegistration() > 0 && Gears_listLength(rData->localDoneExecutions) > GearsConfig_GetMaxExecutionsPerRegistration()){
-            Gears_listNode *head = Gears_listFirst(rData->localDoneExecutions);
+        Gears_listNode *head = Gears_listFirst(rData->localPendingExecutions);
+        char* epIdStr = NULL;
+        while(head){
             epIdStr = Gears_listNodeValue(head);
-            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
-            if(ep){
-                assert(EPIsFlagOn(ep, EFDone));
-                RedisGears_DropExecution(ep);
+            Gears_listDelNode(rData->localPendingExecutions, head);
+            if(strcmp(epIdStr, ctx->idStr) != 0){
+                RedisModule_Log(NULL, "warning", "Got an out of order execution on registration, ignoring execution.");
+                RG_FREE(epIdStr);
+                head = Gears_listFirst(rData->localPendingExecutions);
+                continue;
             }
-            RG_FREE(epIdStr);
-            Gears_listDelNode(rData->localDoneExecutions, head);
+            // Found the execution id, we can stop iterating
+            break;
         }
-    }else{
-        RG_FREE(epIdStr);
+        if(!epIdStr){
+            epIdStr = RG_STRDUP(ctx->idStr);
+        }
+
+        if(EPIsFlagOn(ctx, EFIsLocal)){
+            // Add the execution id to the localDoneExecutions list
+            Gears_listAddNodeTail(rData->localDoneExecutions, epIdStr);
+            if(GearsConfig_GetMaxExecutionsPerRegistration() > 0 && Gears_listLength(rData->localDoneExecutions) > GearsConfig_GetMaxExecutionsPerRegistration()){
+                Gears_listNode *head = Gears_listFirst(rData->localDoneExecutions);
+                epIdStr = Gears_listNodeValue(head);
+                ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+                if(ep){
+                    assert(EPIsFlagOn(ep, EFDone));
+                    RedisGears_DropExecution(ep);
+                }
+                RG_FREE(epIdStr);
+                Gears_listDelNode(rData->localDoneExecutions, head);
+            }
+        }
     }
 
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
