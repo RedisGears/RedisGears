@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# run this as root
+
+[[ $VERBOSE == 1 ]] && set -x
+[[ $IGNERR == 1 ]] || set -e
+
+if [ ! -z $(command -v apt-get) ]; then
+	apt-get -qq update
+	apt-get install -y community-mysql
+
+elif [ ! -z $(command -v yum) ]; then
+	yum install -y community-mysql
+else
+	echo "%make love"
+	echo "Make:  Don't know how to make love.  Stop."
+	exit 1
+fi
+
+cat <<- 'EOF' > $HOME/.my.cnf
+	[client]
+	user=test
+	password=passwd
+EOF
+
+exit 0

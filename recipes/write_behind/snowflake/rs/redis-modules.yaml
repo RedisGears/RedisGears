@@ -1,0 +1,6 @@
+redisgears:
+    awspath: lab/11-gears-write-behind-sf/redisgears.linux-centos7-x64.99.99.99.zip
+redisgears-deps:
+    awspath: lab/11-gears-write-behind-sf/redisgears-dependencies.linux-centos7-x64.99.99.99.tgz
+    dest: /
+    unzip: yes

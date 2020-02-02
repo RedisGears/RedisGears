@@ -1,20 +1,38 @@
 #!/bin/bash
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+export PATH=/opt/oracle/instantclient_19_5:$PATH
+
+[[ $VERBOSE == 1 ]] && set -x
+
 TIMEOUT=${TIMEOUT:-120}
+ORACLE=${ORACLE:-oracle}
 
 # this is required so sqlplus does not hang is oracle
-./wait-for-it.sh oracle:1521 -t 2
+$HERE/wait-for-it.sh $ORACLE:1521 -t 2
 if [[ $? != 0 ]]; then
 	echo "Oracle is not present. Aborting."
 	exit 1
 fi
 
-for ((i = 0; i < $TIMEOUT; i++)); do
-	# this still can hang, so we really need to start it as a job and kill it
-	# if it does not come back within a second
-	echo "select * from dual" | sqlplus -S -L system/oracle@//oracle:1521/xe > /dev/null 2>&1
-	[[ $? == 0 ]] && exit 0
-	sleep 1
-done
-echo "Oracle is not ready. Aborting."
-exit 1
+if [[ $DIAG != 1 ]]; then
+	for ((i = 0; i < $TIMEOUT; i++)); do
+		# this still can hang, so we really need to start it as a job and kill it
+		# if it does not come back within a second
+		echo "select * from dual" | sqlplus -S -L system/oracle@//$ORACLE:1521/xe > /dev/null 2>&1
+		[[ $? == 0 ]] && exit 0
+		sleep 30
+	done
+	echo "Oracle is not ready. Aborting."
+	exit 1
+else
+	for ((i = 0; 1 == 1; i++)); do
+		echo "select * from dual" | sqlplus -S -L system/oracle@//$ORACLE:1521/xe > /dev/null 2>&1
+		if [[ $? == 0 ]]; then
+			echo "Oracle ready after $i seconds."
+			exit 0
+		fi
+		sleep 1
+	done
+fi
