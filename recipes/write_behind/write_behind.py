@@ -5,7 +5,6 @@ import time
 engine = None
 conn = None
 sqlText = None
-# dbtype = 'mysql'
 dbtype = 'oracle'
 _debug=True
 
@@ -29,14 +28,32 @@ SLEEP_TIME=1
 ## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
 
 MYSQL_CONFIG = {
-    'ConnectionStr': 'mysql+pymysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql'),
+    'ConnectionStr': 'mysql+pymysql://{user}:{password}@{db}'.format(user='test', password='passwd', db='mysql/test'),
 }
 
 ORACLE_CONFIG = {
     'ConnectionStr': 'oracle://{user}:{password}@{db}'.format(user='test', password='passwd', db='oracle/xe'),
 }
 
+def get_snowflake_conn_str():
+    import configparser
+    c = configparser.ConfigParser()
+    c.read('/opt/redislabs/.snowsql/config')
+    username = c['connections']['username']
+    password = c['connections']['password']
+    account = c['connections']['accountname']
+    return 'snowflake://{user}:{password}@{account}/{db}'.format(
+        user=username,
+        password=password,
+        account=account,
+        db='test')
+
+SNOWFLAKE_CONFIG = {
+    'ConnectionStr': get_snowflake_conn_str(),
+}
+
 DATABASES = {
+    'snowflake': SNOWFLAKE_CONFIG,
     'oracle': ORACLE_CONFIG,
     'mysql': MYSQL_CONFIG,
 }
@@ -137,7 +154,7 @@ def PrepereQueries():
             raise Exception('failed to create query for %s', str(k))
 
         # create upsert query
-        if dbtype == 'oracle':
+        if dbtype == 'oracle' or dbtype == 'snowflake':
             values = [val for kk, val in v.items() if not kk.startswith('_')]
             values_with_pkey = [pkey] + values
             merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (v[TABLE_KEY], pkey, pkey)
