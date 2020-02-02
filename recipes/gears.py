@@ -31,7 +31,7 @@ for p in args.path:
     f = open(p, 'rt')
     script = f.read()
     q = ['rg.pyexecute', script]
-    if args.unblocking:
+    if args.nonblocking:
         q += ['unblocking']
     res = r.execute_command(*q)
     print res

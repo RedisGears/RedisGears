@@ -6,22 +6,47 @@ NAME = 'WriteBehind'
 import time
 import json
 
-engine = None
 conn = None
 sqlText = None
+dbtype = None
+ConnectionStr = None
 
 def WriteBehindGetConfig(name):
     val = GearsConfigGet(name)
     if val is None:
         raise Exception('%s config value was not given' % name)
-    return val    
+    return val
 
-dbtype = WriteBehindGetConfig('%s:dbtype' % NAME)
-user = WriteBehindGetConfig('%s:user' % NAME)
-passwd = WriteBehindGetConfig('%s:passwd' % NAME)
-db = WriteBehindGetConfig('%s:db' % NAME)
-account = None
+def InitializeParams():
+    global dbtype
+    global ConnectionStr
+    currDbType = WriteBehindGetConfig('%s:dbtype' % NAME)
+    if dbtype is not None and currDbType != dbtype:
+        Log('warning', '"dbtype" parameter was changed though it can not be modified (Continue running with "dbtype=%s")' % dbtype)
+    else:
+        dbtype = currDbType
 
+    user = WriteBehindGetConfig('%s:user' % NAME)
+    passwd = WriteBehindGetConfig('%s:passwd' % NAME)
+    db = WriteBehindGetConfig('%s:db' % NAME)
+    account = None
+
+    
+
+    if dbtype == 'mysql':
+        ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
+    elif dbtype == 'oracle':
+        ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
+    elif dbtype == 'snowflake':
+        account = WriteBehindGetConfig('%s:account' % NAME)
+        ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=username,
+                                                                              password=password,
+                                                                              account=account,
+                                                                              db=db)
+    else:
+        raise Exception('given backend not supported')
+
+InitializeParams()
 
 ADD_QUERY_KEY = '_add_query'
 DEL_QUERY_KEY = '_delete_query'
@@ -29,26 +54,6 @@ TABLE_KEY = '_table'
 KEY = '_key'
 
 SLEEP_TIME=1
-
-#----------------------------------------------------------------------------------------------
-# Database configuration
-
-## see https://docs.sqlalchemy.org/en/13/core/engines.html for more info
-
-ConnectionStr = None
-
-if dbtype == 'mysql':
-    ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
-elif dbtype == 'oracle':
-    ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
-elif dbtype == 'snowflake':
-    account = WriteBehindGetConfig('%s:account' % NAME)
-    ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=username,
-                                                                          password=password,
-                                                                          account=account,
-                                                                          db=db)
-else:
-    raise Exception('given backend not supported')
 
 #----------------------------------------------------------------------------------------------
 # Key mapping
@@ -84,7 +89,6 @@ def WriteBehindDebug(msg):
 #----------------------------------------------------------------------------------------------
 
 def Connect():
-    global dbtype
     global ConnectionStr
     from sqlalchemy import create_engine
 
@@ -249,7 +253,7 @@ def RegisterExecutions():
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
         count().\
-        register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000, OnRegistered=Connect)
+        register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000, OnRegistered=InitializeParams)
 
 #----------------------------------------------------------------------------------------------
 
