@@ -4,6 +4,8 @@ from redisgears import executeCommand as execute
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
+from redisgears import log as Log
+from redisgears import config_get as ConfigGet
 from redisgears import PyFlatExecution
 
 
@@ -113,8 +115,8 @@ class GearsBuilder():
             arg = ShardReaderCallback
         self.gearsCtx.run(arg)
         
-    def register(self, regex='*', mode='async', batch=1, duration=0, eventTypes=None, keyTypes=None):
-        self.gearsCtx.register(regex=regex, mode=mode, batch=batch, duration=duration, eventTypes=eventTypes, keyTypes=keyTypes)
+    def register(self, regex='*', mode='async', batch=1, duration=0, eventTypes=None, keyTypes=None, OnRegistered=None):
+        self.gearsCtx.register(regex=regex, mode=mode, batch=batch, duration=duration, eventTypes=eventTypes, keyTypes=keyTypes, OnRegistered=OnRegistered)
 
 
 def createDecorator(f):
@@ -138,3 +140,8 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
     gb = GB(pipe.reader, pipe.defaultArg)
     for s in pipe.steps:
         s.AddToGB(gb, globalsDict)
+        
+def GearsConfigGet(key, default=None):
+    val = ConfigGet(key)
+    return val if val is not None else default
+    

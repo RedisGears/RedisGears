@@ -37,8 +37,13 @@ typedef struct StreamReaderTriggerArgs{
     char* stream;
 }StreamReaderTriggerArgs;
 
+typedef enum StreamRegistrationStatus{
+    OK, STOPPED_ON_ERROR,
+}StreamRegistrationStatus;
+
 typedef struct StreamReaderTriggerCtx{
     size_t refCount;
+    StreamRegistrationStatus status;
     StreamReaderTriggerArgs* args;
     Gears_dict* singleStreamData;
     FlatExecutionPlan* fep;
@@ -64,6 +69,7 @@ typedef struct SingleStreamReaderCtx{
 }SingleStreamReaderCtx;
 
 static void* StreamReader_ScanForStreams(void* pd);
+static void StreamReader_Free(void* ctx);
 
 static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallReply* reply, const char* msgPrefix, const char* logLevel){
     if (reply == NULL ||
@@ -126,7 +132,7 @@ StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, 
     return readerArgs;
 }
 
-static void StreamReaderTriggerArgs_Free(StreamReaderTriggerArgs* args){
+void StreamReaderTriggerArgs_Free(StreamReaderTriggerArgs* args){
     RG_FREE(args->stream);
     RG_FREE(args);
 }
@@ -175,6 +181,23 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     return ssrctx;
 }
 
+static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx* srtctx){
+    Gears_dictIterator *iter = Gears_dictGetIterator(srtctx->singleStreamData);
+    Gears_dictEntry* entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        SingleStreamReaderCtx* ssrctx = Gears_dictGetVal(entry);
+        if(ssrctx->timerIsSet){
+            ssrctx->freeOnNextTimeEvent = true;
+        }else{
+            RG_FREE(ssrctx->keyName);
+            RG_FREE(ssrctx);
+        }
+    }
+    Gears_dictReleaseIterator(iter);
+    Gears_dictRelease(srtctx->singleStreamData);
+    srtctx->singleStreamData = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
+}
+
 static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
     assert(srtctx->refCount > 0);
 
@@ -201,18 +224,7 @@ static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
         Gears_listRelease(srtctx->localPendingExecutions);
         Gears_listRelease(srtctx->localDoneExecutions);
 
-        Gears_dictIterator *iter = Gears_dictGetIterator(srtctx->singleStreamData);
-        Gears_dictEntry* entry = NULL;
-        while((entry = Gears_dictNext(iter))){
-            SingleStreamReaderCtx* ssrctx = Gears_dictGetVal(entry);
-            if(ssrctx->timerIsSet){
-                ssrctx->freeOnNextTimeEvent = true;
-            }else{
-                RG_FREE(ssrctx->keyName);
-                RG_FREE(ssrctx);
-            }
-        }
-        Gears_dictReleaseIterator(iter);
+        StreamReaderTriggerCtx_CleanSingleStreamsData(srtctx);
         Gears_dictRelease(srtctx->singleStreamData);
         StreamReaderTriggerArgs_Free(srtctx->args);
         FlatExecutionPlan_Free(srtctx->fep);
@@ -226,6 +238,7 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
     StreamReaderTriggerCtx* srctx = RG_ALLOC(sizeof(StreamReaderTriggerCtx));
     *srctx = (StreamReaderTriggerCtx){
         .refCount = 1,
+        .status = OK,
         .args = args,
         .singleStreamData = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .fep = fep,
@@ -255,6 +268,10 @@ StreamReaderCtx* StreamReaderCtx_Create(const char* streamName, const char* stre
             .lastReadId = StreamIdZero,
     };
     return readerCtx;
+}
+
+void StreamReaderCtx_Free(StreamReaderCtx* readerCtx){
+    StreamReader_Free(readerCtx);
 }
 
 StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* streamName, const char* consumerGroup, size_t batchSize, bool readPenging){
@@ -374,7 +391,7 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
     readerCtx->isDone = true;
 }
 
-static void StreamReader_CtxDeserialize(void* ctx, Gears_BufferReader* br){
+static void StreamReader_CtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
     StreamReaderCtx* readerCtx = ctx;
     readerCtx->streamKeyName = RG_STRDUP(RedisGears_BRReadString(br));
     if(RedisGears_BRReadLong(br)){
@@ -515,28 +532,58 @@ static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx*
     }
 }
 
+static void StreamReader_AbortPendings(StreamReaderTriggerCtx* srctx){
+    // unregister require aborting all pending executions
+    ExecutionPlan** abortEpArray = array_new(ExecutionPlan*, 10);
+
+    Gears_listNode* n = NULL;
+    Gears_listIter *iter = Gears_listGetIterator(srctx->localPendingExecutions, AL_START_HEAD);
+    while((n = Gears_listNext(iter))){
+        char* epIdStr = Gears_listNodeValue(n);
+        ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
+        if(!ep){
+            RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
+            continue;
+        }
+
+        // we can not abort right now cause aborting might cause values to be deleted
+        // from localPendingExecutions and it will mess up with the iterator
+        // so we must collect all the exeuctions first and then abort one by one
+        abortEpArray = array_append(abortEpArray, ep);
+    }
+    Gears_listReleaseIterator(iter);
+
+    for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
+        // we can not free while iterating so we add to the epArr and free after
+        if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
+            RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
+        }
+    }
+
+    array_free(abortEpArray);
+}
+
 static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderTriggerCtx* srctx = privateData;
 
-    Gears_listNode *head = Gears_listFirst(srctx->localPendingExecutions);
-    char* epIdStr = NULL;
-    while(head){
-        epIdStr = Gears_listNodeValue(head);
-        Gears_listDelNode(srctx->localPendingExecutions, head);
-        if(strcmp(epIdStr, ctx->idStr) != 0){
-            RedisModule_Log(NULL, "warning", "Got an out of order execution on registration, ignoring execution.");
-            RG_FREE(epIdStr);
-            head = Gears_listFirst(srctx->localPendingExecutions);
-            continue;
-        }
-        // Found the execution id, we can stop iterating
-        break;
-    }
-    if(!epIdStr){
-        epIdStr = RG_STRDUP(ctx->idStr);
-    }
-
     if(EPIsFlagOn(ctx, EFIsLocal)){
+        Gears_listNode *head = Gears_listFirst(srctx->localPendingExecutions);
+        char* epIdStr = NULL;
+        while(head){
+            epIdStr = Gears_listNodeValue(head);
+            Gears_listDelNode(srctx->localPendingExecutions, head);
+            if(strcmp(epIdStr, ctx->idStr) != 0){
+                RedisModule_Log(NULL, "warning", "Got an out of order execution on registration, ignoring execution.");
+                RG_FREE(epIdStr);
+                head = Gears_listFirst(srctx->localPendingExecutions);
+                continue;
+            }
+            // Found the execution id, we can stop iterating
+            break;
+        }
+        if(!epIdStr){
+            epIdStr = RG_STRDUP(ctx->idStr);
+        }
         // Add the execution id to the localDoneExecutions list
         Gears_listAddNodeTail(srctx->localDoneExecutions, epIdStr);
         if(GearsConfig_GetMaxExecutionsPerRegistration() > 0 && Gears_listLength(srctx->localDoneExecutions) > GearsConfig_GetMaxExecutionsPerRegistration()){
@@ -550,15 +597,9 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             RG_FREE(epIdStr);
             Gears_listDelNode(srctx->localDoneExecutions, head);
         }
-    }else{
-        RG_FREE(epIdStr);
     }
 
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
-
-    Reader* reader = ExecutionPlan_GetReader(ctx);
-    StreamReader_AckAndTrimm(reader->ctx);
-    StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
 
     if(errorsLen > 0){
         ++srctx->numFailures;
@@ -568,9 +609,24 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             RG_FREE(srctx->lastError);
         }
         srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
+
+        // we abort pending execution, continue now will cause incorect processing order.
+        StreamReader_AbortPendings(srctx);
+
+        // lets clean all our data about all the streams, on restart we will read all the
+        // pending data so we will not lose records
+        StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+
+        // Set the status to STOPPED_ON_ERROR, the status will be reflected to the
+        // user and the user will have to fix the error and resume the execution.
+        // MANUAL INTERFIRING IS NEEDED!!!
+        srctx->status = STOPPED_ON_ERROR;
     } else if(ctx->status == ABORTED){
         ++srctx->numAborted;
     } else {
+        Reader* reader = ExecutionPlan_GetReader(ctx);
+        StreamReader_AckAndTrimm(reader->ctx);
+        StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
         ++srctx->numSuccess;
     }
 
@@ -583,7 +639,7 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
     RedisGears_OnExecutionDoneCallback callback = StreamReader_ExecutionDone;
     void* privateData = StreamReaderTriggerCtx_GetShallowCopy(srtctx);
     ++srtctx->numTriggered;
-    ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData);
+    ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData, NULL);
     if(!ep){
         ++srtctx->numAborted;
         RedisModule_Log(staticCtx, "warning", "could not execute flat execution on trigger");
@@ -662,6 +718,10 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     const char* keyName = RedisModule_StringPtrLen(key, NULL);
     while((node = Gears_listNext(iter))){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
+        if(srctx->status == STOPPED_ON_ERROR){
+            // we ignore stopped executions
+            continue;
+        }
         if(StreamReader_IsKeyMatch(srctx->args->stream, keyName)){
             SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
             if(!ssrctx){
@@ -711,34 +771,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPe
     assert(srctx);
 
     if(abortPending){
-        // unregister require aborting all pending executions
-        ExecutionPlan** abortEpArray = array_new(ExecutionPlan*, 10);
-
-        Gears_listNode* n = NULL;
-        Gears_listIter *iter = Gears_listGetIterator(srctx->localPendingExecutions, AL_START_HEAD);
-        while((n = Gears_listNext(iter))){
-            char* epIdStr = Gears_listNodeValue(n);
-            ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
-            if(!ep){
-                RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
-                continue;
-            }
-
-            // we can not abort right now cause aborting might cause values to be deleted
-            // from localPendingExecutions and it will mess up with the iterator
-            // so we must collect all the exeuctions first and then abort one by one
-            abortEpArray = array_append(abortEpArray, ep);
-        }
-        Gears_listReleaseIterator(iter);
-
-        for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
-            // we can not free while iterating so we add to the epArr and free after
-            if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
-                RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
-            }
-        }
-
-        array_free(abortEpArray);
+        StreamReader_AbortPendings(srctx);
     }
 
     StreamReaderTriggerCtx_Free(srctx);
@@ -873,7 +906,7 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
     assert(srctx);
-    RedisModule_ReplyWithArray(ctx, 14);
+    RedisModule_ReplyWithArray(ctx, 16);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(srctx->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -906,6 +939,12 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     RedisModule_ReplyWithLongLong(ctx, srctx->args->durationMS);
     RedisModule_ReplyWithStringBuffer(ctx, "stream", strlen("stream"));
     RedisModule_ReplyWithStringBuffer(ctx, srctx->args->stream, strlen(srctx->args->stream));
+    RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
+    if(srctx->status == OK){
+        RedisModule_ReplyWithStringBuffer(ctx, "OK", strlen("OK"));
+    }else{
+        RedisModule_ReplyWithStringBuffer(ctx, "STOPPED_ON_ERROR", strlen("STOPPED_ON_ERROR"));
+    }
 }
 
 static void StreamReader_RdbSave(RedisModuleIO *rdb){
@@ -919,7 +958,7 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
         RedisModule_SaveUnsigned(rdb, 1); // has more
         size_t len;
-        const char* serializedFep = FlatExecutionPlan_Serialize(srctx->fep, &len);
+        const char* serializedFep = FlatExecutionPlan_Serialize(srctx->fep, &len, NULL);
         assert(serializedFep); // fep already registered, must be serializable.
         RedisModule_SaveStringBuffer(rdb, serializedFep, len);
 

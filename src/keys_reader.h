@@ -17,5 +17,7 @@ int KeysReader_Initialize(RedisModuleCtx* ctx);
  */
 KeysReaderTriggerArgs* KeysReaderTriggerArgs_Create(const char* regex, char** eventTypes, int* keyTypes);
 
+void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args);
+
 
 #endif /* SRC_KEYS_READER_H_ */

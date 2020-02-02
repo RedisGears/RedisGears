@@ -26,6 +26,65 @@ class testGenericErrors:
     def testBuilderCreationWithUnexistingReader(self):
         self.env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')
 
+    def testTwoExecutionsInOneScript(self):
+        script = '''
+GB().run()
+GB().run()
+'''
+        self.env.expect('rg.pyexecute', script).error().contains('more then 1')
+
+    def testRegistrationFailureOnSerialization(self):
+        script1 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB().map(test).register()
+'''
+        script2 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB('StreamReader').map(test).register()
+'''
+        self.env.expect('rg.pyexecute', script1).error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script2).error().contains('Error occured when serialized a python callback')
+
+def testRunFailureOnSerialization(env):
+    if env.shardsCount < 2:
+        env.skip()
+    conn = getConnectionByEnv(env)
+    script1 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB().map(test).run()
+'''
+
+    script2 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB('StreamReader').map(test).run()
+'''
+    env.expect('rg.pyexecute', script1).error().contains('Error occured when serialized a python callback')
+    env.expect('rg.pyexecute', script2).error().contains('Error occured when serialized a python callback')
+
 
 class testStepsErrors:
     def __init__(self):

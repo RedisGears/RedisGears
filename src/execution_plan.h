@@ -14,6 +14,7 @@
 #include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
+#include "common.h"
 #ifdef WITHPYTHON
 #include <redisgears_python.h>
 #endif
@@ -164,16 +165,13 @@ ActionResult EPStatus_AbortedAction(ExecutionPlan*);
     X(WAITING_FOR_CLUSTER_TO_COMPLETE, "pending_cluster", EPStatus_PendingClusterAction) \
     X(WAITING_FOR_INITIATOR_TERMINATION, "pending_termination", EPStatus_InitiatorTerminationAction) \
     X(DONE, "done", EPStatus_DoneAction) \
-    X(ABORTED, "aborted", EPStatus_DoneAction)
+    X(ABORTED, "aborted", EPStatus_AbortedAction)
 
 typedef enum ExecutionPlanStatus{
 #define X(a, b, c) a,
     EXECUTION_PLAN_STATUSES
 #undef X
 }ExecutionPlanStatus;
-
-#define EXECUTION_PLAN_ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
-#define EXECUTION_PLAN_STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
 
 typedef struct WorkerData{
     Gears_list* notifications;
@@ -202,8 +200,8 @@ typedef struct OnDoneData{
 #define EPIsFlagOff(ep, f) (!(ep->flags & f))
 
 typedef struct ExecutionPlan{
-    char id[EXECUTION_PLAN_ID_LEN];
-    char idStr[EXECUTION_PLAN_STR_ID_LEN];
+    char id[ID_LEN];
+    char idStr[STR_ID_LEN];
     ExecutionStep** steps;
     FlatExecutionPlan* fep;
     size_t totalShardsRecieved;
@@ -213,6 +211,8 @@ typedef struct ExecutionPlan{
     volatile ExecutionPlanStatus status;
     ExecutionFlags flags;
     OnDoneData* onDoneData; // Array of callbacks to run on done
+    RedisGears_ExecutionOnStartCallback onStartCallback;
+    void* executionPD;
     long long executionDuration;
     WorkerData* assignWorker;
     ExecutionMode mode;
@@ -235,8 +235,8 @@ typedef struct FlatExecutionReader{
 
 #define EXECUTION_POOL_SIZE 1
 typedef struct FlatExecutionPlan{
-    char id[EXECUTION_PLAN_ID_LEN];
-    char idStr[EXECUTION_PLAN_STR_ID_LEN];
+    char id[ID_LEN];
+    char idStr[STR_ID_LEN];
     char* desc;
     size_t refCount;
     FlatExecutionReader* reader;
@@ -246,6 +246,8 @@ typedef struct FlatExecutionPlan{
     ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
     size_t executionPoolSize;
     Gears_Buffer* serializedFep;
+    FlatBasicStep onExecutionStartStep;
+    FlatBasicStep onRegisteredStep;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -263,12 +265,15 @@ typedef struct ExecutionCtx{
 FlatExecutionPlan* FlatExecutionPlan_New();
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep);
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep);
-const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len);
+const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len, char** err);
 FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t len);
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
+void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
+void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
+void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -282,9 +287,9 @@ void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key);
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);

@@ -222,7 +222,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local')
     registrationId = registrationInfo[0][1]
 
     try:
-        with TimeLimit(2):
+        with TimeLimit(4):
             done = False
             while not done:
                 registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
@@ -491,6 +491,20 @@ def testSyncRegister(env):
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
     
+def testOnRegisteredCallback(env):
+    conn = getConnectionByEnv(env)
+    env.cmd('rg.pyexecute', "GB()."
+                            "register(mode='async_local', OnRegistered=lambda: execute('set', 'registered{%s}' % (hashtag()), '1'))")
+    time.sleep(0.1) # make sure registered on all shards
+    env.expect('rg.pyexecute', "GB().map(lambda x: x['value']).collect().distinct().run('registered*')").equal([['1'], []])
+
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for r in executions:
+         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
 def testStreamReaderDoNotLoseValues(env):
     env.skipOnCluster()
@@ -756,5 +770,23 @@ def testKeysReaderKeyTypeFilter(env):
          env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
 
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testSteamReaderStopOnFailure(env):
+    env.skipOnCluster()
+
+    # count how many lpush and rpush happened
+    env.cmd('rg.pyexecute', "GB('StreamReader').foreach(lambda r: blalala)."
+                            "register(regex='s', mode='async_local')")
+
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+
+    registrations = env.cmd('rg.DUMPREGISTRATIONS')
+
+    env.assertEqual(registrations[0][7][15], 'STOPPED_ON_ERROR')
+
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
