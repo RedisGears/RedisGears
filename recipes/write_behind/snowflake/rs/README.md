@@ -27,7 +27,10 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 
 On one of the Redis cluster nodes:
 
-* Run `ID=<db-id> /opt/recipe/snowflake/rs/start-gear`.
+* Run `/opt/recipe/snowflake/rs/start-gear`.
+* With multiple databases:
+  * Inspect `rladmin status`,
+  * Run `DB=<db-id> /opt/recipe/snowflake/rs/start-gear`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
@@ -44,9 +47,10 @@ select * from person1;
 
 ## Testing
 * Log on via SSH to a cluster node.
-* Examine `/var/opt/redislabs/redis` for Redis servers running on the node.
-  * You can also examine `ps ax | grep redis-server` for that perpose.
-* With one of the Redis IDs above, run `ID=<db-id> /opt/recipe/snowflake/rs/run-test`.
+* Run `/opt/recipe/snowflake/rs/run-test`.
+* With multiple databases:
+  * Inspect `rladmin status`,
+  * Run `DB=<db-id> /opt/recipe/snowflake/rs/run-test`.
 * Open another connection to that node and run `/opt/recipe/snowflake/sample-snowsql-db`
 
 ## Diagnostics
@@ -63,12 +67,12 @@ rlutil redis_restart redis=<Redis shard IDs> force=yes
 
 ### Gears status
 
-* redis-cli via bdb-cli DB-ID
+* `redis-cli via bdb-cli <db-id>`
   * `RG.DUMPEXECUTIONS` command
 
 ### Snowflake status
 
-* `/opt/recipe/snowflake/sample-snowsql-db` will repeatedly print number of records in the Snowlake test table.
+* `/opt/recipe/snowflake/sample-snowsql-db` will repeatedly print number of records in the Snowflake test table.
 
 * Snowflake CLI: `snowsql` 
 

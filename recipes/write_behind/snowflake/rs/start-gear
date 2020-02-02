@@ -1,17 +1,12 @@
 #!/bin/bash
 
-if [[ -z $ID ]]; then
-	echo "Error: database ID not given. Aborting."
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)" 
+
+CONN=`$HERE/redis-conn`
+if [[ $? != 0 ]]; then
+	echo "start-gear: not started."
 	exit 1
 fi
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)" 
 cd $HERE/../..
-
-CONF="/var/opt/redislabs/redis/redis-$ID.conf"
-PORT=$(grep "^port" $CONF | gawk '{print $2}')
-PWD=$(grep "^requirepass" $CONF | gawk '{print $2}')
-
-/opt/redislabs/bin/python ./gears.py --port $PORT --password $PWD ./write_behind.py
-
-exit 0
+/opt/redislabs/bin/python ./gears.py "$CONN" ./write_behind.py
