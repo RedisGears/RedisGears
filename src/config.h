@@ -16,5 +16,6 @@ long long GearsConfig_GetMaxExecutions();
 long long GearsConfig_GetMaxExecutionsPerRegistration();
 long long GearsConfig_GetProfileExecutions();
 long long GearsConfig_GetPythonAttemptTraceback();
+const char* GearsConfig_GetExtraConfigVals(const char* key);
 
 #endif /* SRC_CONFIG_H_ */

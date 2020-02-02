@@ -899,6 +899,36 @@ static PyObject* getMyHashTag(PyObject *cls, PyObject *args){
     return ret;
 }
 
+static PyObject* RedisConfigGet(PyObject *cls, PyObject *args){
+    PyObject* key = NULL;
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "get_config function must get a single key input");
+        return NULL;
+    }
+
+    key = PyTuple_GetItem(args, 0);
+
+    if(!PyUnicode_Check(key)){
+        PyErr_SetString(GearsError, "get_config key must be a string");
+        return NULL;
+    }
+
+    const char* keyCStr = PyUnicode_AsUTF8AndSize(key, NULL);
+
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(ctx);
+    const char* valCStr = GearsConfig_GetExtraConfigVals(keyCStr);
+    if(!valCStr){
+        LockHandler_Release(ctx);
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+    PyObject* valPyStr = PyUnicode_FromString(valCStr);
+    LockHandler_Release(ctx);
+
+    return valPyStr;
+}
+
 static PyObject* RedisLog(PyObject *cls, PyObject *args){
     PyObject* logLevel = NULL;
     PyObject* logMsg = NULL;
@@ -937,6 +967,7 @@ static PyObject* RedisLog(PyObject *cls, PyObject *args){
     }
 
     RedisModule_Log(NULL, logLevelCStr, "GEARS_FUNCTION_LOG - %s", logMsgCStr);
+    Py_INCREF(Py_None);
     return Py_None;
 }
 
@@ -1617,6 +1648,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
     {"log", RedisLog, METH_VARARGS, "write a message into the redis log file"},
+    {"config_get", RedisConfigGet, METH_VARARGS, "write a message into the redis log file"},
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {NULL, NULL, 0, NULL}
@@ -1897,6 +1929,7 @@ void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* ar
         return;
     }
     if(ret != Py_None){
+        Py_INCREF(Py_None);
     	Py_DECREF(ret);
     }
 

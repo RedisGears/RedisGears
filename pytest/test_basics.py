@@ -440,21 +440,19 @@ class testConfig:
     def testNotModifiableAtRuntime(self):
         pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
         res = self.env.execute_command('RG.CONFIGSET', 'PythonHomeDir', '/')
-        self.env.assertTrue(res[0].startswith('(error)'))
+        self.env.assertTrue('(error)' in str(res[0]))
         pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
         self.env.expect('RG.CONFIGSET', 'MaxExecutions', 10).equal(['OK'])
 
     def testNonExisting(self):
-        res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig')
-        self.env.assertTrue(res[0].startswith('(error)'))
-        res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1)
-        self.env.assertTrue(res[0].startswith('(error)'))
+        res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig1')
+        self.env.assertTrue('(error)' in str(res[0]))
 
     def testMultiple(self):
         res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig', 'MaxExecutions')
         self.env.assertTrue(str(res[0]).startswith('(error)') and not str(res[1]).startswith('(error)'))
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
-        self.env.assertTrue(str(res[0]).startswith('(error)'))
+        self.env.assertTrue(str(res[0]) == 'OK - value was saved in extra config dictionary')
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
 
 
@@ -530,3 +528,9 @@ class testGetExecution:
         res = self.env.cmd('RG.GETEXECUTION', id, 'Cluster')
         self.env.assertLessEqual(1, len(res))
         self.env.cmd('RG.DROPEXECUTION', id)
+
+def testConfigGet():
+    env = Env(moduleArgs='TestConfig TestVal')
+    env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                               "map(lambda x: (GearsConfigGet('TestConfig'), GearsConfigGet('NotExists', 'default')))."
+                               "collect().distinct().run()").equal([["('TestVal', 'default')"],[]])
