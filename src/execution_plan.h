@@ -143,7 +143,9 @@ typedef struct ExecutionStep{
     unsigned long long executionDuration;
 }ExecutionStep;
 
-typedef enum ActionResult ActionResult;
+typedef enum ActionResult{
+    CONTINUE, STOP, COMPLETED
+}ActionResult;
 
 ActionResult EPStatus_CreatedAction(ExecutionPlan*);
 ActionResult EPStatus_RunningAction(ExecutionPlan*);
@@ -152,6 +154,7 @@ ActionResult EPStatus_PendingRunAction(ExecutionPlan*);
 ActionResult EPStatus_PendingClusterAction(ExecutionPlan*);
 ActionResult EPStatus_InitiatorTerminationAction(ExecutionPlan*);
 ActionResult EPStatus_DoneAction(ExecutionPlan*);
+ActionResult EPStatus_AbortedAction(ExecutionPlan*);
 
 #define EXECUTION_PLAN_STATUSES \
     X(CREATED=0, "created", EPStatus_CreatedAction) \
@@ -160,7 +163,8 @@ ActionResult EPStatus_DoneAction(ExecutionPlan*);
     X(WAITING_FOR_RUN_NOTIFICATION, "pending_run", EPStatus_PendingRunAction) \
     X(WAITING_FOR_CLUSTER_TO_COMPLETE, "pending_cluster", EPStatus_PendingClusterAction) \
     X(WAITING_FOR_INITIATOR_TERMINATION, "pending_termination", EPStatus_InitiatorTerminationAction) \
-    X(DONE, "done", EPStatus_DoneAction)
+    X(DONE, "done", EPStatus_DoneAction) \
+    X(ABORTED, "aborted", EPStatus_DoneAction)
 
 typedef enum ExecutionPlanStatus{
 #define X(a, b, c) a,
@@ -190,6 +194,7 @@ typedef struct OnDoneData{
 #define EFSentRunRequest 0x08
 #define EFIsLocal 0x10
 #define EFIsLocalyFreedOnDoneCallback 0x20
+#define EFStarted 0x40
 
 #define EPTurnOnFlag(ep, f) ep->flags |= f
 #define EPTurnOffFlag(ep, f) ep->flags &= ~f
@@ -205,7 +210,7 @@ typedef struct ExecutionPlan{
     size_t totalShardsCompleted;
     Record** results;
     Record** errors;
-    ExecutionPlanStatus status;
+    volatile ExecutionPlanStatus status;
     ExecutionFlags flags;
     OnDoneData* onDoneData; // Array of callbacks to run on done
     long long executionDuration;

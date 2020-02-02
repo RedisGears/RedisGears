@@ -20,13 +20,20 @@ parser.add_argument(
     '--password', default=None,
     help='redis password')
 
+parser.add_argument(
+    '--unblocking', default=False, type=bool,
+    help='set unblocking run')
+
 args = parser.parse_args()
 
 r = redis.Redis(args.host, args.port, password=args.password)
 for p in args.path:
     f = open(p, 'rt')
     script = f.read()
-    res = r.execute_command('rg.pyexecute', script)
+    q = ['rg.pyexecute', script]
+    if args.unblocking:
+        q += ['unblocking']
+    res = r.execute_command(*q)
     print res
     print ''
     f.close()

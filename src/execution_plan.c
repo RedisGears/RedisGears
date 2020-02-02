@@ -46,10 +46,6 @@ char* statusesNames[] = {
 #undef X
 };
 
-enum ActionResult{
-    CONTINUE, STOP, COMPLETED
-};
-
 typedef ActionResult (*EPStatus_ActionCallback)(ExecutionPlan*);
 
 EPStatus_ActionCallback statusesActions[] = {
@@ -157,31 +153,27 @@ typedef enum MsgType{
 }MsgType;
 
 typedef struct RunWorkerMsg{
-	ExecutionPlan* ep;
 }RunWorkerMsg;
 
 typedef struct ExecutionDoneMsg{
-    ExecutionPlan* ep;
 }ExecutionDoneMsg;
 
 typedef struct ExecutionFreeMsg{
-    ExecutionPlan* ep;
 }ExecutionFreeMsg;
 
 typedef struct ShardCompletedWorkerMsg{
-	ExecutionPlan* ep;
 	size_t stepId;
 	enum StepType stepType;
 }ShardCompletedWorkerMsg;
 
 typedef struct AddRecordWorkerMsg{
-	ExecutionPlan* ep;
 	Record* record;
 	size_t stepId;
 	enum StepType stepType;
 }AddRecordWorkerMsg;
 
 typedef struct WorkerMsg{
+    char id[EXECUTION_PLAN_ID_LEN];
     union{
     	RunWorkerMsg runWM;
     	AddRecordWorkerMsg addRecordWM;
@@ -206,28 +198,28 @@ static void ExectuionPlan_WorkerMsgFree(WorkerMsg* msg){
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateRun(ExecutionPlan* ep){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = RUN_MSG;
-	ret->runWM.ep = ep;
+	memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
 	return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateTerminate(ExecutionPlan* ep){
     WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
     ret->type = EXECUTION_TERMINATE;
-    ret->executionDone.ep = ep;
+    memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
     return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateDone(ExecutionPlan* ep){
     WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
     ret->type = EXECUTION_DONE;
-    ret->executionDone.ep = ep;
+    memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
     return ret;
 }
 
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = ADD_RECORD_MSG;
-	ret->addRecordWM.ep = ep;
+	memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
 	ret->addRecordWM.record = r;
 	ret->addRecordWM.stepId = stepId;
 	ret->addRecordWM.stepType = stepType;
@@ -237,7 +229,7 @@ static WorkerMsg* ExectuionPlan_WorkerMsgCreateAddRecord(ExecutionPlan* ep, size
 static WorkerMsg* ExectuionPlan_WorkerMsgCreateShardCompleted(ExecutionPlan* ep, size_t stepId, enum StepType stepType){
 	WorkerMsg* ret = RG_ALLOC(sizeof(WorkerMsg));
 	ret->type = SHARD_COMPLETED_MSG;
-	ret->shardCompletedWM.ep = ep;
+	memcpy(ret->id, ep->id, EXECUTION_PLAN_ID_LEN);
 	ret->shardCompletedWM.stepId = stepId;
 	ret->shardCompletedWM.stepType = stepType;
 	return ret;
@@ -1066,15 +1058,11 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
 }
 
 static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
-    LockHandler_Acquire(rctx);
     ep->results = array_append(ep->results, record);
-    LockHandler_Release(rctx);
 }
 
 static void ExecutionPlan_WriteError(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
-    LockHandler_Acquire(rctx);
     ep->errors = array_append(ep->errors, record);
-    LockHandler_Release(rctx);
 }
 
 static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
@@ -1125,9 +1113,15 @@ ActionResult EPStatus_PendingRunAction(ExecutionPlan* ep){
     return CONTINUE;
 }
 
+ActionResult EPStatus_AbortedAction(ExecutionPlan* ep){
+    return COMPLETED;
+}
+
 ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
+
+    EPTurnOnFlag(ep, EFDone);
 
     // we set it to true so if execution will be freed during done callbacks we
     // will free it only after all the callbacks are executed
@@ -1135,7 +1129,6 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
         ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
     }
-    EPTurnOnFlag(ep, EFDone);
     EPTurnOffFlag(ep, EFIsOnDoneCallback);
     if(EPIsFlagOn(ep, EFIsFreedOnDoneCallback)){
         RedisGears_DropExecution(ep);
@@ -1324,7 +1317,9 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
 
         // set the mode
         ep->mode = mode;
-        if(ep->mode == ExecutionModeSync || ep->mode == ExecutionModeAsyncLocal){
+        if(ep->mode == ExecutionModeSync ||
+                ep->mode == ExecutionModeAsyncLocal ||
+                !Cluster_IsClusterMode()){
             EPTurnOnFlag(ep, EFIsLocal);
         }else{
             EPTurnOffFlag(ep, EFIsLocal);
@@ -1484,6 +1479,7 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
     EPTurnOffFlag(ep, EFIsOnDoneCallback);
     EPTurnOffFlag(ep, EFIsFreedOnDoneCallback);
     EPTurnOffFlag(ep, EFIsLocalyFreedOnDoneCallback);
+    EPTurnOffFlag(ep, EFStarted);
 
     ExecutionStep_Reset(ep->steps[0]);
 }
@@ -1504,12 +1500,11 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     ep->executionDuration += DURATION;
 
     ep->status = DONE;
+    EPTurnOnFlag(ep, EFDone);
 
     for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
         ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
     }
-
-    EPTurnOnFlag(ep, EFDone);
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1540,25 +1535,40 @@ static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, 
 	ExecutionPlan_RegisterForRun(ep);
 }
 
-static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatExecutionPlan* fep){
+static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatExecutionPlan* fep, bool abortPending){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     assert(callbacks->unregisterTrigger);
 
     // replicate to slave and aof
     RedisModule_SelectDb(ctx, 0);
-    RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "c", fep->idStr);
+    if(abortPending){
+        RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "cc", fep->idStr, "abortpending");
+    }else{
+        RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "c", fep->idStr);
+    }
 
     FlatExecutionPlan_RemoveFromRegisterDict(fep);
-    callbacks->unregisterTrigger(fep);
+    callbacks->unregisterTrigger(fep, abortPending);
 }
 
 static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-    FlatExecutionPlan* fep = FlatExecutionPlan_FindId(payload);
+    Gears_Buffer buff = {
+            .buff = (char*)payload,
+            .size = len,
+            .cap = len,
+    };
+    Gears_BufferReader br;
+    Gears_BufferReaderInit(&br, &buff);
+    size_t idLen;
+    char* id = RedisGears_BRReadBuffer(&br, &idLen);
+    assert(idLen == EXECUTION_PLAN_ID_LEN);
+    bool abortPendind = RedisGears_BRReadLong(&br);
+    FlatExecutionPlan* fep = FlatExecutionPlan_FindId(id);
     if(!fep){
-        printf("warning: execution not found %s !!!\r\n", payload);
+        printf("warning: execution not found %s !!!\r\n", id);
         return;
     }
-    ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
+    ExecutionPlan_UnregisterExecutionInternal(ctx, fep, abortPendind);
 }
 
 static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1740,23 +1750,37 @@ static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record
 	}
 }
 
-static void ExecutionPlan_MsgArrive(WorkerMsg* msg){
+static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
+    ExecutionPlan* ep;
+    RedisModule_ThreadSafeContextLock(ctx);
+    ep = ExecutionPlan_FindById(msg->id);
+    if(!ep){
+        // execution was probably already deleted
+        RedisModule_ThreadSafeContextUnlock(ctx);
+        ExectuionPlan_WorkerMsgFree(msg);
+        return;
+    }
+    if(msg->type == RUN_MSG){
+        // lets mark execution as started, dropping it now require some extra work.
+        EPTurnOnFlag(ep, EFStarted);
+    }
+    RedisModule_ThreadSafeContextUnlock(ctx);
 	switch(msg->type){
 	case RUN_MSG:
-		ExecutionPlan_Main(msg->runWM.ep);
+        ExecutionPlan_Main(ep);
 		break;
 	case ADD_RECORD_MSG:
-		ExecutionPlan_AddStepRecord(msg->addRecordWM.ep, msg->addRecordWM.stepId, msg->addRecordWM.record, msg->addRecordWM.stepType);
+		ExecutionPlan_AddStepRecord(ep, msg->addRecordWM.stepId, msg->addRecordWM.record, msg->addRecordWM.stepType);
 		break;
 	case SHARD_COMPLETED_MSG:
-		ExecutionPlan_StepDone(msg->shardCompletedWM.ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
+		ExecutionPlan_StepDone(ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
 		break;
 	case EXECUTION_DONE:
-	    ExecutionPlan_ExecutionDone(msg->executionDone.ep);
+	    ExecutionPlan_ExecutionDone(ep);
 	    break;
 	case EXECUTION_TERMINATE:
-        ExecutionPlan_ExecutionTerminate(msg->executionDone.ep);
-        break;
+            ExecutionPlan_ExecutionTerminate(ep);
+            break;
 	default:
 		assert(false);
 	}
@@ -1764,8 +1788,9 @@ static void ExecutionPlan_MsgArrive(WorkerMsg* msg){
 }
 
 static void* ExecutionPlan_MessageThreadMain(void *arg){
-	WorkerData* wd = arg;
-	pthread_mutex_lock(&wd->lock);
+    WorkerData* wd = arg;
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    pthread_mutex_lock(&wd->lock);
     while(true){
         int rc = pthread_cond_wait(&wd->cond, &wd->lock);
         while(Gears_listLength(wd->notifications) > 0){
@@ -1773,7 +1798,7 @@ static void* ExecutionPlan_MessageThreadMain(void *arg){
             WorkerMsg* msg = Gears_listNodeValue(n);
             Gears_listDelNode(wd->notifications, n);
             pthread_mutex_unlock(&wd->lock);
-            ExecutionPlan_MsgArrive(msg);
+            ExecutionPlan_MsgArrive(ctx, msg);
             pthread_mutex_lock(&wd->lock);
         }
     }
@@ -2009,7 +2034,9 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     ret->onDoneData = array_new(OnDoneData, 10);
     EPTurnOffFlag(ret, EFDone);
     ret->mode = mode;
-    if(ret->mode == ExecutionModeSync || ret->mode == ExecutionModeAsyncLocal){
+    if(ret->mode == ExecutionModeSync ||
+            ret->mode == ExecutionModeAsyncLocal ||
+            !Cluster_IsClusterMode()){
         EPTurnOnFlag(ret, EFIsLocal);
     }else{
         EPTurnOffFlag(ret, EFIsLocal);
@@ -2017,6 +2044,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     EPTurnOffFlag(ret, EFIsFreedOnDoneCallback);
     EPTurnOffFlag(ret, EFIsLocalyFreedOnDoneCallback);
     EPTurnOffFlag(ret, EFIsOnDoneCallback);
+    EPTurnOffFlag(ret, EFStarted);
     return ret;
 }
 
@@ -2327,11 +2355,25 @@ static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString
         return REDISMODULE_OK;
     }
 
-    if(sendOnCluster && Cluster_IsClusterMode()){
-        Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, fep->id, EXECUTION_PLAN_ID_LEN);
+    bool abortPending = false;
+    if(argc == 3){
+        const char* abortPendingStr = RedisModule_StringPtrLen(argv[2], NULL);
+        if(strcasecmp(abortPendingStr, "abortpending") == 0){
+            abortPending = true;
+        }
     }
 
-    ExecutionPlan_UnregisterExecutionInternal(ctx, fep);
+    if(sendOnCluster && Cluster_IsClusterMode()){
+        Gears_Buffer* buff = Gears_BufferNew(50);
+        Gears_BufferWriter bw;
+        Gears_BufferWriterInit(&bw, buff);
+        RedisGears_BWWriteBuffer(&bw, fep->id, EXECUTION_PLAN_ID_LEN);
+        RedisGears_BWWriteLong(&bw, abortPending);
+        Cluster_SendMsgM(NULL, ExecutionPlan_UnregisterExecutionReceived, buff->buff, buff->size);
+        Gears_BufferFree(buff);
+    }
+
+    ExecutionPlan_UnregisterExecutionInternal(ctx, fep, abortPending);
 
     RedisModule_ReplyWithSimpleString(ctx, "OK");
 
@@ -2457,13 +2499,13 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
         RedisModule_ReplyWithLongLong(ctx, ep->totalShardsCompleted);
         RedisModule_ReplyWithStringBuffer(ctx, "results", strlen("results"));
         // TODO: once results and errors are linked lists we can provide more insight here
-        if(ep->status == DONE){
+        if(RedisGears_IsDone(ep)){
             RedisModule_ReplyWithLongLong(ctx, RedisGears_GetRecordsLen(ep));
         }else{
             RedisModule_ReplyWithLongLong(ctx, -1);
         }
         RedisModule_ReplyWithStringBuffer(ctx, "errors", strlen("errors"));
-        if(ep->status == DONE){
+        if(RedisGears_IsDone(ep)){
             long long errorsLen = RedisGears_GetErrorsLen(ep);
             RedisModule_ReplyWithArray(ctx,errorsLen);
             for(long long i = 0; i < errorsLen; i++){
