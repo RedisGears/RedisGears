@@ -267,7 +267,7 @@ def testBasicStream(env):
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
     res = []
-    while len(res) < 6:
+    while len(res) < 10:
         res = env.cmd('rg.dumpexecutions')
     for e in res:
         env.broadcast('rg.getresultsblocking', e[1])
