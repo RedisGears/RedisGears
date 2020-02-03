@@ -99,7 +99,7 @@ def InitializeParams():
     if dbtype == 'mysql':
         ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
     elif dbtype == 'oracle':
-        ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
+        ConnectionStr = 'oracle://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
     elif dbtype == 'snowflake':
         try:
             account = WriteBehindGetConfig('%s:account' % NAME)
