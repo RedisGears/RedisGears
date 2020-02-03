@@ -10,23 +10,45 @@ if [[ -z $ORACLE ]]; then
 	echo "Error: no ORACLE IP address given. Aborting."
 	exit 1
 fi
-	
-BRANCH=write_behind_1
-REPO_PATH=https://raw.githubusercontent.com/RedisGears/RedisGears/$BRANCH/recipes/write_behind/oracle/rs
-DIR=/opt/redisgears-setup
 
-mkdir -p $DIR
-wget -q -O $DIR/install-modules.py $REPO_PATH/install-modules.py
-wget -q -O $DIR/redis-modules.yaml $REPO_PATH/redis-modules.yaml
-/opt/redislabs/bin/python2 $DIR/install-modules.py --yaml $DIR/redis-modules.yaml
+if [ -z $(command -v git) ]; then
+	if [ ! -z $(command -v apt-get) ]; then
+		apt-get -qq update
+		apt-get install -y git
+	elif [ ! -z $(command -v yum) ]; then
+		yum install -y git
+	else
+		echo "%make love"
+		echo "Make:  Don't know how to make love.  Stop."
+		exit 1
+	fi
+fi
+
+BRANCH=write_behind_1
 
 mkdir -p /opt
 cd /opt
-git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
+if [[ ! -d RedisGears ]]; then
+	git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
+else
+	cd RedisGears
+	git pull
+	cd ..
+fi
 
-ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
+ln -sf /opt/RedisGears/recipes/write_behind /opt/recipe
 cd /opt/RedisGears/recipes/write_behind
-ln -s ../gears.py .
+ln -sf ../gears.py .
+
+OSNICK=`/opt/redislabs/bin/python2 /opt/RedisGears/deps/readies/bin/platform --osnick`
+[[ $OSNICK =~ 'rhel7' ]] && OSNICK='centos7'
+if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' ]]; then
+	echo "$OSNICK: incompatible platform. Aborting."
+	exit 1
+fi
+
+MOD_DIR=/opt/recipe/rs
+/opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
 
 printf "\n$ORACLE oracle\n" >> /etc/hosts
 

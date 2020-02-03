@@ -28,7 +28,7 @@ elif [ ! -z $(command -v yum) ]; then
 	yum install -y ca-certificates libaio
 	rpm -i https://download.oracle.com/otn_software/linux/instantclient/195000/oracle-instantclient19.5-basic-19.5.0.0.0-1.x86_64.rpm
 	rpm -i https://download.oracle.com/otn_software/linux/instantclient/195000/oracle-instantclient19.5-sqlplus-19.5.0.0.0-1.x86_64.rpm
-	rpm -ivhy https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+	rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 	yum install -y rlwrap
 
 else

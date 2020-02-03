@@ -9,4 +9,4 @@ if [[ $? != 0 ]]; then
 fi
 
 cd $HERE/../..
-/opt/redislabs/bin/python ./tests/test_write_behind.py $CONN
+/opt/redislabs/bin/python ./gears.py $CONN ./write_behind.py

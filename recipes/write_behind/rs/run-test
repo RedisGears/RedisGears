@@ -4,9 +4,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 CONN=`$HERE/redis-conn`
 if [[ $? != 0 ]]; then
-	echo "start-gear: not started."
+	echo "run-test: not running."
 	exit 1
 fi
 
 cd $HERE/../..
-/opt/redislabs/bin/python ./gears.py "$CONN" ./write_behind.py
+/opt/redislabs/bin/python ./tests/test_write_behind.py $CONN
