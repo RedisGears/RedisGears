@@ -494,7 +494,7 @@ def testSyncRegister(env):
 def testOnRegisteredCallback(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB()."
-                            "register(mode='async_local', OnRegistered=lambda: execute('set', 'registered{%s}' % (hashtag()), '1'))")
+                            "register(mode='async_local', onRegistered=lambda: execute('set', 'registered{%s}' % (hashtag()), '1'))")
     time.sleep(0.1) # make sure registered on all shards
     env.expect('rg.pyexecute', "GB().map(lambda x: x['value']).collect().distinct().run('registered*')").equal([['1'], []])
 
