@@ -122,7 +122,7 @@ class GearsBuilder():
                  duration=0,
                  eventTypes=None,
                  keyTypes=None,
-                 OnRegistered=None,
+                 onRegistered=None,
                  onFailedPolicy="retry",
                  onFailedRetryInterval=1):
         self.gearsCtx.register(regex=regex, 

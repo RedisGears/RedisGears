@@ -331,7 +331,7 @@ def RegisterExecutions():
         filter(lambda x: x['key'] != GetStreamName(v)).\
         filter(ShouldProcessHash).\
         foreach(CreateStreamInserter(v)).\
-        register(mode='sync', regex='%s:*' % regex, eventTypes=['hset', 'hmset', 'del'], OnRegistered=InitializeParams)
+        register(mode='sync', regex='%s:*' % regex, eventTypes=['hset', 'hmset', 'del'], onRegistered=InitializeParams)
 
 
         ## create the execution to write each key from stream to DB
@@ -348,7 +348,7 @@ def RegisterExecutions():
                  mode="async_local",
                  batch=100,
                  duration=4000,
-                 OnRegistered=InitializeParams,
+                 onRegistered=InitializeParams,
                  onFailedPolicy="retry",
                  onFailedRetryInterval=onFailedRetryInterval)
 
