@@ -131,7 +131,7 @@ class GearsBuilder():
                                duration=duration, 
                                eventTypes=eventTypes, 
                                keyTypes=keyTypes, 
-                               OnRegistered=OnRegistered, 
+                               OnRegistered=onRegistered, 
                                onFailedPolicy=onFailedPolicy, 
                                onFailedRetryInterval=onFailedRetryInterval)
 
