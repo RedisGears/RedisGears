@@ -630,6 +630,19 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr){
     return RedisGears_KeysReaderTriggerArgsCreate(regexStr, eventTypes, keyTypes);
 }
 
+static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
+    if(strcasecmp(onFailurePolicyStr, "Continue") == 0){
+        return OnFailedPolicyContinue;
+    }
+    if(strcasecmp(onFailurePolicyStr, "Abort") == 0){
+        return OnFailedPolicyAbort;
+    }
+    if(strcasecmp(onFailurePolicyStr, "Retry") == 0){
+        return OnFailedPolicyRetry;
+    }
+    return OnFailedPolicyUnknown;
+}
+
 static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
     size_t batch = 1;
     PyObject* pyBatch = PyDict_GetItemString(kargs, "batch");
@@ -653,7 +666,34 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
         }
     }
 
-    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS);
+    OnFailedPolicy onFailedPolicy = OnFailedPolicyRetry;
+    PyObject* pyOnFailedPolicy = PyDict_GetItemString(kargs, "onFailedPolicy");
+    if(pyOnFailedPolicy){
+        if(PyUnicode_Check(pyOnFailedPolicy)){
+            const char* onFailedPolicyStr = PyUnicode_AsUTF8AndSize(pyOnFailedPolicy, NULL);
+            onFailedPolicy = getOnFailedPolicy(onFailedPolicyStr);
+            if(onFailedPolicy == OnFailedPolicyUnknown){
+                PyErr_SetString(GearsError, "onFailedPolicy must be Continue/Abort/Retry");
+                return NULL;
+            }
+        }else{
+            PyErr_SetString(GearsError, "onFailedPolicy must be a string (Continue/Abort/Retry)");
+            return NULL;
+        }
+    }
+
+    size_t retryInterval = 1;
+    PyObject* pyRetryInterval = PyDict_GetItemString(kargs, "onFailedRetryInterval");
+    if(pyRetryInterval){
+        if(PyNumber_Check(pyRetryInterval)){
+            retryInterval = PyNumber_AsSsize_t(pyRetryInterval, NULL);
+        }else{
+            PyErr_SetString(GearsError, "retryInterval argument must be a number");
+            return NULL;
+        }
+    }
+
+    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS, onFailedPolicy, retryInterval);
 }
 
 static void registerFreeArgs(FlatExecutionPlan* fep, void* args){

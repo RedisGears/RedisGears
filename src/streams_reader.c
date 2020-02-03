@@ -35,10 +35,15 @@ typedef struct StreamReaderTriggerArgs{
     size_t batchSize;
     size_t durationMS;
     char* stream;
+    OnFailedPolicy onFailedPolicy;
+    size_t retryInterval;
 }StreamReaderTriggerArgs;
 
 typedef enum StreamRegistrationStatus{
-    OK, STOPPED_ON_ERROR,
+    StreamRegistrationStatus_OK,
+    StreamRegistrationStatus_ABORTED,
+    StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE,
+    StreamRegistrationStatus_UNREGISTERED,
 }StreamRegistrationStatus;
 
 typedef struct StreamReaderTriggerCtx{
@@ -124,11 +129,13 @@ static StreamId StreamReader_ParseStreamId(const char* streamId){
     return ret;
 }
 
-StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS){
+StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval){
     StreamReaderTriggerArgs* readerArgs = RG_ALLOC(sizeof(StreamReaderTriggerArgs));
     readerArgs->stream = RG_STRDUP(streamName);
     readerArgs->batchSize = batchSize;
     readerArgs->durationMS = durationMS;
+    readerArgs->onFailedPolicy = onFailedPolicy;
+    readerArgs->retryInterval = retryInterval;
     return readerArgs;
 }
 
@@ -238,7 +245,7 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
     StreamReaderTriggerCtx* srctx = RG_ALLOC(sizeof(StreamReaderTriggerCtx));
     *srctx = (StreamReaderTriggerCtx){
         .refCount = 1,
-        .status = OK,
+        .status = StreamRegistrationStatus_OK,
         .args = args,
         .singleStreamData = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .fep = fep,
@@ -563,6 +570,17 @@ static void StreamReader_AbortPendings(StreamReaderTriggerCtx* srctx){
     array_free(abortEpArray);
 }
 
+static void StreamReader_StartScanThread(RedisModuleCtx *ctx, void *data){
+    StreamReaderTriggerCtx* srctx = data;
+    if(srctx->status == StreamRegistrationStatus_UNREGISTERED){
+        StreamReaderTriggerCtx_Free(srctx);
+        return;
+    }
+    srctx->status = StreamRegistrationStatus_OK;
+    pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, srctx);
+    pthread_detach(srctx->scanThread);
+}
+
 static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderTriggerCtx* srctx = privateData;
 
@@ -610,18 +628,25 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
         srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
 
-        // we abort pending execution, continue now will cause incorect processing order.
-        StreamReader_AbortPendings(srctx);
+        if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
+            // we abort pending execution, continue now will cause incorect processing order.
+            StreamReader_AbortPendings(srctx);
 
-        // lets clean all our data about all the streams, on restart we will read all the
-        // pending data so we will not lose records
-        StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+            // lets clean all our data about all the streams, on restart we will read all the
+            // pending data so we will not lose records
+            StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
 
-        // Set the status to STOPPED_ON_ERROR, the status will be reflected to the
-        // user and the user will have to fix the error and resume the execution.
-        // MANUAL INTERFIRING IS NEEDED!!!
-        srctx->status = STOPPED_ON_ERROR;
-    } else if(ctx->status == ABORTED){
+            if(srctx->args->onFailedPolicy == OnFailedPolicyRetry){
+                // Set the status to WAITING_FOR_TIMEOUT_ON_FAILURE, the status will be reflected to the user.
+                srctx->status = StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE;
+                RedisModule_CreateTimer(staticCtx, srctx->args->retryInterval * 1000, StreamReader_StartScanThread, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+            }else if(srctx->args->onFailedPolicy == OnFailedPolicyAbort){
+                srctx->status = StreamRegistrationStatus_ABORTED;
+            }else{
+                assert(false);
+            }
+        }
+    } else if(ctx->status == StreamRegistrationStatus_ABORTED){
         ++srctx->numAborted;
     } else {
         Reader* reader = ExecutionPlan_GetReader(ctx);
@@ -718,7 +743,7 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
     const char* keyName = RedisModule_StringPtrLen(key, NULL);
     while((node = Gears_listNext(iter))){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
-        if(srctx->status == STOPPED_ON_ERROR){
+        if(srctx->status != StreamRegistrationStatus_OK){
             // we ignore stopped executions
             continue;
         }
@@ -774,6 +799,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPe
         StreamReader_AbortPendings(srctx);
     }
 
+    srctx->status = StreamRegistrationStatus_UNREGISTERED;
     StreamReaderTriggerCtx_Free(srctx);
 }
 
@@ -867,8 +893,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode m
         }
     }else{
         // we are master, lets run the scan thread.
-        pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
-        pthread_detach(srctx->scanThread);
+        StreamReader_StartScanThread(staticCtx, StreamReaderTriggerCtx_GetShallowCopy(srctx));
     }
     return 1;
 }
@@ -894,13 +919,17 @@ static void StreamReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
     RedisGears_BWWriteString(bw, triggerArgs->stream);
     RedisGears_BWWriteLong(bw, triggerArgs->batchSize);
     RedisGears_BWWriteLong(bw, triggerArgs->durationMS);
+    RedisGears_BWWriteLong(bw, triggerArgs->onFailedPolicy);
+    RedisGears_BWWriteLong(bw, triggerArgs->retryInterval);
 }
 
 static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
     char* stream = RedisGears_BRReadString(br);
     size_t batchSize = RedisGears_BRReadLong(br);
     size_t durationMS = RedisGears_BRReadLong(br);
-    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS);
+    OnFailedPolicy onFailedPolicy = RedisGears_BRReadLong(br);
+    size_t retryInterval = RedisGears_BRReadLong(br);
+    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval);
 }
 
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
@@ -940,10 +969,18 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     RedisModule_ReplyWithStringBuffer(ctx, "stream", strlen("stream"));
     RedisModule_ReplyWithStringBuffer(ctx, srctx->args->stream, strlen(srctx->args->stream));
     RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
-    if(srctx->status == OK){
+    switch(srctx->status){
+    case StreamRegistrationStatus_OK:
         RedisModule_ReplyWithStringBuffer(ctx, "OK", strlen("OK"));
-    }else{
-        RedisModule_ReplyWithStringBuffer(ctx, "STOPPED_ON_ERROR", strlen("STOPPED_ON_ERROR"));
+        break;
+    case StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE:
+        RedisModule_ReplyWithStringBuffer(ctx, "WAITING_FOR_RETRY_ON_FAILURE", strlen("WAITING_FOR_RETRY_ON_FAILURE"));
+        break;
+    case StreamRegistrationStatus_ABORTED:
+        RedisModule_ReplyWithStringBuffer(ctx, "ABORTED", strlen("ABORTED"));
+        break;
+    default:
+        assert(false);
     }
 }
 
