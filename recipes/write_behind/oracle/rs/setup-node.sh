@@ -47,7 +47,7 @@ if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' ]]; then
 	exit 1
 fi
 
-MOD_DIR=/opt/recipe/oracle/rs
+MOD_DIR=/opt/recipe/rs
 /opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
 
 printf "\n$ORACLE oracle\n" >> /etc/hosts

@@ -39,7 +39,7 @@ ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 
 On one of the Redis cluster nodes:
 
-* Run `ID=<db-id> /opt/recipe/oracle/rs/start-gear`.
+* Run `ID=<db-id> /opt/recipe/rs/start-gear`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
@@ -56,7 +56,7 @@ select * from person1;
 
 ## Testing
 
-* From a cluster node, run `ID=<db-id>/opt/recipe/oracle/rs/run-test`.
+* From a cluster node, run `ID=<db-id>/opt/recipe/rs/run-test`.
 * Run `echo "select count(*) from person1;" | /opt/recipe/oracle/sqlplus`
 
 ## Diagnostics

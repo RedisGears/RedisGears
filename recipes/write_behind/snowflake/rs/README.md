@@ -27,10 +27,10 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 
 On one of the Redis cluster nodes:
 
-* Run `/opt/recipe/snowflake/rs/start-gear`.
+* Run `/opt/recipe/rs/start-gear`.
 * With multiple databases:
   * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/snowflake/rs/start-gear`.
+  * Run `DB=<db-id> /opt/recipe/rs/start-gear`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
@@ -47,10 +47,10 @@ select * from person1;
 
 ## Testing
 * Log on via SSH to a cluster node.
-* Run `/opt/recipe/snowflake/rs/run-test`.
+* Run `/opt/recipe/rs/run-test`.
 * With multiple databases:
   * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/snowflake/rs/run-test`.
+  * Run `DB=<db-id> /opt/recipe/rs/run-test`.
 * Open another connection to that node and run `/opt/recipe/snowflake/sample-snowsql-db`
 
 ## Diagnostics
