@@ -570,7 +570,7 @@ static int registerStrKeyTypeToInt(const char* keyType){
     return -1;
 }
 
-static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr){
+static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, ExecutionMode mode){
     char** eventTypes = NULL;
     int* keyTypes = NULL;
 
@@ -643,7 +643,7 @@ static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
     return OnFailedPolicyUnknown;
 }
 
-static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
+static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr, ExecutionMode mode){
     size_t batch = 1;
     PyObject* pyBatch = PyDict_GetItemString(kargs, "batch");
     if(pyBatch){
@@ -666,7 +666,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
         }
     }
 
-    OnFailedPolicy onFailedPolicy = OnFailedPolicyRetry;
+    OnFailedPolicy onFailedPolicy = OnFailedPolicyContinue;
     PyObject* pyOnFailedPolicy = PyDict_GetItemString(kargs, "onFailedPolicy");
     if(pyOnFailedPolicy){
         if(PyUnicode_Check(pyOnFailedPolicy)){
@@ -674,6 +674,10 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
             onFailedPolicy = getOnFailedPolicy(onFailedPolicyStr);
             if(onFailedPolicy == OnFailedPolicyUnknown){
                 PyErr_SetString(GearsError, "onFailedPolicy must be Continue/Abort/Retry");
+                return NULL;
+            }
+            if(mode == ExecutionModeSync && onFailedPolicy != OnFailedPolicyContinue){
+                PyErr_SetString(GearsError, "ExecutionMode sync can only be combined with OnFailedPolicy Continue");
                 return NULL;
             }
         }else{
@@ -706,7 +710,7 @@ static void registerFreeArgs(FlatExecutionPlan* fep, void* args){
     }
 }
 
-static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
+static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, ExecutionMode mode){
     char* defaultRegexStr = "*";
     const char* regexStr = defaultRegexStr;
     PyObject* regex = PyDict_GetItemString(kargs, "regex");
@@ -722,9 +726,9 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
     const char* reader = RedisGears_GetReader(fep);
     if (strcmp(reader, "KeysReader") == 0 ||
             strcmp(reader, "KeysOnlyReader") == 0) {
-        return registerCreateKeysArgs(kargs, regexStr);
+        return registerCreateKeysArgs(kargs, regexStr, mode);
     }else if (strcmp(reader, "StreamReader") == 0){
-        return registerCreateStreamArgs(kargs, regexStr);
+        return registerCreateStreamArgs(kargs, regexStr, mode);
     }
     PyErr_SetString(GearsError, "given reader does not exists or does not support register");
     return NULL;
@@ -774,7 +778,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         }
     }
 
-    void* executionArgs = registerCreateArgs(pfep->fep, kargs);
+    void* executionArgs = registerCreateArgs(pfep->fep, kargs, mode);
     if(executionArgs == NULL){
         return NULL;
     }
