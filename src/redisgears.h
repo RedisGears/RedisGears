@@ -37,6 +37,12 @@ typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 #define ExecutionModeAsync 2
 #define ExecutionModeAsyncLocal 3
 
+#define OnFailedPolicy int
+#define OnFailedPolicyUnknown 0
+#define OnFailedPolicyContinue 1
+#define OnFailedPolicyAbort 2
+#define OnFailedPolicyRetry 3
+
 /******************************* READERS *******************************/
 
 typedef struct Gears_BufferWriter Gears_BufferWriter;
@@ -146,7 +152,7 @@ typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* 
 typedef struct KeysReaderCtx KeysReaderCtx;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
-StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS);
+StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval);
 void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
 KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, char** eventTypes, int* keyTypes);
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);

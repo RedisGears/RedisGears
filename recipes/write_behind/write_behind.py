@@ -6,10 +6,28 @@ NAME = 'WriteBehind'
 import time
 import json
 
+IGNORE_POLICY_PASS = 'pass'
+IGNORE_POLICY_IGNORE = 'ignore'
+
+DEFAULT_ON_FAILED_RETRY_INTERVAL = 5
+
 conn = None
 sqlText = None
 dbtype = None
+user = None
+passwd = None
+db = None
+account = None
+onFailedRetryInterval = None
 ConnectionStr = None
+defaultIgnorePolicy = False
+
+def WriteBehindLog(msg, prefix='%s - ' % NAME, logLevel='notice'):
+    msg = prefix + msg
+    Log(logLevel, msg)    
+
+def WriteBehindDebug(msg):
+    WriteBehindLog(msg, logLevel='debug')
 
 def WriteBehindGetConfig(name):
     val = GearsConfigGet(name)
@@ -18,27 +36,78 @@ def WriteBehindGetConfig(name):
     return val
 
 def InitializeParams():
+    '''
+    This function is set on the OnRegistered function of each registration which mean that
+    it will be called on each node for each registration.
+
+    Its a good location to initialize global configuration parameters like connection strings, timeouts, policies, and so on.
+
+    Notice that it you put those values here you can change them without re-register the execution (only reload from rdb will do).
+
+    If you have other parameters that can not be change (for example the 'dbtype' and the 'onFailedRetryInterval' in our case)
+    Then its a good idea to still check there values and output a log message indicating that those values 
+    was changed but the change will not take effect.
+    '''
     global dbtype
+    global user
+    global passwd
+    global db
+    global account
     global ConnectionStr
-    currDbType = WriteBehindGetConfig('%s:dbtype' % NAME)
+    global defaultIgnorePolicy
+    global onFailedRetryInterval
+    currDbType = GearsConfigGet('%s:dbtype' % NAME)
     if dbtype is not None and currDbType != dbtype:
-        Log('warning', '"dbtype" parameter was changed though it can not be modified (Continue running with "dbtype=%s")' % dbtype)
+        WriteBehindLog('"dbtype" parameter was changed though it can not be modified (Continue running with "dbtype=%s")' % dbtype, logLevel='warning')
     else:
         dbtype = currDbType
 
-    user = WriteBehindGetConfig('%s:user' % NAME)
-    passwd = WriteBehindGetConfig('%s:passwd' % NAME)
-    db = WriteBehindGetConfig('%s:db' % NAME)
-    account = None
+    currOnFailedRetryInterval = GearsConfigGet('%s:onfailedretryinterval' % NAME, default=DEFAULT_ON_FAILED_RETRY_INTERVAL)
+    try:
+        currOnFailedRetryInterval = int(currOnFailedRetryInterval)
+        if onFailedRetryInterval is not None and currOnFailedRetryInterval != onFailedRetryInterval:
+            WriteBehindLog('"onFailedRetryInterval" parameter was changed though it can not be modified (Continue running with "onFailedRetryInterval=%d")' % onFailedRetryInterval, logLevel='warning')
+        else:
+            onFailedRetryInterval = currOnFailedRetryInterval
+    except Exception as e:
+        onFailedRetryInterval = DEFAULT_ON_FAILED_RETRY_INTERVAL
+        WriteBehindLog('Failed converting "onFailedRetryInterval" to int, running with default "onFailedRetryInterval=%d"' % onFailedRetryInterval, logLevel='warning')
 
-    
+    try:
+        user = WriteBehindGetConfig('%s:user' % NAME)
+    except Exception:
+        if user is None:
+            raise
+        WriteBehindLog('Can not read user from configuration, will continue using the user which was supplied by the registration initializer.', logLevel='warning')
+
+    try:
+        passwd = WriteBehindGetConfig('%s:passwd' % NAME)
+    except Exception:
+        if passwd is None:
+            raise
+        WriteBehindLog('Can not read passwd from configuration, will continue using the passwd which was supplied by the registration initializer.', logLevel='warning')
+
+    try:
+        db = WriteBehindGetConfig('%s:db' % NAME)
+    except Exception:
+        if db is None:
+            raise
+        WriteBehindLog('Can not read db from configuration, will continue using the db which was supplied by the registration initializer.', logLevel='warning')            
+
+    defaultIgnorePolicy = False if GearsConfigGet('%s:db' % NAME, default=IGNORE_POLICY_PASS) == IGNORE_POLICY_PASS else True    
 
     if dbtype == 'mysql':
         ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
     elif dbtype == 'oracle':
-        ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
+        ConnectionStr = 'oracle://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
     elif dbtype == 'snowflake':
-        account = WriteBehindGetConfig('%s:account' % NAME)
+        try:
+            account = WriteBehindGetConfig('%s:account' % NAME)
+        except Exception:
+            if account is None:
+                raise
+            WriteBehindLog('Can not read account from configuration, will continue using the account which was supplied by the registration initializer.', logLevel='warning')
+
         ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=username,
                                                                               password=password,
                                                                               account=account,
@@ -46,14 +115,15 @@ def InitializeParams():
     else:
         raise Exception('given backend not supported')
 
+# Also call the InitializeParams here so we will make sure all the needed params exists.
+# Otherwise we will abort
 InitializeParams()
 
 ADD_QUERY_KEY = '_add_query'
 DEL_QUERY_KEY = '_delete_query'
 TABLE_KEY = '_table'
+WIRTING_POLICY_KEY = '_writing_policy'
 KEY = '_key'
-
-SLEEP_TIME=1
 
 #----------------------------------------------------------------------------------------------
 # Key mapping
@@ -74,17 +144,8 @@ config = {
     },
     'car:license': {
         'color': 'color',
-    },
+    }
 }
-
-#----------------------------------------------------------------------------------------------
-
-def WriteBehindLog(msg, prefix='%s - ' % NAME, logLevel='notice'):
-    msg = prefix + msg
-    Log(logLevel, msg)    
-
-def WriteBehindDebug(msg):
-    WriteBehindLog(msg, logLevel='debug')
 
 #----------------------------------------------------------------------------------------------
 
@@ -139,6 +200,62 @@ def PrintAllQueries():
 def GetStreamName(config):
     return '_%s-stream-{%s}' % (config[TABLE_KEY], hashtag())
 
+def CreateSQLDataWriter(config):
+    def WriteToSQLDB(r):
+        # WriteBehindDebug('In WriteToSQLDB')
+
+        global conn
+        global sqlText
+
+        if len(r) == 0:
+            WriteBehindLog('Warning, got an empty batch')
+            return
+        for x in r:
+            x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
+        query = None
+        errorOccured = False
+
+        try:
+            if not conn:
+                from sqlalchemy.sql import text
+                sqlText = text
+                conn = Connect()
+        except Exception as e:
+            conn = None # next time we will reconnect to the database
+            msg = 'Failed connecting to SQL database, error="%s"' % str(e)
+            WriteBehindLog(msg)
+            raise Exception(msg) from None
+
+        try:
+            batch = []
+            isAddBatch = True if len(r[0].keys()) > 1 else False # we have only key name, it means that the key was deleted
+            query = config[ADD_QUERY_KEY] if isAddBatch else config[DEL_QUERY_KEY]
+            for x in r:
+                if len(x.keys()) == 1: # we have only key name, it means that the key was deleted
+                    if isAddBatch:
+                        conn.execute(sqlText(query), batch)
+                        batch = []
+                        isAddBatch = False
+                        query = config[DEL_QUERY_KEY]
+                    batch.append(x)
+                else:
+                    if not isAddBatch:
+                        conn.execute(sqlText(query), batch)
+                        batch = []
+                        isAddBatch = True
+                        query = config[ADD_QUERY_KEY]
+                    batch.append(x)
+            if len(batch) > 0:
+                conn.execute(sqlText(query), batch)
+        except Exception as e:
+            conn = None # next time we will reconnect to the database
+            msg = 'Got exception when writing to DB, query="%s", error="%s".' % ((query if query else 'None'), str(e))
+            WriteBehindLog(msg)
+            raise Exception(msg) from None
+
+    # WriteBehindDebug('In CreateSQLDataWriter')
+    return WriteToSQLDB
+
 def CreateStreamInserter(config):
     def AddToStream(r):
         data = []
@@ -156,76 +273,49 @@ def CreateStreamInserter(config):
         execute('xadd', GetStreamName(config), '*', *sum(data, []))
     return AddToStream
 
-def CreateSQLDataWriter(config):
-    def WriteToSQLDB(r):
-        # WriteBehindDebug('In WriteToSQLDB')
+def ShouldProcessHash(r):
+    global defaultIgnorePolicy
+    hasValue = 'value' in r.keys()
 
-        global conn
-        global sqlText
-
-        if len(r) == 0:
-            WriteBehindLog('Warning, got an empty batch')
-            return
-        for x in r:
-            x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
-        while True:
-            # WriteBehindDebug('WriteToSQLDB: in loop')
-            query = None
-            errorOccured = False
-
-            try:
-                if not conn:
-                    from sqlalchemy.sql import text
-                    sqlText = text
-                    conn = Connect()
-            except Exception as e:
-                conn = None # next time we will reconnect to the database
-                WriteBehindLog('Failed connecting to SQL database, will retry in %d second. error="%s"' % (SLEEP_TIME, str(e)))
-                time.sleep(SLEEP_TIME)
-                continue # lets retry
-
-            try:
-                batch = []
-                isAddBatch = True if len(r[0].keys()) > 1 else False # we have only key name, it means that the key was deleted
-                query = config[ADD_QUERY_KEY] if isAddBatch else config[DEL_QUERY_KEY]
-                for x in r:
-                    if len(x.keys()) == 1: # we have only key name, it means that the key was deleted
-                        if isAddBatch:
-                            conn.execute(sqlText(query), batch)
-                            batch = []
-                            isAddBatch = False
-                            query = config[DEL_QUERY_KEY]
-                        batch.append(x)
-                    else:
-                        if not isAddBatch:
-                            conn.execute(sqlText(query), batch)
-                            batch = []
-                            isAddBatch = True
-                            query = config[ADD_QUERY_KEY]
-                        batch.append(x)
-                if len(batch) > 0:
-                    conn.execute(sqlText(query), batch)
-            except Exception as e:
-                WriteBehindLog('Got exception when writing to DB, query="%s", error="%s".' % ((query if query else 'None'), str(e)))
-                errorOccured = True
-
-            if errorOccured:
-                conn = None # next time we will reconnect to the database
-                WriteBehindLog('Error occured while running the sql transaction, will retry in %d second.' % SLEEP_TIME)
-                time.sleep(SLEEP_TIME)
-                continue # lets retry
-            return # we finished successfully, lets break the retry loop
-
-    # WriteBehindDebug('In CreateSQLDataWriter')
-    return WriteToSQLDB
-
-def CheckIfHash(r):
-    if 'value' not in r.keys() or isinstance(r['value'], dict) :
+    if not hasValue:
+        # delete operation is always pass
         return True
-    WriteBehindLog('Got a none hash value, key="%s" value="%s"' % (str(r['key']), str(r['value'] if 'value' in r.keys() else 'None')))
-    return False
+
+    # first make sure its a hash
+    if not (isinstance(r['value'], dict)) :
+        WriteBehindLog('Got a none hash value, key="%s" value="%s"' % (str(r['key']), str(r['value'] if 'value' in r.keys() else 'None')))
+        return False
+
+    value = r['value']
+    key = r['key']
+
+    if '~' in value.keys():
+        # If key contians '~' it means the user wants to deleted the key without issue a
+        # delete form the database. If we will just delete the key it will also issue a
+        # delete from the database so we need to first rename the key and then
+        # delete it.
+        newKey = '__{%s}__' % key
+        execute('rename', key, newKey)
+        execute('del', newKey)
+        return False
+
+    # We set results with defaultIgnorePolicy to decide what to do
+    res = defaultIgnorePolicy
+
+    # If we have a fields called '-' we ignore the hash
+    if '-' in value.keys():
+        execute('hdel', key, '-')
+        res = False
+
+    # If we have a fields called '+' we pass the hash
+    if '+' in value.keys():
+        execute('hdel', key, '+')
+        res = True
+
+    return res
 
 def RegisterExecutions():
+    global onFailedRetryInterval
     for k, v in config.items():
 
         regex = k.split(':')[0]
@@ -238,9 +328,9 @@ def RegisterExecutions():
         }
         GB('KeysReader', desc=json.dumps(descJson)).\
         filter(lambda x: x['key'] != GetStreamName(v)).\
-        filter(CheckIfHash).\
+        filter(ShouldProcessHash).\
         foreach(CreateStreamInserter(v)).\
-        register(mode='sync', regex='%s:*' % regex, eventTypes=['hset', 'hmset', 'del'])
+        register(mode='sync', regex='%s:*' % regex, eventTypes=['hset', 'hmset', 'del'], onRegistered=InitializeParams)
 
 
         ## create the execution to write each key from stream to DB
@@ -253,7 +343,13 @@ def RegisterExecutions():
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
         count().\
-        register(regex='_%s-stream-*' % v[TABLE_KEY], mode="async_local", batch=100, duration=4000, OnRegistered=InitializeParams)
+        register(regex='_%s-stream-*' % v[TABLE_KEY], 
+                 mode="async_local",
+                 batch=100,
+                 duration=4000,
+                 onRegistered=InitializeParams,
+                 onFailedPolicy="retry",
+                 onFailedRetryInterval=onFailedRetryInterval)
 
 #----------------------------------------------------------------------------------------------
 

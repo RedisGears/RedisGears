@@ -570,7 +570,7 @@ static int registerStrKeyTypeToInt(const char* keyType){
     return -1;
 }
 
-static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr){
+static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, ExecutionMode mode){
     char** eventTypes = NULL;
     int* keyTypes = NULL;
 
@@ -630,7 +630,20 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr){
     return RedisGears_KeysReaderTriggerArgsCreate(regexStr, eventTypes, keyTypes);
 }
 
-static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
+static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
+    if(strcasecmp(onFailurePolicyStr, "Continue") == 0){
+        return OnFailedPolicyContinue;
+    }
+    if(strcasecmp(onFailurePolicyStr, "Abort") == 0){
+        return OnFailedPolicyAbort;
+    }
+    if(strcasecmp(onFailurePolicyStr, "Retry") == 0){
+        return OnFailedPolicyRetry;
+    }
+    return OnFailedPolicyUnknown;
+}
+
+static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr, ExecutionMode mode){
     size_t batch = 1;
     PyObject* pyBatch = PyDict_GetItemString(kargs, "batch");
     if(pyBatch){
@@ -653,7 +666,38 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr){
         }
     }
 
-    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS);
+    OnFailedPolicy onFailedPolicy = OnFailedPolicyContinue;
+    PyObject* pyOnFailedPolicy = PyDict_GetItemString(kargs, "onFailedPolicy");
+    if(pyOnFailedPolicy){
+        if(PyUnicode_Check(pyOnFailedPolicy)){
+            const char* onFailedPolicyStr = PyUnicode_AsUTF8AndSize(pyOnFailedPolicy, NULL);
+            onFailedPolicy = getOnFailedPolicy(onFailedPolicyStr);
+            if(onFailedPolicy == OnFailedPolicyUnknown){
+                PyErr_SetString(GearsError, "onFailedPolicy must be Continue/Abort/Retry");
+                return NULL;
+            }
+            if(mode == ExecutionModeSync && onFailedPolicy != OnFailedPolicyContinue){
+                PyErr_SetString(GearsError, "ExecutionMode sync can only be combined with OnFailedPolicy Continue");
+                return NULL;
+            }
+        }else{
+            PyErr_SetString(GearsError, "onFailedPolicy must be a string (Continue/Abort/Retry)");
+            return NULL;
+        }
+    }
+
+    size_t retryInterval = 1;
+    PyObject* pyRetryInterval = PyDict_GetItemString(kargs, "onFailedRetryInterval");
+    if(pyRetryInterval){
+        if(PyNumber_Check(pyRetryInterval)){
+            retryInterval = PyNumber_AsSsize_t(pyRetryInterval, NULL);
+        }else{
+            PyErr_SetString(GearsError, "retryInterval argument must be a number");
+            return NULL;
+        }
+    }
+
+    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS, onFailedPolicy, retryInterval);
 }
 
 static void registerFreeArgs(FlatExecutionPlan* fep, void* args){
@@ -666,7 +710,7 @@ static void registerFreeArgs(FlatExecutionPlan* fep, void* args){
     }
 }
 
-static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
+static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, ExecutionMode mode){
     char* defaultRegexStr = "*";
     const char* regexStr = defaultRegexStr;
     PyObject* regex = PyDict_GetItemString(kargs, "regex");
@@ -682,9 +726,9 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs){
     const char* reader = RedisGears_GetReader(fep);
     if (strcmp(reader, "KeysReader") == 0 ||
             strcmp(reader, "KeysOnlyReader") == 0) {
-        return registerCreateKeysArgs(kargs, regexStr);
+        return registerCreateKeysArgs(kargs, regexStr, mode);
     }else if (strcmp(reader, "StreamReader") == 0){
-        return registerCreateStreamArgs(kargs, regexStr);
+        return registerCreateStreamArgs(kargs, regexStr, mode);
     }
     PyErr_SetString(GearsError, "given reader does not exists or does not support register");
     return NULL;
@@ -734,7 +778,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         }
     }
 
-    void* executionArgs = registerCreateArgs(pfep->fep, kargs);
+    void* executionArgs = registerCreateArgs(pfep->fep, kargs, mode);
     if(executionArgs == NULL){
         return NULL;
     }

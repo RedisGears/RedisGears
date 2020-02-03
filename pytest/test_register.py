@@ -205,7 +205,7 @@ def InfinitLoop(r):
     while counter > 3: # enter an infinit loop on the third time
         time.sleep(0.1)
     return r
-GB('StreamReader').map(InfinitLoop).register('s', mode='async_local')
+GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPolicy='abort')
     '''
     env.expect('rg.pyexecute', infinitScript).ok()
 
@@ -494,7 +494,7 @@ def testSyncRegister(env):
 def testOnRegisteredCallback(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB()."
-                            "register(mode='async_local', OnRegistered=lambda: execute('set', 'registered{%s}' % (hashtag()), '1'))")
+                            "register(mode='async_local', onRegistered=lambda: execute('set', 'registered{%s}' % (hashtag()), '1'))")
     time.sleep(0.1) # make sure registered on all shards
     env.expect('rg.pyexecute', "GB().map(lambda x: x['value']).collect().distinct().run('registered*')").equal([['1'], []])
 
@@ -773,12 +773,12 @@ def testKeysReaderKeyTypeFilter(env):
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
-def testSteamReaderStopOnFailure(env):
+def testSteamReaderAbortOnFailure(env):
     env.skipOnCluster()
 
     # count how many lpush and rpush happened
     env.cmd('rg.pyexecute', "GB('StreamReader').foreach(lambda r: blalala)."
-                            "register(regex='s', mode='async_local')")
+                            "register(regex='s', mode='async_local', onFailedPolicy='abort')")
 
     env.expect('xadd', 's', '*', 'foo', 'bar')
     env.expect('xadd', 's', '*', 'foo', 'bar')
@@ -786,7 +786,7 @@ def testSteamReaderStopOnFailure(env):
 
     registrations = env.cmd('rg.DUMPREGISTRATIONS')
 
-    env.assertEqual(registrations[0][7][15], 'STOPPED_ON_ERROR')
+    env.assertEqual(registrations[0][7][15], 'ABORTED')
 
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
