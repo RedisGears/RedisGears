@@ -39,7 +39,7 @@ def register(self, regex='*', mode='async', eventTypes=None, keyTypes=None, OnRe
 
 ### StreamReader Register Arguments
 ```
-def register(self, regex='*', mode='async', batch=1, duration=0, onRegistered=None, onFailedPolicy="retry", onFailedRetryInterval=1):
+def register(self, regex='*', mode='async', batch=1, duration=0, onRegistered=None, onFailedPolicy="continue", onFailedRetryInterval=1):
 ```
 * regex - The prefix of keys on which to register
 * mode:
