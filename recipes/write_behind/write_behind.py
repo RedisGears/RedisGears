@@ -314,7 +314,7 @@ def ShouldProcessHash(r):
 
     if not hasValue:
         # delete command, use the ~ (delete) operation
-        operation = '~'
+        operation = OPERATION_DEL_REPLICATE
     else:
         # make sure its a hash
         if not (isinstance(r['value'], dict)) :
