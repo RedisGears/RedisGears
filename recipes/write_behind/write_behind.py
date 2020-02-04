@@ -6,10 +6,14 @@ NAME = 'WriteBehind'
 import time
 import json
 
-IGNORE_POLICY_PASS = 'pass'
-IGNORE_POLICY_IGNORE = 'ignore'
-
 DEFAULT_ON_FAILED_RETRY_INTERVAL = 5
+DEFAULT_ACK_EXPIRE_SECONDS = '3600'
+
+OPERATION_DEL_REPLICATE = '~'
+OPERATION_DEL_NOREPLICATE = '-'
+OPERATION_UPDATE_REPLICATE = '='
+OPERATION_UPDATE_NOREPLICATE = '+'
+OPERATIONS = [OPERATION_DEL_REPLICATE, OPERATION_DEL_NOREPLICATE, OPERATION_UPDATE_REPLICATE, OPERATION_UPDATE_NOREPLICATE]
 
 conn = None
 sqlText = None
@@ -20,7 +24,8 @@ db = None
 account = None
 onFailedRetryInterval = None
 ConnectionStr = None
-defaultIgnorePolicy = False
+ackExpireSeconds = DEFAULT_ACK_EXPIRE_SECONDS
+defaultOperation = OPERATION_UPDATE_REPLICATE
 
 def WriteBehindLog(msg, prefix='%s - ' % NAME, logLevel='notice'):
     msg = prefix + msg
@@ -54,8 +59,9 @@ def InitializeParams():
     global db
     global account
     global ConnectionStr
-    global defaultIgnorePolicy
     global onFailedRetryInterval
+    global ackExpireSeconds
+    global defaultOperation
     currDbType = GearsConfigGet('%s:dbtype' % NAME)
     if dbtype is not None and currDbType != dbtype:
         WriteBehindLog('"dbtype" parameter was changed though it can not be modified (Continue running with "dbtype=%s")' % dbtype, logLevel='warning')
@@ -92,9 +98,19 @@ def InitializeParams():
     except Exception:
         if db is None:
             raise
-        WriteBehindLog('Can not read db from configuration, will continue using the db which was supplied by the registration initializer.', logLevel='warning')            
+        WriteBehindLog('Can not read db from configuration, will continue using the db which was supplied by the registration initializer.', logLevel='warning')
 
-    defaultIgnorePolicy = False if GearsConfigGet('%s:db' % NAME, default=IGNORE_POLICY_PASS) == IGNORE_POLICY_PASS else True    
+    ackExpireSeconds = GearsConfigGet('%s:ackexpireseconds' % NAME, default=DEFAULT_ACK_EXPIRE_SECONDS)
+    try:
+        ackExpireSeconds = int(ackExpireSeconds)
+    except Exception as e:
+        ackExpireSeconds = DEFAULT_ACK_EXPIRE_SECONDS
+        WriteBehindLog('Failed converting "ackExpireSeconds" to int, running with default "ackExpireSeconds=%d"' % ackExpireSeconds, logLevel='warning')
+
+    defaultOperation = GearsConfigGet('%s:defaultoperation' % NAME, default=OPERATION_UPDATE_REPLICATE)
+    if defaultOperation not in OPERATIONS:
+        defaultOperation = OPERATION_UPDATE_REPLICATE
+        WriteBehindLog('Given default operation which is not one of the supported operations (%s) using default "%s"' % (str(OPERATIONS), OPERATION_UPDATE_REPLICATE))
 
     if dbtype == 'mysql':
         ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
@@ -124,6 +140,9 @@ DEL_QUERY_KEY = '_delete_query'
 TABLE_KEY = '_table'
 WIRTING_POLICY_KEY = '_writing_policy'
 KEY = '_key'
+ORIGINAL_KEY = '_original_key'
+
+UUID_KEY = '_uuid'
 
 #----------------------------------------------------------------------------------------------
 # Key mapping
@@ -206,14 +225,12 @@ def CreateSQLDataWriter(config):
 
         global conn
         global sqlText
+        global ackExpireSeconds
 
         if len(r) == 0:
             WriteBehindLog('Warning, got an empty batch')
             return
-        for x in r:
-            x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
         query = None
-        errorOccured = False
 
         try:
             if not conn:
@@ -226,11 +243,19 @@ def CreateSQLDataWriter(config):
             WriteBehindLog(msg)
             raise Exception(msg) from None
 
+        idsToAck = []
+
         try:
             batch = []
-            isAddBatch = True if len(r[0].keys()) > 1 else False # we have only key name, it means that the key was deleted
+            # we have only key name, original_key, streamId, it means that the key was deleted
+            isAddBatch = True if len(r[0].keys()) > 3 else False
             query = config[ADD_QUERY_KEY] if isAddBatch else config[DEL_QUERY_KEY]
             for x in r:
+                x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
+                originalKey = x.pop(ORIGINAL_KEY, None)
+                uuid = x.pop(UUID_KEY, None)
+                if uuid is not None:
+                    idsToAck.append('{%s}%s' % (originalKey, uuid))
                 if len(x.keys()) == 1: # we have only key name, it means that the key was deleted
                     if isAddBatch:
                         conn.execute(sqlText(query), batch)
@@ -253,15 +278,23 @@ def CreateSQLDataWriter(config):
             WriteBehindLog(msg)
             raise Exception(msg) from None
 
+        print('idsToAck = ' + str(idsToAck))
+        for idToAck in idsToAck:
+            execute('XADD', idToAck, '*', 'status', 'done')
+            execute('EXPIRE', idToAck, ackExpireSeconds)
+
     # WriteBehindDebug('In CreateSQLDataWriter')
     return WriteToSQLDB
 
 def CreateStreamInserter(config):
     def AddToStream(r):
         data = []
+        data.append([ORIGINAL_KEY, r['key']])
         data.append([config[KEY], r['key'].split(':')[1]])
         if 'value' in r.keys():
             keys = r['value'].keys()
+            if UUID_KEY in keys:
+                data.append([UUID_KEY, r['value'][UUID_KEY]])
             for kInHash, kInDB in config.items():
                 if kInHash.startswith('_'):
                     continue
@@ -274,43 +307,62 @@ def CreateStreamInserter(config):
     return AddToStream
 
 def ShouldProcessHash(r):
-    global defaultIgnorePolicy
+    global defaultOperation
     hasValue = 'value' in r.keys()
+    operation = defaultOperation
+    uuid = ''
 
     if not hasValue:
-        # delete operation is always pass
-        return True
+        # delete command, use the ~ (delete) operation
+        operation = '~'
+    else:
+        # make sure its a hash
+        if not (isinstance(r['value'], dict)) :
+            msg = 'Got a none hash value, key="%s" value="%s"' % (str(r['key']), str(r['value'] if 'value' in r.keys() else 'None'))
+            WriteBehindLog(msg)
+            raise Exception(msg)
 
-    # first make sure its a hash
-    if not (isinstance(r['value'], dict)) :
-        WriteBehindLog('Got a none hash value, key="%s" value="%s"' % (str(r['key']), str(r['value'] if 'value' in r.keys() else 'None')))
-        return False
-
-    value = r['value']
+    
     key = r['key']
 
-    if '~' in value.keys():
-        # If key contians '~' it means the user wants to deleted the key without issue a
-        # delete form the database. If we will just delete the key it will also issue a
-        # delete from the database so we need to first rename the key and then
-        # delete it.
+    if hasValue:
+        value = r['value']
+        if '#' in value.keys():
+            opVal = value['#']
+            if len(opVal) == 0:
+                msg = 'Got no operation'
+                WriteBehindLog(msg)
+                raise Exception(msg)
+            operation = value['#'][0]
+            if operation not in OPERATIONS:
+                msg = 'Got unknown operations "%s"' % operation
+                WriteBehindLog(msg)
+                raise Exception(msg)
+            uuid = value['#'][1:]
+            if uuid != '':
+                value[UUID_KEY] = uuid
+            # delete the # field, we already got the information we need
+            value.pop('#', None)
+            execute('hdel', key, '#')
+
+    res = True
+
+    if operation == OPERATION_DEL_NOREPLICATE:
+        # we need to just delete the key but delete it directly will cause
+        # key unwanted key space notification so we need to rename it first
         newKey = '__{%s}__' % key
-        execute('rename', key, newKey)
-        execute('del', newKey)
-        return False
-
-    # We set results with defaultIgnorePolicy to decide what to do
-    res = defaultIgnorePolicy
-
-    # If we have a fields called '-' we ignore the hash
-    if '-' in value.keys():
-        execute('hdel', key, '-')
+        execute('RENAME', key, newKey)
+        execute('DEL', newKey)
         res = False
 
-    # If we have a fields called '+' we pass the hash
-    if '+' in value.keys():
-        execute('hdel', key, '+')
-        res = True
+    if operation == OPERATION_UPDATE_NOREPLICATE:
+        res = False
+
+    if not res and uuid != '':
+        # no replication to backend is needed but ack is require
+        '{%s}%s' % (key, uuid)
+        execute('XADD', idToAck, '*', 'status', 'done')
+        execute('EXPIRE', idToAck, ackExpireSeconds)
 
     return res
 
