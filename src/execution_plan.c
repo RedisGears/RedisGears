@@ -973,6 +973,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         if(ectx.err){
             if(step->accumulate.accumulator){
                 RedisGears_FreeRecord(step->accumulate.accumulator);
+                step->accumulate.accumulator = NULL;
             }
             record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
@@ -1020,6 +1021,11 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		    if(accumulator){
 		        RedisGears_FreeRecord(accumulator);
 		    }
+		    if(keyRecord){
+                RedisGears_KeyRecordSetVal(keyRecord, NULL);
+                RedisGears_FreeRecord(keyRecord);
+		    }
+		    Gears_dictDelete(step->accumulateByKey.accumulators, key);
 			RedisGears_FreeRecord(record);
             record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
