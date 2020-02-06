@@ -2,6 +2,7 @@
 
 import redis
 import argparse
+import json
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                  description='Run gears scripts on Redis(Gears)')
@@ -26,6 +27,16 @@ parser.add_argument(
 
 args = parser.parse_args()
 
+def PP(res):
+    try:
+        res = json.loads(res)
+        print(json.dumps(res, indent=4, sort_keys=True))
+        return
+    except Exception as e:
+        pass
+    print(res)
+
+
 r = redis.Redis(args.host, args.port, password=args.password)
 for p in args.path:
     f = open(p, 'rt')
@@ -33,7 +44,18 @@ for p in args.path:
     q = ['rg.pyexecute', script]
     if args.nonblocking:
         q += ['unblocking']
-    res = r.execute_command(*q)
-    print res
-    print ''
+    reply = r.execute_command(*q)
+    if reply == 'OK':
+        print('OK')
+    else:
+        results, errors = reply
+        for res in results:
+            print('--------------------------------------------------------')
+            PP(res)
+            print('--------------------------------------------------------')
+        print ''
+        for err in errors:
+            print('--------------------------------------------------------')
+            PP(err)
+            print('--------------------------------------------------------')
     f.close()

@@ -117,6 +117,9 @@ class testStepsErrors:
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
         self.env.assertLessEqual(1, res[1])
 
+    def testAggregateByError(self):
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().aggregateby(lambda x: "1",{},lambda k, a, x: (x["kaka"] if x["key"]=="y" else x), lambda k, a, x: (x["kaka"] if x["key"]=="y" else x)).run()')
+        self.env.assertLessEqual(1, res[1])
 
     def testMapError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: notexists(x)).collect().run()')

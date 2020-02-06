@@ -278,7 +278,6 @@ def CreateSQLDataWriter(config):
             WriteBehindLog(msg)
             raise Exception(msg) from None
 
-        print('idsToAck = ' + str(idsToAck))
         for idToAck in idsToAck:
             execute('XADD', idToAck, '*', 'status', 'done')
             execute('EXPIRE', idToAck, ackExpireSeconds)

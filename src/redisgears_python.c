@@ -967,11 +967,13 @@ static PyObject* RedisConfigGet(PyObject *cls, PyObject *args){
     const char* valCStr = GearsConfig_GetExtraConfigVals(keyCStr);
     if(!valCStr){
         LockHandler_Release(ctx);
+        RedisModule_FreeThreadSafeContext(ctx);
         Py_INCREF(Py_None);
         return Py_None;
     }
     PyObject* valPyStr = PyUnicode_FromString(valCStr);
     LockHandler_Release(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
 
     return valPyStr;
 }
