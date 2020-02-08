@@ -1,7 +1,9 @@
 
 ROOT=../..
 
-PLATFORMS=centos7 fedora xenial bionic stretch buster
+DOCKER ?= docker
+
+PLATFORMS=centos7 fedora xenial bionic stretch buster rhel7.4
 
 REPO=localhost/redisgears
 
@@ -11,6 +13,7 @@ OS.xenial=ubuntu:xenial
 OS.bionic=ubuntu:bionic
 OS.stretch=debian:stretch
 OS.buster=debian:buster
+OS.rhel7.4=rhel:7.4
 
 ARCH=x64
 
@@ -29,16 +32,16 @@ define build_platform
 $(1):
 	@echo "Building for $(1) ..."
 ifneq ($(VERBOSE),1)
-	@docker build $(BUILD_OPT) -t $(REPO):$(1) --build-arg OSNICK=$(1) --build-arg OS=$(OS.$(1)) $(ARGS) > /tmp/docker.log 2>&1 ;\
+	@$(DOCKER) build $(BUILD_OPT) -t $(REPO):$(1) --build-arg OSNICK=$(1) --build-arg OS=$(OS.$(1)) $(ARGS) > /tmp/docker.log 2>&1 ;\
 	if [ $$$$? != 0 ]; then cat /tmp/docker.log; exit 1; fi
 else
-	@docker build $(BUILD_OPT) -t $(REPO):$(1) --build-arg OSNICK=$(1) --build-arg OS=$(OS.$(1)) $(ARGS)
+	@$(DOCKER) build $(BUILD_OPT) -t $(REPO):$(1) --build-arg OSNICK=$(1) --build-arg OS=$(OS.$(1)) $(ARGS)
 endif
 	@echo "Copying artifacts ..."
-	@CID=$$$$(docker create $(REPO):$(1)) ;\
-	docker cp $$$${CID}:/opt/redislabs/artifacts/redisgears.linux-$(1)-$(ARCH).99.99.99.zip $(ARTIFACTS)/ ;\
-	docker cp $$$${CID}:/opt/redislabs/artifacts/redisgears-dependencies.linux-$(1)-$(ARCH).99.99.99.tgz $(ARTIFACTS)/ ;\
-	docker rm -v $$$${CID} > /dev/null
+	@CID=$$$$($(DOCKER) create $(REPO):$(1)) ;\
+	$(DOCKER) cp $$$${CID}:/opt/redislabs/artifacts/redisgears.linux-$(1)-$(ARCH).99.99.99.zip $(ARTIFACTS)/ ;\
+	$(DOCKER) cp $$$${CID}:/opt/redislabs/artifacts/redisgears-dependencies.linux-$(1)-$(ARCH).99.99.99.tgz $(ARTIFACTS)/ ;\
+	$(DOCKER) rm -v $$$${CID} > /dev/null
 	@echo "Done."
 
 .PHONY: $(1)
