@@ -47,7 +47,8 @@ class RepoRefresh(OnPlatform):
         self.runner.run("apt-get -qq update -y")
 
     def macosx(self):
-        self.runner.run("brew update || true")
+        if os.environ.get('BREW_NO_UPDATE') != '1':
+            self.runner.run("brew update || true")
 
 #----------------------------------------------------------------------------------------------
 
@@ -113,6 +114,9 @@ class Setup(OnPlatform):
         for pack in packs.split():
             self.run("brew list {} &>/dev/null || brew install {}".format(pack, pack), output_on_error=True, _try=_try)
 
+    def pkg_install(self, packs, group=False, _try=False):
+        self.run("pkg install -q -y " + packs, output_on_error=True, _try=_try)
+
     def install(self, packs, group=False, _try=False):
         if self.os == 'linux':
             if self.dist == 'fedora': # also include centos 8
@@ -129,6 +133,8 @@ class Setup(OnPlatform):
                 Assert(False), "Cannot determine installer"
         elif self.os == 'macosx':
             self.brew_install(packs, group=group, _try=_try)
+        elif self.os == 'freebsd':
+            self.pkg_install(packs, group=group, _try=_try)
         else:
             Assert(False), "Cannot determine installer"
 
@@ -202,7 +208,7 @@ class Setup(OnPlatform):
                 self.install("python3-distutils")
             self.install_downloaders()
             pip_user = ' --user' if self.os == 'macosx' else ''
-            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py" + pip_user, output_on_error=True, _try=_try)
+            self.run(get_pip + "; " + self.python + " /tmp/get-pip.py" + pip_user + " 'pip==19.3.1'", output_on_error=True, _try=_try)
 
     def install_downloaders(self, _try=False):
         if self.os == 'linux':
@@ -210,9 +216,22 @@ class Setup(OnPlatform):
         self.install("curl wget", _try=_try)
 
     def install_git_lfs_on_linux(self, _try=False):
-        cmd = "curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.{}.sh | bash"
-        if self.platform.is_redhat_compat():
-            self.run(cmd.format('rpm'), _try=_try)
-        elif self.platform.is_debian_compat():
-            self.run(cmd.format('deb'), _try=_try)
-        self.install("git-lfs", _try=_try)
+        self.run("set -e; wget -q https://github.com/git-lfs/git-lfs/releases/download/v2.9.2/git-lfs-linux-amd64-v2.9.2.tar.gz -O /tmp/git-lfs.tar.gz")
+        self.run("cd /tmp; tar xzf git-lfs.tar.gz; ./install.sh")
+
+#        cmd = "curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.{}.sh | bash"
+#        if self.platform.is_redhat_compat():
+#            self.run(cmd.format('rpm'), _try=_try)
+#        elif self.platform.is_debian_compat():
+#            self.run(cmd.format('deb'), _try=_try)
+#        self.install("git-lfs", _try=_try)
+
+    def install_gnu_utils(self, _try=False):
+        self.install("make findutils gnu-sed gnu-tar")
+        for x in ['make', 'find', 'sed', 'tar']:
+            p = "/usr/local/bin/{}".format(x)
+            if not os.path.exists(p):
+                self.run("ln -sf /usr/local/bin/g{} {}".format(x, p))
+            else:
+                eprint("Warning: {} exists - not replaced".format(p))
+

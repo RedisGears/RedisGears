@@ -86,6 +86,32 @@ static int RG_RegisterReducer(char* name, RedisGears_ReducerCallback reducer, Ar
     return ReducersMgmt_Add(name, reducer, type);
 }
 
+static int RG_RegisterExecutionOnStartCallback(char* name, RedisGears_ExecutionOnStartCallback callback, ArgType* type){
+    return ExecutionOnStartsMgmt_Add(name, callback, type);
+}
+
+static int RG_RegisterFlatExecutionOnRegisteredCallback(char* name, RedisGears_FlatExecutionOnRegisteredCallback callback, ArgType* type){
+    return FlatExecutionOnRegisteredsMgmt_Add(name, callback, type);
+}
+
+static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char* callback, void* arg){
+    RedisGears_ExecutionOnStartCallback c = ExecutionOnStartsMgmt_Get(callback);
+    if(!c){
+        return REDISMODULE_ERR;
+    }
+    FlatExecutionPlan_SetOnStartStep(fep, RG_STRDUP(callback), arg);
+    return REDISMODULE_OK;
+}
+
+static int RG_SetFlatExecutionOnRegisteredCallback(FlatExecutionPlan* fep, const char* callback, void* arg){
+    RedisGears_FlatExecutionOnRegisteredCallback c = FlatExecutionOnRegisteredsMgmt_Get(callback);
+    if(!c){
+        return REDISMODULE_ERR;
+    }
+    FlatExecutionPlan_SetOnRegisteredStep(fep, RG_STRDUP(callback), arg);
+    return REDISMODULE_OK;
+}
+
 static FlatExecutionPlan* RG_CreateCtx(char* readerName){
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
     if(!FlatExecutionPlan_SetReader(fep, readerName)){
@@ -102,6 +128,10 @@ static int RG_SetDesc(FlatExecutionPlan* fep, const char* desc){
 
 static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
     FlatExecutionPlan_SetPrivateData(fep, type, PD);
+}
+
+static void* RG_GetFlatExecutionPrivateDataFromFep(FlatExecutionPlan* fep){
+    return FlatExecutionPlan_GetPrivateData(fep);
 }
 
 static int RG_Map(FlatExecutionPlan* fep, char* name, void* arg){
@@ -159,13 +189,13 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key){
+static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
 
-    return FlatExecutionPlan_Register(fep, mode, key);
+    return FlatExecutionPlan_Register(fep, mode, key, err);
 }
 
-static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData){
-    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData);
+static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err){
+    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, err);
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
@@ -176,8 +206,24 @@ static StreamReaderCtx* RG_StreamReaderCtxCreate(const char* streamName, const c
     return StreamReaderCtx_Create(streamName, streamId);
 }
 
-static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS){
-    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS);
+static void RG_StreamReaderCtxFree(StreamReaderCtx* readerCtx){
+    StreamReaderCtx_Free(readerCtx);
+}
+
+static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval){
+    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval);
+}
+
+static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
+    return StreamReaderTriggerArgs_Free(args);
+}
+
+static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
+    return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+}
+
+static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
+    return KeysReaderTriggerArgs_Free(args);
 }
 
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
@@ -194,13 +240,13 @@ static const char* RG_GetId(ExecutionPlan* ep){
 
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	return array_len(ep->results);
 }
 
 static long long RG_GetErrorsLen(ExecutionPlan* ep){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	return array_len(ep->errors);
 }
 
@@ -218,24 +264,80 @@ static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCa
 
 static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	assert(i >= 0 && i < array_len(ep->results));
 	return ep->results[i];
 }
 
 static Record* RG_GetError(ExecutionPlan* ep, long long i){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && ep->status == DONE);
+	assert(ep && RedisGears_IsDone(ep));
 	assert(i >= 0 && i < array_len(ep->errors));
 	return ep->errors[i];
 }
 
+/**
+ * Abort a running or created (and not yet started) execution
+ *
+ * Currently we can only abort a local execution or execution that did not
+ * yet started. Aborting a global started execution require consensus
+ * and not yet supported.
+ *
+ * return REDISMODULE_OK if the execution was aborted and REDISMODULE_ERR otherwise
+ */
+static int RG_AbortExecution(ExecutionPlan* ep){
+
+    // exection did not yet started.
+    if(EPIsFlagOff(ep, EFStarted)){
+        if(EPIsFlagOff(ep, EFIsLocal) &&
+                memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) != 0){
+            // we did not created the execution,  which mean its already started
+            // on some other node and can not be aborted
+            return REDISMODULE_ERR;
+        }
+        // abort the execution and execute its Done Actions
+        ep->status = ABORTED;
+        EPStatus_DoneAction(ep);
+        return REDISMODULE_OK;
+    }
+
+    // execution is not local and already started, we can not abort it now.
+    if(EPIsFlagOff(ep, EFIsLocal)){
+        return REDISMODULE_ERR;
+    }
+
+    // execution is done, no need to abort
+    if(RedisGears_IsDone(ep)){
+        return REDISMODULE_OK;
+    }
+
+    // execution is running
+    ExecutionCtx epCtx = {
+            .ep = ep,
+    };
+    while(ep->status != DONE){
+        // we are checking for DONE status cause this one is set without getting the lock.
+        // Once status changed to DONE we know that no more python code will be executed and
+        // we can finish sending cancel signal
+        RedisGearsPy_ForceStop(&epCtx);
+        usleep(1000);
+    }
+
+    return REDISMODULE_OK;
+}
+
+/**
+ * Drop the execution once the execution is done
+ */
 static void RG_DropExecution(ExecutionPlan* ep){
     if(EPIsFlagOn(ep, EFIsOnDoneCallback)){
         EPTurnOnFlag(ep, EFIsFreedOnDoneCallback);
         return;
     }
-    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal)){
+    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal) && ep->status != ABORTED){
+        // We need to distributed the drop execution to all the shards
+        // only if execution is not local and not aborted (aborted exectuion is eather
+        // local or not yet distributed to all the shards)
         Cluster_SendMsgM(NULL, RG_OnDropExecutionMsgReceived, ep->idStr, strlen(ep->idStr));
     }
     ExecutionPlan_Free(ep);
@@ -310,6 +412,14 @@ static void* RG_GetFlatExecutionPrivateData(ExecutionCtx* ectx){
     return NULL;
 }
 
+static void* RG_GetPrivateData(ExecutionCtx* ectx){
+    return ectx->ep->executionPD;
+}
+
+static void RG_SetPrivateData(ExecutionCtx* ectx, void* PD){
+    ectx->ep->executionPD = PD;
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
         return;
@@ -349,7 +459,8 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         Gears_dictReleaseIterator(iter);
     } else {
         // when loading keys phase finished, we load the registrations.
-        for(char* readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
+        char* readerName = NULL;
+        for(readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
                 strlen(readerName) > 0 ;
                 readerName = RedisModule_LoadStringBuffer(rdb, NULL)){
             assert(readerName);
@@ -358,6 +469,7 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
             callbacks->rdbLoad(rdb, encver);
             RedisModule_Free(readerName);
         }
+        RedisModule_Free(readerName);
     }
     return REDISMODULE_OK;
 }
@@ -412,6 +524,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(SetDesc, ctx);
     REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
     REGISTER_API(SetFlatExecutionPrivateData, ctx);
+    REGISTER_API(GetFlatExecutionPrivateDataFromFep, ctx);
     REGISTER_API(Map, ctx);
     REGISTER_API(Accumulate, ctx);
     REGISTER_API(AccumulateBy, ctx);
@@ -428,7 +541,11 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(FreeFlatExecution, ctx);
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
+    REGISTER_API(StreamReaderCtxFree, ctx);
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
+    REGISTER_API(StreamReaderTriggerArgsFree, ctx);
+    REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
+    REGISTER_API(KeysReaderTriggerArgsFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);
@@ -437,8 +554,9 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetErrorsLen, ctx);
     REGISTER_API(GetError, ctx);
     REGISTER_API(AddOnDoneCallback, ctx);
-	REGISTER_API(DropExecution, ctx);
-	REGISTER_API(GetId, ctx);
+    REGISTER_API(DropExecution, ctx);
+    REGISTER_API(AbortExecution, ctx);
+    REGISTER_API(GetId, ctx);
 
     REGISTER_API(FreeRecord, ctx);
     REGISTER_API(RecordGetType, ctx);
@@ -475,6 +593,12 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(SetError, ctx);
     REGISTER_API(GetRedisModuleCtx, ctx);
     REGISTER_API(GetFlatExecutionPrivateData, ctx);
+    REGISTER_API(GetPrivateData, ctx);
+    REGISTER_API(SetPrivateData, ctx);
+    REGISTER_API(RegisterExecutionOnStartCallback, ctx);
+    REGISTER_API(RegisterFlatExecutionOnRegisteredCallback, ctx);
+    REGISTER_API(SetFlatExecutionOnStartCallback, ctx);
+    REGISTER_API(SetFlatExecutionOnRegisteredCallback, ctx);
 
     REGISTER_API(DropLocalyOnDone, ctx);
 
@@ -664,8 +788,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 		return REDISMODULE_ERR;
 	}
 
-    if (RedisModule_CreateCommand(ctx, "rg.reexecute", Command_ReExecute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.reexecute");
+    if (RedisModule_CreateCommand(ctx, "rg.abortexecution", Command_AbortExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.abortexecution");
         return REDISMODULE_ERR;
     }
 

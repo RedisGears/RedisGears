@@ -26,6 +26,65 @@ class testGenericErrors:
     def testBuilderCreationWithUnexistingReader(self):
         self.env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')
 
+    def testTwoExecutionsInOneScript(self):
+        script = '''
+GB().run()
+GB().run()
+'''
+        self.env.expect('rg.pyexecute', script).error().contains('more then 1')
+
+    def testRegistrationFailureOnSerialization(self):
+        script1 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB().map(test).register()
+'''
+        script2 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB('StreamReader').map(test).register()
+'''
+        self.env.expect('rg.pyexecute', script1).error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script2).error().contains('Error occured when serialized a python callback')
+
+def testRunFailureOnSerialization(env):
+    if env.shardsCount < 2:
+        env.skip()
+    conn = getConnectionByEnv(env)
+    script1 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB().map(test).run()
+'''
+
+    script2 = '''
+import redis
+r = redis.Redis()
+
+def test(x):
+    r.set('x', '1')
+    return x
+
+GB('StreamReader').map(test).run()
+'''
+    env.expect('rg.pyexecute', script1).error().contains('Error occured when serialized a python callback')
+    env.expect('rg.pyexecute', script2).error().contains('Error occured when serialized a python callback')
+
 
 class testStepsErrors:
     def __init__(self):
@@ -58,6 +117,9 @@ class testStepsErrors:
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
         self.env.assertLessEqual(1, res[1])
 
+    def testAggregateByError(self):
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder().aggregateby(lambda x: "1",{},lambda k, a, x: (x["kaka"] if x["key"]=="y" else x), lambda k, a, x: (x["kaka"] if x["key"]=="y" else x)).run()')
+        self.env.assertLessEqual(1, res[1])
 
     def testMapError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: notexists(x)).collect().run()')
@@ -85,6 +147,12 @@ class testStepsWrongArgs:
 
     def testRegisterWithWrongRegexType(self):
         self.env.expect('rg.pyexecute', 'GB().register(1)').error().contains('regex argument must be a string')
+
+    def testRegisterWithWrongEventKeysTypesList(self):
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=1)').error().contains('object is not iterable')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=1)').error().contains('object is not iterable')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=[1, 2, 3])').error().contains('type is not string')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=[1, 2, 3])').error().contains('type is not string')
 
     def testGearsBuilderWithWrongBuilderArgType(self):
         self.env.expect('rg.pyexecute', 'GB(1).run()').error().contains('reader argument must be a string')

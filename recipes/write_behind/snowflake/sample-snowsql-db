@@ -1,0 +1,6 @@
+#!/bin/bash
+
+while true; do
+	echo "select count(*) from person1;" | snowsql -d test -o friendly=false -o header=false -o timing=false -o output_format=plain
+	sleep 1
+done

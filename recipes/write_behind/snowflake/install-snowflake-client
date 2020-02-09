@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# run this as root
+
+[[ $VERBOSE == 1 ]] && set -x
+[[ $IGNERR == 1 ]] || set -e
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+cd $HERE
+
+[[ -z $SNOW_USER || -z $SNOW_PASSWD || -z $SNOW_ACCT ]] && { echo "Please define SNOW_USER, SNOW_PASSWD, and SNOW_ACCT for your Snowflake DB account."; exit 1; }
+
+if [ ! -z $(command -v apt-get) ]; then
+	apt-get -qq update
+	apt-get install -y ca-certificates wget curl crudini
+elif [ ! -z $(command -v yum) ]; then
+	yum install -y ca-certificates curl wget crudini
+else
+	echo "%make love"
+	echo "Make:  Don't know how to make love.  Stop."
+	exit 1
+fi
+
+rm -f /tmp/snowsql.sh
+curl -s -o /tmp/snowsql.sh https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.2-linux_x86_64.bash
+printf "/opt/redislabs/bin\n\n" | bash /tmp/snowsql.sh
+
+/opt/redislabs/bin/snowsql > /dev/null 2>&1
+
+crudini --set  /root/.snowsql/config  connections username "$SNOW_USER"
+crudini --set  /root/.snowsql/config  connections password "$SNOW_PASSWD"
+crudini --set  /root/.snowsql/config  connections accountname "$SNOW_ACCT"
+
+sudo -u redislabs /opt/redislabs/bin/snowsql > /dev/null 2>&1
+cp /root/.snowsql/config /opt/redislabs/.snowsql/
+chown redislabs:redislabs /opt/redislabs/.snowsql/config
+
+exit 0

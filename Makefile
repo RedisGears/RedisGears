@@ -67,7 +67,7 @@ SRCDIR=src
 _SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
 	mgmt.c keys_reader.c example.c filters.c mappers.c \
 	extractors.c reducers.c record.c cluster.c commands.c streams_reader.c \
-	globals.c config.c lock_handler.c module_init.c slots_table.c
+	globals.c config.c lock_handler.c module_init.c slots_table.c common.c
 ifeq ($(WITHPYTHON),1)
 _SOURCES += redisgears_python.c
 endif

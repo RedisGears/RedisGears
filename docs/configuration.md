@@ -55,7 +55,7 @@ $ redis-server --loadmodule ./redisearch.so PythonHomeDir /home/user/cpython/
 
 ## MaxExecutions
 
-The maximum amount of execution to save. When reach this number, old execution will be deleted in a FIFO order.
+The maximum amount of execution to save. When reach this number, old execution will be deleted in a FIFO order. Notice that only the execution that has been finished will be deleted (pending execution will be deleted on done).
 
 ### Default
 
@@ -69,6 +69,26 @@ The maximum amount of execution to save. When reach this number, old execution w
 
 ```
 $ redis-server --loadmodule ./redisearch.so MaxExecutions 10
+```
+
+---
+
+## MaxExecutionsPerRegistration
+
+The maximum amount of execution to save per registration. When reach this number, old execution will be deleted in a FIFO order. Notice that only the execution that has been finished will be deleted (pending execution will be deleted on done).
+
+### Default
+
+100
+
+### Configurable at Runitime
+
+** Yes
+
+### Example
+
+```
+$ redis-server --loadmodule ./redisearch.so MaxExecutionsPerRegistration 10
 ```
 
 ---

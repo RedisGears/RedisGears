@@ -3,6 +3,7 @@ import os
 from RLTest import Env
 import yaml
 import time
+from common import TimeLimit
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
 import paella
@@ -319,6 +320,26 @@ def testOneKeyScan(env):
     env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['200000'])
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
 
+def testGlobalsSharedBetweenFunctions(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+counter = 0
+
+def func1(r):
+    global counter
+    counter += 1
+    return counter
+
+def func2(a):
+    global counter
+    counter += 1
+    return counter
+
+GB('ShardsIDReader').map(func1).map(func2).collect().distinct().run()
+    '''
+    env.expect('rg.pyexecute', script).equal([['2'], []])
+    env.expect('rg.pyexecute', script).equal([['2'], []])
+
 def testSubinterpreterIsolation(env):
     env.skipOnCluster()
     env.cmd('set', 'x', '1')
@@ -335,6 +356,44 @@ GB().map(returnX).run()
     '''
     env.expect('rg.pyexecute', script).equal([['2'], []])
     env.expect('rg.pyexecute', script).equal([['2'], []])
+
+def testAbortExecution(env):
+    env.skipOnCluster()
+    infinitScript = '''
+def InfinitLoop(r):
+    import time
+    while True:
+        time.sleep(0.1)
+    return r
+GB().map(InfinitLoop).run()
+    '''
+    env.cmd('set', 'x', '1')
+
+    executionId1 = env.cmd('rg.pyexecute', infinitScript, 'unblocking')
+    executionId2 = env.cmd('rg.pyexecute', infinitScript, 'unblocking')
+    try:
+        with TimeLimit(2):
+            status = None
+            while status != 'running':
+                status = env.cmd('RG.GETEXECUTION', executionId1)[0][3][1]
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for execution to start running')
+
+    status2 = env.cmd('RG.GETEXECUTION', executionId2)[0][3][1]
+    env.assertEqual(status2, 'created')
+
+    env.expect('rg.abortexecution', executionId2).ok()
+    res = env.cmd('RG.GETEXECUTION', executionId2)
+    env.assertEqual(res[0][3][1], 'aborted')
+
+    env.expect('rg.abortexecution', executionId1).ok()
+    res = env.cmd('RG.GETEXECUTION', executionId1)
+    env.assertEqual(res[0][3][1], 'done')
+    env.assertEqual(len(res[0][3][9]), 1) # number if error is one
+    
+    env.expect('rg.dropexecution', executionId1).ok()
+    env.expect('rg.dropexecution', executionId2).ok()
 
 def testTimeEventSubinterpreterIsolation(env):
     env.skipOnCluster()
@@ -381,21 +440,19 @@ class testConfig:
     def testNotModifiableAtRuntime(self):
         pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
         res = self.env.execute_command('RG.CONFIGSET', 'PythonHomeDir', '/')
-        self.env.assertTrue(res[0].startswith('(error)'))
+        self.env.assertTrue('(error)' in str(res[0]))
         pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
         self.env.expect('RG.CONFIGSET', 'MaxExecutions', 10).equal(['OK'])
 
     def testNonExisting(self):
-        res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig')
-        self.env.assertTrue(res[0].startswith('(error)'))
-        res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1)
-        self.env.assertTrue(res[0].startswith('(error)'))
+        res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig1')
+        self.env.assertTrue('(error)' in str(res[0]))
 
     def testMultiple(self):
         res = self.env.execute_command('RG.CONFIGGET', 'NoSuchConfig', 'MaxExecutions')
         self.env.assertTrue(str(res[0]).startswith('(error)') and not str(res[1]).startswith('(error)'))
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
-        self.env.assertTrue(str(res[0]).startswith('(error)'))
+        self.env.assertTrue(str(res[0]) == 'OK - value was saved in extra config dictionary')
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
 
 
@@ -471,3 +528,9 @@ class testGetExecution:
         res = self.env.cmd('RG.GETEXECUTION', id, 'Cluster')
         self.env.assertLessEqual(1, len(res))
         self.env.cmd('RG.DROPEXECUTION', id)
+
+def testConfigGet():
+    env = Env(moduleArgs='TestConfig TestVal')
+    env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                               "map(lambda x: (GearsConfigGet('TestConfig'), GearsConfigGet('NotExists', 'default')))."
+                               "collect().distinct().run()").equal([["('TestVal', 'default')"],[]])

@@ -14,6 +14,7 @@
 void Command_ReturnResults(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx);
 void Command_ReturnErrors(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx);
 void Command_ReturnResultsAndErrors(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx);
+int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

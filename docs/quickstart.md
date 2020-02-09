@@ -5,7 +5,7 @@ Dynamic execution framework for your Redis data.
 To quickly tryout RedisGears, launch an instance using docker:
 
 ```sh
-docker run redislabs/redisgears:latest
+docker run -p 6379:6379 redislabs/redisgears:latest
 ```
 
 ## Build

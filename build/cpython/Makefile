@@ -62,77 +62,41 @@ include $(MK)/rules
 $(TARGET): $(CONFIGURE_TARGET)
 	@echo Fixing $@ ...
 	$(SHOW)cp $< $@
-ifeq ($(OS),macosx)
-	$(SHOW)cp $(BINDIR)/Python/pystate.o $(BINDIR)/
-	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
-	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
-	$(SHOW)rm $(BINDIR)/pystate.o
-else
-	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
-endif
+# ifeq ($(OS),macosx)
+# 	$(SHOW)cp $(BINDIR)/Python/pystate.o $(BINDIR)/
+# 	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
+# 	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
+# 	$(SHOW)rm $(BINDIR)/pystate.o
+# else
+# 	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
+# endif
 
 #----------------------------------------------------------------------------------------------
 
-# ln -s `pwd`/redislabs/lib/modules/python3 /opt/redislabs/lib/modules/python3
-
 $(REDISLABS_PYTHON) : $(CONFIGURE_PYTHON)
 	@echo Installing Python...
-ifeq ($(PYENV_IN_SITU),1)
-	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
-	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
-	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
-else
-	$(SHOW)if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
-	$(SHOW)mkdir -p $(BINDIR_CPYTHON_PREFIX)
-	$(SHOW)$(SUDO) mkdir -p $(dir $(REDISLABS_CPYTHON_PREFIX))
-	$(SHOW)$(SUDO) chown -R $(USER) $(REDISLABS_DIR)
-	$(SHOW)if [ ! -e $(REDISLABS_CPYTHON_PREFIX) ]; then \
-		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
-	elif [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then \
-		$(SUDO) rm $(REDISLABS_CPYTHON_PREFIX); \
-		$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX) ;\
-	fi
-endif
+	$(SHOW)SUDO=$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) PYENV_IN_SITU=$(PYENV_IN_SITU) ./prepare-python
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 
 $(PYENV_PYTHON) : $(REDISLABS_PYTHON)
-	$(SHOW)cp Pipfile* $(REDISLABS_CPYTHON_PREFIX)
-	$(SHOW)set -e ;\
-	cd $(REDISLABS_CPYTHON_PREFIX) ;\
-	export PIPENV_VENV_IN_PROJECT=1 ;\
-	export LC_ALL=C.UTF-8 ;\
-	export LANG=C.UTF-8 ;\
-	pipenv --site-packages install --python $(REDISLABS_PYTHON)
-	$(SHOW)cp $(REDISLABS_CPYTHON_PREFIX)/Pipfile.lock .
-	$(SHOW)echo /usr/local/lib/python3.7/site-packages > $(PYENV_DIR)/lib/python3.7/site-packages/local.pth
-	$(SHOW)echo /usr/lib/python3/dist-packages > $(PYENV_DIR)/lib/python3.7/site-packages/global.pth 
+	$(SHOW)PYTHON_PATH=$(REDISLABS_CPYTHON_PREFIX) ./install-pyenv
+
+ifneq ($(FIX_LINK),1)
+pyenv: $(DEFAULT_TARGETS) $(PYENV_PYTHON)
+else
+pyenv:
+	$(SHOW)$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) ./relink-pyenv
+endif
+
+clean-pyenv:
+	$(SHOW)$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) ./clean-pyenv
+	
+.PHONY: pyenv clean-pyenv
+
+#----------------------------------------------------------------------------------------------
 
 ifeq ($(DIAG),1)
 $(info *** CONFIGURE_PYTHON=$(CONFIGURE_PYTHON))
 $(info *** CONFIGURE_TARGET=$(CONFIGURE_TARGET))
+$(info pyenv : $(PYENV_PYTHON) : $(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON))
 endif
-
-# $(info pyenv: $(PYENV_PYTHON) : $(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON))
-
-ifneq ($(LINK),1)
-pyenv: $(DEFAULT_TARGETS) $(PYENV_PYTHON)
-else
-pyenv:
-	$(SHOW)if [ -L $(REDISLABS_CPYTHON_PREFIX) ]; then \
-		$(SUDO) rm -f $(REDISLABS_CPYTHON_PREFIX); \
-	else \
-		if [ -d $(REDISLABS_CPYTHON_PREFIX) ]; then \
-			echo "$(REDISLABS_CPYTHON_PREFIX) is a directory." ;\
-			exit 1 ;\
-		fi ;\
-	fi
-	$(SHOW)$(SUDO) ln -s $(abspath $(BINDIR_CPYTHON_PREFIX)) $(REDISLABS_CPYTHON_PREFIX)
-endif
-
-clean-pyenv:
-	$(SHOW)if [ -e $(BINDIR_CPYTHON_PREFIX) ]; then rm -rf $(BINDIR_CPYTHON_PREFIX); fi
-	$(SHOW)if [ -d $(REDISLABS_CPYTHON_PREFIX) ]; then $(SUDO) rm -rf $(REDISLABS_CPYTHON_PREFIX); fi
-	$(SHOW)$(SUDO) find $(dir $(REDISLABS_CPYTHON_PREFIX)) -name $(notdir $(REDISLABS_CPYTHON_PREFIX)) -type l -delete
-	
-.PHONY: pyenv clean-pyenv
-
