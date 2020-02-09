@@ -12,7 +12,7 @@ TBD
 ## Installing Redis Gears on Redis Enterprise Cluster
 
 * [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
-* On each cluster node, run (as root, via `sudo bash`):
+* On each cluster node, run (as root, via `sudo bash` for RHEL or `sudo su -` for Ubuntu):
 ```
 bash <(curl -fsSL https://cutt.ly/redisgears-setup-node)
 ```
