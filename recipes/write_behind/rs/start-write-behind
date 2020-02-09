@@ -1,0 +1,72 @@
+#!/opt/redislabs/bin/python
+
+import os
+import redis
+import argparse
+import json
+import subprocess
+
+console_cols = -1
+
+j = json.loads(subprocess.check_output('./redis-conn'))
+host = str(j['host'])
+port = str(j['port'])
+password = str(j['passwd'])
+
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+                                 description='Run gears scripts on Redis(Gears)')
+
+parser.add_argument(
+    '--nonblocking', default=False, type=bool,
+    help='set unblocking run')
+
+args = parser.parse_args()
+
+def PP(res):
+    global console_cols
+	if console_cols == -1:
+		rows, cols = os.popen('stty size', 'r').read().split()
+		console_cols = int(cols)
+ 
+    print('-' * (console_cols - 1))
+    try:
+        res = json.loads(res)
+        print(json.dumps(res, indent=4, sort_keys=True))
+        return
+    except Exception as e:
+        pass
+    print(res)
+    print('-' * (console_cols - 1))
+
+
+try:
+    r = redis.Redis(host, port, password=password)
+    r.ping()
+except:
+    print('Cannot connect to Redis. Aborting.')
+    exit(1)
+
+r.execute_command(['rg.configset', 'WriteBehind:dbtype', 'oracle'])
+r.execute_command(['rg.configset', 'WriteBehind:db', 'oracle/xe'])
+r.execute_command(['rg.configset', 'WriteBehind:user', 'test'])
+r.execute_command(['rg.configset', 'WriteBehind:passwd', 'passwd'])
+
+for p in args.path:
+    f = open(p, 'rt')
+    script = f.read()
+    q = ['rg.pyexecute', script]
+    if args.nonblocking:
+        q += ['unblocking']
+    reply = r.execute_command(*q)
+    if reply == 'OK':
+        print('OK')
+    else:
+        results, errors = reply
+        for res in results:
+            PP(res)
+        print ''
+        for err in errors:
+            PP(err)
+    f.close()
+
+exit(0)

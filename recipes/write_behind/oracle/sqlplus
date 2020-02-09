@@ -4,4 +4,4 @@
 
 export PATH=$PATH:/opt/oracle/instantclient_19_5
 
-rlwrap sqlplus $WHO@//oracle/xe
+rlwrap sqlplus $* $WHO@//oracle/xe
