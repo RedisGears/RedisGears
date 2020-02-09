@@ -8,14 +8,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 pack() {
 	local artifact="$1"
-	local branch="$2"
+	local version="$2"
 
-	# local packfile=$PACKAGE_NAME.{os}-$OS_VERSION-{architecture}.$branch.zip
+	# local packfile=$PACKAGE_NAME.{os}-$OS_VERSION-{architecture}.$version.zip
 	local ARCH=$(./deps/readies/bin/platform --arch)
 	local OS=$(./deps/readies/bin/platform --os)
 	# local OSNICK=${OS_VERSION}
 	local OSNICK=$(./deps/readies/bin/platform --osnick)
-	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$branch.zip
+	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$version.zip
 
 	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
 	cat <<- EOF > $packer
@@ -53,9 +53,18 @@ CPYTHON_PREFIX=${CPYTHON_PREFIX:-/opt/redislabs/lib/modules/python3}
 GEARS=$(realpath $1)
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
-BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
-BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
-OS_VERSION=${OS_VERSION:-generic}
+
+GIT_VER=""
+if [[ ! -z $BRANCH ]]; then
+	GIT_BRANCH="$BRANCH"
+else
+	GIT_BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
+fi
+GIT_BRANCH=${GIT_BRANCH//[^A-Za-z0-9._-]/_}
+GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+")
+GIT_VERSION="${GIT_BRANCH}-${GIT_COMMIT}"
+
+# OS_VERSION=${OS_VERSION:-generic}
 
 export PYTHONWARNINGS=ignore
 
@@ -65,7 +74,7 @@ mkdir -p artifacts/snapshot artifacts/release
 pack release "{semantic_version}"
 RELEASE=$packname
 
-pack snapshot "$BRANCH"
+pack snapshot $GIT_VERSION
 SNAPSHOT=$packname
 
 if [[ ! -d $CPYTHON_PREFIX ]]; then
