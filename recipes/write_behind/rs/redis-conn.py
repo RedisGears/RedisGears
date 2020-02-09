@@ -22,5 +22,5 @@ port = ep.port()
 node_uid = list(ep.proxy_uids())[0]
 node = ccs.get_node(node_uid)
 ip = node.addr()
-print("--host {} --port {} --password '{}'".format(ip, port, pwd))
+print('--host {} --port {} --password "{}"'.format(ip, port, pwd))
 exit(0)
