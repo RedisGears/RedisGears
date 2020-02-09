@@ -1,32 +1,54 @@
 #!/bin/bash
 
-# https://raw.githubusercontent.com/RedisGears/RedisGears/write_behind_snowflake_1/recipes/write_behind/snowflake/rs/setup-node.sh
+# https://raw.githubusercontent.com/RedisGears/RedisGears/write_behind_1/recipes/write_behind/snowflake/rs/setup-node.sh
 # via: bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 # to be executed on RS nodes
 
 set -e
 
-[[ -z $SNOW_USER || -z $SNOW_PASSWD || -z $SNOW_ACCT ]] && { echo "Please define SNOW_USER, SNOW_PASSWD, and SNOW_ACCT for your Snowflake DB account."; exit 1; }
-
-if [ ! -z $(command -v apt-get) ]; then
-	apt-get -qq update
-	apt-get install -yq git
-elif [ ! -z $(command -v yum) ]; then
-	yum install -yq git
+if [[ -z $SNOW_USER || -z $SNOW_PASSWD || -z $SNOW_ACCT ]]; then
+	echo "Please define SNOW_USER, SNOW_PASSWD, and SNOW_ACCT for your Snowflake DB account."
+	exit 1
 fi
 
-BRANCH=write_behind_snowflake_1
-REPO_PATH=https://raw.githubusercontent.com/RedisGears/RedisGears/$BRANCH/recipes/write_behind/snowflake/rs
+if [ -z $(command -v git) ]; then
+	if [ ! -z $(command -v apt-get) ]; then
+		apt-get -qq update
+		apt-get install -y git
+	elif [ ! -z $(command -v yum) ]; then
+		yum install -y git
+	else
+		echo "%make love"
+		echo "Make:  Don't know how to make love.  Stop."
+		exit 1
+	fi
+fi
+
+BRANCH=write_behind_1
 
 mkdir -p /opt
 cd /opt
-git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
+if [[ ! -d RedisGears ]]; then
+	git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
+else
+	cd RedisGears
+	git pull
+	cd ..
+fi
 
-ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
+ln -sf /opt/RedisGears/recipes/write_behind /opt/recipe
 cd /opt/RedisGears/recipes/write_behind
-ln -s ../gears.py .
+ln -sf ../gears.py .
 
-/opt/redislabs/bin/python2 /opt/recipe/snowflake/rs/install-modules.py --no-bootstrap-check --yaml /opt/recipe/snowflake/rs/redis-modules.yaml
+OSNICK=`/opt/redislabs/bin/python2 /opt/RedisGears/deps/readies/bin/platform --osnick`
+[[ $OSNICK =~ 'rhel7' ]] && OSNICK='centos7'
+if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' && $OSNICK != 'xenial' ]]; then
+	echo "$OSNICK: incompatible platform. Aborting."
+	exit 1
+fi
+
+MOD_DIR=/opt/recipe/rs
+/opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
 
 /opt/recipe/snowflake/install-snowflake-client
 /opt/recipe/snowflake/install-snowflake-python-client

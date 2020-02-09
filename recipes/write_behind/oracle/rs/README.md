@@ -89,7 +89,7 @@ rlutil redis_restart redis=<Redis shard IDs> force=yes
 
 ### Oracle status
 
-* `/opt/recipe/snowflake/sample-snowsql-db` will repeatedly print number of records in the Snowflake test table.
+* `/opt/recipe/snowflake/sample-snowsql-db` will repeatedly print number of records in the Oracle test table.
 * Oracle CLI: `sqlplus`
 
 ## Appendixes
