@@ -1,6 +1,6 @@
 redisgears:
-    awspath: lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99.zip
+    awspath: lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99-3e6d45a.zip
 redisgears-deps:
-    awspath: lab/08-gears-write-behind/redisgears-dependencies.linux-centos7-x64.99.99.99.tgz
+    awspath: lab/08-gears-write-behind/redisgears-dependencies.linux-centos7-x64.99.99.99-3e6d45a.tgz
     dest: /
     unzip: yes
