@@ -1,4 +1,4 @@
-# RedisGears Write-Behind Recipe
+# RedisGears Recipe
 
 ## Deployment options
 
