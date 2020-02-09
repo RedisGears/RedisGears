@@ -6,6 +6,8 @@
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 . $HERE/deps/readies/shibumi/functions
 
+RAMP="$(command -v python) -m RAMP.ramp"
+
 pack() {
 	local artifact="$1"
 	local version="$2"
@@ -20,9 +22,8 @@ pack() {
 	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
 	cat <<- EOF > $packer
 		cd $ROOT
-		ramp pack $GEARS -m ramp.yml -o $packfile | tail -1
+		$RAMP pack $GEARS -m ramp.yml -o $packfile | tail -1
 	EOF
-
 	cd $CPYTHON_PREFIX
 
 	export LC_ALL=C.UTF-8
