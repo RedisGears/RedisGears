@@ -32,8 +32,13 @@ select * from car;
 ```
 ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 ```
-* Download the [Redis Gears module](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
-* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
+* Download the Redis Gears module and add it to the cluster modules list.
+	* For Ubuntu Xenial, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-xenial-x64.99.99.99-3e6d45a.zip).
+	* For Ubuntu Bionic, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-bionic-x64.99.99.99-3e6d45a.zip).
+	* For RHEL7, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99-3e6d45a.zip).
+
+* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
+	* Add the following parameters, for Oracle sample DB configuration: `WriteBehind:dbtype oracle WriteBehind:db test WriteBehind:user user WriteBehind:passwd passwd`
 
 ## Running the write-behind gear
 
