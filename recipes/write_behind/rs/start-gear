@@ -8,5 +8,5 @@ if [[ $? != 0 ]]; then
 	exit 1
 fi
 
-cd $HERE/../..
-/opt/redislabs/bin/python ./gears.py $CONN ./write_behind.py
+cd $HERE/..
+eval "/opt/redislabs/bin/python ./gears.py $CONN ./write_behind.py"

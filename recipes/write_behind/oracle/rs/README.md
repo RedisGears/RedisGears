@@ -2,9 +2,9 @@
 
 ## System requirements
 
-* Redis Enterprise Software v5.4.11-2 or above running on Ubuntu Bionic or RHEL 7
+* Redis Enterprise Software v5.4.11-2 or above running on Ubuntu Xenial/Ubuntu Bionic/RHEL 7
 * Oracle database (tested with 11g and 12c)
-* RedisGears module built for Ubuntu Bionic or RHEL 7
+* RedisGears module for a matching platform
 
 ## Configuration
 
@@ -32,14 +32,22 @@ select * from car;
 ```
 ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 ```
-* Download the [Redis Gears module](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
-* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
+* Download the Redis Gears module and add it to the cluster modules list.
+	* For Ubuntu Xenial, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-xenial-x64.99.99.99-3e6d45a.zip).
+	* For Ubuntu Bionic, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-bionic-x64.99.99.99-3e6d45a.zip).
+	* For RHEL7, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99-3e6d45a.zip).
+
+* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
+	* Add the following parameters, for Oracle sample DB configuration: `WriteBehind:dbtype oracle WriteBehind:db test WriteBehind:user user WriteBehind:passwd passwd`
 
 ## Running the write-behind gear
 
 On one of the Redis cluster nodes:
 
-* Run `ID=<db-id> /opt/recipe/rs/start-gear`.
+* Run `/opt/recipe/rs/start-gear`.
+* With multiple databases:
+  * Inspect `rladmin status`,
+  * Run `DB=<db-id> /opt/recipe/rs/start-gear`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
@@ -55,9 +63,12 @@ select * from person1;
 ```
 
 ## Testing
-
-* From a cluster node, run `ID=<db-id>/opt/recipe/rs/run-test`.
-* Run `echo "select count(*) from person1;" | /opt/recipe/oracle/sqlplus`
+* Log on via SSH to a cluster node.
+* Run `/opt/recipe/rs/run-test`.
+* With multiple databases:
+  * Inspect `rladmin status`,
+  * Run `DB=<db-id> /opt/recipe/rs/run-test`.
+* Open another connection to that node and run `/opt/recipe/oracle/sample-oracle-db`
 
 ## Diagnostics
 
@@ -73,12 +84,13 @@ rlutil redis_restart redis=<Redis shard IDs> force=yes
 
 ### Gears status
 
-* redis-cli via bdb-cli DB-ID
+* `redis-cli via bdb-cli <db-id>`
   * `RG.DUMPEXECUTIONS` command
 
 ### Oracle status
 
-* Run `echo "select count(*) from person1;" | /opt/recipe/oracle/sqlplus`
+* `/opt/recipe/snowflake/sample-snowsql-db` will repeatedly print number of records in the Oracle test table.
+* Oracle CLI: `sqlplus`
 
 ## Appendixes
 
