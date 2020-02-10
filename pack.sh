@@ -130,7 +130,7 @@ if [[ $RAMP == 1 ]]; then
 	[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
 	
 	RELEASE_SO=$(realpath $1)
-	SNAPSHOT_SO=$(dirname $GEARS)/snapshot/$(basename $GEARS)
+	SNAPSHOT_SO=$(dirname $RELEASE_SO)/snapshot/$(basename $RELEASE_SO)
 fi
 
 if [[ $RAMP == 1 ]]; then
