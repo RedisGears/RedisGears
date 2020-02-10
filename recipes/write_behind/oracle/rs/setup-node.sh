@@ -24,6 +24,10 @@ if [ -z $(command -v git) ]; then
 	fi
 fi
 
+if [[ $FORCE == 1 ]]; then
+	rm -rf /opt/recipe /opt/RedisGears /opt/redislabs/lib/modules/python3
+fi
+
 BRANCH=write_behind_1
 
 mkdir -p /opt

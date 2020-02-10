@@ -30,7 +30,7 @@ ADD . /build
 RUN ./deps/readies/bin/getpy2
 RUN ./system-setup.py
 RUN make fetch SHOW=1
-RUN make all SHOW=1
+RUN make all SHOW=1 VERBOSE=1
 
 ARG PACK=0
 ARG TEST=0

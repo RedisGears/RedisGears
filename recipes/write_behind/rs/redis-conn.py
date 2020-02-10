@@ -2,6 +2,7 @@
 
 import os
 import CCS
+import json
 
 ccs = CCS.Context()
 bdb_ids  = ccs.get_bdb_map().keys()
@@ -22,5 +23,5 @@ port = ep.port()
 node_uid = list(ep.proxy_uids())[0]
 node = ccs.get_node(node_uid)
 ip = node.addr()
-print('--host {} --port {} --password "{}"'.format(ip, port, pwd))
+print(json.dumps({'host': ip, 'port': port, 'passwd': pwd}))
 exit(0)

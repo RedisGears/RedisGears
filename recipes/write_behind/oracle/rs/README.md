@@ -25,7 +25,7 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle)
 select * from person1;
 select * from car;
 ```
-## Installing the Redis cluster
+## Installing Redis Gears on Redis Enterprise Cluster
 
 * [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
 * On each cluster node, run (as root, via `sudo bash`):
@@ -40,14 +40,14 @@ ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
 	* Add the following parameters, for Oracle sample DB configuration: `WriteBehind:dbtype oracle WriteBehind:db test WriteBehind:user user WriteBehind:passwd passwd`
 
-## Running the write-behind gear
+## Running the write-behind recipe
 
 On one of the Redis cluster nodes:
 
-* Run `/opt/recipe/rs/start-gear`.
+* Run `/opt/recipe/rs/start-write-behind`.
 * With multiple databases:
   * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/rs/start-gear`.
+  * Run `DB=<db-id> /opt/recipe/rs/start-behind`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
