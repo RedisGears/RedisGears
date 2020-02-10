@@ -39,7 +39,7 @@ Tells the python interpreter where to look for the default python libraries
 
 ### Default
 
-/opt/redislabs/lib/modules/python3/
+/var/opt/redislabs/lib/modules/python3/
 
 ### Configurable at Runitime
 

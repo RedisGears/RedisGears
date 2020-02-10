@@ -168,6 +168,29 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
+DEPS_TAR.release:=$(shell JUST_PRINT=1 PACK_RAMP=0 PACK_DEPS=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
+DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 PACK_RAMP=0 PACK_DEPS=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+
+artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
+	@echo Packing dependencies ...
+	$(SHOW)PACK_DEPS=1 PACK_RAMP=0 RELEASE=1 SNAPSHOT=1 ./pack.sh $(TARGET)
+	$(SHOW)sha256sum artifacts/release/$(DEPS_TAR.release) | gawk '{print $$1}' > artifacts/release/$(DEPS_TAR.release).sha256
+	$(SHOW)sha256sum artifacts/snapshot/$(DEPS_TAR.snapshot) | gawk '{print $$1}' > artifacts/snapshot/$(DEPS_TAR.snapshot).sha256
+
+$(BINDIR)/release-deps.o : $(SRCDIR)/deps-args.c artifacts/release/$(DEPS_TAR.release)
+	@echo "release-build: $(DEPS_TAR.release)"
+	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@ \
+		-DDEPENDENCIES_URL=\"http://redismodules.s3.amazonaws.com/redisgears/$(DEPS_TAR.release)\" \
+		-DDEPENDENCIES_SHA256=\"$(shell cat artifacts/release/$(DEPS_TAR.release).sha256)\"
+
+$(BINDIR)/snapshot-deps.o : $(SRCDIR)/deps-args.c artifacts/snapshot/$(DEPS_TAR.snapshot)
+	@echo "snapshot-build: $(DEPS_TAR.snapshot)"
+	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@ \
+		-DDEPENDENCIES_URL=\"http://redismodules.s3.amazonaws.com/redisgears/snapshot/$(DEPS_TAR.snapshot)\" \
+		-DDEPENDENCIES_SHA256=\"$(shell cat artifacts/snapshot/$(DEPS_TAR.snapshot).sha256)\"
+
+#----------------------------------------------------------------------------------------------
+
 ifeq ($(OS),macosx)
 EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
@@ -176,12 +199,15 @@ endif
 
 STRIP:=strip --strip-debug --strip-unneeded
 
-$(TARGET): $(MISSING_DEPS) $(OBJECTS)
+$(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o artifacts/snapshot/$(DEPS_TAR.release) $(BINDIR)/snapshot-deps.o artifacts/snapshot/$(DEPS_TAR.snapshot)
 	@echo Linking $@...
-	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
+	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(BINDIR)/release-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
+	$(SHOW)mkdir -p $(dir $@)/snapshot
+	$(SHOW)$(CC) -shared -o $(dir $@)/snapshot/$(notdir $@) $(OBJECTS) $(BINDIR)/snapshot-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 ifneq ($(DEBUG),1)
 ifneq ($(OS),macosx)
 	$(SHOW)$(STRIP) $@
+	$(SHOW)$(STRIP) $(dir $@)/snapshot/$(notdir $@)
 endif
 endif
 	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))

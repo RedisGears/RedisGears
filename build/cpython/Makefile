@@ -23,7 +23,7 @@ TARGET=$(BINDIR)/libpython3.7m-fixed.a
 MK_ALL_TARGETS=bindirs build pyenv
 MK_CLEAN_ALL_DIRS += $(BINDIR_CPYTHON_PREFIX) $(REDISLABS_CPYTHON_PREFIX)
 
-REDISLABS_DIR=/opt/redislabs
+REDISLABS_DIR=/var/opt/redislabs
 export REDISLABS_CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
 BINDIR_CPYTHON_PREFIX=$(BINROOT)/redislabs/lib/modules/python3
 REDISLABS_LIBPYTHON=$(REDISLABS_CPYTHON_PREFIX)/lib/libpython3.7m.a

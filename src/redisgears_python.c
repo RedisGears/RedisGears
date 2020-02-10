@@ -2623,7 +2623,7 @@ RedisGears_ReaderCallbacks PythonReader = {
         .create = PythonReader_Create,
 };
 
-#define PYENV_DIR "/opt/redislabs/lib/modules/python3"
+#define PYENV_DIR "/var/opt/redislabs/lib/modules/python3"
 #define PYENV_HOME_DIR PYENV_DIR "/.venv/bin"
 #define PYENV_ACTIVATE PYENV_HOME_DIR "/activate_this.py"
 
