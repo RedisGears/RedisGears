@@ -62,7 +62,7 @@ else
 	GIT_BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
 fi
 GIT_BRANCH=${GIT_BRANCH//[^A-Za-z0-9._-]/_}
-GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+")
+GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)
 GIT_VERSION="${GIT_BRANCH}-${GIT_COMMIT}"
 
 # OS_VERSION=${OS_VERSION:-generic}
