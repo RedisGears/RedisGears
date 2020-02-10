@@ -69,3 +69,4 @@ commit.txt
 *.zip
 *.tgz
 /VARIANT
+/artifacts/

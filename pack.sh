@@ -28,10 +28,10 @@ getver() {
 				return 0;
 		}
 		EOF
-	local getver=$(mktemp "${TMPDIR:-/tmp}"/getver.XXXXXXX)
-	gcc -I. -o $getver $getver_c
-	local ver=`$getver`
-	rm -f $getver $getver_c
+	local prog=$(mktemp "${TMPDIR:-/tmp}"/getver.XXXXXXX)
+	gcc -I. -o $prog $getver_c
+	local ver=`$prog`
+	rm -f $prog $getver_c
 	echo $ver
 }
 
@@ -62,8 +62,7 @@ pack() {
 	fi
 	
 	mv $packname artifacts/$artifact/
-	packname="artifacts/$artifact/$packname"
-	echo Created $packname
+	echo "Created artifacts/$artifact/$packname"
 }
 
 pack_deps() {
@@ -79,11 +78,12 @@ pack_deps() {
 	{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
+	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
 	echo Created $TAR
 
 	local TAR1=$SNAPSHOT_deps
 	# cp artifacts/release/$TAR artifacts/snapshot/$TAR1
-	{ cd artifacts/snapshot; ln -s ../../artifacts/release/$TAR $TAR1; }
+	( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
 	echo Created artifacts/snapshot/$TAR1
 }
 
@@ -93,7 +93,7 @@ if ! command -v redis-server > /dev/null; then
 fi
 
 # export ROOT=`git rev-parse --show-toplevel`
-export ROOT=$HERE
+export ROOT=$(realpath $HERE)
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
@@ -104,7 +104,7 @@ export PYTHONWARNINGS=ignore
 
 cd $ROOT
 
-VERSION=`getver`
+VERSION=$(getver)
 
 RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$VERSION.zip
 SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
