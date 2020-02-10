@@ -23,16 +23,13 @@ bash <(curl -fsSL https://cutt.ly/redisgears-setup-node)
 
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
 
-### Basic tests
-If you created the example database, you can run the following tests to verify if your setup is working correctly.
-
-* From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
-
 ## Testing
 
 TBD
 
 ## Diagnostics
+
+TBD
 
 ### Redis status
 
