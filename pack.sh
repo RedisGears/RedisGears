@@ -1,7 +1,10 @@
 #!/bin/bash
 
-PACK_RAMP=${PACK_RAMP:-1}
-PACK_DEPS=${PACK_DEPS:-1}
+RAMP=${RAMP:-1}
+DEPS=${DEPS:-1}
+
+RELEASE=${RELEASE:-1}
+SNAPSHOT=${SNAPSHOT:-1}
 
 [[ $VERBOSE == 1 ]] && set -x
 [[ $IGNERR == 1 ]] || set -e
@@ -39,10 +42,10 @@ pack() {
 	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$vertag.zip
 
 	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
-	RAMP="$(command -v python) -m RAMP.ramp" 
+	ramp="$(command -v python) -m RAMP.ramp" 
 	cat <<- EOF > $packer
 		cd $ROOT
-		$RAMP pack $GEARS -m ramp.yml -o $packfile | tail -1
+		$ramp pack $GEARS_SO -m ramp.yml -o $packfile | tail -1
 	EOF
 
 	cd $CPYTHON_PREFIX
@@ -70,16 +73,17 @@ pack_deps() {
 		exit 1
 	fi
 
-	local TAR=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.tgz
-	TAR_PATH=$(realpath artifacts/release/$TAR)
+	local TAR=artifacts/release/$RELEASE_deps
+	TAR_PATH=$(realpath $TAR)
 	cd $CPYTHON_PREFIX/
 	{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
-	echo Created artifacts/release/$TAR
+	echo Created $TAR
 
-	local TAR1=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
-	cp artifacts/release/$TAR artifacts/snapshot/$TAR1
+	local TAR1=$SNAPSHOT_deps
+	# cp artifacts/release/$TAR artifacts/snapshot/$TAR1
+	{ cd artifacts/snapshot; ln -s ../../artifacts/release/$TAR $TAR1; }
 	echo Created artifacts/snapshot/$TAR1
 }
 
@@ -88,7 +92,8 @@ if ! command -v redis-server > /dev/null; then
 	exit 1
 fi
 
-export ROOT=`git rev-parse --show-toplevel`
+# export ROOT=`git rev-parse --show-toplevel`
+export ROOT=$HERE
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
@@ -98,35 +103,41 @@ OS_VERSION=${OS_VERSION:-generic}
 export PYTHONWARNINGS=ignore
 
 cd $ROOT
-mkdir -p artifacts/snapshot artifacts/release
 
 VERSION=`getver`
 
+RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$VERSION.zip
+SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
+RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.tgz
+SNAPSHOT_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
+
 if [[ $JUST_PRINT == 1 ]]; then
-	if [[ $PACK_RAMP == 1 ]]; then
-		[[ $RELEASE == 1 ]] && echo ${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$VERSION.zip
-		[[ $SNAPSHOT == 1 ]] && echo ${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
+	if [[ $RAMP == 1 ]]; then
+		[[ $RELEASE == 1 ]] && echo $RELEASE_ramp
+		[[ $SNAPSHOT == 1 ]] && echo $SNAPSHOT_ramp
 	fi
-	if [[ $PACK_DEPS == 1 ]]; then
-		[[ $RELEASE == 1 ]] && echo ${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.tgz
-		[[ $SNAPSHOT == 1 ]] && echo ${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
+	if [[ $DEPS == 1 ]]; then
+		[[ $RELEASE == 1 ]] && echo $RELEASE_deps
+		[[ $SNAPSHOT == 1 ]] && echo $SNAPSHOT_deps
 	fi
 	exit 0
 fi
 
-if [[ $PACK_RAMP == 1 ]]; then
+mkdir -p artifacts/snapshot artifacts/release
+
+if [[ $RAMP == 1 ]]; then
 	[[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
 	[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
-	GEARS=$(realpath $1)
-	RELEASE_GEARS=$GEARS
-	SNAPSHOT_GEARS=$(dirname $GEARS)/snapshot/$(basename $GEARS)
+	
+	RELEASE_SO=$(realpath $1)
+	SNAPSHOT_SO=$(dirname $GEARS)/snapshot/$(basename $GEARS)
 fi
 
-if [[ $PACK_RAMP == 1 ]]; then
-	GEARS=$RELEASE_GEARS pack release "{semantic_version}"
-	GEARS=$SNAPSHOT_GEARS pack snapshot "$BRANCH"
+if [[ $RAMP == 1 ]]; then
+	GEARS_SO=$RELEASE_SO pack release "{semantic_version}"
+	GEARS_SO=$SNAPSHOT_SO pack snapshot "$BRANCH"
 fi
 
-if [[ $PACK_DEPS == 1 ]]; then
+if [[ $DEPS == 1 ]]; then
 	pack_deps
 fi

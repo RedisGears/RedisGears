@@ -29,7 +29,7 @@ make test       # run tests
 make pack       # build packages (ramp & dependencies)
 endef
 
-MK_ALL_TARGETS=bindirs deps pyenv build pack
+MK_ALL_TARGETS=bindirs deps pyenv build ramp_pack
 
 include $(MK)/defs
 
@@ -168,26 +168,47 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
-DEPS_TAR.release:=$(shell JUST_PRINT=1 PACK_RAMP=0 PACK_DEPS=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
-DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 PACK_RAMP=0 PACK_DEPS=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+DEPS_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
+DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+
+DEPS_URL_BASE=http://redismodules.s3.amazonaws.com/redisgears
+DEPS_URL_BASE.release=$(DEPS_URL_BASE)
+DEPS_URL_BASE.snapshot=$(DEPS_URL_BASE)/snapshot
 
 artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
-	@echo Packing dependencies ...
-	$(SHOW)PACK_DEPS=1 PACK_RAMP=0 RELEASE=1 SNAPSHOT=1 ./pack.sh $(TARGET)
-	$(SHOW)sha256sum artifacts/release/$(DEPS_TAR.release) | gawk '{print $$1}' > artifacts/release/$(DEPS_TAR.release).sha256
-	$(SHOW)sha256sum artifacts/snapshot/$(DEPS_TAR.snapshot) | gawk '{print $$1}' > artifacts/snapshot/$(DEPS_TAR.snapshot).sha256
+	@echo Packing dependencies...
+	$(SHOW)RAMP=0 DEPS=1 ./pack.sh $(TARGET)
+	$(call calc_sha256,release)
+	$(call calc_sha256,snapshot)
+	# $(SHOW)sha256sum artifacts/release/$(DEPS_TAR.release) | gawk '{print $$1}' > artifacts/release/$(DEPS_TAR.release).sha256
+	# $(SHOW)sha256sum artifacts/snapshot/$(DEPS_TAR.snapshot) | gawk '{print $$1}' > artifacts/snapshot/$(DEPS_TAR.snapshot).sha256
 
-$(BINDIR)/release-deps.o : $(SRCDIR)/deps-args.c artifacts/release/$(DEPS_TAR.release)
-	@echo "release-build: $(DEPS_TAR.release)"
-	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@ \
-		-DDEPENDENCIES_URL=\"http://redismodules.s3.amazonaws.com/redisgears/$(DEPS_TAR.release)\" \
-		-DDEPENDENCIES_SHA256=\"$(shell cat artifacts/release/$(DEPS_TAR.release).sha256)\"
+define calc_sha256 # type (release/snapshot)
+$(SHOW)sha256sum artifacts/$1/$(DEPS_TAR.$1) | gawk '{print $$1}' > artifacts/$1/$(DEPS_TAR.$1).sha256
+endef
 
-$(BINDIR)/snapshot-deps.o : $(SRCDIR)/deps-args.c artifacts/snapshot/$(DEPS_TAR.snapshot)
-	@echo "snapshot-build: $(DEPS_TAR.snapshot)"
+define build_deps_args # type (release/snapshot)
+$(BINDIR)/$1-deps.o : $(SRCDIR)/deps-args.c artifacts/$1/$(DEPS_TAR.$1)
+	@echo "$1-build: $(DEPS_TAR.$1)"
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@ \
-		-DDEPENDENCIES_URL=\"http://redismodules.s3.amazonaws.com/redisgears/snapshot/$(DEPS_TAR.snapshot)\" \
-		-DDEPENDENCIES_SHA256=\"$(shell cat artifacts/snapshot/$(DEPS_TAR.snapshot).sha256)\"
+		-DDEPENDENCIES_URL=\"$(DEPS_URL_BASE.$1)/$(DEPS_TAR.$1)\" \
+		-DDEPENDENCIES_SHA256=\"$(shell cat artifacts/$1/$(DEPS_TAR.$1).sha256)\"
+endef
+
+$(eval $(call build_deps_args, release))
+$(eval $(call build_deps_args, snapshot))
+
+# $(BINDIR)/release-deps.o : $(SRCDIR)/deps-args.c artifacts/release/$(DEPS_TAR.release)
+# 	@echo "release-build: $(DEPS_TAR.release)"
+# 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@ \
+# 		-DDEPENDENCIES_URL=\"$(DEPS_URL_BASE.release)/$(DEPS_TAR.release)\" \
+# 		-DDEPENDENCIES_SHA256=\"$(shell cat artifacts/release/$(DEPS_TAR.release).sha256)\"
+# 
+# $(BINDIR)/snapshot-deps.o : $(SRCDIR)/deps-args.c artifacts/snapshot/$(DEPS_TAR.snapshot)
+# 	@echo "snapshot-build: $(DEPS_TAR.snapshot)"
+# 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@ \
+# 		-DDEPENDENCIES_URL=\"$(DEPS_URL_BASE.release)/$(DEPS_TAR.snapshot)\" \
+# 		-DDEPENDENCIES_SHA256=\"$(shell cat artifacts/snapshot/$(DEPS_TAR.snapshot).sha256)\"
 
 #----------------------------------------------------------------------------------------------
 
@@ -199,7 +220,7 @@ endif
 
 STRIP:=strip --strip-debug --strip-unneeded
 
-$(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o artifacts/snapshot/$(DEPS_TAR.release) $(BINDIR)/snapshot-deps.o artifacts/snapshot/$(DEPS_TAR.snapshot)
+$(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o $(BINDIR)/snapshot-deps.o
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(BINDIR)/release-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 	$(SHOW)mkdir -p $(dir $@)/snapshot
@@ -287,7 +308,10 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
-pack ramp_pack: __sep deps build $(CPYTHON_PREFIX)
+ramp_pack: deps build $(CPYTHON_PREFIX)
+	$(SHOW)RAMP=1 DEPS=0 ./pack.sh $(TARGET)
+
+pack : deps build $(CPYTHON_PREFIX)
 	$(SHOW)./pack.sh $(TARGET)
 
 #----------------------------------------------------------------------------------------------

@@ -12,7 +12,7 @@ cd /var/opt/redislabs/lib/modules/python3/.venv
 $ROOT/deps/cpython/Tools/scripts/pathfix.py -n -i "/usr/bin/env python" . bin/* > /dev/null 2>&1 || true
 
 # fix symlinks
-SUB="s/.*\(\/redislabs\/lib\/modules\/python3\)/\/var/opt\1/"
+SUB="s/.*\(\/redislabs\/lib\/modules\/python3\)/\/var\/opt\1/"
 tmpfile=$(mktemp /tmp/fix-pyenv.XXXXXX)
 if [[ -f $tmpfile ]]; then
 	find . -type l -printf 'ln -nsf "$(readlink "%p" | sed $SUB)" "$(echo "%p" | sed $SUB)"\n' > $tmpfile
@@ -22,7 +22,7 @@ fi
 
 # fix activate scripts
 for f in `grep -ril '\.venv' bin/activate*` .project; do
-	sed -i "s/\".*\(\/redislabs\/lib\/modules\/python3\)/\"\/var/opt\1/" $f
+	sed -i "s/\".*\(\/redislabs\/lib\/modules\/python3\)/\"\/var\/opt\1/" $f
 done
 
 exit 0
