@@ -30,12 +30,12 @@ ADD . /build
 RUN ./deps/readies/bin/getpy2
 RUN ./system-setup.py
 RUN make fetch SHOW=1
-RUN make all SHOW=1 VERBOSE=1
+RUN make all SHOW=1
 
 ARG PACK=0
 ARG TEST=0
 
-RUN if [ "$PACK" = "1" ]; then make pack VERBOSE=1; fi
+RUN if [ "$PACK" = "1" ]; then make pack; fi
 RUN if [ "$TEST" = "1" ]; then TEST= make test; fi
 
 #----------------------------------------------------------------------------------------------
