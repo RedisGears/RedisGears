@@ -70,7 +70,7 @@ pack_deps() {
 		exit 1
 	fi
 
-	local TAR=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.zip
+	local TAR=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.tgz
 	TAR_PATH=$(realpath artifacts/release/$TAR)
 	cd $CPYTHON_PREFIX/
 	{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
@@ -78,7 +78,7 @@ pack_deps() {
 	cd - > /dev/null
 	echo Created artifacts/release/$TAR
 
-	local TAR1=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.zip
+	local TAR1=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
 	cp artifacts/release/$TAR artifacts/snapshot/$TAR1
 	echo Created artifacts/snapshot/$TAR1
 }
@@ -108,8 +108,8 @@ if [[ $JUST_PRINT == 1 ]]; then
 		[[ $SNAPSHOT == 1 ]] && echo ${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
 	fi
 	if [[ $PACK_DEPS == 1 ]]; then
-		[[ $RELEASE == 1 ]] && echo ${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.zip
-		[[ $SNAPSHOT == 1 ]] && echo ${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.zip
+		[[ $RELEASE == 1 ]] && echo ${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.tgz
+		[[ $SNAPSHOT == 1 ]] && echo ${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
 	fi
 	exit 0
 fi
