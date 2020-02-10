@@ -6,9 +6,11 @@ import argparse
 import json
 import subprocess
 
+HERE = os.path.dirname(os.path.realpath(__file__))
+
 console_cols = -1
 
-j = json.loads(subprocess.check_output('./redis-conn'))
+j = json.loads(subprocess.check_output(HERE + '/redis-conn'))
 host = str(j['host'])
 port = str(j['port'])
 password = str(j['passwd'])
