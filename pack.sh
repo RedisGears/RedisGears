@@ -98,10 +98,11 @@ export ROOT=$(realpath $HERE)
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 
 [[ -z $BRANCH ]] && BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
-
 BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
-GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)
-BRANCH="${BRANCH}-${GIT_COMMIT}"
+if [[ $GITSHA == 1 ]]; then
+	GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)
+	BRANCH="${BRANCH}-${GIT_COMMIT}"
+fi
 
 export PYTHONWARNINGS=ignore
 
