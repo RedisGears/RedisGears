@@ -13,6 +13,9 @@
 
 #define PYTHON_HOME_DIR "PYTHON_HOME_DIR"
 
+extern char DependenciesUrl[];
+extern char DependenciesSha256[];
+
 typedef struct ArgsIterator{
     int currIndex;
     RedisModuleString** argv;
@@ -45,6 +48,9 @@ typedef struct RedisGears_Config{
     ConfigVal maxExecutionsPerRegistration;
     ConfigVal profileExecutions;
     ConfigVal pythonAttemptTraceback;
+    ConfigVal createVenv;
+    ConfigVal dependenciesUrl;
+    ConfigVal dependenciesSha256;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -129,6 +135,36 @@ static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_DependenciesUrlGet(){
+    return &DefaultGearsConfig.dependenciesUrl;
+}
+
+static bool ConfigVal_DependenciesUrlSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val){
+        return false;
+    }
+    RG_FREE(DefaultGearsConfig.dependenciesUrl.val.str);
+    const char* valStr = RedisModule_StringPtrLen(val, NULL);
+    DefaultGearsConfig.dependenciesUrl.val.str = RG_STRDUP(valStr);
+    return true;
+}
+
+static const ConfigVal* ConfigVal_DependenciesSha256Get(){
+    return &DefaultGearsConfig.dependenciesSha256;
+}
+
+static bool ConfigVal_DependenciesSha256Set(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val){
+        return false;
+    }
+    RG_FREE(DefaultGearsConfig.dependenciesSha256.val.str);
+    const char* valStr = RedisModule_StringPtrLen(val, NULL);
+    DefaultGearsConfig.dependenciesSha256.val.str = RG_STRDUP(valStr);
+    return true;
+}
+
 static const ConfigVal* ConfigVal_PythonAttemptTracebackGet(){
 	return &DefaultGearsConfig.pythonAttemptTraceback;
 }
@@ -140,6 +176,23 @@ static bool ConfigVal_PythonAttemptTracebackSet(ArgsIterator* iter){
 
 	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
         DefaultGearsConfig.pythonAttemptTraceback.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static const ConfigVal* ConfigVal_CreateVenvGet(){
+    return &DefaultGearsConfig.createVenv;
+}
+
+static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.createVenv.val.longVal = n;
         return true;
     } else {
         return false;
@@ -178,6 +231,24 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_PythonAttemptTracebackGet,
         .setter = ConfigVal_PythonAttemptTracebackSet,
         .configurableAtRunTime = true,
+    },
+    {
+        .name = "DependenciesUrl",
+        .getter = ConfigVal_DependenciesUrlGet,
+        .setter = ConfigVal_DependenciesUrlSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "DependenciesSha256",
+        .getter = ConfigVal_DependenciesSha256Get,
+        .setter = ConfigVal_DependenciesSha256Set,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "CreateVenv",
+        .getter = ConfigVal_CreateVenvGet,
+        .setter = ConfigVal_CreateVenvSet,
+        .configurableAtRunTime = false,
     },
     {
         NULL,
@@ -344,6 +415,17 @@ const char* GearsConfig_GetExtraConfigVals(const char* key){
     return Gears_dictFetchValue(Gears_ExtraConfig, key);
 }
 
+const char* GearsConfig_GetDependenciesUrl(){
+    return DefaultGearsConfig.dependenciesUrl.val.str;
+}
+const char* GearsConfig_GetDependenciesSha256(){
+    return DefaultGearsConfig.dependenciesSha256.val.str;
+}
+
+long long GearsConfig_CreateVenv(){
+    return DefaultGearsConfig.createVenv.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -404,6 +486,18 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .pythonAttemptTraceback = {
             .val.longVal = 1,
+            .type = LONG,
+        },
+        .dependenciesUrl = {
+            .val.str = RG_STRDUP(DependenciesUrl),
+            .type = STR,
+        },
+        .dependenciesSha256 = {
+            .val.str = RG_STRDUP(DependenciesSha256),
+            .type = STR,
+        },
+        .createVenv = {
+            .val.longVal = 0,
             .type = LONG,
         },
     };
