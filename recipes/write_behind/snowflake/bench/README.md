@@ -11,7 +11,7 @@ All the required installations are done with the Gears Write-Behind recipe.
 First,  invoke the Gears Python virtual environment:
 
 ```
-. /opt/redislabs/lib/modules/python3/.venv/bin/activate
+. /var/opt/redislabs/lib/modules/python3/.venv/bin/activate
 ```
 
 And then:

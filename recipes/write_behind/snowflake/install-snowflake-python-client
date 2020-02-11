@@ -2,4 +2,4 @@
 
 # install this as user 'redislabs'
 
-bash -c ". /opt/redislabs/lib/modules/python3/.venv/bin/activate; python -m pip install SQLAlchemy snowflake-sqlalchemy"
+bash -c ". /var/opt/redislabs/lib/modules/python3/.venv/bin/activate; python -m pip install SQLAlchemy snowflake-sqlalchemy"

@@ -20,7 +20,7 @@ ARCH=x64
 TEST ?= 1
 PACK ?= 1
 
-ARTIFACTS=$(abspath ../../artifacts/release)
+ARTIFACTS:=$(abspath $(ROOT)/artifacts)
 
 ARGS=\
 	-f $(ROOT)/Dockerfile \
@@ -39,8 +39,7 @@ else
 endif
 	@echo "Copying artifacts ..."
 	@CID=$$$$($(DOCKER) create $(REPO):$(1)) ;\
-	$(DOCKER) cp $$$${CID}:/opt/redislabs/artifacts/redisgears.linux-$(1)-$(ARCH).99.99.99.zip $(ARTIFACTS)/ ;\
-	$(DOCKER) cp $$$${CID}:/opt/redislabs/artifacts/redisgears-dependencies.linux-$(1)-$(ARCH).99.99.99.tgz $(ARTIFACTS)/ ;\
+	$(DOCKER) cp $$$${CID}:/var/opt/redislabs/artifacts $(ARTIFACTS)/ ;\
 	$(DOCKER) rm -v $$$${CID} > /dev/null
 	@echo "Done."
 

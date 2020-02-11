@@ -1,6 +1,6 @@
 #!/bin/bash
 
-REDISLABS_DIR=/opt/redislabs
+REDISLABS_DIR=/var/opt/redislabs
 
 if [[ -z $LOCAL ]]; then
 	echo "LOCAL argument undefined. Aborting."
