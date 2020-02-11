@@ -144,6 +144,10 @@ ORIGINAL_KEY = '_original_key'
 
 UUID_KEY = '_uuid'
 
+EXECTLY_ONCE_TABLE_KEY = '_exectly_once_table_key'
+EXECTLY_ONCE_UPDATE_QUERY_KEY = '_exectly_once_query_key'
+LAST_STREAM_ID_KEY = '_last_stream_id'
+
 #----------------------------------------------------------------------------------------------
 # Key mapping
 
@@ -157,6 +161,7 @@ UUID_KEY = '_uuid'
 config = {
     'person2:id': {
         TABLE_KEY: 'person1',
+        EXECTLY_ONCE_TABLE_KEY: "person1_exactly_once_table",
         'first_name': 'first',
         'last_name': 'last',
         'age': 'age',
@@ -193,20 +198,29 @@ def PrepereQueries():
         if dbtype == 'oracle' or dbtype == 'snowflake':
             values = [val for kk, val in v.items() if not kk.startswith('_')]
             values_with_pkey = [pkey] + values
-            merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (v[TABLE_KEY], pkey, pkey)
-            not_matched = "WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)" % (','.join(values_with_pkey), ','.join([':%s' % a for a in values_with_pkey]))
-            matched = "WHEN MATCHED THEN UPDATE SET %s" % (','.join(['%s=:%s' % (a,a) for a in values]))
-            query = "%s %s %s" % (merge_into, not_matched, matched)
+            def GetUpdateQuery(table, pkey, values_with_pkey, values):
+                merge_into = "MERGE INTO %s d USING (SELECT 1 FROM DUAL) ON (d.%s = :%s)" % (table, pkey, pkey)
+                not_matched = "WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)" % (','.join(values_with_pkey), ','.join([':%s' % a for a in values_with_pkey]))
+                matched = "WHEN MATCHED THEN UPDATE SET %s" % (','.join(['%s=:%s' % (a,a) for a in values]))
+                query = "%s %s %s" % (merge_into, not_matched, matched)
+                return query
+            v[ADD_QUERY_KEY] = GetUpdateQuery(v[TABLE_KEY], pkey, values_with_pkey, values)
+            if EXECTLY_ONCE_TABLE_KEY in v.keys():
+                v[EXECTLY_ONCE_UPDATE_QUERY_KEY] = GetUpdateQuery(v[EXECTLY_ONCE_TABLE_KEY], 'id', ['id', 'val'], ['val'])
+
         elif dbtype == 'mysql':
-            query = 'REPLACE INTO %s' % v[TABLE_KEY]
-            values = [val for kk, val in v.items() if not kk.startswith('_')]
-            values = [pkey] + values
-            values.sort()
-            query = '%s(%s) values(%s)' % (query, ','.join(values), ','.join([':%s' % a for a in values]))
+            def GetUpdateQuery(table, pkey, vals):
+                query = 'REPLACE INTO %s' % table
+                values = [val for kk, val in vals if not kk.startswith('_')]
+                values = [pkey] + values
+                values.sort()
+                query = '%s(%s) values(%s)' % (query, ','.join(values), ','.join([':%s' % a for a in values]))
+                return query
+            v[ADD_QUERY_KEY] = GetUpdateQuery(v[TABLE_KEY], pkey, v.items())
+            if EXECTLY_ONCE_TABLE_KEY in v.keys():
+                v[EXECTLY_ONCE_UPDATE_QUERY_KEY] = GetUpdateQuery(v[EXECTLY_ONCE_TABLE_KEY], 'id', [('val', 'val')])
         else:
             raise Exception('invalid db type')
-
-        v[ADD_QUERY_KEY] = query
 
         # create delete query
         query = 'delete from %s where %s=:%s' % (v[TABLE_KEY], pkey, pkey)
@@ -214,14 +228,40 @@ def PrepereQueries():
 
 def PrintAllQueries():
     for v in config.values():
-        WriteBehindLog('add_query="%s", del_query="%s"' % (v[ADD_QUERY_KEY], v[DEL_QUERY_KEY]))
+        WriteBehindLog('add_query="%s"' % (v[ADD_QUERY_KEY]))
+        WriteBehindLog('del_query="%s"' % (v[DEL_QUERY_KEY]))
+        if EXECTLY_ONCE_UPDATE_QUERY_KEY in v.keys():
+            WriteBehindLog('exectly_once_query="%s"' % (v[EXECTLY_ONCE_UPDATE_QUERY_KEY]))
 
 def GetStreamName(config):
     return '_%s-stream-{%s}' % (config[TABLE_KEY], hashtag())
 
+def CompareIds(id1, id2):
+    id1_time, id1_num = [int(a) for a in id1.split('-')]
+    id2_time, id2_num = [int(a) for a in id2.split('-')]
+    if(id1_time > id2_time):
+        return 1
+    if(id1_time < id2_time):
+        return -1
+
+    if(id1_num > id2_num):
+        return 1
+    if(id1_num < id2_num):
+        return -1
+
+    return 0
+
 def CreateSQLDataWriter(config):
+    exactlyOnce = True if EXECTLY_ONCE_UPDATE_QUERY_KEY in config.keys() else False
+    exactlyOnceLastId = None
+    shardId = False
+    shouldCompareId = True if exactlyOnce else False
     def WriteToSQLDB(r):
         # WriteBehindDebug('In WriteToSQLDB')
+        nonlocal exactlyOnce
+        nonlocal exactlyOnceLastId
+        nonlocal shardId
+        nonlocal shouldCompareId
 
         global conn
         global sqlText
@@ -237,21 +277,33 @@ def CreateSQLDataWriter(config):
                 from sqlalchemy.sql import text
                 sqlText = text
                 conn = Connect()
+                if exactlyOnce and not exactlyOnceLastId:
+                    shardId = 'shard-%s' % hashtag()
+                    result = conn.execute(sqlText('select val from %s where id=:id' % config[EXECTLY_ONCE_TABLE_KEY]), {'id':shardId})
+                    exactlyOnceLastId = str(result.next()['val'])
         except Exception as e:
             conn = None # next time we will reconnect to the database
+            exactlyOnceLastId = None
+            shouldCompareId = True if exactlyOnce else False
             msg = 'Failed connecting to SQL database, error="%s"' % str(e)
             WriteBehindLog(msg)
             raise Exception(msg) from None
 
         idsToAck = []
 
+        trans = conn.begin()
         try:
             batch = []
             # we have only key name, original_key, streamId, it means that the key was deleted
             isAddBatch = True if len(r[0].keys()) > 3 else False
             query = config[ADD_QUERY_KEY] if isAddBatch else config[DEL_QUERY_KEY]
+            lastStreamId = None
             for x in r:
-                x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
+                lastStreamId = x.pop('streamId', None)## pop the stream id out of the record, we do not need it.
+                if shouldCompareId and CompareIds(exactlyOnceLastId, lastStreamId) >= 0:
+                    WriteBehindLog('Skip %s as it was already writen to the backend' % lastStreamId)
+                    continue
+                shouldCompareId = False
                 originalKey = x.pop(ORIGINAL_KEY, None)
                 uuid = x.pop(UUID_KEY, None)
                 if uuid is not None:
@@ -272,8 +324,17 @@ def CreateSQLDataWriter(config):
                     batch.append(x)
             if len(batch) > 0:
                 conn.execute(sqlText(query), batch)
+                if lastStreamId and EXECTLY_ONCE_UPDATE_QUERY_KEY in config.keys():
+                    conn.execute(sqlText(config[EXECTLY_ONCE_UPDATE_QUERY_KEY]), {'id':shardId, 'val':lastStreamId})
+            trans.commit()
         except Exception as e:
+            try:
+                trans.rollback()
+            except Exception as e:
+                WriteBehindLog('Failed rollback transaction')
             conn = None # next time we will reconnect to the database
+            exactlyOnceLastId = None
+            shouldCompareId = True if exactlyOnce else False
             msg = 'Got exception when writing to DB, query="%s", error="%s".' % ((query if query else 'None'), str(e))
             WriteBehindLog(msg)
             raise Exception(msg) from None
@@ -458,6 +519,7 @@ def UnregisterOldVersions():
                 WriteBehindLog('Unregistered %s' % registrationDict['id'])
             else:
                 raise Exception('Found a version which is greater or equals current version, aborting.')
+    WriteBehindLog('Unregistered old versions')
 
 
 
