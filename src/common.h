@@ -21,7 +21,7 @@ void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);
 int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
 const char* GetShardUniqueId();
-void ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);
+int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);
 
 #endif /* SRC_COMMANDS_H_ */
 

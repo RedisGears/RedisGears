@@ -110,7 +110,7 @@ const char* GetShardUniqueId() {
     return shardUniqueId;
 }
 
-void ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
+int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
     char* command;
     va_list ap;
     va_start(ap, __fmt);
@@ -131,9 +131,21 @@ void ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
     }
 
     /* close */
-    pclose(f);
+    /**
+     * The returnvalue of the child process is
+     * in the top 16 8 bits. You have to divide
+     * the returned value of pclose by 256,
+     * then you get the searched return value of the child process.
+     */
+    int exitCode = pclose(f)/256;
+
+    if(exitCode != 0){
+        RedisModule_Log(ctx, "warning", "Execution failed command : %s", command);
+    }
 
     RG_FREE(command);
 
     va_end(ap);
+
+    return exitCode;
 }
