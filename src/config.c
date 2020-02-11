@@ -65,25 +65,6 @@ typedef struct Gears_ConfigVal{
 
 static RedisGears_Config DefaultGearsConfig;
 
-static const ConfigVal* ConfigVal_PythonHomeDirGet(){
-    return &DefaultGearsConfig.pythonHomeDir;
-}
-
-static bool ConfigVal_PythonHomeDirSet(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val){
-        return false;
-    }
-    if(getenv(PYTHON_HOME_DIR)){
-        printf("warning setting PythonHomeDir will take no effect cause its defined in env var\r\n");
-        return true;
-    }
-    RG_FREE(DefaultGearsConfig.pythonHomeDir.val.str);
-    const char* valStr = RedisModule_StringPtrLen(val, NULL);
-    DefaultGearsConfig.pythonHomeDir.val.str = RG_STRDUP(valStr);
-    return true;
-}
-
 static const ConfigVal* ConfigVal_MaxExecutionsGet(){
     return &DefaultGearsConfig.maxExecutions;
 }
@@ -202,12 +183,6 @@ static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
 static Gears_dict* Gears_ExtraConfig = NULL;
 
 static Gears_ConfigVal Gears_ConfigVals[] = {
-    {
-        .name = "PythonHomeDir",
-        .getter = ConfigVal_PythonHomeDirGet,
-        .setter = ConfigVal_PythonHomeDirSet,
-        .configurableAtRunTime = false,
-    },
     {
         .name = "MaxExecutions",
         .getter = ConfigVal_MaxExecutionsGet,
@@ -468,10 +443,6 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
 
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
     DefaultGearsConfig = (RedisGears_Config){
-        .pythonHomeDir = {
-            .val.str = getenv(PYTHON_HOME_DIR) ? RG_STRDUP(getenv(PYTHON_HOME_DIR)) : RG_STRDUP(CPYTHON_PATH),
-            .type = STR,
-        },
         .maxExecutions = {
             .val.longVal = 1000,
             .type = LONG,

@@ -33,26 +33,6 @@ $ RG.CONFIGSET ProfileExecutions 1
 
 ## RedisGears configuration options
 
-## PythonHomeDir
-
-Tells the python interpreter where to look for the default python libraries
-
-### Default
-
-/var/opt/redislabs/lib/modules/python3/
-
-### Configurable at Runitime
-
-** No
-
-### Example
-
-```
-$ redis-server --loadmodule ./redisearch.so PythonHomeDir /home/user/cpython/
-```
-
----
-
 ## MaxExecutions
 
 The maximum amount of execution to save. When reach this number, old execution will be deleted in a FIFO order. Notice that only the execution that has been finished will be deleted (pending execution will be deleted on done).
