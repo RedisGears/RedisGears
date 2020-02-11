@@ -24,7 +24,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("git")
 
     def debian_compat(self):
-        self.install("build-essential autotools-dev autoconf libtool")
+        self.install("build-essential autotools-dev autoconf libtool gawk")
         self.install("libbz2-dev liblzma-dev lzma-dev libncurses5-dev libsqlite3-dev uuid-dev zlib1g-dev libssl-dev libreadline-dev libffi-dev")
         if sh("apt-cache search libgdbm-compat-dev") != "":
             self.install("libgdbm-compat-dev")
