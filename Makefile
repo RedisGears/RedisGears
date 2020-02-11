@@ -29,7 +29,7 @@ make test       # run tests
 make pack       # build packages (ramp & dependencies)
 endef
 
-MK_ALL_TARGETS=bindirs deps pyenv build pack
+MK_ALL_TARGETS=bindirs deps pyenv build ramp_pack
 
 include $(MK)/defs
 
@@ -168,6 +168,29 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
+DEPS_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
+DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+
+DEPS_URL_BASE:=http://redismodules.s3.amazonaws.com/redisgears
+DEPS_URL_BASE.release=$(DEPS_URL_BASE)
+DEPS_URL_BASE.snapshot=$(DEPS_URL_BASE)/snapshot
+
+define build_deps_args # type (release|snapshot)
+$(BINDIR)/$(1)-deps.o : $(SRCDIR)/deps-args.c artifacts/$(1)/$(DEPS_TAR.$(1))
+	$(SHOW)$$(CC) $$(CC_FLAGS) -c $$< -o $$@ \
+		-DDEPENDENCIES_URL=\"$(DEPS_URL_BASE.$(1))/$(DEPS_TAR.$(1))\" \
+		-DDEPENDENCIES_SHA256=\"$$(shell cat artifacts/$(1)/$(DEPS_TAR.$(1)).sha256)\"
+endef
+
+artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
+	@echo Packing dependencies...
+	$(SHOW)RAMP=0 DEPS=1 ./pack.sh $(TARGET)
+
+$(eval $(call build_deps_args,release))
+$(eval $(call build_deps_args,snapshot))
+
+#----------------------------------------------------------------------------------------------
+
 ifeq ($(OS),macosx)
 EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
@@ -176,12 +199,15 @@ endif
 
 STRIP:=strip --strip-debug --strip-unneeded
 
-$(TARGET): $(MISSING_DEPS) $(OBJECTS)
+$(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o $(BINDIR)/snapshot-deps.o
 	@echo Linking $@...
-	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
+	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(BINDIR)/release-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
+	$(SHOW)mkdir -p $(dir $@)/snapshot
+	$(SHOW)$(CC) -shared -o $(dir $@)/snapshot/$(notdir $@) $(OBJECTS) $(BINDIR)/snapshot-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 ifneq ($(DEBUG),1)
 ifneq ($(OS),macosx)
 	$(SHOW)$(STRIP) $@
+	$(SHOW)$(STRIP) $(dir $@)/snapshot/$(notdir $@)
 endif
 endif
 	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
@@ -253,7 +279,8 @@ ifeq ($(ALL),1)
 	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(notdir $(TARGET)) $(BINROOT)/redislabs
 else
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
-	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) artifacts/release/* artifacts/snapshot/*
+	$(SHOW)rm -f $(TARGET) $(TARGET:.so=.a) $(notdir $(TARGET)) \
+		artifacts/release/$(DEPS_TAR.release)* artifacts/snapshot/$(DEPS_TAR.snapshot)*
 endif
 ifeq ($(DEPS),1)
 	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean;)
@@ -261,7 +288,10 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
-pack ramp_pack: __sep deps build $(CPYTHON_PREFIX)
+ramp_pack: $(TARGET)
+	$(SHOW)RAMP=1 DEPS=0 ./pack.sh $(TARGET)
+
+pack : deps $(TARGET) $(CPYTHON_PREFIX)
 	$(SHOW)./pack.sh $(TARGET)
 
 #----------------------------------------------------------------------------------------------
