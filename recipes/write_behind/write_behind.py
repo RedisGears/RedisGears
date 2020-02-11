@@ -280,7 +280,11 @@ def CreateSQLDataWriter(config):
                 if exactlyOnce and not exactlyOnceLastId:
                     shardId = 'shard-%s' % hashtag()
                     result = conn.execute(sqlText('select val from %s where id=:id' % config[EXECTLY_ONCE_TABLE_KEY]), {'id':shardId})
-                    exactlyOnceLastId = str(result.next()['val'])
+                    res = result.first()
+                    if res is not None:
+                        exactlyOnceLastId = str(res['val'])
+                    else:
+                        shouldCompareId = False
         except Exception as e:
             conn = None # next time we will reconnect to the database
             exactlyOnceLastId = None
