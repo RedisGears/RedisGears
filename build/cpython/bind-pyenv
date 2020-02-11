@@ -12,15 +12,15 @@ ROOT=$(cd $HERE/../..; pwd)
 echo $ROOT
 exit 0
 
-d1=$(findmnt -n --target /opt/redislabs -o SOURCE | grep -v /dev/mapper)
+d1=$(findmnt -n --target /var/opt/redislabs -o SOURCE | grep -v /dev/mapper)
 if [[ -z $d1 ]]; then
-	[[ ! -d /opt/redislabs ]] && sudo mkdir -p /opt/redislabs
+	[[ ! -d /var/opt/redislabs ]] && sudo mkdir -p /var/opt/redislabs
 else
-	# umount /opt/redislabs
+	# umount /var/opt/redislabs
 	echo $d1
 fi
 if [[ -f $BINDIR ]]; then
-	mount --bind $BINDIR /opt/redislabs
+	mount --bind $BINDIR /var/opt/redislabs
 else
 	echo "Cannot determine current Python environment."
 fi

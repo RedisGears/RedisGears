@@ -8,9 +8,11 @@
 #include "common.h"
 #include "cluster.h"
 #include "redisgears_memory.h"
-#include "redismodule.h"
 #include <string.h>
 #include <stdarg.h>
+#include <assert.h>
+
+static char* shardUniqueId = NULL;
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, ID_LEN);
@@ -84,4 +86,54 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...) {
   va_end(ap);
 
   return res;
+}
+
+const char* GetShardUniqueId() {
+    if(!shardUniqueId){
+        RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+        RedisModuleCallReply *reply = RedisModule_Call(ctx, "CONFIG", "cc", "GET", "logfile");
+        assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+        RedisModuleCallReply *uuidReply = RedisModule_CallReplyArrayElement(reply, 1);
+        assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
+        size_t len;
+        const char* logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
+        const char* last = strrchr(logFileName, '/');
+        if(last){
+            len = len - (last - logFileName + 1);
+            logFileName = last + 1;
+        }
+        shardUniqueId = RG_ALLOC(len + 1);
+        shardUniqueId[len] = '\0';
+        memcpy(shardUniqueId, logFileName, len);
+        RedisModule_FreeThreadSafeContext(ctx);
+    }
+    return shardUniqueId;
+}
+
+void ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
+    char* command;
+    va_list ap;
+    va_start(ap, __fmt);
+
+    rg_vasprintf(&command, __fmt, ap);
+    RedisModule_Log(ctx, "notice", "Executing : %s", command);
+    FILE* f = popen(command, "r");
+    if (f == NULL) {
+        RG_FREE(command);
+        RedisModule_Log(ctx, "warning", "Failed to run command : %s", command);
+        exit(1);
+    }
+
+    /* Read the output a line at a time - output it. */
+    char path[1035];
+    while (fgets(path, sizeof(path), f) != NULL) {
+        RedisModule_Log(ctx, "notice", "%s", path);
+    }
+
+    /* close */
+    pclose(f);
+
+    RG_FREE(command);
+
+    va_end(ap);
 }

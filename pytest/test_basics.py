@@ -438,10 +438,10 @@ class testConfig:
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([n])
 
     def testNotModifiableAtRuntime(self):
-        pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
-        res = self.env.execute_command('RG.CONFIGSET', 'PythonHomeDir', '/')
+        pyhome = self.env.execute_command('RG.CONFIGGET', 'DependenciesSha256')
+        res = self.env.execute_command('RG.CONFIGSET', 'DependenciesSha256', '/')
         self.env.assertTrue('(error)' in str(res[0]))
-        pyhome = self.env.execute_command('RG.CONFIGGET', 'PythonHomeDir')
+        pyhome = self.env.execute_command('RG.CONFIGGET', 'DependenciesSha256')
         self.env.expect('RG.CONFIGSET', 'MaxExecutions', 10).equal(['OK'])
 
     def testNonExisting(self):

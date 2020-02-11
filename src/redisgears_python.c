@@ -2623,9 +2623,14 @@ RedisGears_ReaderCallbacks PythonReader = {
         .create = PythonReader_Create,
 };
 
-#define PYENV_DIR "/opt/redislabs/lib/modules/python3"
-#define PYENV_HOME_DIR PYENV_DIR "/.venv/bin"
+#define PYENV_INSTALL_DIR "/var/opt/redislabs/lib/modules/"
+#define PYENV_DIR PYENV_INSTALL_DIR"python3"
+#define PYENV_HOME_DIR PYENV_DIR "/.venv"
+#define PYENV_BIN_DIR PYENV_HOME_DIR "/bin"
 #define PYENV_ACTIVATE PYENV_HOME_DIR "/activate_this.py"
+#define PYENV_ACTIVATE_SCRIPT PYENV_BIN_DIR "/activate"
+
+static char* venvDir = NULL;
 
 bool PyEnvExist() {
     DIR* dir = opendir(PYENV_DIR);
@@ -2636,10 +2641,75 @@ bool PyEnvExist() {
     return false;
 }
 
+static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
+#define SHA_256_SIZE 64
+#define DEPS_FILE_PATH "/tmp/deps.%s.%s.tgz"
+#define DEPS_FILE_DIR "/tmp/deps.%s.%s/"
+#define LOCAL_VENV PYENV_DIR"/%s"
+    const char* shardUid = GetShardUniqueId();
+    if (!PyEnvExist()){
+
+        const char* expectedSha256 = GearsConfig_GetDependenciesSha256();
+
+        ExecCommand(ctx, "rm -rf "DEPS_FILE_PATH, shardUid, expectedSha256);
+
+        ExecCommand(ctx, "curl -o "DEPS_FILE_PATH" %s", shardUid, expectedSha256, GearsConfig_GetDependenciesUrl());
+
+        char* sha256Command;
+        rg_asprintf(&sha256Command, "sha256sum "DEPS_FILE_PATH, shardUid, expectedSha256);
+        FILE* f = popen(sha256Command, "r");
+        RG_FREE(sha256Command);
+        char sha256[SHA_256_SIZE];
+        if(fscanf(f, "%64s", sha256) != 1){
+            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "DEPS_FILE_PATH, shardUid, expectedSha256);
+            pclose(f);
+            return REDISMODULE_ERR;
+        }
+        pclose(f);
+
+        if(strcmp(expectedSha256, sha256) != 0){
+            RedisModule_Log(ctx, "warning", "Failed on sha 256 comparison");
+            return REDISMODULE_ERR;
+        }
+
+        ExecCommand(ctx, "rm -rf "DEPS_FILE_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "mkdir -P "DEPS_FILE_DIR, shardUid, expectedSha256);
+
+        ExecCommand(ctx, "tar -xvf "DEPS_FILE_PATH" -C "DEPS_FILE_DIR, shardUid, expectedSha256, shardUid, expectedSha256);
+
+        ExecCommand(ctx, "mkdir -p "PYENV_INSTALL_DIR);
+        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/var/opt/redislabs/lib/modules/python3/ "PYENV_INSTALL_DIR, shardUid, expectedSha256);
+    }else{
+        RedisModule_Log(ctx, "notice", "Found python installation under: "PYENV_DIR);
+    }
+    if(GearsConfig_CreateVenv()){
+        rg_asprintf(&venvDir, PYENV_DIR"/.venv-%s", shardUid);
+    }else{
+        venvDir = PYENV_HOME_DIR;
+    }
+    DIR* dir = opendir(venvDir);
+    if(!dir){
+        ExecCommand(ctx, "mkdir %s", venvDir);
+        ExecCommand(ctx, "/bin/bash -c \"source " PYENV_ACTIVATE_SCRIPT ";python -m virtualenv %s\"", venvDir);
+    }else{
+        RedisModule_Log(ctx, "notice", "Found venv installation under: %s", venvDir);
+        closedir(dir);
+    }
+    return REDISMODULE_OK;
+}
+
 int RedisGears_SetupPyEnv(RedisModuleCtx *ctx) {
-    if (!PyEnvExist()) return 0;
-    RedisModule_Log(ctx, "notice", "Initializing Python environment with: " "exec(open('" PYENV_ACTIVATE "').read(), {'__file__': '" PYENV_ACTIVATE "'})");
-    PyRun_SimpleString("exec(open('" PYENV_ACTIVATE "').read(), {'__file__': '" PYENV_ACTIVATE "'})");
+    DIR* dir = opendir(venvDir);
+    assert(dir);
+    closedir(dir);
+    char* activateScript = NULL;
+    char* activateCommand = NULL;
+    rg_asprintf(&activateScript, "%s/bin/activate_this.py", venvDir);
+    rg_asprintf(&activateCommand, "exec(open('%s').read(), {'__file__': '%s'})", activateScript, activateScript);
+    RedisModule_Log(ctx, "notice", "Initializing Python environment with: %s", activateCommand);
+    PyRun_SimpleString(activateCommand);
+    RG_FREE(activateScript);
+    RG_FREE(activateCommand);
     return 0;
 }
 
@@ -2683,6 +2753,11 @@ void RedisGearsPy_ForceStop(ExecutionCtx* epCtx){
 }
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
+    if(RedisGears_InstallDeps(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "Failed installing python dependencies");
+        return REDISMODULE_ERR;
+    }
+
     int err = pthread_key_create(&pythonThreadCtxKey, NULL);
     if(err){
         return REDISMODULE_ERR;
@@ -2695,8 +2770,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
 	char* arg = "Embeded";
 	size_t len = strlen(arg);
-    char* progName = (char*)GearsConfig_GetPythonHomeDir();
-    if (PyEnvExist()) progName = PYENV_HOME_DIR;
+    char* progName = PYENV_DIR;
     Py_SetProgramName((wchar_t *)progName);
 
     EmbRedisGears.m_methods = EmbRedisGearsMethods;

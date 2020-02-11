@@ -26,14 +26,14 @@ sudo mkdir -p /opt
 make fetch # this will aquire git submodules
 make all
 ```
-Notice that part of the compilation is to create the gears virtual environment under `/opt/redislabs/lib/modules/python3/`
+Notice that part of the compilation is to create the gears virtual environment under `/var/opt/redislabs/lib/modules/python3/`
 
 ## Run
 If you run gears on the same machine on which it was compiled, then it's enough to load the RedisGears module:
 
 `--loamodule <path to redisgears.so>`
 
-If you run RedisGears on another machine, some extra setup is needed. For RedisGears to run properly, it needs to have the virtual environment which was created when it was compiled. All the required files are located in `/opt/redislabs/lib/modules/python3`. Make sure to copy this directory to the machine where Redis is running and to the same path (i.e `/opt/redislabs/lib/modules/python3`).
+If you run RedisGears on another machine, some extra setup is needed. For RedisGears to run properly, it needs to have the virtual environment which was created when it was compiled. All the required files are located in `/var/opt/redislabs/lib/modules/python3`. Make sure to copy this directory to the machine where Redis is running and to the same path (i.e `/opt/redislabs/lib/modules/python3`).
 
 ## Tests
 Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.

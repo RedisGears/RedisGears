@@ -47,15 +47,15 @@ ARG ARCH
 ARG REDIS_VER
 ARG PACK
 
-ENV REDIS_MODULES /opt/redislabs/lib/modules
+ENV REDIS_MODULES /var/opt/redislabs/lib/modules
 
-RUN mkdir -p $REDIS_MODULES/ /opt/redislabs/artifacts
+RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
 
 COPY --from=builder /build/redisgears.so $REDIS_MODULES/
-COPY --from=builder /build/artifacts/release/* /opt/redislabs/artifacts/
+COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts/
 
-RUN tar xzf /opt/redislabs/artifacts/redisgears-dependencies.*.tgz -C /
+RUN tar xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C /
 
-RUN if [ "$PACK" != "1" ]; then rm -rf /opt/redislabs/artifacts; fi
+RUN if [ "$PACK" != "1" ]; then rm -rf /var/opt/redislabs/artifacts; fi
 
-CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python3"]
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so"]

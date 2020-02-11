@@ -23,7 +23,7 @@ TARGET=$(BINDIR)/libpython3.7m-fixed.a
 MK_ALL_TARGETS=bindirs build pyenv
 MK_CLEAN_ALL_DIRS += $(BINDIR_CPYTHON_PREFIX) $(REDISLABS_CPYTHON_PREFIX)
 
-REDISLABS_DIR=/opt/redislabs
+REDISLABS_DIR=/var/opt/redislabs
 export REDISLABS_CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
 BINDIR_CPYTHON_PREFIX=$(BINROOT)/redislabs/lib/modules/python3
 REDISLABS_LIBPYTHON=$(REDISLABS_CPYTHON_PREFIX)/lib/libpython3.7m.a
@@ -76,7 +76,11 @@ $(TARGET): $(CONFIGURE_TARGET)
 $(REDISLABS_PYTHON) : $(CONFIGURE_PYTHON)
 	@echo Installing Python...
 	$(SHOW)SUDO=$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) PYENV_IN_SITU=$(PYENV_IN_SITU) ./prepare-python
+ifneq ($(VERBOSE),1)
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
+else
+	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install
+endif
 
 $(PYENV_PYTHON) : $(REDISLABS_PYTHON)
 	$(SHOW)PYTHON_PATH=$(REDISLABS_CPYTHON_PREFIX) ./install-pyenv
