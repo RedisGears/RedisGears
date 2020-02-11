@@ -30,7 +30,7 @@ FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5
 
 RUN [ "cross-build-start" ]
 
-ENV REDIS_MODULES /opt/redislabs/lib/modules
+ENV REDIS_MODULES /var/opt/redislabs/lib/modules
 
 RUN mkdir -p $REDIS_MODULES/
 
@@ -39,6 +39,6 @@ COPY --from=builder /build/artifacts/release/redisgears-dependencies.*.tgz /tmp/
 
 RUN tar xzf /tmp/redisgears-dependencies.*.tgz -C /
 
-CMD ["--loadmodule", "/opt/redislabs/lib/modules/redisgears.so", "PythonHomeDir", "/opt/redislabs/lib/modules/python3"]
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so"]
 
 RUN [ "cross-build-end" ]

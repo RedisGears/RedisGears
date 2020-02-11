@@ -36,8 +36,8 @@ else
 endif
 	@echo "Copying artifacts ..."
 	@CID=$$$$(docker create $(REPO):$(1)) ;\
-	docker cp $$$${CID}:/opt/redislabs/artifacts/redisgears.linux-$(1)-$(ARCH).99.99.99.zip $(ARTIFACTS)/ ;\
-	docker cp $$$${CID}:/opt/redislabs/artifacts/redisgears-dependencies.linux-$(1)-$(ARCH).99.99.99.tgz $(ARTIFACTS)/ ;\
+	docker cp $$$${CID}:/var/opt/redislabs/artifacts/redisgears.linux-$(1)-$(ARCH).99.99.99.zip $(ARTIFACTS)/ ;\
+	docker cp $$$${CID}:/var/opt/redislabs/artifacts/redisgears-dependencies.linux-$(1)-$(ARCH).99.99.99.tgz $(ARTIFACTS)/ ;\
 	docker rm -v $$$${CID} > /dev/null
 	@echo "Done."
 

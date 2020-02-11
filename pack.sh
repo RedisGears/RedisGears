@@ -1,26 +1,51 @@
 #!/bin/bash
 
+RAMP=${RAMP:-1}
+DEPS=${DEPS:-1}
+
+RELEASE=${RELEASE:-1}
+SNAPSHOT=${SNAPSHOT:-1}
+
 [[ $VERBOSE == 1 ]] && set -x
 [[ $IGNERR == 1 ]] || set -e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 . $HERE/deps/readies/shibumi/functions
 
+ARCH=$(./deps/readies/bin/platform --arch)
+OS=$(./deps/readies/bin/platform --os)
+OSNICK=$(./deps/readies/bin/platform --osnick)
+
+getver() {
+	local getver_c=$(mktemp "${TMPDIR:-/tmp}"/getver-XXXXXXX.c)
+	cat <<- EOF > $getver_c
+		#include <stdio.h>
+
+		#include "src/version.h"
+
+		int main(int argc, char *argv[]) {
+				printf("%d.%d.%d\n", REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH);
+				return 0;
+		}
+		EOF
+	local prog=$(mktemp "${TMPDIR:-/tmp}"/getver.XXXXXXX)
+	gcc -I. -o $prog $getver_c
+	local ver=`$prog`
+	rm -f $prog $getver_c
+	echo $ver
+}
+
 pack() {
 	local artifact="$1"
-	local branch="$2"
+	local vertag="$2"
 
-	# local packfile=$PACKAGE_NAME.{os}-$OS_VERSION-{architecture}.$branch.zip
-	local ARCH=$(./deps/readies/bin/platform --arch)
-	local OS=$(./deps/readies/bin/platform --os)
-	# local OSNICK=${OS_VERSION}
-	local OSNICK=$(./deps/readies/bin/platform --osnick)
-	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$branch.zip
+	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$vertag.zip
 
 	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
+	ramp="$(command -v python) -m RAMP.ramp" 
 	cat <<- EOF > $packer
 		cd $ROOT
-		ramp pack $GEARS -m ramp.yml -o $packfile | tail -1
+		$ramp pack $GEARS_SO -m ramp.yml -o $packfile | tail -1
 	EOF
 
 	cd $CPYTHON_PREFIX
@@ -37,8 +62,29 @@ pack() {
 	fi
 	
 	mv $packname artifacts/$artifact/
-	packname="artifacts/$artifact/$packname"
-	echo Created $packname
+	echo "Created artifacts/$artifact/$packname"
+}
+
+pack_deps() {
+	CPYTHON_PREFIX=${CPYTHON_PREFIX:-/var/opt/redislabs/lib/modules/python3}
+	if [[ ! -d $CPYTHON_PREFIX ]]; then
+		echo $CPYTHON_PREFIX does not exist
+		exit 1
+	fi
+
+	local TAR=artifacts/release/$RELEASE_deps
+	TAR_PATH=$(realpath $TAR)
+	cd $CPYTHON_PREFIX/
+	{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
+	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
+	cd - > /dev/null
+	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
+	echo Created $TAR
+
+	local TAR1=$SNAPSHOT_deps
+	# cp artifacts/release/$TAR artifacts/snapshot/$TAR1
+	( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
+	echo Created artifacts/snapshot/$TAR1
 }
 
 if ! command -v redis-server > /dev/null; then
@@ -46,11 +92,8 @@ if ! command -v redis-server > /dev/null; then
 	exit 1
 fi
 
-export ROOT=`git rev-parse --show-toplevel`
-CPYTHON_PREFIX=${CPYTHON_PREFIX:-/opt/redislabs/lib/modules/python3}
-[[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
-[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
-GEARS=$(realpath $1)
+# export ROOT=`git rev-parse --show-toplevel`
+export ROOT=$(realpath $HERE)
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
@@ -60,29 +103,41 @@ OS_VERSION=${OS_VERSION:-generic}
 export PYTHONWARNINGS=ignore
 
 cd $ROOT
-mkdir -p artifacts/snapshot artifacts/release
 
-pack release "{semantic_version}"
-RELEASE=$packname
+VERSION=$(getver)
 
-pack snapshot "$BRANCH"
-SNAPSHOT=$packname
+RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$VERSION.zip
+SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
+RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.tgz
+SNAPSHOT_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
 
-if [[ ! -d $CPYTHON_PREFIX ]]; then
-	echo $CPYTHON_PREFIX does not exist
-	exit 1
+if [[ $JUST_PRINT == 1 ]]; then
+	if [[ $RAMP == 1 ]]; then
+		[[ $RELEASE == 1 ]] && echo $RELEASE_ramp
+		[[ $SNAPSHOT == 1 ]] && echo $SNAPSHOT_ramp
+	fi
+	if [[ $DEPS == 1 ]]; then
+		[[ $RELEASE == 1 ]] && echo $RELEASE_deps
+		[[ $SNAPSHOT == 1 ]] && echo $SNAPSHOT_deps
+	fi
+	exit 0
 fi
 
-stem=$(basename $RELEASE | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
-TAR=$PACKAGE_NAME-dependencies.$stem.tgz
-TAR_PATH=$(realpath artifacts/release/$TAR)
-cd $CPYTHON_PREFIX/
-{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
-[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
-cd - > /dev/null
-echo Created artifacts/release/$TAR
+mkdir -p artifacts/snapshot artifacts/release
 
-stem=$(basename $SNAPSHOT | sed -e "s/^$PACKAGE_NAME\.\(.*\)\.zip/\1/")
-TAR1=$PACKAGE_NAME-dependencies.$stem.tgz
-cp artifacts/release/$TAR artifacts/snapshot/$TAR1
-echo Created artifacts/snapshot/$TAR1
+if [[ $RAMP == 1 ]]; then
+	[[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
+	[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
+	
+	RELEASE_SO=$(realpath $1)
+	SNAPSHOT_SO=$(dirname $RELEASE_SO)/snapshot/$(basename $RELEASE_SO)
+fi
+
+if [[ $RAMP == 1 ]]; then
+	GEARS_SO=$RELEASE_SO pack release "{semantic_version}"
+	GEARS_SO=$SNAPSHOT_SO pack snapshot "$BRANCH"
+fi
+
+if [[ $DEPS == 1 ]]; then
+	pack_deps
+fi

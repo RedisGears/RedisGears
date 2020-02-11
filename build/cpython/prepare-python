@@ -5,7 +5,7 @@ set -e
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 . $HERE/../../deps/readies/shibumi/functions
 
-REDISLABS_DIR=/opt/redislabs
+REDISLABS_DIR=/var/opt/redislabs
 USER=`whoami`
 
 if [[ -z $LOCAL ]]; then
