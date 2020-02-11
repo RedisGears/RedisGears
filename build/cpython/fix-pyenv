@@ -22,7 +22,7 @@ fi
 
 # fix activate scripts
 for f in `grep -ril '\.venv' bin/activate*` .project; do
-	sed -i "s/\".*\(\/redislabs\/lib\/modules\/python3\)/\"\/var\/opt\1/" $f
+	sed -i "s/\(['\"]\).*\(\/redislabs\/lib\/modules\/python3\)/\1\/var\/opt\2/" $f
 done
 
 exit 0
