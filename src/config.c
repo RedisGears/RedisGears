@@ -43,7 +43,6 @@ typedef struct ConfigVal{
 }ConfigVal;
 
 typedef struct RedisGears_Config{
-    ConfigVal pythonHomeDir;
     ConfigVal maxExecutions;
     ConfigVal maxExecutionsPerRegistration;
     ConfigVal profileExecutions;
@@ -364,10 +363,6 @@ static int GearsConfig_Get(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     };
     GearsConfig_Get_with_iterator(ctx, &iter);
     return REDISMODULE_OK; // redis expects REDISMODULE_ERR only on catastrophes
-}
-
-const char* GearsConfig_GetPythonHomeDir(){
-    return DefaultGearsConfig.pythonHomeDir.val.str;
 }
 
 long long GearsConfig_GetMaxExecutionsPerRegistration(){
