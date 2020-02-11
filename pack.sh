@@ -47,6 +47,7 @@ pack() {
 		cd $ROOT
 		$ramp pack $GEARS_SO -m ramp.yml -o $packfile | tail -1
 	EOF
+
 	cd $CPYTHON_PREFIX
 
 	export LC_ALL=C.UTF-8
