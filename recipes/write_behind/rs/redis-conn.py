@@ -2,6 +2,7 @@
 
 import os
 import CCS
+import json
 
 ccs = CCS.Context()
 bdb_ids  = ccs.get_bdb_map().keys()
@@ -16,11 +17,11 @@ if bdb_id is None:
         print("Please specify database ID (e.g. DB=id)")
         exit(0)
 bdb = ccs.get_bdb(bdb_id)
-pwd = bdb.internal_pass()
+pwd = bdb.authentication_redis_pass()
 ep = bdb.get_endpoint_map().values()[0]
 port = ep.port()
 node_uid = list(ep.proxy_uids())[0]
 node = ccs.get_node(node_uid)
 ip = node.addr()
-print("--host {} --port {} --password {}".format(ip, port, pwd))
+print(json.dumps({'host': ip, 'port': port, 'passwd': pwd}))
 exit(0)

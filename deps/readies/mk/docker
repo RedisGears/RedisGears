@@ -15,6 +15,8 @@ endif
 BUILD_OPT=--rm
 # --squash
 
+DOCKERFILE_STEM ?= $(ROOT)/Dockerfile
+
 #----------------------------------------------------------------------------------------------
 
 define HELP
@@ -54,15 +56,19 @@ $(eval $(call targets,PUSH,push))
 
 define build_x64 # (1=arch)
 build_$(1):
-	@docker build $(BUILD_OPT) -t $(STEM)-$(OSNICK):$(VERSION)-x64 -f $(ROOT)/Dockerfile $(ROOT)
+	@docker build $(BUILD_OPT) -t $(STEM)-$(OSNICK):$(VERSION)-x64 -f $(DOCKERFILE_STEM) \
+		$(foreach A,$(DOCKER_BUILD_ARGS),--build-arg $(A)) \
+		$(ROOT)
 
 .PHONY: build_$(1)
 endef
 
 define build_arm  # (1=arch)
 build_$(1):
-	@docker build $(BUILD_OPT) -t $(STEM)-$(OSNICK):$(VERSION)-$(1) -f $(ROOT)/Dockerfile.arm \
-		--build-arg ARCH=$(1) $(ROOT)
+	@docker build $(BUILD_OPT) -t $(STEM)-$(OSNICK):$(VERSION)-$(1) -f $(DOCKERFILE_STEM).arm \
+		$(foreach A,$(DOCKER_BUILD_ARGS),--build-arg $(A)) \
+		--build-arg ARCH=$(1) \
+		$(ROOT)
 
 .PHONY: build_$(1)
 endef
@@ -85,6 +91,8 @@ define create_manifest # (1=version)
 endef
 
 #----------------------------------------------------------------------------------------------
+
+include $(MK)/rules
 
 $(eval $(call build_x64,x64))
 $(eval $(call build_arm,arm64v8))
@@ -112,6 +120,4 @@ else
 	@curl -s -X "GET" https://cloud.docker.com/v2/repositories/$(STEM)-$(OSNICK)/tags/ | jq
 endif
 
-.PHONY: build public show
-
-include $(MK)/rules
+.PHONY: build publish show

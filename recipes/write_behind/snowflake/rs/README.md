@@ -2,9 +2,9 @@
 
 ## System requirements
 
-* Redis Enterprise Software v5.4.11-2 or above running on RHEL7
+* Redis Enterprise Software v5.4.11-2 or above running on Ubuntu Xenial/Ubuntu Bionic/RHEL 7
 * Snowflake DB account (you'll need an account name, username and password)
-* RedisGears module built for RHEL7/CentOS7
+* RedisGears module for a matching platform
 
 ## Installing the Redis cluster
 
@@ -15,9 +15,13 @@
 SNOW_USER="..." SNOW_PASSWD="..." SNOW_ACCT="CODE.eu-west-1" \
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 ```
+* Download the Redis Gears module and add it to the cluster modules list.
+	* For Ubuntu Xenial, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-xenial-x64.99.99.99-3e6d45a.zip).
+	* For Ubuntu Bionic, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-bionic-x64.99.99.99-3e6d45a.zip).
+	* For RHEL7, use [this](http://redismodules.s3.amazonaws.com/lab/08-gears-write-behind/redisgears.linux-centos7-x64.99.99.99-3e6d45a.zip).
 
-* Download the [Redis Gears module](http://redismodules.s3.amazonaws.com/lab/11-gears-write-behind-sf/redisgears.linux-centos7-x64.99.99.99.zip) and add it to the cluster modules list.
-* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.  No special configuration is required.
+* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
+	* Add the following parameters, for sample DB configuration: `WriteBehind:dbtype snowflake WriteBehind:db test WriteBehind:user user WriteBehind:passwd passwd`
 * Create a Snowflake database using the following script:
 ```
 /opt/recipe/snowflake/rs/create-exmaple-db
@@ -27,10 +31,10 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node-snowflake)
 
 On one of the Redis cluster nodes:
 
-* Run `/opt/recipe/snowflake/rs/start-gear`.
+* Run `/opt/recipe/rs/start-gear`.
 * With multiple databases:
   * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/snowflake/rs/start-gear`.
+  * Run `DB=<db-id> /opt/recipe/rs/start-gear`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
@@ -47,10 +51,10 @@ select * from person1;
 
 ## Testing
 * Log on via SSH to a cluster node.
-* Run `/opt/recipe/snowflake/rs/run-test`.
+* Run `/opt/recipe/rs/run-test`.
 * With multiple databases:
   * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/snowflake/rs/run-test`.
+  * Run `DB=<db-id> /opt/recipe/rs/run-test`.
 * Open another connection to that node and run `/opt/recipe/snowflake/sample-snowsql-db`
 
 ## Diagnostics

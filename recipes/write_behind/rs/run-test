@@ -1,0 +1,27 @@
+#!/opt/redislabs/bin/python
+
+import os
+import json
+import subprocess
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+j = json.loads(subprocess.check_output(HERE + '/redis-conn'))
+host = str(j['host'])
+port = str(j['port'])
+password = str(j['passwd'])
+
+subprocess.check_call([HERE + '/../tests/test_write_behind.py', '--host', host, '--port', port, '--password', password])
+
+#!/bin/bash
+
+# HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)" 
+# 
+# CONN=`$HERE/redis-conn`
+# if [[ $? != 0 ]]; then
+# 	echo "run-test: not running."
+# 	exit 1
+# fi
+# 
+# cd $HERE/../..
+# /opt/redislabs/bin/python ./tests/test_write_behind.py $CONN

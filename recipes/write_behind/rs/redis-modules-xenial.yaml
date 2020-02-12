@@ -1,0 +1,6 @@
+redisgears:
+    awspath: redisgears/snapshots/redisgears.linux-xenial-x64.master.zip
+redisgears-deps:
+    awspath: redisgears/snapshots/redisgears-dependencies.linux-xenial-x64.master.tgz
+    dest: /
+    unzip: yes

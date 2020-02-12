@@ -24,6 +24,12 @@ if [ -z $(command -v git) ]; then
 	fi
 fi
 
+pip install yq
+
+if [[ $FORCE == 1 ]]; then
+	rm -rf /opt/recipe /opt/RedisGears /opt/redislabs/lib/modules/python3
+fi
+
 BRANCH=write_behind_1
 
 mkdir -p /opt
@@ -42,13 +48,13 @@ ln -sf ../gears.py .
 
 OSNICK=`/opt/redislabs/bin/python2 /opt/RedisGears/deps/readies/bin/platform --osnick`
 [[ $OSNICK =~ 'rhel7' ]] && OSNICK='centos7'
-if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' ]]; then
+if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' && $OSNICK != 'xenial' ]]; then
 	echo "$OSNICK: incompatible platform. Aborting."
 	exit 1
 fi
 
-MOD_DIR=/opt/recipe/oracle/rs
-/opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
+# MOD_DIR=/opt/recipe/rs
+# /opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
 
 printf "\n$ORACLE oracle\n" >> /etc/hosts
 

@@ -87,18 +87,17 @@ pack_deps() {
 	echo Created artifacts/snapshot/$TAR1
 }
 
-if ! command -v redis-server > /dev/null; then
-	echo Cannot find redis-server. Aborting.
-	exit 1
-fi
-
 # export ROOT=`git rev-parse --show-toplevel`
 export ROOT=$(realpath $HERE)
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
-BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
+
+[[ -z $BRANCH ]] && BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
 BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
-OS_VERSION=${OS_VERSION:-generic}
+if [[ $GITSHA == 1 ]]; then
+	GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)
+	BRANCH="${BRANCH}-${GIT_COMMIT}"
+fi
 
 export PYTHONWARNINGS=ignore
 
@@ -126,6 +125,11 @@ fi
 mkdir -p artifacts/snapshot artifacts/release
 
 if [[ $RAMP == 1 ]]; then
+	if ! command -v redis-server > /dev/null; then
+		echo Cannot find redis-server. Aborting.
+		exit 1
+	fi
+
 	[[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
 	[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
 	

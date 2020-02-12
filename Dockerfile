@@ -52,9 +52,9 @@ ENV REDIS_MODULES /var/opt/redislabs/lib/modules
 RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
 
 COPY --from=builder /build/redisgears.so $REDIS_MODULES/
-COPY --from=builder /build/artifacts/release/* /var/opt/redislabs/artifacts/
+COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts/
 
-RUN tar xzf /var/opt/redislabs/artifacts/redisgears-dependencies.*.tgz -C /
+RUN tar xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C /
 
 RUN if [ "$PACK" != "1" ]; then rm -rf /var/opt/redislabs/artifacts; fi
 

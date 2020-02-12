@@ -1,0 +1,6 @@
+#!/bin/bash
+
+while true; do
+	printf "set heading off;\n set pages 0;\n select count(*) from person1;" | /opt/recipe/oracle/sqlplus -S
+	sleep 1
+done

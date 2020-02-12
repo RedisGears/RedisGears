@@ -37,7 +37,13 @@ def PP(res):
     print(res)
 
 
-r = redis.Redis(args.host, args.port, password=args.password)
+try:
+    r = redis.Redis(args.host, args.port, password=args.password)
+    r.ping()
+except:
+    print('Cannot connect to Redis. Aborting.')
+    exit(1)
+
 for p in args.path:
     f = open(p, 'rt')
     script = f.read()
@@ -59,3 +65,5 @@ for p in args.path:
             PP(err)
             print('--------------------------------------------------------')
     f.close()
+
+exit(0)

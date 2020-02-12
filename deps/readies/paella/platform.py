@@ -189,6 +189,8 @@ class OnPlatform:
                     assert(False), "Cannot determine installer"
             elif os == 'macosx':
                 self.macosx()
+            elif os == 'freebsd':
+                self.freebsd()
 
         self.common_last()
 

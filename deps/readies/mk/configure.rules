@@ -6,7 +6,6 @@ $(CONFIGURE_BUILD_DIR)/Makefile: $(SRCDIR)/configure
 		cd $(CONFIGURE_BUILD_DIR) ;\
 		$(abspath $(SRCDIR))/configure $(CONFIGURE_FLAGS)
 
-#  bindirs
 $(CONFIGURE_TARGET): $(CONFIGURE_BUILD_DIR)/Makefile
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) -j $(NPROC)
 

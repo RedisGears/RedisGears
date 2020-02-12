@@ -29,7 +29,7 @@ defaultOperation = OPERATION_UPDATE_REPLICATE
 
 def WriteBehindLog(msg, prefix='%s - ' % NAME, logLevel='notice'):
     msg = prefix + msg
-    Log(logLevel, msg)    
+    Log(logLevel, msg)
 
 def WriteBehindDebug(msg):
     WriteBehindLog(msg, logLevel='debug')
@@ -50,7 +50,7 @@ def InitializeParams():
     Notice that it you put those values here you can change them without re-register the execution (only reload from rdb will do).
 
     If you have other parameters that can not be change (for example the 'dbtype' and the 'onFailedRetryInterval' in our case)
-    Then its a good idea to still check there values and output a log message indicating that those values 
+    Then its a good idea to still check there values and output a log message indicating that those values
     was changed but the change will not take effect.
     '''
     global dbtype
@@ -386,7 +386,7 @@ def ShouldProcessHash(r):
             WriteBehindLog(msg)
             raise Exception(msg)
 
-    
+
     key = r['key']
 
     if hasValue:
@@ -459,7 +459,7 @@ def RegisterExecutions():
         aggregate([], lambda a, r: a + [r], lambda a, r: a + r).\
         foreach(CreateSQLDataWriter(v)).\
         count().\
-        register(regex='_%s-stream-*' % v[TABLE_KEY], 
+        register(regex='_%s-stream-*' % v[TABLE_KEY],
                  mode="async_local",
                  batch=100,
                  duration=4000,

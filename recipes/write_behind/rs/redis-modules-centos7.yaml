@@ -1,0 +1,6 @@
+redisgears:
+    awspath: redisgears/snapshots/redisgears.linux-centos7-x64.master.zip
+redisgears-deps:
+    awspath: redisgears/snapshots/redisgears-dependencies.linux-centos7-x64.master.tgz
+    dest: /
+    unzip: yes
