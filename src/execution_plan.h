@@ -266,7 +266,7 @@ FlatExecutionPlan* FlatExecutionPlan_New();
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep);
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep);
 const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t* len, char** err);
-FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t len);
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t len, char** err);
 bool FlatExecutionPlan_SetReader(FlatExecutionPlan* fep, char* reader);
 void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, void* PD);
 void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep);

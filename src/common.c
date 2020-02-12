@@ -58,6 +58,8 @@ void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID){
         memcpy(generatedId + REDISMODULE_NODE_ID_LEN, lastID, sizeof(long long));
         finalId = generatedId;
         ++(*lastID);
+    }else{
+        *lastID = MAX((long long)finalId[REDISMODULE_NODE_ID_LEN] + 1, *lastID);
     }
     memcpy(idBuf, finalId, ID_LEN);
     snprintf(idStrBuf, STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, idBuf, *(long long*)&idBuf[REDISMODULE_NODE_ID_LEN]);
@@ -110,7 +112,7 @@ const char* GetShardUniqueId() {
     return shardUniqueId;
 }
 
-void ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
+int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
     char* command;
     va_list ap;
     va_start(ap, __fmt);
@@ -131,9 +133,21 @@ void ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
     }
 
     /* close */
-    pclose(f);
+    /**
+     * The returnvalue of the child process is
+     * in the top 16 8 bits. You have to divide
+     * the returned value of pclose by 256,
+     * then you get the searched return value of the child process.
+     */
+    int exitCode = pclose(f)/256;
+
+    if(exitCode != 0){
+        RedisModule_Log(ctx, "warning", "Execution failed command : %s", command);
+    }
 
     RG_FREE(command);
 
     va_end(ap);
+
+    return exitCode;
 }

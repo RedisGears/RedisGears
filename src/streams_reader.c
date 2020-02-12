@@ -649,9 +649,11 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     } else if(ctx->status == StreamRegistrationStatus_ABORTED){
         ++srctx->numAborted;
     } else {
-        Reader* reader = ExecutionPlan_GetReader(ctx);
-        StreamReader_AckAndTrimm(reader->ctx);
-        StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
+        if(EPIsFlagOn(ctx, EFIsLocal)){
+            Reader* reader = ExecutionPlan_GetReader(ctx);
+            StreamReader_AckAndTrimm(reader->ctx);
+            StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
+        }
         ++srctx->numSuccess;
     }
 
@@ -1017,8 +1019,12 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
         assert(data);
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len);
-        assert(fep);
+        char* err = NULL;
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len, &err);
+        if(!fep){
+            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            assert(false);
+        }
         RedisModule_Free(data);
 
         data = RedisModule_LoadStringBuffer(rdb, &len);
