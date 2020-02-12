@@ -78,7 +78,7 @@ static int LimitArgSerialize(void* arg, Gears_BufferWriter* bw, char** err){
     return REDISMODULE_OK;
 }
 
-static void* LimitArgDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
+static void* LimitArgDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, char** err){
     LimitExecutionStepArg* limitArg = RG_ALLOC(sizeof(*limitArg));
     limitArg->offset = RedisGears_BRReadLong(br);
     limitArg->len = RedisGears_BRReadLong(br);
@@ -286,8 +286,13 @@ static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_Buffer
     RedisGears_BWWriteLong(bw, step->type);
     RedisGears_BWWriteString(bw, step->bStep.stepName);
     ArgType* type = step->bStep.arg.type;
-    if(type && type->serialize){
-        return type->serialize(step->bStep.arg.stepArg, bw, err);
+    if(step->bStep.arg.stepArg){
+        RedisGears_BWWriteLong(bw, 1); // has step args
+        if(type && type->serialize){
+            return type->serialize(step->bStep.arg.stepArg, bw, err);
+        }
+    }else{
+        RedisGears_BWWriteLong(bw, 0); // do not have step args
     }
     return REDISMODULE_OK;
 }
@@ -396,19 +401,26 @@ static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferRead
     return reader;
 }
 
-static FlatExecutionStep FlatExecutionPlan_DeserializeStep(FlatExecutionPlan* fep, Gears_BufferReader* br){
-    FlatExecutionStep step;
-    step.type = RedisGears_BRReadLong(br);
-    step.bStep.stepName = RG_STRDUP(RedisGears_BRReadString(br));
-    step.bStep.arg.stepArg = NULL;
-    step.bStep.arg.type = FlatExecutionPlan_GetArgTypeByStepType(step.type, step.bStep.stepName);
-    if(step.bStep.arg.type && step.bStep.arg.type->deserialize){
-        step.bStep.arg.stepArg = step.bStep.arg.type->deserialize(fep, br);
+static int FlatExecutionPlan_DeserializeStep(FlatExecutionPlan* fep, FlatExecutionStep* step, Gears_BufferReader* br, char** err){
+    step->type = RedisGears_BRReadLong(br);
+    step->bStep.stepName = RG_STRDUP(RedisGears_BRReadString(br));
+    step->bStep.arg.stepArg = NULL;
+    step->bStep.arg.type = FlatExecutionPlan_GetArgTypeByStepType(step->type, step->bStep.stepName);
+    if(RedisGears_BRReadLong(br)){
+        // has step args
+        if(step->bStep.arg.type && step->bStep.arg.type->deserialize){
+            step->bStep.arg.stepArg = step->bStep.arg.type->deserialize(fep, br, err);
+        }
+        if(!step->bStep.arg.stepArg){
+            return REDISMODULE_ERR;
+        }
+    }else{
+        step->bStep.arg.stepArg = NULL;
     }
-    return step;
+    return REDISMODULE_OK;
 }
 
-FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLen){
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLen, char** err){
     Gears_Buffer buff = {
             .buff = (char*)data,
             .size = dataLen,
@@ -423,13 +435,20 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
         ret->PDType = RG_STRDUP(RedisGears_BRReadString(&br));
         ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
         assert(type);
-        ret->PD = type->deserialize(ret, &br);
+        ret->PD = type->deserialize(ret, &br, err);
+        if(!ret->PD){
+            goto error;
+        }
     }
 
     ret->reader = FlatExecutionPlan_DeserializeReader(&br);
     long numberOfSteps = RedisGears_BRReadLong(&br);
     for(int i = 0 ; i < numberOfSteps ; ++i){
-        ret->steps = array_append(ret->steps, FlatExecutionPlan_DeserializeStep(ret, &br));
+        FlatExecutionStep s = {0};
+        if(FlatExecutionPlan_DeserializeStep(ret, &s, &br, err) != REDISMODULE_OK){
+            goto error;
+        }
+        ret->steps = array_append(ret->steps, s);
     }
 
     // read FEP id
@@ -450,7 +469,10 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
         void* arg = NULL;
         long long hasArg = RedisGears_BRReadLong(&br);
         if(hasArg){
-            arg = type->deserialize(ret, &br);
+            arg = type->deserialize(ret, &br, err);
+            if(!arg){
+                goto error;
+            }
         }
         ret->onExecutionStartStep = (FlatBasicStep){
                 .stepName = RG_STRDUP(onStartCallbackName),
@@ -468,7 +490,10 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
         void* arg = NULL;
         long long hasArg = RedisGears_BRReadLong(&br);
         if(hasArg){
-            arg = type->deserialize(ret, &br);
+            arg = type->deserialize(ret, &br, err);
+            if(!arg){
+                goto error;
+            }
         }
         ret->onRegisteredStep = (FlatBasicStep){
                 .stepName = RG_STRDUP(onRegisteredCallbackName),
@@ -484,6 +509,10 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
     const char* d = FlatExecutionPlan_Serialize(ret, NULL, NULL);
     assert(d);
     return ret;
+
+error:
+    FlatExecutionPlan_Free(ret);
+    return NULL;
 }
 
 static void ExecutionPlan_SendRunRequest(ExecutionPlan* ep){
@@ -1332,9 +1361,13 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     Gears_BufferReaderInit(&br, &buff);
     size_t dataLen;
     char* data = RedisGears_BRReadBuffer(&br, &dataLen);
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
+    char* err = NULL;
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen, &err);
     if(!fep){
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s.", sender_id);
+        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+        if(err){
+            RG_FREE(err);
+        }
         return;
     }
 
@@ -1653,7 +1686,15 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     Gears_BufferReaderInit(&br, &buff);
     size_t dataLen;
     char* data = RedisGears_BRReadBuffer(&br, &dataLen);
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen);
+    char* err = NULL;
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen, &err);
+    if(!fep){
+        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
+        if(err){
+            RG_FREE(err);
+        }
+        return;
+    }
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
     assert(idLen == ID_LEN);
@@ -2423,7 +2464,7 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     while((curr = Gears_dictNext(iter))){
         FlatExecutionPlan* fep = Gears_dictGetVal(curr);
-        RedisModule_ReplyWithArray(ctx, 8);
+        RedisModule_ReplyWithArray(ctx, 10);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
         RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
@@ -2442,6 +2483,15 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
             RedisModule_ReplyWithNull(ctx);
         } else {
             callbacks->dumpRegistratioData(ctx, fep);
+        }
+        RedisModule_ReplyWithStringBuffer(ctx, "PD", strlen("PD"));
+        if(fep->PD){
+            ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+            char* pdStr = type->tostring(fep->PD);
+            RedisModule_ReplyWithStringBuffer(ctx, pdStr, strlen(pdStr));
+            RG_FREE(pdStr);
+        }else{
+            RedisModule_ReplyWithNull(ctx);
         }
         ++numElements;
     }

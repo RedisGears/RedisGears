@@ -266,6 +266,11 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         Cluster_Free();
     }
 
+    if(argc < 10){
+        RedisModule_Log(ctx, "warning", "Could not parse cluster set arguments");
+        return;
+    }
+
     CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
 
     size_t myIdLen;
@@ -683,6 +688,10 @@ int Cluster_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 }
 
 int Cluster_ClusterSet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc < 10){
+        RedisModule_ReplyWithError(ctx, "Could not parse cluster set arguments");
+        return REDISMODULE_OK;
+    }
     Cluster_SendClusterSet(ctx, argv, argc);
     return REDISMODULE_OK;
 }

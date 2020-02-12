@@ -323,6 +323,9 @@ def testBasicStreamRegisterOnPrefix(env):
     for r in registrations:
         env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
+    time.sleep(0.1) # wait for registration to unregister
+    # todo: remove the need for this
+
 
 def testBasicStreamProcessing(env):
     conn = getConnectionByEnv(env)

@@ -55,7 +55,7 @@ typedef struct ArgType ArgType;
 typedef void (*ArgFree)(void* arg);
 typedef void* (*ArgDuplicate)(void* arg);
 typedef int (*ArgSerialize)(void* arg, Gears_BufferWriter* bw, char** err);
-typedef void* (*ArgDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br);
+typedef void* (*ArgDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br, char** err);
 typedef char* (*ArgToString)(void* arg);
 
 /**
