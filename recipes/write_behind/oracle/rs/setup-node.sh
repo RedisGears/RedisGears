@@ -24,7 +24,7 @@ if [ -z $(command -v git) ]; then
 	fi
 fi
 
-pip install yq
+# pip install yq
 
 if [[ $FORCE == 1 ]]; then
 	rm -rf /opt/recipe /opt/RedisGears /opt/redislabs/lib/modules/python3
