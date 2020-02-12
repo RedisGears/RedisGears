@@ -40,7 +40,7 @@ endif
 	@echo "Copying artifacts ..."
 	@CID=$$$$($(DOCKER) create $(REPO):$(1)) ;\
 	mkdir -p $(ARTIFACTS) ;\
-	$(DOCKER) cp $$$${CID}:/var/opt/redislabs/artifacts $(ARTIFACTS)/ ;\
+	$(DOCKER) cp $$$${CID}:/var/opt/redislabs/artifacts/. $(ARTIFACTS)/ ;\
 	$(DOCKER) rm -v $$$${CID} > /dev/null
 	@echo "Done."
 
