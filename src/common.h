@@ -12,6 +12,9 @@
 #include "redismodule.h"
 #include <stdio.h>
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 #define ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
 #define STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
 

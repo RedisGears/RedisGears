@@ -59,7 +59,7 @@ void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID){
         finalId = generatedId;
         ++(*lastID);
     }else{
-        *lastID = (long long)finalId[REDISMODULE_NODE_ID_LEN] + 1;
+        *lastID = MAX((long long)finalId[REDISMODULE_NODE_ID_LEN] + 1, *lastID);
     }
     memcpy(idBuf, finalId, ID_LEN);
     snprintf(idStrBuf, STR_ID_LEN, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, idBuf, *(long long*)&idBuf[REDISMODULE_NODE_ID_LEN]);
