@@ -1,6 +1,6 @@
 redisgears:
-    awspath: lab/08-gears-write-behind/redisgears.linux-bionic-x64.99.99.99-3e6d45a.zip
+    awspath: redisgears/snapshots/redisgears.linux-bionic-x64.master.zip
 redisgears-deps:
-    awspath: lab/08-gears-write-behind/redisgears-dependencies.linux-bionic-x64.99.99.99-3e6d45a.tgz
+    awspath: redisgears/snapshots/redisgears-dependencies.linux-bionic-x64.master.tgz
     dest: /
     unzip: yes

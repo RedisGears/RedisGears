@@ -173,13 +173,13 @@ DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=0 SNAPSHOT=1 ./pac
 
 DEPS_URL_BASE:=http://redismodules.s3.amazonaws.com/redisgears
 DEPS_URL_BASE.release=$(DEPS_URL_BASE)
-DEPS_URL_BASE.snapshot=$(DEPS_URL_BASE)/snapshot
+DEPS_URL_BASE.snapshot=$(DEPS_URL_BASE)/snapshots
 
 define build_deps_args # type (release|snapshot)
-$(BINDIR)/$(1)-deps.o : $(SRCDIR)/deps-args.c artifacts/$(1)/$(DEPS_TAR.$(1))
-	$(SHOW)$$(CC) $$(CC_FLAGS) -c $$< -o $$@ \
-		-DDEPENDENCIES_URL=\"$(DEPS_URL_BASE.$(1))/$(DEPS_TAR.$(1))\" \
-		-DDEPENDENCIES_SHA256=\"$$(shell cat artifacts/$(1)/$(DEPS_TAR.$(1)).sha256)\"
+$$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c artifacts/$(1)/$$(DEPS_TAR.$(1))
+	$$(SHOW)$$(CC) $$(CC_FLAGS) -c $$< -o $$@ \
+		-DDEPENDENCIES_URL=\"$$(DEPS_URL_BASE.$(1))/$$(DEPS_TAR.$(1))\" \
+		-DDEPENDENCIES_SHA256=\"$$(shell cat artifacts/$(1)/$$(DEPS_TAR.$(1)).sha256)\"
 endef
 
 artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)

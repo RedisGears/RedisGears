@@ -1,6 +1,6 @@
-redisgears:
-    awspath: lab/08-gears-write-behind/redisgears.linux-xenial-x64.99.99.99-3e6d45a.zip
 redisgears-deps:
     awspath: lab/08-gears-write-behind/redisgears-dependencies.linux-xenial-x64.99.99.99-3e6d45a.tgz
     dest: /
     unzip: yes
+redisgears:
+    awspath: lab/08-gears-write-behind/redisgears.linux-xenial-x64.99.99.99-3e6d45a.zip

@@ -53,9 +53,9 @@ if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' && $OSNICK != 'xenial' ]]; the
 	exit 1
 fi
 
-# MOD_DIR=/opt/recipe/rs
-# /opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
-# 
+MOD_DIR=/opt/recipe/rs
+/opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
+ 
 # module=$(yq .redisgears.awspath $MOD_DIR/redis-modules-$OSNICK.yaml | cut -d\" -f2)
 # mod_json=$(curl -k \
 # 	-u "${USER}:${PASSWD}" \

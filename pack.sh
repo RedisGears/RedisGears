@@ -87,11 +87,6 @@ pack_deps() {
 	echo Created artifacts/snapshot/$TAR1
 }
 
-if ! command -v redis-server > /dev/null; then
-	echo Cannot find redis-server. Aborting.
-	exit 1
-fi
-
 # export ROOT=`git rev-parse --show-toplevel`
 export ROOT=$(realpath $HERE)
 
@@ -130,6 +125,11 @@ fi
 mkdir -p artifacts/snapshot artifacts/release
 
 if [[ $RAMP == 1 ]]; then
+	if ! command -v redis-server > /dev/null; then
+		echo Cannot find redis-server. Aborting.
+		exit 1
+	fi
+
 	[[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
 	[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
 	
