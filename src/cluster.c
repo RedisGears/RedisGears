@@ -569,7 +569,7 @@ char* Cluster_GetMyId(){
 
 const char* Cluster_GetMyHashTag(){
     if(!Cluster_IsClusterMode()){
-        return NULL;
+        return slot_table[0];
     }
     return CurrCluster->myHashTag;
 }
