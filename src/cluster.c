@@ -26,6 +26,7 @@ typedef struct Node{
     Gears_list* pendingMessages;
     size_t minSlot;
     size_t maxSlot;
+    bool isMe;
 }Node;
 
 Gears_dict* nodesMsgIds;
@@ -123,11 +124,13 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .pendingMessages = Gears_listCreate(),
             .minSlot = minSlot,
             .maxSlot = maxSlot,
+            .isMe = true,
     };
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
     if(strcmp(id, CurrCluster->myId) == 0){
         CurrCluster->myHashTag = slot_table[minSlot];
+        n->isMe = true;
     }
     return n;
 }
@@ -456,7 +459,9 @@ static void Cluster_SendMessage(SendMsg* sendMsg){
         Gears_dictEntry *entry = NULL;
         while((entry = Gears_dictNext(iter))){
             Node* n = Gears_dictGetVal(entry);
-            Cluster_SendMsgToNode(n, sendMsg);
+            if(!n->isMe){
+                Cluster_SendMsgToNode(n, sendMsg);
+            }
         }
         Gears_dictReleaseIterator(iter);
     }
