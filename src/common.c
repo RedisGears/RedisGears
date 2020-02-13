@@ -107,6 +107,7 @@ const char* GetShardUniqueId() {
         shardUniqueId = RG_ALLOC(len + 1);
         shardUniqueId[len] = '\0';
         memcpy(shardUniqueId, logFileName, len);
+        RedisModule_FreeCallReply(reply);
         RedisModule_FreeThreadSafeContext(ctx);
     }
     return shardUniqueId;
