@@ -55,7 +55,7 @@ pack() {
 	
 	packname=`pipenv run bash $packer`
 	cd $ROOT
-	[[ -f $packer ]] && rm -f $packer
+	[[ -f $packer && $VERBOSE != 1 ]] && rm -f $packer
 	if [[ -z $packname ]]; then
 		echo Failed to pack $artifact
 		exit 1
