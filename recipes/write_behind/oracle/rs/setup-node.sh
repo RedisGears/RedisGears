@@ -24,7 +24,8 @@ if [ -z $(command -v git) ]; then
 	fi
 fi
 
-# pip install yq
+wget -O /opt/redislabs/bin/yq https://github.com/mikefarah/yq/releases/download/3.1.1/yq_linux_amd64
+chmod +x /opt/redislabs/bin/yq
 
 if [[ $FORCE == 1 ]]; then
 	rm -rf /opt/recipe /opt/RedisGears /opt/redislabs/lib/modules/python3
