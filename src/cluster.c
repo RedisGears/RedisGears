@@ -124,7 +124,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .pendingMessages = Gears_listCreate(),
             .minSlot = minSlot,
             .maxSlot = maxSlot,
-            .isMe = true,
+            .isMe = false,
     };
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
