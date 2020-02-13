@@ -71,6 +71,9 @@ _SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
 ifeq ($(WITHPYTHON),1)
 _SOURCES += redisgears_python.c
 endif
+ifeq ($(DEBUG),1)
+_SOURCES += debug.c
+endif
 
 SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
 OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
@@ -110,7 +113,8 @@ CC_FLAGS += \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
 	-I$(BINROOT)/cpython \
-	-Ibin/$(FULL_VARIANT.release)/cpython
+	-Ibin/$(FULL_VARIANT.release)/cpython \
+	-I.
 
 LD_FLAGS += 
 

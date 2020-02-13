@@ -2758,9 +2758,14 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
 #define DEPS_FILE_PATH "/tmp/deps.%s.%s.tgz"
 #define DEPS_FILE_DIR "/tmp/deps.%s.%s/"
 #define LOCAL_VENV PYENV_DIR"/%s"
+    const char *no_deps = getenv("GEARS_NO_DEPS");
+    bool skip_deps_install = no_deps && !strcmp(no_deps, "1");
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
-
+        if (skip_deps_install) {
+            RedisModule_Log(ctx, "warning", "No Python installation found and GEARS_NO_DEPS=1: aborting");
+            return REDISMODULE_ERR;
+        }
         const char* expectedSha256 = GearsConfig_GetDependenciesSha256();
 
         ExecCommand(ctx, "rm -rf "DEPS_FILE_PATH, shardUid, expectedSha256);
@@ -2794,15 +2799,24 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
     }else{
         RedisModule_Log(ctx, "notice", "Found python installation under: "PYENV_DIR);
     }
-    if(GearsConfig_CreateVenv()){
+    if(!skip_deps_install && GearsConfig_CreateVenv()){
         rg_asprintf(&venvDir, PYENV_DIR"/.venv-%s", shardUid);
     }else{
         venvDir = PYENV_HOME_DIR;
     }
     DIR* dir = opendir(venvDir);
     if(!dir){
-        ExecCommand(ctx, "mkdir %s", venvDir);
-        ExecCommand(ctx, "/bin/bash -c \"source " PYENV_ACTIVATE_SCRIPT ";python -m virtualenv %s\"", venvDir);
+        if (skip_deps_install) {
+            RedisModule_Log(ctx, "warning", "No Python venv found and GEARS_NO_DEPS=1: aborting");
+            return REDISMODULE_ERR;
+        }
+        ExecCommand(ctx, "mkdir -p %s", venvDir);
+        int rc = ExecCommand(ctx, "/bin/bash -c \"source " PYENV_ACTIVATE_SCRIPT "; python -m virtualenv %s\"", venvDir);
+        if (rc) {
+            RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
+            ExecCommand(ctx, "rm -rf %s", venvDir);
+            return REDISMODULE_ERR;
+        }
     }else{
         RedisModule_Log(ctx, "notice", "Found venv installation under: %s", venvDir);
         closedir(dir);
