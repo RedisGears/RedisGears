@@ -2763,7 +2763,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
         if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python installation found and GEARS_NODEPS=1: aborting");
+            RedisModule_Log(ctx, "warning", "No Python installation found and GEARS_NO_DEPS=1: aborting");
             return REDISMODULE_ERR;
         }
         const char* expectedSha256 = GearsConfig_GetDependenciesSha256();
@@ -2807,7 +2807,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
     DIR* dir = opendir(venvDir);
     if(!dir){
         if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python venv found and GEARS_NODEPS=1: aborting");
+            RedisModule_Log(ctx, "warning", "No Python venv found and GEARS_NO_DEPS=1: aborting");
             return REDISMODULE_ERR;
         }
         ExecCommand(ctx, "mkdir -p %s", venvDir);
