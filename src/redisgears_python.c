@@ -2785,7 +2785,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
         }
 
         ExecCommand(ctx, "rm -rf "DEPS_FILE_DIR, shardUid, expectedSha256);
-        ExecCommand(ctx, "mkdir -P "DEPS_FILE_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "mkdir -p "DEPS_FILE_DIR, shardUid, expectedSha256);
 
         ExecCommand(ctx, "tar -xvf "DEPS_FILE_PATH" -C "DEPS_FILE_DIR, shardUid, expectedSha256, shardUid, expectedSha256);
 
