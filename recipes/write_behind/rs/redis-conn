@@ -2,6 +2,5 @@
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
-source /etc/opt/redislabs/redislabs_env_config.sh
-export PYTHONPATH=${cnmlibdir}:${cnmlibdir}/python:${PYTHONPATH}
-exec ${pythonexec} ${pythonflags} $HERE/redis-conn.py "${@}"
+export PYTHONPATH=${PYTHONPATH}:/opt/redislabs/lib/cnm:/opt/redislabs/lib/cnm/python
+/opt/redislabs/bin/python2.7 -O $HERE/redis-conn.py "${@}"
