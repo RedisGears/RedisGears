@@ -2669,8 +2669,10 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
         PyObject* pArgs = PyTuple_New(0);
         PyObject* callback = pyCtx->callback;
         pyRecord = PyObject_CallObject(callback, pArgs);
+        Py_DECREF(pArgs);
         if(PyGen_Check(pyRecord)) {
             pyCtx->generator = PyObject_GetIter(pyRecord);
+            Py_DECREF(pyRecord);
             pyRecord = PyIter_Next(pyCtx->generator);
         }
     }else{
@@ -3078,6 +3080,9 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 }
 
 void __attribute__((destructor)) RedisGearsPy_Clean(void) {
+    if(!requitmentsCache){
+        return;
+    }
     for(size_t i = 0 ; i < array_len(requitmentsCache) ; ++i){
         RG_FREE(requitmentsCache[i]);
     }
