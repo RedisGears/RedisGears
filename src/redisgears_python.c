@@ -2018,9 +2018,6 @@ int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **ar
 char* getPyError() {
     PyObject *pType, *pValue, *pTraceback;
     PyErr_Fetch(&pType, &pValue, &pTraceback);
-    if(!pValue){
-        return NULL;
-    }
     PyErr_NormalizeException(&pType, &pValue, &pTraceback);
     PyObject *pModuleName = PyUnicode_FromString("traceback");
     PyObject *pModule = PyImport_Import(pModuleName);
