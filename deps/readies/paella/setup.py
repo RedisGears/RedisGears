@@ -229,9 +229,9 @@ class Setup(OnPlatform):
     def install_gnu_utils(self, _try=False):
         packs = ""
         if self.os == 'macosx':
-            packs= "make findutils gnu-sed gnu-tar"
+            packs= "make findutils gnu-sed gnu-tar gawk"
         elif self.os == 'freebsd':
-            packs = "gmake findutils gsed gtar"
+            packs = "gmake findutils gsed gtar gawk"
         self.install(packs)
         for x in ['make', 'find', 'sed', 'tar']:
             p = "/usr/local/bin/{}".format(x)
