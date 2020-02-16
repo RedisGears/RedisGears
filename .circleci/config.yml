@@ -183,14 +183,17 @@ workflows:
 #            tags:
 #              only: /.*/
       - platform-build:
+          name: build-centos7
           platform: centos7
           requires:
             - ubuntu
       - platform-build:
+          name: build-bionic
           platform: bionic
           requires:
             - ubuntu
       - platform-build:
+          name: build-xenial
           platform: xenial
           requires:
             - ubuntu
@@ -208,7 +211,9 @@ workflows:
               only: /^v[0-9].*/
       - deploy_snapshots:
           requires:
-             - platform-build
+             - build-centos7
+             - build-bionic
+             - build-xenial
           filters:
             branches:
               only:
@@ -216,7 +221,9 @@ workflows:
                 - rafi-build1
       - deploy_releases:
           requires:
-             - platform-build
+             - build-centos7
+             - build-bionic
+             - build-xenial
           filters:
             branches:
               ignore: /.*/
