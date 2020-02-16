@@ -45,7 +45,7 @@ pack() {
 	ramp="$(command -v python) -m RAMP.ramp" 
 	cat <<- EOF > $packer
 		cd $ROOT
-		$ramp pack $GEARS_SO -m ramp.yml -o $packfile | tail -1
+		GEARS_NO_DEPS=1 $ramp pack $GEARS_SO -m ramp.yml -o $packfile | tail -1
 	EOF
 
 	cd $CPYTHON_PREFIX
@@ -55,7 +55,7 @@ pack() {
 	
 	packname=`pipenv run bash $packer`
 	cd $ROOT
-	[[ -f $packer ]] && rm -f $packer
+	[[ -f $packer && $VERBOSE != 1 ]] && rm -f $packer
 	if [[ -z $packname ]]; then
 		echo Failed to pack $artifact
 		exit 1

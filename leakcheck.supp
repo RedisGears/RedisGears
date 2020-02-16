@@ -91,3 +91,11 @@
    fun:redisConnectNonBlock
    ...
 }
+{
+   <ignore_connection_leak_for_now>
+   Memcheck:Leak
+   ...
+   fun:_redisContextConnectTcp
+   ...
+}
+

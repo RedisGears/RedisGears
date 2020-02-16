@@ -115,7 +115,7 @@ def InitializeParams():
     if dbtype == 'mysql':
         ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
     elif dbtype == 'oracle':
-        ConnectionStr = 'oracle://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
+        ConnectionStr = 'oracle://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
     elif dbtype == 'snowflake':
         try:
             account = WriteBehindGetConfig('%s:account' % NAME)
@@ -130,7 +130,6 @@ def InitializeParams():
                                                                               db=db)
     else:
         raise Exception('given backend not supported')
-    ConnectionStr = ConnectionStr[0] if type(ConnectionStr) is tuple else ConnectionStr
 
 # Also call the InitializeParams here so we will make sure all the needed params exists.
 # Otherwise we will abort

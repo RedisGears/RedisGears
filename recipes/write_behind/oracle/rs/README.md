@@ -38,6 +38,7 @@ ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 	* For RHEL7, use [this](http://redismodules.s3.amazonaws.com/redisgears/snapshots/redisgears.linux-centos7-x64.master.zip).
 
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
+  * Add the following parameter: `CreateVenv 0`
 
 ## Running the write-behind recipe
 

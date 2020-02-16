@@ -12,7 +12,7 @@
 #include <stdbool.h>
 
 #define MAX_SLOT 16384
-#define RG_INNER_MSG_COMMAND "rg.innermsgcommand"
+#define RG_INNER_MSG_COMMAND "RG.INNERMSGCOMMAND"
 
 void Cluster_SendMsg(char* id, char* function, char* msg, size_t len);
 #define Cluster_SendMsgM(id, function, msg, len) Cluster_SendMsg(id, #function, msg, len);

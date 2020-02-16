@@ -534,3 +534,16 @@ def testConfigGet():
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: (GearsConfigGet('TestConfig'), GearsConfigGet('NotExists', 'default')))."
                                "collect().distinct().run()").equal([["('TestVal', 'default')"],[]])
+
+def testDependenciesInstall(env):
+    res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                            "map(lambda x: __import__('redisgraph'))."
+                            "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
+    env.assertEqual(len(res[0]), 1)
+    env.assertEqual(len(res[1]), 0)
+    env.assertContains("<module 'redisgraph'", res[0][0])
+
+def testDependenciesInstallFailure(env):
+    env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                               "map(lambda x: __import__('redisgraph'))."
+                               "collect().distinct().run()", 'REQUIREMENTS', 'blabla').error().contains('satisfy requirments')

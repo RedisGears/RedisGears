@@ -836,7 +836,12 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
     while(RedisModule_LoadUnsigned(rdb)){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len);
+        char* err = NULL;
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len, &err);
+        if(!fep){
+            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            assert(false);
+        }
         RedisModule_Free(data);
 
         size_t serializedArgsLen;
