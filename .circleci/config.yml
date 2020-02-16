@@ -75,19 +75,19 @@ jobs:
           name: Build centos7
           command: |
             cd build/platforms
-            make centos7
+            make centos7 VERBOSE=1
           no_output_timeout: 30m
       - run:
           name: Build bionic
           command: |
             cd build/platforms
-            make bionic
+            make bionic VERBOSE=1
           no_output_timeout: 30m
       - run:
           name: Build xenial
           command: |
             cd build/platforms
-            make xenial
+            make xenial VERBOSE=1
           no_output_timeout: 30m
       - persist_to_workspace:
           root: artifacts
@@ -205,7 +205,7 @@ workflows:
             branches:
               only:
                 - master
-                - deploy_snapshots_1
+                - rafi-build1
       - deploy_releases:
           requires:
              - platforms-build
