@@ -124,12 +124,13 @@ def InitializeParams():
                 raise
             WriteBehindLog('Can not read account from configuration, will continue using the account which was supplied by the registration initializer.', logLevel='warning')
 
-        ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=username,
-                                                                              password=password,
+        ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=user,
+                                                                              password=passwd,
                                                                               account=account,
                                                                               db=db)
     else:
         raise Exception('given backend not supported')
+    ConnectionStr = ConnectionStr[0] if type(ConnectionStr) is tuple else ConnectionStr
 
 # Also call the InitializeParams here so we will make sure all the needed params exists.
 # Otherwise we will abort

@@ -23,5 +23,5 @@ port = ep.port()
 node_uid = list(ep.proxy_uids())[0]
 node = ccs.get_node(node_uid)
 ip = node.addr()
-print(json.dumps({'host': ip, 'port': port, 'passwd': pwd}))
+print(json.dumps({'host': ip, 'port': port, 'passwd': pwd, 'bdb_name': bdb.name()}))
 exit(0)
