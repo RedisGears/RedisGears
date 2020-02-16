@@ -169,7 +169,6 @@ jobs:
 
 workflows:
   version: 2
-
   default_flow:
     jobs:
       - ubuntu:
@@ -185,7 +184,8 @@ workflows:
 #            tags:
 #              only: /.*/
       - platforms-build:
-          requires: ubuntu
+          requires:
+            - ubuntu
       - macos:
           filters:
             branches:
@@ -199,14 +199,16 @@ workflows:
             tags:
               only: /^v[0-9].*/
       - deploy_snapshots:
-          requires: platforms-build
+          requires:
+             - platforms-build
           filters:
             branches:
               only:
                 - master
                 - deploy_snapshots_1
       - deploy_releases:
-          requires: platforms-build
+          requires:
+             - platforms-build
           filters:
             branches:
               ignore: /.*/
