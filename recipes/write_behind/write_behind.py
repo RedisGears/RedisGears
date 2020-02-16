@@ -115,7 +115,7 @@ def InitializeParams():
     if dbtype == 'mysql':
         ConnectionStr = 'mysql+pymysql://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
     elif dbtype == 'oracle':
-        ConnectionStr = 'oracle://{user}:{password}@{db}'.format(user=user, password=passwd, db=db),
+        ConnectionStr = 'oracle://{user}:{password}@{db}'.format(user=user, password=passwd, db=db)
     elif dbtype == 'snowflake':
         try:
             account = WriteBehindGetConfig('%s:account' % NAME)
@@ -124,8 +124,8 @@ def InitializeParams():
                 raise
             WriteBehindLog('Can not read account from configuration, will continue using the account which was supplied by the registration initializer.', logLevel='warning')
 
-        ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=username,
-                                                                              password=password,
+        ConnectionStr = 'snowflake://{user}:{password}@{account}/{db}'.format(user=user,
+                                                                              password=passwd,
                                                                               account=account,
                                                                               db=db)
     else:
