@@ -32,6 +32,7 @@ typedef struct Node{
     size_t maxSlot;
     bool isMe;
     NodeStatus status;
+    struct event *reconnectEvent;
 }Node;
 
 Gears_dict* nodesMsgIds;
@@ -91,6 +92,7 @@ static Node* GetNode(const char* id){
 }
 
 static void FreeNodeInternals(Node* n){
+    event_free(n->reconnectEvent);
     RG_FREE(n->id);
     RG_FREE(n->ip);
     if(n->unixSocket){
@@ -126,6 +128,35 @@ static void SentMessages_Free(void* ptr){
     RG_FREE(msg);
 }
 
+static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status);
+static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int status);
+
+static void Cluster_ConnectToShard(Node* n){
+    redisAsyncContext* c = redisAsyncConnect(n->ip, n->port);
+    if (!c) {
+        return;
+    }
+    if (c->err) {
+        /* Let *c leak for now... */
+        RedisModule_Log(NULL, "warning", "Error: %s\n", n->c->errstr);
+        //todo: handle this!!!
+    }
+    c->data = n;
+    n->c = c;
+    redisLibeventAttach(c, main_base);
+    redisAsyncSetConnectCallback(c, Cluster_ConnectCallback);
+    redisAsyncSetDisconnectCallback(c, Cluster_DisconnectCallback);
+}
+
+static void Cluster_Reconnect(evutil_socket_t s, short what, void *arg){
+    Node* n = arg;
+    if(n->status == NodeStatus_Free){
+        FreeNodeInternals(n);
+        return;
+    }
+    Cluster_ConnectToShard(n);
+}
+
 static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket, size_t minSlot, size_t maxSlot){
     assert(!GetNode(id));
     Node* n = RG_ALLOC(sizeof(*n));
@@ -143,6 +174,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .isMe = false,
             .status = NodeStatus_Disconnected,
     };
+    n->reconnectEvent = event_new(main_base, -1, 0, Cluster_Reconnect, n);
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
     if(strcmp(id, CurrCluster->myId) == 0){
@@ -223,32 +255,6 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
     n->status = NodeStatus_Connected;
 }
 
-static void Cluster_ConnectToShard(Node* n){
-    redisAsyncContext* c = redisAsyncConnect(n->ip, n->port);
-    if (!c) {
-        return;
-    }
-    if (c->err) {
-        /* Let *c leak for now... */
-        RedisModule_Log(NULL, "warning", "Error: %s\n", n->c->errstr);
-        //todo: handle this!!!
-    }
-    c->data = n;
-    n->c = c;
-    redisLibeventAttach(c, main_base);
-    redisAsyncSetConnectCallback(c, Cluster_ConnectCallback);
-    redisAsyncSetDisconnectCallback(c, Cluster_DisconnectCallback);
-}
-
-static void Cluster_Reconnect(evutil_socket_t s, short what, void *arg){
-    Node* n = arg;
-    if(n->status == NodeStatus_Free){
-        FreeNodeInternals(n);
-        return;
-    }
-    Cluster_ConnectToShard(n);
-}
-
 static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int status){
     RedisModule_Log(NULL, "warning", "disconnected : %s:%d, status : %d, will try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
     if(!c->data){
@@ -259,8 +265,7 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
     struct timeval tv = {
             .tv_sec = 1,
     };
-    struct event *reconnectEvent = event_new(main_base, -1, 0, Cluster_Reconnect, n);
-    event_add(reconnectEvent, &tv);
+    event_add(n->reconnectEvent, &tv);
 }
 
 static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int status){
@@ -273,8 +278,7 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
         struct timeval tv = {
                 .tv_sec = 1,
         };
-        struct event *reconnectEvent = event_new(main_base, -1, 0, Cluster_Reconnect, n);
-        event_add(reconnectEvent, &tv);
+        event_add(n->reconnectEvent, &tv);
     }else{
         RedisModule_Log(NULL, "notice", "connected : %s:%d, status = %d\r\n", c->c.tcp.host, c->c.tcp.port, status);
         if(n->password){
