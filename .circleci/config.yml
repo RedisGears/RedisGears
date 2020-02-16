@@ -1,9 +1,9 @@
 version: 2.1
 
-defaults:
-  default_jobs: &default_jobs
-    - centos
-    - ubuntu
+#defaults:
+#  default_jobs: &default_jobs
+#    - centos
+#    - ubuntu
 
 commands:
   ci_steps:
