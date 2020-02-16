@@ -15,15 +15,12 @@ parser.add_argument(
     '--port', default=6379, type=int,
     help='redis port')
 
-parser.add_argument('path', help='scripts paths', nargs='+',)
+parser.add_argument('path', help='scripts paths')
+parser.add_argument('extra_args', help='extra argument to send with the script', nargs='*', default=[])
 
 parser.add_argument(
     '--password', default=None,
     help='redis password')
-
-parser.add_argument(
-    '--nonblocking', default=False, type=bool,
-    help='set unblocking run')
 
 args = parser.parse_args()
 
@@ -44,26 +41,23 @@ except:
     print('Cannot connect to Redis. Aborting.')
     exit(1)
 
-for p in args.path:
-    f = open(p, 'rt')
-    script = f.read()
-    q = ['rg.pyexecute', script]
-    if args.nonblocking:
-        q += ['unblocking']
-    reply = r.execute_command(*q)
-    if reply == 'OK':
-        print('OK')
-    else:
-        results, errors = reply
-        for res in results:
-            print('--------------------------------------------------------')
-            PP(res)
-            print('--------------------------------------------------------')
-        print ''
-        for err in errors:
-            print('--------------------------------------------------------')
-            PP(err)
-            print('--------------------------------------------------------')
-    f.close()
+f = open(args.path, 'rt')
+script = f.read()
+q = ['rg.pyexecute', script] + args.extra_args
+reply = r.execute_command(*q)
+if reply == 'OK':
+    print('OK')
+else:
+    results, errors = reply
+    for res in results:
+        print('--------------------------------------------------------')
+        PP(res)
+        print('--------------------------------------------------------')
+    print('')
+    for err in errors:
+        print('--------------------------------------------------------')
+        PP(err)
+        print('--------------------------------------------------------')
+f.close()
 
 exit(0)
