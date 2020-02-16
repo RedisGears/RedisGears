@@ -208,7 +208,7 @@ workflows:
               only: /^v[0-9].*/
       - deploy_snapshots:
           requires:
-             - platforms-build
+             - platform-build
           filters:
             branches:
               only:
@@ -216,7 +216,7 @@ workflows:
                 - rafi-build1
       - deploy_releases:
           requires:
-             - platforms-build
+             - platform-build
           filters:
             branches:
               ignore: /.*/
