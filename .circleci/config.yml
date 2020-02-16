@@ -33,8 +33,6 @@ commands:
     parameters:
       platform:
         type: string
-    docker:
-      - image: 'debian:buster'
     steps:
       - run:
           name: Setup executor
@@ -87,6 +85,16 @@ jobs:
 #          command: cd ../redis; git fetch; git checkout 5.0.6; make; make install
 #      - ci_steps:
 #          platform: redhat
+
+  platform-build:
+    parameters:
+      platform:
+        type: string
+    docker:
+      - image: 'debian:buster'
+    steps:
+      - platform-build:
+          platform: <<parameters.platform>>
 
   macos:
     macos:
