@@ -28,13 +28,6 @@ commands:
           command: make test
       - store_test_results:
           path: pytest/logs
-      - persist_to_workspace:
-          root: artifacts
-          paths:
-            - 'snapshot/*.zip'
-            - 'snapshot/*.tgz'
-            - 'release/*.zip'
-            - 'release/*.tgz'
 
 jobs:
   ubuntu:
@@ -49,17 +42,60 @@ jobs:
       - ci_steps:
           platform: ubuntu
   
-  centos:
+#  centos:
+#    docker:
+#      - image: 'redislabsmodules/rmbuildercentos:latest'
+#    environment:
+#      - BUILD_DIR: build-centos
+#    steps:
+#      - run:
+#          name: Redis_5_upgrade
+#          command: cd ../redis; git fetch; git checkout 5.0.6; make; make install
+#      - ci_steps:
+#          platform: redhat
+
+  platforms-build:
     docker:
-      - image: 'redislabsmodules/rmbuildercentos:latest'
-    environment:
-      - BUILD_DIR: build-centos
+      - image: 'debian:buster'
     steps:
       - run:
-          name: Redis_5_upgrade
-          command: cd ../redis; git fetch; git checkout 5.0.6; make; make install
-      - ci_steps:
-          platform: redhat
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
+            bash <(curl -fsSL https://get.docker.com)
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Setup
+          command: |
+            git submodule update --init --recursive
+            ./deps/readies/bin/getpy2
+      - run:
+          name: Build centos7
+          command: |
+            cd build/platforms
+            make centos7
+          no_output_timeout: 30m
+      - run:
+          name: Build bionic
+          command: |
+            cd build/platforms
+            make bionic
+          no_output_timeout: 30m
+      - run:
+          name: Build xenial
+          command: |
+            cd build/platforms
+            make xenial
+          no_output_timeout: 30m
+      - persist_to_workspace:
+          root: artifacts
+          paths:
+            - 'snapshot/*.zip'
+            - 'snapshot/*.tgz'
+            - 'release/*.zip'
+            - 'release/*.tgz'
 
   macos:
     macos:
@@ -142,12 +178,14 @@ workflows:
               only: /.*/
             tags:
               only: /.*/
-      - centos:
-          filters:
-            branches:
-              only: /.*/
-            tags:
-              only: /.*/
+#      - centos:
+#          filters:
+#            branches:
+#              only: /.*/
+#            tags:
+#              only: /.*/
+      - platforms-build:
+          requires: ubuntu
       - macos:
           filters:
             branches:
@@ -161,14 +199,14 @@ workflows:
             tags:
               only: /^v[0-9].*/
       - deploy_snapshots:
-          requires: *default_jobs
+          requires: platforms-build
           filters:
             branches:
               only:
                 - master
                 - deploy_snapshots_1
       - deploy_releases:
-          requires: *default_jobs
+          requires: platforms-build
           filters:
             branches:
               ignore: /.*/
