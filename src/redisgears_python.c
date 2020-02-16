@@ -1882,21 +1882,12 @@ static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **a
     ptctx->doneFunction = oldDoneFunction;
 
     if(!v){
-        PyObject *ptype, *pvalue, *ptraceback;
-        PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-        if(!pvalue){
+        char* err = getPyError();
+        if(!err){
             RedisModule_ReplyWithError(ctx, "failed running the given script");
         }else{
-            PyObject* errStr = PyObject_Str(pvalue);
-            size_t s;
-            const char *pStrErrorMessage = PyUnicode_AsUTF8AndSize(errStr, &s);
-            RedisModule_ReplyWithError(ctx, pStrErrorMessage);
-            Py_DECREF(errStr);
-            Py_DECREF(ptype);
-            Py_DECREF(pvalue);
-            if(ptraceback){
-                Py_DECREF(ptraceback);
-            }
+            RedisModule_ReplyWithError(ctx, err);
+            RG_FREE(err);
         }
         if(ptctx->createdExecution){
             // error occured, we need to abort the created execution.
@@ -1974,21 +1965,12 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     PythonSessionCtx_Free(ptctx->currSession);
 
     if(!v){
-        PyObject *ptype, *pvalue, *ptraceback;
-        PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-        if(!pvalue){
+        char* err = getPyError();
+        if(!err){
             RedisModule_ReplyWithError(ctx, "failed running the given script");
         }else{
-            PyObject* errStr = PyObject_Str(pvalue);
-            size_t s;
-            const char *pStrErrorMessage = PyUnicode_AsUTF8AndSize(errStr, &s);
-            RedisModule_ReplyWithError(ctx, pStrErrorMessage);
-            Py_DECREF(errStr);
-            Py_DECREF(ptype);
-            Py_DECREF(pvalue);
-            if(ptraceback){
-                Py_DECREF(ptraceback);
-            }
+            RedisModule_ReplyWithError(ctx, err);
+            RG_FREE(err);
         }
 
         if(ptctx->createdExecution){
@@ -2669,8 +2651,10 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
         PyObject* pArgs = PyTuple_New(0);
         PyObject* callback = pyCtx->callback;
         pyRecord = PyObject_CallObject(callback, pArgs);
+        Py_DECREF(pArgs);
         if(PyGen_Check(pyRecord)) {
             pyCtx->generator = PyObject_GetIter(pyRecord);
+            Py_DECREF(pyRecord);
             pyRecord = PyIter_Next(pyCtx->generator);
         }
     }else{
@@ -3078,6 +3062,9 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 }
 
 void __attribute__((destructor)) RedisGearsPy_Clean(void) {
+    if(!requitmentsCache){
+        return;
+    }
     for(size_t i = 0 ; i < array_len(requitmentsCache) ; ++i){
         RG_FREE(requitmentsCache[i]);
     }
