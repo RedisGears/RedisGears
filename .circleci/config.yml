@@ -170,28 +170,28 @@ workflows:
           platform: centos7
           requires:
             - linux-debian
-          filters:
-            branches:
-              only:
-                - master
+#          filters:
+#            branches:
+#              only:
+#                - master
       - platform-build:
           name: build-bionic
           platform: bionic
           requires:
             - linux-debian
-          filters:
-            branches:
-              only:
-                - master
+#          filters:
+#            branches:
+#              only:
+#                - master
       - platform-build:
           name: build-xenial
           platform: xenial
           requires:
             - linux-debian
-          filters:
-            branches:
-              only:
-                - master
+#          filters:
+#            branches:
+#              only:
+#                - master
       - macos:
           filters:
             branches:
