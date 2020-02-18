@@ -1,10 +1,5 @@
 version: 2.1
 
-aliases:
-  platform-builds: &platform-builds
-    - build-centos7
-    - build-bionic
-    - build-xenial
 
 commands:
   build-steps:
@@ -155,6 +150,21 @@ jobs:
             aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl public-read --recursive
 
 
+platform-builds-requires: &platform-builds-requires
+  requires:
+    - build-centos7
+    - build-bionic
+    - build-xenial
+
+platform-builds-flow-defs: &platform-builds-flow-defs
+  requires:
+    - linux-debian
+#  filters:
+#    branches:
+#      only:
+#        - master
+
+
 workflows:
   version: 2
   default_flow:
@@ -169,29 +179,15 @@ workflows:
           name: build-centos7
           platform: centos7
           requires:
-            - linux-debian
-#          filters:
-#            branches:
-#              only:
-#                - master
+	      <<: *platform-builds-flow-defs
       - platform-build:
           name: build-bionic
           platform: bionic
-          requires:
-            - linux-debian
-#          filters:
-#            branches:
-#              only:
-#                - master
+	      <<: *platform-builds-flow-defs
       - platform-build:
           name: build-xenial
           platform: xenial
-          requires:
-            - linux-debian
-#          filters:
-#            branches:
-#              only:
-#                - master
+	      <<: *platform-builds-flow-defs
       - macos:
           filters:
             branches:
@@ -205,13 +201,13 @@ workflows:
             tags:
               only: /^v[0-9].*/
       - deploy_snapshots:
-          requires: *platform-builds
+	      <<: *platform-builds-requires
           filters:
             branches:
               only:
                 - master
       - deploy_releases:
-          requires: *platform-builds
+	      <<: *platform-builds-requires
           filters:
             branches:
               ignore: /.*/
