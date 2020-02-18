@@ -178,7 +178,6 @@ workflows:
       - platform-build:
           name: build-centos7
           platform: centos7
-          requires:
           <<: *platform-builds-flow-defs
       - platform-build:
           name: build-bionic
