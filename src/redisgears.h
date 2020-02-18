@@ -15,15 +15,17 @@
 
 #define MODULE_API_FUNC(x) (*x)
 
+/*
+ * Opaque sturcts
+ */
 typedef struct ExecutionPlan ExecutionPlan;
 typedef struct ExecutionCtx ExecutionCtx;
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
-typedef struct StreamReaderCtx StreamReaderCtx;
-typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
-typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 
-
+/**
+ * Records type definitions
+ */
 #define KEY_HANDLER_RECORD_TYPE 1
 #define LONG_RECORD_TYPE 2
 #define DOUBLE_RECORD_TYPE 3
@@ -32,11 +34,24 @@ typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 #define KEY_RECORD_TYPE 6
 #define HASH_SET_RECORD_TYPE 7
 
+/**
+ * Execttion modes:
+ * 1. ExecutionModeSync       - execution will run on the same thread that trigger it
+ *                              also implies that the execution is local and not distributed
+ *
+ * 2. ExecutionModeAsync      - execution will run in another thread
+ *
+ * 3. ExecutionModeAsyncLocal - execition will run in an async thread but will still be local
+ *                              to the current shard
+ */
 #define ExecutionMode int
 #define ExecutionModeSync 1
 #define ExecutionModeAsync 2
 #define ExecutionModeAsyncLocal 3
 
+/**
+ * On execution failure policies (relevent only for stream reader)
+ */
 #define OnFailedPolicy int
 #define OnFailedPolicyUnknown 0
 #define OnFailedPolicyContinue 1
@@ -92,14 +107,6 @@ long MODULE_API_FUNC(RedisGears_BRReadLong)(Gears_BufferReader* br);
 char* MODULE_API_FUNC(RedisGears_BRReadString)(Gears_BufferReader* br);
 char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* len);
 
-/******************************* Filters *******************************/
-
-/******************************* Mappers *******************************/
-
-/******************************* GroupByExtractors *********************/
-
-/******************************* GroupByReducers ***********************/
-
 /**
  * On done callback definition
  */
@@ -149,7 +156,13 @@ typedef Record* (*RedisGears_ReducerCallback)(ExecutionCtx* rctx, char* key, siz
 typedef Record* (*RedisGears_AccumulateCallback)(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg);
 typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg);
 
+/**
+ * Reader ctx definition
+ */
 typedef struct KeysReaderCtx KeysReaderCtx;
+typedef struct StreamReaderCtx StreamReaderCtx;
+typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
+typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
 StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval);
