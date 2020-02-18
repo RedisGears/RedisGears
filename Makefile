@@ -84,7 +84,7 @@ CC_FLAGS += \
 	-fPIC -std=gnu99 \
 	-MMD -MF $(@:.o=.d) \
 	-include $(SRCDIR)/common.h \
-	-I$(SRCDIR) -Iinclude -I$(BINDIR) -Ideps \
+	-I$(SRCDIR) -Iinclude -I$(BINDIR) -Ideps -I. \
 	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
 	-DREDISMODULE_EXPERIMENTAL_API
 
@@ -113,8 +113,7 @@ CC_FLAGS += \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
 	-I$(BINROOT)/cpython \
-	-Ibin/$(FULL_VARIANT.release)/cpython \
-	-I.
+	-Ibin/$(FULL_VARIANT.release)/cpython
 
 LD_FLAGS += 
 
@@ -180,7 +179,7 @@ DEPS_URL_BASE.release=$(DEPS_URL_BASE)
 DEPS_URL_BASE.snapshot=$(DEPS_URL_BASE)/snapshots
 
 define build_deps_args # type (release|snapshot)
-$$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c artifacts/$(1)/$$(DEPS_TAR.$(1))
+$$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c artifacts/$(1)/$(DEPS_TAR.$(1))
 	$$(SHOW)$$(CC) $$(CC_FLAGS) -c $$< -o $$@ \
 		-DDEPENDENCIES_URL=\"$$(DEPS_URL_BASE.$(1))/$$(DEPS_TAR.$(1))\" \
 		-DDEPENDENCIES_SHA256=\"$$(shell cat artifacts/$(1)/$$(DEPS_TAR.$(1)).sha256)\"

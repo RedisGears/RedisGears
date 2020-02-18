@@ -1,12 +1,13 @@
 version: 2.1
 
-#defaults:
-#  default_jobs: &default_jobs
-#    - centos
-#    - ubuntu
+aliases:
+  platform-builds: &platform-builds
+    - build-centos7
+    - build-bionic
+    - build-xenial
 
 commands:
-  ci_steps:
+  build-steps:
     parameters:
       platform:
         type: string
@@ -29,7 +30,7 @@ commands:
       - store_test_results:
           path: pytest/logs
 
-  platform-build:
+  platform-build-steps:
     parameters:
       platform:
         type: string
@@ -62,7 +63,7 @@ commands:
             - 'release/*.tgz'
 
 jobs:
-  ubuntu:
+  linux-debian:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     environment:
@@ -70,22 +71,10 @@ jobs:
     steps:
       - run:
           name: Redis_5_upgrade
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.6; make; make install
-      - ci_steps:
-          platform: ubuntu
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.7; make; make install
+      - build-steps:
+          platform: debian
   
-#  centos:
-#    docker:
-#      - image: 'redislabsmodules/rmbuildercentos:latest'
-#    environment:
-#      - BUILD_DIR: build-centos
-#    steps:
-#      - run:
-#          name: Redis_5_upgrade
-#          command: cd ../redis; git fetch; git checkout 5.0.6; make; make install
-#      - ci_steps:
-#          platform: redhat
-
   platform-build:
     parameters:
       platform:
@@ -93,7 +82,7 @@ jobs:
     docker:
       - image: 'debian:buster'
     steps:
-      - platform-build:
+      - platform-build-steps:
           platform: <<parameters.platform>>
 
   macos:
@@ -105,7 +94,7 @@ jobs:
           command: |
             brew update || true
             # brew reinstall -f python2
-      - ci_steps:
+      - build-steps:
           platform: macosx
 
   build-multiarch-docker:
@@ -170,33 +159,39 @@ workflows:
   version: 2
   default_flow:
     jobs:
-      - ubuntu:
+      - linux-debian:
           filters:
             branches:
               only: /.*/
             tags:
               only: /.*/
-#      - centos:
-#          filters:
-#            branches:
-#              only: /.*/
-#            tags:
-#              only: /.*/
       - platform-build:
           name: build-centos7
           platform: centos7
           requires:
-            - ubuntu
+            - linux-debian
+          filters:
+            branches:
+              only:
+                - master
       - platform-build:
           name: build-bionic
           platform: bionic
           requires:
-            - ubuntu
+            - linux-debian
+          filters:
+            branches:
+              only:
+                - master
       - platform-build:
           name: build-xenial
           platform: xenial
           requires:
-            - ubuntu
+            - linux-debian
+          filters:
+            branches:
+              only:
+                - master
       - macos:
           filters:
             branches:
@@ -210,20 +205,13 @@ workflows:
             tags:
               only: /^v[0-9].*/
       - deploy_snapshots:
-          requires:
-             - build-centos7
-             - build-bionic
-             - build-xenial
+          requires: *platform-builds
           filters:
             branches:
               only:
                 - master
-                - rafi-build1
       - deploy_releases:
-          requires:
-             - build-centos7
-             - build-bionic
-             - build-xenial
+          requires: *platform-builds
           filters:
             branches:
               ignore: /.*/
