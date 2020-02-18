@@ -1,5 +1,36 @@
 #!/bin/bash
 
+error() {
+	echo "There are errors."
+	exit 1
+}
+
+trap error ERR
+
+if [[ $1 == --help || $1 == help ]]; then
+	cat <<-END
+		Generate RedisGears distribution packages.
+	
+		[ARGVARS...] pack.sh [--help|help] [<module-so-path>]
+		
+		Argument variables:
+		VERBOSE=1     Print commands
+		IGNERR=1      Do not abort on error
+		
+		RAMP=1        Generate RAMP package
+		DEPS=1        Generate dependency packages
+		RELEASE=1     Generate "release" packages (artifacts/release/)
+		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
+		JUST_PRINT=1  Only print package names, do not generate
+
+		BRANCH=name         Branch name for snapshot packages
+		GITSHA=1            Append Git SHA to shapshot package names
+		CPYTHON_PREFIX=dir  Location of Python environment
+
+	END
+	exit 0
+fi
+
 RAMP=${RAMP:-1}
 DEPS=${DEPS:-1}
 
@@ -50,8 +81,10 @@ pack() {
 
 	cd $CPYTHON_PREFIX
 
-	export LC_ALL=C.UTF-8
-	export LANG=C.UTF-8
+	export LANG=en_US.utf-8
+	export LC_ALL=en_US.utf-8
+	# export LC_ALL=C.UTF-8
+	# export LANG=C.UTF-8
 	
 	packname=`pipenv run bash $packer`
 	cd $ROOT
