@@ -179,15 +179,15 @@ workflows:
           name: build-centos7
           platform: centos7
           requires:
-	      <<: *platform-builds-flow-defs
+          <<: *platform-builds-flow-defs
       - platform-build:
           name: build-bionic
           platform: bionic
-	      <<: *platform-builds-flow-defs
+          <<: *platform-builds-flow-defs
       - platform-build:
           name: build-xenial
           platform: xenial
-	      <<: *platform-builds-flow-defs
+          <<: *platform-builds-flow-defs
       - macos:
           filters:
             branches:
@@ -201,13 +201,13 @@ workflows:
             tags:
               only: /^v[0-9].*/
       - deploy_snapshots:
-	      <<: *platform-builds-requires
+          <<: *platform-builds-requires
           filters:
             branches:
               only:
                 - master
       - deploy_releases:
-	      <<: *platform-builds-requires
+          <<: *platform-builds-requires
           filters:
             branches:
               ignore: /.*/
