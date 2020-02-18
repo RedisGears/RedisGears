@@ -24,7 +24,6 @@
 #include "redisai.h"
 #include "config.h"
 #include "globals.h"
-#include "redisearch_api.h"
 #include "keys_reader.h"
 #include "streams_reader.h"
 #include "mappers.h"
@@ -675,13 +674,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_Log(ctx, "notice", "RedisAI api loaded successfully.");
         globals.redisAILoaded = true;
     }
-
-    if(RediSearch_Initialize() != REDISMODULE_OK){
-		RedisModule_Log(ctx, "warning", "could not initialize RediSearch api, running without Search support.");
-	}else{
-		RedisModule_Log(ctx, "notice", "RediSearch api loaded successfully.");
-		globals.rediSearchLoaded= true;
-	}
 
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
     	RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");

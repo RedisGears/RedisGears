@@ -5,7 +5,6 @@
 #include "execution_plan.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
-#include "redisearch_api.h"
 #include "globals.h"
 #include "lock_handler.h"
 #include "record.h"
@@ -33,8 +32,6 @@ typedef struct KeysReaderRegisterData{
 }KeysReaderRegisterData;
 
 Gears_list* keysReaderRegistration = NULL;
-
-IndexSpec* keyIdx = NULL;
 
 RedisModuleDict *keysDict = NULL;
 

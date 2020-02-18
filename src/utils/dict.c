@@ -263,7 +263,7 @@ int Gears_dictRehash(Gears_dict *d, int n) {
     return 1;
 }
 
-long long timeInMilliseconds(void) {
+long long Gears_timeInMilliseconds(void) {
     struct timeval tv;
 
     gettimeofday(&tv,NULL);
@@ -272,12 +272,12 @@ long long timeInMilliseconds(void) {
 
 /* Rehash for an amount of time between ms milliseconds and ms+1 milliseconds */
 int Gears_dictRehashMilliseconds(Gears_dict *d, int ms) {
-    long long start = timeInMilliseconds();
+    long long start = Gears_timeInMilliseconds();
     int rehashes = 0;
 
     while(Gears_dictRehash(d,100)) {
         rehashes += 100;
-        if (timeInMilliseconds()-start > ms) break;
+        if (Gears_timeInMilliseconds()-start > ms) break;
     }
     return rehashes;
 }
