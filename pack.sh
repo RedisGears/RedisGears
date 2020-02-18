@@ -75,16 +75,18 @@ pack_deps() {
 	local TAR=artifacts/release/$RELEASE_deps
 	TAR_PATH=$(realpath $TAR)
 	cd $CPYTHON_PREFIX/
-	{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
+	find . -name __pycache__ -type d -exec rm -rf {} \; 2>> /dev/null || true
+	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
 	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
 	echo Created $TAR
 
-	local TAR1=$SNAPSHOT_deps
-	# cp artifacts/release/$TAR artifacts/snapshot/$TAR1
-	( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
-	echo Created artifacts/snapshot/$TAR1
+	local TAR1=artifacts/snapshot/$SNAPSHOT_deps
+	cp $TAR $TAR1
+	cp $TAR.sha256 $TAR1.sha256
+	# ( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
+	echo Created $TAR1
 }
 
 # export ROOT=`git rev-parse --show-toplevel`
