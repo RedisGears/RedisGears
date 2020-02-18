@@ -25,13 +25,20 @@ make cpython    # build cpython
 make pyenv      # install cpython and virtual environment
 make all        # build all libraries and packages
 
-make test       # run tests
-make pack       # build packages (ramp & dependencies)
+make test          # run tests
+
+make pack          # build packages (ramp & dependencies)
+make ramp_pack     # only build ramp package
+make verify-packs  # verify signatures of packages vs module so
+
+make show-version  # show module version
 endef
 
-MK_ALL_TARGETS=bindirs deps pyenv build ramp_pack
+MK_ALL_TARGETS=bindirs deps pyenv build ramp_pack verify-packs
 
 include $(MK)/defs
+
+GEARS_VERSION:=$(shell $(ROOT)/getver)
 
 #----------------------------------------------------------------------------------------------
 
@@ -46,11 +53,13 @@ endif
 WITHPYTHON ?= 1
 
 ifeq ($(WITHPYTHON),1)
+
 export PYTHON_ENCODING ?= ucs4
 
 CPYTHON_BINDIR=bin/$(FULL_VARIANT.release)/cpython
 
 include build/cpython/Makefile.defs
+
 endif # WITHPYTHON
 
 #----------------------------------------------------------------------------------------------
@@ -171,8 +180,12 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
+RAMP.release:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=1 SNAPSHOT=0 ./pack.sh)
+RAMP.snapshot:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=0 SNAPSHOT=1 ./pack.sh)
 DEPS_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
 DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+
+#----------------------------------------------------------------------------------------------
 
 DEPS_URL_BASE:=http://redismodules.s3.amazonaws.com/redisgears
 DEPS_URL_BASE.release=$(DEPS_URL_BASE)
@@ -184,10 +197,6 @@ $$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c artifacts/$(1)/$(DEPS_TAR.$(1))
 		-DDEPENDENCIES_URL=\"$$(DEPS_URL_BASE.$(1))/$$(DEPS_TAR.$(1))\" \
 		-DDEPENDENCIES_SHA256=\"$$(shell cat artifacts/$(1)/$$(DEPS_TAR.$(1)).sha256)\"
 endef
-
-artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
-	@echo Packing dependencies...
-	$(SHOW)RAMP=0 DEPS=1 ./pack.sh $(TARGET)
 
 $(eval $(call build_deps_args,release))
 $(eval $(call build_deps_args,snapshot))
@@ -291,11 +300,38 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
-ramp_pack: $(TARGET)
+artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot): $(TARGET) ramp.yml
+	@echo Packing module...
 	$(SHOW)RAMP=1 DEPS=0 ./pack.sh $(TARGET)
 
-pack : deps $(TARGET) $(CPYTHON_PREFIX)
-	$(SHOW)./pack.sh $(TARGET)
+artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
+	@echo Packing dependencies...
+	$(SHOW)RAMP=0 DEPS=1 ./pack.sh $(TARGET)
+
+ramp_pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
+
+pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
+		artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot)
+
+verify-packs:
+	@set -e ;\
+	MOD=`./deps/readies/bin/redis-cmd --loadmodule $(TARGET) -- RG.CONFIGGET dependenciesSha256` ;\
+	REL=`cat artifacts/release/$(DEPS_TAR.release).sha256` ;\
+	SNAP=`cat artifacts/snapshot/$(DEPS_TAR.snapshot).sha256` ;\
+	if [[ $$MOD != $$REL || $$REL != $$SNAP ]]; then \
+		echo "Module and package SHA256 don't match." ;\
+		echo "$$MOD" ;\
+		echo "$$REL" ;\
+		echo "$$SNAP" ;\
+		exit 1 ;\
+	else \
+		echo "Signatures match." ;\
+	fi
+
+#----------------------------------------------------------------------------------------------
+
+show-version:
+	$(SHOW)echo $(GEARS_VERSION)
 
 #----------------------------------------------------------------------------------------------
 
