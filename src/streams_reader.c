@@ -8,6 +8,7 @@
 #include "execution_plan.h"
 #include "record.h"
 #include "config.h"
+#include <pthread.h>
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 Gears_list* streamsRegistration = NULL;

@@ -10,20 +10,28 @@
 
 #include <stdbool.h>
 #include "redismodule.h"
+#include "utils/arr_rm_alloc.h"
 
 #define REDISGEARS_LLAPI_VERSION 1
 
 #define MODULE_API_FUNC(x) (*x)
 
+/**
+ * Arr(type) need to be created with array_new and free with array_free macros included from "utils/arr.h"
+ */
+#define Arr(x) x*
+
+/*
+ * Opaque sturcts
+ */
 typedef struct ExecutionPlan ExecutionPlan;
 typedef struct ExecutionCtx ExecutionCtx;
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
-typedef struct StreamReaderCtx StreamReaderCtx;
-typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
-typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 
-
+/**
+ * Records type definitions
+ */
 #define KEY_HANDLER_RECORD_TYPE 1
 #define LONG_RECORD_TYPE 2
 #define DOUBLE_RECORD_TYPE 3
@@ -32,11 +40,24 @@ typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 #define KEY_RECORD_TYPE 6
 #define HASH_SET_RECORD_TYPE 7
 
+/**
+ * Execttion modes:
+ * 1. ExecutionModeSync       - execution will run on the same thread that trigger it
+ *                              also implies that the execution is local and not distributed
+ *
+ * 2. ExecutionModeAsync      - execution will run in another thread
+ *
+ * 3. ExecutionModeAsyncLocal - execition will run in an async thread but will still be local
+ *                              to the current shard
+ */
 #define ExecutionMode int
 #define ExecutionModeSync 1
 #define ExecutionModeAsync 2
 #define ExecutionModeAsyncLocal 3
 
+/**
+ * On execution failure policies (relevent only for stream reader)
+ */
 #define OnFailedPolicy int
 #define OnFailedPolicyUnknown 0
 #define OnFailedPolicyContinue 1
@@ -92,14 +113,6 @@ long MODULE_API_FUNC(RedisGears_BRReadLong)(Gears_BufferReader* br);
 char* MODULE_API_FUNC(RedisGears_BRReadString)(Gears_BufferReader* br);
 char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* len);
 
-/******************************* Filters *******************************/
-
-/******************************* Mappers *******************************/
-
-/******************************* GroupByExtractors *********************/
-
-/******************************* GroupByReducers ***********************/
-
 /**
  * On done callback definition
  */
@@ -149,12 +162,18 @@ typedef Record* (*RedisGears_ReducerCallback)(ExecutionCtx* rctx, char* key, siz
 typedef Record* (*RedisGears_AccumulateCallback)(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg);
 typedef Record* (*RedisGears_AccumulateByKeyCallback)(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg);
 
+/**
+ * Reader ctx definition
+ */
 typedef struct KeysReaderCtx KeysReaderCtx;
+typedef struct StreamReaderCtx StreamReaderCtx;
+typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
+typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
 StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval);
 void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
-KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, char** eventTypes, int* keyTypes);
+KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, Arr(char*) eventTypes, Arr(int) keyTypes);
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
 /**
@@ -186,8 +205,7 @@ RedisModuleKey* MODULE_API_FUNC(RedisGears_KeyHandlerRecordGet)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_HashSetRecordCreate)();
 int MODULE_API_FUNC(RedisGears_HashSetRecordSet)(Record* r, char* key, Record* val);
 Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, char* key);
-char** MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r, size_t* len);
-void MODULE_API_FUNC(RedisGears_HashSetRecordFreeKeysArray)(char** keyArr);
+Arr(char*) MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r);
 
 /**
  * Register operations functions
@@ -422,7 +440,6 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordSet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGetAllKeys);
-    REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordFreeKeysArray);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);

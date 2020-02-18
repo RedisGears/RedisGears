@@ -650,8 +650,8 @@ static int registerStrKeyTypeToInt(const char* keyType){
 }
 
 static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, ExecutionMode mode){
-    char** eventTypes = NULL;
-    int* keyTypes = NULL;
+    Arr(char*) eventTypes = NULL;
+    Arr(int) keyTypes = NULL;
 
     // getting even types white list (no list == all event types)
     PyObject* pyEventTypes = PyDict_GetItemString(kargs, "eventTypes");
@@ -665,7 +665,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, Execu
         while((event = PyIter_Next(eventTypesIterator))){
             if(!PyUnicode_Check(event)){
                 Py_DECREF(eventTypesIterator);
-                array_free_ex(eventTypes, RG_FREE);
+                array_free_ex(eventTypes, RG_FREE(*(Arr(char*))ptr));
                 PyErr_SetString(GearsError, "given event type is not string");
                 return NULL;
             }
@@ -688,7 +688,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, Execu
         while((keyType = PyIter_Next(keyTypesIterator))){
             if(!PyUnicode_Check(keyType)){
                 Py_DECREF(keyTypesIterator);
-                array_free_ex(eventTypes, RG_FREE);
+                array_free_ex(eventTypes, RG_FREE(*(Arr(char*))ptr));
                 array_free(keyTypes);
                 PyErr_SetString(GearsError, "given key type is not string");
                 return NULL;
@@ -697,7 +697,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, Execu
             int keyTypeInt = registerStrKeyTypeToInt(keyTypeStr);
             if(keyTypeInt == -1){
                 Py_DECREF(keyTypesIterator);
-                array_free_ex(eventTypes, RG_FREE);
+                array_free_ex(eventTypes, RG_FREE(*(Arr(char*))ptr));
                 array_free(keyTypes);
                 PyErr_SetString(GearsError, "unknown key type");
                 return NULL;
@@ -2353,7 +2353,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     long longNum;
     double doubleNum;
     char* key;
-    char** keys;
+    Arr(char*) keys;
     size_t len;
     switch(RedisGears_RecordGetType(record)){
     case STRING_RECORD:
@@ -2402,9 +2402,9 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
         }
         break;
     case HASH_SET_RECORD:
-        keys = RedisGears_HashSetRecordGetAllKeys(record, &len);
+        keys = RedisGears_HashSetRecordGetAllKeys(record);
         obj = PyDict_New();
-        for(size_t i = 0 ; i < len ; ++i){
+        for(size_t i = 0 ; i < array_len(keys) ; ++i){
             key = keys[i];
             temp = PyUnicode_FromString(key);
             tempRecord = RedisGears_HashSetRecordGet(record, key);
@@ -2414,7 +2414,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
             Py_DECREF(temp);
             RedisGears_FreeRecord(tempRecord);
         }
-        RedisGears_HashSetRecordFreeKeysArray(keys);
+        array_free(keys);
         break;
     case PY_RECORD:
         obj = RG_PyObjRecordGet(record);
