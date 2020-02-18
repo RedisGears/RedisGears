@@ -263,7 +263,7 @@ Record* RG_HashSetRecordGet(Record* r, char* key){
     return Gears_dictGetVal(entry);
 }
 
-char** RG_HashSetRecordGetAllKeys(Record* r, size_t* len){
+char** RG_HashSetRecordGetAllKeys(Record* r){
     assert(r->type == HASH_SET_RECORD);
     Gears_dictIterator *iter = Gears_dictGetIterator(r->hashSetRecord.d);
     Gears_dictEntry *entry = NULL;
@@ -272,13 +272,8 @@ char** RG_HashSetRecordGetAllKeys(Record* r, size_t* len){
         char* key = Gears_dictGetKey(entry);
         ret = array_append(ret, key);
     }
-    *len = array_len(ret);
     Gears_dictReleaseIterator(iter);
     return ret;
-}
-
-void RG_HashSetRecordFreeKeysArray(char** keyArr){
-    array_free(keyArr);
 }
 
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler){

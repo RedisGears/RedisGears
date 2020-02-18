@@ -29,6 +29,7 @@
 #include "streams_reader.h"
 #include "mappers.h"
 #include <stdbool.h>
+#include <unistd.h>
 #include "lock_handler.h"
 
 #ifndef REDISGEARS_GIT_SHA
@@ -319,7 +320,9 @@ static int RG_AbortExecution(ExecutionPlan* ep){
         // we are checking for DONE status cause this one is set without getting the lock.
         // Once status changed to DONE we know that no more python code will be executed and
         // we can finish sending cancel signal
+#ifdef WITHPYTHON
         RedisGearsPy_ForceStop(&epCtx);
+#endif
         usleep(1000);
     }
 
@@ -585,7 +588,6 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(HashSetRecordSet, ctx);
     REGISTER_API(HashSetRecordGet, ctx);
     REGISTER_API(HashSetRecordGetAllKeys, ctx);
-    REGISTER_API(HashSetRecordFreeKeysArray, ctx);
 
     REGISTER_API(GetTotalDuration, ctx);
     REGISTER_API(GetReadDuration, ctx);

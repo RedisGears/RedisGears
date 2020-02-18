@@ -67,7 +67,7 @@ void RG_LongRecordSet(Record* r, long val);
 Record* RG_HashSetRecordCreate();
 int RG_HashSetRecordSet(Record* r, char* key, Record* val);
 Record* RG_HashSetRecordGet(Record* r, char* key);
-char** RG_HashSetRecordGetAllKeys(Record* r, size_t* len);
+char** RG_HashSetRecordGetAllKeys(Record* r);
 void RG_HashSetRecordFreeKeysArray(char** keyArr);
 
 /* todo: think if we can removed this!! */

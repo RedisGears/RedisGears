@@ -11,7 +11,7 @@ bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
         return false;
     }
     size_t len;
-    char** keys = RedisGears_HashSetRecordGetAllKeys(r, &len);
+    Arr(char*) keys = RedisGears_HashSetRecordGetAllKeys(r);
     for(size_t i = 0 ; i < len ; ++i){
         Record* val = RedisGears_HashSetRecordGet(r, keys[i]);
         if(RedisGears_RecordGetType(val) == STRING_RECORD_TYPE){
@@ -19,12 +19,12 @@ bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
             char* valStr = RedisGears_StringRecordGet(val, &len);
             int valInt = atol(valStr);
             if(valInt > 9999990){
-                RedisGears_HashSetRecordFreeKeysArray(keys);
+                array_free(keys);
                 return true;
             }
         }
     }
-    RedisGears_HashSetRecordFreeKeysArray(keys);
+    array_free(keys);
     return false;
 }
 

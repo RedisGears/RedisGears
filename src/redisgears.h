@@ -10,10 +10,16 @@
 
 #include <stdbool.h>
 #include "redismodule.h"
+#include "utils/arr_rm_alloc.h"
 
 #define REDISGEARS_LLAPI_VERSION 1
 
 #define MODULE_API_FUNC(x) (*x)
+
+/**
+ * Arr(type) need to be created with array_new and free with array_free macros included from "utils/arr.h"
+ */
+#define Arr(x) x*
 
 /*
  * Opaque sturcts
@@ -167,7 +173,7 @@ StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* s
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
 StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval);
 void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
-KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, char** eventTypes, int* keyTypes);
+KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, Arr(char*) eventTypes, Arr(int) keyTypes);
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
 /**
@@ -199,8 +205,7 @@ RedisModuleKey* MODULE_API_FUNC(RedisGears_KeyHandlerRecordGet)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_HashSetRecordCreate)();
 int MODULE_API_FUNC(RedisGears_HashSetRecordSet)(Record* r, char* key, Record* val);
 Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, char* key);
-char** MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r, size_t* len);
-void MODULE_API_FUNC(RedisGears_HashSetRecordFreeKeysArray)(char** keyArr);
+Arr(char*) MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r);
 
 /**
  * Register operations functions
@@ -435,7 +440,6 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordSet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGetAllKeys);
-    REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordFreeKeysArray);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
