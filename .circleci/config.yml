@@ -205,6 +205,7 @@ workflows:
             branches:
               only:
                 - master
+                - rafi-build1
       - deploy_releases:
           <<: *platform-builds-requires
           filters:
