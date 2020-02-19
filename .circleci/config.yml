@@ -158,10 +158,10 @@ platform-builds-requires: &platform-builds-requires
 platform-builds-flow-defs: &platform-builds-flow-defs
   requires:
     - linux-debian
-#  filters:
-#    branches:
-#      only:
-#        - master
+  filters:
+    branches:
+      only:
+        - master
 
 
 workflows:
@@ -204,7 +204,6 @@ workflows:
             branches:
               only:
                 - master
-                - rafi-build1
       - deploy_releases:
           <<: *platform-builds-requires
           filters:
