@@ -1,5 +1,36 @@
 #!/bin/bash
 
+error() {
+	echo "There are errors."
+	exit 1
+}
+
+trap error ERR
+
+if [[ $1 == --help || $1 == help ]]; then
+	cat <<-END
+		Generate RedisGears distribution packages.
+	
+		[ARGVARS...] pack.sh [--help|help] [<module-so-path>]
+		
+		Argument variables:
+		VERBOSE=1     Print commands
+		IGNERR=1      Do not abort on error
+		
+		RAMP=1        Generate RAMP package
+		DEPS=1        Generate dependency packages
+		RELEASE=1     Generate "release" packages (artifacts/release/)
+		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
+		JUST_PRINT=1  Only print package names, do not generate
+
+		BRANCH=name         Branch name for snapshot packages
+		GITSHA=1            Append Git SHA to shapshot package names
+		CPYTHON_PREFIX=dir  Location of Python environment
+
+	END
+	exit 0
+fi
+
 RAMP=${RAMP:-1}
 DEPS=${DEPS:-1}
 
@@ -50,8 +81,10 @@ pack() {
 
 	cd $CPYTHON_PREFIX
 
-	export LC_ALL=C.UTF-8
-	export LANG=C.UTF-8
+	export LANG=en_US.utf-8
+	export LC_ALL=en_US.utf-8
+	# export LC_ALL=C.UTF-8
+	# export LANG=C.UTF-8
 	
 	packname=`pipenv run bash $packer`
 	cd $ROOT
@@ -75,16 +108,18 @@ pack_deps() {
 	local TAR=artifacts/release/$RELEASE_deps
 	TAR_PATH=$(realpath $TAR)
 	cd $CPYTHON_PREFIX/
-	{ tar pczf $TAR_PATH --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err; E=$?; } || true
+	# find . -name __pycache__ -type d -exec rm -rf {} \; 2>> /dev/null || true
+	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
 	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
 	echo Created $TAR
 
-	local TAR1=$SNAPSHOT_deps
-	# cp artifacts/release/$TAR artifacts/snapshot/$TAR1
-	( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
-	echo Created artifacts/snapshot/$TAR1
+	local TAR1=artifacts/snapshot/$SNAPSHOT_deps
+	cp $TAR $TAR1
+	cp $TAR.sha256 $TAR1.sha256
+	# ( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
+	echo Created $TAR1
 }
 
 # export ROOT=`git rev-parse --show-toplevel`

@@ -1,12 +1,7 @@
 version: 2.1
 
-defaults:
-  default_jobs: &default_jobs
-    - centos
-    - ubuntu
-
 commands:
-  ci_steps:
+  build-steps:
     parameters:
       platform:
         type: string
@@ -28,6 +23,31 @@ commands:
           command: make test
       - store_test_results:
           path: pytest/logs
+
+  platform-build-steps:
+    parameters:
+      platform:
+        type: string
+    steps:
+      - run:
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
+            bash <(curl -fsSL https://get.docker.com)
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Setup
+          command: |
+            git submodule update --init --recursive
+            ./deps/readies/bin/getpy2
+      - run:
+          name: Build for platform
+          command: |
+            cd build/platforms
+            make <<parameters.platform>> VERBOSE=1
+          no_output_timeout: 30m
       - persist_to_workspace:
           root: artifacts
           paths:
@@ -37,7 +57,7 @@ commands:
             - 'release/*.tgz'
 
 jobs:
-  ubuntu:
+  linux-debian:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
     environment:
@@ -45,21 +65,19 @@ jobs:
     steps:
       - run:
           name: Redis_5_upgrade
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.6; make; make install
-      - ci_steps:
-          platform: ubuntu
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.7; make; make install
+      - build-steps:
+          platform: debian
   
-  centos:
+  platform-build:
+    parameters:
+      platform:
+        type: string
     docker:
-      - image: 'redislabsmodules/rmbuildercentos:latest'
-    environment:
-      - BUILD_DIR: build-centos
+      - image: 'debian:buster'
     steps:
-      - run:
-          name: Redis_5_upgrade
-          command: cd ../redis; git fetch; git checkout 5.0.6; make; make install
-      - ci_steps:
-          platform: redhat
+      - platform-build-steps:
+          platform: <<parameters.platform>>
 
   macos:
     macos:
@@ -70,7 +88,7 @@ jobs:
           command: |
             brew update || true
             # brew reinstall -f python2
-      - ci_steps:
+      - build-steps:
           platform: macosx
 
   build-multiarch-docker:
@@ -131,23 +149,43 @@ jobs:
             aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl public-read --recursive
 
 
+platform-builds-requires: &platform-builds-requires
+  requires:
+    - build-centos7
+    - build-bionic
+    - build-xenial
+
+platform-builds-flow-defs: &platform-builds-flow-defs
+  requires:
+    - linux-debian
+  filters:
+    branches:
+      only:
+        - master
+
+
 workflows:
   version: 2
-
   default_flow:
     jobs:
-      - ubuntu:
+      - linux-debian:
           filters:
             branches:
               only: /.*/
             tags:
               only: /.*/
-      - centos:
-          filters:
-            branches:
-              only: /.*/
-            tags:
-              only: /.*/
+      - platform-build:
+          name: build-centos7
+          platform: centos7
+          <<: *platform-builds-flow-defs
+      - platform-build:
+          name: build-bionic
+          platform: bionic
+          <<: *platform-builds-flow-defs
+      - platform-build:
+          name: build-xenial
+          platform: xenial
+          <<: *platform-builds-flow-defs
       - macos:
           filters:
             branches:
@@ -161,14 +199,13 @@ workflows:
             tags:
               only: /^v[0-9].*/
       - deploy_snapshots:
-          requires: *default_jobs
+          <<: *platform-builds-requires
           filters:
             branches:
               only:
                 - master
-                - deploy_snapshots_1
       - deploy_releases:
-          requires: *default_jobs
+          <<: *platform-builds-requires
           filters:
             branches:
               ignore: /.*/
