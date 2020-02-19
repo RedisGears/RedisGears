@@ -56,8 +56,6 @@ class RedisGearsSetup(paella.Setup):
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
         self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
 
-        self.run("dir=$(mktemp -d /tmp/tar.XXXXXX); cd $dir; wget -q https://ftp.gnu.org/gnu/coreutils/coreutils-8.31.tar.xz; tar -xJf coreutils-8.31.tar.xz; cd coreutils-8.31; "+
-            "FORCE_UNSAFE_CONFIGURE=1 ./configure && make && make install; rm -rf $dir")
         self.run("dir=$(mktemp -d /tmp/tar.XXXXXX); cd $dir; wget -q https://ftp.gnu.org/gnu/tar/tar-1.32.tar.gz; tar xzf tar-1.32.tar.gz; cd tar-1.32; "+
             "FORCE_UNSAFE_CONFIGURE=1 ./configure && make && make install")
 
