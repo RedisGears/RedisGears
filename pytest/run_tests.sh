@@ -1,6 +1,7 @@
 #!/bin/bash
 
-set -x
+[[ $VERBOSE == 1 ]] && set -x
+[[ $IGNERR == 1 ]] || set -e
 
 if (( $(../deps/readies/bin/platform --os) == macosx )); then
 	export PATH=$PATH:$HOME/Library/Python/2.7/bin
