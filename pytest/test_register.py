@@ -257,7 +257,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     try:
         with TimeLimit(2):
             while True:
-                l = len(env.cmd('RG.DUMPREGISTRATIONS'))
+                l = len(env.cmd('RG.DUMPEXECUTIONS'))
                 if l == 1:
                     break
                 time.sleep(0.1)
