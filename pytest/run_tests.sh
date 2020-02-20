@@ -13,7 +13,7 @@ module_suffix=so
 [[ -n "$1" ]] && env_prefix="$1"
 [[ "$env_prefix" != "oss" ]] && module_suffix=zip
 
-shift
+shift || true
 
 run_tests() {
 	shards=$1
