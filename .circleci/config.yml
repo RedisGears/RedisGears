@@ -192,12 +192,12 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v[0-9].*/
-      - build-multiarch-docker:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9].*/
+#      - build-multiarch-docker:
+#          filters:
+#            branches:
+#              ignore: /.*/
+#            tags:
+#              only: /^v[0-9].*/
       - deploy_snapshots:
           <<: *platform-builds-requires
           filters:
