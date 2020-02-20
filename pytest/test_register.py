@@ -787,9 +787,17 @@ def testSteamReaderAbortOnFailure(env):
     env.expect('xadd', 's', '*', 'foo', 'bar')
     env.expect('xadd', 's', '*', 'foo', 'bar')
 
-    registrations = env.cmd('rg.DUMPREGISTRATIONS')
 
-    env.assertEqual(registrations[0][7][15], 'ABORTED')
+    try:
+        with TimeLimit(2):
+            while True:
+                registrations = env.cmd('rg.DUMPREGISTRATIONS')
+                if registrations[0][7][15] == 'ABORTED':
+                    break
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for registration to abort')
+
+    env.assertTrue(False, message='Failed to check rafi fix')
 
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
