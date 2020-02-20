@@ -210,6 +210,21 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     env.expect('rg.pyexecute', infinitScript).ok()
 
     env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    # we have this part to make sure no two events will enter the same execution
+    # because the first write triggers the background event that reads all the data 
+    # from the stream.
+    try:
+        with TimeLimit(4):
+            done = False
+            while not done:
+                registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
+                if registrationInfo[0][7][3] == 3 and registrationInfo[0][7][5] == 3:
+                    done = True
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for all executions to finished')
+
     env.cmd('xadd', 's', '*', 'foo', 'bar')
     env.cmd('xadd', 's', '*', 'foo', 'bar')
     env.cmd('xadd', 's', '*', 'foo', 'bar') # infinit loop
