@@ -56,6 +56,11 @@ class RedisGearsSetup(paella.Setup):
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
         self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
 
+        self.run("dir=$(mktemp -d /tmp/tar.XXXXXX); cd $dir; wget -q https://ftp.gnu.org/gnu/tar/tar-1.32.tar.gz; tar xzf tar-1.32.tar.gz; cd tar-1.32; "+
+            "FORCE_UNSAFE_CONFIGURE=1 ./configure && make && make install; " + 
+            "while [[ -d confdir3 ]]; do cd confdir3; done; cd ..; while [[ -d confdir3 ]]; do rm -rf confdir3; cd ..; done; " +
+            "cd /; rm -rf $dir; true", output_on_error=True)
+
         # pip cannot build gevent on ARM
         self.install("python-gevent python-ujson")
 

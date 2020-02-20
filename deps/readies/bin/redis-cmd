@@ -1,0 +1,32 @@
+#!/bin/bash
+
+arg=""
+if [[ ! -z $PORT ]]; then
+        args="--port $PORT"
+        cli_args="-p $PORT"
+fi
+while [[ $1 != "--" ]]; do
+        args="$args $1"
+        shift
+done
+shift
+
+redis-server $args > /dev/null 2>&1 &
+redis-cli $cli_args ping > /dev/null 2>&1
+n=0
+while [[ $? != 0 && $n < 10 ]]; do
+	n=$((n+1))
+	sleep 0.1
+	redis-cli $cli_args ping > /dev/null 2>&1
+done
+[[ $? != 0 ]] && { echo "Cannot run redis-server. Aborting."; exit 1; }
+
+if [[ ! -z $* ]]; then
+	file=$(mktemp /tmp/redis.XXXXXX)
+	redis-cli $cli_args $* | cat > $file
+	cat $file
+	rm $file
+fi
+
+kill -TERM $!
+exit 0
