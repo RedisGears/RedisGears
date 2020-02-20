@@ -2,7 +2,7 @@
 ROOT=../..
 include $(ROOT)/deps/readies/mk/main
 
-# OSNICK=buster|stretch|bionic
+# OSNICK=buster|stretch|bionic|xenial|centos7
 OSNICK ?= buster
 
 REPO=redisfab

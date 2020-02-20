@@ -36,8 +36,6 @@ Other arguments:
   OSNICK=nick     # nick=buster|stretch|bionic
 endef
 
-include $(MK)/defs
-
 #----------------------------------------------------------------------------------------------
 
 define targets # (1=OP, 2=op)
@@ -92,6 +90,10 @@ endef
 
 #----------------------------------------------------------------------------------------------
 
+DEFAULT_TARGETS += $(BUILD_TARGETS)
+
+include $(MK)/defs
+
 include $(MK)/rules
 
 $(eval $(call build_x64,x64))
@@ -101,8 +103,6 @@ $(eval $(call build_arm,arm32v7))
 $(eval $(call push,x64))
 $(eval $(call push,arm64v8))
 $(eval $(call push,arm32v7))
-
-build: $(BUILD_TARGETS)
 
 ifneq ($(PUSH),0)
 publish: $(PUSH_TARGETS)

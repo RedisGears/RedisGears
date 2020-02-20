@@ -24,6 +24,27 @@ commands:
       - store_test_results:
           path: pytest/logs
 
+  valgrind-steps:
+    parameters:
+      platform:
+        type: string
+    steps: 
+      - checkout
+      - run:
+          name: Submodule checkout
+          command: git submodule update --init --recursive
+      - run:
+          name: System setup
+          command: BREW_NO_UPDATE=1 python system-setup.py
+      - run:
+          name: Build
+          command: |
+            make get_deps
+            make all DEBUG=1 OS_VERSION=<<parameters.platform>> SHOW=1
+      - run:
+          name: Test
+          command: make test DEBUG=1
+          
   platform-build-steps:
     parameters:
       platform:
@@ -67,6 +88,18 @@ jobs:
           name: Redis_5_upgrade
           command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.7; make; make install
       - build-steps:
+          platform: debian
+
+  valgrind:
+    docker:
+      - image: 'redislabsmodules/rmbuilder:latest'
+    environment:
+      - BUILD_DIR: build-debian
+    steps:
+      - run:
+          name: Redis with Valgrind
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.7; make valgrind; make install
+      - valgrind-steps:
           platform: debian
   
   platform-build:
@@ -168,62 +201,69 @@ workflows:
   version: 2
   default_flow:
     jobs:
-      - linux-debian:
+      - valgrind:
           filters:
             branches:
               only: /.*/
             tags:
               only: /.*/
-      - platform-build:
-          name: build-centos7
-          platform: centos7
-          <<: *platform-builds-flow-defs
-      - platform-build:
-          name: build-bionic
-          platform: bionic
-          <<: *platform-builds-flow-defs
-      - platform-build:
-          name: build-xenial
-          platform: xenial
-          <<: *platform-builds-flow-defs
-      - macos:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9].*/
-      - build-multiarch-docker:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9].*/
-      - deploy_snapshots:
-          <<: *platform-builds-requires
-          filters:
-            branches:
-              only:
-                - master
-      - deploy_releases:
-          <<: *platform-builds-requires
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9].*/
-
-      - deploy_docs:
-          filters:
-            branches:
-              only: master
-
-  nightly:
-    triggers:
-      - schedule:
-          cron: "20 17 * * *"
-          filters:
-             branches:
-               only:
-                 - master
-    jobs:
-      - macos
+#      - linux-debian:
+#          filters:
+#            branches:
+#              only: /.*/
+#            tags:
+#              only: /.*/
+#      - platform-build:
+#          name: build-centos7
+#          platform: centos7
+#          <<: *platform-builds-flow-defs
+#      - platform-build:
+#          name: build-bionic
+#          platform: bionic
+#          <<: *platform-builds-flow-defs
+#      - platform-build:
+#          name: build-xenial
+#          platform: xenial
+#          <<: *platform-builds-flow-defs
+#      - macos:
+#          filters:
+#            branches:
+#              ignore: /.*/
+#            tags:
+#              only: /^v[0-9].*/
+#      - build-multiarch-docker:
+#          filters:
+#            branches:
+#              ignore: /.*/
+#            tags:
+#              only: /^v[0-9].*/
+#      - deploy_snapshots:
+#          <<: *platform-builds-requires
+#          filters:
+#            branches:
+#              only:
+#                - master
+#      - deploy_releases:
+#          <<: *platform-builds-requires
+#          filters:
+#            branches:
+#              ignore: /.*/
+#            tags:
+#              only: /^v[0-9].*/
+#
+#      - deploy_docs:
+#          filters:
+#            branches:
+#              only: master
+#
+#  nightly:
+#    triggers:
+#      - schedule:
+#          cron: "20 17 * * *"
+#          filters:
+#             branches:
+#               only:
+#                 - master
+#    jobs:
+#      - macos
+#      - valgrind
