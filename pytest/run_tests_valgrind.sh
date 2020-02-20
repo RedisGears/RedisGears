@@ -1,8 +1,5 @@
 #!/bin/bash
 
-env_prefix=oss
-[[ -n "$1" ]] && env_prefix="$1"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
-shift
-
-./run_tests.sh $env_prefix --use-valgrind --vg-suppressions ../leakcheck.supp "$@"
+VALGRIND=1 $HERE/run_tests.sh "$@"

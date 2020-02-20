@@ -26,6 +26,9 @@ make pyenv      # install cpython and virtual environment
 make all        # build all libraries and packages
 
 make test          # run tests
+  DEBUG=1          # run tests with Valgrind
+  TEST=test        # run specific `test` with Python debugger
+  GDB=1            # (with TEST=...) run with GDB
 
 make pack          # build packages (ramp & dependencies)
 make ramp_pack     # only build ramp package
@@ -341,13 +344,11 @@ endif
 
 test: __sep
 ifeq ($(DEBUG),1)
-	$(SHOW)set -e; cd pytest; ./run_tests_valgrind.sh
-else
-ifneq ($(TEST),)
+	$(SHOW)set -e; cd pytest; VALGRIND=1 ./run_tests.sh
+else ifneq ($(TEST),)
 	@set -e; cd pytest; PYDEBUG=1 RLTest --test $(TEST) $(RLTEST_GDB) -s --module $(abspath $(TARGET))
 else
 	$(SHOW)set -e; cd pytest; ./run_tests.sh
-endif
 endif
 
 #----------------------------------------------------------------------------------------------
