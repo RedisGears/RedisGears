@@ -254,7 +254,15 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
 
     env.expect('RG.UNREGISTER', registrationId, 'abortpending').ok()
 
-    env.assertEqual(len(env.cmd('RG.DUMPEXECUTIONS')), 1)
+    try:
+        with TimeLimit(2):
+            while True:
+                l = len(env.cmd('RG.DUMPREGISTRATIONS'))
+                if l == 1:
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for all executions to finished')
 
     try:
         with TimeLimit(2):
