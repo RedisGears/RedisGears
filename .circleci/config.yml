@@ -162,6 +162,8 @@ platform-builds-flow-defs: &platform-builds-flow-defs
     branches:
       only:
         - master
+    tags:
+      only: /^v[0-9].*/
 
 
 workflows:
