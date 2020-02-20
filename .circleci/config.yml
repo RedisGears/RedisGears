@@ -44,6 +44,7 @@ commands:
       - run:
           name: Test
           command: make test DEBUG=1
+          no_output_timeout: 30m
           
   platform-build-steps:
     parameters:
@@ -81,8 +82,6 @@ jobs:
   linux-debian:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
-    environment:
-      - BUILD_DIR: build-debian
     steps:
       - run:
           name: Redis_5_upgrade
@@ -93,8 +92,6 @@ jobs:
   valgrind:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
-    environment:
-      - BUILD_DIR: build-debian
     steps:
       - run:
           name: Redis with Valgrind
