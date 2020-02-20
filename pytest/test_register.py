@@ -797,7 +797,5 @@ def testSteamReaderAbortOnFailure(env):
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for registration to abort')
 
-    env.assertTrue(False, message='Failed to check rafi fix')
-
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
