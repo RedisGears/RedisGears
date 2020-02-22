@@ -38,6 +38,7 @@ typedef struct StreamReaderTriggerArgs{
     char* stream;
     OnFailedPolicy onFailedPolicy;
     size_t retryInterval;
+    bool trimmStream;
 }StreamReaderTriggerArgs;
 
 typedef enum StreamRegistrationStatus{
@@ -130,13 +131,14 @@ static StreamId StreamReader_ParseStreamId(const char* streamId){
     return ret;
 }
 
-StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval){
+StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimmStream){
     StreamReaderTriggerArgs* readerArgs = RG_ALLOC(sizeof(StreamReaderTriggerArgs));
     readerArgs->stream = RG_STRDUP(streamName);
     readerArgs->batchSize = batchSize;
     readerArgs->durationMS = durationMS;
     readerArgs->onFailedPolicy = onFailedPolicy;
     readerArgs->retryInterval = retryInterval;
+    readerArgs->trimmStream = trimmStream;
     return readerArgs;
 }
 
@@ -497,7 +499,7 @@ typedef struct ExecutionDoneCtx{
     SingleStreamReaderCtx ssrctx;
 }ExecutionDoneCtx;
 
-static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx){
+static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm){
     if(array_len(readerCtx->batchIds) == 0){
         // nothing to ack on
         return;
@@ -508,20 +510,24 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx){
 
     RedisModule_FreeCallReply(reply);
 
-    reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
-    ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
-    assert(ret);
-    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
+    if(alsoTrimm){
 
-    long long streamLen = RedisModule_CallReplyInteger(reply);
+        reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
+        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
+        assert(ret);
+        assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
 
-    RedisModule_FreeCallReply(reply);
+        long long streamLen = RedisModule_CallReplyInteger(reply);
 
-    reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
-    ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
-    assert(ret);
+        RedisModule_FreeCallReply(reply);
 
-    RedisModule_FreeCallReply(reply);
+        reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
+        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
+        assert(ret);
+
+        RedisModule_FreeCallReply(reply);
+
+    }
 }
 
 static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, StreamReaderCtx* readerCtx){
@@ -650,11 +656,9 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     } else if(ctx->status == StreamRegistrationStatus_ABORTED){
         ++srctx->numAborted;
     } else {
-        if(EPIsFlagOn(ctx, EFIsLocal)){
-            Reader* reader = ExecutionPlan_GetReader(ctx);
-            StreamReader_AckAndTrimm(reader->ctx);
-            StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
-        }
+        Reader* reader = ExecutionPlan_GetReader(ctx);
+        StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimmStream);
+        StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
         ++srctx->numSuccess;
     }
 
@@ -924,6 +928,7 @@ static void StreamReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, triggerArgs->durationMS);
     RedisGears_BWWriteLong(bw, triggerArgs->onFailedPolicy);
     RedisGears_BWWriteLong(bw, triggerArgs->retryInterval);
+    RedisGears_BWWriteLong(bw, triggerArgs->trimmStream);
 }
 
 static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
@@ -932,7 +937,8 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
     size_t durationMS = RedisGears_BRReadLong(br);
     OnFailedPolicy onFailedPolicy = RedisGears_BRReadLong(br);
     size_t retryInterval = RedisGears_BRReadLong(br);
-    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval);
+    bool trimmStream = RedisGears_BRReadLong(br);
+    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval, trimmStream);
 }
 
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){

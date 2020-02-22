@@ -124,7 +124,8 @@ class GearsBuilder():
                  keyTypes=None,
                  onRegistered=None,
                  onFailedPolicy="continue",
-                 onFailedRetryInterval=1):
+                 onFailedRetryInterval=1,
+                 trimmStream=True):
         self.gearsCtx.register(regex=regex, 
                                mode=mode, 
                                batch=batch, 
@@ -133,7 +134,8 @@ class GearsBuilder():
                                keyTypes=keyTypes, 
                                OnRegistered=onRegistered, 
                                onFailedPolicy=onFailedPolicy, 
-                               onFailedRetryInterval=onFailedRetryInterval)
+                               onFailedRetryInterval=onFailedRetryInterval,
+                               trimmStream=trimmStream)
 
 
 def createDecorator(f):

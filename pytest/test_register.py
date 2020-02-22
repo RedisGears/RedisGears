@@ -822,3 +822,46 @@ def testSteamReaderAbortOnFailure(env):
 
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testStreamTrimming(env):
+    conn = getConnectionByEnv(env)
+
+    # {06S} is going to first slot
+    env.cmd('rg.pyexecute', "GB('StreamReader').register('s1{06S}')")
+    env.cmd('rg.pyexecute', "GB('StreamReader').register('s2{06S}', trimmStream=False)")
+
+    env.cmd('XADD s2{06S} * foo bar')
+    env.cmd('XADD s1{06S} * foo bar')
+    
+
+    try:
+        with TimeLimit(2):
+            while True:
+                len = env.cmd('XLEN s1{06S}')
+                if int(len) == 0:
+                    break
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for s1{06S} len to reach zero')
+
+    env.assertEqual(env.cmd('XLEN s2{06S}'), 1)
+
+    try:
+        with TimeLimit(4):
+            isDone = False
+            while not isDone:
+                isDone = True
+                executions = env.cmd('RG.DUMPEXECUTIONS')
+                for r in executions:
+                    try:
+                        res = env.cmd('RG.DROPEXECUTION', r[1])
+                    except Exception:
+                        res = 'error'
+                    if res != 'OK':
+                        isDone = False
+                        time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not drop all executions')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')

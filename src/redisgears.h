@@ -171,7 +171,7 @@ typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
 typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
-StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval);
+StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimmStream);
 void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
 KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, Arr(char*) eventTypes, Arr(int) keyTypes);
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);

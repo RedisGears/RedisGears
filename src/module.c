@@ -210,8 +210,8 @@ static void RG_StreamReaderCtxFree(StreamReaderCtx* readerCtx){
     StreamReaderCtx_Free(readerCtx);
 }
 
-static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval){
-    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval);
+static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimmStream){
+    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval, trimmStream);
 }
 
 static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
