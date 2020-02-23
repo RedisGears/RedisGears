@@ -217,6 +217,8 @@ typedef struct ExecutionPlan{
     WorkerData* assignWorker;
     ExecutionMode mode;
     Gears_listNode* nodeOnExecutionsList;
+    RedisModuleTimerID maxIdleReachedTimer;
+    bool maxIdleTimerSet;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -248,6 +250,7 @@ typedef struct FlatExecutionPlan{
     Gears_Buffer* serializedFep;
     FlatBasicStep onExecutionStartStep;
     FlatBasicStep onRegisteredStep;
+    size_t maxIdleMiliSec;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{

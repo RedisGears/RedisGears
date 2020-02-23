@@ -50,6 +50,7 @@ typedef struct RedisGears_Config{
     ConfigVal createVenv;
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
+    ConfigVal executionDefaultMaxIdleTimeMiliSec;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -179,6 +180,26 @@ static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ExecutionDefaultMaxIdleTimeGet(){
+    return &DefaultGearsConfig.executionDefaultMaxIdleTimeMiliSec;
+}
+
+static bool ConfigVal_ExecutionDefaultMaxIdleTimeSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if(n <= 500){
+            return false;
+        }
+        DefaultGearsConfig.executionDefaultMaxIdleTimeMiliSec.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static Gears_dict* Gears_ExtraConfig = NULL;
 
 static Gears_ConfigVal Gears_ConfigVals[] = {
@@ -223,6 +244,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_CreateVenvGet,
         .setter = ConfigVal_CreateVenvSet,
         .configurableAtRunTime = false,
+    },
+    {
+        .name = "ExecutionDefaultMaxIdleTimeMiliSec",
+        .getter = ConfigVal_ExecutionDefaultMaxIdleTimeGet,
+        .setter = ConfigVal_ExecutionDefaultMaxIdleTimeSet,
+        .configurableAtRunTime = true,
     },
     {
         NULL,
@@ -381,6 +408,10 @@ long long GearsConfig_GetPythonAttemptTraceback(){
 	return DefaultGearsConfig.pythonAttemptTraceback.val.longVal;
 }
 
+long long GearsConfig_GetExecutionMaxIdleTime(){
+    return DefaultGearsConfig.executionDefaultMaxIdleTimeMiliSec.val.longVal;
+}
+
 const char* GearsConfig_GetExtraConfigVals(const char* key){
     return Gears_dictFetchValue(Gears_ExtraConfig, key);
 }
@@ -464,6 +495,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .createVenv = {
             .val.longVal = 0,
+            .type = LONG,
+        },
+        .executionDefaultMaxIdleTimeMiliSec = {
+            .val.longVal = 30000,
             .type = LONG,
         },
     };

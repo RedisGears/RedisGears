@@ -503,7 +503,7 @@ static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
     if(node->status == NodeStatus_Connected){
         redisAsyncCommandArgv(node->c, OnResponseArrived, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
     }else{
-        RedisModule_Log(NULL, "warning", "message was not sent because status is not connected");
+        RedisModule_Log(NULL, "verbose", "message was not sent because status is not connected");
     }
     Gears_listAddNodeTail(node->pendingMessages, sentMsg);
 }

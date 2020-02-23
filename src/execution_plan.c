@@ -165,6 +165,9 @@ static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
 }
 
 static void ExectuionPlan_WorkerMsgFree(WorkerMsg* msg){
+    if(msg->type == ADD_RECORD_MSG && msg->addRecordWM.record){
+        RedisGears_FreeRecord(msg->addRecordWM.record);
+    }
 	RG_FREE(msg);
 }
 
@@ -1146,11 +1149,11 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     return r;
 }
 
-static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
+static void ExecutionPlan_WriteResult(ExecutionPlan* ep, Record* record){
     ep->results = array_append(ep->results, record);
 }
 
-static void ExecutionPlan_WriteError(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
+static void ExecutionPlan_WriteError(ExecutionPlan* ep, Record* record){
     ep->errors = array_append(ep->errors, record);
 }
 
@@ -1163,9 +1166,9 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
             return false;
         }
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
-            ExecutionPlan_WriteError(ep, rctx, record);
+            ExecutionPlan_WriteError(ep, record);
         }else{
-            ExecutionPlan_WriteResult(ep, rctx, record);
+            ExecutionPlan_WriteResult(ep, record);
         }
     }
 
@@ -1299,7 +1302,16 @@ ActionResult EPStatus_InitiatorTerminationAction(ExecutionPlan* ep){
     return CONTINUE;
 }
 
-static void ExecutionPlan_Main(ExecutionPlan* ep){
+static void ExecutionPlan_MaxIdleReached(RedisModuleCtx *ctx, void *data){
+#define MAX_IDLE_TIMEOUT_ERROR "Max idle timeout reached"
+    ExecutionPlan* ep = data;
+    ep->status = ABORTED;
+    Record* errorRecord = RG_ErrorRecordCreate(RG_STRDUP(MAX_IDLE_TIMEOUT_ERROR), strlen(MAX_IDLE_TIMEOUT_ERROR));
+    ExecutionPlan_WriteError(ep, errorRecord);
+    EPStatus_DoneAction(ep);
+}
+
+static void ExecutionPlan_Main(RedisModuleCtx* ctx, ExecutionPlan* ep){
     ActionResult result;
     EPTurnOffFlag(ep, EFSentRunRequest);
     while(true){
@@ -1308,6 +1320,11 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
         case CONTINUE:
             break;
         case STOP:
+            // here we need to set a timmer to abort the execution after timeout
+            LockHandler_Acquire(ctx);
+            ep->maxIdleReachedTimer = RedisModule_CreateTimer(ctx, ep->fep->maxIdleMiliSec, ExecutionPlan_MaxIdleReached, ep);
+            ep->maxIdleTimerSet = true;
+            LockHandler_Release(ctx);
             return;
         case COMPLETED:
             return;
@@ -1446,6 +1463,8 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     }
 
     ExecutionPlan_SetID(ep, eid);
+
+    ep->maxIdleTimerSet = false;
 
     if(GearsConfig_GetMaxExecutions() > 0 && Gears_listLength(epData.epList) >= GearsConfig_GetMaxExecutions()){
         Gears_listNode *head = Gears_listFirst(epData.epList);
@@ -1592,6 +1611,8 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
 static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     assert(ep->mode == ExecutionModeSync);
 
+    EPTurnOnFlag(ep, EFDone);
+
     INIT_TIMER;
     GETTIME(&_ts);
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
@@ -1627,7 +1648,14 @@ static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* ei
 
 static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-	assert(ep);
+	if(!ep){
+	    RedisModule_Log(NULL, "warning", "On NotifyReceived, could not find execution %s", payload);
+	    return;
+	}
+	if(ep->status == ABORTED){
+	    RedisModule_Log(NULL, "warning", "On NotifyReceived, got data on an already aborted execution %s", payload);
+        return;
+	}
 	++ep->totalShardsRecieved;
 	if((Cluster_GetSize() - 1) == ep->totalShardsRecieved){ // no need to wait to myself
 	    ExecutionPlan_RegisterForRun(ep);
@@ -1636,7 +1664,14 @@ static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender
 
 static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-	assert(ep);
+	if(!ep){
+        RedisModule_Log(NULL, "warning", "On NotifyRun, could not find execution %s", payload);
+        return;
+	}
+        if(ep->status == ABORTED){
+            RedisModule_Log(NULL, "warning", "On NotifyRun, got data on an already aborted execution %s", payload);
+            return;
+        }
 	ExecutionPlan_RegisterForRun(ep);
 }
 
@@ -1670,7 +1705,7 @@ static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const
     bool abortPendind = RedisGears_BRReadLong(&br);
     FlatExecutionPlan* fep = FlatExecutionPlan_FindId(id);
     if(!fep){
-        printf("warning: execution not found %s !!!\r\n", id);
+        RedisModule_Log(NULL, "warning", "execution not found %s", id);
         return;
     }
     ExecutionPlan_UnregisterExecutionInternal(ctx, fep, abortPendind);
@@ -1716,11 +1751,18 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     Gears_BufferReaderInit(&br, &buff);
     size_t epIdLen;
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On CollectOnRecordReceived, could not find execution %s", epId);
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On CollectOnRecordReceived, got data on an already aborted execution %s", epId);
+        return;
+    }
     size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
-    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-    assert(ep);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, COLLECT);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -1734,9 +1776,16 @@ static void ExecutionPlan_CollectDoneSendingRecords(RedisModuleCtx *ctx, const c
 	Gears_BufferReaderInit(&br, &buff);
 	size_t epIdLen;
 	char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
-	size_t stepId = RedisGears_BRReadLong(&br);
 	ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-	assert(ep);
+	if(!ep){
+        RedisModule_Log(NULL, "warning", "On CollectDoneSendingRecords, could not find execution %s", epId);
+        return;
+        }
+        if(ep->status == ABORTED){
+            RedisModule_Log(NULL, "warning", "On CollectDoneSendingRecords, got data on an already aborted execution %s", epId);
+            return;
+        }
+	size_t stepId = RedisGears_BRReadLong(&br);
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, COLLECT);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -1750,11 +1799,18 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     Gears_BufferReaderInit(&br, &buff);
     size_t epIdLen;
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On OnRepartitionRecordReceived, could not find execution %s", epId);
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On OnRepartitionRecordReceived, got data on an already aborted execution %s", epId);
+        return;
+    }
     size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
-    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-    assert(ep);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, REPARTITION);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -1781,20 +1837,34 @@ static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep){
 
 static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-    assert(ep);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On TeminateExecution, could not find execution %s", payload);
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On TeminateExecution, got data on an already aborted execution %s", payload);
+        return;
+    }
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateTerminate(ep);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
 static void ExecutionPlan_NotifyExecutionDone(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-    assert(ep);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On NotifyExecutionDone, could not find execution %s", payload);
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On NotifyExecutionDone, got data on an already aborted execution %s", payload);
+        return;
+    }
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateDone(ep);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
-static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     Gears_Buffer buff;
+static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     buff.buff = (char*)payload;
     buff.size = len;
     buff.cap = len;
@@ -1804,24 +1874,31 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     size_t stepId = RedisGears_BRReadLong(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-	assert(ep);
-	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, REPARTITION);
-	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On DoneRepartition, could not find execution %s", epId);
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On DoneRepartition, got data on an already aborted execution %s", epId);
+        return;
+    }
+    WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, REPARTITION);
+    ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
-static void ExecutionPlan_ExecutionTerminate(ExecutionPlan* ep){
+static void ExecutionPlan_ExecutionTerminate(RedisModuleCtx* ctx, ExecutionPlan* ep){
     assert(ep->status == WAITING_FOR_INITIATOR_TERMINATION);
-    ExecutionPlan_Main(ep);
+    ExecutionPlan_Main(ctx, ep);
 }
 
-static void ExecutionPlan_ExecutionDone(ExecutionPlan* ep){
+static void ExecutionPlan_ExecutionDone(RedisModuleCtx* ctx, ExecutionPlan* ep){
     ep->totalShardsCompleted++;
     if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
-        ExecutionPlan_Main(ep);
+        ExecutionPlan_Main(ctx, ep);
     }
 }
 
-static void ExecutionPlan_StepDone(ExecutionPlan* ep, size_t stepId, enum StepType stepType){
+static void ExecutionPlan_StepDone(RedisModuleCtx* ctx, ExecutionPlan* ep, size_t stepId, enum StepType stepType){
 	size_t totalShardsCompleted;
 	switch(stepType){
 	case REPARTITION:
@@ -1838,11 +1915,11 @@ static void ExecutionPlan_StepDone(ExecutionPlan* ep, size_t stepId, enum StepTy
 
 	assert(Cluster_GetSize() - 1 >= totalShardsCompleted);
 	if((Cluster_GetSize() - 1) == totalShardsCompleted){ // no need to wait to myself
-	    ExecutionPlan_Main(ep);
+	    ExecutionPlan_Main(ctx, ep);
 	}
 }
 
-static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
+static void ExecutionPlan_AddStepRecord(RedisModuleCtx* ctx, ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
 #define MAX_PENDING_TO_START_RUNNING 10000
 	Record*** pendings = NULL;
 	switch(stepType){
@@ -1859,22 +1936,30 @@ static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record
 	}
 	*pendings = array_append(*pendings, r);
 	if(array_len(*pendings) >= MAX_PENDING_TO_START_RUNNING){
-	    ExecutionPlan_Main(ep);
+	    ExecutionPlan_Main(ctx, ep);
 	}
 }
 
 static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     ExecutionPlan* ep;
+    Record* r;
     RedisModule_ThreadSafeContextLock(ctx);
     ep = ExecutionPlan_FindById(msg->id);
     if(!ep){
         // execution was probably already deleted
-        RedisModule_ThreadSafeContextUnlock(ctx);
-        ExectuionPlan_WorkerMsgFree(msg);
-        return;
+        goto error;
     }
-    if(msg->type == RUN_MSG){
-        // lets mark execution as started, dropping it now require some extra work.
+    if(ep->status == ABORTED){
+        goto error;
+    }
+    if(ep->maxIdleTimerSet){
+        // a timer to abort the execution is set, lets cancel it.
+        int res = RedisModule_StopTimer(ctx, ep->maxIdleReachedTimer, NULL);
+        assert(res == REDISMODULE_OK);
+        ep->maxIdleTimerSet = false;
+    }
+    if(EPIsFlagOff(ep, EFStarted)){
+        // lets mark execution as started, dropping it now requires some extra work.
         EPTurnOnFlag(ep, EFStarted);
 
         // calling the onStart callback if exists
@@ -1890,24 +1975,32 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     RedisModule_ThreadSafeContextUnlock(ctx);
 	switch(msg->type){
 	case RUN_MSG:
-        ExecutionPlan_Main(ep);
+        ExecutionPlan_Main(ctx, ep);
 		break;
 	case ADD_RECORD_MSG:
-		ExecutionPlan_AddStepRecord(ep, msg->addRecordWM.stepId, msg->addRecordWM.record, msg->addRecordWM.stepType);
+	    // we are taking ownershit of the record
+	    r = msg->addRecordWM.record;
+	    msg->addRecordWM.record = NULL;
+		ExecutionPlan_AddStepRecord(ctx, ep, msg->addRecordWM.stepId, r, msg->addRecordWM.stepType);
 		break;
 	case SHARD_COMPLETED_MSG:
-		ExecutionPlan_StepDone(ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
+		ExecutionPlan_StepDone(ctx, ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
 		break;
 	case EXECUTION_DONE:
-	    ExecutionPlan_ExecutionDone(ep);
+	    ExecutionPlan_ExecutionDone(ctx, ep);
 	    break;
 	case EXECUTION_TERMINATE:
-            ExecutionPlan_ExecutionTerminate(ep);
-            break;
+        ExecutionPlan_ExecutionTerminate(ctx, ep);
+        break;
 	default:
 		assert(false);
 	}
 	ExectuionPlan_WorkerMsgFree(msg);
+	return;
+
+error:
+    RedisModule_ThreadSafeContextUnlock(ctx);
+    ExectuionPlan_WorkerMsgFree(msg);
 }
 
 static void* ExecutionPlan_MessageThreadMain(void *arg){
@@ -2275,6 +2368,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->desc = NULL;
     res->executionPoolSize = 0;
     res->serializedFep = NULL;
+    res->maxIdleMiliSec = GearsConfig_GetExecutionMaxIdleTime();
     res->onExecutionStartStep = (FlatBasicStep){
             .stepName = NULL,
             .arg = {
