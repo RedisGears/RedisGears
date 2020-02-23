@@ -221,13 +221,13 @@ workflows:
       - valgrind:
           filters:
             branches:
-              only: master
+              ignore: /.*/
             tags:
               only: /^v[0-9].*/
       - macos:
           filters:
             branches:
-              only: master
+              ignore: /.*/
             tags:
               only: /^v[0-9].*/
 #      - build-multiarch-docker:
