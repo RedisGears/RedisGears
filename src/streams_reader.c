@@ -38,7 +38,7 @@ typedef struct StreamReaderTriggerArgs{
     char* stream;
     OnFailedPolicy onFailedPolicy;
     size_t retryInterval;
-    bool trimmStream;
+    bool trimStream;
 }StreamReaderTriggerArgs;
 
 typedef enum StreamRegistrationStatus{
@@ -131,14 +131,14 @@ static StreamId StreamReader_ParseStreamId(const char* streamId){
     return ret;
 }
 
-StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimmStream){
+StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
     StreamReaderTriggerArgs* readerArgs = RG_ALLOC(sizeof(StreamReaderTriggerArgs));
     readerArgs->stream = RG_STRDUP(streamName);
     readerArgs->batchSize = batchSize;
     readerArgs->durationMS = durationMS;
     readerArgs->onFailedPolicy = onFailedPolicy;
     readerArgs->retryInterval = retryInterval;
-    readerArgs->trimmStream = trimmStream;
+    readerArgs->trimStream = trimStream;
     return readerArgs;
 }
 
@@ -657,7 +657,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         ++srctx->numAborted;
     } else {
         Reader* reader = ExecutionPlan_GetReader(ctx);
-        StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimmStream);
+        StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimStream);
         StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
         ++srctx->numSuccess;
     }
@@ -928,7 +928,7 @@ static void StreamReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, triggerArgs->durationMS);
     RedisGears_BWWriteLong(bw, triggerArgs->onFailedPolicy);
     RedisGears_BWWriteLong(bw, triggerArgs->retryInterval);
-    RedisGears_BWWriteLong(bw, triggerArgs->trimmStream);
+    RedisGears_BWWriteLong(bw, triggerArgs->trimStream);
 }
 
 static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
@@ -937,8 +937,8 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
     size_t durationMS = RedisGears_BRReadLong(br);
     OnFailedPolicy onFailedPolicy = RedisGears_BRReadLong(br);
     size_t retryInterval = RedisGears_BRReadLong(br);
-    bool trimmStream = RedisGears_BRReadLong(br);
-    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval, trimmStream);
+    bool trimStream = RedisGears_BRReadLong(br);
+    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){

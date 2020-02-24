@@ -776,14 +776,14 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr, Exe
         }
     }
 
-    bool trimmStream = true;
-    PyObject* pyTrimmStream = PyDict_GetItemString(kargs, "trimmStream");
-    if(pyTrimmStream){
-        if(PyBool_Check(pyTrimmStream)){
-            if(Py_True == pyTrimmStream){
-                trimmStream = true;
+    bool trimStream = true;
+    PyObject* pyTrimStream = PyDict_GetItemString(kargs, "trimStream");
+    if(pyTrimStream){
+        if(PyBool_Check(pyTrimStream)){
+            if(Py_True == pyTrimStream){
+                trimStream = true;
             }else{
-                trimmStream = false;
+                trimStream = false;
             }
         }else{
             PyErr_SetString(GearsError, "pyTrimmStream argument must be a boolean");
@@ -791,7 +791,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr, Exe
         }
     }
 
-    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS, onFailedPolicy, retryInterval, trimmStream);
+    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
 static void registerFreeArgs(FlatExecutionPlan* fep, void* args){

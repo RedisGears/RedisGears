@@ -828,7 +828,7 @@ def testStreamTrimming(env):
 
     # {06S} is going to first slot
     env.cmd('rg.pyexecute', "GB('StreamReader').register('s1{06S}')")
-    env.cmd('rg.pyexecute', "GB('StreamReader').register('s2{06S}', trimmStream=False)")
+    env.cmd('rg.pyexecute', "GB('StreamReader').register('s2{06S}', trimStream=False)")
 
     env.cmd('XADD s2{06S} * foo bar')
     env.cmd('XADD s1{06S} * foo bar')
