@@ -903,7 +903,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			    // we need to clear and rewrite cause buff contains garbage
 			    Gears_BufferClear(buff);
 			    RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
-                RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
+			    RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 			    record = RG_ErrorRecordCreate(err, strlen(err));
 			    err = NULL;
 			    serializationRes = RG_SerializeRecord(&bw, record, &err);
