@@ -1,3 +1,4 @@
+#ifdef WITHPYTHON
 #include <Python.h>
 #include "record.h"
 #include "redisai.h"
@@ -3070,3 +3071,4 @@ void __attribute__((destructor)) RedisGearsPy_Clean(void) {
     }
     array_free(requitmentsCache);
 }
+#endif

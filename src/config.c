@@ -8,6 +8,7 @@
 #include "config.h"
 #include "redisgears_memory.h"
 #include "utils/arr.h"
+#include "utils/dict.h"
 #include <stdbool.h>
 #include <assert.h>
 

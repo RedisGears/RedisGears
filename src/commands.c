@@ -1,4 +1,5 @@
 #include "commands.h"
+#include "redismodule.h"
 #include "utils/arr_rm_alloc.h"
 #include "cluster.h"
 #include "record.h"

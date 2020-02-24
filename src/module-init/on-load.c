@@ -1,20 +1,12 @@
-/*
- * module_init.c
- *
- *  Created on: 6 Dec 2018
- *      Author: root
- */
-#include "redismodule.h"
-#include "version.h"
 #include <limits.h>
 #include <stdlib.h>
 #define __USE_GNU
 #include <dlfcn.h>
 
-int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+#include "module-init.h"
+#include "version.h"
 
-void test(){
-
+void test() {
 }
 
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -32,6 +24,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
-    return RedisGears_OnLoad(ctx, argv, argc);
+    return RedisGears_Init(ctx, argv, argc, GEARS_INIT_MODULE);
 }
 
