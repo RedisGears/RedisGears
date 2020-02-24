@@ -57,7 +57,7 @@ class RedisGearsSetup(paella.Setup):
         self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
 
         self.run("dir=$(mktemp -d /tmp/tar.XXXXXX); cd $dir; wget -q https://ftp.gnu.org/gnu/tar/tar-1.32.tar.gz; tar xzf tar-1.32.tar.gz; cd tar-1.32; "+
-            "FORCE_UNSAFE_CONFIGURE=1 ./configure && make && make install; " + 
+            "FORCE_UNSAFE_CONFIGURE=1 ./configure && make && make install; " +
             "while [[ -d confdir3 ]]; do cd confdir3; done; cd ..; while [[ -d confdir3 ]]; do rm -rf confdir3; cd ..; done; " +
             "cd /; rm -rf $dir; true", output_on_error=True)
 
@@ -100,6 +100,8 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("pipenv gevent")
 
     def common_last(self):
+        self.install("valgrind")
+
         # this is due to rmbuilder older versions. should be removed once fixed.
         self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest rmtest semantic-version || true")
         # redis-py-cluster should be installed from git due to redis-py dependency

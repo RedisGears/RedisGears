@@ -15,4 +15,8 @@ endif
 
 $(foreach DIR,$(BIN_DIRS),$(eval $(call mkdir_rule,$(DIR))))
 
+else
+
+bindirs: ;
+
 endif # MK.nobindir
