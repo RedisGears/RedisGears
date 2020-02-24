@@ -87,6 +87,9 @@ class RedisGearsSetup(paella.Setup):
         self.install("python2-ujson")
         self.pip_install("pipenv gevent")
 
+    def linux(self):
+        self.install("valgrind")
+
     def macosx(self):
         r, w, e = popen2.popen3('xcode-select -p')
         if r.readlines() == []:
@@ -100,8 +103,6 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("pipenv gevent")
 
     def common_last(self):
-        self.install("valgrind")
-
         # this is due to rmbuilder older versions. should be removed once fixed.
         self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest rmtest semantic-version || true")
         # redis-py-cluster should be installed from git due to redis-py dependency
