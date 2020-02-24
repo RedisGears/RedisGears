@@ -15,12 +15,15 @@ import platform
 import argparse
 import json
 from collections import OrderedDict
+import tempfile
+import subprocess
+from textwrap import dedent
 
 # for debugging from within rlec-docker
 # sys.path.insert(0, "/opt/view/readies")
 # import paella
 
-S3_ROOT="https://s3.amazonaws.com/redismodules"
+S3_ROOT="http://s3.amazonaws.com/redismodules"
 DEFAULT_S3_YAML_DIR="preview1"
 MOD_DIR="/opt/redislabs/lib/modules"
 MODULE_LIB_DIR="/opt/redislabs/lib/modules/lib"
@@ -52,15 +55,29 @@ def ordered_yaml_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict)
 
 def wget(url, dest):
     file = dest + "/" + os.path.basename(url)
+    backup = None
     if NOP:
         print("downloading " + S3_ROOT + "/" + url + " into " + file)
         return file
-    if not os.path.isfile(file):
+    if os.path.isfile(file):
+        fd, backup_path = tempfile.mkstemp()
+        backup_path = backup_path.encode('utf8')
+        os.close(fd)
+        shutil.move(file, backup_path)
+        backup = backup_path
+    try:
+        print "downloading from " + S3_ROOT + "/" + url
+        urllib.urlretrieve(S3_ROOT + "/" + url, file)
+        print "download done."
         try:
-            urllib.urlretrieve(S3_ROOT + "/" + url, file)
-        except:
-            print >> sys.stderr, "failed to download " + url
-            sys.exit(1)
+            os.unlink(backup)
+        except Exception as x:
+            print "backup unlink failed: " + str(x)
+    except Exception as x:
+        print >> sys.stderr, "failed to download " + url + ": " + str(x)
+        if not backup is None:
+            shutil.move(backup, file)
+        sys.exit(1)
     return file
 
 if args.yaml is None:
@@ -131,14 +148,15 @@ def extract_all_with_permission(file, target_dir):
     elif file.endswith('.tar'):
         tar_extract_all(file, target_dir)
 
-def extract_modinfo(file):
+def extract_modinfo(file, extra_args):
     if not file.endswith('.zip'):
         return ''
     try:
         with ZipFile(file) as zip:
             with zip.open('module.json') as jf:
                 j = json.loads(jf.read())
-                return json.dumps({ "module_name":  j["module_name"], "semantic_version": j["semantic_version"], "module_args": "" })
+                args = j["command_line_args"] + extra_args
+                return json.dumps({ "module_name":  j["module_name"], "semantic_version": j["semantic_version"], "module_args": args })
     except:
         print "Cannot read module info for " + file
         return ''
@@ -189,13 +207,47 @@ def install_module(name, mod):
             else:
                 extract_all_with_permission(zipf, dest)
 
+        mod_args = mod['args'] if 'args' in mod else ''
+
         if 'exec' in mod:
             cmd = "{{ {}; }} >{} 2>&1".format(mod['exec'], "/tmp/{}-exec.log".format(name))
             os.system(cmd)
 
+        modinfo = ''
         if zipf != '':
-            return extract_modinfo(zipf)
-        return ''
+            modinfo = extract_modinfo(zipf, mod_args)
+        if modinfo != '' and is_bootstrapped:
+            print("uploading module to cluster...")
+            script = """
+                import sys
+                import CCS
+                from restclient import RESTClient
+
+                def get_module(module_filepath):
+                    ccs = CCS.Context()
+                    rest_client = RESTClient(ccs, api_host="localhost")
+                    with open(module_filepath, 'rb') as module_file:
+                        response = rest_client.post("/modules", files={'module': module_file}, params={'is_bundled': False})
+                        response_json = response.json()
+                    if not response.ok: # and response_json.get('error_code') != 'module_exists':
+                        print(response_json.get('description'))
+                    exit(0 if response.ok else 1)
+
+                if len(sys.argv) > 0:
+                    get_module(sys.argv[1])
+                """
+            fd, script_path = tempfile.mkstemp()
+            os.write(fd, dedent(script))
+            os.close(fd)
+            try:
+                # os.environ['PYTHONPATH'] = '/opt/redislabs/lib/cnm:/opt/redislabs/lib/cnm/python:' + os.getenv('PYTHONPATH', '')
+                xx=subprocess.check_output('/bin/bash -c \'export PYTHONPATH="/opt/redislabs/lib/cnm:/opt/redislabs/lib/cnm/python:$PYTHONPATH"; /opt/redislabs/bin/python2 -O {} {}\''.format(script_path, zipf), shell=True)
+            except subprocess.CalledProcessError as x:
+                print >> sys.stderr, "Error: " + x.output
+                modinfo = ''
+            os.unlink(script_path)
+
+        return modinfo
     except Exception as x:
         print >> sys.stderr, str(x)
         return ''
@@ -233,9 +285,10 @@ def create_so_links():
                 os.remove(dest)
             os.symlink(src, dest)
 
-if not args.no_bootstrap_check and os.path.exists('/etc/opt/redislabs/node.id'):
-    print >> sys.stderr, "Cluster already bootstrapped. Aborting."
-    sys.exit(1)
+is_bootstrapped = os.path.exists('/etc/opt/redislabs/node.id')
+#if not args.no_bootstrap_check and is_bootstrapped:
+#    print >> sys.stderr, "Cluster already bootstrapped. Aborting."
+#    sys.exit(1)
 
 if not os.path.exists('/opt/redislabs/lib/modules'):
     print >> sys.stderr, "Cluster does not support module bundling. Aborting"
