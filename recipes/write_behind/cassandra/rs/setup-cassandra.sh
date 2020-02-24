@@ -15,7 +15,7 @@ rm -rf RedisGears recipe || true
 git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
 ln -s /opt/RedisGears/recipes/write_behind /opt/recipe
 
-/opt/recipe/cassandra/install-cassandra-docker
+/opt/recipe/cassandra/install-cassandra-cluster
 
 printf "\n127.0.0.1 cassandra\n" >> /etc/hosts
 

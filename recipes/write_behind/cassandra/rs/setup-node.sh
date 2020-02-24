@@ -7,7 +7,7 @@
 set -e
 
 if [[ -z $CASSANDRA ]]; then
-	echo "Error: no ORACLE IP address given. Aborting."
+	echo "Error: no Cassandra IP address given. Aborting."
 	exit 1
 fi
 
