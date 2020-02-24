@@ -1,3 +1,4 @@
 #!/bin/bash
 
-cqlsh -k test $*
+docker exec -it dse1 cqlsh $*
+# cqlsh -k test $*
