@@ -808,11 +808,23 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         }
         else{
             // we need to send the record to another shard
+            char* err = NULL;
             Gears_BufferWriterInit(&bw, buff);
             RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
             RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-            RG_SerializeRecord(&bw, record);
+            int serializationRes = RG_SerializeRecord(&bw, record, &err);
             RedisGears_FreeRecord(record);
+            if(serializationRes != REDISMODULE_OK){
+                // we need to clear and rewrite cause buff contains garbage
+                Gears_BufferClear(buff);
+                RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
+                RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
+                record = RG_ErrorRecordCreate(err, strlen(err));
+                err = NULL;
+                serializationRes = RG_SerializeRecord(&bw, record, &err);
+                assert(serializationRes == REDISMODULE_OK);
+                RedisGears_FreeRecord(record);
+            }
 
             Cluster_SendMsgM(shardIdToSendRecord, ExecutionPlan_OnRepartitionRecordReceived, buff->buff, buff->size);
 
@@ -881,11 +893,24 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			Gears_BufferFree(buff);
 			goto end; // record should stay here, just return it.
 		}else{
+		    char* err = NULL;
 			Gears_BufferWriterInit(&bw, buff);
 			RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
 			RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-			RG_SerializeRecord(&bw, record);
+			int serializationRes = RG_SerializeRecord(&bw, record, &err);
 			RedisGears_FreeRecord(record);
+			if(serializationRes != REDISMODULE_OK){
+			    // we need to clear and rewrite cause buff contains garbage
+			    Gears_BufferClear(buff);
+			    RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
+                RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
+			    record = RG_ErrorRecordCreate(err, strlen(err));
+			    err = NULL;
+			    serializationRes = RG_SerializeRecord(&bw, record, &err);
+			    assert(serializationRes == REDISMODULE_OK);
+			    RedisGears_FreeRecord(record);
+			}
+
 
 			Cluster_SendMsgM(ep->id, ExecutionPlan_CollectOnRecordReceived, buff->buff, buff->size);
 

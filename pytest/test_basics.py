@@ -531,19 +531,42 @@ class testGetExecution:
 
 def testConfigGet():
     env = Env(moduleArgs='TestConfig TestVal')
+    env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: (GearsConfigGet('TestConfig'), GearsConfigGet('NotExists', 'default')))."
                                "collect().distinct().run()").equal([["('TestVal', 'default')"],[]])
 
-def testDependenciesInstall(env):
+def testRecordSerializationFailure(env):
+    if env.shardsCount < 2:  # TODO: RedisGears_IsClusterMode reports false for clusters with 1 shard
+        env.skip()
+    conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                            "map(lambda x: __import__('redisgraph'))."
+                  "map(lambda x: __import__('redisgraph'))."
+                  "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
+    env.assertEqual(len(res[1]), env.shardsCount - 1) # the initiator will not raise error
+
+def testDependenciesInstall(env):
+    conn = getConnectionByEnv(env)
+    res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                            "map(lambda x: str(__import__('redisgraph')))."
                             "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
     env.assertEqual(len(res[0]), 1)
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redisgraph'", res[0][0])
 
 def testDependenciesInstallFailure(env):
+    conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: __import__('redisgraph'))."
                                "collect().distinct().run()", 'REQUIREMENTS', 'blabla').error().contains('satisfy requirments')
+
+def testAtomic(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+def test(r):
+    with atomic():
+        execute('set', 'x{%s}' % hashtag(), 2)
+        execute('set', 'y{%s}' % hashtag(), 1)
+GB('ShardsIDReader').foreach(test).flatmap(lambda r: execute('mget', 'x{%s}' % hashtag(), 'y{%s}' % hashtag())).collect().distinct().sort().run()
+    '''
+    env.expect('RG.PYEXECUTE', script).equal([['1', '2'],[]])
