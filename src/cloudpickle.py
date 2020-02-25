@@ -253,6 +253,7 @@ else:
 class CloudPickler(Pickler):
 
     dispatch = Pickler.dispatch.copy()
+    __pickle_diag = []
 
     def __init__(self, file, protocol=None):
         if protocol is None:
@@ -260,6 +261,45 @@ class CloudPickler(Pickler):
         Pickler.__init__(self, file, protocol=protocol)
         # map ids to dictionary. used to ensure that functions can share global env
         self.globals_ref = {}
+
+    @staticmethod
+    def diag():
+        return "\n".join(CloudPickler.__pickle_diag)
+
+    def save(self, obj):
+        try:
+            pickle._Pickler.save(self, obj)
+        except Exception as x:
+            xx = '[{}]'.format(str(x))
+            t = str(type(obj))
+            retry = True
+            if t.startswith('<function'):
+                CloudPickler.__pickle_diag.append('function failed')
+                try:
+                    CloudPickler.__pickle_diag.append('failed pickling {0} {1}'.format(obj, xx))
+                    retry = False
+                except:
+                    pass
+            elif t.startswith("<class 'type") or t.startswith("<class 'function"):
+                try:
+                    CloudPickler.__pickle_diag.append('failed pickling {0} {1} {2}'.format(t, obj.__name__, xx))
+                    retry = False
+                except:
+                    pass
+            elif t.startswith('<class'):
+                try:
+                    CloudPickler.__pickle_diag.append('failed pickling {0} {1}'.format(t, xx))
+                    retry = False
+                except:
+                    pass
+            else:
+                CloudPickler.__pickle_diag.append('other failed')
+            if retry:
+                try:
+                    CloudPickler.__pickle_diag.append('failed pickling object {0} of type {1} {}'.format(obj, type(obj), xx))
+                except:
+                    CloudPickler.__pickle_diag.append('cannot spell it out')
+            raise type(x)(x.message + CloudPickler.diag())
 
     def dump(self, obj):
         self.inject_addons()
