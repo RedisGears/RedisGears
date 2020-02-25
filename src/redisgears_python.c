@@ -894,6 +894,37 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
     return Py_None;
 }
 
+typedef struct PyAtomic{
+   PyObject_HEAD
+   RedisModuleCtx* ctx;
+} PyAtomic;
+
+static PyObject* atomicEnter(PyObject *self, PyObject *args){
+    PyAtomic* pyAtomic = (PyAtomic*)self;
+    LockHandler_Acquire(pyAtomic->ctx);
+    Py_INCREF(self);
+    return self;
+}
+
+static PyObject* atomicExit(PyObject *self, PyObject *args){
+    PyAtomic* pyAtomic = (PyAtomic*)self;
+    LockHandler_Release(pyAtomic->ctx);
+    Py_INCREF(self);
+    return self;
+}
+
+static void PyAtomic_Destruct(PyObject *pyObj){
+    PyAtomic* pyAtomic = (PyAtomic*)pyObj;
+    RedisModule_FreeThreadSafeContext(pyAtomic->ctx);
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
+PyMethodDef PyAtomicMethods[] = {
+    {"__enter__", atomicEnter, METH_VARARGS, "acquire the GIL"},
+    {"__exit__", atomicExit, METH_VARARGS, "release the GIL"},
+    {NULL, NULL, 0, NULL}
+};
+
 /* Flat Execution operations */
 PyMethodDef PyFlatExecutionMethods[] = {
     {"map", map, METH_VARARGS, "map operation on each record"},
@@ -924,6 +955,30 @@ static void PyFlatExecution_Destruct(PyObject *pyObj){
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
+static PyTypeObject PyAtomicType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "redisgears.PyAtomic",     /* tp_name */
+    sizeof(PyAtomic),          /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    PyAtomic_Destruct,         /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_compare */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+    "PyAtomic",                /* tp_doc */
+};
+
 static PyTypeObject PyFlatExecutionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "redisgears.PyFlatExecution",       /* tp_name */
@@ -947,6 +1002,12 @@ static PyTypeObject PyFlatExecutionType = {
     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
     "PyFlatExecution",         /* tp_doc */
 };
+
+static PyObject* atomicCtx(PyObject *cls, PyObject *args){
+    PyAtomic* pyAtomic = PyObject_New(PyAtomic, &PyAtomicType);
+    pyAtomic->ctx = RedisModule_GetThreadSafeContext(NULL);
+    return (PyObject*)pyAtomic;
+}
 
 static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -1804,6 +1865,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
 
 PyMethodDef EmbRedisGearsMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
+    {"atomicCtx", atomicCtx, METH_VARARGS, "creating a atomic ctx for atomic block"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
     {"log", RedisLog, METH_VARARGS, "write a message into the redis log file"},
@@ -2484,15 +2546,15 @@ static char* RedisGearsPy_PyObjectToString(void* arg){
     return objCstr;
 }
 
-void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
+int RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err){
     void* old = RedisGearsPy_Lock(NULL);
     PyObject* obj = arg;
     PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
     if(!objStr){
-        char* error = getPyError();
-        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_PyObjectSerialize, error=%s", error);
-        RG_FREE(error);
-        assert(false);
+        *err = getPyError();
+        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_PyObjectSerialize, error=%s", *err);
+        RedisGearsPy_Unlock(old);
+        return REDISMODULE_ERR;
     }
     size_t len;
     char* objStrCstr;
@@ -2500,7 +2562,7 @@ void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw){
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
     Py_DECREF(objStr);
     RedisGearsPy_Unlock(old);
-    return;
+    return REDISMODULE_OK;
 }
 
 void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br){
@@ -2935,23 +2997,34 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyTensorType.tp_new = PyType_GenericNew;
     PyGraphRunnerType.tp_new = PyType_GenericNew;
     PyFlatExecutionType.tp_new = PyType_GenericNew;
+    PyAtomicType.tp_new = PyType_GenericNew;
 
     PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
+    PyAtomicType.tp_methods = PyAtomicMethods;
 
     if (PyType_Ready(&PyTensorType) < 0){
         RedisModule_Log(ctx, "warning", "PyTensorType not ready");
+        return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyGraphRunnerType) < 0){
         RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
+        return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyTorchScriptRunnerType) < 0){
         RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
+        return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyFlatExecutionType) < 0){
         RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
+        return REDISMODULE_ERR;
+    }
+
+    if (PyType_Ready(&PyAtomicType) < 0){
+        RedisModule_Log(ctx, "warning", "PyAtomicType not ready");
+        return REDISMODULE_ERR;
     }
 
     PyObject* pName = PyUnicode_FromString("gearsclient");
@@ -2973,12 +3046,13 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     Py_INCREF(&PyGraphRunnerType);
     Py_INCREF(&PyTorchScriptRunnerType);
     Py_INCREF(&PyFlatExecutionType);
+    Py_INCREF(&PyAtomicType);
 
     PyModule_AddObject(redisAIModule, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(redisAIModule, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(redisAIModule, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
     PyModule_AddObject(redisGearsModule, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
-
+    PyModule_AddObject(redisGearsModule, "PyAtomic", (PyObject *)&PyAtomicType);
     GearsError = PyErr_NewException("spam.error", NULL, NULL);
     Py_INCREF(GearsError);
     PyModule_AddObject(redisGearsModule, "GearsError", GearsError);

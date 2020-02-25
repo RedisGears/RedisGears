@@ -313,7 +313,7 @@ void RG_PyObjRecordSet(Record* r, PyObject* obj){
 }
 #endif
 
-void RG_SerializeRecord(Gears_BufferWriter* bw, Record* r){
+int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err){
     RedisGears_BWWriteLong(bw, r->type);
     switch(r->type){
     case STRING_RECORD:
@@ -329,14 +329,18 @@ void RG_SerializeRecord(Gears_BufferWriter* bw, Record* r){
     case LIST_RECORD:
         RedisGears_BWWriteLong(bw, RedisGears_ListRecordLen(r));
         for(size_t i = 0 ; i < RedisGears_ListRecordLen(r) ; ++i){
-            RG_SerializeRecord(bw, r->listRecord.records[i]);
+            if(RG_SerializeRecord(bw, r->listRecord.records[i], err) != REDISMODULE_OK){
+                return REDISMODULE_ERR;
+            }
         }
         break;
     case KEY_RECORD:
         RedisGears_BWWriteString(bw, r->keyRecord.key);
         if(r->keyRecord.record){
             RedisGears_BWWriteLong(bw, 1); // value exists
-            RG_SerializeRecord(bw, r->keyRecord.record);
+            if(RG_SerializeRecord(bw, r->keyRecord.record, err) != REDISMODULE_OK){
+                return REDISMODULE_ERR;
+            }
         }else{
             RedisGears_BWWriteLong(bw, 0); // value missing
         }
@@ -346,12 +350,15 @@ void RG_SerializeRecord(Gears_BufferWriter* bw, Record* r){
         break;
 #ifdef WITHPYTHON
     case PY_RECORD:
-        RedisGearsPy_PyObjectSerialize(r->pyRecord.obj, bw);
+        if(RedisGearsPy_PyObjectSerialize(r->pyRecord.obj, bw, err) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
         break;
 #endif
     default:
         assert(false);
     }
+    return REDISMODULE_OK;
 }
 
 Record* RG_DeserializeRecord(Gears_BufferReader* br){
