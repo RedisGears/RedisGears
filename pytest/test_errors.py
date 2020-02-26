@@ -140,6 +140,20 @@ class testStepsErrors:
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
         self.env.assertLessEqual(1, res[1])
 
+def testCommandReaderWithRun(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").run()').error().contains('reader do not support run')
+
+def testCommandReaderWithBadArgs(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register("bla")').error().contains('command argument is not string')
+
+def testCommandReaderRegisterSameCommand(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').ok()
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').error().contains('Command already registered')
+
+def testCommandReaderRegisterWithExcpetionCommand(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(command="command")').ok()
+    env.expect('rg.command', 'command').error().contains("'noexists' is not defined")
+
 
 class testStepsWrongArgs:
     def __init__(self):
@@ -156,20 +170,6 @@ class testStepsWrongArgs:
 
     def testGearsBuilderWithWrongBuilderArgType(self):
         self.env.expect('rg.pyexecute', 'GB(1).run()').error().contains('reader argument must be a string')
-
-    def testCommandReaderWithRun(self):
-        self.env.expect('rg.pyexecute', 'GB("CommandReader").run()').error().contains('reader do not support run')
-
-    def testCommandReaderWithBadArgs(self):
-        self.env.expect('rg.pyexecute', 'GB("CommandReader").register("bla")').error().contains('command argument is not string')
-
-    def testCommandReaderRegisterSameCommand(self):
-        self.env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').ok()
-        self.env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').error().contains('Command already registered')
-
-    def testCommandReaderRegisterWithExcpetionCommand(self):
-        self.env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(command="command")').ok()
-        self.env.expect('rg.command', 'command').error().contains("'noexists' is not defined")
 
     def testExecuteWithWrongCommandArgType(self):
         self.env.expect('rg.pyexecute', 'execute(1)').error().contains('the given command must be a string')
