@@ -29,3 +29,5 @@ exclude_commands:
     - rg.hello
     - rg.networktest
     - rg.pyfreeinterpreter
+overide_command:
+    - {"command_arity": -1, "command_name": "rg.command", "first_key": 2, "flags": ["readonly"], "last_key": 2, "step": 1}

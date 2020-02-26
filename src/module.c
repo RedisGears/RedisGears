@@ -24,8 +24,9 @@
 #include "redisai.h"
 #include "config.h"
 #include "globals.h"
-#include "keys_reader.h"
-#include "streams_reader.h"
+#include "readers/keys_reader.h"
+#include "readers/streams_reader.h"
+#include "readers/command_reader.h"
 #include "mappers.h"
 #include <stdbool.h>
 #include <unistd.h>
@@ -220,6 +221,13 @@ static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
 
 static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
     return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+}
+
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* command){
+    return CommandReaderTriggerArgs_Create(command);
+}
+static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){
+    CommandReaderTriggerArgs_Free(args);
 }
 
 static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
@@ -548,6 +556,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(StreamReaderTriggerArgsFree, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
+    REGISTER_API(CommandReaderTriggerArgsCreate, ctx);
+    REGISTER_API(CommandReaderTriggerArgsFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);
@@ -648,6 +658,8 @@ void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     LockHandler_Release(ctx);
 }
 
+static bool isInitiated = false;
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 	RedisModule_Log(ctx, "notice", "RedisGears version %d.%d.%d, git_sha=%s",
 			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
@@ -680,6 +692,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 		return REDISMODULE_ERR;
     }
 
+    if(CommandReader_Initialize(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
+        return REDISMODULE_ERR;
+    }
+
     Mgmt_Init();
 
     Cluster_Init();
@@ -687,6 +704,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(KeysReader);
     RGM_RegisterReader(KeysOnlyReader);
     RGM_RegisterReader(StreamReader);
+    RGM_RegisterReader(CommandReader);
     RGM_RegisterFilter(Example_Filter, NULL);
     RGM_RegisterMap(GetValueMapper, NULL);
     RGM_RegisterForEach(AddToStream, NULL);
@@ -792,12 +810,23 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
-//    FlatExecutionPlan* fep = RGM_CreateCtx(KeysReader);
-//    RGM_ForEach(fep, AddToStream, NULL);
-//    RGM_Register(fep, ExecutionModeSync, RG_STRDUP("*"));
 
+    isInitiated = true;
     return REDISMODULE_OK;
 }
 
-
+#ifdef VALGRIND
+static void __attribute__((destructor)) RedisGears_Clean(void) {
+    // for valgrind check perposes, here we will free memory
+    // that confuses the valgrind.
+    if(!isInitiated){
+        return;
+    }
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(ctx);
+    RedisGearsPy_Clean();
+    ExecutionPlan_Clean();
+    LockHandler_Release(ctx);
+}
+#endif
 
