@@ -35,7 +35,7 @@ def PP(res):
 
 
 try:
-    r = redis.Redis(args.host, args.port, password=args.password)
+    r = redis.Redis(args.host, args.port, password=args.password, decode_responses=True)
     r.ping()
 except:
     print('Cannot connect to Redis. Aborting.')

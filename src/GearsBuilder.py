@@ -60,7 +60,7 @@ class GearsBuilder():
 
     def count(self):
         '''
-        Count the number of recors in the execution
+        Count the number of records in the execution
         '''
         self.gearsCtx.accumulate(lambda a, r: 1 + (a if a else 0))
         self.gearsCtx.collect()
@@ -114,7 +114,7 @@ class GearsBuilder():
         if(self.realReader == 'ShardsIDReader'):
             arg = ShardReaderCallback
         self.gearsCtx.run(arg)
-        
+
     def register(self,
                  regex='*',
                  mode='async',
@@ -125,14 +125,14 @@ class GearsBuilder():
                  onRegistered=None,
                  onFailedPolicy="continue",
                  onFailedRetryInterval=1):
-        self.gearsCtx.register(regex=regex, 
-                               mode=mode, 
-                               batch=batch, 
-                               duration=duration, 
-                               eventTypes=eventTypes, 
-                               keyTypes=keyTypes, 
-                               OnRegistered=onRegistered, 
-                               onFailedPolicy=onFailedPolicy, 
+        self.gearsCtx.register(regex=regex,
+                               mode=mode,
+                               batch=batch,
+                               duration=duration,
+                               eventTypes=eventTypes,
+                               keyTypes=keyTypes,
+                               OnRegistered=onRegistered,
+                               onFailedPolicy=onFailedPolicy,
                                onFailedRetryInterval=onFailedRetryInterval)
 
 
@@ -157,8 +157,8 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
     gb = GB(pipe.reader, pipe.defaultArg)
     for s in pipe.steps:
         s.AddToGB(gb, globalsDict)
-        
+
 def GearsConfigGet(key, default=None):
     val = ConfigGet(key)
     return val if val is not None else default
-    
+

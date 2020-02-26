@@ -1,7 +1,7 @@
-site_name: RedisGears - Dynamic Execution Framework for Redis
+site_name: RedisGears
 site_url: http://redisgears.io
 repo_url: https://github.com/RedisGears/RedisGears
-repo_name: RedisLabsModules/RedisGears
+repo_name: RedisGears/RedisGears
 
 google_analytics:
   - 'UA-92003007-1'
@@ -23,21 +23,32 @@ theme:
   feature:
     tabs: false
 
-pages:
+extra_css:
+  - 'stylesheets/tabbed.css'
+
+nav:
   - 'Home': 'index.md'
-  - 'Quickstart': 'quickstart.md'
+  - 'Introduction': 'intro.md'
   - 'Overview': 'overview.md'
+  - 'Clients': 'clients.md'
+  - 'Runtime': 'runtime.md'
+  - 'Functions': 'functions.md'
+  - 'Readers': 'readers.md'
+  - 'Operations': 'operations.md'
   - 'Commands': 'commands.md'
-  - 'Streaming API': 'gears_streaming.md'
+  - 'Configuration': 'configuration.md'
+  - 'Quickstart': 'quickstart.md'
   - 'Examples': 'examples.md'
-  - 'Gears Configuration': 'configuration.md'
-  - Design Documents:
+  - 'Design':
     - 'Sub-Interpreters': 'subinterpreters.md'
-  - 'Contributor agreement': contrib.md
+  - 'Contributing': 'contrib.md'
 
 markdown_extensions:
   - admonition
   - codehilite:
       guess_lang: False
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
   - toc:
       permalink: True

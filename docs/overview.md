@@ -1,142 +1,193 @@
 # RedisGears Overview
-RedisGears is a fast cluster computing system. It provides high-level APIs using Python, and a low level api using C.
 
-RedisGears end goal is to allow the user to build an operations pipe (OPP) in which each key in Redis will pass through. Results from the first operation will pass as input to the second operation, Results from the second operation will pass as input to the third operation, and so on. Results from the last operation will pass to the user as a reply. The pipe builds using a python script and then runs in background thread. When finished, the results return to the user.
+## What is RedisGears?
+RedisGears is a serverless engine for transaction, [batch](#batch-processing) and [event-driven](#event-processing) data processing. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](overview.md#api).
 
-In order to create this OPP, Gears introduce a python class called `GearsBuilder`. When the `GearsBuilder` is first created it contains empty OPP. `GearsBuilder` provide a set of function that allows the user to add operations to the OPP.
 
-example:
-The following will create an OPP with one map operation that get all keys from redis.
+In broad strokes, the following diagram depicts RedisGears' components:
+
 ```
-GearsBuilder().map(lambda x: x['key']).run()
+    +---------------------------------------------------------------------+
+    | Redis Server               +--------------------------------------+ |
+    |                            | RedisGears Module                    | |
+    | +----------------+         |                                      | |
+    | | Data           | Input   | +------------+ +-------------------+ | |
+    | |                +-------->+ | Function   | | APIs              | | |
+    | | Key1 : Value1  |         | | +--------+ | | C, Python, ...    | | |
+    | | Key2 : Value2  | Output  | | | Reader | | +-------------------+ | |
+    | | Key3 : Value3  <---------+ | +---+----+ | +-------------------+ | |
+    | |      ...       |         | |     v      | | Redis commands    | | |
+    | +----------------+         | | +---+----+ | | Gears admin & ops | | |
+    |                            | | | Step 1 | | +-------------------+ | |
+    |                            | | +---+----+ | +-------------------+ | |
+    | +----------------+         | |     v      | | Coordinator       | | |
+    | | Events         |         | | +---+----+ | | Cluster MapReduce | | |
+    | |                | Trigger | | | Step 2 | | +-------------------+ | |
+    | | Data update    +-------->+ | +---+----+ | +-------------------+ | |
+    | | Stream message |         | |     v      | | Engine            | | |
+    | | Time interval  |         | |    ...     | | Runtime execution | | |
+    | |      ...       |         | +------------+ +-------------------+ | |
+    | +----------------+         +--------------------------------------+ |
+    +---------------------------------------------------------------------+
 ```
 
-In addition Gears provide a simple command that allow to pass this python code to the redis server:
-```
-RG.PYEXECUTE "GearsBuilder().map(lambda x: x['key']).run()"
-```
+The following sections describe the makings of the system.
 
-## Record
-Record is the most basic object in RedisGears. A Record traverses the entire OPP and in the end returns to the user as a result.
+## Redis
+
+**Redis** is an ...
+
+!!! quote
+    ... open source (BSD licensed), in-memory data structure store, used as a database, cache and message broker. It supports data structures such as strings, hashes, lists, sets, sorted sets with range queries, bitmaps, hyperloglogs, geospatial indexes with radius queries and streams. Redis has built-in replication, Lua scripting, LRU eviction, transactions and different levels of on-disk persistence, and provides high availability via Redis Sentinel and automatic partitioning with Redis Cluster.
+
+!!! tip "Redis is also..."
+    An acronym for **RE**mote **DI**ctionary **S**erver that's pronounced "red" like the color, then "iss".
+
+!!! info "Further reference"
+    More about Redis:
+
+      * [Home page](https://redis.io)
+      * [Interactive tutorial](http://try.redis.io)
+      * [Repository](https://github.com/antirez/redis)
+
+
+## Module
+A Redis **module** is shared library that can be loaded by the Redis server during runtime. Useful for extending Redis with new data types and commands.
+
+!!! info "Further reference"
+    You can learn more about Redis modules at:
+
+      * [Redis Modules API](https://redis.io/documentation#redis-modules-api)
+      * [Modules published at redis.io](https://redis.io/modules)
+
+## Client
+A Redis **client** is a piece of software that can write and read the [Redis Protocol](https://redis.io/topics/protocol).
+
+!!! info "Further reference"
+    For a wide choice of clients refer to:
+
+      * [Redis clients by programming language](https://redis.io/clients)
+      * [redis-cli](https://redis.io/topics/rediscli)
+
+## Command
+An instruction sent to the Redis server by a client. Commands are either provided by the core Redis engine or modules.
+
+!!! info "Further reference"
+    Refer to these pages for more information about:
+
+      * [Redis commands](https://redis.io/commands)
+      * [RedisGears commands](commands.md)
+
+## Data
+Zeros and ones that make up for everything. Usually stored in Redis, but can also be obtained from other sources.
+
+## Data Flow
+A logical operation that processes input data in some form and may consist of several steps.
+
+## Data Type
+Redis stores data in structures that implement different types and the API to manipulate their contents. Types can be added by modules, and the core Redis server provides support for Strings, Hashes, Lists, Sets, Sorted Sets and Streams.
+
+!!! info "Further reference"
+    Refer to these pages for more information about Redis' core types:
+
+      * [Redis data types and abstractions](https://redis.io/topics/data-types-intro)
+      * [Redis Streams](https://redis.io/topics/streams-intro)
+
+## Event
+An **event** is a signal that the RedisGears engine can intercept and react to by triggering the execution of an event-driven processing function.
+
+## Engine
+A RedisGears component that is in charge of the execution of function. The engine executes locally on each of the cluster's shards.
+
+## Coordinator
+A RedisGears component that handles cluster communication and data shuffling.
+
+## Cluster
+A **cluster** is a deployment option for Redis, in which the database is partitioned across multiple shards in a _shared-nothing_ fashion. Partitioning is done by hashing key names to slots.
+
+!!! info "Further reference"
+    More about the Redis cluster:
+
+      * [Redis cluster tutorial](https://redis.io/topics/cluster-tutorial)
+
+## Node
+A **node** is a physical (or virtualized) server in a cluster. Each node can be used for hosting one or more shards.
+
+## Shard
+A **shard** is Redis server process that is a part of a cluster. A shard runs on one of the cluster's nodes and manages an exclusive subset of slots of the Redis keyspace. Every slot is managed by a single master shard. Master shards accepts writes and can optionally be configured with replicas for scaling read throughput and availability purposes.
+
+## API
+RedisGears functions can be programmed via applicative interfaces. The APIs are available for the Python and C programming languages
+
+## Function
+A RedisGears **function** is a formal description of the processing steps in the data flow.
+
+A function always:
+
+  1. Starts with a reader
+  2. Operates on zero or more records
+  3. Consists of zero or more operations (steps)
+  4. Ends with an action
+  5. Returns zero or more results
+
+!!! info "Further reference"
+    Refer to the [Functions page](functions.md) for a complete reference about functions.
 
 ## Reader
-The reader is the first component on each OPP, The reader is responsable for suppling data to be processed by the operations in the OPP. RedisGears comes with a default reader that reads keys from Redis. The default reader will return Records in the following format:
-```
-{'key':< key as string >, 'value': < value (value type is depend on the key content) >}
-```
+A RedisGears **reader** is the mandatory first step of any function, and every function has exactly one reader. A reader reads data and generates input records from it. The input records are consumed by the function.
 
-By default, when creating a `GearsBuilder`, the builder will automatically use the default reader. It is possible to tell the builder to use different readers, for example:
-```
-RG.PYEXECUTE "GearsBuilder('KeysOnlyReader').run()" # will read only keys names without the value
-RG.PYEXECUTE "GearsBuilder('StreamReader', 's1').run()" # read all the records from stream s1
-```
+!!! info "Further reference"
+    Refer to the [Readers page](readers.md) for a complete reference about the different readers' types and their operation.
 
+## Record
+A RedisGears **record** is the basic abstraction that represents data in the function's flow. Input data records are passed from one step to the next and are finally returned as the result.
 
-## Operations
+## Operation
+An **operation** is the building block of RedisGears functions. Different operation types can be used to achieve a variety of results to meet various data processing needs.
 
-### Map
-Map operation receive a Record and return another Record, example:
-```
-GearsBuilder.map(lambda r : str(r)) # transform a Record into a string Record
-```
+!!! info "Further reference"
+    Refer to the [Operations page](operations.md) for a complete reference about the different operation types and their purpose.
 
-### FlatMap
-Just like map but if the result is a list it flatten it right after, example:
-```
-GearsBuilder.flatmap(lambda r : [r, r]) # pass each record twice in the execution plan
-```
+## Step
+A RedisGears function flow **step** is a term that's almost always interchangeable with "operation".
 
-### Limit
-Limit the number of return results, limit operation gets the offset and the len and return result start from offset and up to len. Notice, limit is a single shard operation, if you want to limit the total number of the results you need to use limit then collect and then limit again. example:
-```
-GearsBuilder.limit(1, 3) # will return results 1 and 2.
-```
+## Action
+An **action** is special type of operation that is always the function's final step. There are two types of actions:
 
-### Filter
-Filter operation receive a Record and return a boolean indicating whether or not the record should continue with the execution, example:
-```
-GearsBuilder.filter(lambda r : int(r['value']) > 50) # continue with the record if its value is greater then 50
-```
+  1. **Run**: runs the function immediately in batch
+  2. **Register**: registers the function's execution to be triggered by an event
 
-### Groupby
-Groupby operation receive extractor and reducer. The extractor is a function that receive a Record and return a string by which the group operation need to be performed. The reducer is a function that receive key, accumulator and record, the reducer return a new Record which is the accumulation on all records arrive untill now. example:
-```
-GearsBuilder.groupby(lambda r : r[value], lambda key,a, r: 1 + (a if a else 0)) # count how many times each value appeared
-```
+!!! info "Further reference"
+    Actions are described at the [Functions page](functions.md#action).
 
-### batchgroupby
-BatchGroupby operation receive extractor and reducer. The extractor is a function that receive a Record and return a string by which the group operation need to be performed. The reducer is a function that receive key and list of records that grouped together by this key, the reducer return a new Record which is the reduce operation on all the Record in the same group.
-It is recommended to use groupby and not batchgroupby. The only reason to use batchgroupby is if you want the reducer to recieve all the records in the group as a list. Notice that in this case the process memory consumption might grow a lot. example (using python api).
-example:
-```
-GearsBuilder.batchgroupby(lambda r : r[value], lambda key, vals: len(vals)) # count how many times each value appeared
-```
+## Result
+The **result** of a function is the output records its execution.
 
-### Collect
-Return the results to the initiator (this operation has meaning only on cluster with more then one node, otherwise it has no meaning and it actually do nothing). example:
-```
-GearsBuilder.collect()
-```
+!!! info "Further reference"
+    Results are described at the [Functions page](functions.md#result).
 
-### Repartition
-Repartition the record between the cluster nodes (this operation has meaning only on cluster with more then one node, otherwise it has no meaning and it actually do nothing). This operation receives an extractor, the repartition is perfomed by calculating the hslot on the extracted data and then move the record to the node hold this hslot.
-example:
-```
-GearsBuilder().repartition(lambda x: x['value']) # repartition record by value
-```
+## Execution
+Every time that a RedisGears function is executed it generates data that is referred to as its **execution**. Every execution is uniquely identified by an ID, and consists of the results, errors and more information from the function's execution.
 
-### ForEach
-ForEach is similar to map but it does not return any value, using ForEach it is possible for example to write results back to redis. After performing the ForEach operation the execution plan will continue with the same records.
-example:
-```
-GearsBuilder().foreach(lambda x: redisgears.execute_command('set', x['value'], x['key'])) # will save value as key and key as value
-```
+!!! info "Further reference"
+    Executions are described at the [Functions page](functions.md#execution).
 
-### Accumulate
-Accumulate is a many to one mapper, it allows you to accumulate the data to a single record.
-example:
-```
-GearsBuilder().map(lambda x:int(x['value'])).accumulate(lambda a,x: a + x if a is not None else x) # will sum all the values
-```
+## Registration
+A RedisGears **registration** represents a function that was sent to the engine and will be triggered by events.
 
-### Count
-Count return the number of records (notice that on cluster it automatically collect the data from all the shards).
-example:
-```
-GearsBuilder().count().run() # will return the number of keys in redis
-```
+!!! info "Further reference"
+    Registrations are described at the [Functions page](functions.md#registration).
 
-### CountBy
-Count by a spacific field in the data (notice that on cluster it automatically collect the data from all the shards).
-example:
-```
-GearsBuilder().countby(lambda x:x['value']).run() # will return for each value how many times it appears
-```
+## Batch Processing
+A RedisGears function is executed as a batch when it is [run](functions.md#run) immediately on existing data.
 
-### Sort
-Sorting the records. Notice that this operation might increase memory usage because it require saving the entire data to list. In addition, on cluster, it automatically collect the data from all the shards.
-example:
-```
-GearsBuilder().sort().run() # will return all the data sorted
-```
+Batch execution is always asynchronous. By default, the client executing the function is blocked until execution is finished. Once finished, the client is unblocked and is returned with any results or errors from the function.
 
-### Distinct
-Will return only distinct records (notice that on cluster it automatically collect the data from all the shards).
-example:
-```
-GearsBuilder().distinct().run() # will return all the distinct records
-```
+## Event Processing
+A RedisGears function is executed as an event when it is [registered](functions.md#register) to be triggered by events.
 
-### Aggregate
-A better version of accumulate that receives a local aggregator (aggregator which will be performed on each shard locally), and a global aggregator (will be performed on the aggregated data collected from each shard). Using aggregate it is possible to increasing performance by reducing the number of records sent between the shards. In addition aggregate receives, as the first parameter, the zero value which will pass to the aggregate function on the first time it executed.
-example:
-```
-GearsBuilder().aggregate([], lambda a,x: a + [x], lambda a,x:a + x).run() # will put all values on a single python list
-```
+## MapReduce
+A framework for performing distributed data processing.
 
-### AggregateBy
-Like aggregate but provide the abbility to aggregate by a value
-example:
-```
-GearsBuilder().aggregateby(lambda x:x['value'], [], lambda a,x: a + [x], lambda a,x:a + x).run() # will put all records of each value in different list.
-```
+## Recipe
+A RedisGears **recipe** is a collection of functions any dependencies they may have, which implements a high-level functional purpose. It can be mentally substituted with "project".
