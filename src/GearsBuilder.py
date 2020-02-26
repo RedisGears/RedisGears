@@ -127,7 +127,14 @@ class GearsBuilder():
                  onRegistered=None,
                  onFailedPolicy="continue",
                  onFailedRetryInterval=1,
-                 trimStream=True):
+                 trimStream=True,
+                 command=None,
+                 convertToStr=True,
+                 collect=True):
+        if(convertToStr):
+            self.gearsCtx.map(lambda x: str(x))
+        if(collect):
+            self.gearsCtx.collect()
         self.gearsCtx.register(regex=regex, 
                                mode=mode, 
                                batch=batch, 
@@ -137,8 +144,8 @@ class GearsBuilder():
                                OnRegistered=onRegistered, 
                                onFailedPolicy=onFailedPolicy, 
                                onFailedRetryInterval=onFailedRetryInterval,
-                               trimStream=trimStream)
-
+                               trimStream=trimStream,
+                               command=command)
 
 def createDecorator(f):
     def deco(self, *args):
@@ -153,7 +160,6 @@ for k in PyFlatExecution.__dict__:
     if '_' in k:
         continue
     setattr(GearsBuilder, k, createDecorator(PyFlatExecution.__dict__[k]))
-
 
 GB = GearsBuilder
 

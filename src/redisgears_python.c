@@ -588,15 +588,19 @@ static PyObject* run(PyObject *self, PyObject *args){
         if(PyTuple_Size(args) > 0){
             PyObject* regex = PyTuple_GetItem(args, 0);
             if(!PyUnicode_Check(regex)){
-                PyErr_SetString(GearsError, "reader argument must be a string");
+                PyErr_SetString(GearsError, "regex argument must be a string");
                 return NULL;
             }
             regexStr = (char*)PyUnicode_AsUTF8AndSize(regex, NULL);
         }
         if(strcmp(RedisGears_GetReader(pfep->fep), "StreamReader") == 0){
             arg = RedisGears_StreamReaderCtxCreate(regexStr, "0-0");
-        }else{
+        }else if(strcmp(RedisGears_GetReader(pfep->fep), "KeysReader") == 0 ||
+                 strcmp(RedisGears_GetReader(pfep->fep), "KeysOnlyReader") == 0){
             arg = RG_STRDUP(regexStr);
+        }else{
+            PyErr_SetString(GearsError, "Given reader do not support run");
+            return NULL;
         }
     }
 
@@ -804,7 +808,27 @@ static void registerFreeArgs(FlatExecutionPlan* fep, void* args){
     }
 }
 
+static void* registerCreateCommandArgs(PyObject *kargs){
+    const char* command = NULL;
+    PyObject* pyCommand = PyDict_GetItemString(kargs, "command");
+    if(!pyCommand){
+        PyErr_SetString(GearsError, "command argument was not given");
+        return NULL;
+    }
+    if(!PyUnicode_Check(pyCommand)){
+        PyErr_SetString(GearsError, "command argument is not string");
+        return NULL;
+    }
+    command = PyUnicode_AsUTF8AndSize(pyCommand, NULL);
+    return RedisGears_CommandReaderTriggerArgsCreate(command);
+}
+
 static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, ExecutionMode mode){
+    const char* reader = RedisGears_GetReader(fep);
+    if (strcmp(reader, "CommandReader") == 0){
+        return registerCreateCommandArgs(kargs);
+    }
+
     char* defaultRegexStr = "*";
     const char* regexStr = defaultRegexStr;
     PyObject* regex = PyDict_GetItemString(kargs, "regex");
@@ -817,7 +841,6 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
         }
     }
 
-    const char* reader = RedisGears_GetReader(fep);
     if (strcmp(reader, "KeysReader") == 0 ||
             strcmp(reader, "KeysOnlyReader") == 0) {
         return registerCreateKeysArgs(kargs, regexStr, mode);
@@ -1202,13 +1225,20 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         argements = array_append(argements, argumentRedisStr);
     }
 
+    PyObject* res = NULL;
     RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", argements, array_len(argements));
-
-    PyObject* res = replyToPyList(reply);
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        size_t len;
+        const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
+        PyErr_SetString(GearsError, replyStr);
+    }else{
+        res = replyToPyList(reply);
+    }
 
     if(reply){
         RedisModule_FreeCallReply(reply);
     }
+
     array_free_ex(argements, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
 
     LockHandler_Release(rctx);
@@ -3150,7 +3180,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     return REDISMODULE_OK;
 }
 
-void __attribute__((destructor)) RedisGearsPy_Clean(void) {
+void RedisGearsPy_Clean() {
     if(!requitmentsCache){
         return;
     }

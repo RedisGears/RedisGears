@@ -25,5 +25,6 @@ void RedisGearsPy_ForceStop(ExecutionCtx* ep);
 PythonSessionCtx* RedisGearsPy_Lock(PythonSessionCtx* currSession);
 void RedisGearsPy_Unlock(PythonSessionCtx* prevSession);
 bool RedisGearsPy_IsLockAcquired();
+void RedisGearsPy_Clean();
 
 #endif /* SRC_REDISGEARG_PYTHON_H_ */

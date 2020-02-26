@@ -865,3 +865,17 @@ def testStreamTrimming(env):
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testCommandReaderBasic(env):
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x).distinct().sort().register(command='test1')").ok()
+    env.expect('RG.COMMAND', 'test1', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test1', 'this'])
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x).distinct().sort().register(command='test2', mode='sync')").ok()
+    env.expect('RG.COMMAND', 'test2', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test2', 'this'])
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x).distinct().sort().register(command='test3', mode='async_local')").ok()
+    env.expect('RG.COMMAND', 'test3', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test3', 'this'])
+
+def testCommandReaderCluster(env):
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(command='GetNumShard')").ok()
+    env.expect('RG.COMMAND', 'GetNumShard').equal([str(env.shardsCount)])

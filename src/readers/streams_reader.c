@@ -653,7 +653,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
                 assert(false);
             }
         }
-    } else if(ctx->status == StreamRegistrationStatus_ABORTED){
+    } else if(ctx->status == ABORTED){
         ++srctx->numAborted;
     } else {
         Reader* reader = ExecutionPlan_GetReader(ctx);
@@ -877,7 +877,7 @@ static void* StreamReader_ScanForStreams(void* pd){
     return NULL;
 }
 
-static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
+static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
         staticCtx = RedisModule_GetThreadSafeContext(NULL);
@@ -902,7 +902,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode m
         // we are master, lets run the scan thread.
         StreamReader_StartScanThread(staticCtx, StreamReaderTriggerCtx_GetShallowCopy(srctx));
     }
-    return 1;
+    return REDISMODULE_OK;
 }
 
 static Reader* StreamReader_Create(void* arg){
@@ -1047,7 +1047,11 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         RedisModule_Free(data);
 
         int mode = RedisModule_LoadUnsigned(rdb);
-        StreamReader_RegisrterTrigger(fep, mode, args);
+        int ret = StreamReader_RegisrterTrigger(fep, mode, args, &err);
+        if(ret != REDISMODULE_OK){
+            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
+            assert(false);
+        }
         FlatExecutionPlan_AddToRegisterDict(fep);
     }
 }
@@ -1067,12 +1071,17 @@ static void StreamReader_Clear(){
     Gears_listReleaseIterator(iter);
 }
 
+static void StreamReader_FreeArgs(void* args){
+    StreamReaderTriggerArgs_Free(args);
+}
+
 RedisGears_ReaderCallbacks StreamReader = {
         .create = StreamReader_Create,
         .registerTrigger = StreamReader_RegisrterTrigger,
         .unregisterTrigger = StreamReader_UnregisrterTrigger,
         .serializeTriggerArgs = StreamReader_SerializeArgs,
         .deserializeTriggerArgs = StreamReader_DeserializeArgs,
+        .freeTriggerArgs = StreamReader_FreeArgs,
         .dumpRegistratioData = StreamReader_DumpRegistrationData,
         .rdbSave = StreamReader_RdbSave,
         .rdbLoad = StreamReader_RdbLoad,
