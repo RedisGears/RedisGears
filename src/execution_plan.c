@@ -1408,7 +1408,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
 
 
     if(FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args, &err) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+        RedisModule_Log(ctx, "warning", "Could not register flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
         if(err){
             RG_FREE(err);
         }
