@@ -357,7 +357,8 @@ GB().map(returnX).run()
     env.expect('rg.pyexecute', script).equal([['2'], []])
     env.expect('rg.pyexecute', script).equal([['2'], []])
 
-def testAbortExecution(env):
+def testAbortExecution():
+    env = Env(moduleArgs='executionThreads 1')
     env.skipOnCluster()
     infinitScript = '''
 def InfinitLoop(r):

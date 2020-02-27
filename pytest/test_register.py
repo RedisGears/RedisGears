@@ -136,7 +136,8 @@ def testMaxExecutionPerRegistrationKeysReader(env):
     for r in registrations:
         env.expect('RG.UNREGISTER', r[1], ).equal('OK')
 
-def testUnregisterKeysReaderWithAbortExecutions(env):
+def testUnregisterKeysReaderWithAbortExecutions():
+    env = Env(moduleArgs='executionThreads 1')
     env.skipOnCluster()
     infinitScript = '''
 counter = 0
@@ -194,7 +195,8 @@ GB().map(InfinitLoop).register('*', mode='async_local')
 
     env.cmd('RG.DROPEXECUTION', eid)
 
-def testUnregisterStreamReaderWithAbortExecutions(env):
+def testUnregisterStreamReaderWithAbortExecutions():
+    env = Env(moduleArgs='executionThreads 1')
     env.skipOnCluster()
     infinitScript = '''
 counter = 0
@@ -417,19 +419,20 @@ def testRegistersSurviveRestart(env):
                             "foreach(lambda x: execute('incrby', 'NumOfKeys{%s}' % (hashtag()), ('1' if 'value' in x.keys() else '-1')))."
                             "register(mode='async_local')")
 
+    # todo: change it not to use sleep
     time.sleep(0.1) # wait for execution to reach all the shards
 
     for _ in env.reloading_iterator():
-        for i in range(100):
+        for i in range(20):
             conn.set(str(i), str(i))
 
-        for i in range(100):
+        for i in range(20):
             conn.delete(str(i))
 
         # wait for all executions to finish
         res = 0
-        while res < 200:
-            res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")
+        while res < 80:
+            res = int(env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")[0][0])
 
         numOfKeys = env.cmd('rg.pyexecute', "GB().map(lambda x: int(x['value'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run('NumOfKeys*')")[0][0]
         env.assertEqual(numOfKeys, '0')
@@ -827,8 +830,8 @@ def testStreamTrimming(env):
     conn = getConnectionByEnv(env)
 
     # {06S} is going to first slot
-    env.cmd('rg.pyexecute', "GB('StreamReader').register('s1{06S}')")
-    env.cmd('rg.pyexecute', "GB('StreamReader').register('s2{06S}', trimStream=False)")
+    env.cmd('rg.pyexecute', "GB('StreamReader').register('s1{06S}', mode='async_local')")
+    env.cmd('rg.pyexecute', "GB('StreamReader').register('s2{06S}', mode='async_local', trimStream=False)")
 
     env.cmd('XADD s2{06S} * foo bar')
     env.cmd('XADD s1{06S} * foo bar')

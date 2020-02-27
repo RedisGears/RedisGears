@@ -28,6 +28,7 @@ typedef struct ExecutionPlan ExecutionPlan;
 typedef struct ExecutionCtx ExecutionCtx;
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
+typedef struct WorkerData WorkerData;
 
 /**
  * Records type definitions
@@ -304,8 +305,8 @@ int MODULE_API_FUNC(RedisGears_FlatMap)(FlatExecutionPlan* ctx, char* name, void
 int MODULE_API_FUNC(RedisGears_Limit)(FlatExecutionPlan* ctx, size_t offset, size_t len);
 #define RGM_Limit(ctx, offset, len) RedisGears_Limit(ctx, offset, len)
 
-ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err);
-#define RGM_Run(ctx, mode, arg, callback, privateData, err) RedisGears_Run(ctx, mode, arg, callback, privateData, err)
+ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
+#define RGM_Run(ctx, mode, arg, callback, privateData, err) RedisGears_Run(ctx, mode, arg, callback, privateData, NULL, err)
 
 int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err);
 #define RGM_Register(ctx, mode, arg, err) RedisGears_Register(ctx, mode, arg, err)
@@ -353,6 +354,10 @@ void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionCtx* ctx, void* PD);
 bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 
 const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
+
+WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataCreate)();
+void MODULE_API_FUNC(RedisGears_WorkerDataFree)(WorkerData* worker);
+WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataGetShallowCopy)(WorkerData* worker);
 
 int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
@@ -471,6 +476,10 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropLocalyOnDone);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetMyHashTag);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataGetShallowCopy);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

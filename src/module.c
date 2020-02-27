@@ -195,8 +195,8 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
     return FlatExecutionPlan_Register(fep, mode, key, err);
 }
 
-static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err){
-    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, err);
+static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
+    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
@@ -430,6 +430,16 @@ static void RG_SetPrivateData(ExecutionCtx* ectx, void* PD){
     ectx->ep->executionPD = PD;
 }
 
+static WorkerData* RG_WorkerDataCreate(){
+    return ExecutionPlan_CreateWorker();
+}
+static void RG_WorkerDataFree(WorkerData* worker){
+    ExecutionPlan_FreeWorker(worker);
+}
+WorkerData* RG_WorkerDataGetShallowCopy(WorkerData* worker){
+    return ExecutionPlan_WorkerGetShallowCopy(worker);
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
         return;
@@ -615,6 +625,10 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(GetMyHashTag, ctx);
 
+    REGISTER_API(WorkerDataCreate, ctx);
+    REGISTER_API(WorkerDataFree, ctx);
+    REGISTER_API(WorkerDataGetShallowCopy, ctx);
+
     return REDISMODULE_OK;
 }
 
@@ -709,7 +723,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterMap(GetValueMapper, NULL);
     RGM_RegisterForEach(AddToStream, NULL);
 
-    ExecutionPlan_Initialize(1);
+    ExecutionPlan_Initialize();
 
 #ifdef WITHPYTHON
     if(RedisGearsPy_Init(ctx) != REDISMODULE_OK){

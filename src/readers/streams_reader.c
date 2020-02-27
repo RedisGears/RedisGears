@@ -63,6 +63,7 @@ typedef struct StreamReaderTriggerCtx{
     pthread_t scanThread;
     Gears_list* localPendingExecutions;
     Gears_list* localDoneExecutions;
+    WorkerData* wd;
 }StreamReaderTriggerCtx;
 
 typedef struct SingleStreamReaderCtx{
@@ -238,6 +239,7 @@ static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
         Gears_dictRelease(srtctx->singleStreamData);
         StreamReaderTriggerArgs_Free(srtctx->args);
         FlatExecutionPlan_Free(srtctx->fep);
+        RedisGears_WorkerDataFree(srtctx->wd);
         RG_FREE(srtctx->lastError);
         RG_FREE(srtctx);
     }
@@ -260,6 +262,7 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .lastError = NULL,
         .localPendingExecutions = Gears_listCreate(),
         .localDoneExecutions = Gears_listCreate(),
+        .wd = RedisGears_WorkerDataCreate(),
     };
     return srctx;
 }
@@ -513,7 +516,7 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
     if(alsoTrimm){
 
         reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
-        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
+        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed XLEN messages", "warning");
         assert(ret);
         assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
 
@@ -521,8 +524,14 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
 
         RedisModule_FreeCallReply(reply);
 
-        reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
-        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
+        long long streamLenForTrim = streamLen - array_len(readerCtx->batchIds);
+        if(streamLenForTrim < 0){
+            RedisModule_Log(NULL, "warning", "try to trim stream to negative len, fatal!!");
+            assert(false);
+        }
+
+        reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", streamLenForTrim);
+        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed Trim messages", "warning");
         assert(ret);
 
         RedisModule_FreeCallReply(reply);
@@ -625,6 +634,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     }
 
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
+    bool ackAndTrim = false;
 
     if(errorsLen > 0){
         ++srctx->numFailures;
@@ -652,14 +662,31 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             }else{
                 assert(false);
             }
+        }else{
+            ackAndTrim = true;
         }
     } else if(ctx->status == ABORTED){
         ++srctx->numAborted;
     } else {
+        ackAndTrim = true;
+        ++srctx->numSuccess;
+    }
+
+    if(ackAndTrim && EPIsFlagOn(ctx, EFIsLocal)){
+        // we only ack and trim local executions.
+        // distributed executions on stream is tricky and should be considered
+        // carefully cause order (and in rare situations process only once) can not be promissed.
+        // why?
+        // 1. oreder can not be promised because because execution might take longer on
+        //    another shard and so the finished while be delayed.
+        // 2. because execution order might changed, the read pending might read
+        //    data that is currently processed and this is why we can not promise exactly once
+        //    processing.
+        //
+        // It might be possible to solve those issues but we decide not to handle with them currently.
         Reader* reader = ExecutionPlan_GetReader(ctx);
         StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimStream);
         StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
-        ++srctx->numSuccess;
     }
 
     StreamReaderTriggerCtx_Free(srctx);
@@ -671,10 +698,14 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
     RedisGears_OnExecutionDoneCallback callback = StreamReader_ExecutionDone;
     void* privateData = StreamReaderTriggerCtx_GetShallowCopy(srtctx);
     ++srtctx->numTriggered;
-    ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData, NULL);
+    char* err = NULL;
+    ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, privateData, srtctx->wd, &err);
     if(!ep){
         ++srtctx->numAborted;
-        RedisModule_Log(staticCtx, "warning", "could not execute flat execution on trigger");
+        RedisModule_Log(staticCtx, "warning", "could not execute flat execution on trigger, %s", err);
+        if(err){
+            RG_FREE(err);
+        }
         return;
     }
     if(EPIsFlagOn(ep, EFIsLocal) && srtctx->mode != ExecutionModeSync){
