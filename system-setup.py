@@ -87,9 +87,9 @@ class RedisGearsSetup(paella.Setup):
         self.install("python2-ujson")
         self.pip_install("pipenv gevent")
 
-    def linux(self):
+    def linux_last(self):
         self.install("valgrind")
-
+    
     def macosx(self):
         r, w, e = popen2.popen3('xcode-select -p')
         if r.readlines() == []:
