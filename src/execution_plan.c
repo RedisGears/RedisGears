@@ -2034,7 +2034,6 @@ void ExecutionPlan_Initialize(){
     epData.epDict = Gears_dictCreate(dictTypeHeapIdsPtr, NULL);
     epData.registeredFepDict = Gears_dictCreate(dictTypeHeapIdsPtr, NULL);
     epData.epList = Gears_listCreate();
-    pthread_mutex_init(&epData.mutex, NULL);
 
     Cluster_RegisterMsgReceiverM(ExecutionPlan_UnregisterExecutionReceived);
     Cluster_RegisterMsgReceiverM(ExecutionPlan_OnReceived);
