@@ -21,7 +21,7 @@ commands:
       - run:
           name: Test
           command: make test
-      - store_test_results:
+      - store_artifacts:
           path: pytest/logs
 
   valgrind-steps:
@@ -45,6 +45,8 @@ commands:
           name: Test
           command: make test DEBUG=1
           no_output_timeout: 30m
+      - store_artifacts:
+          path: pytest/logs
           
   platform-build-steps:
     parameters:
