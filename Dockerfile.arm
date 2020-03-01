@@ -39,6 +39,9 @@ COPY --from=builder /build/artifacts/release/redisgears-dependencies.*.tgz /tmp/
 
 RUN tar xzf /tmp/redisgears-dependencies.*.tgz -C /
 
+RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
+RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
+
 CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so"]
 
 RUN [ "cross-build-end" ]
