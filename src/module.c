@@ -237,8 +237,8 @@ static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, 
     return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
 }
 
-static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* command){
-    return CommandReaderTriggerArgs_Create(command);
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
+    return CommandReaderTriggerArgs_Create(trigger);
 }
 static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){
     CommandReaderTriggerArgs_Free(args);

@@ -809,18 +809,18 @@ static void registerFreeArgs(FlatExecutionPlan* fep, void* args){
 }
 
 static void* registerCreateCommandArgs(PyObject *kargs){
-    const char* command = NULL;
-    PyObject* pyCommand = PyDict_GetItemString(kargs, "command");
-    if(!pyCommand){
+    const char* trigger = NULL;
+    PyObject* pyTrigger = PyDict_GetItemString(kargs, "trigger");
+    if(!pyTrigger){
         PyErr_SetString(GearsError, "command argument was not given");
         return NULL;
     }
-    if(!PyUnicode_Check(pyCommand)){
+    if(!PyUnicode_Check(pyTrigger)){
         PyErr_SetString(GearsError, "command argument is not string");
         return NULL;
     }
-    command = PyUnicode_AsUTF8AndSize(pyCommand, NULL);
-    return RedisGears_CommandReaderTriggerArgsCreate(command);
+    trigger = PyUnicode_AsUTF8AndSize(pyTrigger, NULL);
+    return RedisGears_CommandReaderTriggerArgsCreate(trigger);
 }
 
 static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, ExecutionMode mode){

@@ -1766,7 +1766,14 @@ static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* ei
 
 static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-	assert(ep);
+	if(!ep){
+	    RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyReceived, Could not find execution");
+	    return;
+	}
+	if(ep->status == ABORTED){
+	    RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyReceived, execution aborted");
+        return;
+	}
 	++ep->totalShardsRecieved;
 	if((Cluster_GetSize() - 1) == ep->totalShardsRecieved){ // no need to wait to myself
 	    ExecutionPlan_RegisterForRun(ep);
@@ -1775,7 +1782,14 @@ static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender
 
 static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-	assert(ep);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyRun, Could not find execution");
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyRun, execution aborted");
+        return;
+    }
 	ExecutionPlan_RegisterForRun(ep);
 }
 
@@ -1870,11 +1884,18 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     Gears_BufferReaderInit(&br, &buff);
     size_t epIdLen;
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectOnRecordReceived, Could not find execution");
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectOnRecordReceived, execution aborted");
+        return;
+    }
     size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
-    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-    assert(ep);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, COLLECT);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -1888,9 +1909,16 @@ static void ExecutionPlan_CollectDoneSendingRecords(RedisModuleCtx *ctx, const c
 	Gears_BufferReaderInit(&br, &buff);
 	size_t epIdLen;
 	char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
-	size_t stepId = RedisGears_BRReadLong(&br);
 	ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-	assert(ep);
+	if(!ep){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectDoneSendingRecords, Could not find execution");
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectDoneSendingRecords, execution aborted");
+        return;
+    }
+	size_t stepId = RedisGears_BRReadLong(&br);
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, COLLECT);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -1904,11 +1932,18 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     Gears_BufferReaderInit(&br, &buff);
     size_t epIdLen;
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
+    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_OnRepartitionRecordReceived, Could not find execution");
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_OnRepartitionRecordReceived, execution aborted");
+        return;
+    }
     size_t stepId = RedisGears_BRReadLong(&br);
     assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
-    ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-    assert(ep);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, REPARTITION);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -1935,14 +1970,28 @@ static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep){
 
 static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-    assert(ep);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_TeminateExecution, Could not find execution");
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_TeminateExecution, execution aborted");
+        return;
+    }
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateTerminate(ep);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
 static void ExecutionPlan_NotifyExecutionDone(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
-    assert(ep);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyExecutionDone, Could not find execution");
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyExecutionDone, execution aborted");
+        return;
+    }
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateDone(ep);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -1956,9 +2005,16 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
     Gears_BufferReaderInit(&br, &buff);
     size_t epIdLen;
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
-    size_t stepId = RedisGears_BRReadLong(&br);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
-	assert(ep);
+    if(!ep){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_DoneRepartition, Could not find execution");
+        return;
+    }
+    if(ep->status == ABORTED){
+        RedisModule_Log(NULL, "warning", "On ExecutionPlan_DoneRepartition, execution aborted");
+        return;
+    }
+    size_t stepId = RedisGears_BRReadLong(&br);
 	WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateShardCompleted(ep, stepId, REPARTITION);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -2029,6 +2085,11 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     ep = ExecutionPlan_FindById(msg->id);
     if(!ep){
         // execution was probably already deleted
+        LockHandler_Release(ctx);
+        ExectuionPlan_WorkerMsgFree(msg);
+        return;
+    }
+    if(ep->status == ABORTED){
         LockHandler_Release(ctx);
         ExectuionPlan_WorkerMsgFree(msg);
         return;
