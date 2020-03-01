@@ -7,10 +7,13 @@ commands:
         type: string
       redis_build_params:
         type: string
+        default: ""
       build_params:
         type: string
+        default: ""
       test_params:
         type: string
+        default: ""
     steps: 
       - run:
           name: Install Redis
@@ -72,9 +75,6 @@ jobs:
     steps:
       - build-steps:
           platform: debian
-          redis_build_params: ""
-          build_params: ""
-          test_params: ""
 
   valgrind:
     docker:
