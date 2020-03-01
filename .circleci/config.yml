@@ -5,9 +5,12 @@ commands:
     parameters:
       platform:
         type: string
-        redis_build_params: string
-        build_params: string
-        test_params: string
+      redis_build_params:
+        type: string
+      build_params:
+        type: string
+      test_params:
+        type: string
     steps: 
       - run:
           name: Install Redis
