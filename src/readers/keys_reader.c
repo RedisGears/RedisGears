@@ -114,7 +114,7 @@ static KeysReaderRegisterData* KeysReaderRegisterData_Create(FlatExecutionPlan* 
         .numAborted = 0,
         .localPendingExecutions = Gears_listCreate(),
         .localDoneExecutions = Gears_listCreate(),
-        .wd = RedisGears_WorkerDataCreate(),
+        .wd = RedisGears_WorkerDataCreate(NULL),
     };
     return rData;
 }

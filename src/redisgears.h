@@ -29,6 +29,7 @@ typedef struct ExecutionCtx ExecutionCtx;
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct Record Record;
 typedef struct WorkerData WorkerData;
+typedef struct ExecutionThreadPool ExecutionThreadPool;
 
 /**
  * Records type definitions
@@ -99,6 +100,7 @@ typedef struct Reader{
 #define KeysOnlyReader KeysOnlyReader
 #define StreamReader StreamReader
 #define CommandReader CommandReader
+#define ShardIDReader ShardIDReader
 
 /**
  * Create a new argument type with the given name and callbacks.
@@ -120,6 +122,7 @@ char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* l
  */
 typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
 typedef void (*RedisGears_ExecutionOnStartCallback)(ExecutionCtx* ctx, void* arg);
+typedef void (*RedisGears_ExecutionOnUnpausedCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_FlatExecutionOnRegisteredCallback)(FlatExecutionPlan* fep, void* arg);
 
 /**
@@ -231,6 +234,7 @@ int MODULE_API_FUNC(RedisGears_RegisterFilter)(char* name, RedisGears_FilterCall
 int MODULE_API_FUNC(RedisGears_RegisterGroupByExtractor)(char* name, RedisGears_ExtractorCallback extractor, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCallback reducer, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterExecutionOnStartCallback)(char* name, RedisGears_ExecutionOnStartCallback callback, ArgType* type);
+int MODULE_API_FUNC(RedisGears_RegisterExecutionOnUnpausedCallback)(char* name, RedisGears_ExecutionOnUnpausedCallback callback, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnRegisteredCallback)(char* name, RedisGears_FlatExecutionOnRegisteredCallback callback, ArgType* type);
 
 #define RGM_RegisterReader(name) RedisGears_RegisterReader(#name, &name);
@@ -242,6 +246,7 @@ int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnRegisteredCallback)(char* 
 #define RGM_RegisterGroupByExtractor(name, type) RedisGears_RegisterGroupByExtractor(#name, name, type);
 #define RGM_RegisterReducer(name, type) RedisGears_RegisterReducer(#name, name, type);
 #define RGM_RegisterExecutionOnStartCallback(name, type) RedisGears_RegisterExecutionOnStartCallback(#name, name, type);
+#define RGM_RegisterExecutionOnUnpausedCallback(name, type) RedisGears_RegisterExecutionOnUnpausedCallback(#name, name, type);
 #define RGM_RegisterFlatExecutionOnRegisteredCallback(name, type) RedisGears_RegisterFlatExecutionOnRegisteredCallback(#name, name, type);
 
 /**
@@ -263,6 +268,13 @@ void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateDataFromFep)(FlatExecuti
  */
 int MODULE_API_FUNC(RedisGears_SetFlatExecutionOnStartCallback)(FlatExecutionPlan* fep, const char* callback, void* arg);
 #define RGM_SetFlatExecutionOnStartCallback(ctx, name, arg) RedisGears_SetFlatExecutionOnStartCallback(ctx, #name, arg)
+
+/**
+ * If registration is distributed it might paused and unpaused durring the run.
+ * This callback will be called each time it unpaused.
+ */
+int MODULE_API_FUNC(RedisGears_SetFlatExecutionOnUnpausedCallback)(FlatExecutionPlan* fep, const char* callback, void* arg);
+#define RGM_SetFlatExecutionOnUnpausedCallback(ctx, name, arg) RedisGears_SetFlatExecutionOnUnpausedCallback(ctx, #name, arg)
 
 /**
  * Will be fire on each shard right after registration finished
@@ -336,8 +348,12 @@ ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
 void MODULE_API_FUNC(RedisGears_DropExecution)(ExecutionPlan* gearsCtx);
 
 /**
- * Aborting execution even if its already running or not even started
- * Supported only for local exeuctions
+ * Abort a running or created (and not yet started) execution
+ *
+ * Currently we can only abort a local execution.
+ * Aborting a global execution can only be done via RG.ABORTEXECUTION command
+ *
+ * return REDISMODULE_OK if the execution was aborted and REDISMODULE_ERR otherwise
  */
 int MODULE_API_FUNC(RedisGears_AbortExecution)(ExecutionPlan* gearsCtx);
 
@@ -355,7 +371,8 @@ bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears
 
 const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
 
-WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataCreate)();
+ExecutionThreadPool* MODULE_API_FUNC(RedisGears_ExecutionThreadPoolCreate)(const char* name, size_t numOfThreads);
+WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataCreate)(ExecutionThreadPool* pool);
 void MODULE_API_FUNC(RedisGears_WorkerDataFree)(WorkerData* worker);
 WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataGetShallowCopy)(WorkerData* worker);
 
@@ -471,12 +488,14 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnStartCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnRegisteredCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionOnStartCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionOnUnpausedCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFlatExecutionOnRegisteredCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropLocalyOnDone);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetMyHashTag);
 
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionThreadPoolCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataGetShallowCopy);

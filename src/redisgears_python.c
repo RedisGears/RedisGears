@@ -238,7 +238,7 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
 
 }
 
-static void RedisGearsPy_OnExecutionStartCallback(ExecutionCtx* ctx, void* arg){
+static void RedisGearsPy_OnExecutionUnpausedCallback(ExecutionCtx* ctx, void* arg){
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(ctx);
     void* old = RedisGearsPy_Lock(sctx);
     PyThreadState *state = PyGILState_GetThisThreadState();
@@ -565,7 +565,7 @@ static PyObject* run(PyObject *self, PyObject *args){
         return NULL;
     }
 
-    if(RGM_SetFlatExecutionOnStartCallback(pfep->fep, RedisGearsPy_OnExecutionStartCallback, NULL) != REDISMODULE_OK){
+    if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
         PyErr_SetString(GearsError, "Failed setting on start callback");
         return NULL;
     }
@@ -855,7 +855,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
 
-    if(RGM_SetFlatExecutionOnStartCallback(pfep->fep, RedisGearsPy_OnExecutionStartCallback, NULL) != REDISMODULE_OK){
+    if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
         PyErr_SetString(GearsError, "Failed setting on start callback");
         return NULL;
     }
@@ -2981,8 +2981,7 @@ static PyObject* PyInit_RedisAI(void) {
     return PyModule_Create(&EmbRedisAI);
 }
 
-void RedisGearsPy_ForceStop(ExecutionCtx* epCtx){
-    unsigned long threadID = (unsigned long)RedisGears_GetPrivateData(epCtx);
+void RedisGearsPy_ForceStop(unsigned long threadID){
     void* old = RedisGearsPy_Lock(NULL);
     PyThreadState_SetAsyncExc(threadID, ForceStoppedError);
     RedisGearsPy_Unlock(old);
@@ -3143,7 +3142,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RGM_RegisterAccumulatorByKey(RedisGearsPy_PyCallbackAccumulateByKey, pyCallbackType);
     RGM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
     RGM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
-    RGM_RegisterExecutionOnStartCallback(RedisGearsPy_OnExecutionStartCallback, pyCallbackType);
+    RGM_RegisterExecutionOnUnpausedCallback(RedisGearsPy_OnExecutionUnpausedCallback, pyCallbackType);
     RGM_RegisterFlatExecutionOnRegisteredCallback(RedisGearsPy_OnRegistered, pyCallbackType);
 
     if(TimeEvent_RegisterType(ctx) != REDISMODULE_OK){

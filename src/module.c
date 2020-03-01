@@ -27,6 +27,7 @@
 #include "readers/keys_reader.h"
 #include "readers/streams_reader.h"
 #include "readers/command_reader.h"
+#include "readers/shardid_reader.h"
 #include "mappers.h"
 #include <stdbool.h>
 #include <unistd.h>
@@ -91,6 +92,10 @@ static int RG_RegisterExecutionOnStartCallback(char* name, RedisGears_ExecutionO
     return ExecutionOnStartsMgmt_Add(name, callback, type);
 }
 
+static int RG_RegisterExecutionOnUnpausedCallback(char* name, RedisGears_ExecutionOnUnpausedCallback callback, ArgType* type){
+    return ExecutionOnUnpausedsMgmt_Add(name, callback, type);
+}
+
 static int RG_RegisterFlatExecutionOnRegisteredCallback(char* name, RedisGears_FlatExecutionOnRegisteredCallback callback, ArgType* type){
     return FlatExecutionOnRegisteredsMgmt_Add(name, callback, type);
 }
@@ -101,6 +106,15 @@ static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char
         return REDISMODULE_ERR;
     }
     FlatExecutionPlan_SetOnStartStep(fep, RG_STRDUP(callback), arg);
+    return REDISMODULE_OK;
+}
+
+static int RG_SetFlatExecutionOnUnpausedCallback(FlatExecutionPlan* fep, const char* callback, void* arg){
+    RedisGears_ExecutionOnStartCallback c = ExecutionOnUnpausedsMgmt_Get(callback);
+    if(!c){
+        return REDISMODULE_ERR;
+    }
+    FlatExecutionPlan_SetOnUnPausedStep(fep, RG_STRDUP(callback), arg);
     return REDISMODULE_OK;
 }
 
@@ -287,9 +301,8 @@ static Record* RG_GetError(ExecutionPlan* ep, long long i){
 /**
  * Abort a running or created (and not yet started) execution
  *
- * Currently we can only abort a local execution or execution that did not
- * yet started. Aborting a global started execution require consensus
- * and not yet supported.
+ * Currently we can only abort a local execution.
+ * Aborting a global execution can only be done via RG.ABORTEXECUTION command
  *
  * return REDISMODULE_OK if the execution was aborted and REDISMODULE_ERR otherwise
  */
@@ -319,16 +332,13 @@ static int RG_AbortExecution(ExecutionPlan* ep){
         return REDISMODULE_OK;
     }
 
-    // execution is running
-    ExecutionCtx epCtx = {
-            .ep = ep,
-    };
     while(ep->status != DONE){
         // we are checking for DONE status cause this one is set without getting the lock.
         // Once status changed to DONE we know that no more python code will be executed and
         // we can finish sending cancel signal
 #ifdef WITHPYTHON
-        RedisGearsPy_ForceStop(&epCtx);
+        unsigned long threadID = (unsigned long)ep->executionPD;
+        RedisGearsPy_ForceStop(threadID);
 #endif
         usleep(1000);
     }
@@ -344,7 +354,7 @@ static void RG_DropExecution(ExecutionPlan* ep){
         EPTurnOnFlag(ep, EFIsFreedOnDoneCallback);
         return;
     }
-    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal) && ep->status != ABORTED){
+    if(Cluster_IsClusterMode() && EPIsFlagOff(ep, EFIsLocal)){
         // We need to distributed the drop execution to all the shards
         // only if execution is not local and not aborted (aborted exectuion is eather
         // local or not yet distributed to all the shards)
@@ -430,8 +440,12 @@ static void RG_SetPrivateData(ExecutionCtx* ectx, void* PD){
     ectx->ep->executionPD = PD;
 }
 
-static WorkerData* RG_WorkerDataCreate(){
-    return ExecutionPlan_CreateWorker();
+static ExecutionThreadPool* RG_ExecutionThreadPoolCreate(const char* name, size_t numOfThreads){
+    return ExecutionPlan_CreateThreadPool(name, numOfThreads);
+}
+
+static WorkerData* RG_WorkerDataCreate(ExecutionThreadPool* pool){
+    return ExecutionPlan_CreateWorker(pool);
 }
 static void RG_WorkerDataFree(WorkerData* worker){
     ExecutionPlan_FreeWorker(worker);
@@ -617,8 +631,10 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetPrivateData, ctx);
     REGISTER_API(SetPrivateData, ctx);
     REGISTER_API(RegisterExecutionOnStartCallback, ctx);
+    REGISTER_API(RegisterExecutionOnUnpausedCallback, ctx);
     REGISTER_API(RegisterFlatExecutionOnRegisteredCallback, ctx);
     REGISTER_API(SetFlatExecutionOnStartCallback, ctx);
+    REGISTER_API(SetFlatExecutionOnUnpausedCallback, ctx);
     REGISTER_API(SetFlatExecutionOnRegisteredCallback, ctx);
 
     REGISTER_API(DropLocalyOnDone, ctx);
@@ -626,6 +642,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetMyHashTag, ctx);
 
     REGISTER_API(WorkerDataCreate, ctx);
+    REGISTER_API(ExecutionThreadPoolCreate, ctx);
     REGISTER_API(WorkerDataFree, ctx);
     REGISTER_API(WorkerDataGetShallowCopy, ctx);
 
@@ -719,6 +736,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(KeysOnlyReader);
     RGM_RegisterReader(StreamReader);
     RGM_RegisterReader(CommandReader);
+    RGM_RegisterReader(ShardIDReader);
     RGM_RegisterFilter(Example_Filter, NULL);
     RGM_RegisterMap(GetValueMapper, NULL);
     RGM_RegisterForEach(AddToStream, NULL);
@@ -736,6 +754,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if(RedisGears_CreateGearsDataType(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "failed create RedisGear DataType");
+        return REDISMODULE_ERR;
+    }
+
+    if(Command_Init() != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not initialize commands.");
         return REDISMODULE_ERR;
     }
 
@@ -841,6 +864,7 @@ static void __attribute__((destructor)) RedisGears_Clean(void) {
     RedisGearsPy_Clean();
     ExecutionPlan_Clean();
     LockHandler_Release(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
 }
 #endif
 

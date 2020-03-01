@@ -183,6 +183,7 @@ typedef struct WorkerData{
     pthread_mutex_t lock;
     RedisModuleCtx* ctx;
     WorkerStatus status;
+    ExecutionThreadPool* pool;
 }WorkerData;
 
 typedef struct OnDoneData{
@@ -217,11 +218,13 @@ typedef struct ExecutionPlan{
     ExecutionFlags flags;
     OnDoneData* onDoneData; // Array of callbacks to run on done
     RedisGears_ExecutionOnStartCallback onStartCallback;
+    RedisGears_ExecutionOnUnpausedCallback onUnpausedCallback;
     void* executionPD;
     long long executionDuration;
     WorkerData* assignWorker;
     ExecutionMode mode;
     Gears_listNode* nodeOnExecutionsList;
+    volatile bool isPaused;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -253,6 +256,7 @@ typedef struct FlatExecutionPlan{
     Gears_Buffer* serializedFep;
     FlatBasicStep onExecutionStartStep;
     FlatBasicStep onRegisteredStep;
+    FlatBasicStep onUnpausedStep;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -278,6 +282,7 @@ void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
 void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
+void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onSUnpausedCallback, void* onUnpausedArg);
 void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -313,7 +318,10 @@ ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
 
-WorkerData* ExecutionPlan_CreateWorker();
+ExecutionThreadPool* ExectuionPlan_GetThreadPool(const char* name);
+ExecutionThreadPool* ExecutionPlan_CreateThreadPool(const char* name, size_t numOfThreads);
+
+WorkerData* ExecutionPlan_CreateWorker(ExecutionThreadPool* pool);
 WorkerData* ExecutionPlan_WorkerGetShallowCopy(WorkerData* wd);
 void ExecutionPlan_FreeWorker(WorkerData* wd);
 
