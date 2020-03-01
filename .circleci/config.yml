@@ -72,6 +72,9 @@ jobs:
     steps:
       - build-steps:
           platform: debian
+          redis_build_params: ""
+          build_params: ""
+          test_params: ""
 
   valgrind:
     docker:
