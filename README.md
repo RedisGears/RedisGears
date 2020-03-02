@@ -24,7 +24,7 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 * [Sub-interpreters](/docs/subinterpreters.md)
 
 # Future plans
-* GearsQL - SQL like language for quering your data.
+* GearsQL - SQL like language for querying your data.
 
 ## Mailing List / Forum
 Got questions? Feel free to ask at the [RedisGears mailing list](https://groups.google.com/forum/#!forum/redisgears).
