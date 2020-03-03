@@ -1,23 +1,23 @@
 from WriteBehind import RGWriteBehind
 from WriteBehind.Connectors import OracleSqlConnector, OracleSqlConnection
 
-connection = OracleSqlConnection('test', 'passwd', '172.31.51.107/orcl')
+connection = OracleSqlConnection('test', 'passwd', 'oracle/xe')
 
-person_connector = OracleSqlConnector(connection, 'persons', 'person_id')
+persons_connector = OracleSqlConnector(connection, 'persons', 'person_id')
 
-person_mappings = {
+persons_mappings = {
 	'first_name':'first',
 	'last_name':'last',
 	'age':'age'
 }
 
-RGWriteBehind(GB, keysPrefix='person', mappings=person_mappings, connector=person_connector, name='PersonWriteBehind', version='99.99.99')
+RGWriteBehind(GB, keysPrefix='persons', mappings=persons_mappings, connector=persons_connector, name='PersonsWriteBehind', version='99.99.99')
 
-car_connector = OracleSqlConnector(connection, 'cars', 'car_id')
+cars_connector = OracleSqlConnector(connection, 'cars', 'car_id')
 
-car_mappings = {
+cars_mappings = {
 	'id':'id',
 	'color':'color'
 }
 
-RGWriteBehind(GB, keysPrefix='car', mappings=car_mappings, connector=car_connector, name='CarsWriteBehind', version='99.99.99')
+RGWriteBehind(GB, keysPrefix='car', mappings=cars_mappings, connector=cars_connector, name='CarsWriteBehind', version='99.99.99')

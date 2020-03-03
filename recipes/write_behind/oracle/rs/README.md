@@ -58,11 +58,11 @@ select * from persons;
 ```
 
 ## Testing
-* Log on via SSH to a cluster node.
-* Run `/opt/recipe/rs/run-test`.
+* Log on via SSH to a cluster node
+* Run `/opt/recipe/rs/run-test`
 * With multiple databases:
-  * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/rs/run-test`.
+  * Inspect `rladmin status`
+  * Run `DB=<db-id> /opt/recipe/rs/run-test`
 * Open another connection to that node and run `/opt/recipe/oracle/sample-oracle-db`
 
 ## Diagnostics
