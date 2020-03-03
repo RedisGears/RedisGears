@@ -128,7 +128,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: 'redisfab/rmbuilder:latest-x64-buster'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -141,7 +141,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: 'redisfab/rmbuilder:latest-x64-buster'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -154,7 +154,7 @@ jobs:
 
   deploy_docs:
     docker:
-      - image: 'redisfab/rmbuilder:latest-x64-buster'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - checkout
       - run:
