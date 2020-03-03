@@ -49,8 +49,8 @@ else
 fi
 
 ln -sf /opt/RedisGears/recipes/write_behind /opt/recipe
-cd /opt/RedisGears/recipes/write_behind
-ln -sf ../gears.py .
+# cd /opt/RedisGears/recipes/write_behind
+# ln -sf ../gears.py .
 
 OSNICK=`/opt/redislabs/bin/python2 /opt/RedisGears/deps/readies/bin/platform --osnick`
 [[ $OSNICK =~ 'rhel7' ]] && OSNICK='centos7'

@@ -1,17 +1,17 @@
 
-CREATE TABLE test.person1 (
-  id VARCHAR(100) NOT NULL,
+CREATE TABLE test.persons (
+  person_id VARCHAR(100) NOT NULL,
   first VARCHAR(100) NOT NULL,
   last VARCHAR(100) NOT NULL,
   age VARCHAR(100) NOT NULL,
-  PRIMARY KEY (id));
+  PRIMARY KEY (person_id));
 
-CREATE TABLE test.car (
-  license VARCHAR(100) NOT NULL,
+CREATE TABLE test.cars (
+  car_id VARCHAR(100) NOT NULL,
   color VARCHAR(100) NOT NULL,
-  PRIMARY KEY (license));
+  PRIMARY KEY (car_id));
 
-CREATE TABLE test.person1_exactly_once_table (
+CREATE TABLE test.persons_exactly_once_table (
   id VARCHAR(100) NOT NULL,
   val VARCHAR(100) NOT NULL,
   PRIMARY KEY (id));

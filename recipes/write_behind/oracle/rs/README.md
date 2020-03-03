@@ -22,8 +22,8 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle)
 ```
 * It's now possible connect to the database using `/opt/recipe/oracle/sqlplus`, and check that the tables were created (the tables are obviously empty):
 ```
-select * from person1;
-select * from car;
+select * from persons;
+select * from cars;
 ```
 ## Installing Redis Gears on Redis Enterprise Cluster
 
@@ -44,10 +44,10 @@ ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 
 On one of the Redis cluster nodes:
 
-* Run `/opt/recipe/rs/start-write-behind`.
+* Run `/opt/recipe/oracle/start-write-behind`.
 * With multiple databases:
   * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/rs/start-write-behind`.
+  * Run `DB=<db-id> /opt/recipe/oracle/start-write-behind`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
@@ -59,7 +59,7 @@ HSET person2:johndoe first_name "John" last_name "Doe" age "42"
 ```
 * Verify a record was created on Oracle. From ```/opt/recipe/oracle/sqlplus``` invoke:
 ```
-select * from person1;
+select * from persons;
 ```
 
 ## Testing

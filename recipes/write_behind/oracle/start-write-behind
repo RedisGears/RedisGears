@@ -52,10 +52,7 @@ except:
     print('Cannot connect to Redis. Aborting.')
     exit(1)
 
-params = 'WriteBehind:dbtype oracle WriteBehind:db oracle/xe WriteBehind:user test WriteBehind:passwd passwd'
-subprocess.call(['rladmin', 'tune', 'db', bdb_name, 'module_name', 'rg', 'module_config_params', params])
-
-args.path = [os.path.join(HERE, '../write_behind.py')] + args.path
+args.path = [os.path.join(HERE, '/opt/recipe/cassandra/write-behind.py', 'REQUIREMENTS', '/opt/recipe/WriteBehind', 'SQLAlchemy', 'cx-oracle')] + args.path
 f = open(p, 'rt')
 script = f.read()
 q = ['rg.pyexecute', script] + args.extra_args

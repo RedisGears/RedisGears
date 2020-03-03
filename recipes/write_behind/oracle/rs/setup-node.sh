@@ -66,6 +66,6 @@ MOD_DIR=/opt/recipe/rs
 printf "\n$ORACLE oracle\n" >> /etc/hosts
 
 /opt/recipe/oracle/install-oracle-client
-/opt/recipe/oracle/install-oracle-python-client
+# /opt/recipe/oracle/install-oracle-python-client
 
 exit 0
