@@ -14,9 +14,9 @@ fi
 if [ -z $(command -v git) ]; then
 	if [ ! -z $(command -v apt-get) ]; then
 		apt-get -qq update
-		apt-get install -y git
+		apt-get install -y git wget
 	elif [ ! -z $(command -v yum) ]; then
-		yum install -y git
+		yum install -y git wget
 	else
 		echo "%make love"
 		echo "Make:  Don't know how to make love.  Stop."
