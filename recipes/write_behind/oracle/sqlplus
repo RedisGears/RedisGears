@@ -1,7 +1,8 @@
 #!/bin/bash
 
 [[ -z $WHO ]] && WHO=test/passwd
+ORACLE=${ORACLE:-172.31.51.107/orcl)
 
 export PATH=$PATH:/opt/oracle/instantclient_19_5
 
-rlwrap sqlplus $* $WHO@//oracle/xe
+rlwrap sqlplus $* $WHO@//$ORACLE

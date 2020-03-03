@@ -1,7 +1,7 @@
 from WriteBehind import RGWriteBehind
 from WriteBehind.Connectors import OracleSqlConnector, OracleSqlConnection
 
-connection = OracleSqlConnection('test', 'passwd', 'oracle/xe')
+connection = OracleSqlConnection('test', 'passwd', '172.31.51.107/orcl')
 
 person_connector = OracleSqlConnector(connection, 'persons', 'person_id')
 
