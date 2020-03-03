@@ -37,6 +37,7 @@ mkdir -p /opt
 cd /opt
 if [[ ! -d RedisGears ]]; then
 	git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
+	git clone --branch master --single-branch https://github.com/RedisGears/WriteBehind.git
 else
 	cd RedisGears
 	git pull

@@ -52,7 +52,7 @@ except:
     print('Cannot connect to Redis. Aborting.')
     exit(1)
 
-args.path = [os.path.join(HERE, '/opt/recipe/cassandra/write-behind.py', 'REQUIREMENTS', '/opt/recipe/WriteBehind', 'SQLAlchemy', 'cx-oracle')] + args.path
+args.path = [os.path.join(HERE, '/opt/recipe/oracle/write-behind.py', 'REQUIREMENTS', '/opt/recipe/WriteBehind', 'SQLAlchemy', 'cx-oracle')] + args.path
 f = open(p, 'rt')
 script = f.read()
 q = ['rg.pyexecute', script] + args.extra_args
