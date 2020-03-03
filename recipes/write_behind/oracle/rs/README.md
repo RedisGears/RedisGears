@@ -32,11 +32,6 @@ select * from cars;
 ```
 ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-oracle-node)
 ```
-* Download the Redis Gears module and add it to the cluster modules list.
-	* For Ubuntu Xenial, use [this](http://redismodules.s3.amazonaws.com/redisgears/snapshots/redisgears.linux-xenial-x64.master.zip).
-	* For Ubuntu Bionic, use [this](http://redismodules.s3.amazonaws.com/redisgears/snapshots/redisgears.linux-bionic-x64.master.zip).
-	* For RHEL7, use [this](http://redismodules.s3.amazonaws.com/redisgears/snapshots/redisgears.linux-centos7-x64.master.zip).
-
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
   * Add the following parameter: `CreateVenv 0`
 

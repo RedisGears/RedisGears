@@ -10,7 +10,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 
 console_cols = -1
 
-j = json.loads(subprocess.check_output(HERE.join('redis-conn')))
+j = json.loads(subprocess.check_output('opt/recipe/rs/redis-conn'))
 host = str(j['host'])
 port = str(j['port'])
 password = str(j['passwd'])
@@ -19,7 +19,7 @@ bdb_name = str(j['bdb_name'])
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
                                  description='Run gears scripts on Redis(Gears)')
 
-parser.add_argument('path', help='scripts paths')
+# parser.add_argument('path', help='scripts paths')
 parser.add_argument('extra_args', help='extra argument to send with the script', nargs='*', default=[])
 
 parser.add_argument(
@@ -52,10 +52,11 @@ except:
     print('Cannot connect to Redis. Aborting.')
     exit(1)
 
-args.path = [os.path.join(HERE, '/opt/recipe/oracle/write-behind.py', 'REQUIREMENTS', '/opt/recipe/WriteBehind', 'SQLAlchemy', 'cx-oracle')] + args.path
+p ='/opt/recipe/oracle/write-behind.py'
+extra_args = ['REQUIREMENTS', 'git+https://github.com/RedisGears/WriteBehind.git', 'cx-oracle')] + args.extra_args
 f = open(p, 'rt')
 script = f.read()
-q = ['rg.pyexecute', script] + args.extra_args
+q = ['rg.pyexecute', script] + extra_args
 if args.nonblocking:
     q += ['unblocking']
 reply = r.execute_command(*q)
