@@ -1,7 +1,7 @@
 from WriteBehind import RGWriteBehind
 from WriteBehind.Connectors import OracleSqlConnector, OracleSqlConnection
 
-connection = OracleSqlConnection('test', 'passwd', 'oracle/xe')
+connection = OracleSqlConnection('test', 'passwd', 'oracle/orcl') # 'oracle/xe'
 
 persons_connector = OracleSqlConnector(connection, 'persons', 'person_id')
 
@@ -20,4 +20,4 @@ cars_mappings = {
 	'color':'color'
 }
 
-RGWriteBehind(GB, keysPrefix='car', mappings=cars_mappings, connector=cars_connector, name='CarsWriteBehind', version='99.99.99')
+RGWriteBehind(GB, keysPrefix='cars', mappings=cars_mappings, connector=cars_connector, name='CarsWriteBehind', version='99.99.99')
