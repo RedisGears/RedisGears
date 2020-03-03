@@ -10,7 +10,7 @@ HERE = os.path.dirname(os.path.realpath(__file__))
 
 console_cols = -1
 
-j = json.loads(subprocess.check_output('opt/recipe/rs/redis-conn'))
+j = json.loads(subprocess.check_output('/opt/recipe/rs/redis-conn'))
 host = str(j['host'])
 port = str(j['port'])
 password = str(j['passwd'])
@@ -53,7 +53,7 @@ except:
     exit(1)
 
 p ='/opt/recipe/oracle/write-behind.py'
-extra_args = ['REQUIREMENTS', 'git+https://github.com/RedisGears/WriteBehind.git', 'cx-oracle')] + args.extra_args
+extra_args = ['REQUIREMENTS', 'git+https://github.com/RedisGears/WriteBehind.git', 'cx-oracle'] + args.extra_args
 f = open(p, 'rt')
 script = f.read()
 q = ['rg.pyexecute', script] + extra_args

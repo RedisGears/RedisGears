@@ -50,7 +50,7 @@ If you created the example database, you can run the following tests to verify i
 * From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
 * Using `bdb-cli <db-id>`, invoke:
 ```
-HSET person2:johndoe first_name "John" last_name "Doe" age "42"
+HSET persons:johndoe first_name "John" last_name "Doe" age "42"
 ```
 * Verify a record was created on Oracle. From ```/opt/recipe/oracle/sqlplus``` invoke:
 ```
