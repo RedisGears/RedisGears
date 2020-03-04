@@ -173,7 +173,7 @@ Record* Command_AbortExecutionMap(ExecutionCtx* rctx, Record *data, void* arg){
         ExecutionPlan* gearsCtx = RedisGears_GetExecution(executionId);
 
         if(!gearsCtx){
-            RedisGears_SetError(rctx, "execution does not exists");
+            RedisGears_SetError(rctx, "execution does not exist");
             LockHandler_Release(ctx);
             return NULL;
         }
