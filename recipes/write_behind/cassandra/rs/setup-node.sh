@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# https://raw.githubusercontent.com/RedisGears/RedisGears/recipes_1/recipes/write_behind/cassandra/rs/setup-node.sh
-# via: CASSANDRA="<ip> ..." bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cql-node)
+# https://raw.githubusercontent.com/RedisGears/RedisGears/write_behind_1/recipes/write_behind/cassandra/rs/setup-node.sh
+# via: CASSANDRA="<ip> ..." bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cassandra-node)
 # to be executed on an RS nodes
 
 set -e

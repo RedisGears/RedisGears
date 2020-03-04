@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# https://raw.githubusercontent.com/RedisGears/RedisGears/master/recipes/write_behind/cassandra/rs/setup-cassandra.sh
+# https://raw.githubusercontent.com/RedisGears/RedisGears/write_behind_1/recipes/write_behind/cassandra/rs/setup-cassandra.sh
 # via: bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cassandra)
 # to be executed on a host running the Cassandra Docker container
 

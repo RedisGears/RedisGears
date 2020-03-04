@@ -6,6 +6,7 @@
 * [With Redis Enterprise Software and Oracle](oracle/rs/README.md)
 * [With Redis Enterprise Software and Snowflake](snowflake/rs/README.md)
 * [With Redis Enterprise Software and MySQL](mysql/rs/README.md)
+* [With Redis Enterprise Software and Cassandra](cassandra/rs/README.md)
 * [With RHEL-Docker and Oracle](oracle/rlec-docker/README.md)
 
 ## Configuration

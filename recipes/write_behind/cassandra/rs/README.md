@@ -13,7 +13,7 @@
 * Install git.
 * Setup Cassandra cluster and create a database:
 ```
-bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cql)
+bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cassandra)
 ```
 * It's now possible connect to the database using `/opt/recipe/cassandra/cqlsh`, and check that the tables were created (the tables are obviously empty):
 ```
@@ -25,7 +25,7 @@ select * from cars;
 * [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
 * On a cluster node, run (as root, via `sudo bash` for RHEL or `sudo su -` for Ubuntu):
 ```
-CASSANDRA='<ip>' bash <(curl -fsSL https://cutt.ly/redisgears-wb-cql-node)
+CASSANDRA='<ip>' bash <(curl -fsSL https://cutt.ly/redisgears-wb-cassandra-node)
 ```
 
 * [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.

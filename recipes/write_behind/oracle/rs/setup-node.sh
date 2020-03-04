@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# https://raw.githubusercontent.com/RedisGears/RedisGears/master/recipes/write_behind/oracle/rs/setup-node.sh
+# https://raw.githubusercontent.com/RedisGears/RedisGears/write_behind_1/recipes/write_behind/oracle/rs/setup-node.sh
 # via: ORACLE=<ip> bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-node)
 # to be executed on RS nodes
 
