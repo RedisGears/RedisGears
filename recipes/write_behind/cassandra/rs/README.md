@@ -17,6 +17,7 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cassandra)
 ```
 * It's now possible connect to the database using `/opt/recipe/cassandra/cqlsh`, and check that the tables were created (the tables are obviously empty):
 ```
+use test;
 select * from persons;
 select * from cars;
 ```

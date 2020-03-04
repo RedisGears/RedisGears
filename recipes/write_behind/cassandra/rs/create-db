@@ -3,4 +3,4 @@
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 cd $HERE/..
 
-/opt/recipe/cassandra/cqlsh create-db.cql
+/opt/recipe/cassandra/cqlsh -e "source '/opt/recipe/cassandra/create-db.cql'"

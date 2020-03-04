@@ -13,6 +13,6 @@ sleep 3
 
 docker run --cidfile /tmp/dse1.cid --rm -e DS_LICENSE=accept --name $DSE -v /opt/recipe:/opt/recipe -p 9042:9042 -d $DSE_IMAGE
 docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $DSE > /tmp/dse1.ip
-cat /tmp/dse1.ip
+echo "Cassandra IP: `cat /tmp/dse1.ip`"
 
 exit 0
