@@ -18,7 +18,7 @@ args = parser.parse_args()
 conn = redis.Redis(args.host, args.port, password=args.password)
 
 reqs = ['hset person:%d first_name foo last_name bar age 31' % i for i in range(NUM_REQ)]
-dels = ['del person2:%d' % i for i in range(NUM_REQ)]
+dels = ['del person:%d' % i for i in range(NUM_REQ)]
 
 start = time.time()
 i = 0

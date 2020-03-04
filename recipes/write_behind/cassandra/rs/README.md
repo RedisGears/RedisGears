@@ -17,8 +17,8 @@ bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cql)
 ```
 * It's now possible connect to the database using `/opt/recipe/cassandra/cqlsh`, and check that the tables were created (the tables are obviously empty):
 ```
-select * from person1;
-select * from car;
+select * from persons;
+select * from cars;
 ```
 ## Installing Redis Gears on Redis Enterprise Cluster
 
@@ -35,10 +35,10 @@ CASSANDRA='<ip>' bash <(curl -fsSL https://cutt.ly/redisgears-wb-cql-node)
 
 On a Redis cluster node:
 
-* Run `/opt/recipe/rs/start-write-behind`.
+* Run `/opt/recipe/cassandra/start-write-behind`.
 * With multiple databases:
   * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/rs/start-write-behind`.
+  * Run `DB=<db-id> /opt/recipe/cassandra/start-write-behind`.
 
 ### Basic tests
 If you created the example database, you can run the following tests to verify if your setup is working correctly.
@@ -46,7 +46,7 @@ If you created the example database, you can run the following tests to verify i
 * From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
 * Using `bdb-cli <db-id>`, invoke:
 ```
-HSET person:johndoe first_name "John" last_name "Doe" age "42"
+HSET person:007 first_name "James" last_name "Bond" age "42"
 ```
 * Verify a record was created on Cassandra. From ```/opt/recipe/cassandra/cqlsh``` invoke:
 ```

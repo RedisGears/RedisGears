@@ -28,7 +28,12 @@ wget -O /opt/redislabs/bin/yq https://github.com/mikefarah/yq/releases/download/
 chmod +x /opt/redislabs/bin/yq
 
 if [[ $FORCE == 1 ]]; then
-	rm -rf /opt/recipe /opt/RedisGears /opt/redislabs/lib/modules/python3
+	rm -rf /opt/recipe /opt/RedisGears/ \
+		/opt/redislabs/lib/modules/python3/ \
+		/var/opt/redislabs/lib/modules/python3/ \
+		/var/opt/redislabs/lib/ \
+		/opt/redislabs/lib/modules/redisgears*.zip \
+		/var/opt/redislabs/modules/rg/
 fi
 
 BRANCH=write_behind_1
@@ -39,9 +44,8 @@ if [[ ! -d RedisGears ]]; then
 	git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
 	git clone --branch master --single-branch https://github.com/RedisGears/WriteBehind.git
 else
-	cd RedisGears
-	git pull
-	cd ..
+	cd RedisGears; git pull; cd ..
+	cd WriteBehind; git pull; cd ..
 fi
 
 ln -sf /opt/RedisGears/recipes/write_behind /opt/recipe

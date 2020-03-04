@@ -14,9 +14,9 @@ fi
 if [ -z $(command -v git) ]; then
 	if [ ! -z $(command -v apt-get) ]; then
 		apt-get -qq update
-		apt-get install -y git
+		apt-get install -y git wget
 	elif [ ! -z $(command -v yum) ]; then
-		yum install -y git
+		yum install -y git wget
 	else
 		echo "%make love"
 		echo "Make:  Don't know how to make love.  Stop."
@@ -36,12 +36,12 @@ if [[ $FORCE == 1 ]]; then
 		/var/opt/redislabs/modules/rg/
 fi
 
-BRANCH=recipes_1
+BRANCH=write_behind_1
 
 mkdir -p /opt
 cd /opt
 if [[ ! -d RedisGears ]]; then
-	git clone --branch write_behind_1 --single-branch https://github.com/RedisGears/RedisGears.git
+	git clone --branch $BRANCH --single-branch https://github.com/RedisGears/RedisGears.git
 	git clone --branch master --single-branch https://github.com/RedisGears/WriteBehind.git
 else
 	cd RedisGears; git pull; cd ..
@@ -62,4 +62,6 @@ fi
 MOD_DIR=/opt/recipe/rs
 /opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
  
+printf "\n$CASSANDRA cassandra\n" >> /etc/hosts
+
 exit 0

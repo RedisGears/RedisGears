@@ -1,23 +1,23 @@
 from WriteBehind import RGWriteBehind
 from WriteBehind.Connectors import CqlConnector, CqlConnection
 
-connection = CqlConnection('cassandra', 'cassandra', '172.17.0.2', 'test')
+connection = CqlConnection('cassandra', 'cassandra', 'cassandra', 'test')
 
-person_connector = CqlConnector(cqlConnection, 'persons', 'person_id')
+persons_connector = CqlConnector(connection, 'persons', 'person_id')
 
-person_mappings = {
+persons_mappings = {
 	'first_name':'first',
 	'last_name':'last',
 	'age':'age'
 }
 
-RGWriteBehind(GB, keysPrefix='person', mappings=person_mappings, connector=person_connector, name='PersonWriteBehind', version='99.99.99')
+RGWriteBehind(GB, keysPrefix='person', mappings=persons_mappings, connector=persons_connector, name='PersonsWriteBehind', version='99.99.99')
 
-car_connector = CqlConnector(cqlConnection, 'cars', 'car_id')
+cars_connector = CqlConnector(connection, 'cars', 'car_id')
 
-car_mappings = {
+cars_mappings = {
 	'id':'id',
 	'color':'color'
 }
 
-RGWriteBehind(GB, keysPrefix='car', mappings=car_mappings, connector=car_connector, name='CarsWriteBehind', version='99.99.99')
+RGWriteBehind(GB, keysPrefix='car', mappings=cars_mappings, connector=cars_connector, name='CarsWriteBehind', version='99.99.99')
