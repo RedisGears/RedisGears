@@ -357,7 +357,8 @@ GB().map(returnX).run()
     env.expect('rg.pyexecute', script).equal([['2'], []])
     env.expect('rg.pyexecute', script).equal([['2'], []])
 
-def testAbortExecution(env):
+def testAbortExecution():
+    env = Env(moduleArgs='executionThreads 1')
     env.skipOnCluster()
     infinitScript = '''
 def InfinitLoop(r):
@@ -570,3 +571,20 @@ def test(r):
 GB('ShardsIDReader').foreach(test).flatmap(lambda r: execute('mget', 'x{%s}' % hashtag(), 'y{%s}' % hashtag())).collect().distinct().sort().run()
     '''
     env.expect('RG.PYEXECUTE', script).equal([['1', '2'],[]])
+
+def testParallelExecutions(env):
+    conn = getConnectionByEnv(env)
+    infinitScript = '''
+import time
+def InifinitLoop(r):
+    while True:
+        time.sleep(1)
+GB('ShardsIDReader').foreach(InifinitLoop).run()
+'''
+    executionId = env.cmd('RG.PYEXECUTE', infinitScript, 'unblocking')
+    env.expect('RG.PYEXECUTE', "GB('ShardsIDReader').count().run()").equal([[str(env.shardsCount)],[]])
+
+    # we need to abort the execution with a gear to abort it on all the shards
+    env.expect('RG.ABORTEXECUTION', executionId).ok()
+    env.expect('RG.DROPEXECUTION', executionId).ok()
+

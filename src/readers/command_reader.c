@@ -4,17 +4,17 @@
 #include "record.h"
 
 typedef struct CommandReaderTriggerArgs{
-    char* command;
+    char* trigger;
 }CommandReaderTriggerArgs;
 
-CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* commandName){
+CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* trigger){
     CommandReaderTriggerArgs* ret = RG_ALLOC(sizeof(*ret));
-    ret->command = RG_STRDUP(commandName);
+    ret->trigger = RG_STRDUP(trigger);
     return ret;
 }
 
 void CommandReaderTriggerArgs_Free(CommandReaderTriggerArgs* crtArgs){
-    RG_FREE(crtArgs->command);
+    RG_FREE(crtArgs->trigger);
     RG_FREE(crtArgs);
 }
 
@@ -29,6 +29,7 @@ typedef struct CommandReaderTriggerCtx{
     size_t numAborted;
     char* lastError;
     Gears_dict* pendingExections;
+    WorkerData* wd;
 }CommandReaderTriggerCtx;
 
 Gears_dict* CommandRegistrations = NULL;
@@ -45,7 +46,8 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numFailures = 0,
             .numAborted = 0,
             .lastError = NULL,
-            .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL)
+            .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
+            .wd = RedisGears_WorkerDataCreate(NULL),
     };
     return ret;
 }
@@ -63,6 +65,7 @@ static void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
         CommandReaderTriggerArgs_Free(crtCtx->args);
         FlatExecutionPlan_Free(crtCtx->fep);
         Gears_dictRelease(crtCtx->pendingExections);
+        RedisGears_WorkerDataFree(crtCtx->wd);
         RG_FREE(crtCtx);
     }
 }
@@ -151,7 +154,7 @@ static Reader* CommandReader_Create(void* arg){
 
 static void CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mode, CommandReaderTriggerArgs* crtArgs){
     CommandReaderTriggerCtx* crtCtx = CommandReaderTriggerCtx_Create(fep, mode, crtArgs);
-    Gears_dictAdd(CommandRegistrations, crtArgs->command, crtCtx);
+    Gears_dictAdd(CommandRegistrations, crtArgs->trigger, crtCtx);
 }
 
 static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
@@ -159,7 +162,7 @@ static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode 
         CommandRegistrations = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     }
     CommandReaderTriggerArgs* crtArgs = args;
-    CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, crtArgs->command);
+    CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger);
     if(crtCtx){
         *err = RG_STRDUP("Command already registered");
         return REDISMODULE_ERR;
@@ -217,14 +220,14 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
 
             array_free(abortEpArray);
         }
-        Gears_dictDelete(CommandRegistrations, crtCtx->args->command);
+        Gears_dictDelete(CommandRegistrations, crtCtx->args->trigger);
         CommandReaderTriggerCtx_Free(crtCtx);
     }
 }
 
 static void CommandReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
     CommandReaderTriggerArgs* crtArgs = var;
-    RedisGears_BWWriteString(bw, crtArgs->command);
+    RedisGears_BWWriteString(bw, crtArgs->trigger);
 }
 
 static void* CommandReader_DeserializeArgs(Gears_BufferReader* br){
@@ -262,8 +265,8 @@ static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutio
     }
     RedisModule_ReplyWithStringBuffer(ctx, "args", strlen("args"));
     RedisModule_ReplyWithArray(ctx, 2);
-    RedisModule_ReplyWithStringBuffer(ctx, "command", strlen("command"));
-    RedisModule_ReplyWithStringBuffer(ctx, crtCtx->args->command, strlen(crtCtx->args->command));
+    RedisModule_ReplyWithStringBuffer(ctx, "trigger", strlen("trigger"));
+    RedisModule_ReplyWithStringBuffer(ctx, crtCtx->args->trigger, strlen(crtCtx->args->trigger));
 }
 
 static void CommandReader_RdbSave(RedisModuleIO *rdb){
@@ -439,7 +442,7 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
     CommandPD_Free(pd);
 }
 
-static int CommandReader_Command(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
@@ -460,7 +463,7 @@ static int CommandReader_Command(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1);
-    ExecutionPlan* ep = RGM_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone, pd, &err);
+    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone, pd, crtCtx->wd, &err);
     if(!ep){
         // error accurred
         ++crtCtx->numAborted;
@@ -489,7 +492,7 @@ int CommandReader_Initialize(RedisModuleCtx* ctx){
     // this command is considered readonly but it might actaully right data to redis
     // using rm_call. In this case the effect of the execution is replicated
     // and not the execution itself.
-    if (RedisModule_CreateCommand(ctx, "rg.command", CommandReader_Command, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rg.trigger", CommandReader_Trigger, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.command");
         return REDISMODULE_ERR;
     }
