@@ -158,9 +158,6 @@ GB().map(InfinitLoop).register('*', mode='async_local')
     env.cmd('set', 'l', '1') # infinit loop
     env.cmd('set', 'm', '1') # pending execution
 
-    # create another execution, make sure its pending
-    eid = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()', 'UNBLOCKING')
-
     registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
     registrationId = registrationInfo[0][1]
 
@@ -174,6 +171,9 @@ GB().map(InfinitLoop).register('*', mode='async_local')
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Could not wait for all executions')
+
+    # create another execution, make sure its pending
+    eid = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()', 'UNBLOCKING')
 
     executionsInfo = env.cmd('RG.DUMPEXECUTIONS')
     env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'done']), 3)
