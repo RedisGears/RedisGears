@@ -7,10 +7,10 @@
 
 ## Install and configure Cassandra cluster
 
-* Designate a machine with at least 10GB free disk space to host the Cassandra cluster.
-  * Find the IP address of the machine and make sure port 9042 is open for inbound TCP traffic.
-* [Install Docker](#insalling_docker).
-* Install git.
+* Designate a machine with at least 10GB free disk space to host the Cassandra cluster
+  * Find the IP address of the machine and make sure port 9042 is open for inbound TCP traffic
+* [Install Docker](#insalling_docker)
+* Install git
 * Setup Cassandra cluster and create a database:
 ```
 bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cassandra)
@@ -23,39 +23,39 @@ select * from cars;
 ```
 ## Installing Redis Gears on Redis Enterprise Cluster
 
-* [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/).
+* [Create a Redis Enterprise cluster](https://docs.redislabs.com/latest/rs/installing-upgrading/downloading-installing/)
 * On a cluster node, run (as root, via `sudo bash` for RHEL or `sudo su -` for Ubuntu):
 ```
-CASSANDRA='<ip>' bash <(curl -fsSL https://cutt.ly/redisgears-wb-cassandra-node)
+CASSANDRA='<ip>' bash <(curl -fsSL https://cutt.ly/redisgears-wb-setup-cassandra-node)
 ```
 
-* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled.
+* [Create a redis database](https://docs.redislabs.com/latest/modules/create-database-rs/) with RedisGears enabled
   * Add the following parameter: `CreateVenv 0`
 
 ## Running the write-behind recipe
 
 On a Redis cluster node:
 
-* Run `/opt/recipe/cassandra/start-write-behind`.
+* Run `/opt/recipe/cassandra/start-write-behind`
 * With multiple databases:
-  * Inspect `rladmin status`,
-  * Run `DB=<db-id> /opt/recipe/cassandra/start-write-behind`.
+  * Inspect `rladmin status`
+  * Run `DB=<db-id> /opt/recipe/cassandra/start-write-behind`
 
 ### Basic tests
-If you created the example database, you can run the following tests to verify if your setup is working correctly.
+If you created the example database, you can run the following tests to verify if your setup is working correctly
 
-* From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations.
+* From within `bdb-cli <db-id>`, `RG.DUMPREGISTRATIONS` will return a list of registrations
 * Using `bdb-cli <db-id>`, invoke:
 ```
 HSET person:007 first_name "James" last_name "Bond" age "42"
 ```
 * Verify a record was created on Cassandra. From ```/opt/recipe/cassandra/cqlsh``` invoke:
 ```
-select * from person;
+select * from test.persons;
 ```
 
 ## Testing
-* Log on via SSH to a Redis cluster node.
+* Log on via SSH to a Redis cluster node
 * Run `/opt/recipe/rs/run-test`
 * With multiple databases:
   * Inspect `rladmin status`
@@ -81,7 +81,7 @@ rlutil redis_restart redis=<Redis shard IDs> force=yes
 
 ### Cassandra status
 
-* `/opt/recipe/cassandra/sample-cassandra-db` will repeatedly print number of records in the Cassandra test table.
+* `/opt/recipe/cassandra/sample-cassandra-db` will repeatedly print number of records in the Cassandra test table
 * Cassandra CLI: `/opt/recipe/cassandra/cqlsh`
 * Cassandra cluster information: `/opt/recipe/cassandra/nodetool`
 
@@ -94,5 +94,5 @@ bash <(curl -fsSL https://get.docker.com)
 systemctl enable docker
 ```
 
-Verify with ```docker version```.
+Verify with ```docker version```
 

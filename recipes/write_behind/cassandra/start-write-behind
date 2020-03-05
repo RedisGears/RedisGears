@@ -52,8 +52,8 @@ except:
     print('Cannot connect to Redis. Aborting.')
     exit(1)
 
-p ='/opt/recipe/oracle/write-behind.py'
-extra_args = ['REQUIREMENTS', 'git+https://github.com/RedisGears/WriteBehind.git', 'cassandra-driver')] + args.extra_args
+p ='/opt/recipe/cassandra/write-behind.py'
+extra_args = ['REQUIREMENTS', 'git+https://github.com/RedisGears/WriteBehind.git', 'cassandra-driver'] + args.extra_args
 f = open(p, 'rt')
 script = f.read()
 q = ['rg.pyexecute', script] + extra_args
