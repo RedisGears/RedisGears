@@ -103,11 +103,8 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("pipenv gevent")
 
     def common_last(self):
-        # this is due to rmbuilder older versions. should be removed once fixed.
-        self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest rmtest semantic-version || true")
         # redis-py-cluster should be installed from git due to redis-py dependency
         self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
-        # the following can be probably installed from pypi
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
 
