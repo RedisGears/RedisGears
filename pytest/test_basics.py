@@ -271,7 +271,7 @@ redisgears.registerTimeEvent(1, func, 'timeEvent')
 
 def testExecuteCommandWithNullTerminated(env):
     env.skipOnCluster()
-    env.expect('set', 'x', 'test\x00test').equal('OK')
+    env.expect('set', 'x', 'test\x00test').equal(True)
     env.expect('get', 'x').equal('test\x00test')
     env.cmd('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: redisgears.executeCommand('SET', 'bar', str(x['value']))).map(lambda x: str(x)).run()")
     env.expect('get', 'bar').equal('test\x00test')
