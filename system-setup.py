@@ -96,7 +96,8 @@ class RedisGearsSetup(paella.Setup):
             fatal("Xcode tools are not installed. Please run xcode-select --install.")
         self.install("libtool autoconf automake llvm")
         self.install("zlib openssl readline coreutils")
-        self.install("redis")
+        if not self.has_command("redis-server"):
+            self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
         self.install_gnu_utils()
 
