@@ -96,7 +96,8 @@ class RedisGearsSetup(paella.Setup):
             fatal("Xcode tools are not installed. Please run xcode-select --install.")
         self.install("libtool autoconf automake llvm")
         self.install("zlib openssl readline coreutils")
-        self.install("redis")
+        if not self.has_command("redis-server"):
+            self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
         self.install_gnu_utils()
 
@@ -107,7 +108,6 @@ class RedisGearsSetup(paella.Setup):
         self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest rmtest semantic-version || true")
         # redis-py-cluster should be installed from git due to redis-py dependency
         self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
-        # the following can be probably installed from pypi
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
 
