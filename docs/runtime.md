@@ -7,7 +7,7 @@ The following sections describe the runtime environment.
 ## Python Interpreter
 RedisGears embeds a Python version 3.7.2+ interpreter.
 
-All functions use that interpreter. Each function has its own sub-interpreter that isolates its execution context from other functions. This means each function has its own globals.
+All functions use that interpreter. Each function has its sub-interpreter that isolates its execution context from other functions. This means each function has its globals, function and class names.
 
 !!! info "Further reference"
     For more information refer to:

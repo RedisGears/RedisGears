@@ -52,7 +52,7 @@ The following sections describe the makings of the system.
 
 
 ## Module
-A Redis **module** is shared library that can be loaded by the Redis server during runtime. Useful for extending Redis with new data types and commands.
+A Redis **module** is a shared library that can be loaded by the Redis server during runtime. Useful for extending Redis with new data types and commands.
 
 !!! info "Further reference"
     You can learn more about Redis modules at:
@@ -97,7 +97,7 @@ Redis stores data in structures that implement different types and the API to ma
 An **event** is a signal that the RedisGears engine can intercept and react to by triggering the execution of an event-driven processing function.
 
 ## Engine
-A RedisGears component that is in charge of the execution of function. The engine executes locally on each of the cluster's shards.
+A RedisGears component that is in charge of the execution of functions. The engine executes locally on each of the cluster's shards.
 
 ## Coordinator
 A RedisGears component that handles cluster communication and data shuffling.

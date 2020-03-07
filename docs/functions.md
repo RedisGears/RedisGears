@@ -79,7 +79,7 @@ The ID is string value made of two parts that are delimited by a hyphen ('-'), a
 ## Registration
 The representation of an event-driven function is called a registration.
 
-Registrations are persisted in Redis' snapshots, a.k.a RDB files. This allows recovering both data and events handlers in the database in the event of failure.
+Registrations are persisted in Redis' snapshots, a.k.a RDB files. This allows recovering both data and event handlers in the database in the event of failure.
 
 !!! abstract "Related commands"
     The following RedisGears commands are related to registering functions:
@@ -120,10 +120,10 @@ gb.register()
 ```
 
 ## Actions
-An action is special type of operation. It is always the function's final step.
+An action is a special type of operation. It is always the function's final step.
 
 ### Run
-The **Run** action runs a function as batch. The function is executed once and exits once data is exhausted by its reader.
+The **Run** action runs a function as a batch. The function is executed once and exits once the data is exhausted by its reader.
 
 Trying to run more than one function in the same execution will fail with an error.
 
@@ -134,7 +134,7 @@ Trying to run more than one function in the same execution will fail with an err
     ```
 
 !!! important "Execution is always asynchronous"
-    Batch functions are **always executed asynchronously** by the RedisGears engine. That means means that they are run in a background thread rather than by the main process of the Redis server.
+    Batch functions are **always executed asynchronously** by the RedisGears engine. That means that they are run in a background thread rather than by the main process of the Redis server.
 
 **Python API**
 ```python

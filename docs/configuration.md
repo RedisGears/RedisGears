@@ -59,7 +59,7 @@ OK
 ```
 
 ## MaxExecutionsPerRegistration
-The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold values is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' status (?) are deleted.
+The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' status (?) are deleted.
 
 _Expected Value_
 
@@ -81,7 +81,7 @@ OK
 ```
 
 ## ProfileExecutions
-The **ProfileExecutions** configuration options controls whether executions are profiled.
+The **ProfileExecutions** configuration option controls whether executions are profiled.
 
 !!! important "Profiling impacts performance"
     Profiling requires reading the server's clock, which is a costly operation in terms of performance. Execution profiling is recommended only for debugging purposes and should be disabled in production.

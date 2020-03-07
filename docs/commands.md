@@ -57,12 +57,12 @@ OK
 ```
 
 ## RG.CONFIGGET
-The **`RG.CONFIGGET`** command returns the value of a built-in [configuration](configuration.md) or a user-defined option.
+The **`RG.CONFIGGET`** command returns the value of one or more built-in [configuration](configuration.md) or a user-defined options.
 
 **Redis API**
 
 ```
-RG.CONFIGGET <key>
+RG.CONFIGGET <key> [<key> ...]
 ```
 
 _Arguments_
@@ -71,7 +71,7 @@ _Arguments_
 
 _Return_
 
-An array with a single String element being the value, or an error for undefined options.
+An array with an entry per key. The entry is a String being the value or an error for undefined options.
 
 **Examples**
 
@@ -83,12 +83,12 @@ An array with a single String element being the value, or an error for undefined
 ```
 
 ## RG.CONFIGSET
-The **`RG.CONFIGGET`** command sets the value of a built-in [configuration](configuration.md) or a user-defined option.
+The **`RG.CONFIGGET`** command sets the value of one ore more built-in [configuration](configuration.md) or a user-defined options.
 
 **Redis API**
 
 ```
-RG.CONFIGSET <key> <value>
+RG.CONFIGSET <key> <value> [<key> <value> ...]
 ```
 
 _Arguments_
@@ -98,7 +98,7 @@ _Arguments_
 
 _Return_
 
-A simple 'OK' string, or an error if the option can't be configured in runtime.
+An array with an entry per key. The entry is simple 'OK' string, or an error if the option can't be configured in runtime.
 
 **Examples**
 
@@ -241,7 +241,7 @@ _Arguments_
 * _CLUSTER_: collects all executions from shards (default in _cluster_ mode)
 
 !!! tip "RedisGears Trivia"
-    When called with the `CLUSTER` subcommand, RedisGears actually runs a RedisGears function that collects the shards' execution plans... self reference is so paradoxical :)
+    When called with the `CLUSTER` subcommand, RedisGears runs a RedisGears function that collects the shards' execution plans... self-reference is so paradoxical :)
 
 _Return_
 
@@ -501,7 +501,7 @@ An array that consists of alternating key name and value entries as follows:
 The **RG.REFRESHCLUSTER** command refreshes the node's view of the cluster's topology.
 
 !!! important "Open Source Redis Cluster"
-    The `RG.REFRESHCLUSTER` command needs to be executed on each of the the cluster's nodes.
+    The `RG.REFRESHCLUSTER` command needs to be executed on each of the cluster's nodes.
 
 **Redis API**
 

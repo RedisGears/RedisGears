@@ -1,10 +1,10 @@
 # RedisGears Examples
 The following sections consist of various [recipes](overview.md#recipe) and basic examples showing the uses for RedisGears.
 
-To contribute your own example or recipe (and get the credit for it), click the "Edit this page" button at the top to submit a Pull Request.
+To contribute your example or recipe (and get the credit for it), click the "Edit this page" button at the top to submit a Pull Request.
 
 ## Recipes
-This is a list of RedisGears recipes that can be used as is or as an inspiration source.
+This is a list of RedisGears recipes that can be used as-is or as an inspiration source.
 
 | Recipe | Description | Author | License | URL |
 | --- | --- | --- | --- | --- |
@@ -105,10 +105,10 @@ gb.register('mystream')
 
 **Purpose**
 
-Estimate value of Pi by throwing darts at a carefully-constructed dartboard.
+Estimate Pi by throwing darts at a carefully-constructed dartboard.
 
 !!! tip "There are far better ways to get Pi's value"
-    This example is intended for educational purposes only. For all practical purposes you'd be better off using the constant value of 3.14159265359.
+    This example is intended for educational purposes only. For all practical purposes, you'd be better off using the constant value of 3.14159265359.
 
 ** Python API**
 

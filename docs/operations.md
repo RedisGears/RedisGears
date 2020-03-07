@@ -34,7 +34,7 @@ It requires one [mapper](#mapper) callback.
 
 !!! info "Common uses"
     * Transform the data's shape
-    * Type casting and value formatting
+    * Typecasting and value formatting
     * Splitting, joining and similar string manipulations
     * Removing and/or adding data from/to the record
 
@@ -254,7 +254,7 @@ GB() \
 ## Repartition
 The global **Repartition** operation repartitions the records by them shuffling between shards.
 
-It accepts a single key [extractor](#extractor) function callback. The extracted key is used for computing the record's  new placement in the cluster (i.e. hash slot). The operation then moves the record from its original shard to the new one.
+It accepts a single key [extractor](#extractor) function callback. The extracted key is used for computing the record's new placement in the cluster (i.e. hash slot). The operation then moves the record from its original shard to the new one.
 
 !!! info "Common uses"
     * Remapping of records to engines
@@ -271,7 +271,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Will not repartition anything because the record's key is returned as is
+# Will not repartition anything because the record's key is returned as-is
 GB() \
   .repartition(lambda x: x['key']) \
   .run()
@@ -347,7 +347,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Will put all records of each value in different list
+# Will put all records of each value in a different list
 GB() \
   .aggregateby( \
     lambda x: x['value'], \
@@ -759,7 +759,7 @@ def countingAccumulator(a, r):
 ```
 
 ### Reducer
-A **Reducer** is a callback function that receives a key, an input and variable that's called an accumulator. It performs similarly to the [accumulator](#accumulator) callback, with the difference being that it maintains an accumulator per reduced key.
+A **Reducer** is a callback function that receives a key, an input and a variable that's called an accumulator. It performs similarly to the [accumulator](#accumulator) callback, with the difference being that it maintains an accumulator per reduced key.
 
 **Python**
 ```python
@@ -794,7 +794,7 @@ def keyCountingReducer(k, a, r):
 ```
 
 ### Batch Reducer
-A **Batch Reducer** is a callback function that receives a key and a list of input records. It performs similarly to the [reducer](#reducer) callback, with the difference being that it is input with a list of records instead of single one. It is expected to return an accumulator value for these records.
+A **Batch Reducer** is a callback function that receives a key and a list of input records. It performs similarly to the [reducer](#reducer) callback, with the difference being that it is input with a list of records instead of a single one. It is expected to return an accumulator value for these records.
 
 **Python**
 ```python

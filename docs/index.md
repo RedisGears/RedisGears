@@ -18,7 +18,7 @@ RedisGears is a serverless engine for transaction, [batch](overview.md#batch-pro
   * [Docker image](https://hub.docker.com/r/redislabs/redisgears/)
 
 ## Contact Us
-If you have questions, want to provide feedback or perhaps report an issue or [contribute some code](contrib), here's where we're listening to you:
+If you have questions, want to provide feedback or perhaps report an issue or [contribute some code](contrib.md), here's where we're listening to you:
 
   * [Mailing list](https://groups.google.com/forum/#!forum/redisgears)
   * [Gitter chatroom](https://badges.gitter.im/RedisLabs/RedisGears.svg)
