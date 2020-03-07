@@ -265,8 +265,12 @@ Instead of using the interactive mode, you can store your functions' code in a r
 docker exec -it redisgears redis-cli RG.PYEXECUTE "$(cat mygear.py)"
 ```
 
-!!! tip "Redis client"
+This would work as long as any double quote characters ('"') in the file are escaped.
+
+!!! tip "Redis Client"
     You're encouraged to use any [Redis client](https://redis.io/clients) that fits your needs for communicating with Redis and RedisGears as long as the client provides the means for executing raw Redis commands.
+
+For a similar purpose you can also use the [**gears.py**](https://github.com/RedisGears/RedisGears/blob/master/recipes/gears.py) utility, which escapes double quote characters and sends the contents of a file to RedisGears.
 
 ## Processing Data
 We saw how input records are read and then filtered using a step, but that's literally just the beginning. By adding more steps to the function, we can manipulate the data in any way needed using different operations and the language's capabilities.
