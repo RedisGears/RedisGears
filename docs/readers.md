@@ -77,7 +77,7 @@ _Arguments_
 
 * _keyTypes_: a whitelist of key types that trigger execution when using the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
     * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
-    * Any module data type?
+    * Redis module types: 'module'
 
 _Return_
 
