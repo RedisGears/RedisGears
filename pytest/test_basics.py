@@ -312,12 +312,12 @@ def testOneKeyScan(env):
     env.skipOnCluster()
     conn = getConnectionByEnv(env)
     p = conn.pipeline()
-    for i in range(200000):
+    for i in range(2000):
         p.execute_command('set', "pref-%s" % i, "pref-%s" % i)
     p.execute()
 
     conn.execute_command('set', 'x', '1')
-    env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['200000'])
+    env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['2000'])
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
 
 def testGlobalsSharedBetweenFunctions(env):
