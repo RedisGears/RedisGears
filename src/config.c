@@ -51,6 +51,7 @@ typedef struct RedisGears_Config{
     ConfigVal executionThreads;
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
+    ConfigVal venvWorkingPath;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -143,6 +144,21 @@ static bool ConfigVal_DependenciesSha256Set(ArgsIterator* iter){
     RG_FREE(DefaultGearsConfig.dependenciesSha256.val.str);
     const char* valStr = RedisModule_StringPtrLen(val, NULL);
     DefaultGearsConfig.dependenciesSha256.val.str = RG_STRDUP(valStr);
+    return true;
+}
+
+static const ConfigVal* ConfigVal_VenvWorkingPathGet(){
+    return &DefaultGearsConfig.venvWorkingPath;
+}
+
+static bool ConfigVal_VenvWorkingPathSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val){
+        return false;
+    }
+    RG_FREE(DefaultGearsConfig.venvWorkingPath.val.str);
+    const char* valStr = RedisModule_StringPtrLen(val, NULL);
+    DefaultGearsConfig.venvWorkingPath.val.str = RG_STRDUP(valStr);
     return true;
 }
 
@@ -243,6 +259,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "CreateVenv",
         .getter = ConfigVal_CreateVenvGet,
         .setter = ConfigVal_CreateVenvSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "VenvWorkingPath",
+        .getter = ConfigVal_VenvWorkingPathGet,
+        .setter = ConfigVal_VenvWorkingPathSet,
         .configurableAtRunTime = false,
     },
     {
@@ -412,6 +434,10 @@ const char* GearsConfig_GetExtraConfigVals(const char* key){
     return Gears_dictFetchValue(Gears_ExtraConfig, key);
 }
 
+const char* GearsConfig_GetVenvWorkingPath(){
+    return DefaultGearsConfig.venvWorkingPath.val.str;
+}
+
 const char* GearsConfig_GetDependenciesUrl(){
     return DefaultGearsConfig.dependenciesUrl.val.str;
 }
@@ -500,6 +526,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         .executionThreads = {
             .val.longVal = 3,
             .type = LONG,
+        },
+        .venvWorkingPath = {
+            .val.str = RG_STRDUP("/var/opt/redislabs/lib"),
+            .type = STR,
         },
     };
 
