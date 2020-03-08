@@ -281,9 +281,9 @@ To see how this works in practice, we'll gradually extend our function until it 
 All we care about now are persons' ages, so we'll start by transforming the records to strip them from all other data. Transforming a record from one shape to another is referred to as mapping operation and the [**`map()`**](operations.md#map) operation implements it:
 
 ```python
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .run('person:*')
+gb = GearsBuilder()                       # decalare a function builder
+gb.map(lambda x: int(x['value']['age']))  # map each record to just an age
+gb.run('person:*')                        # run it
 
 ## Expected result: [70, 14]
 ```
@@ -324,14 +324,12 @@ We'll implement this with a function - `maximum()` - that we'll provide to the `
 def maximum(a, x):
   ''' Returns the maximum '''
   a = a if a else 0  # initialize the accumulator
-  if x > a:          # if a new maximum was found
-    a = x            # set accumulator to maximum
-  return a           # finally output accumulator
+  return max(a, x)
 
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .accumulate(maximum) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.accumulate(maximum)
+gb.run('person:*')
 
 ## Expected result: [60]
 ```
@@ -371,10 +369,10 @@ def prepare_avg(a, x):
   a = (a[0] + x, a[1] + 1)
   return a
 
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .accumulate(prepare_avg) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.accumulate(prepare_avg)
+gb.run('person:*')
 
 ## Expected result: [(74, 2)]
 ```
@@ -393,11 +391,11 @@ def compute_avg(x):
   # average is quotient of sum and count
   return x[0]/x[1]
 
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .accumulate(prepare_avg) \
-  .map(compute_avg) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.accumulate(prepare_avg)
+gb.map(compute_avg)
+gb.run('person:*')
 
 ## Expected result: [42.0]
 ```
@@ -459,15 +457,12 @@ To try this, we'll return to the maximum computing example and have it executed 
 def maximum(a, x):
   ''' Returns the maximum '''
   a = a if a else 0  # initialize the accumulator
-  if x > a:          # if a new maximum was found
-    a = x            # set accumulator to maximum
-  return a           # finally output accumulator
+  return max(a, x)
 
-# This function registers to keyspace events
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .accumulate(maximum) \
-  .register('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.accumulate(maximum)
+gb.register('person:*')                   # register to keyspace events
 
 ## Expected result: ['OK']
 ```
@@ -518,10 +513,8 @@ def age(x):
 
 def maximum(a, x):
   ''' Returns the maximum '''
-  a = a if a else 0  # initialize the accumulator
-  if x > a:          # if a new maximum was found
-    a = x            # set accumulator to maximum
-  return a           # finally output accumulator
+  a = a if a else 0       # initialize the accumulator
+  return max(a, x)
 
 def cas(x):
   ''' Checks and sets the current maximum '''
@@ -532,17 +525,17 @@ def cas(x):
     execute('SET', k, x)  # set key to new value
 
 # Event handling function registration
-GB() \
-  .map(age) \
-  .foreach(cas) \
-  .register(pattern)
+eh = GearsBuilder()
+eh.map(age)
+eh.foreach(cas)
+eh.register(pattern)
 
 # Batch processing function execution
-GB() \
-  .map(age) \
-  .accumulate(maximum) \
-  .foreach(cas) \
-  .run(pattern)
+bp = GearsBuilder()
+bp.map(age)
+bp.accumulate(maximum)
+bp.foreach(cas)
+bp.run(pattern)
 
 ## Expected result: [70]
 ```
@@ -730,16 +723,14 @@ To map and reduce the cluster's data, we can run the maximum function on the clu
 ```python
 def maximum(a, x):
   ''' Returns the maximum '''
-  a = a if a else 0  # initialize the accumulator
-  if x > a:          # if a new maximum was found
-    a = x            # set accumulator to maximum
-  return a           # finally output accumulator
+  a = a if a else 0       # initialize the accumulator
+  return max(a, x)
 
 # Original, non-reduced, maximum function version
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .accumulate(maximum) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.accumulate(maximum)
+gb.run('person:*')
 
 ## Expected result: [87, 35, 14]
 ```
@@ -751,18 +742,16 @@ Providing the correct result requires selecting the maximum of the maxima. To re
 ```python
 def maximum(a, x):
   ''' Returns the maximum '''
-  a = a if a else 0  # initialize the accumulator
-  if x > a:          # if a new maximum was found
-    a = x            # set accumulator to maximum
-  return a           # finally output accumulator
+  a = a if a else 0       # initialize the accumulator
+  return max(a, x)
 
 # Reduced maximum function
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .accumulate(maximum) \
-  .collect() \
-  .accumulate(maximum) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.accumulate(maximum)
+gb.collect()
+gb.accumulate(maximum)
+gb.run('person:*')
 
 ## Expected result: [87]
 ```
@@ -771,13 +760,12 @@ There's another, shorter and much neater way to achieve the same. The RedisGears
 
 ```python
 # Aggregated maximum version
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .aggregate( \
-    0, \
-    lambda a, x: a if a > x else x, \
-    lambda a, x: a if a > x else x) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.aggregate(0,
+             lambda a, x: max(a, x),
+             lambda a, x: max(a, x))
+gb.run('person:*')
 
 ## Expected result: [87]
 ```
@@ -788,14 +776,13 @@ We can also use `aggregate()` for computing a reduced average:
 
 ```python
 # Aggregated average
-GB() \
-  .map(lambda x: int(x['value']['age'])) \
-  .aggregate( \
-    (0, 0), \
-    lambda a, x: (a[0] + x, a[1] + 1), \
-    lambda a, x: (a[0] + x[0], a[1] + x[1])) \
-  .map(lambda x: x[0]/x[1]) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.map(lambda x: int(x['value']['age']))
+gb.aggregate((0, 0),
+             lambda a, x: (a[0] + x, a[1] + 1),
+             lambda a, x: (a[0] + x[0], a[1] + x[1]))
+gb.map(lambda x: x[0]/x[1])
+gb.run('person:*')
 
 ## Expected result: [44.6]
 ```
@@ -821,9 +808,9 @@ def fname(x):
   return x['value']['name'].split(' ')[1]
 
 # Count family members
-GB() \
-  .countby(fname) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.countby(fname)
+gb.run('person:*')
 
 # Expected result: [
 #   {'key': 'Pibbles', 'value': 1},
@@ -854,10 +841,10 @@ def summer(k, a, r):
   return (a if a else 0) + r['value']
 
 # Use local and global groupby operations
-GB() \
-  .localgroupby(fname, counter) \
-  .groupby(key, summer) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.localgroupby(fname, counter)
+gb.groupby(key, summer)
+gb.run('person:*')
 
 # Expected result: the same
 ```
@@ -903,9 +890,9 @@ That's an efficient processing pattern because data is first reduced locally, wh
 ...
 
 # Use only global groupby - a less-than-recommended practice
-GB() \
-  .groupby(fname, counter) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.groupby(fname, counter)
+gb.run('person:*')
 
 # Expected result: the same, but slower :/
 ```
@@ -957,12 +944,12 @@ def summer(k, a, r):
   return (a if a else 0) + r['value']
 
 # Repartition for storing counts
-GB() \
-  .localgroupby(fname, counter) \
-  .repartition(key) \
-  .localgroupby(key, summer) \
-  .foreach(lambda x: execute('SET', x['key'], x['value'])) \
-  .run('person:*')
+gb = GearsBuilder()
+gb.localgroupby(fname, counter)
+gb.repartition(key)
+gb.localgroupby(key, summer)
+gb.foreach(lambda x: execute('SET', x['key'], x['value']))
+gb.run('person:*')
 
 # Expected result: the same + stored in Redis String keys
 ```

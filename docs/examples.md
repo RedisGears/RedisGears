@@ -27,19 +27,10 @@ All keys store Redis String values. Each value is a sentence.
 **Python API**
 
 ```python
-# Create function's builder context
 gb = GearsBuilder()
-
-# Map the the records their "sentence" value
-gb.map(lambda x: x['value'])
-
-# Split sentence records to words
-gb.flatmap(lambda x: x.split())
-
-# Count each word's occurances
-gb.countby()
-
-# Batch run it
+gb.map(lambda x: x['value'])     # map records to "sentence" values
+gb.flatmap(lambda x: x.split())  # split sentences to words
+gb.countby()                     # count each word's occurances
 gb.run()
 ```
 
@@ -58,19 +49,10 @@ There may be keys in the database. Some of these may have names beginning with t
 **Python API**
 
 ```python
-# Create function's builder context
 gb = GearsBuilder()
-
-# Map the records to their key name
-gb.map(lambda x: x['key'])
-
-# Delete each key
-gb.foreach(lambda x: execute('DEL', x))
-
-# Count the records (deleted keys)
-gb.count()
-
-# Run as a batch on the 'delete_me:*' glob-like pattern
+gb.map(lambda x: x['key'])               # map the records to key names
+gb.foreach(lambda x: execute('DEL', x))  # delete each key
+gb.count()                               # count the records
 gb.run('delete_me:*')
 ```
 
@@ -89,13 +71,8 @@ An input Redis Stream is stored under the "mystream" key.
 **Python API**
 
 ```python
-# Create function's builder context
 gb = GearsBuilder('StreamReader')
-
-# Write the message to a Redis Hash
-gb.foreach(lambda x: execute('HMSET', x['streamId'], *x))
-
-# Register the function to events from 'mystream'
+gb.foreach(lambda x: execute('HMSET', x['streamId'], *x))  # write to Redis Hash
 gb.register('mystream')
 ```
 
@@ -113,7 +90,7 @@ Estimate Pi by throwing darts at a carefully-constructed dartboard.
 ** Python API**
 
 ```python
-TOTAL_DARTS = 1000000  # total number of darts
+TOTAL_DARTS = 1000000                            # total number of darts
 
 def inside(p):
     ''' Generates a random point that is or isn't inside the circle '''
@@ -126,44 +103,29 @@ def throws():
     global TOTAL_DARTS
     throws = TOTAL_DARTS
     ci = execute('RG.INFOCLUSTER')
-    if type(ci) is not str:                 # assume a cluster
-        n = len(ci[2])                      # number of shards
-        me = ci[1]                          # my shard ID
-        ids = [x[1] for x in ci[2]].sort()  # shards' IDs list
-        i = ids.index(me)                   # my index
-        throws = TOTAL_DARTS // n           # minimum shard throws
-        if i == 0 and TOTAL_DARTS % n > 0:  # first shard gets remainder
+    if type(ci) is not str:                       # assume a cluster
+        n = len(ci[2])                            # number of shards
+        me = ci[1]                                # my shard's ID
+        ids = [x[1] for x in ci[2]].sort()        # shards' IDs list
+        i = ids.index(me)                         # my index
+        throws = TOTAL_DARTS // n                 # minimum throws per shard
+        if i == 0 and TOTAL_DARTS % n > 0:        # first shard gets remainder
             throws += 1
     yield throws
 
 def estimate(hits):
     ''' Estimates Pi's value from hits '''
     from math import log10
-    hits = hits * 4                         # only quadrant of the board is used
-    r = hits / 10 ** int(log10(hits))       # make it irrational
+    hits = hits * 4                               # one quadrant is used
+    r = hits / 10 ** int(log10(hits))             # make it irrational
     return f'Pi\'s estimated value is {r}'
 
-# Create function's builder context
 gb = GB('PythonReader')
-
-# Throw the local darts
-gb.flatmap(lambda x: [i for i in range(int(x))])
-
-# Throw out darts that had missed the board
-gb.filter(inside)
-
-# Count the remaining darts
-gb.accumulate(lambda a, x: 1 + (a if a else 0))
-
-# Collect the results
-gb.collect()
-
-# Merge darts' counts
-gb.accumulate(lambda a, x: x + (a if a else 0))
-
-# The are four pieces of pie in Pi
-gb.map(estimate)
-
-# Run it
+gb.flatmap(lambda x: [i for i in range(int(x))])  # throw the local darts
+gb.filter(inside)                                 # throw out missed darts
+gb.accumulate(lambda a, x: 1 + (a if a else 0))   # count the remaining darts
+gb.collect()                                      # collect the results
+gb.accumulate(lambda a, x: x + (a if a else 0))   # merge darts' counts
+gb.map(estimate)                                  # four pieces of pie
 gb.run(throws)
 ```
