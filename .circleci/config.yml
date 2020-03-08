@@ -71,14 +71,14 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - build-steps:
           platform: debian
 
   valgrind:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - build-steps:
           platform: debian
@@ -128,7 +128,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -141,7 +141,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -154,7 +154,7 @@ jobs:
 
   deploy_docs:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - checkout
       - run:
