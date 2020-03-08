@@ -167,9 +167,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Runs the function
-GB() \
-  .run()
+{{ include('functions/run.py') }}
 ```
 
 ### Register
@@ -208,9 +206,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Registers the function
-GB() \
-  .register()
+{{ include('functions/register.py') }}
 ```
 
 ## Results

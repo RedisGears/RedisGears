@@ -242,15 +242,7 @@ The next change to the flow is much more significant. It adds a new operation be
     The example above uses a Python lambda function as the argument to the `filter()` step, but that's hardly a requirement. Traditional Python callbacks (functions are 1st-class citizens) are perfectly ok too, so you can implement the same flow with a regular callback:
 
     ```python
-    # A utility function
-    def isperson(x):
-      ''' Checks if the record's key looks like a person '''
-      return x['key'].startswith('person:')
-
-    # A RedisGears function
-    GB() \
-      .filter(isperson) \
-      .run()
+    {{ include('intro/intro-001.py') | indent(4) }}
     ```
 
 The `filter()` operation invokes the filtering function once for every input record it gets. The input record denoted as `x` in the examples, is a dictionary in our case and the function checks whether the value of its `key` key conforms to the requested pattern.
@@ -284,11 +276,7 @@ To see how this works in practice, we'll gradually extend our function until it 
 All we care about now are persons' ages, so we'll start by transforming the records to strip them from all other data. Transforming a record from one shape to another is referred to as mapping operation and the [**`map()`**](operations.md#map) operation implements it:
 
 ```python
-gb = GearsBuilder()                       # decalare a function builder
-gb.map(lambda x: int(x['value']['age']))  # map each record to just an age
-gb.run('person:*')                        # run it
-
-## Expected result: [70, 14]
+{{ include('intro/intro-002.py') }}
 ```
 
 Exactly like `filter()`, the `map()` operation accepts a single function callback argument. The step executes the mapping function once on each of its input records, and whatever the function returns becomes an output record for the next step. In our example, the mapping function transforms the record's value dictionary into a single numeric value by extracting, casting and returning the value of the "age" key from the value of the record's "value" key.
@@ -324,17 +312,7 @@ So, in our case by following these steps, to compute the maximal age we'll need 
 We'll implement this with a function - `maximum()` - that we'll provide to the `accumulate()` step as an argument:
 
 ```python
-def maximum(a, x):
-  ''' Returns the maximum '''
-  a = a if a else 0  # initialize the accumulator
-  return max(a, x)
-
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.accumulate(maximum)
-gb.run('person:*')
-
-## Expected result: [60]
+{{ include('intro/intro-003.py') }}
 ```
 
 The most noticeable thing about the accumulating function is that, unlike the functions used by `filter()` and `map()` that operate on a single record argument, it accepts two arguments: an accumulator (argument `a`) and an input record (`x`). This allows the accumulator to be carried from between executions of accumulating function on different records.
@@ -345,9 +323,7 @@ The accumulator is initialized by RedisGears to a Pythonic `None`, so the functi
     By using different accumulating functions you can compute other simple aggregates. For example, you can use the following function to count records:
 
     ```python
-    def count(a, _):
-      ''' Accumulates a count of records '''
-      return 1 + (a if a else 0)
+    {{ include('intro/intro-004.py') | indent(4) }}
     ```
 
 ## Aggregating Data
@@ -366,41 +342,13 @@ In more abstract terms, we'll implement a pattern that looks like this:
 Here's how the first two steps in the aggregate flow are achieved with RedisGears by defining and calling the `prepare_avg()` function from an `accumulate()` flow step:
 
 ```python
-def prepare_avg(a, x):
-  ''' Accumulates sum and count of records '''
-  a = a if a else (0, 0)  # accumulator is a tuple of sum and count
-  a = (a[0] + x, a[1] + 1)
-  return a
-
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.accumulate(prepare_avg)
-gb.run('person:*')
-
-## Expected result: [(74, 2)]
+{{ include('intro/intro-005.py') }}
 ```
 
 Instead of using a single value for the accumulator, we opt for a Pythonic tuple in which the first element represents the sum of ages, and the second element their count. After all records have been processed, and in to derive the average from the function's output tuple, we can add a final `map()` operation that calls `compute_avg()` to the flow:
 
 ```python
-def prepare_avg(a, x):
-  ''' Accumulates sum and count of records '''
-  a = a if a else (0, 0)  # accumulator is a tuple of sum and count
-  a = (a[0] + x, a[1] + 1)
-  return a
-
-def compute_avg(x):
-  ''' Returns the average '''
-  # average is quotient of sum and count
-  return x[0]/x[1]
-
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.accumulate(prepare_avg)
-gb.map(compute_avg)
-gb.run('person:*')
-
-## Expected result: [42.0]
+{{ include('intro/intro-006.py') }}
 ```
 
 ## Blocking vs. Nonblocking Execution
@@ -457,17 +405,7 @@ When registered to process streaming data, the function is executed once for eac
 To try this, we'll return to the maximum computing example and have it executed in response to new data with the [`register()`](functions.md#register) action:
 
 ```python
-def maximum(a, x):
-  ''' Returns the maximum '''
-  a = a if a else 0  # initialize the accumulator
-  return max(a, x)
-
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.accumulate(maximum)
-gb.register('person:*')                   # register to keyspace events
-
-## Expected result: ['OK']
+{{ include('intro/intro-007.py') }}
 ```
 
 By ending a function with the [`register()`](functions.md#register) action and sending it to RedisGears, the engine registers it and will execute it in response to the reader's events. In the case of the **KeysReader**, events are generated every time keys that match the pattern `person:*` are written to the database.
@@ -511,25 +449,7 @@ The RedisGears Python API ships with the [`execute()` function](runtime.md#execu
 We'll complete the implementation that seeks an event-driven maximum by storing the current maximum value in another Redis key called `age:maximum`:
 
 ```python
-def age(x):
-  ''' Extracts the age from a person's record '''
-  return int(x['value']['age'])
-
-def cas(x):
-  ''' Checks and sets the current maximum '''
-  k = 'age:maximum'
-  v = execute('GET', k)   # read key's current value
-  v = int(v) if v else 0  # initialize to 0 if None
-  if x > v:               # if a new maximum found
-    execute('SET', k, x)  # set key to new value
-
-# Event handling function registration
-gb = GearsBuilder()
-gb.map(age)
-gb.foreach(cas)
-gb.register('person:*')
-
-## Expected result: ['OK']
+{{ include('intro/intro-008.py') }}
 ```
 
 The event handler employs a new step type after mapping the input records to ages. The [`foreach()`](operations.md#foreach) step executes its argument function callback once for each input record but does not change the records themselves. We use it to call the check-and-set logic that's implemented by `cas()` function.
@@ -709,18 +629,7 @@ In our example, data is localized by the cluster's partitioning to each master s
 To map and reduce the cluster's data, we can run the maximum function on the cluster. However, if we execute the function unchanged it will return the non-reduced results:
 
 ```python
-def maximum(a, x):
-  ''' Returns the maximum '''
-  a = a if a else 0       # initialize the accumulator
-  return max(a, x)
-
-# Original, non-reduced, maximum function version
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.accumulate(maximum)
-gb.run('person:*')
-
-## Expected result: [87, 35, 14]
+{{ include('intro/intro-009.py') }}
 ```
 
 The `accumulate()` operation is performed locally, on each master shard in parallel. The implicit `collect()` operation before the `run()` action (recall that `collect=True` by default) collects the shards' maxima, and these are returned as result.
@@ -728,34 +637,13 @@ The `accumulate()` operation is performed locally, on each master shard in paral
 Providing the correct result requires selecting the maximum of the maxima. To rectify this, we'll explicitly collect the local results, and apply an accumulation step to reduce them. This looks like this:
 
 ```python
-def maximum(a, x):
-  ''' Returns the maximum '''
-  a = a if a else 0       # initialize the accumulator
-  return max(a, x)
-
-# Reduced maximum function
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.accumulate(maximum)
-gb.collect()
-gb.accumulate(maximum)
-gb.run('person:*')
-
-## Expected result: [87]
+{{ include('intro/intro-010.py') }}
 ```
 
 There's another, shorter and much neater way to achieve the same. The RedisGears Python API includes the [`aggregate()`](operations.md#aggregate) operation that wraps the accumulate-collect-accumulate steps into a single one:
 
 ```python
-# Aggregated maximum version
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.aggregate(0,
-             lambda a, x: max(a, x),
-             lambda a, x: max(a, x))
-gb.run('person:*')
-
-## Expected result: [87]
+{{ include('intro/intro-011.py') }}
 ```
 
 `aggregate()` accepts three arguments: the first is the accumulator's zero value, and the other two are callbacks to accumulating functions that will be executed locally and globally, respectively. In the maximum's example above, the zero value is the scalar value zero, and both local and global are the same maximum-returning lambda function.
@@ -763,16 +651,7 @@ gb.run('person:*')
 We can also use `aggregate()` for computing a reduced average:
 
 ```python
-# Aggregated average
-gb = GearsBuilder()
-gb.map(lambda x: int(x['value']['age']))
-gb.aggregate((0, 0),
-             lambda a, x: (a[0] + x, a[1] + 1),
-             lambda a, x: (a[0] + x[0], a[1] + x[1]))
-gb.map(lambda x: x[0]/x[1])
-gb.run('person:*')
-
-## Expected result: [44.6]
+{{ include('intro/intro-012.py') }}
 ```
 
 This time, we've provided a tuple of zeros as the zero value. The local function performs the equivalent of the previously-introduced `prepare_avg()`, and provides the sum and count of ages per worker. Then, once collected, the global callback merges the local tuple records by summing them. In the last `map()` step, much like with the `compute_avg()` function, the final value is computed.
@@ -791,20 +670,7 @@ We've used the `collect()` operation to move all records to the originating work
 We'll set our final task to be counting the number of persons per family in our database. The quickest way to get this done is probably:
 
 ```python
-def fname(x):
-  ''' Extracts the family name from a person's record '''
-  return x['value']['name'].split(' ')[1]
-
-# Count family members
-gb = GearsBuilder()
-gb.countby(fname)
-gb.run('person:*')
-
-# Expected result: [
-#   {'key': 'Pibbles', 'value': 1},
-#   {'key': 'Smith', 'value': 3},
-#   {'key': 'Sanchez', 'value': 1}
-# ]
+{{ include('intro/intro-013.py') }}
 ```
 
 Do not let the apparent simplicity of the above fool you - a lot of work done by the engine (and some Pythonic wrappers) make it happen. It should be pretty obvious what's happening here though: the [`countby()`](operations.md#countby) operation returns a count for each key in its input records. The function callback argument that it accepts is an extractor for the key, so in this case `fname()` returns the person's last name.
@@ -812,30 +678,7 @@ Do not let the apparent simplicity of the above fool you - a lot of work done by
 In reality, the `countby()` operation is implemented efficiently by an assortment of other steps. This is what it would look like if coded from scratch:
 
 ```python
-def fname(x):
-  ''' Extracts the family name from a person's record '''
-  return x['value']['name'].split(' ')[1]
-
-def key(x):
-  ''' Extracts the key of a record '''
-  return x['key']
-
-def counter(k, a, r):
-  ''' Counts records '''
-  return (a if a else 0) + 1
-
-def summer(k, a, r):
-  ''' Sums record values '''
-  return (a if a else 0) + r['value']
-
-# Use local and global groupby operations
-gb = GearsBuilder()
-gb.localgroupby(fname, counter)
-gb.collect()
-gb.groupby(key, summer)
-gb.run('person:*')
-
-# Expected result: the same
+{{ include('intro/intro-014.py') }}
 ```
 
 We've introduced two new operations: [`localgroupby()`](operations.md#localgroupby) and [`groupby()`](operations.md#groupby). Both perform the same type of operation, that is the grouping of records but differ in regards of where they run.
@@ -876,14 +719,7 @@ The local grouping accumulator increases the count for each input family name re
 That's an efficient processing pattern because data is first reduced locally, which results in fewer records that need to be repartitioned by the `collect()`ion. Consider this less-than-recommended implementation for comparison:
 
 ```python
-...
-
-# Use only global groupby - a less-than-recommended practice
-gb = GearsBuilder()
-gb.groupby(fname, counter)
-gb.run('person:*')
-
-# Expected result: the same, but slower :/
+{{ include('intro/intro-015.py') }}
 ```
 
 Using only our limited dataset it is unlikely that we'll be able to discern any difference in performance. Instead of collecting two records we'll be collecting three and that's hardly significant.
@@ -916,31 +752,7 @@ The trick in this case is ensuring that the target String keys we'll be using re
 To do that, we'll modify the function to include the [`repartition()`](operations.md#repartition) operation:
 
 ```python
-def fname(x):
-  ''' Extracts the family name from a person's record '''
-  return x['value']['name'].split(' ')[1]
-
-def key(x):
-  ''' Extracts the key of a record '''
-  return x['key']
-
-def counter(k, a, r):
-  ''' Counts records '''
-  return (a if a else 0) + 1
-
-def summer(k, a, r):
-  ''' Sums record values '''
-  return (a if a else 0) + r['value']
-
-# Repartition for storing counts
-gb = GearsBuilder()
-gb.localgroupby(fname, counter)
-gb.repartition(key)
-gb.localgroupby(key, summer)
-gb.foreach(lambda x: execute('SET', x['key'], x['value']))
-gb.run('person:*')
-
-# Expected result: the same + stored in Redis String keys
+{{ include('intro/intro-016.py') }}
 ```
 
 Here's how this function differs: instead of performing the global grouping operation, we've called `repartition()` in order to have the locally-grouped records shuffled in the cluster. By using the records' key, all records with the same key arrive to the same worker, allowing it to reduce them further with the summer.

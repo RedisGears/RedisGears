@@ -50,8 +50,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Pings the server (should return 'PONG')
-reply = execute('PING')
+{{ include('runtime/execute.py') }}
 ```
 
 ## ConfigGet
@@ -70,8 +69,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Gets the current value for 'ProfileExecutions'
-foo = ConfigGet('ProfileExecutions')
+{{ include('runtime/configget.py') }}
 ```
 
 ## GearsConfigGet
@@ -91,8 +89,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Gets the 'foo' configuration option key and defaults to 'bar'
-foo = GearsConfigGet('foo', default='bar')
+{{ include('runtime/gearsconfigget.py') }}
 ```
 
 ## Hashtag
@@ -107,8 +104,7 @@ def hashtag()
 
 **Examples**
 ```python
-# Get the shard's hashtag
-ht = hashtag()
+{{ include('runtime/hashtag.py') }}
 ```
 
 ## Log
@@ -132,6 +128,5 @@ _Arguments_
 
 **Examples**
 ```python
-# Dumps every datum in the DB to the log for "debug" purposes
-GB().foreach(lambda x: Log('debug', str(x))).run()
+{{ include('runtime/log.py') }}
 ```

@@ -95,6 +95,20 @@ The value is cast from the Redis type as follows:
 | stream | `#!python None` |
 | module | `#!python None` |
 
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/keysreader-run.py') }}
+```
+
+**_Event Mode_**
+
+```python
+{{ include('readers/keysreader-register.py') }}
+```
+
 ## KeysOnlyReader
 The **KeysOnlyReader** is identical in every respect to the [**KeysReader**](#keysreader), except in its output.
 
@@ -145,6 +159,20 @@ Its operation can be controlled with the following:
     * **'abort'**: stops further executions.
     * **'retry'**: retries the execution after an interval specified with onFailedRetryInterval (default is one second).
 
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/streamreader-run.py') }}
+```
+
+**_Event Mode_**
+
+```python
+{{ include('readers/streamreader-register.py') }}
+```
+
 ## PythonReader
 The reader is executed with a function callback that is a Python generator.
 
@@ -163,6 +191,14 @@ The reader iterates the generator's yielded records.
 **Event Mode**
 
 Not supported.
+
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/pythonreader-run.py') }}
+```
 
 ## ShardsIDReader
 The reader returns a single record that is the shard's cluster identifier.
@@ -184,7 +220,17 @@ The reader returns a single record that is the shard's cluster identifier.
 The shard's cluster identifier.
 
 **Batch Mode**
+
 The reader returns a single record that is the shard's identifier.
 
 **Event Mode**
+
 Not supported.
+
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/shardidreader-run.py') }}
+```

@@ -49,10 +49,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Will stringify the internal record representation
-GB()
-  .map(lambda x: str(x))
-  .run()
+{{ include('operations/map.py') }}
 ```
 
 ## FlatMap
@@ -74,22 +71,9 @@ _Arguments_
 
 * _f_: the [expander](#expander) function callback
 
-    ```python
-    def f(r):
-      out = []
-      # Code for transforming the input record to a list of output records
-      # ...
-      return out
-    ```
-
-    * _r_: the input record
-
 **Examples**
 ```python
-# Split KeyReader's record into two: one for key the other for value
-GB() \
-  .map(lambda x: [x['key'], x['value']]) \
-  .run()
+{{ include('operations/flatmap.py') }}
 ```
 
 ## ForEach
@@ -113,10 +97,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Increment a shard-local counter for each record processed
-GB() \
-  .foreach(lambda x: execute('INCR', hashtag())) \
-  .run()
+{{ include('operations/foreach.py') }}
 ```
 
 ## Filter
@@ -140,10 +121,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Filter out records where the key's length is less than four characters
-GB() \
-  .filter(lambda x: len(x['key']) > 3) \
-  .run()
+{{ include('operations/filter.py') }}
 ```
 
 ## Accumulate
@@ -167,10 +145,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Sum the lengths of all records' keys
-GB() \
-  .accumulate(lambda a, r: (a if a else 0) + len(r['key'])) \
-  .run()
+{{ include('operations/accumulate.py') }}
 ```
 
 ## LocalGroupBy
@@ -195,12 +170,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Locally group and count records by the first byte in their key
-GB() \
-  .localgroupby( \
-    lambda x: x['key'][:1],
-    lambda k, a, r: (a if a else 0) + 1) \
-  .run()
+{{ include('operations/localgroupby.py') }}
 ```
 
 ## Limit
@@ -224,10 +194,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Limit the output to the first three records
-GB() \
-  .limit(1, 3) \
-  .run()
+{{ include('operations/limit.py') }}
 ```
 
 ## Collect
@@ -245,10 +212,7 @@ class GearsBuilder.collect()
 
 **Examples**
 ```python
-# Shuffles all records to the originating shard
-GB() \
-  .collect() \
-  .run()
+{{ include('operations/collect.py') }}
 ```
 
 ## Repartition
@@ -271,15 +235,11 @@ _Arguments_
 
 **Examples**
 ```python
-# Will not repartition anything because the record's key is returned as-is
-GB() \
-  .repartition(lambda x: x['key']) \
-  .run()
+{{ include('operations/repartition-001.py') }}
+```
 
-# Will shuffle records by hashing the first byte in their key
-GB() \
-  .repartition(lambda x: x['key'][:1]) \
-  .run()
+```python
+{{ include('operations/repartition-002.py') }}
 ```
 
 ## Aggregate
@@ -310,13 +270,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Will put all values in a single Python list
-GB() \
-  .aggregate( \
-    [], \
-    lambda a, r: a + [r['value']], \
-    lambda a, r: a + r) \
-  .run()
+{{ include('operations/aggregate.py') }}
 ```
 
 ## AggregateBy
@@ -347,14 +301,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Will put all records of each value in a different list
-GB() \
-  .aggregateby( \
-    lambda x: x['value'], \
-    [], \
-    lambda a, r: a + [r], \
-    lambda a, r: a + x) \
-  .run()
+{{ include('operations/aggregateby.py') }}
 ```
 
 ## GroupBy
@@ -381,12 +328,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Group and count records by the first byte in their key
-GB() \
-  .groupby( \
-    lambda x: x['key'][:1], \
-    lambda k, a, r: (a if a else 0) + 1) \
-  .run()
+{{ include('operations/groupby.py') }}
 ```
 
 ## BatchGroupBy
@@ -419,12 +361,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Group and count records by the first byte in their key
-GB() \
-  .batchgroupby( \
-    lambda x: x['key'][:1], \
-    lambda k, l: len(l)) \
-  .run()
+{{ include('operations/batchgroupby.py') }}
 ```
 
 ## Sort
@@ -452,10 +389,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Sorts the records in ascending order
-GB() \
-  .sort(reverse=False) \
-  .run()
+{{ include('operations/sort.py') }}
 ```
 
 ## Distinct
@@ -475,10 +409,7 @@ class GearsBuilder.distinct()
 
 **Examples**
 ```python
-# Makes every record distinct
-GB() \
-  .distinct() \
-  .run()
+{{ include('operations/distinct.py') }}
 ```
 
 ## Count
@@ -495,10 +426,7 @@ class GearsBuilder.count()
 
 **Examples**
 ```python
-# Counts the records
-GB() \
-  .count() \
-  .run()
+{{ include('operations/count.py') }}
 ```
 
 ## CountBy
@@ -519,10 +447,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Counts the number of time each value is stored
-GB() \
-  .countby(lambda x: x['value']) \
-  .run()
+{{ include('operations/countby.py') }}
 ```
 
 ## Avg
@@ -546,10 +471,7 @@ _Arguments_
 
 **Examples**
 ```python
-# Computes the average from all records' values
-GB() \
-  .avg()) \
-  .run()
+{{ include('operations/avg.py') }}
 ```
 
 ## Terminology
@@ -664,7 +586,7 @@ def hashExploder(r):
   ''' Splats a record's dict() 'value' into its keys '''
   # Prefix each exploded key with the original in curly brackets and a colon
   # for clustering safety, i.e.: {hashkeyname}:fieldname
-  pre = f'{{{r["key"]}}}:'
+  pre = '{' + r['key'] + '}:'
   l = [{ 'key': f'{pre}{x[0]}', 'value': x[1] } for x in r['value'].items()]
   return l
 ```
