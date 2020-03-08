@@ -214,7 +214,7 @@ It accepts two numeric arguments: a starting position in the input records "arra
 
 **Python API**
 ```python
-class GearsBuilder.limit(start, length)
+class GearsBuilder.limit(start=1, length)
 ```
 
 _Arguments_
@@ -358,7 +358,7 @@ GB() \
 ```
 
 ## GroupBy
-The sugar *GroupBy** operation performs a many-to-less (N:M) grouping of records.
+The sugar *GroupBy** operation performs a many-to-less (N:M) grouping of records. It is similar to [AggregateBy](#aggregateby) but uses only a global reducer. It can be used in cases where locally reducing the data isn't possible.
 
 The operation requires two callbacks: an [extractor](#extractor) a [reducer](#reducer).
 
@@ -570,7 +570,7 @@ A **Sugar** operation is a utility operation. These are implemented internally w
 A **Callback** is used for calling a function in the language used by the API.
 
 ### Extractor
-An **Extractor** is a callback that receives an input record as an argument. It returns a value extracted from the record.
+An **Extractor** is a callback that receives an input record as an argument. It returns a value extracted from the record. The returned value should be a native string.
 
 **Python**
 ```python

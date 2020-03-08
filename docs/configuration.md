@@ -37,7 +37,7 @@ Some configuration options may be set at runtime. Refer to each option's descrip
     * [`RG.CONFIGSET`](commands.md#rgconfigset)
 
 ## MaxExecutions
-The **MaxExecutions** configuration option controls the maximal number of executions that will be saved in the executions list. Once this threshold value is reached, older executions will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' status (?) are deleted.
+The **MaxExecutions** configuration option controls the maximal number of executions that will be saved in the executions list. Once this threshold value is reached, older executions will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' [status](functions.md#execution-status) are deleted.
 
 _Expected Value_
 
@@ -45,11 +45,14 @@ Integer
 
 _Default Value_
 
-1000
+"1000"
 
 _Runtime Configurability_
 
-Supported
+Supported.
+
+!!! note
+    Changing this option will take effect the creation of new executions only.
 
 **Examples**
 
@@ -59,7 +62,7 @@ OK
 ```
 
 ## MaxExecutionsPerRegistration
-The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' status (?) are deleted.
+The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' [status]((functions.md#execution-id)) are deleted.
 
 _Expected Value_
 
@@ -67,11 +70,14 @@ Integer
 
 _Default Value_
 
-100
+"100"
 
 _Runtime Configurability_
 
-Supported
+Supported.
+
+!!! note
+    Changing this option will take effect the creation of new executions only.
 
 **Examples**
 
@@ -92,7 +98,7 @@ _Expected Value_
 
 _Default Value_
 
-0
+"0"
 
 _Runtime Configurability_
 
@@ -107,7 +113,7 @@ _Expected Value_
 
 _Default Value_
 
-1
+"1"
 
 _Runtime Configurability_
 

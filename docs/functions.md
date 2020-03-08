@@ -45,7 +45,7 @@ The function's mode of execution is determined by its action. There are two type
   1. [**Run**](#run): runs the function in batch
   2. [**Register**](#register): registers the function to be triggered by events
 
-When executed, whether as batch or event, the function's context is managed by the engine. Besides the function's logic, the context also includes its breakdown to internal execution steps, state, status, statistics, results and any errors encountered among other things.
+When executed, whether as batch or event, the function's context is managed by the engine. Besides the function's logic, the context also includes its breakdown to internal execution steps, status, statistics, results and any errors encountered among other things.
 
 !!! abstract "Related commands"
     The following RedisGears commands are related to executing functions:
@@ -76,6 +76,21 @@ The ID is string value made of two parts that are delimited by a hyphen ('-'), a
     a007297351b007297351c007297351d007297351-1
     ```
 
+## Execution Plan
+Before executing the function the engine generates an **Execution Plan**. The plan consists of the basic steps that the engine will take to execute the function.
+
+## Execution Status
+The **Execution Status** describes the function's current execution status. It can be one of the following:
+
+* **created**: the execution has been created
+* **running**: the execution is running
+* **done**: the execution is done
+* **aborted**: the execution has been aborted
+* **pending_cluster**: waiting for shards to acknowledge?
+* **pending_run**: waiting for distributed execution
+* **pending_receive**: waiting for records
+* **pending_termination**:
+
 ## Registration
 The representation of an event-driven function is called a registration.
 
@@ -89,7 +104,7 @@ Registrations are persisted in Redis' snapshots, a.k.a RDB files. This allows re
     * [`RG.UNREGISTER`](commands.md#rgunregister)
 
 ## Registration ID
-Every registration has a unique internal identifier. It is generated in the same manner as the [Execution ID](#execution-id).
+Every registration has a unique internal identifier that's referred to as its [**Registration ID**]. It is generated in the same manner as the [Execution ID](#execution-id) and despite appearing the same the two should not be confused.
 
 ## Context Builder
 RedisGears functions in Python always begin with a context builder - the [`#!python class GearsBuilder`](runtime.md#gearsbuilder).
@@ -146,6 +161,7 @@ _Arguments_
 * _arg_: An optional argument that's passed to the reader as its _defaultArg_. It means the following:
     * A glob-like pattern for the [KeysReader](readers.md#keysreader) and [KeysOnlyReader](readers.md#keysonlyreaders) readers
     * A key name for the [StreamReader](readers.md#streamreader) reader
+    * A Python generator for the [PythonReader](readers.md#pythonreader) reader
 * _convertToStr_: when `True` adds a [map](operations.md#map) operation to the flow's end that stringifies records
 * _collect_: when `True` adds a [collect](operations.md#collect) operation to flow's end
 
@@ -170,7 +186,7 @@ _Arguments_
 
 * _regex_: An optional argument that's passed to the reader as its _defaultArg_. It means the following:
     * A key prefix for the [KeysReader](readers.md#keysreader) and [KeysOnlyReader](readers.md#keysonlyreaders) readers
-    * A key name for the [StreamReader](readers.md#streamreader) reader
+    * A key name or prefix for the [StreamReader](readers.md#streamreader) reader
 * _mode_: the execution mode of the triggered function. Can be one of:
     * **'async'**: execution will be asynchronous across the entire cluster
     * **'async_local'**: execution will be asynchronous and restricted to the handling shard
@@ -178,11 +194,11 @@ _Arguments_
 * _batch_: the batch size that triggers execution for the [StreamReader](readers.md#streamreader) reader
 * _duration_: the interval between executions for the [StreamReader](readers.md#streamreader) reader (takes precedence over the _batch_ argument)
 * _eventTypes_: A whitelist of event types that trigger for the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more:
-    * Any Redis or Redis module command?
-    * Events ...?
+    * Any Redis or module command
+    * Any [Redis event](https://redis.io/topics/notifications)
 * _keyTypes_: A whitelist of key types that trigger execution for the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
     * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
-    * Any module data type?
+    * For module data types: 'module'
 * _onRegistered_: A function [callback](operations.md#callback) that's called on each shard upon function registration. It is a good place to initialize non-serializable objects such as network connections.
 * _onFailedPolicy_: A policy for handling failures of the function when using the [StreamReader](readers.md#streamreader) reader. It can be set to one of the following:
     * **'continue'**: ignores a failure and continues to the next execution

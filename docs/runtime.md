@@ -7,7 +7,7 @@ The following sections describe the runtime environment.
 ## Python Interpreter
 RedisGears embeds a Python version 3.7.2+ interpreter.
 
-All functions use that interpreter. Each function has its sub-interpreter that isolates its execution context from other functions. This means each function has its globals, function and class names.
+All functions use that interpreter. Each function has its globals dictionary that isolates its execution context from other functions. This means each function has its globals, function and class names.
 
 !!! info "Further reference"
     For more information refer to:
@@ -20,7 +20,7 @@ The interpreter's environment can be extended with any dependent package that ca
 !!! info "Further reference"
     For more information about installing dependencies refer to:
 
-      * [The `REQUIREMENTS` subcommand of `RG.PYEXECUTE`](commands.md#rgpyexecute)
+      * [The `REQUIREMENTS` argument of `RG.PYEXECUTE`](commands.md#rgpyexecute)
       * [The QuickStart's Python Virtual Environment section](quickstart.md#python-virtual-environment)
 
 ## GearsBuilder
@@ -120,7 +120,6 @@ This function prints a message to Redis' log.
 ```python
 def Log(level='notice', message)
 ```
-? this isn't pythonic :/
 
 _Arguments_
 
