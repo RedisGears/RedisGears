@@ -508,58 +508,40 @@ The result "17" is technically correct, in the sense that it is the maximum of i
 ## Writing Data
 The RedisGears Python API ships with the [`execute()` function](runtime.md#execute), which allows the execution of arbitrary Redis commands in the database. RedisGears functions can call `execute()` for accessing the data during their flow, both for reading and writing, allowing the enrichment of inputs and persistence of results.
 
-We'll complete the implementation that seeks an event-driven maximum by storing the current maximum value in another Redis key called `age:maximum`. We'll also have two RedisGears functions - one for handling events and another for batch processing the initial data:
+We'll complete the implementation that seeks an event-driven maximum by storing the current maximum value in another Redis key called `age:maximum`:
 
 ```python
-pattern = 'person:*'  # input keys' pattern
-
 def age(x):
   ''' Extracts the age from a person's record '''
   return int(x['value']['age'])
-
-def maximum(a, x):
-  ''' Returns the maximum '''
-  a = a if a else 0       # initialize the accumulator
-  return max(a, x)
 
 def cas(x):
   ''' Checks and sets the current maximum '''
   k = 'age:maximum'
   v = execute('GET', k)   # read key's current value
-  v = v if v else 0       # initialize to 0 if None
-  if x > val:             # if a new maximum found
+  v = int(v) if v else 0  # initialize to 0 if None
+  if x > v:               # if a new maximum found
     execute('SET', k, x)  # set key to new value
 
 # Event handling function registration
-eh = GearsBuilder()
-eh.map(age)
-eh.foreach(cas)
-eh.register(pattern)
+gb = GearsBuilder()
+gb.map(age)
+gb.foreach(cas)
+gb.register('person:*')
 
-# Batch processing function execution
-bp = GearsBuilder()
-bp.map(age)
-bp.accumulate(maximum)
-bp.foreach(cas)
-bp.run(pattern)
-
-## Expected result: [70]
+## Expected result: ['OK']
 ```
 
-The event handler employs a new step type after mapping the input records to ages. The [`foreach()`](operations.md#foreach) step executes its argument function once for each input record but does not change the records themselves. We use it to call the check-and-set logic that's implemented by `cas()` function.
-
-Similarly, the batch processor calls the `cas()` function after accumulating data to compute the initial value to store it. Once the processor finishes execution, the reply "60" is sent back.
-
-After registering the handler and running the processor, we can write more data to see how the maximum stored value changes:
+The event handler employs a new step type after mapping the input records to ages. The [`foreach()`](operations.md#foreach) step executes its argument function callback once for each input record but does not change the records themselves. We use it to call the check-and-set logic that's implemented by `cas()` function.
 
 !!! example "Example: Event-driven maximum"
     ```
     127.0.0.1:6379> GET age:maximum
-    "70"
+    (nil)
     127.0.0.1:6379> HSET person:4 name "Beth Smith" age 35
     (integer) 2
     127.0.0.1:6379> GET age:maximum
-    "70"
+    "35"
     127.0.0.1:6379> HSET person:5 name "Shrimply Pibbles" age 87
     (integer) 2
     127.0.0.1:6379> GET age:maximum
@@ -567,7 +549,7 @@ After registering the handler and running the processor, we can write more data 
     ```
 
 !!! note
-    In reality, Shrimply Pibbles' age is unknown, so the above is only an estimate an may be inaccurate.
+    In reality, Shrimply Pibbles' age is unknown, so the above is only an estimate and may be inaccurate. Luckily, he no longer requires a heart transplant.
 
 ## Cluster 101
 Redis can be used in one of two modes: **stand-alone** or **cluster**.

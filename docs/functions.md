@@ -86,10 +86,10 @@ The **Execution Status** describes the function's current execution status. It c
 * **running**: the execution is running
 * **done**: the execution is done
 * **aborted**: the execution has been aborted
-* **pending_cluster**: waiting for shards to acknowledge?
-* **pending_run**: waiting for distributed execution
-* **pending_receive**: waiting for records
-* **pending_termination**:
+* **pending_cluster**: initiator is waiting for all workers to finish
+* **pending_run**: worker is pending ok from initiator to execute
+* **pending_receive**: initiator is pending acknowledgement from workers on receiving execution
+* **pending_termination**: worker is pending termination messaging from initiator
 
 ## Registration
 The representation of an event-driven function is called a registration.

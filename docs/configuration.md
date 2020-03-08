@@ -37,7 +37,7 @@ Some configuration options may be set at runtime. Refer to each option's descrip
     * [`RG.CONFIGSET`](commands.md#rgconfigset)
 
 ## MaxExecutions
-The **MaxExecutions** configuration option controls the maximal number of executions that will be saved in the executions list. Once this threshold value is reached, older executions will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' [status](functions.md#execution-status) are deleted.
+The **MaxExecutions** configuration option controls the maximal number of executions that will be saved in the executions list. Once this threshold value is reached, older executions will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status) are deleted.
 
 _Expected Value_
 
@@ -62,7 +62,7 @@ OK
 ```
 
 ## MaxExecutionsPerRegistration
-The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' [status](functions.md#execution-id) are deleted.
+The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status) are deleted.
 
 _Expected Value_
 
