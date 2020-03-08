@@ -62,7 +62,7 @@ OK
 ```
 
 ## MaxExecutionsPerRegistration
-The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' [status]((functions.md#execution-id)) are deleted.
+The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions with a 'done' [status](functions.md#execution-id) are deleted.
 
 _Expected Value_
 
