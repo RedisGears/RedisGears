@@ -62,7 +62,7 @@ The **`RG.CONFIGGET`** command returns the value of one or more built-in [config
 **Redis API**
 
 ```
-RG.CONFIGGET <key> [<key> ...]
+RG.CONFIGGET <key> [...]
 ```
 
 _Arguments_
@@ -88,7 +88,7 @@ The **`RG.CONFIGGET`** command sets the value of one ore more built-in [configur
 **Redis API**
 
 ```
-RG.CONFIGSET <key> <value> [<key> <value> ...]
+RG.CONFIGSET <key> <value> [...]
 ```
 
 _Arguments_
@@ -441,7 +441,7 @@ The **RG.PYEXECUTE** command executes a Python [function](functions.md#function)
 **Redis API**
 
 ```
-RG.PYEXECUTE "<function-definition>" [REQUIREMENTS "<dep> ..."] [UNBLOCKING]
+RG.PYEXECUTE "<function>" [REQUIREMENTS "<dep> ..."] [UNBLOCKING]
 ```
 
 _Arguments_
