@@ -312,6 +312,9 @@ def testBasicStreamRegisterOnPrefix(env):
                                "repartition(lambda x: 'new_key')."
                                "foreach(lambda x: redisgears.executeCommand('set', 'new_key', x))."
                                "register('s*')").ok()
+
+    time.sleep(0.5)  # make sure the execution reached to all shards
+
     conn.execute_command('xadd', 'stream1', '*', 'name', 'test')
     res = []
 
@@ -363,7 +366,7 @@ def testBasicStreamProcessing(env):
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
         return
-    time.sleep(0.5)  # make sure the execution reached to all shards
+    time.sleep(0.5)  # make sure the registration reached to all shards
     env.cmd('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
     res = []
     while len(res) < 1:
@@ -390,7 +393,7 @@ def testRegistersOnPrefix(env):
                             "foreach(lambda x: execute('set', x[0], x[1]))."
                             "register(regex='pref1:*')")
 
-    time.sleep(0.1) ## wait for execution to get to all shards
+    time.sleep(0.1) ## wait for registration to get to all shards
 
     conn.set('pref1:x', '1')
     conn.set('pref1:y', '2')
@@ -420,19 +423,24 @@ def testRegistersSurviveRestart(env):
                             "register(mode='async_local')")
 
     # todo: change it not to use sleep
-    time.sleep(0.1) # wait for execution to reach all the shards
+    time.sleep(0.5) # wait for registration to reach all the shards
 
     for _ in env.reloading_iterator():
         for i in range(20):
             conn.set(str(i), str(i))
 
+        res = 0
+        while res < 40:
+            res = int(env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")[0][0])
+
         for i in range(20):
             conn.delete(str(i))
 
-        # wait for all executions to finish
         res = 0
         while res < 80:
             res = int(env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda x: len([r for r in execute('rg.dumpexecutions') if r[3] == 'done'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run()")[0][0])
+
+        # wait for all executions to finish
 
         numOfKeys = env.cmd('rg.pyexecute', "GB().map(lambda x: int(x['value'])).aggregate(0, lambda a, x: x, lambda a, x: a + x).run('NumOfKeys*')")[0][0]
         env.assertEqual(numOfKeys, '0')
@@ -453,6 +461,8 @@ def testRegistersReplicatedToSlave():
     env.cmd('rg.pyexecute', "GB().filter(lambda x: x['key'] != 'NumOfKeys')."
                             "foreach(lambda x: execute('incrby', 'NumOfKeys', ('1' if 'value' in x.keys() else '-1')))."
                             "register()")
+
+    time.sleep(0.5) # wait for registration to reach all the shards
 
     slaveConn = env.getSlaveConnection()
     try:
@@ -524,7 +534,7 @@ def testOnRegisteredCallback(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB()."
                             "register(mode='async_local', onRegistered=lambda: execute('set', 'registered{%s}' % (hashtag()), '1'))")
-    time.sleep(0.1) # make sure registered on all shards
+    time.sleep(0.5) # make sure registered on all shards
     env.expect('rg.pyexecute', "GB().map(lambda x: x['value']).collect().distinct().run('registered*')").equal([['1'], []])
 
     executions = env.cmd('RG.DUMPEXECUTIONS')
@@ -584,7 +594,7 @@ def testStreamReaderWithAof():
                             "foreach(lambda x: execute('incr', 'NumOfElements'))."
                             "register(regex='s', batch=5)")
 
-    time.sleep(0.1) # wait for reach all shards
+    time.sleep(0.5) # wait for reach all shards
 
     for i in range(5):
         conn.execute_command('xadd', 's', '*', 'foo', 'bar')
@@ -672,6 +682,7 @@ GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3)
     slaveConn = env.getSlaveConnection()
     masterConn = env.getConnection()
     env.cmd('rg.pyexecute', script)
+    time.sleep(0.5) # wait for registration to reach all the shards
 
     for i in range(3):
         env.execute_command('xadd', 'stream', '*', 'foo', 'bar')
@@ -721,7 +732,7 @@ def testKeysReaderEventTypeFilter(env):
                             "foreach(lambda x: execute('incr', 'counter'))."
                             "register(regex='*', eventTypes=['lpush', 'rpush'])")
 
-    time.sleep(0.1) # wait for reach all shards
+    time.sleep(0.5) # wait for reach all shards
 
     conn.lpush('l', '1')
     conn.rpush('l', '1')
@@ -767,7 +778,7 @@ def testKeysReaderKeyTypeFilter(env):
                             "foreach(lambda x: execute('incr', 'counter'))."
                             "register(regex='*', keyTypes=['list'])")
 
-    time.sleep(0.1) # wait for registration reach all shards
+    time.sleep(0.5) # wait for registration reach all shards
 
     conn.lpush('l', '1')
     conn.rpush('l', '1')
@@ -832,6 +843,8 @@ def testStreamTrimming(env):
     # {06S} is going to first slot
     env.cmd('rg.pyexecute', "GB('StreamReader').register('s1{06S}', mode='async_local')")
     env.cmd('rg.pyexecute', "GB('StreamReader').register('s2{06S}', mode='async_local', trimStream=False)")
+
+    time.sleep(0.5) # wait for registration to reach all the shards
 
     env.cmd('XADD s2{06S} * foo bar')
     env.cmd('XADD s1{06S} * foo bar')
