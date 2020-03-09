@@ -5,9 +5,6 @@ commands:
     parameters:
       platform:
         type: string
-      redis_build_params:
-        type: string
-        default: ""
       build_params:
         type: string
         default: ""
@@ -15,9 +12,6 @@ commands:
         type: string
         default: ""
     steps: 
-      - run:
-          name: Install Redis
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd redis; git fetch; git checkout 5.0.7; make <<parameters.redis_build_params>>; make install
       - checkout
       - run:
           name: Submodule checkout
@@ -71,18 +65,20 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - build-steps:
           platform: debian
 
   valgrind:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
+      - run:
+          name: Build Redis for Valgrind
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd redis; git checkout 5.0.7; make valgrind; make install
       - build-steps:
           platform: debian
-          redis_build_params: valgrind
           build_params: DEBUG=1
           test_params: DEBUG=1
   
@@ -104,7 +100,6 @@ jobs:
           name: Fix macOS Python installation
           command: |
             brew update || true
-            # brew reinstall -f python2
       - build-steps:
           platform: macosx
 
@@ -128,7 +123,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -141,7 +136,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -154,7 +149,7 @@ jobs:
 
   deploy_docs:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - checkout
       - run:
