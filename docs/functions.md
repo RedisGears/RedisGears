@@ -37,13 +37,13 @@ A function always:
 ## Execution
 A function is executed by the RedisGears engine in one of two ways:
 
-  1. **Batch**: execution is immediate and on existing data
-  2. **Event**: execution is triggered by new events and on their data
+  * **Batch**: execution is immediate and on existing data
+  * **Event**: execution is triggered by new events and on their data
 
 The function's mode of execution is determined by its action. There are two types of actions:
 
-  1. [**Run**](#run): runs the function in batch
-  2. [**Register**](#register): registers the function to be triggered by events
+  * [**Run**](#run): runs the function in batch
+  * [**Register**](#register): registers the function to be triggered by events
 
 When executed, whether as batch or event, the function's context is managed by the engine. Besides the function's logic, the context also includes its breakdown to internal execution steps, status, statistics, results and any errors encountered among other things.
 
@@ -58,7 +58,7 @@ When executed, whether as batch or event, the function's context is managed by t
 ## Execution ID
 The execution of every function is internally assigned with a unique value called **Execution ID**.
 
-The ID is string value made of two parts that are delimited by a hyphen ('-'), as follows:
+The ID is a string value made of two parts that are delimited by a hyphen ('-'), as follows:
 
   1. **Shard ID**: the 40-bytes-long identifier of a [shard](overview.md#shard) in a [cluster](overview.md#cluster)
   2. **Sequence**: an ever-increasing counter

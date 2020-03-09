@@ -37,7 +37,7 @@ Some configuration options may be set at runtime. Refer to each option's descrip
     * [`RG.CONFIGSET`](commands.md#rgconfigset)
 
 ## MaxExecutions
-The **MaxExecutions** configuration option controls the maximal number of executions that will be saved in the executions list. Once this threshold value is reached, older executions will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status) are deleted.
+The **MaxExecutions** configuration option controls the maximum number of executions that will be saved in the executions list. Once this threshold value is reached, older executions will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status)) are deleted.
 
 _Expected Value_
 
@@ -52,7 +52,7 @@ _Runtime Configurability_
 Supported.
 
 !!! note
-    Changing this option will take effect the creation of new executions only.
+    Changing this option will impact the creation of new executions only.
 
 **Examples**
 
@@ -62,7 +62,7 @@ OK
 ```
 
 ## MaxExecutionsPerRegistration
-The **MaxExecutionsPerRegistration** configuration option controls the maximal number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status) are deleted.
+The **MaxExecutionsPerRegistration** configuration option controls the maximum number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status)) are deleted.
 
 _Expected Value_
 
@@ -77,7 +77,7 @@ _Runtime Configurability_
 Supported.
 
 !!! note
-    Changing this option will take effect the creation of new executions only.
+    Changing this option will impact the creation of new executions only.
 
 **Examples**
 
@@ -105,7 +105,7 @@ _Runtime Configurability_
 Supported
 
 ## PythonAttemptTraceback
-The **PythonAttemptTraceback** configuration options controls whether the engine tries producing stack traces for Python runtime errors.
+The **PythonAttemptTraceback** configuration option controls whether the engine tries producing stack traces for Python runtime errors.
 
 _Expected Value_
 
