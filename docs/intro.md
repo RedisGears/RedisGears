@@ -1,7 +1,7 @@
 # Introduction to RedisGears
 
 ## What is RedisGears?
-RedisGears is a serverless engine for transaction, [batch](overview.md#batch-processing) and [event-driven](overview.md#event-processing) data processing. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](overview.md#api).
+RedisGears is a serverless engine for transaction, [batch](overview.md#batch-processing) and [event-driven](overview.md#event-processing) data processing in Redis. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](overview.md#api).
 
 That's a lot of high-level buzzes, so to explain what RedisGears does this introduction will take you from parking to 6th-gear.
 
@@ -51,7 +51,7 @@ In broad strokes, the following diagram depicts RedisGears' components:
 ```
 
 ## The Simplest Example
-Let us start by writing and executing the simplest possible RedisGears function. As a prerequisite, any communication with RedisGears requires using its commands via a Redis client, so we'll begin by using the official [`redis-cli`](https://redis.io/topics/rediscli) that's available in the container:
+Let us start by writing and executing the simplest possible RedisGears function. As a prerequisite, any communication with RedisGears requires using its commands via a Redis client, so we'll begin by using the official [`redis-cli`](https://redis.io/topics/rediscli). If you have it locally installed feel free to use that, but it is also available from the container:
 
 ```
 docker exec -it redisgears redis-cli

@@ -1,7 +1,7 @@
 # RedisGears Overview
 
 ## What is RedisGears?
-RedisGears is a serverless engine for transaction, [batch](#batch-processing) and [event-driven](#event-processing) data processing. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](overview.md#api).
+RedisGears is a serverless engine for transaction, [batch](#batch-processing) and [event-driven](#event-processing) data processing in Redis. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](overview.md#api).
 
 
 In broad strokes, the following diagram depicts RedisGears' components:
