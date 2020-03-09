@@ -29,6 +29,7 @@ typedef struct KeysReaderRegisterData{
     unsigned long long numAborted;
     Gears_list* localPendingExecutions;
     Gears_list* localDoneExecutions;
+    WorkerData* wd;
 }KeysReaderRegisterData;
 
 Gears_list* keysReaderRegistration = NULL;
@@ -94,6 +95,7 @@ static void KeysReaderRegisterData_Free(KeysReaderRegisterData* rData){
         }
         KeysReaderTriggerArgs_Free(rData->args);
         FlatExecutionPlan_Free(rData->fep);
+        RedisGears_WorkerDataFree(rData->wd);
         RG_FREE(rData);
     }
 }
@@ -112,6 +114,7 @@ static KeysReaderRegisterData* KeysReaderRegisterData_Create(FlatExecutionPlan* 
         .numAborted = 0,
         .localPendingExecutions = Gears_listCreate(),
         .localDoneExecutions = Gears_listCreate(),
+        .wd = RedisGears_WorkerDataCreate(NULL),
     };
     return rData;
 }
@@ -521,10 +524,14 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
             void* privateData = NULL;
             callback = KeysReader_ExecutionDone;
             privateData = KeysReaderRegisterData_GetShallowCopy(rData);
-            ExecutionPlan* ep = RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData, NULL);
+            char* err = NULL;
+            ExecutionPlan* ep = RedisGears_Run(rData->fep, rData->mode, RG_STRDUP(keyCStr), callback, privateData, rData->wd, &err);
             if(!ep){
                 ++rData->numAborted;
-                RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger");
+                RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger, %s", err);
+                if(err){
+                    RG_FREE(err);
+                }
                 continue;
             }
             if(EPIsFlagOn(ep, EFIsLocal) && rData->mode != ExecutionModeSync){

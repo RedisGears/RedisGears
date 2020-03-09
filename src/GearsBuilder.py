@@ -128,7 +128,7 @@ class GearsBuilder():
                  onFailedPolicy="continue",
                  onFailedRetryInterval=1,
                  trimStream=True,
-                 command=None,
+                 trigger=None,
                  convertToStr=True,
                  collect=True):
         if(convertToStr):
@@ -145,7 +145,7 @@ class GearsBuilder():
                                onFailedPolicy=onFailedPolicy,
                                onFailedRetryInterval=onFailedRetryInterval,
                                trimStream=trimStream,
-                               command=command)
+                               trigger=trigger)
 
 def createDecorator(f):
     def deco(self, *args):

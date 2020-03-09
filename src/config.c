@@ -48,6 +48,7 @@ typedef struct RedisGears_Config{
     ConfigVal profileExecutions;
     ConfigVal pythonAttemptTraceback;
     ConfigVal createVenv;
+    ConfigVal executionThreads;
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
 }RedisGears_Config;
@@ -179,6 +180,26 @@ static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ExecutionThreadsGet(){
+    return &DefaultGearsConfig.executionThreads;
+}
+
+static bool ConfigVal_ExecutionThreadsSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if(n <= 0){
+            return false;
+        }
+        DefaultGearsConfig.executionThreads.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static Gears_dict* Gears_ExtraConfig = NULL;
 
 static Gears_ConfigVal Gears_ConfigVals[] = {
@@ -222,6 +243,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "CreateVenv",
         .getter = ConfigVal_CreateVenvGet,
         .setter = ConfigVal_CreateVenvSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "ExecutionThreads",
+        .getter = ConfigVal_ExecutionThreadsGet,
+        .setter = ConfigVal_ExecutionThreadsSet,
         .configurableAtRunTime = false,
     },
     {
@@ -396,6 +423,10 @@ long long GearsConfig_CreateVenv(){
     return DefaultGearsConfig.createVenv.val.longVal;
 }
 
+long long GearsConfig_ExecutionThreads(){
+    return DefaultGearsConfig.executionThreads.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -464,6 +495,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .createVenv = {
             .val.longVal = 0,
+            .type = LONG,
+        },
+        .executionThreads = {
+            .val.longVal = 3,
             .type = LONG,
         },
     };

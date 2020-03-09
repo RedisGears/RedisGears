@@ -18,6 +18,7 @@ long long GearsConfig_GetPythonAttemptTraceback();
 const char* GearsConfig_GetDependenciesUrl();
 const char* GearsConfig_GetDependenciesSha256();
 long long GearsConfig_CreateVenv();
+long long GearsConfig_ExecutionThreads();
 const char* GearsConfig_GetExtraConfigVals(const char* key);
 
 #endif /* SRC_CONFIG_H_ */

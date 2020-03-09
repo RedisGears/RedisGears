@@ -58,6 +58,8 @@ RUN tar --warning=no-timestamp  -xzf /var/opt/redislabs/artifacts/release/redisg
 
 RUN if [ "$PACK" != "1" ]; then rm -rf /var/opt/redislabs/artifacts; fi
 
+RUN chown -R redis:redis /var/opt/redislabs
+
 RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
 RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
 
