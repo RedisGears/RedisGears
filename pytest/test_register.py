@@ -232,9 +232,6 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     env.cmd('xadd', 's', '*', 'foo', 'bar') # infinit loop
     env.cmd('xadd', 's', '*', 'foo', 'bar') # pending execution
 
-    # create another execution, make sure its pending
-    eid = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()', 'UNBLOCKING')
-
     registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
     registrationId = registrationInfo[0][1]
 
@@ -248,6 +245,9 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Could not wait for all executions')
+
+    # create another execution, make sure its pending
+    eid = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()', 'UNBLOCKING')
 
     executionsInfo = env.cmd('RG.DUMPEXECUTIONS')
     env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'done']), 5)
