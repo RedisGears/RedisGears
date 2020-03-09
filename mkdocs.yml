@@ -23,9 +23,6 @@ theme:
   feature:
     tabs: false
 
-extra_css:
-  - 'stylesheets/tabbed.css'
-
 nav:
   - 'Home': 'index.md'
   - 'Introduction': 'intro.md'
