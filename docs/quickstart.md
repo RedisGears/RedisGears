@@ -23,7 +23,7 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 ### Prerequisites
 * Install [Redis 5.0](https://redis.io/) on your machine.
-* On Mac OSX (High Sierra), install Xcode command line tools:
+* On macOS install Xcode command line tools:
 
 ```
 xcode-select --install
@@ -44,7 +44,7 @@ make all
     The compilation process creates a virtual Python environment and places the binaries at this path: `/opt/redislabs/lib/modules`
 
 ## Loading
-To load the module on the same server is was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to modules library.
+To load the module on the same server is was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
 In case you've compiled the module on a different server than the one loading it, copy the contents of the '/opt/redislabs/lib/modules` to the server.
 
