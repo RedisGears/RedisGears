@@ -5,6 +5,12 @@ commands:
     parameters:
       platform:
         type: string
+      build_params:
+        type: string
+        default: ""
+      test_params:
+        type: string
+        default: ""
     steps: 
       - checkout
       - run:
@@ -17,37 +23,13 @@ commands:
           name: Build
           command: |
             make get_deps
-            make all OS_VERSION=<<parameters.platform>> SHOW=1
+            make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1
       - run:
           name: Test
-          command: make test
+          command: make test <<parameters.test_params>>
       - store_artifacts:
           path: pytest/logs
 
-  valgrind-steps:
-    parameters:
-      platform:
-        type: string
-    steps: 
-      - checkout
-      - run:
-          name: Submodule checkout
-          command: git submodule update --init --recursive
-      - run:
-          name: System setup
-          command: BREW_NO_UPDATE=1 python system-setup.py
-      - run:
-          name: Build
-          command: |
-            make get_deps
-            make all DEBUG=1 OS_VERSION=<<parameters.platform>> SHOW=1
-      - run:
-          name: Test
-          command: make test DEBUG=1
-          no_output_timeout: 30m
-      - store_artifacts:
-          path: pytest/logs
-          
   platform-build-steps:
     parameters:
       platform:
@@ -83,23 +65,22 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
-      - run:
-          name: Redis_5_upgrade
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.7; make; make install
       - build-steps:
           platform: debian
 
   valgrind:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - run:
-          name: Redis with Valgrind
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.7; make valgrind; make install
-      - valgrind-steps:
+          name: Build Redis for Valgrind
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd redis; git checkout 5.0.7; make valgrind; make install
+      - build-steps:
           platform: debian
+          build_params: DEBUG=1
+          test_params: DEBUG=1
   
   platform-build:
     parameters:
@@ -119,7 +100,6 @@ jobs:
           name: Fix macOS Python installation
           command: |
             brew update || true
-            # brew reinstall -f python2
       - build-steps:
           platform: macosx
 
@@ -143,7 +123,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -156,7 +136,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -169,7 +149,7 @@ jobs:
 
   deploy_docs:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - checkout
       - run:
