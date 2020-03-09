@@ -56,6 +56,11 @@ class RedisGearsSetup(paella.Setup):
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
         self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
 
+        self.run("dir=$(mktemp -d /tmp/tar.XXXXXX); cd $dir; wget -q https://ftp.gnu.org/gnu/tar/tar-1.32.tar.gz; tar xzf tar-1.32.tar.gz; cd tar-1.32; "+
+            "FORCE_UNSAFE_CONFIGURE=1 ./configure && make && make install; " +
+            "while [[ -d confdir3 ]]; do cd confdir3; done; cd ..; while [[ -d confdir3 ]]; do rm -rf confdir3; cd ..; done; " +
+            "cd /; rm -rf $dir; true", output_on_error=True)
+
         # pip cannot build gevent on ARM
         self.install("python-gevent python-ujson")
 
@@ -82,12 +87,15 @@ class RedisGearsSetup(paella.Setup):
         self.install("python2-ujson")
         self.pip_install("pipenv gevent")
 
+    def linux_last(self):
+        self.install("valgrind")
+    
     def macosx(self):
         r, w, e = popen2.popen3('xcode-select -p')
         if r.readlines() == []:
             fatal("Xcode tools are not installed. Please run xcode-select --install.")
         self.install("libtool autoconf automake llvm")
-        self.install("zlib openssl readline")
+        self.install("zlib openssl readline coreutils")
         self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
         self.install_gnu_utils()

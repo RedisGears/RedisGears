@@ -24,7 +24,8 @@ if [ -z $(command -v git) ]; then
 	fi
 fi
 
-pip install yq
+wget -O /opt/redislabs/bin/yq https://github.com/mikefarah/yq/releases/download/3.1.1/yq_linux_amd64
+chmod +x /opt/redislabs/bin/yq
 
 if [[ $FORCE == 1 ]]; then
 	rm -rf /opt/recipe /opt/RedisGears /opt/redislabs/lib/modules/python3
@@ -53,8 +54,14 @@ if [[ $OSNICK != 'centos7' && $OSNICK != 'bionic' && $OSNICK != 'xenial' ]]; the
 	exit 1
 fi
 
-# MOD_DIR=/opt/recipe/rs
-# /opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
+MOD_DIR=/opt/recipe/rs
+/opt/redislabs/bin/python2 $MOD_DIR/install-modules.py --no-bootstrap-check --yaml $MOD_DIR/redis-modules-$OSNICK.yaml
+ 
+# module=$(yq .redisgears.awspath $MOD_DIR/redis-modules-$OSNICK.yaml | cut -d\" -f2)
+# mod_json=$(curl -k \
+# 	-u "${USER}:${PASSWD}" \
+# 	-F "module=@/opt/redislabs/lib/modules/$module" \
+# 	https://localhost:9443/v1/modules)
 
 printf "\n$ORACLE oracle\n" >> /etc/hosts
 

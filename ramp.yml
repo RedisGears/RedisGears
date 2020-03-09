@@ -19,4 +19,15 @@ capabilities:
     - reshard_rebalance
     - eviction_expiry
 exclude_commands:
-    - RG.CONFIGSET
+    - rg.configset
+    - RG.INNERUNREGISTER
+    - RG.INNERREGISTER
+    - RG.INNERMSGCOMMAND
+    - rg.example
+    - rg.refreshcluster
+    - rg.infocluster
+    - rg.hello
+    - rg.networktest
+    - rg.pyfreeinterpreter
+overide_command:
+    - {"command_arity": -1, "command_name": "rg.command", "first_key": 2, "flags": ["readonly"], "last_key": 2, "step": 1}

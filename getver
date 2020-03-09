@@ -1,0 +1,21 @@
+#!/bin/bash
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
+getver_c=$(mktemp "${TMPDIR:-/tmp}"/getver-XXXXXXX.c)
+cat <<- EOF > $getver_c
+	#include <stdio.h>
+
+	#include "src/version.h"
+
+	int main(int argc, char *argv[]) {
+			printf("%d.%d.%d\n", REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH);
+			return 0;
+	}
+	EOF
+prog=$(mktemp "${TMPDIR:-/tmp}"/getver.XXXXXXX)
+gcc -I$HERE -o $prog $getver_c
+ver=`$prog`
+rm -f $prog $getver_c
+echo $ver
+exit 0

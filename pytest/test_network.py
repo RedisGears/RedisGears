@@ -234,12 +234,12 @@ def testMessageIdCorrectness(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
         conn.send_status('OK')
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
         conn.send_status('OK')
 
 
@@ -251,19 +251,19 @@ def testMessageResentAfterDisconnect(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
 
         conn.send_status('OK')
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
 
         conn.close()
 
         conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
 
         conn.send_status('duplicate message ignored')  # reply to the second message with duplicate reply
 
@@ -288,13 +288,13 @@ def testMessageNotResentAfterCrash(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
 
         conn.send_status('OK')
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
 
         conn.close()
 
@@ -316,7 +316,7 @@ def testStopListening(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
 
         conn.send_status('OK')
 
@@ -332,7 +332,7 @@ def testStopListening(env):
 
         conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['rg.innermsgcommand', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
 
 
 
@@ -341,5 +341,5 @@ def testDuplicateMessagesAreIgnored(env):
 
     with ShardMock(env) as shardMock:
         shardMock.GetConnection()
-        env.expect('rg.innermsgcommand', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('OK')
-        env.expect('rg.innermsgcommand', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
+        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('OK')
+        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')

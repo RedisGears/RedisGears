@@ -54,8 +54,11 @@ RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
 COPY --from=builder /build/redisgears.so $REDIS_MODULES/
 COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts/
 
-RUN tar xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C /
+RUN tar --warning=no-timestamp  -xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C /
 
 RUN if [ "$PACK" != "1" ]; then rm -rf /var/opt/redislabs/artifacts; fi
+
+RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
+RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
 
 CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so"]

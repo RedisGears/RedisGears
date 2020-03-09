@@ -10,3 +10,8 @@ CREATE TABLE test.car (
   license VARCHAR(100) NOT NULL,
   color VARCHAR(100) NOT NULL,
   PRIMARY KEY (license));
+
+CREATE TABLE test.person1_exactly_once_table (
+  id VARCHAR(100) NOT NULL,
+  val VARCHAR(100) NOT NULL,
+  PRIMARY KEY (id));

@@ -16,7 +16,7 @@ typedef struct PythonSessionCtx PythonSessionCtx;
 
 typedef void (*DoneCallbackFunction)(ExecutionPlan*, void*); 
 
-void RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw);
+int RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err);
 void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br);
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, DoneCallbackFunction callback);
@@ -25,5 +25,6 @@ void RedisGearsPy_ForceStop(ExecutionCtx* ep);
 PythonSessionCtx* RedisGearsPy_Lock(PythonSessionCtx* currSession);
 void RedisGearsPy_Unlock(PythonSessionCtx* prevSession);
 bool RedisGearsPy_IsLockAcquired();
+void RedisGearsPy_Clean();
 
 #endif /* SRC_REDISGEARG_PYTHON_H_ */

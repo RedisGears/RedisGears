@@ -308,4 +308,6 @@ ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
 
+void ExecutionPlan_Clean();
+
 #endif /* SRC_EXECUTION_PLAN_H_ */

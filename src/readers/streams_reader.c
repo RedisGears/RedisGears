@@ -8,6 +8,7 @@
 #include "execution_plan.h"
 #include "record.h"
 #include "config.h"
+#include <pthread.h>
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 Gears_list* streamsRegistration = NULL;
@@ -37,6 +38,7 @@ typedef struct StreamReaderTriggerArgs{
     char* stream;
     OnFailedPolicy onFailedPolicy;
     size_t retryInterval;
+    bool trimStream;
 }StreamReaderTriggerArgs;
 
 typedef enum StreamRegistrationStatus{
@@ -129,13 +131,14 @@ static StreamId StreamReader_ParseStreamId(const char* streamId){
     return ret;
 }
 
-StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval){
+StreamReaderTriggerArgs* StreamReaderTriggerArgs_Create(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
     StreamReaderTriggerArgs* readerArgs = RG_ALLOC(sizeof(StreamReaderTriggerArgs));
     readerArgs->stream = RG_STRDUP(streamName);
     readerArgs->batchSize = batchSize;
     readerArgs->durationMS = durationMS;
     readerArgs->onFailedPolicy = onFailedPolicy;
     readerArgs->retryInterval = retryInterval;
+    readerArgs->trimStream = trimStream;
     return readerArgs;
 }
 
@@ -496,7 +499,7 @@ typedef struct ExecutionDoneCtx{
     SingleStreamReaderCtx ssrctx;
 }ExecutionDoneCtx;
 
-static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx){
+static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm){
     if(array_len(readerCtx->batchIds) == 0){
         // nothing to ack on
         return;
@@ -507,20 +510,24 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx){
 
     RedisModule_FreeCallReply(reply);
 
-    reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
-    ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
-    assert(ret);
-    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
+    if(alsoTrimm){
 
-    long long streamLen = RedisModule_CallReplyInteger(reply);
+        reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
+        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
+        assert(ret);
+        assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
 
-    RedisModule_FreeCallReply(reply);
+        long long streamLen = RedisModule_CallReplyInteger(reply);
 
-    reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
-    ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
-    assert(ret);
+        RedisModule_FreeCallReply(reply);
 
-    RedisModule_FreeCallReply(reply);
+        reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", (streamLen - array_len(readerCtx->batchIds)));
+        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
+        assert(ret);
+
+        RedisModule_FreeCallReply(reply);
+
+    }
 }
 
 static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, StreamReaderCtx* readerCtx){
@@ -646,14 +653,12 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
                 assert(false);
             }
         }
-    } else if(ctx->status == StreamRegistrationStatus_ABORTED){
+    } else if(ctx->status == ABORTED){
         ++srctx->numAborted;
     } else {
-        if(EPIsFlagOn(ctx, EFIsLocal)){
-            Reader* reader = ExecutionPlan_GetReader(ctx);
-            StreamReader_AckAndTrimm(reader->ctx);
-            StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
-        }
+        Reader* reader = ExecutionPlan_GetReader(ctx);
+        StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimStream);
+        StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
         ++srctx->numSuccess;
     }
 
@@ -872,7 +877,7 @@ static void* StreamReader_ScanForStreams(void* pd){
     return NULL;
 }
 
-static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg){
+static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
         staticCtx = RedisModule_GetThreadSafeContext(NULL);
@@ -897,7 +902,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode m
         // we are master, lets run the scan thread.
         StreamReader_StartScanThread(staticCtx, StreamReaderTriggerCtx_GetShallowCopy(srctx));
     }
-    return 1;
+    return REDISMODULE_OK;
 }
 
 static Reader* StreamReader_Create(void* arg){
@@ -923,6 +928,7 @@ static void StreamReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, triggerArgs->durationMS);
     RedisGears_BWWriteLong(bw, triggerArgs->onFailedPolicy);
     RedisGears_BWWriteLong(bw, triggerArgs->retryInterval);
+    RedisGears_BWWriteLong(bw, triggerArgs->trimStream);
 }
 
 static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
@@ -931,7 +937,8 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
     size_t durationMS = RedisGears_BRReadLong(br);
     OnFailedPolicy onFailedPolicy = RedisGears_BRReadLong(br);
     size_t retryInterval = RedisGears_BRReadLong(br);
-    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval);
+    bool trimStream = RedisGears_BRReadLong(br);
+    return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
@@ -1040,7 +1047,11 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         RedisModule_Free(data);
 
         int mode = RedisModule_LoadUnsigned(rdb);
-        StreamReader_RegisrterTrigger(fep, mode, args);
+        int ret = StreamReader_RegisrterTrigger(fep, mode, args, &err);
+        if(ret != REDISMODULE_OK){
+            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
+            assert(false);
+        }
         FlatExecutionPlan_AddToRegisterDict(fep);
     }
 }
@@ -1060,12 +1071,17 @@ static void StreamReader_Clear(){
     Gears_listReleaseIterator(iter);
 }
 
+static void StreamReader_FreeArgs(void* args){
+    StreamReaderTriggerArgs_Free(args);
+}
+
 RedisGears_ReaderCallbacks StreamReader = {
         .create = StreamReader_Create,
         .registerTrigger = StreamReader_RegisrterTrigger,
         .unregisterTrigger = StreamReader_UnregisrterTrigger,
         .serializeTriggerArgs = StreamReader_SerializeArgs,
         .deserializeTriggerArgs = StreamReader_DeserializeArgs,
+        .freeTriggerArgs = StreamReader_FreeArgs,
         .dumpRegistratioData = StreamReader_DumpRegistrationData,
         .rdbSave = StreamReader_RdbSave,
         .rdbLoad = StreamReader_RdbLoad,

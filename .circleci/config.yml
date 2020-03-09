@@ -1,16 +1,23 @@
 version: 2.1
 
-defaults:
-  default_jobs: &default_jobs
-    - centos
-    - ubuntu
-
 commands:
-  ci_steps:
+  build-steps:
     parameters:
       platform:
         type: string
+      redis_build_params:
+        type: string
+        default: ""
+      build_params:
+        type: string
+        default: ""
+      test_params:
+        type: string
+        default: ""
     steps: 
+      - run:
+          name: Install Redis
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd redis; git fetch; git checkout 5.0.7; make <<parameters.redis_build_params>>; make install
       - checkout
       - run:
           name: Submodule checkout
@@ -22,12 +29,37 @@ commands:
           name: Build
           command: |
             make get_deps
-            make all OS_VERSION=<<parameters.platform>> SHOW=1
+            make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1
       - run:
           name: Test
-          command: make test
-      - store_test_results:
+          command: make test <<parameters.test_params>>
+      - store_artifacts:
           path: pytest/logs
+
+  platform-build-steps:
+    parameters:
+      platform:
+        type: string
+    steps:
+      - run:
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
+            bash <(curl -fsSL https://get.docker.com)
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Setup
+          command: |
+            git submodule update --init --recursive
+            ./deps/readies/bin/getpy2
+      - run:
+          name: Build for platform
+          command: |
+            cd build/platforms
+            make <<parameters.platform>> VERBOSE=1
+          no_output_timeout: 30m
       - persist_to_workspace:
           root: artifacts
           paths:
@@ -37,29 +69,32 @@ commands:
             - 'release/*.tgz'
 
 jobs:
-  ubuntu:
+  linux-debian:
     docker:
       - image: 'redislabsmodules/rmbuilder:latest'
-    environment:
-      - BUILD_DIR: build-debian
     steps:
-      - run:
-          name: Redis_5_upgrade
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.6; make; make install
-      - ci_steps:
-          platform: ubuntu
-  
-  centos:
+      - build-steps:
+          platform: debian
+
+  valgrind:
     docker:
-      - image: 'redislabsmodules/rmbuildercentos:latest'
-    environment:
-      - BUILD_DIR: build-centos
+      - image: 'redislabsmodules/rmbuilder:latest'
     steps:
-      - run:
-          name: Redis_5_upgrade
-          command: cd ../redis; git fetch; git checkout 5.0.6; make; make install
-      - ci_steps:
-          platform: redhat
+      - build-steps:
+          platform: debian
+          redis_build_params: valgrind
+          build_params: DEBUG=1
+          test_params: DEBUG=1
+  
+  platform-build:
+    parameters:
+      platform:
+        type: string
+    docker:
+      - image: 'debian:buster'
+    steps:
+      - platform-build-steps:
+          platform: <<parameters.platform>>
 
   macos:
     macos:
@@ -70,7 +105,7 @@ jobs:
           command: |
             brew update || true
             # brew reinstall -f python2
-      - ci_steps:
+      - build-steps:
           platform: macosx
 
   build-multiarch-docker:
@@ -131,50 +166,75 @@ jobs:
             aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl public-read --recursive
 
 
+platform-builds-requires: &platform-builds-requires
+  requires:
+    - build-centos7
+    - build-bionic
+    - build-xenial
+
+platform-builds-flow-defs: &platform-builds-flow-defs
+  requires:
+    - linux-debian
+  filters:
+    branches:
+      only:
+        - master
+    tags:
+      only: /^v[0-9].*/
+
+
 workflows:
   version: 2
-
   default_flow:
     jobs:
-      - ubuntu:
+      - linux-debian:
           filters:
             branches:
               only: /.*/
             tags:
               only: /.*/
-      - centos:
+      - platform-build:
+          name: build-centos7
+          platform: centos7
+          <<: *platform-builds-flow-defs
+      - platform-build:
+          name: build-bionic
+          platform: bionic
+          <<: *platform-builds-flow-defs
+      - platform-build:
+          name: build-xenial
+          platform: xenial
+          <<: *platform-builds-flow-defs
+      - valgrind:
           filters:
             branches:
-              only: /.*/
+              ignore: /.*/
             tags:
-              only: /.*/
+              only: /^v[0-9].*/
       - macos:
           filters:
             branches:
               ignore: /.*/
             tags:
               only: /^v[0-9].*/
-      - build-multiarch-docker:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v[0-9].*/
+#      - build-multiarch-docker:
+#          filters:
+#            branches:
+#              ignore: /.*/
+#            tags:
+#              only: /^v[0-9].*/
       - deploy_snapshots:
-          requires: *default_jobs
+          <<: *platform-builds-requires
           filters:
             branches:
-              only:
-                - master
-                - deploy_snapshots_1
+              only: master
       - deploy_releases:
-          requires: *default_jobs
+          <<: *platform-builds-requires
           filters:
             branches:
               ignore: /.*/
             tags:
               only: /^v[0-9].*/
-
       - deploy_docs:
           filters:
             branches:
@@ -190,3 +250,4 @@ workflows:
                  - master
     jobs:
       - macos
+      - valgrind

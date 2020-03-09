@@ -5,7 +5,6 @@
 #include "execution_plan.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
-#include "redisearch_api.h"
 #include "globals.h"
 #include "lock_handler.h"
 #include "record.h"
@@ -33,8 +32,6 @@ typedef struct KeysReaderRegisterData{
 }KeysReaderRegisterData;
 
 Gears_list* keysReaderRegistration = NULL;
-
-IndexSpec* keyIdx = NULL;
 
 RedisModuleDict *keysDict = NULL;
 
@@ -731,13 +728,13 @@ static void KeysReader_RegisterKeySpaceEvent(){
     }
 }
 
-static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args){
+static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     KeysReader_RegisterKeySpaceEvent();
 
     KeysReaderRegisterData* rData = KeysReaderRegisterData_Create(fep, args, mode);
 
     Gears_listAddNodeTail(keysReaderRegistration, rData);
-    return 1;
+    return REDISMODULE_OK;
 }
 
 int KeysReader_Initialize(RedisModuleCtx* ctx){
@@ -857,7 +854,11 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         RedisModule_Free(serializedArgs);
 
         int mode = RedisModule_LoadUnsigned(rdb);
-        KeysReader_RegisrterTrigger(fep, mode, args);
+        int ret = KeysReader_RegisrterTrigger(fep, mode, args, &err);
+        if(ret != REDISMODULE_OK){
+            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
+            assert(false);
+        }
 
         FlatExecutionPlan_AddToRegisterDict(fep);
     }
@@ -889,12 +890,17 @@ static void KeysOnlyReader_Clear(){
     GenricKeysReader_Clear(KeysOnlyReader_ShouldContinue);
 }
 
+static void KeysReader_FreeArgs(void* args){
+    KeysReaderTriggerArgs_Free(args);
+}
+
 RedisGears_ReaderCallbacks KeysReader = {
         .create = KeysReader_Create,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
         .serializeTriggerArgs = KeysReader_SerializeArgs,
         .deserializeTriggerArgs = KeysReader_DeserializeArgs,
+        .freeTriggerArgs = KeysReader_FreeArgs,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
         .rdbSave = KeysReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,
@@ -907,6 +913,7 @@ RedisGears_ReaderCallbacks KeysOnlyReader = {
         .unregisterTrigger = KeysReader_UnregisterTrigger,
         .serializeTriggerArgs = KeysReader_SerializeArgs,
         .deserializeTriggerArgs = KeysReader_DeserializeArgs,
+        .freeTriggerArgs = KeysReader_FreeArgs,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
         .rdbSave = KeysOnlyReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,

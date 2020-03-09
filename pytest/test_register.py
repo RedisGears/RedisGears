@@ -210,6 +210,21 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     env.expect('rg.pyexecute', infinitScript).ok()
 
     env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    # we have this part to make sure no two events will enter the same execution
+    # because the first write triggers the background event that reads all the data 
+    # from the stream.
+    try:
+        with TimeLimit(4):
+            done = False
+            while not done:
+                registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
+                if registrationInfo[0][7][3] == 3 and registrationInfo[0][7][5] == 3:
+                    done = True
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for all executions to finished')
+
     env.cmd('xadd', 's', '*', 'foo', 'bar')
     env.cmd('xadd', 's', '*', 'foo', 'bar')
     env.cmd('xadd', 's', '*', 'foo', 'bar') # infinit loop
@@ -239,7 +254,15 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
 
     env.expect('RG.UNREGISTER', registrationId, 'abortpending').ok()
 
-    env.assertEqual(len(env.cmd('RG.DUMPEXECUTIONS')), 1)
+    try:
+        with TimeLimit(2):
+            while True:
+                l = len(env.cmd('RG.DUMPEXECUTIONS'))
+                if l == 1:
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for all executions to finished')
 
     try:
         with TimeLimit(2):
@@ -787,9 +810,72 @@ def testSteamReaderAbortOnFailure(env):
     env.expect('xadd', 's', '*', 'foo', 'bar')
     env.expect('xadd', 's', '*', 'foo', 'bar')
 
-    registrations = env.cmd('rg.DUMPREGISTRATIONS')
 
-    env.assertEqual(registrations[0][7][15], 'ABORTED')
+    try:
+        with TimeLimit(2):
+            while True:
+                registrations = env.cmd('rg.DUMPREGISTRATIONS')
+                if registrations[0][7][15] == 'ABORTED':
+                    break
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for registration to abort')
 
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testStreamTrimming(env):
+    conn = getConnectionByEnv(env)
+
+    # {06S} is going to first slot
+    env.cmd('rg.pyexecute', "GB('StreamReader').register('s1{06S}')")
+    env.cmd('rg.pyexecute', "GB('StreamReader').register('s2{06S}', trimStream=False)")
+
+    env.cmd('XADD s2{06S} * foo bar')
+    env.cmd('XADD s1{06S} * foo bar')
+    
+
+    try:
+        with TimeLimit(2):
+            while True:
+                len = env.cmd('XLEN s1{06S}')
+                if int(len) == 0:
+                    break
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for s1{06S} len to reach zero')
+
+    env.assertEqual(env.cmd('XLEN s2{06S}'), 1)
+
+    try:
+        with TimeLimit(4):
+            isDone = False
+            while not isDone:
+                isDone = True
+                executions = env.cmd('RG.DUMPEXECUTIONS')
+                for r in executions:
+                    try:
+                        res = env.cmd('RG.DROPEXECUTION', r[1])
+                    except Exception:
+                        res = 'error'
+                    if res != 'OK':
+                        isDone = False
+                        time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not drop all executions')
+
+    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+def testCommandReaderBasic(env):
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x).distinct().sort().register(command='test1')").ok()
+    env.expect('RG.COMMAND', 'test1', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test1', 'this'])
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x).distinct().sort().register(command='test2', mode='sync')").ok()
+    env.expect('RG.COMMAND', 'test2', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test2', 'this'])
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x).distinct().sort().register(command='test3', mode='async_local')").ok()
+    env.expect('RG.COMMAND', 'test3', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test3', 'this'])
+
+def testCommandReaderCluster(env):
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(command='GetNumShard')").ok()
+    env.expect('RG.COMMAND', 'GetNumShard').equal([str(env.shardsCount)])

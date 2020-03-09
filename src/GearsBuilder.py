@@ -1,6 +1,8 @@
 import redisgears
 import redisgears as rg
 from redisgears import executeCommand as execute
+from redisgears import executeCommand as execute
+from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
@@ -124,7 +126,15 @@ class GearsBuilder():
                  keyTypes=None,
                  onRegistered=None,
                  onFailedPolicy="continue",
-                 onFailedRetryInterval=1):
+                 onFailedRetryInterval=1,
+                 trimStream=True,
+                 command=None,
+                 convertToStr=True,
+                 collect=True):
+        if(convertToStr):
+            self.gearsCtx.map(lambda x: str(x))
+        if(collect):
+            self.gearsCtx.collect()
         self.gearsCtx.register(regex=regex,
                                mode=mode,
                                batch=batch,
@@ -133,8 +143,9 @@ class GearsBuilder():
                                keyTypes=keyTypes,
                                OnRegistered=onRegistered,
                                onFailedPolicy=onFailedPolicy,
-                               onFailedRetryInterval=onFailedRetryInterval)
-
+                               onFailedRetryInterval=onFailedRetryInterval,
+                               trimStream=trimStream,
+                               command=command)
 
 def createDecorator(f):
     def deco(self, *args):
@@ -149,7 +160,6 @@ for k in PyFlatExecution.__dict__:
     if '_' in k:
         continue
     setattr(GearsBuilder, k, createDecorator(PyFlatExecution.__dict__[k]))
-
 
 GB = GearsBuilder
 

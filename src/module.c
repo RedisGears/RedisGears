@@ -24,11 +24,12 @@
 #include "redisai.h"
 #include "config.h"
 #include "globals.h"
-#include "redisearch_api.h"
-#include "keys_reader.h"
-#include "streams_reader.h"
+#include "readers/keys_reader.h"
+#include "readers/streams_reader.h"
+#include "readers/command_reader.h"
 #include "mappers.h"
 #include <stdbool.h>
+#include <unistd.h>
 #include "lock_handler.h"
 
 #ifndef REDISGEARS_GIT_SHA
@@ -210,8 +211,8 @@ static void RG_StreamReaderCtxFree(StreamReaderCtx* readerCtx){
     StreamReaderCtx_Free(readerCtx);
 }
 
-static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval){
-    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval);
+static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
+    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
 static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
@@ -220,6 +221,13 @@ static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
 
 static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
     return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+}
+
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* command){
+    return CommandReaderTriggerArgs_Create(command);
+}
+static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){
+    CommandReaderTriggerArgs_Free(args);
 }
 
 static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
@@ -319,7 +327,9 @@ static int RG_AbortExecution(ExecutionPlan* ep){
         // we are checking for DONE status cause this one is set without getting the lock.
         // Once status changed to DONE we know that no more python code will be executed and
         // we can finish sending cancel signal
+#ifdef WITHPYTHON
         RedisGearsPy_ForceStop(&epCtx);
+#endif
         usleep(1000);
     }
 
@@ -546,6 +556,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(StreamReaderTriggerArgsFree, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
+    REGISTER_API(CommandReaderTriggerArgsCreate, ctx);
+    REGISTER_API(CommandReaderTriggerArgsFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(IsDone, ctx);
@@ -585,7 +597,6 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(HashSetRecordSet, ctx);
     REGISTER_API(HashSetRecordGet, ctx);
     REGISTER_API(HashSetRecordGetAllKeys, ctx);
-    REGISTER_API(HashSetRecordFreeKeysArray, ctx);
 
     REGISTER_API(GetTotalDuration, ctx);
     REGISTER_API(GetReadDuration, ctx);
@@ -647,6 +658,8 @@ void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     LockHandler_Release(ctx);
 }
 
+static bool isInitiated = false;
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 	RedisModule_Log(ctx, "notice", "RedisGears version %d.%d.%d, git_sha=%s",
 			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
@@ -674,16 +687,14 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         globals.redisAILoaded = true;
     }
 
-    if(RediSearch_Initialize() != REDISMODULE_OK){
-		RedisModule_Log(ctx, "warning", "could not initialize RediSearch api, running without Search support.");
-	}else{
-		RedisModule_Log(ctx, "notice", "RediSearch api loaded successfully.");
-		globals.rediSearchLoaded= true;
-	}
-
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
     	RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
 		return REDISMODULE_ERR;
+    }
+
+    if(CommandReader_Initialize(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
+        return REDISMODULE_ERR;
     }
 
     Mgmt_Init();
@@ -693,6 +704,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(KeysReader);
     RGM_RegisterReader(KeysOnlyReader);
     RGM_RegisterReader(StreamReader);
+    RGM_RegisterReader(CommandReader);
     RGM_RegisterFilter(Example_Filter, NULL);
     RGM_RegisterMap(GetValueMapper, NULL);
     RGM_RegisterForEach(AddToStream, NULL);
@@ -798,12 +810,23 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
-//    FlatExecutionPlan* fep = RGM_CreateCtx(KeysReader);
-//    RGM_ForEach(fep, AddToStream, NULL);
-//    RGM_Register(fep, ExecutionModeSync, RG_STRDUP("*"));
 
+    isInitiated = true;
     return REDISMODULE_OK;
 }
 
-
+#ifdef VALGRIND
+static void __attribute__((destructor)) RedisGears_Clean(void) {
+    // for valgrind check perposes, here we will free memory
+    // that confuses the valgrind.
+    if(!isInitiated){
+        return;
+    }
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(ctx);
+    RedisGearsPy_Clean();
+    ExecutionPlan_Clean();
+    LockHandler_Release(ctx);
+}
+#endif
 

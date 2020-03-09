@@ -20,7 +20,7 @@ class testGenericErrors:
 
 
     def testScriptError(self):
-        self.env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().equal("'GearsBuilder' object has no attribute 'notexists'")
+        self.env.expect('rg.pyexecute', 'GearsBuilder().notexists()').error().contains("notexists")
 
 
     def testBuilderCreationWithUnexistingReader(self):
@@ -139,6 +139,20 @@ class testStepsErrors:
     def testRepartitionError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
         self.env.assertLessEqual(1, res[1])
+
+def testCommandReaderWithRun(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").run()').error().contains('reader do not support run')
+
+def testCommandReaderWithBadArgs(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register("bla")').error().contains('command argument is not string')
+
+def testCommandReaderRegisterSameCommand(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').ok()
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').error().contains('Command already registered')
+
+def testCommandReaderRegisterWithExcpetionCommand(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(command="command")').ok()
+    env.expect('rg.command', 'command').error().contains("'noexists' is not defined")
 
 
 class testStepsWrongArgs:

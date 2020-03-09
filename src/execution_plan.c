@@ -808,11 +808,23 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         }
         else{
             // we need to send the record to another shard
+            char* err = NULL;
             Gears_BufferWriterInit(&bw, buff);
             RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
             RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-            RG_SerializeRecord(&bw, record);
+            int serializationRes = RG_SerializeRecord(&bw, record, &err);
             RedisGears_FreeRecord(record);
+            if(serializationRes != REDISMODULE_OK){
+                // we need to clear and rewrite cause buff contains garbage
+                Gears_BufferClear(buff);
+                RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
+                RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
+                record = RG_ErrorRecordCreate(err, strlen(err));
+                err = NULL;
+                serializationRes = RG_SerializeRecord(&bw, record, &err);
+                assert(serializationRes == REDISMODULE_OK);
+                RedisGears_FreeRecord(record);
+            }
 
             Cluster_SendMsgM(shardIdToSendRecord, ExecutionPlan_OnRepartitionRecordReceived, buff->buff, buff->size);
 
@@ -881,11 +893,24 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			Gears_BufferFree(buff);
 			goto end; // record should stay here, just return it.
 		}else{
+		    char* err = NULL;
 			Gears_BufferWriterInit(&bw, buff);
 			RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
 			RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-			RG_SerializeRecord(&bw, record);
+			int serializationRes = RG_SerializeRecord(&bw, record, &err);
 			RedisGears_FreeRecord(record);
+			if(serializationRes != REDISMODULE_OK){
+			    // we need to clear and rewrite cause buff contains garbage
+			    Gears_BufferClear(buff);
+			    RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
+			    RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
+			    record = RG_ErrorRecordCreate(err, strlen(err));
+			    err = NULL;
+			    serializationRes = RG_SerializeRecord(&bw, record, &err);
+			    assert(serializationRes == REDISMODULE_OK);
+			    RedisGears_FreeRecord(record);
+			}
+
 
 			Cluster_SendMsgM(ep->id, ExecutionPlan_CollectOnRecordReceived, buff->buff, buff->size);
 
@@ -1335,9 +1360,11 @@ void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
     assert(res == DICT_OK);
 }
 
-static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg){
+static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg, char** err){
     assert(callbacks->registerTrigger);
-    callbacks->registerTrigger(fep, mode, arg);
+    if(callbacks->registerTrigger(fep, mode, arg, err) != REDISMODULE_OK){
+        return REDISMODULE_ERR;
+    }
 
     // the registeredFepDict holds a weak pointer to the fep struct. It does not increase
     // the refcount and will be remove when the fep will be unregistered
@@ -1349,6 +1376,7 @@ static void FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGear
         assert(onRegistered);
         onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
     }
+    return REDISMODULE_OK;
 }
 
 static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -1379,7 +1407,15 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     ExecutionMode mode = RedisGears_BRReadLong(&br);
 
 
-    FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args);
+    if(FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args, &err) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "Could not register flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+        if(err){
+            RG_FREE(err);
+        }
+        FlatExecutionPlan_Free(fep);
+        callbacks->freeTriggerArgs(args);
+        return;
+    }
 
     // replicate to oaf and slaves
     RedisModule_SelectDb(ctx, 0);
@@ -1990,7 +2026,12 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     callbacks->serializeTriggerArgs(args, &bw);
     RedisGears_BWWriteLong(&bw, mode);
 
-    FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), callbacks, mode, args);
+    if(FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), callbacks, mode, args, err) != REDISMODULE_OK){
+        Gears_BufferFree(buff);
+        FlatExecutionPlan_Free(fep);
+        callbacks->freeTriggerArgs(args);
+        return 0;
+    }
 
     if(Cluster_IsClusterMode()){
         Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
@@ -2728,5 +2769,32 @@ long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep){
 
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep){
 	return ep->steps[array_len(ep->steps) - 1]->executionDuration;
+}
+
+void ExecutionPlan_Clean() {
+    // remove all registrations
+    Gears_dictIterator* iter = Gears_dictGetIterator(Readerdict);
+    Gears_dictEntry *curr = NULL;
+    while((curr = Gears_dictNext(iter))){
+        MgmtDataHolder* holder = Gears_dictGetVal(curr);
+        RedisGears_ReaderCallbacks* callbacks = holder->callback;
+        if(!callbacks->clear){
+            continue;
+        }
+        callbacks->clear();
+    }
+    Gears_dictReleaseIterator(iter);
+
+    // free all executions
+    Gears_dictIterator* it = Gears_dictGetIterator(epData.epDict);
+    Gears_dictEntry *entry = NULL;
+    while((entry = Gears_dictNext(it))) {
+        ExecutionPlan* ep = Gears_dictGetVal(entry);
+        if(EPIsFlagOn(ep, EFDone)){
+            ExecutionPlan_Free(ep);
+        }
+        RedisModule_Log(NULL, "warning", "Found a unfinished exeution on shutdown, valgrind check will probably failed");
+    }
+    Gears_dictReleaseIterator(it);
 }
 
