@@ -190,6 +190,9 @@ static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
         RedisModule_Log(NULL, "warning", "Got a message to a shuttingdown worker, fatal!!!");
         assert(false);
     }
+    if(msg->type == WORKER_FREE){
+        wd->status = WorkerStatus_ShuttingDown;
+    }
     pthread_mutex_lock(&wd->lock);
     size_t lenBeforeMsg = Gears_listLength(wd->notifications);
 	Gears_listAddNodeTail(wd->notifications, msg);
@@ -2197,7 +2200,6 @@ void ExecutionPlan_FreeWorker(WorkerData* wd){
 
     WorkerMsg* msg = ExectuionPlan_WorkerMsgFreeWorker();
     ExectuionPlan_WorkerMsgSend(wd, msg);
-    wd->status = WorkerStatus_ShuttingDown;
     // We can not directly free the worker here, it might running on messages
     // right now and we will cause illegal memory access.
     // We will send a message to the worker to free itself and deny any
