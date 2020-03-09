@@ -63,7 +63,7 @@ Once at cli's the prompt, type in the following and then hit the `<ENTER>` on yo
 RG.PYEXECUTE "GearsBuilder().run()"
 ```
 
-!!! example "Example: executing the simplest function in redis-cli:
+!!! example "Example: executing the simplest function in redis-cli:"
     ```
     $ docker exec -it redisgears redis-cli
     127.0.0.1:6379> RG.PYEXECUTE "GearsBuilder().run()"
@@ -209,7 +209,7 @@ Running the function with the pattern should result as follows:
 The reply now consists only of those records that had matched the key name pattern, effectively excluding the key "foo" from our function's input.
 
 ## Flow Steps
-Data is now flowing into our function, so it be processed. RedisGears functions describe steps in a data processing flow that always begins with a reader. The reader can generate any number of input records as its output. These records are used as input for the next step in the flow, in which the records can be operated upon in some manner and then output. Multiple steps can be added to the flow, with each transforming its input records in some meaningful way to one or more output records.
+Data is now flowing into our function, so it can be processed. RedisGears functions describe steps in a data processing flow that always begins with a reader. The reader can generate any number of input records as its output. These records are used as input for the next step in the flow, in which the records can be operated upon in some manner and then output. Multiple steps can be added to the flow, with each transforming its input records in some meaningful way to one or more output records.
 
 To see how this works in practice, we'll refactor our function to use a [**`filter()`**](operations.md#filter) operation as a step instead of the reader's keys pattern:
 
@@ -257,15 +257,13 @@ Our simple RedisGears function is hardly "complex" yet, but typing it into the p
 Instead of using the interactive mode, you can store your functions' code in a regular text file and have the `redis-cli` client send its contents for execution. For example, if you'll save your function in a local file called "mygear.py" and you're using the `redis-cli` from the Docker container, then you can execute it with:
 
 ```
-docker exec -it redisgears redis-cli RG.PYEXECUTE "$(cat mygear.py)"
+cat mygear.py | docker exec -i redisgears redis-cli -x RG.PYEXECUTE
 ```
-
-This would work as long as any double quote characters ('"') in the file are escaped.
 
 !!! tip "Redis Client"
     You're encouraged to use any [Redis client](https://redis.io/clients) that fits your needs for communicating with Redis and RedisGears as long as the client provides the means for executing raw Redis commands.
 
-For a similar purpose you can also use the [**gears.py**](https://github.com/RedisGears/RedisGears/blob/master/recipes/gears.py) utility, which escapes double quote characters and sends the contents of a file to RedisGears.
+For a similar purpose you can also use the [**gears.py**](https://github.com/RedisGears/RedisGears/blob/master/recipes/gears.py) utility.
 
 ## Processing Data
 We saw how input records are read and then filtered using a step, but that's literally just the beginning. By adding more steps to the function, we can manipulate the data in any way needed using different operations and the language's capabilities.
@@ -285,7 +283,7 @@ When you run the function with the mapping step, the results should be:
 
 !!! example "`map()` operation"
     ```
-    $ docker exec -it redisgears redis-cli RG.PYEXECUTE "$(cat mygear.py)"
+    $ cat mygear.py | docker exec -i redisgears redis-cli --no-raw -x RG.PYEXECUTE
     1) 1) "70"
        2) "14"
     2) (empty list or set)
@@ -734,7 +732,7 @@ As mentioned earlier, when absolutely required, functions can repartition data i
 
 Let's make up a contrived example to demonstrate the inner workings. We'll add a requirement for storing  the families' head counts as simple strings in their respective String keys. Put differently, we expect that after running the function we'll be able to do this:
 
-!!! example "Example: expect results of retrieving family head counts
+!!! example "Example: expect results of retrieving family head counts"
     ````
     127.0.0.1:30001> GET Smith
     -> Redirected to slot [14205] located at 127.0.0.1:30003
