@@ -140,7 +140,7 @@ jobs:
       - run:
           name: Test with coverage
           command: |
-            make test SHOW=1 COV=1 SHARDS=0
+            make test SHOW=1 COV=1
             make cov-upload
 
   macos:
