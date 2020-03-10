@@ -545,17 +545,17 @@ When RedisGears is running in a cluster, it will execute functions on all of the
 To see this in action, we can run the simplest function from one of the shards and have all keys in the database returned:
 
 !!! example "Example: distributed processing"
-```
-$ redis-cli -c -p 30001
-127.0.0.1:30001> RG.PYEXECUTE "GB().run()"
-1) 1) "{'key': 'person:1', 'value': {'age': '70', 'name': 'Rick Sanchez'}}"
-   2) "{'key': 'person:5', 'value': {'age': '87', 'name': 'Shrimply Pibbles'}}"
-   3) "{'key': 'person:2', 'value': {'age': '14', 'name': 'Morty Smith'}}"
-   4) "{'key': 'person:4', 'value': {'age': '35', 'name': 'Beth Smith'}}"
-   5) "{'key': 'person:3', 'value': {'age': '17', 'name': 'Summer Smith'}}"
-   6) "{'key': 'foo', 'value': 'bar'}"
-2) (empty list or set)
-```
+    ```
+    $ redis-cli -c -p 30001
+    127.0.0.1:30001> RG.PYEXECUTE "GB().run()"
+    1) 1) "{'key': 'person:1', 'value': {'age': '70', 'name': 'Rick Sanchez'}}"
+    2) "{'key': 'person:5', 'value': {'age': '87', 'name': 'Shrimply Pibbles'}}"
+    3) "{'key': 'person:2', 'value': {'age': '14', 'name': 'Morty Smith'}}"
+    4) "{'key': 'person:4', 'value': {'age': '35', 'name': 'Beth Smith'}}"
+    5) "{'key': 'person:3', 'value': {'age': '17', 'name': 'Summer Smith'}}"
+    6) "{'key': 'foo', 'value': 'bar'}"
+    2) (empty list or set)
+    ```
 
 Although data is distributed across the cluster's shards, the function returns results that are identical (order excluded) to what a single-instance would have returned. This is because the originating shard had collected the intermediate local results from all other shards before returning a merged response.
 

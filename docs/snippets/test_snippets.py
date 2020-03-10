@@ -4,31 +4,40 @@ import redis
 import time
 
 @pytest.fixture(scope='module')
-def standalone():
+def standalone(image):
+    print(f'Lauching Docker {image} container ', end='', flush=True)
     dc = docker.from_env()
     container = dc.containers.run(
-        'redislabs/redisgears',
+        image,
         detach=True,
         remove=True,
         ports={
             '6379': 6379,
         }
     )
-    conn = redis.Redis()
-    for i in range(5):
-        time.sleep(0.1 * i)
+    for out in container.logs(stream=True):
         try:
-            if conn.ping():
-                yield conn
-                break
-        except redis.exceptions.ConnectionError:
+            if out.lower().index(b'error'):
+                raise Exception(out)
+        except ValueError:
             pass
+        if out.endswith(b'Ready to accept connections\n'):
+            break
+        else:
+            print('.', flush=True, end='')
+    print(' ready!', flush=True)
+
+    conn = redis.Redis()
+    conn.ping()
+    yield conn
+
+    print(f'\nShutting container', end='', flush=True)
+    conn.close()
     container.stop()
 
 @pytest.mark.parametrize(
     'snippet,expected',
     [
-
         ('docs/snippets/examples/del-by-prefix.py', [[], []]),
         ('docs/snippets/examples/monte-carlo-pi.py', [[b'foo'], []]),
         ('docs/snippets/examples/stream-logger.py', b'OK'),
