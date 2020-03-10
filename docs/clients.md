@@ -1,5 +1,5 @@
 # RedisGears Clients
-RedisGears is a [Redis](overview.md#redis) [module](overview.md#module) so a Redis [client](overview.md#client) is needed for operating it. Any client that supports sending raw Redis commands can be used.
+RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module) so a Redis [client](glossary.md#client) is needed for operating it. Any client that supports sending raw Redis commands can be used.
 
 !!! info "Further reference"
     For a wide choice of clients refer to:

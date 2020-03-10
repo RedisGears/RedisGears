@@ -1,6 +1,6 @@
 # RedisGears Commands
 
-RedisGears is operated by commands sent to the server with a [Redis client](overview.md#client).
+RedisGears is operated by commands sent to the server with a [Redis client](glossary.md#client).
 
 The following sections describe the supported commands.
 

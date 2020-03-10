@@ -1,37 +1,4 @@
-# RedisGears Overview
-
-## What is RedisGears?
-RedisGears is a serverless engine for transaction, [batch](#batch-processing) and [event-driven](#event-processing) data processing in Redis. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](overview.md#api).
-
-
-In broad strokes, the following diagram depicts RedisGears' components:
-
-```
-    +---------------------------------------------------------------------+
-    | Redis Server               +--------------------------------------+ |
-    |                            | RedisGears Module                    | |
-    | +----------------+         |                                      | |
-    | | Data           | Input   | +------------+ +-------------------+ | |
-    | |                +-------->+ | Function   | | APIs              | | |
-    | | Key1 : Value1  |         | | +--------+ | | C, Python, ...    | | |
-    | | Key2 : Value2  | Output  | | | Reader | | +-------------------+ | |
-    | | Key3 : Value3  <---------+ | +---+----+ | +-------------------+ | |
-    | |      ...       |         | |     v      | | Redis commands    | | |
-    | +----------------+         | | +---+----+ | | Gears admin & ops | | |
-    |                            | | | Step 1 | | +-------------------+ | |
-    |                            | | +---+----+ | +-------------------+ | |
-    | +----------------+         | |     v      | | Coordinator       | | |
-    | | Events         |         | | +---+----+ | | Cluster MapReduce | | |
-    | |                | Trigger | | | Step 2 | | +-------------------+ | |
-    | | Data update    +-------->+ | +---+----+ | +-------------------+ | |
-    | | Stream message |         | |     v      | | Engine            | | |
-    | | Time interval  |         | |    ...     | | Runtime execution | | |
-    | |      ...       |         | +------------+ +-------------------+ | |
-    | +----------------+         +--------------------------------------+ |
-    +---------------------------------------------------------------------+
-```
-
-The following sections describe the makings of the system.
+# RedisGears Glossary
 
 ## Redis
 
@@ -177,6 +144,12 @@ A RedisGears **registration** represents a function that was sent to the engine 
 
 !!! info "Further reference"
     Registrations are described at the [Functions page](functions.md#registration).
+
+## Initiator
+In the context of a clustered environment the **initiator** is the shard's engine in which a function is originally executed.
+
+## Worker
+In the context of a clustered environment a **worker** is any shard that isn't the initiator.
 
 ## Batch Processing
 A RedisGears function is executed as a batch when it is [run](functions.md#run) immediately on existing data.

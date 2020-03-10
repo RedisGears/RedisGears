@@ -1,5 +1,5 @@
 # RedisGears Examples
-The following sections consist of various [recipes](overview.md#recipe) and basic examples showing the uses for RedisGears.
+The following sections consist of various [recipes](glossary.md#recipe) and basic examples showing the uses for RedisGears.
 
 To contribute your example or recipe (and get the credit for it), click the "Edit this page" button at the top to submit a Pull Request.
 

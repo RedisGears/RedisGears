@@ -1,9 +1,9 @@
 # RedisGears Readers
-The **reader** is the mandatory first step of any [RedisGears function](functions.md), and every function has exactly one reader. A reader reads data and generates input [records](overview.md#record) from it. The input records are consumed by the function.
+The **reader** is the mandatory first step of any [RedisGears function](functions.md), and every function has exactly one reader. A reader reads data and generates input [records](glossary.md#record) from it. The input records are consumed by the function.
 
-A function's reader is declared when initializing its `!#python class GearsBuilder` [context builder](functions.md#context-builder).
+A function's reader is declared when initializing its `#!python class GearsBuilder` [context builder](functions.md#context-builder).
 
-RedisGears supports several types of readers that operate on different types of input data. Furthermore, each reader may be used to process [batch](overview.md#batchprocessing) [streaming]((overview#streamprocessing) data.
+RedisGears supports several types of readers that operate on different types of input data. Furthermore, each reader may be used to process [batch](glossary.md#batch-processing) [streaming](glossary.md#event-processing) data.
 
 | Reader | Output | Batch | Event |
 | --- | --- | --- | --- |
@@ -123,7 +123,7 @@ class GearsBuilder('KeysOnlyReader', defaultArg='*')
 ```
 
 ## StreamReader
-The **StreamReader** reads the messages from a [Redis Stream](overview.md#stream) and generates records from these.
+The **StreamReader** reads the messages from a [Redis Stream](glossary.md#stream) and generates records from these.
 
 **Input**
 

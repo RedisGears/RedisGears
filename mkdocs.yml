@@ -27,7 +27,6 @@ nav:
   - 'Home': 'index.md'
   - 'Quickstart': 'quickstart.md'
   - 'Introduction': 'intro.md'
-  - 'Overview': 'overview.md'
   - 'Reference':
     - 'Runtime': 'runtime.md'
     - 'Functions': 'functions.md'
@@ -39,6 +38,7 @@ nav:
   - 'Clients': 'clients.md'
   - 'Design':
     - 'Sub-Interpreters': 'subinterpreters.md'
+  - 'Glossary': 'glossary.md'
   - 'Contributing': 'contrib.md'
 
 markdown_extensions:

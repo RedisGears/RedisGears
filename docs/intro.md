@@ -1,7 +1,7 @@
 # Introduction to RedisGears
 
 ## What is RedisGears?
-RedisGears is a serverless engine for transaction, [batch](overview.md#batch-processing) and [event-driven](overview.md#event-processing) data processing in Redis. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](overview.md#api).
+RedisGears is a serverless engine for transaction, [batch](glossary.md#batch-processing) and [event-driven](glossary.md#event-processing) data processing in Redis. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](glossary.md#api).
 
 That's a lot of high-level buzzes, so to explain what RedisGears does this introduction will take you from parking to 6th-gear.
 
@@ -796,7 +796,7 @@ Then, after shuffling and summing, each worker executes the `foreach()` operatio
 ## Where Next?
 At this point you should be pretty much acquainted with the basic principles under the hood of the RedisGears engine. To extend your familiarity and gain more experience with RedisGears it is recommend that you also review the following at your leisure:
 
-  * The [Overview](overview.md) page summarizes the concepts used by RedisGears
+  * The [Overview](glossary.md) page summarizes the concepts used by RedisGears
   * The reference pages about RedisGears' [Runtime](runtime.md), [Functions](functions.md), [Readers](readers.md) and [Operations](operations.md)
   * The RedisGears [Commands](commands.md) reference
   * The [Quickstart](quickstart.md) page provides information about getting, building, installing and running RedisGears
