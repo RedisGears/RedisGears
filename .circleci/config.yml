@@ -32,8 +32,7 @@ commands:
       - save_cache:
           paths:
             - deps
-            - /usr/local
-          key: build-dependencies-{{ checksum ~/circle-sha1 }}
+          key: build-dependencies-{{ checksum "~/circle-sha1" }}
       - run:
           name: System setup
           command: BREW_NO_UPDATE=1 python system-setup.py
