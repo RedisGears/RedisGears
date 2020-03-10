@@ -59,7 +59,6 @@ script_example.py
 .settings/
 
 /bin/
-/deps/libevent/
 /pytest/logs/
 /[0-9]*/
 *.pyc
