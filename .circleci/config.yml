@@ -26,12 +26,14 @@ commands:
       - checkout
       - run:
           name: Submodule checkout
-          command: git submodule update --init --recursive
+          command: |
+            git submodule update --init --recursive
+            echo "$CIRCLE_SHA1" > ~/circle-sha1
       - save_cache:
           paths:
             - deps
             - /usr/local
-          key: build-dependencies-{{ $CIRCLE_SHA1 }}
+          key: build-dependencies-{{ checksum ~/circle-sha1 }}
       - run:
           name: System setup
           command: BREW_NO_UPDATE=1 python system-setup.py
@@ -116,7 +118,7 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-          - build-dependencies-{{ checksum "get_deps.sh" }}
+          - build-dependencies-{{ checksum ~/circle-sha1 }}
           # fallback to using the latest cache if no exact match is found
           - build-dependencies-
       - run:
