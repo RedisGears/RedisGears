@@ -21,6 +21,7 @@ make clean      # remove binary files
 
 make deps       # build dependant modules
 make libevent   # build libevent
+make hiredis    # build hiredis
 make cpython    # build cpython
 make pyenv      # install cpython and virtual environment
 make all        # build all libraries and packages
@@ -45,7 +46,7 @@ GEARS_VERSION:=$(shell $(ROOT)/getver)
 
 #----------------------------------------------------------------------------------------------
 
-DEPENDENCIES=cpython libevent
+DEPENDENCIES=cpython libevent hiredis
 
 ifneq ($(filter all deps $(DEPENDENCIES) pyenv pack ramp_pack,$(MAKECMDGOALS)),)
 DEPS=1
@@ -70,6 +71,12 @@ endif # WITHPYTHON
 LIBEVENT_BINDIR=bin/$(FULL_VARIANT.release)/libevent
 
 include build/libevent/Makefile.defs
+
+#----------------------------------------------------------------------------------------------
+
+HIREDIS_BINDIR=bin/$(FULL_VARIANT.release)/hiredis
+
+include build/hiredis/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
@@ -142,10 +149,14 @@ endif
 
 endif # WITHPYTHON
 
-EMBEDDED_LIBS += $(LIBEVENT)
+EMBEDDED_LIBS += $(LIBEVENT) $(HIREDIS)
 
 ifeq ($(wildcard $(LIBEVENT)),)
 MISSING_DEPS += $(LIBEVENT)
+endif
+
+ifeq ($(wildcard $(HIREDIS)),)
+MISSING_DEPS += $(HIREDIS)
 endif
 
 #----------------------------------------------------------------------------------------------
@@ -230,9 +241,9 @@ endif
 
 static: $(TARGET:.so=.a)
 
-$(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON)
+$(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 	@echo Creating $@...
-	$(SHOW)$(AR) rcs $@ $(filter-out module_init,$(OBJECTS)) $(LIBEVENT)
+	$(SHOW)$(AR) rcs $@ $(filter-out module_init,$(OBJECTS)) $(LIBEVENT) $(HIREDIS)
 
 #----------------------------------------------------------------------------------------------
 
@@ -253,7 +264,7 @@ ifeq ($(DEPS),1)
 
 #----------------------------------------------------------------------------------------------
 
-deps: $(LIBPYTHON) $(LIBEVENT)
+deps: $(LIBPYTHON) $(LIBEVENT) $(HIREDIS)
 
 cpython: $(LIBPYTHON)
 
@@ -275,6 +286,14 @@ $(LIBEVENT):
 
 #----------------------------------------------------------------------------------------------
 
+hiredis: $(HIREDIS)
+
+$(HIREDIS):
+	@echo Building hiredis...
+	$(SHOW)$(MAKE) --no-print-directory -C build/hiredis DEBUG=
+
+#----------------------------------------------------------------------------------------------
+
 else
 
 deps: ;
@@ -287,6 +306,7 @@ ifeq ($(DIAG),1)
 $(info *** MK_CLEAN_DIR=$(MK_CLEAN_DIR))
 $(info *** LIBPYTHON=$(LIBPYTHON))
 $(info *** LIBEVENT=$(LIBEVENT))
+$(info *** HIREDIS=$(HIREDIS))
 $(info *** MISSING_DEPS=$(MISSING_DEPS))
 endif
 
