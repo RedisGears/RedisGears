@@ -117,7 +117,7 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-          - build-dependencies-{{ checksum ~/circle-sha1 }}
+          - build-dependencies-{{ checksum "~/circle-sha1" }}
           # fallback to using the latest cache if no exact match is found
           - build-dependencies-
       - run:
