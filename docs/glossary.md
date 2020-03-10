@@ -10,7 +10,7 @@
 !!! tip "Redis is also..."
     An acronym for **RE**mote **DI**ctionary **S**erver that's pronounced "red" like the color, then "iss".
 
-!!! info "Further reference"
+??? info "Further reference"
     More about Redis:
 
       * [Home page](https://redis.io)
@@ -21,7 +21,7 @@
 ## Module
 A Redis **module** is a shared library that can be loaded by the Redis server during runtime. Useful for extending Redis with new data types and commands.
 
-!!! info "Further reference"
+??? info "Further reference"
     You can learn more about Redis modules at:
 
       * [Redis Modules API](https://redis.io/documentation#redis-modules-api)
@@ -30,7 +30,7 @@ A Redis **module** is a shared library that can be loaded by the Redis server du
 ## Client
 A Redis **client** is a piece of software that can write and read the [Redis Protocol](https://redis.io/topics/protocol).
 
-!!! info "Further reference"
+??? info "Further reference"
     For a wide choice of clients refer to:
 
       * [Redis clients by programming language](https://redis.io/clients)
@@ -39,7 +39,7 @@ A Redis **client** is a piece of software that can write and read the [Redis Pro
 ## Command
 An instruction sent to the Redis server by a client. Commands are either provided by the core Redis engine or modules.
 
-!!! info "Further reference"
+??? info "Further reference"
     Refer to these pages for more information about:
 
       * [Redis commands](https://redis.io/commands)
@@ -54,7 +54,7 @@ A logical operation that processes input data in some form and may consist of se
 ## Data Type
 Redis stores data in structures that implement different types and the API to manipulate their contents. Types can be added by modules, and the core Redis server provides support for Strings, Hashes, Lists, Sets, Sorted Sets and Streams.
 
-!!! info "Further reference"
+??? info "Further reference"
     Refer to these pages for more information about Redis' core types:
 
       * [Redis data types and abstractions](https://redis.io/topics/data-types-intro)
@@ -72,7 +72,7 @@ A RedisGears component that handles cluster communication and data shuffling.
 ## Cluster
 A **cluster** is a deployment option for Redis, in which the database is partitioned across multiple shards in a _shared-nothing_ fashion. Partitioning is done by hashing key names to slots.
 
-!!! info "Further reference"
+??? info "Further reference"
     More about the Redis cluster:
 
       * [Redis cluster tutorial](https://redis.io/topics/cluster-tutorial)
@@ -97,13 +97,13 @@ A function always:
   4. Ends with an action
   5. Returns zero or more results
 
-!!! info "Further reference"
+??? info "Further reference"
     Refer to the [Functions page](functions.md) for a complete reference about functions.
 
 ## Reader
 A RedisGears **reader** is the mandatory first step of any function, and every function has exactly one reader. A reader reads data and generates input records from it. The input records are consumed by the function.
 
-!!! info "Further reference"
+??? info "Further reference"
     Refer to the [Readers page](readers.md) for a complete reference about the different readers' types and their operation.
 
 ## Record
@@ -112,7 +112,7 @@ A RedisGears **record** is the basic abstraction that represents data in the fun
 ## Operation
 An **operation** is the building block of RedisGears functions. Different operation types can be used to achieve a variety of results to meet various data processing needs.
 
-!!! info "Further reference"
+??? info "Further reference"
     Refer to the [Operations page](operations.md) for a complete reference about the different operation types and their purpose.
 
 ## Step
@@ -124,25 +124,25 @@ An **action** is special type of operation that is always the function's final s
   1. **Run**: runs the function immediately in batch
   2. **Register**: registers the function's execution to be triggered by an event
 
-!!! info "Further reference"
+??? info "Further reference"
     Actions are described at the [Functions page](functions.md#action).
 
 ## Result
 The **result** of a function is the output records its execution.
 
-!!! info "Further reference"
+??? info "Further reference"
     Results are described at the [Functions page](functions.md#result).
 
 ## Execution
 Every time that a RedisGears function is executed it generates data that is referred to as its **execution**. Every execution is uniquely identified by an ID, and consists of the results, errors and more information from the function's execution.
 
-!!! info "Further reference"
+??? info "Further reference"
     Executions are described at the [Functions page](functions.md#execution).
 
 ## Registration
 A RedisGears **registration** represents a function that was sent to the engine and will be triggered by events.
 
-!!! info "Further reference"
+??? info "Further reference"
     Registrations are described at the [Functions page](functions.md#registration).
 
 ## Initiator

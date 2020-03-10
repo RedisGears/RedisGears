@@ -47,7 +47,7 @@ The function's mode of execution is determined by its action. There are two type
 
 When executed, whether as batch or event, the function's context is managed by the engine. Besides the function's logic, the context also includes its breakdown to internal execution steps, status, statistics, results and any errors encountered among other things.
 
-!!! abstract "Related commands"
+!!! note "Related commands"
     The following RedisGears commands are related to executing functions:
 
     * [`RG.PYEXECUTE`](commands.md#rgpyexecute)
@@ -124,7 +124,7 @@ The representation of an event-driven function is called a registration.
 
 Registrations are persisted in Redis' snapshots, a.k.a RDB files. This allows recovering both data and event handlers in the database in the event of failure.
 
-!!! abstract "Related commands"
+!!! note "Related commands"
     The following RedisGears commands are related to registering functions:
 
     * [`RG.PYEXECUTE`](commands.md#rgpyexecute)
@@ -132,7 +132,7 @@ Registrations are persisted in Redis' snapshots, a.k.a RDB files. This allows re
     * [`RG.UNREGISTER`](commands.md#rgunregister)
 
 ## Registration ID
-Every registration has a unique internal identifier that's referred to as its [**Registration ID**]. It is generated in the same manner as the [Execution ID](#execution-id) and despite appearing the same the two should not be confused.
+Every registration has a unique internal identifier that's referred to as its **Registration ID**. It is generated in the same manner as the [Execution ID](#execution-id) and despite appearing the same the two should not be confused.
 
 ## Context Builder
 RedisGears functions in Python always begin with a context builder - the [`#!python class GearsBuilder`](runtime.md#gearsbuilder).
@@ -170,7 +170,7 @@ The **Run** action runs a function as a batch. The function is executed once and
 
 Trying to run more than one function in the same execution will fail with an error.
 
-!!! example "Multiple executions error"
+!!! example "Example: m ultiple executions error"
     ```
     127.0.0.1:30001> RG.PYEXECUTE "GB().run()\nGB().run()"
     (error) [... 'spam.error: Can not run more then 1 executions in a single script']
@@ -242,7 +242,7 @@ The execution of a function yields zero or more **result** records. The result i
 
 Results are stored within the function's execution context.
 
-!!! abstract "Related commands"
+!!! note "Related commands"
     The following RedisGears commands are related to getting results:
 
     * [`RG.GETRESULTS`](commands.md#rggetresults)

@@ -44,6 +44,7 @@ def standalone(image):
         ('docs/snippets/examples/word-count.py', [[], []]),
         ('docs/snippets/functions/register.py', b'OK'),
         ('docs/snippets/functions/run.py', [[], []]),
+        ('docs/snippets/intro/intro-000.py', b'OK'),
         ('docs/snippets/intro/intro-001.py', [[], []]),
         ('docs/snippets/intro/intro-002.py', [[], []]),
         ('docs/snippets/intro/intro-003.py', [[], []]),
