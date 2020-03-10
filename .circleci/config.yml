@@ -130,7 +130,7 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            ./deps/readies/bin/getpy
+            ./deps/readies/bin/getpy2
             ./system-setup.py
       - run:
           name: Build
@@ -140,7 +140,7 @@ jobs:
       - run:
           name: Test with coverage
           command: |
-            make test SHOW=1 COV=1
+            make test SHOW=1 COV=1 SHARDS=0
             make cov-upload
 
   macos:

@@ -37,6 +37,7 @@ make all        # build all libraries and packages
 make test          # run tests
   TEST=test        # run specific `test` with Python debugger
   TEST_ARGS=args   # additional RLTest arguments
+  SHARDS=0         # do not test with multiple shards
   GDB=1            # (with TEST=...) run with GDB
   VGD=1            # run tests with Valgrind
   COV=1            # perform coverage analysis
@@ -419,7 +420,11 @@ test: __sep
 ifneq ($(TEST),)
 	@set -e; cd pytest; BB=1 $(TEST_FLAGS) RLTest --test $(TEST) $(TEST_ARGS) $(RLTEST_GDB) -s --module $(abspath $(ROOT)/redisgears.so)
 else
+<<<<<<< HEAD
 	$(SHOW)set -e; cd pytest; $(TEST_FLAGS) ./run_tests.sh
+=======
+	$(SHOW)set -e; cd pytest; SHARDS=$(SHARDS) ./run_tests.sh
+>>>>>>> fixes 6
 endif
 	$(COVERAGE_COLLECT_REPORT)
 
