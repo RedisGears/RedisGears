@@ -70,6 +70,10 @@ bool ExecutionOnStartsMgmt_Add(const char* name, RedisGears_ExecutionOnStartCall
 RedisGears_ExecutionOnStartCallback ExecutionOnStartsMgmt_Get(const char* name);
 ArgType* ExecutionOnStartsMgmt_GetArgType(const char* name);
 
+bool ExecutionOnUnpausedsMgmt_Add(const char* name, RedisGears_ExecutionOnUnpausedCallback callback, ArgType* type);
+RedisGears_ExecutionOnUnpausedCallback ExecutionOnUnpausedsMgmt_Get(const char* name);
+ArgType* ExecutionOnUnpausedsMgmt_GetArgType(const char* name);
+
 bool FlatExecutionOnRegisteredsMgmt_Add(const char* name, RedisGears_FlatExecutionOnRegisteredCallback callback, ArgType* type);
 RedisGears_FlatExecutionOnRegisteredCallback FlatExecutionOnRegisteredsMgmt_Get(const char* name);
 ArgType* FlatExecutionOnRegisteredsMgmt_GetArgType(const char* name);

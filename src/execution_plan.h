@@ -173,11 +173,17 @@ typedef enum ExecutionPlanStatus{
 #undef X
 }ExecutionPlanStatus;
 
+typedef enum WorkerStatus{
+    WorkerStatus_Running, WorkerStatus_ShuttingDown
+}WorkerStatus;
+
 typedef struct WorkerData{
+    size_t refCount;
     Gears_list* notifications;
     pthread_mutex_t lock;
-    pthread_cond_t cond;
-    pthread_t thread;
+    RedisModuleCtx* ctx;
+    WorkerStatus status;
+    ExecutionThreadPool* pool;
 }WorkerData;
 
 typedef struct OnDoneData{
@@ -212,11 +218,13 @@ typedef struct ExecutionPlan{
     ExecutionFlags flags;
     OnDoneData* onDoneData; // Array of callbacks to run on done
     RedisGears_ExecutionOnStartCallback onStartCallback;
+    RedisGears_ExecutionOnUnpausedCallback onUnpausedCallback;
     void* executionPD;
     long long executionDuration;
     WorkerData* assignWorker;
     ExecutionMode mode;
     Gears_listNode* nodeOnExecutionsList;
+    volatile bool isPaused;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -248,6 +256,7 @@ typedef struct FlatExecutionPlan{
     Gears_Buffer* serializedFep;
     FlatBasicStep onExecutionStartStep;
     FlatBasicStep onRegisteredStep;
+    FlatBasicStep onUnpausedStep;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -273,6 +282,7 @@ void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
 void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
+void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onSUnpausedCallback, void* onUnpausedArg);
 void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -289,12 +299,12 @@ void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, char** err);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
-void ExecutionPlan_Initialize(size_t numberOfworkers);
+void ExecutionPlan_Initialize();
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
 void ExecutionPlan_Free(ExecutionPlan* ep);
 
@@ -307,6 +317,13 @@ int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, in
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
+
+ExecutionThreadPool* ExectuionPlan_GetThreadPool(const char* name);
+ExecutionThreadPool* ExecutionPlan_CreateThreadPool(const char* name, size_t numOfThreads);
+
+WorkerData* ExecutionPlan_CreateWorker(ExecutionThreadPool* pool);
+WorkerData* ExecutionPlan_WorkerGetShallowCopy(WorkerData* wd);
+void ExecutionPlan_FreeWorker(WorkerData* wd);
 
 void ExecutionPlan_Clean();
 

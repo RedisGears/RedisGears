@@ -3,10 +3,14 @@
 #include "cluster.h"
 #include "record.h"
 #include "execution_plan.h"
+#include "lock_handler.h"
 #ifdef WITHPYTHON
 #include <Python.h>
 #include <object.h>
 #endif
+
+static ExecutionThreadPool* mgmtPool;
+static WorkerData* mgmtWorker;
 
 static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     size_t listLen;
@@ -159,37 +163,46 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	return REDISMODULE_OK;
 }
 
-int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc != 2){
-        return RedisModule_WrongArity(ctx);
+Record* Command_AbortExecutionMap(ExecutionCtx* rctx, Record *data, void* arg){
+    const char* executionId = arg;
+    RedisGears_FreeRecord(data);
+    RedisModuleCtx* ctx = RedisGears_GetRedisModuleCtx(rctx);
+
+    while(true){
+        LockHandler_Acquire(ctx);
+        ExecutionPlan* gearsCtx = RedisGears_GetExecution(executionId);
+
+        if(!gearsCtx){
+            RedisGears_SetError(rctx, "execution does not exist");
+            LockHandler_Release(ctx);
+            return NULL;
+        }
+
+        if(RedisGears_IsDone(gearsCtx)){
+            LockHandler_Release(ctx);
+            return RedisGears_StringRecordCreate(RG_STRDUP("OK"), strlen("OK"));
+        }
+
+        if(gearsCtx->isPaused){
+            // abort the execution and execute its Done Actions
+            gearsCtx->status = ABORTED;
+            EPStatus_DoneAction(gearsCtx);
+            LockHandler_Release(ctx);
+            return RedisGears_StringRecordCreate(RG_STRDUP("OK"), strlen("OK"));
+        }
+#ifdef WITHPYTHON
+        // execution is running
+        unsigned long threadID = (unsigned long)gearsCtx->executionPD;
+        LockHandler_Release(ctx);
+
+        RedisGearsPy_ForceStop(threadID);
+        usleep(1000);
+#else
+        LockHandler_Release(ctx);
+#endif
     }
-
-    const char* id = RedisModule_StringPtrLen(argv[1], NULL);
-    ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
-
-    if(!gearsCtx){
-        RedisModule_ReplyWithError(ctx, "Execution plan does not exits");
-        return REDISMODULE_OK;
-    }
-
-    if(RedisGears_IsDone(gearsCtx)){
-        RedisModule_ReplyWithError(ctx, "Execution already finished.");
-        return REDISMODULE_OK;
-    }
-
-    if(EPIsFlagOff(gearsCtx, EFIsLocal)){
-        RedisModule_ReplyWithError(ctx, "Can not abort non-local execution.");
-        return REDISMODULE_OK;
-    }
-
-    if(RedisGears_AbortExecution(gearsCtx) != REDISMODULE_OK){
-        RedisModule_ReplyWithError(ctx, "Failed aborting execution.");
-        return REDISMODULE_OK;
-    }
-
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-
-    return REDISMODULE_OK;
+    assert(false);
+    return NULL;
 }
 
 int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -215,6 +228,81 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	RedisModule_ReplyWithSimpleString(ctx, "OK");
 
 	return REDISMODULE_OK;
+}
+
+static void Command_AbortDone(ExecutionPlan* gearsCtx, void *privateData){
+    RedisModuleBlockedClient* bc = privateData;
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bc);
+    if(RedisGears_GetErrorsLen(gearsCtx) > 0){
+        Record* error = RedisGears_GetError(gearsCtx, 0);
+        RedisModule_ReplyWithError(rctx, RedisGears_StringRecordGet(error, NULL));
+    }else{
+        RedisModule_ReplyWithSimpleString(rctx, "OK");
+    }
+    RedisModule_UnblockClient(bc, NULL);
+    RedisModule_FreeThreadSafeContext(rctx);
+
+    RedisGears_DropExecution(gearsCtx);
+}
+
+int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
+
+    const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+
+    char* err = NULL;
+    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader);
+    RGM_Map(fep, Command_AbortExecutionMap, RG_STRDUP(id));
+    RGM_Collect(fep);
+    ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, NULL, Command_AbortDone, bc, mgmtWorker, &err);
+    if(!ep){
+        RedisModule_AbortBlock(bc);
+        RedisModule_ReplyWithError(ctx, err);
+        RG_FREE(err);
+    }
+
+    RedisGears_FreeFlatExecution(fep);
+
+    return REDISMODULE_OK;
+}
+
+static void Command_StringFree(void* arg){
+    RG_FREE(arg);
+}
+
+static void* Command_StringDup(void* arg){
+    return RG_STRDUP(arg);
+}
+
+static int Command_StringSerialize(void* arg, Gears_BufferWriter* bw, char** err){
+    RedisGears_BWWriteString(bw, arg);
+    return REDISMODULE_OK;
+}
+
+static void* Command_StringDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, char** err){
+    const char* id = RedisGears_BRReadString(br);
+    return RG_STRDUP(id);
+}
+
+static char* Command_StringToString(void* arg){
+    return RG_STRDUP(arg);
+}
+
+int Command_Init(){
+    mgmtPool = ExecutionPlan_CreateThreadPool("MgmtPool", 1);
+    mgmtWorker = ExecutionPlan_CreateWorker(mgmtPool);
+    ArgType* stringType = RedisGears_CreateType("StringType",
+                                                Command_StringFree,
+                                                Command_StringDup,
+                                                Command_StringSerialize,
+                                                Command_StringDeserialize,
+                                                Command_StringToString);
+    RGM_RegisterMap(Command_AbortExecutionMap, stringType)
+    return REDISMODULE_OK;
 }
 
 

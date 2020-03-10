@@ -105,7 +105,6 @@ class RedisGearsSetup(paella.Setup):
     def common_last(self):
         # redis-py-cluster should be installed from git due to redis-py dependency
         self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
-        # the following can be probably installed from pypi
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
 

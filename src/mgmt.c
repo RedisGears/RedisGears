@@ -41,6 +41,7 @@ GENERATE(Accumulate)
 GENERATE(AccumulateByKey)
 GENERATE(FepPrivateData)
 GENERATE(ExecutionOnStart)
+GENERATE(ExecutionOnUnpaused)
 GENERATE(FlatExecutionOnRegistered)
 
 void Mgmt_Init(){
@@ -54,5 +55,6 @@ void Mgmt_Init(){
     AccumulateByKeysMgmt_Init();
     FepPrivateDatasMgmt_Init();
     ExecutionOnStartsMgmt_Init();
+    ExecutionOnUnpausedsMgmt_Init();
     FlatExecutionOnRegisteredsMgmt_Init();
 }

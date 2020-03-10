@@ -147,12 +147,12 @@ def testCommandReaderWithBadArgs(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register("bla")').error().contains('command argument is not string')
 
 def testCommandReaderRegisterSameCommand(env):
-    env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').ok()
-    env.expect('rg.pyexecute', 'GB("CommandReader").register(command="command")').error().contains('Command already registered')
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').ok()
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').error().contains('Command already registered')
 
 def testCommandReaderRegisterWithExcpetionCommand(env):
-    env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(command="command")').ok()
-    env.expect('rg.command', 'command').error().contains("'noexists' is not defined")
+    env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(trigger="command")').ok()
+    env.expect('rg.trigger', 'command').error().contains("'noexists' is not defined")
 
 
 class testStepsWrongArgs:

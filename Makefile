@@ -77,9 +77,10 @@ CC=gcc
 SRCDIR=src
 
 _SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
-	mgmt.c readers/keys_reader.c example.c filters.c mappers.c \
+	mgmt.c readers/keys_reader.c example.c filters.c mappers.c utils/thpool.c \
 	extractors.c reducers.c record.c cluster.c commands.c readers/streams_reader.c \
-	globals.c config.c lock_handler.c module_init.c slots_table.c common.c readers/command_reader.c
+	globals.c config.c lock_handler.c module_init.c slots_table.c common.c readers/command_reader.c \
+	readers/shardid_reader.c
 ifeq ($(WITHPYTHON),1)
 _SOURCES += redisgears_python.c
 endif
