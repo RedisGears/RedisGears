@@ -3,6 +3,7 @@
 [![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/redislabs/redisgears.svg)](https://hub.docker.com/r/redislabs/redisgears/builds/)
 [![Forum](https://img.shields.io/badge/Forum-RedisGears-blue)](https://forum.redislabs.com/c/modules/redisgears)
 [![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+[![codecov](https://codecov.io/gh/RedisGears/RedisGears/branch/master/graph/badge.svg)](https://codecov.io/gh/RedisGears/RedisGears)
 
 # <img src="docs/images/RedisGears.png" alt="logo" style="width: 2em; vertical-align: middle;"/> RedisGears
 

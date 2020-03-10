@@ -25,11 +25,11 @@ else
 	
 	$SUDO mkdir -p $(dirname $GLOBAL)
 	$SUDO chown -R $USER $REDISLABS_DIR
-	if [[ ! -e $GLOBAL ]]; then
-		$SUDO ln -s $(realpath $LOCAL) $GLOBAL
-	elif [[ -L $GLOBAL ]]; then
-		$SUDO rm $GLOBAL
-		$SUDO ln -s $(realpath $LOCAL) $GLOBAL
+	if [[ -L $GLOBAL ]]; then
+		$SUDO ln -sf $(realpath $LOCAL) $GLOBAL
+	elif [[ -e $GLOBAL ]]; then
+		$SUDO mv $GLOBAL $(mktemp $(GLOBAL).XXXXXX)
+		$SUDO ln -sf $(realpath $LOCAL) $GLOBAL
 	fi
 fi
 

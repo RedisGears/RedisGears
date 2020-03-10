@@ -104,6 +104,30 @@ jobs:
       - platform-build-steps:
           platform: <<parameters.platform>>
 
+  coverage:
+    docker:
+      - image: redisfab/rmbuilder:6.0.1-x64-buster
+    steps:
+      - checkout
+      - run:
+          name: Submodule checkout
+          command: git submodule update --init --recursive
+      - run:
+          name: Install dependencies
+          command: |
+            ./deps/readies/bin/getpy
+            ./system-setup.py
+      - run:
+          name: Build
+          command: |
+            make get_deps SHOW=1
+            make all COV=1 SHOW=1
+      - run:
+          name: Test with coverage
+          command: |
+            make test SHOW=1 COV=1
+            make cov-upload
+
   macos:
     macos:
       xcode: 11.3.0
@@ -217,6 +241,10 @@ workflows:
   default_flow:
     jobs:
       - linux-debian:
+          <<: *on-any-branch
+      - coverage:
+          requires:
+            - build
           <<: *on-any-branch
       - platform-build:
           name: build-centos7

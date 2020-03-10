@@ -4,17 +4,26 @@ include deps/readies/mk/main
 
 BINDIR=$(BINROOT)/$(SRCDIR)
 
+ifeq ($(VGD),1)
+DEBUG ?= 1
+endif
+
+ifeq ($(COV),1)
+DEBUG ?= 1
+endif
+
 #----------------------------------------------------------------------------------------------
 
 define HELP
 make setup      # install packages required for build
-make fetch      # download and prepare dependant modules (i.e., python, libevent)
+make fetch      # download and prepare dependant modules (i.e., cpython, libevent)
 
 make build
   DEBUG=1       # build debug variant
-  VARIANT=name
+  VARIANT=name  # build variant `name`
   WITHPYTHON=0  # build without embedded Python interpreter
   DEPS=1        # also build dependant modules
+  COV=1         # build for coverage analysis (implies DEBUG=1)
 make clean      # remove binary files
   ALL=1         # remove binary directories
   DEPS=1        # also clean dependant modules
@@ -26,10 +35,14 @@ make cpython    # build cpython
 make all        # build all libraries and packages
 
 make test          # run tests
-  VGD=1            # run tests with Valgrind
   TEST=test        # run specific `test` with Python debugger
   TEST_ARGS=args   # additional RLTest arguments
   GDB=1            # (with TEST=...) run with GDB
+  VGD=1            # run tests with Valgrind
+  COV=1            # perform coverage analysis
+make cov-upload    # upload coverage data to codecov.io (requires CODECOV_TOKEN)
+
+make callgrind     # invoke Callgrind
 
 make pack          # build packages (ramp & dependencies)
 make ramp_pack     # only build ramp package
@@ -116,7 +129,8 @@ CC_FLAGS += \
 	-Ideps/hiredis/adapters \
 	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
 	-DREDISGEARS_OS_VERSION=\"$(OS_VERSION_DESC)\" \
-	-DREDISMODULE_EXPERIMENTAL_API
+	-DREDISMODULE_EXPERIMENTAL_API \
+	$(CC_FLAGS.coverage)
 
 TARGET=$(BINROOT)/redisgears.so
 TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
@@ -133,6 +147,8 @@ LD_FLAGS += \
 	-framework CoreFoundation \
 	-undefined dynamic_lookup
 endif
+
+LD_FLAGS += $(LD_FLAGS.coverage)
 
 #----------------------------------------------------------------------------------------------
 # cpython-related definitions
@@ -399,10 +415,18 @@ TEST_FLAGS += VALGRIND=1
 endif
 
 test: __sep
+	$(COVERAGE_RESET)
 ifneq ($(TEST),)
 	@set -e; cd pytest; BB=1 $(TEST_FLAGS) RLTest --test $(TEST) $(TEST_ARGS) $(RLTEST_GDB) -s --module $(abspath $(ROOT)/redisgears.so)
 else
 	$(SHOW)set -e; cd pytest; $(TEST_FLAGS) ./run_tests.sh
 endif
+	$(COVERAGE_COLLECT_REPORT)
+
+valgrind:
+	$(SHOW)$(ROOT)/test/valgrind.sh $(abspath $(TARGET))
+
+callgrind:
+	$(SHOW)CALLGRIND=1 $(ROOT)/build/scripts/valgrind.sh $(abspath $(TARGET))
 
 #----------------------------------------------------------------------------------------------
