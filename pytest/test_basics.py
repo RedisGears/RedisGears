@@ -561,6 +561,20 @@ def testDependenciesInstallFailure(env):
                                "map(lambda x: __import__('redisgraph'))."
                                "collect().distinct().run()", 'REQUIREMENTS', 'blabla').error().contains('satisfy requirments')
 
+def testDependenciesWithRegister(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB()."
+                               "map(lambda x: __import__('redisgraph'))."
+                               "collect().distinct().register()", 'REQUIREMENTS', 'redisgraph').ok()
+
+    for _ in env.reloading_iterator():
+        res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                                      "map(lambda x: str(__import__('redisgraph')))."
+                                      "collect().distinct().run()")
+        env.assertEqual(len(res[0]), 1)
+        env.assertEqual(len(res[1]), 0)
+        env.assertContains("<module 'redisgraph'", res[0][0])
+
 def testAtomic(env):
     conn = getConnectionByEnv(env)
     script = '''
