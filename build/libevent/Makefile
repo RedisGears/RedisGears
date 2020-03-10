@@ -13,11 +13,7 @@ endef
 
 #----------------------------------------------------------------------------------------------
 
-LIBEVENT_REPO=https://github.com/libevent/libevent.git
-LIBEVENT_BRANCH=release-2.1.8-stable
-
 BINDIR=$(BINROOT)/libevent
-
 SRCDIR=$(ROOT)/deps/libevent
 
 TARGET=$(BINDIR)/.libs/libevent.a
@@ -27,18 +23,13 @@ export CFLAGS += -fPIC
 #----------------------------------------------------------------------------------------------
 
 include $(MK)/defs
+include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
 
-include $(MK)/rules
-
-source: $(SRCDIR) $(SRCDIR)/configure
+source: $(SRCDIR)/configure
 
 .PHONY: source
-
-$(SRCDIR):
-	$(SHOW)cd $(dir $(SRCDIR)); \
-		git clone --single-branch --branch $(LIBEVENT_BRANCH) $(LIBEVENT_REPO)
 
 $(SRCDIR)/configure:
 	$(SHOW)cd $(SRCDIR); ./autogen.sh
