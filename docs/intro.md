@@ -505,6 +505,9 @@ Now, run the following command:
 docker exec -i rgcluster redis-cli -c -p 30001 < data.txt
 ```
 
+!!! important "Use `redis-cli -c` for cluster mode"
+    The cli, by default, does not follow the cluster's redirections. To have the cli automagically hop between shards, start it with the `-c` command line switch.
+
 The output should resemble the following:
 
 !!! example "Example: populating the cluster with data"
