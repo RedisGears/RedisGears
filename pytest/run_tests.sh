@@ -39,7 +39,7 @@ run_tests() {
 cd $HERE
 mkdir -p logs
 run_tests 0 "$@"
-if [[ $SHARD != 0 ]]; then
+if [[ $SHARDS != 0 ]]; then
 	run_tests 1 "$@"
 	run_tests 2 "$@"
 	run_tests 3 "$@"
