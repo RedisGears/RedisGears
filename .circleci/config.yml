@@ -115,6 +115,10 @@ jobs:
       - image: redisfab/rmbuilder:6.0.1-x64-buster
     steps:
       - checkout
+      - run:
+          name: Cache information
+          command: |
+            echo "$CIRCLE_SHA1" > ~/circle-sha1
       - restore_cache:
           keys:
           - build-dependencies-{{ checksum "~/circle-sha1" }}
