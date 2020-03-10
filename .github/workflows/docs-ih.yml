@@ -20,7 +20,7 @@ jobs:
     - name: Install docs dependencies
       run: pip install -r docs/requirements.txt
     - name: Test snippets
-      run: python -m pytest -s -v --image==redislabs/redisgears:latest docs/snippets
+      run: python -m pytest -s -v --image=redislabs/redisgears:latest docs/snippets
     - name: Build docs
       run: mkdocs build
     - uses: jakejarvis/s3-sync-action@master
