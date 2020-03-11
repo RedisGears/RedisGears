@@ -31,10 +31,11 @@ def standalone(image):
     conn = redis.Redis()
     conn.ping()
     yield conn
-
-    print(f'\nShutting container', end='', flush=True)
     conn.close()
-    container.stop()
+
+    if image != None:
+        print(f'\nShutting container', end='', flush=True)
+        container.stop()
 
 @pytest.mark.parametrize(
     'snippet,expected',
