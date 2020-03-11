@@ -4,31 +4,21 @@
 [![Mailing List](https://img.shields.io/badge/Mailing%20List-RedisGears-blue)](https://groups.google.com/forum/#!forum/redisgears)
 [![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-# RedisGears
-![logo.png](docs/images/RedisGears.png)
+# <img src="docs/images/RedisGears.png" alt="logo" style="width: 2em; vertical-align: middle;"/> RedisGears
 
-Dynamic execution framework for your Redis data, simply:
-```
-GearsBuilder().filter(filter_function).map(map_function).groupby(key_extractor_function, reducer_function).run('*')
-```
-RedisGears supports full python syntax and low level c api. In addition you can run it on cluster.
+RedisGears is a serverless engine for transaction, batch and event-driven data processing in Redis. It is a dynamic framework for the execution of functions that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C APIs.
 
-# Content
+* The RedisGears Homepage: https://oss.redislabs.com/redisgears
+* Get to 6th-gear with an [Introduction to RedisGears](https://oss.redislabs.com/redisgears/intro.html)
+* Running, building and installing are covered by the [Quickstart page](https://oss.redislabs.com/redisgears/quickstart.html)
+* Check out some of the [examples](https://oss.redislabs.com/redisgears/examples.html)
 
-* [Quick Start](/docs/quickstart.md)
-* [Overview](/docs/overview.md)
-* [Commands](/docs/commands.md)
-* [Streaming API](/docs/gears_streaming.md)
-* [Examples](/docs/examples.md)
-* [Gears Configuration](/docs/configuration.md)
-* [Sub-interpreters](/docs/subinterpreters.md)
+## Contact Us
+If you have questions, want to provide feedback or perhaps report an issue or [contribute some code](https://cla-assistant.io/RedisGears/RedisGears), here's where we're listening to you:
 
-# Future plans
-* GearsQL - SQL like language for querying your data.
+  * [Mailing list](https://groups.google.com/forum/#!forum/redisgears)
+  * [Gitter chatroom](https://badges.gitter.im/RedisLabs/RedisGears.svg)
+  * [Report an issue](https://github.com/RedisGears/RedisGears/issues)
 
-## Mailing List / Forum
-Got questions? Feel free to ask at the [RedisGears mailing list](https://groups.google.com/forum/#!forum/redisgears).
-
-# License
-Redis Source Available License Agreement - see [LICENSE](LICENSE)
-
+## License
+RedisGears is licensed under the [Redis Source Available License Agreement](LICENSE).
