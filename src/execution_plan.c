@@ -203,6 +203,9 @@ static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
 }
 
 static void ExectuionPlan_WorkerMsgFree(WorkerMsg* msg){
+    if(msg->type == ADD_RECORD_MSG && msg->addRecordWM.record){
+        RedisGears_FreeRecord(msg->addRecordWM.record);
+    }
 	RG_FREE(msg);
 }
 
@@ -2127,6 +2130,9 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
 		break;
 	case ADD_RECORD_MSG:
 		ExecutionPlan_AddStepRecord(ep, msg->addRecordWM.stepId, msg->addRecordWM.record, msg->addRecordWM.stepType);
+		// setting it to NULL to indicate that we move responsibility
+		// on the record to the execution and it should not be free on ExectuionPlan_WorkerMsgFree
+		msg->addRecordWM.record = NULL;
 		break;
 	case SHARD_COMPLETED_MSG:
 		ExecutionPlan_StepDone(ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
