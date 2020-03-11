@@ -144,6 +144,7 @@ static void PythonRequirementCtx_VerifyBasePath(PythonRequirementCtx* req){
         if(*c != '/'){
             return;
         }
+        c++;
     }
     RedisModule_Log(NULL, "warning", "Fatal!!!, failed verifying basePath of requirment. name:'%s', basePath:'%s'", req->name, req->basePath);
     assert(false);
