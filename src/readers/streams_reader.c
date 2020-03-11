@@ -883,7 +883,10 @@ static void* StreamReader_ScanForStreams(void* pd){
                 RedisModule_ThreadSafeContextUnlock(staticCtx);
                 continue;
             }
-            if(RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp) == 6){
+
+            // here we need to check, on redis v5 we need to do RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp)
+            // on redis v6 and above we need RedisModule_KeyType(kp) == 7
+            if(RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp) == 6 || RedisModule_KeyType(kp) == 7){
                 // this is a stream, on v5 we do not have the stream type on the h file
                 // so we compare by numbers directly.
                 const char* keyName = RedisModule_StringPtrLen(key, NULL);

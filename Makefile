@@ -104,7 +104,7 @@ CC_FLAGS += \
 	-fPIC -std=gnu99 \
 	-MMD -MF $(@:.o=.d) \
 	-include $(SRCDIR)/common.h \
-	-I$(SRCDIR) -Iinclude -I$(BINDIR) -Ideps -I. \
+	-I$(SRCDIR) -I$(BINDIR) -Ideps/ -I. -I deps/libevent/include/ -Ideps/hiredis/ -Ideps/hiredis/adapters/\
 	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
 	-DREDISMODULE_EXPERIMENTAL_API
 
@@ -148,8 +148,6 @@ EMBEDDED_LIBS += -lutil
 endif
 
 endif # WITHPYTHON
-
-EMBEDDED_LIBS += $(LIBEVENT) $(HIREDIS)
 
 ifeq ($(wildcard $(LIBEVENT)),)
 MISSING_DEPS += $(LIBEVENT)
@@ -221,7 +219,7 @@ $(eval $(call build_deps_args,snapshot))
 ifeq ($(OS),macosx)
 EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
-EMBEDDED_LIBS_FLAGS=-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+EMBEDDED_LIBS_FLAGS=-Wl,-Bdynamic $(HIREDIS) $(LIBEVENT) -Wl,-Bdynamic -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
 endif
 
 STRIP:=strip --strip-debug --strip-unneeded
