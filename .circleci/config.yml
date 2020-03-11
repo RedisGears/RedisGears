@@ -150,6 +150,7 @@ jobs:
   deploy_docs:
     docker:
       - image: 'python:buster'
+      - image: redislabs/redisgears:latest
     steps:
       - run:
           name: Setup executor
@@ -165,7 +166,7 @@ jobs:
           command: pip install -r docs/requirements.txt
       - run:
           name: Verify code snippets
-          command: python -m pytest -s -v --image=redislabs/redisgears:latest docs/snippets
+          command: python -m pytest -s -v docs/snippets
       - run:
           name: Build docs
           command: mkdocs build
