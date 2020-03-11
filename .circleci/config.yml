@@ -151,9 +151,19 @@ jobs:
     docker:
       - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
-      - checkout
       - run:
-          name: Build Docs
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip wget
+            bash <(curl -fsSL https://get.docker.com)
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Verify code snippets
+          command: python -m pytest -s -v --image==redislabs/redisgears:latest docs/snippets
+      - run:
+          name: Build docs
           command: mkdocs build
       - run:
           name: Deploy Docs to S3
