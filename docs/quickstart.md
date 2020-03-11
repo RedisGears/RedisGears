@@ -35,18 +35,18 @@ xcode-select --install
 To compile the module do the following:
 
 ```
-sudo mkdir -p /opt
+sudo mkdir -p /var/opt/redislabs
 make fetch
 make all
 ```
 
-!!! important "The /opt/redislabs/lib/modules directory"
-    The compilation process creates a virtual Python environment and places the binaries at this path: `/opt/redislabs/lib/modules`
+!!! important "The /var/opt/redislabs/lib/modules directory"
+    The compilation process creates a virtual Python environment and places the binaries at this path: `/var/opt/redislabs/lib/modules`
 
 ## Loading
 To load the module on the same server is was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
-In case you've compiled the module on a different server than the one loading it, copy the contents of the '/opt/redislabs/lib/modules` to the server.
+In case you've compiled the module on a different server than the one loading it, copy the contents of the '/var/opt/redislabs/lib/modules` to the server.
 
 ## Testing
 Tests are written in Python and the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
