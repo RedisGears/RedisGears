@@ -4,7 +4,7 @@ def pytest_addoption(parser):
     parser.addoption(
         '--image',
         action='store',
-        default='redislabs/redisgears:edge',
+        default=None,
         help='Docker image to use for testing',
     )
 
