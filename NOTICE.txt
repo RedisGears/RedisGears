@@ -1,0 +1,8 @@
+This product includes software developed by Stichting Mathematisch Centrum Amsterdam (https://www.python.org/)
+Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam,
+The Netherlands.  All rights reserved.
+
+This product includes software developed by Cloudpickle contributors, Regents of the University of California, PiCloud, Inc. (https://github.com/cloudpipe/cloudpickle)
+Copyright (c) 2015, Cloudpickle contributors.
+Copyright (c) 2012, Regents of the University of California.
+Copyright (c) 2009 PiCloud, Inc. http://www.picloud.com.
