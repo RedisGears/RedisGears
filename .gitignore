@@ -69,3 +69,7 @@ commit.txt
 *.tgz
 /VARIANT
 /artifacts/
+
+/venv
+Pipfile.lock
+/site

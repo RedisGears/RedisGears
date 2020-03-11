@@ -1,49 +1,58 @@
-# RedisGears Module
-Dynamic execution framework for your Redis data.
+# RedisGears Quickstart
+RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module). To run it you'll need a Redis server (v5 or greater) and the module's shared library.
+
+The following sections describe how to get started with RedisGears.
 
 ## Docker
-To quickly tryout RedisGears, launch an instance using docker:
+The quickest way to try RedisGears is by launching its official Docker container image:
 
-```sh
+```
 docker run -p 6379:6379 redislabs/redisgears:latest
 ```
 
-## Build
+A Redis Cluster with RedisGears variant is also available:
+
+```sh
+docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:latest
+```
+
+!!! info "Further reference"
+    Refer to the [cluster's README file](https://github.com/RedisGears/RedisGears/blob/master/recipes/cluster/README.md) for information on configuring the Dockerized cluster container.
+
+## Building
 
 ### Prerequisites
 * Install [Redis 5.0](https://redis.io/) on your machine.
-* On Mac OSX (High Sierra), install Xcode command line tools:
+* On macOS install Xcode command line tools:
 
-```bash
+```
 xcode-select --install
 ```
 
 * Run: `make setup`
 
-### Compile
-```bash
-sudo mkdir -p /opt
-make fetch # this will aquire git submodules
+### Compiling
+To compile the module do the following:
+
+```
+sudo mkdir -p /var/opt/redislabs
+make fetch
 make all
 ```
-Notice that part of the compilation is to create the gears virtual environment under `/var/opt/redislabs/lib/modules/python3/`
 
-## Run
-If you run gears on the same machine on which it was compiled, then it's enough to load the RedisGears module:
+!!! important "The /var/opt/redislabs/lib/modules directory"
+    The compilation process creates a virtual Python environment and places the binaries at this path: `/var/opt/redislabs/lib/modules`
 
-`--loamodule <path to redisgears.so>`
+## Loading
+To load the module on the same server is was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
-If you run RedisGears on another machine, some extra setup is needed. For RedisGears to run properly, it needs to have the virtual environment which was created when it was compiled. All the required files are located in `/var/opt/redislabs/lib/modules/python3`. Make sure to copy this directory to the machine where Redis is running and to the same path (i.e `/opt/redislabs/lib/modules/python3`).
+In case you've compiled the module on a different server than the one loading it, copy the contents of the '/var/opt/redislabs/lib/modules` to the server.
 
-## Tests
-Tests are written in python using the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
+## Testing
+Tests are written in Python and the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
+
+To run the tests after installing the dependencies use:
+
 ```
-$ make test
+make test
 ```
-
-## Client libraries
-Gears python library can be found [here](https://github.com/RedisGears/redisgears-py).
-In addition, any client that allows sending custom commands to Redis should be enough.
-
-## Cluster Support
-All of RedisGears' operations are fully supported on OSS and Enterprise clusters. Note that the module needs to be loaded on all the cluster nodes. In addition, on OSS cluster, after setting up the cluster you need to run `RG.REFRESHCLUSTER` on each node.

@@ -11,7 +11,7 @@ commands:
       test_params:
         type: string
         default: ""
-    steps: 
+    steps:
       - checkout
       - run:
           name: Submodule checkout
@@ -81,7 +81,7 @@ jobs:
           platform: debian
           build_params: DEBUG=1
           test_params: DEBUG=1
-  
+
   platform-build:
     parameters:
       platform:
@@ -149,11 +149,26 @@ jobs:
 
   deploy_docs:
     docker:
-      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
+      - image: 'python:buster'
+      - image: redislabs/redisgears:latest
     steps:
-      - checkout
       - run:
-          name: Build Docs
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip wget
+            bash <(curl -fsSL https://get.docker.com)
+            cd ..;curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip";unzip awscliv2.zip;./aws/install
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Instal dependencies
+          command: pip install -r docs/requirements.txt
+      - run:
+          name: Verify code snippets
+          command: python -m pytest -s -v docs/snippets
+      - run:
+          name: Build docs
           command: mkdocs build
       - run:
           name: Deploy Docs to S3
