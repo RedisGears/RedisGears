@@ -135,10 +135,18 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
 
     int exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip install %s\"", venvDir, req->basePath, filesInDir);
     array_free(filesInDir);
-    if(exitCode != 0){
-        return false;
+    return exitCode != 0;
+}
+
+static void PythonRequirementCtx_VerifyBasePath(PythonRequirementCtx* req){
+    char* c = req->basePath;
+    while(*c){
+        if(*c != '/'){
+            return;
+        }
     }
-    return true;
+    RedisModule_Log(NULL, "warning", "Fatal!!!, failed verifying basePath of requirment. name:'%s', basePath:'%s'", req->name, req->basePath);
+    assert(false);
 }
 
 static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
@@ -146,6 +154,7 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
         return;
     }
 
+    PythonRequirementCtx_VerifyBasePath(reqCtx);
     ExecCommand(NULL, "rm -rf %s", reqCtx->basePath);
     Gears_dictDelete(RequirementsDict, reqCtx->name);
     RG_FREE(reqCtx->name);
@@ -179,13 +188,14 @@ static PythonRequirementCtx* PythonRequirementCtx_Create(const char* requirement
     ret->name = RG_STRDUP(requirement);
     rg_asprintf(&ret->basePath, "%s/%s", venvDir, ret->name);
     ret->wheels = array_new(char*, 10);
-
     // refCount is starting from 2, one hold by RequirementsDict and once by the called.
     // currently we basically never delete requirments so we will know not to reinstall them
     // to save time
     ret->refCount = 2;
 
     Gears_dictAdd(RequirementsDict, ret->name, ret);
+
+    PythonRequirementCtx_VerifyBasePath(ret);
 
     return ret;
 }
