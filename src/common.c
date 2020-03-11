@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
+#include "utils/arr_rm_alloc.h"
 
 static char* shardUniqueId = NULL;
 
@@ -88,6 +89,28 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...) {
   va_end(ap);
 
   return res;
+}
+
+char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
+    char* res = array_new(char, 100);
+    res = array_append(res, '[');
+    for(size_t i = 0 ; i < len ; ++i){
+        char* elementStr = toStr(arr[i]);
+        char* c = elementStr;
+        res = array_append(res, '\'');
+        while(*c){
+            res = array_append(res, *c);
+            ++c;
+        }
+        res = array_append(res, '\'');
+        res = array_append(res, ',');
+        RG_FREE(elementStr);
+    }
+    res[array_len(res) - 1] = ']';
+    res = array_append(res, '\0');
+    char* ret = RG_STRDUP(res);
+    array_free(res);
+    return ret;
 }
 
 const char* GetShardUniqueId() {

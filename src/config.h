@@ -20,5 +20,6 @@ const char* GearsConfig_GetDependenciesSha256();
 long long GearsConfig_CreateVenv();
 long long GearsConfig_ExecutionThreads();
 const char* GearsConfig_GetExtraConfigVals(const char* key);
+const char* GearsConfig_GetVenvWorkingPath();
 
 #endif /* SRC_CONFIG_H_ */
