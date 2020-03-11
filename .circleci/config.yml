@@ -11,7 +11,7 @@ commands:
       test_params:
         type: string
         default: ""
-    steps: 
+    steps:
       - checkout
       - run:
           name: Submodule checkout
@@ -81,7 +81,7 @@ jobs:
           platform: debian
           build_params: DEBUG=1
           test_params: DEBUG=1
-  
+
   platform-build:
     parameters:
       platform:
@@ -161,7 +161,7 @@ jobs:
       - setup_remote_docker
       - run:
           name: Verify code snippets
-          command: python -m pytest -s -v --image==redislabs/redisgears:latest docs/snippets
+          command: python -m pytest -s -v --image=redislabs/redisgears:latest docs/snippets
       - run:
           name: Build docs
           command: mkdocs build
