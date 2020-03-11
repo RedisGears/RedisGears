@@ -5,27 +5,28 @@ import time
 
 @pytest.fixture(scope='module')
 def standalone(image):
-    print(f'Lauching Docker {image} container ', end='', flush=True)
-    dc = docker.from_env()
-    container = dc.containers.run(
-        image,
-        detach=True,
-        remove=True,
-        ports={
-            '6379': 6379,
-        }
-    )
-    for out in container.logs(stream=True):
-        try:
-            if out.lower().index(b'error'):
-                raise Exception(out)
-        except ValueError:
-            pass
-        if out.endswith(b'Ready to accept connections\n'):
-            break
-        else:
-            print('.', flush=True, end='')
-    print(' ready!', flush=True)
+    if image != None:
+        print(f'Lauching Docker {image} container ', end='', flush=True)
+        dc = docker.from_env()
+        container = dc.containers.run(
+            image,
+            detach=True,
+            remove=True,
+            ports={
+                '6379': 6379,
+            }
+        )
+        for out in container.logs(stream=True):
+            try:
+                if out.lower().index(b'error'):
+                    raise Exception(out)
+            except ValueError:
+                pass
+            if out.endswith(b'Ready to accept connections\n'):
+                break
+            else:
+                print('.', flush=True, end='')
+        print(' ready!', flush=True)
 
     conn = redis.Redis()
     conn.ping()
