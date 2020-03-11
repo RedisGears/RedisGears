@@ -135,7 +135,7 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
 
     int exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip install %s\"", venvDir, req->basePath, filesInDir);
     array_free(filesInDir);
-    return exitCode != 0;
+    return exitCode == 0;
 }
 
 static void PythonRequirementCtx_VerifyBasePath(PythonRequirementCtx* req){
