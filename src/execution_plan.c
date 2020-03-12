@@ -344,7 +344,7 @@ static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_Buffer
     return REDISMODULE_OK;
 }
 
-const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len, char** err){
+static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, size_t *len, char** err){
     if(fep->serializedFep){
         // notice that this is not only an optimization,
         // when calling register on fep we call this function to serialize
@@ -358,22 +358,6 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len, cha
     fep->serializedFep = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, fep->serializedFep);
-
-    // Private data must serialize and deserialized first cause other
-    // stages of the deserialization process might need it.
-    if(fep->PD){
-        RedisGears_BWWriteLong(&bw, 1); // PD exists
-        RedisGears_BWWriteString(&bw, fep->PDType);
-        ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
-        assert(type);
-        if(type->serialize(fep->PD, &bw, err) != REDISMODULE_OK){
-            Gears_BufferFree(fep->serializedFep);
-            fep->serializedFep = NULL;
-            return NULL;
-        }
-    }else{
-        RedisGears_BWWriteLong(&bw, 0); // PD do exists
-    }
 
     FlatExecutionPlan_SerializeReader(fep->reader, &bw);
     RedisGears_BWWriteLong(&bw, array_len(fep->steps));
@@ -462,6 +446,35 @@ const char* FlatExecutionPlan_Serialize(FlatExecutionPlan* fep, size_t *len, cha
     return fep->serializedFep->buff;
 }
 
+int FlatExecutionPlan_Serialize(Gears_BufferWriter* bw, FlatExecutionPlan* fep, char** err){
+    // we serialize the PD of a fep each time cause it might be very big (contains file
+    // deps and we do not want to hold it in the memory all the time)
+    // Als private data must serialize and deserialized first cause other
+    // stages of the deserialization process might need it.
+    if(fep->PD){
+        RedisGears_BWWriteLong(bw, 1); // PD exists
+        RedisGears_BWWriteString(bw, fep->PDType);
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+        assert(type);
+        if(type->serialize(fep->PD, bw, err) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
+    }else{
+        RedisGears_BWWriteLong(bw, 0); // PD do exists
+    }
+
+    size_t serializedFepLen;
+    const char* serializedFep = FlatExecutionPlan_SerializeInternal(fep, &serializedFepLen, err);
+
+    if(!serializedFep){
+        return REDISMODULE_ERR;
+    }
+
+    RedisGears_BWWriteBuffer(bw, serializedFep, serializedFepLen);
+
+    return REDISMODULE_OK;
+}
+
 static FlatExecutionReader* FlatExecutionPlan_DeserializeReader(Gears_BufferReader* br){
     char* readerName = RedisGears_BRReadString(br);
     FlatExecutionReader* reader = FlatExecutionPlan_NewReader(readerName);
@@ -487,7 +500,7 @@ static int FlatExecutionPlan_DeserializeStep(FlatExecutionPlan* fep, FlatExecuti
     return REDISMODULE_OK;
 }
 
-FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLen, char** err){
+static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const char* data, size_t dataLen, char** err){
     Gears_Buffer buff = {
             .buff = (char*)data,
             .size = dataLen,
@@ -495,18 +508,6 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    FlatExecutionPlan* ret = FlatExecutionPlan_New();
-
-    bool PDExists = RedisGears_BRReadLong(&br);
-    if(PDExists){
-        ret->PDType = RG_STRDUP(RedisGears_BRReadString(&br));
-        ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
-        assert(type);
-        ret->PD = type->deserialize(ret, &br, err);
-        if(!ret->PD){
-            goto error;
-        }
-    }
 
     ret->reader = FlatExecutionPlan_DeserializeReader(&br);
     long numberOfSteps = RedisGears_BRReadLong(&br);
@@ -594,8 +595,36 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(const char* data, size_t dataLe
 
     // we need to deserialize the fep now so we will have the deserialize clean version of it.
     // it might changed after to something we can not serialize
-    const char* d = FlatExecutionPlan_Serialize(ret, NULL, NULL);
+    const char* d = FlatExecutionPlan_SerializeInternal(ret, NULL, NULL);
     assert(d);
+    return REDISMODULE_OK;
+
+error:
+    FlatExecutionPlan_Free(ret);
+    return REDISMODULE_ERR;
+}
+
+FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br, char** err){
+    FlatExecutionPlan* ret = FlatExecutionPlan_New();
+
+    bool PDExists = RedisGears_BRReadLong(br);
+    if(PDExists){
+        ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
+        ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
+        assert(type);
+        ret->PD = type->deserialize(ret, br, err);
+        if(!ret->PD){
+            goto error;
+        }
+    }
+
+    size_t len;
+    const char* data = RedisGears_BRReadBuffer(br, &len);
+
+    if(FlatExecutionPlan_DeserializeInternal(ret, data, len, err) != REDISMODULE_OK){
+        goto error;
+    }
+
     return ret;
 
 error:
@@ -616,9 +645,8 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     size_t len;
-    const char* serializedFep = FlatExecutionPlan_Serialize(ep->fep, &len, NULL);
-    assert(serializedFep); // if we reached here execution must be serialized
-    RedisGears_BWWriteBuffer(&bw, serializedFep, len);
+    int res = FlatExecutionPlan_Serialize(&bw, ep->fep, NULL);
+    assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
     RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
@@ -1487,10 +1515,8 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    size_t dataLen;
-    char* data = RedisGears_BRReadBuffer(&br, &dataLen);
     char* err = NULL;
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen, &err);
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
     if(!fep){
         RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
         if(err){
@@ -1843,10 +1869,8 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    size_t dataLen;
-    char* data = RedisGears_BRReadBuffer(&br, &dataLen);
     char* err = NULL;
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, dataLen, &err);
+    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
     if(!fep){
         RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
         if(err){
@@ -2251,16 +2275,17 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
 
     assert(callbacks->serializeTriggerArgs);
 
-    size_t len;
-    const char* serializedFep = FlatExecutionPlan_Serialize(fep, &len, err);
-    if(!serializedFep){
-        return 0;
-    }
-
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
-    RedisGears_BWWriteBuffer(&bw, serializedFep, len);
+
+    size_t len;
+    int res = FlatExecutionPlan_Serialize(&bw, fep, err);
+    if(res != REDISMODULE_OK){
+        Gears_BufferFree(buff);
+        return 0;
+    }
+
     callbacks->serializeTriggerArgs(args, &bw);
     RedisGears_BWWriteLong(&bw, mode);
 
@@ -2287,7 +2312,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
     if(Cluster_IsClusterMode()){
         // on cluster mode, we must make sure we can distribute the execution to all shards.
-        if(!FlatExecutionPlan_Serialize(fep, NULL, err)){
+        if(!FlatExecutionPlan_SerializeInternal(fep, NULL, err)){
             return NULL;
         }
     }
