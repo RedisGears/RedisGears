@@ -11,6 +11,7 @@ use_directory_urls: false
 
 theme:
   name: 'material'
+  custom_dir: 'docs/theme'
   language: 'en'
   logo: 'images/RedisGears.png'
   favicon: 'images/favicon.png'
@@ -55,3 +56,7 @@ plugins:
   - search
   - include:
       src_path: docs/snippets
+  - versions-menu:
+      exclude-regexes:
+        - '0\.[1-4]'
+      include-regex: '([0-9]+)\.([0-9]+)'
