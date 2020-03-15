@@ -790,6 +790,11 @@ static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(Fl
         RedisModule_SaveUnsigned(rdb, 0); // done
         return;
     }
+
+    Gears_Buffer* buf = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, buf);
+
     Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(iter))){
@@ -798,26 +803,24 @@ static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(Fl
             continue;
         }
         RedisModule_SaveUnsigned(rdb, 1); // has more
-        size_t len;
-        const char* serializedFep = FlatExecutionPlan_Serialize(rData->fep, &len, NULL);
-        assert(serializedFep); // fep already registered, must be serializable.
-        RedisModule_SaveStringBuffer(rdb, serializedFep, len);
 
         // serialize args
-        Gears_Buffer* buf = Gears_BufferCreate();
-        Gears_BufferWriter bw;
-        Gears_BufferWriterInit(&bw, buf);
+        int res = FlatExecutionPlan_Serialize(&bw, rData->fep, NULL);
+        assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+
         KeysReader_SerializeArgs(rData->args, &bw);
 
         RedisModule_SaveStringBuffer(rdb, buf->buff, buf->size);
 
-        Gears_BufferFree(buf);
-
         RedisModule_SaveUnsigned(rdb, rData->mode);
+
+        Gears_BufferClear(buf);
 
     }
     RedisModule_SaveUnsigned(rdb, 0); // done
     Gears_listReleaseIterator(iter);
+
+    Gears_BufferFree(buf);
 }
 
 static bool KeysOnlyReader_ShouldContinue(FlatExecutionPlan* fep){
@@ -840,25 +843,24 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
     while(RedisModule_LoadUnsigned(rdb)){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
+
+        Gears_Buffer buf = {
+                .buff = data,
+                .size = len,
+                .cap = len,
+        };
+        Gears_BufferReader br;
+        Gears_BufferReaderInit(&br, &buf);
+
         char* err = NULL;
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len, &err);
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
         if(!fep){
             RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
             assert(false);
         }
-        RedisModule_Free(data);
 
-        size_t serializedArgsLen;
-        char* serializedArgs = RedisModule_LoadStringBuffer(rdb, &len);
-        Gears_Buffer buf = {
-                .buff = serializedArgs,
-                .size = serializedArgsLen,
-                .cap = serializedArgsLen,
-        };
-        Gears_BufferReader br;
-        Gears_BufferReaderInit(&br, &buf);
         void* args = KeysReader_DeserializeArgs(&br);
-        RedisModule_Free(serializedArgs);
+        RedisModule_Free(data);
 
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = KeysReader_RegisrterTrigger(fep, mode, args, &err);

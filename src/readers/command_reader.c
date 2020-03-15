@@ -284,10 +284,8 @@ static void CommandReader_RdbSave(RedisModuleIO *rdb){
         CommandReaderTriggerCtx* crtCtx = Gears_dictGetVal(entry);
         RedisModule_SaveSigned(rdb, crtCtx->mode);
 
-        size_t serializedFepLen;
-        const char* serializedFep = FlatExecutionPlan_Serialize(crtCtx->fep, &serializedFepLen, NULL);
-        assert(serializedFep); // fep already registered, must be serializable.
-        RedisModule_SaveStringBuffer(rdb, serializedFep, serializedFepLen);
+        int res = FlatExecutionPlan_Serialize(&bw, crtCtx->fep, NULL);
+        assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
 
         CommandReader_SerializeArgs(crtCtx->args, &bw);
 
@@ -306,15 +304,7 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
 
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
-        char* err = NULL;
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len, &err);
-        if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
-            assert(false);
-        }
-        RedisModule_Free(data);
 
-        data = RedisModule_LoadStringBuffer(rdb, &len);
         Gears_Buffer buff = {
                 .buff = data,
                 .size = len,
@@ -322,6 +312,14 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
         };
         Gears_BufferReader br;
         Gears_BufferReaderInit(&br, &buff);
+
+        char* err = NULL;
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
+        if(!fep){
+            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            assert(false);
+        }
+
         CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br);
         RedisModule_Free(data);
 
