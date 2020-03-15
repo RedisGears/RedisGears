@@ -55,3 +55,7 @@ plugins:
   - search
   - include:
       src_path: docs/snippets
+  - versions-menu:
+      exclude-regexes:
+        - '0\.[1-4]'
+      include-regex: '([0-9]+)\.([0-9]+)'
