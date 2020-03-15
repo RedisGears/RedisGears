@@ -1270,11 +1270,11 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     return r;
 }
 
-static void ExecutionPlan_WriteResult(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
+static void ExecutionPlan_WriteResult(ExecutionPlan* ep, Record* record){
     ep->results = array_append(ep->results, record);
 }
 
-static void ExecutionPlan_WriteError(ExecutionPlan* ep, RedisModuleCtx* rctx, Record* record){
+static void ExecutionPlan_WriteError(ExecutionPlan* ep, Record* record){
     ep->errors = array_append(ep->errors, record);
 }
 
@@ -1287,9 +1287,9 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
             return false;
         }
         if(RedisGears_RecordGetType(record) == ERROR_RECORD){
-            ExecutionPlan_WriteError(ep, rctx, record);
+            ExecutionPlan_WriteError(ep, record);
         }else{
-            ExecutionPlan_WriteResult(ep, rctx, record);
+            ExecutionPlan_WriteResult(ep, record);
         }
     }
 
@@ -1334,6 +1334,9 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
 
+    if(ep->maxIdleTimerSet){
+        RedisModule_StopTimer(rctx, ep->maxIdleTimer, NULL);
+    }
     EPTurnOnFlag(ep, EFDone);
 
     // we set it to true so if execution will be freed during done callbacks we
@@ -1423,7 +1426,30 @@ ActionResult EPStatus_InitiatorTerminationAction(ExecutionPlan* ep){
     return CONTINUE;
 }
 
-static void ExecutionPlan_Main(ExecutionPlan* ep){
+static void ExecutionPlan_OnMaxIdleReacher(RedisModuleCtx *ctx, void *data){
+    // If we reached here we know the execution is not running so its enough
+    // to set its status to abort and call the DoneAction
+    // This will for sure will not break order on local exeuctions
+    // because on local execution we do not consider MaxIdleTime, they just start and
+    // finish without any stops in the middle.
+#define EXECUTION_MAX_IDLE_REACHED_MSG "Execution max idle reached"
+    ExecutionPlan* ep = data;
+    ep->status = ABORTED;
+    Record* err = RG_ErrorRecordCreate(RG_STRDUP(EXECUTION_MAX_IDLE_REACHED_MSG), strlen(EXECUTION_MAX_IDLE_REACHED_MSG));
+    ExecutionPlan_WriteError(ep, err);
+    ep->maxIdleTimerSet = false;
+    EPStatus_DoneAction(ep);
+}
+
+static void ExecutionPlan_Pause(RedisModuleCtx* ctx, ExecutionPlan* ep){
+    LockHandler_Acquire(ctx);
+    ep->isPaused = true;
+    ep->maxIdleTimer = RedisModule_CreateTimer(ctx, ep->fep->executionMaxIdleTime, ExecutionPlan_OnMaxIdleReacher, ep);
+    ep->maxIdleTimerSet = true;
+    LockHandler_Release(ctx);
+}
+
+static void ExecutionPlan_Main(RedisModuleCtx* ctx, ExecutionPlan* ep){
     ActionResult result;
     EPTurnOffFlag(ep, EFSentRunRequest);
     while(true){
@@ -1432,7 +1458,7 @@ static void ExecutionPlan_Main(ExecutionPlan* ep){
         case CONTINUE:
             break;
         case STOP:
-            ep->isPaused = true;
+            ExecutionPlan_Pause(ctx, ep);
             return;
         case COMPLETED:
             return;
@@ -1609,6 +1635,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
 
     ep->assignWorker = NULL;
     ep->isPaused = true;
+    ep->maxIdleTimerSet = false;
 
     return ep;
 }
@@ -2025,21 +2052,21 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
 
-static void ExecutionPlan_ExecutionTerminate(ExecutionPlan* ep){
+static void ExecutionPlan_ExecutionTerminate(RedisModuleCtx* ctx, ExecutionPlan* ep){
     assert(ep->status == WAITING_FOR_INITIATOR_TERMINATION);
-    ExecutionPlan_Main(ep);
+    ExecutionPlan_Main(ctx, ep);
 }
 
-static void ExecutionPlan_ExecutionDone(ExecutionPlan* ep){
+static void ExecutionPlan_ExecutionDone(RedisModuleCtx* ctx, ExecutionPlan* ep){
     ep->totalShardsCompleted++;
     if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
-        ExecutionPlan_Main(ep);
+        ExecutionPlan_Main(ctx, ep);
     }else{
-        ep->isPaused = true;
+        ExecutionPlan_Pause(ctx, ep);
     }
 }
 
-static void ExecutionPlan_StepDone(ExecutionPlan* ep, size_t stepId, enum StepType stepType){
+static void ExecutionPlan_StepDone(RedisModuleCtx* ctx, ExecutionPlan* ep, size_t stepId, enum StepType stepType){
 	size_t totalShardsCompleted;
 	switch(stepType){
 	case REPARTITION:
@@ -2056,13 +2083,13 @@ static void ExecutionPlan_StepDone(ExecutionPlan* ep, size_t stepId, enum StepTy
 
 	assert(Cluster_GetSize() - 1 >= totalShardsCompleted);
 	if((Cluster_GetSize() - 1) == totalShardsCompleted){ // no need to wait to myself
-	    ExecutionPlan_Main(ep);
+	    ExecutionPlan_Main(ctx, ep);
 	}else{
-        ep->isPaused = true;
+	    ExecutionPlan_Pause(ctx, ep);
 	}
 }
 
-static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
+static void ExecutionPlan_AddStepRecord(RedisModuleCtx* ctx, ExecutionPlan* ep, size_t stepId, Record* r, enum StepType stepType){
 #define MAX_PENDING_TO_START_RUNNING 10000
 	Record*** pendings = NULL;
 	switch(stepType){
@@ -2079,9 +2106,9 @@ static void ExecutionPlan_AddStepRecord(ExecutionPlan* ep, size_t stepId, Record
 	}
 	*pendings = array_append(*pendings, r);
 	if(array_len(*pendings) >= MAX_PENDING_TO_START_RUNNING){
-	    ExecutionPlan_Main(ep);
+	    ExecutionPlan_Main(ctx, ep);
 	}else{
-        ep->isPaused = true;
+	    ExecutionPlan_Pause(ctx, ep);
 	}
 }
 
@@ -2113,6 +2140,10 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
             };
             ep->onStartCallback(&ectx, ep->fep->onExecutionStartStep.arg.stepArg);
         }
+    }else{
+        // here we need to cancle an existing maxIdleTimer
+        RedisModule_StopTimer(ctx, ep->maxIdleTimer, NULL);
+        ep->maxIdleTimerSet = false;
     }
     if(ep->onUnpausedCallback){
         ExecutionCtx ectx = {
@@ -2126,22 +2157,22 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     LockHandler_Release(ctx);
 	switch(msg->type){
 	case RUN_MSG:
-        ExecutionPlan_Main(ep);
+        ExecutionPlan_Main(ctx, ep);
 		break;
 	case ADD_RECORD_MSG:
-		ExecutionPlan_AddStepRecord(ep, msg->addRecordWM.stepId, msg->addRecordWM.record, msg->addRecordWM.stepType);
+		ExecutionPlan_AddStepRecord(ctx, ep, msg->addRecordWM.stepId, msg->addRecordWM.record, msg->addRecordWM.stepType);
 		// setting it to NULL to indicate that we move responsibility
 		// on the record to the execution and it should not be free on ExectuionPlan_WorkerMsgFree
 		msg->addRecordWM.record = NULL;
 		break;
 	case SHARD_COMPLETED_MSG:
-		ExecutionPlan_StepDone(ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
+		ExecutionPlan_StepDone(ctx, ep, msg->shardCompletedWM.stepId, msg->shardCompletedWM.stepType);
 		break;
 	case EXECUTION_DONE:
-	    ExecutionPlan_ExecutionDone(ep);
+	    ExecutionPlan_ExecutionDone(ctx, ep);
 	    break;
 	case EXECUTION_TERMINATE:
-        ExecutionPlan_ExecutionTerminate(ep);
+        ExecutionPlan_ExecutionTerminate(ctx, ep);
         break;
 	default:
 		assert(false);
@@ -2558,6 +2589,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->desc = NULL;
     res->executionPoolSize = 0;
     res->serializedFep = NULL;
+    res->executionMaxIdleTime = GearsConfig_ExecutionMaxIdleTime();
     res->onExecutionStartStep = (FlatBasicStep){
             .stepName = NULL,
             .arg = {
@@ -3051,15 +3083,20 @@ void ExecutionPlan_Clean() {
     Gears_dictReleaseIterator(iter);
 
     // free all executions
+    ExecutionPlan** epToFree = array_new(ExecutionPlan*, 10);
+
     Gears_dictIterator* it = Gears_dictGetIterator(epData.epDict);
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(it))) {
         ExecutionPlan* ep = Gears_dictGetVal(entry);
-        if(EPIsFlagOn(ep, EFDone)){
-            ExecutionPlan_Free(ep);
-        }
-        RedisModule_Log(NULL, "warning", "Found a unfinished exeution on shutdown, valgrind check will probably failed");
+        epToFree = array_append(epToFree, ep);
     }
     Gears_dictReleaseIterator(it);
+
+    for(size_t i = 0 ; i < array_len(epToFree) ; ++i){
+        ExecutionPlan_Free(epToFree[i]);
+    }
+
+    array_free(epToFree);
 }
 
