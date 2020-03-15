@@ -258,7 +258,18 @@ int MODULE_API_FUNC(RedisGears_SetDesc)(FlatExecutionPlan* ctx, const char* desc
 #define RGM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
 
 /**
- * Private data will be available on all the execution steps
+ * Private data will be available on the following location:
+ * 1. Serialize and Deserialize of the flat execution steps arguments
+ * 2. Execution of each of the flat execution steps
+ *
+ * The assumption is that the private data might be big, on python for example the
+ * private data holds the entire python requirements. And so, follow this assumption
+ * the private data is not kept in its serialized form like the rest of the flat
+ * execution. Instead each time the execution serialized we call the serialize function
+ * of the private data type.
+ *
+ * Notica that this means that serialization of private data must be consistant and must produce
+ * the same outcome each time it called.
  */
 void MODULE_API_FUNC(RedisGears_SetFlatExecutionPrivateData)(FlatExecutionPlan* fep, const char* type, void* PD);
 void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateDataFromFep)(FlatExecutionPlan* fep);
