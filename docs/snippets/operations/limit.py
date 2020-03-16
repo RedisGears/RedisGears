@@ -1,4 +1,4 @@
-# Limit the output to the first three records
+# Limit the output to the three records starting with the first one
 gb = GB()
-gb.limit(1, 3)
+gb.limit(3, 1)
 gb.run()
