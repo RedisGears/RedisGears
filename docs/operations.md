@@ -184,13 +184,13 @@ It accepts two numeric arguments: a starting position in the input records "arra
 
 **Python API**
 ```python
-class GearsBuilder.limit(length, start=1)
+class GearsBuilder.limit(length, start=0)
 ```
 
 _Arguments_
 
 * _length_: the maximal length of the output records list
-* _start_: a 1-based index of the input record to start from
+* _start_: a 0-based index of the input record to start from
 
 **Examples**
 ```python
