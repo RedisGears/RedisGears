@@ -1029,27 +1029,32 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
         RedisModule_SaveUnsigned(rdb, 0); // done
         return;
     }
+
+    Gears_Buffer* buff = Gears_BufferCreate();
+    Gears_BufferWriter bw;
+    Gears_BufferWriterInit(&bw, buff);
+
     Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
     Gears_listNode* node = NULL;
     while((node = Gears_listNext(iter))){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
         RedisModule_SaveUnsigned(rdb, 1); // has more
         size_t len;
-        const char* serializedFep = FlatExecutionPlan_Serialize(srctx->fep, &len, NULL);
-        assert(serializedFep); // fep already registered, must be serializable.
-        RedisModule_SaveStringBuffer(rdb, serializedFep, len);
+        int res = FlatExecutionPlan_Serialize(&bw, srctx->fep, NULL);
+        assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
 
-        Gears_Buffer* buff = Gears_BufferCreate();
-        Gears_BufferWriter bw;
-        Gears_BufferWriterInit(&bw, buff);
         StreamReader_SerializeArgs(srctx->args, &bw);
+
         RedisModule_SaveStringBuffer(rdb, buff->buff, buff->size);
-        Gears_BufferFree(buff);
 
         RedisModule_SaveUnsigned(rdb, srctx->mode);
+
+        Gears_BufferClear(buff);
     }
     RedisModule_SaveUnsigned(rdb, 0); // done
     Gears_listReleaseIterator(iter);
+
+    Gears_BufferFree(buff);
 }
 
 static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
@@ -1057,16 +1062,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
         assert(data);
-        char* err = NULL;
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(data, len, &err);
-        if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
-            assert(false);
-        }
-        RedisModule_Free(data);
 
-        data = RedisModule_LoadStringBuffer(rdb, &len);
-        assert(data);
         Gears_Buffer buff = {
                 .buff = data,
                 .size = len,
@@ -1074,6 +1070,14 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         };
         Gears_BufferReader reader;
         Gears_BufferReaderInit(&reader, &buff);
+
+        char* err = NULL;
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err);
+        if(!fep){
+            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            assert(false);
+        }
+
         void* args = StreamReader_DeserializeArgs(&reader);
         RedisModule_Free(data);
 
