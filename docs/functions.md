@@ -170,7 +170,7 @@ The **Run** action runs a function as a batch. The function is executed once and
 
 Trying to run more than one function in the same execution will fail with an error.
 
-!!! example "Example: m ultiple executions error"
+!!! example "Example: multiple executions error"
     ```
     127.0.0.1:30001> RG.PYEXECUTE "GB().run()\nGB().run()"
     (error) [... 'spam.error: Can not run more then 1 executions in a single script']

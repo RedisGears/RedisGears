@@ -432,7 +432,7 @@ class GearsBuilder.count()
 ## CountBy
 The sugar **CountBy** operation counts the records grouped by key.
 
-It requires a single [extracor](#extractor) function callback.
+It requires a single [extractor](#extractor) function callback.
 
 The operation is made of an [aggregateby](#aggregateby) operation that uses local counting and global summing accumulators.
 
