@@ -225,6 +225,8 @@ typedef struct ExecutionPlan{
     ExecutionMode mode;
     Gears_listNode* nodeOnExecutionsList;
     volatile bool isPaused;
+    RedisModuleTimerID maxIdleTimer;
+    bool maxIdleTimerSet;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -257,6 +259,7 @@ typedef struct FlatExecutionPlan{
     FlatBasicStep onExecutionStartStep;
     FlatBasicStep onRegisteredStep;
     FlatBasicStep onUnpausedStep;
+    long long executionMaxIdleTime;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{

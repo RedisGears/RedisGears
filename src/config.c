@@ -49,6 +49,7 @@ typedef struct RedisGears_Config{
     ConfigVal pythonAttemptTraceback;
     ConfigVal createVenv;
     ConfigVal executionThreads;
+    ConfigVal executionMaxIdleTime;
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
     ConfigVal venvWorkingPath;
@@ -216,6 +217,26 @@ static bool ConfigVal_ExecutionThreadsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ExecutionMaxIdleTimeGet(){
+    return &DefaultGearsConfig.executionMaxIdleTime;
+}
+
+static bool ConfigVal_ExecutionMaxIdleTimeSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if(n <= 0){
+            return false;
+        }
+        DefaultGearsConfig.executionMaxIdleTime.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static Gears_dict* Gears_ExtraConfig = NULL;
 
 static Gears_ConfigVal Gears_ConfigVals[] = {
@@ -272,6 +293,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_ExecutionThreadsGet,
         .setter = ConfigVal_ExecutionThreadsSet,
         .configurableAtRunTime = false,
+    },
+    {
+        .name = "ExecutionMaxIdleTime",
+        .getter = ConfigVal_ExecutionMaxIdleTimeGet,
+        .setter = ConfigVal_ExecutionMaxIdleTimeSet,
+        .configurableAtRunTime = true,
     },
     {
         NULL,
@@ -453,6 +480,10 @@ long long GearsConfig_ExecutionThreads(){
     return DefaultGearsConfig.executionThreads.val.longVal;
 }
 
+long long GearsConfig_ExecutionMaxIdleTime(){
+    return DefaultGearsConfig.executionMaxIdleTime.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -525,6 +556,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .executionThreads = {
             .val.longVal = 3,
+            .type = LONG,
+        },
+        .executionMaxIdleTime = {
+            .val.longVal = 5000,
             .type = LONG,
         },
         .venvWorkingPath = {
