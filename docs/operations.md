@@ -184,13 +184,13 @@ It accepts two numeric arguments: a starting position in the input records "arra
 
 **Python API**
 ```python
-class GearsBuilder.limit(start=1, length)
+class GearsBuilder.limit(length, start=0)
 ```
 
 _Arguments_
 
-* _start_: a 1-based index of the input record to start from
 * _length_: the maximal length of the output records list
+* _start_: a 0-based index of the input record to start from
 
 **Examples**
 ```python
@@ -432,7 +432,7 @@ class GearsBuilder.count()
 ## CountBy
 The sugar **CountBy** operation counts the records grouped by key.
 
-It requires a single [extracor](#extractor) function callback.
+It requires a single [extractor](#extractor) function callback.
 
 The operation is made of an [aggregateby](#aggregateby) operation that uses local counting and global summing accumulators.
 
