@@ -20,4 +20,7 @@ KeysReaderTriggerArgs* KeysReaderTriggerArgs_Create(const char* regex, char** ev
 void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args);
 
 
+KeysReaderCtx* KeysReaderCtx_Create(const char* match, bool readValue, const char* event, bool isPattern);
+void KeysReaderCtx_Free(void* ctx);
+
 #endif /* SRC_KEYS_READER_H_ */

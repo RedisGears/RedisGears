@@ -39,13 +39,13 @@ RedisModuleDict *keysDict = NULL;
 static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx);
 
 typedef struct KeysReaderCtx{
-    size_t matchLen;
     char* match;
+    char* event;
     long long cursorIndex;
     bool isDone;
     Record** pendingRecords;
     bool readValue;
-    bool isPrefix;
+    bool isPattern;
 }KeysReaderCtx;
 
 typedef struct KeysReaderTriggerArgs{
@@ -124,69 +124,45 @@ static KeysReaderRegisterData* KeysReaderRegisterData_GetShallowCopy(KeysReaderR
     return rData;
 }
 
-static bool KeysReaderCtx_AnalizeArg(char* match, size_t* matchLen){
-    bool isPrefix = false;
-    if(match){
-        *matchLen = strlen(match);
-        if(match[*matchLen - 1] == '*'){
-            isPrefix = true;
-        }
-    }
-    return isPrefix;
-}
+//static void KeysReaderCtx_Reset(void* ctx, void* arg){
+//    KeysReaderCtx* krctx = ctx;
+//    while(array_len(krctx->pendingRecords) > 0){
+//        RedisGears_FreeRecord(array_pop(krctx->pendingRecords));
+//    }
+//    if(krctx->match){
+//        RG_FREE(krctx->match);
+//    }
+//
+//    krctx->cursorIndex = 0;
+//    krctx->isDone = false;
+//
+//    krctx->isPattern = KeysReaderCtx_AnalizeArg(arg, &krctx->matchLen);
+//    krctx->match = arg;
+//}
 
-static void KeysReaderCtx_Reset(void* ctx, void* arg){
-    KeysReaderCtx* krctx = ctx;
-    while(array_len(krctx->pendingRecords) > 0){
-        RedisGears_FreeRecord(array_pop(krctx->pendingRecords));
-    }
-    if(krctx->match){
-        RG_FREE(krctx->match);
-    }
-
-    krctx->cursorIndex = 0;
-    krctx->isDone = false;
-
-    krctx->isPrefix = KeysReaderCtx_AnalizeArg(arg, &krctx->matchLen);
-    krctx->match = arg;
-}
-
-static KeysReaderCtx* KeysReaderCtx_Create(char* match, bool readValue){
+KeysReaderCtx* KeysReaderCtx_Create(const char* match, bool readValue, const char* event, bool isPattern){
 #define PENDING_KEYS_INIT_CAP 10
     size_t matchLen = 0;
-    bool isPrefix = KeysReaderCtx_AnalizeArg(match, &matchLen);
     KeysReaderCtx* krctx = RG_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
-        .matchLen = matchLen,
-        .match = match,
+        .match = RG_STRDUP(match),
+        .event = RG_STRDUP(event),
         .cursorIndex = 0,
         .isDone = false,
         .readValue = readValue,
-        .isPrefix = isPrefix,
+        .isPattern = isPattern,
         .pendingRecords = array_new(Record*, PENDING_KEYS_INIT_CAP),
     };
     return krctx;
 }
 
-static void RG_KeysReaderCtxSerialize(void* ctx, Gears_BufferWriter* bw){
-    KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
-    RedisGears_BWWriteString(bw, krctx->match);
-}
-
-static void RG_KeysReaderCtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
-    KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
-    char* match = RedisGears_BRReadString(br);
-    krctx->match = RG_STRDUP(match);
-    krctx->matchLen = strlen(krctx->match);
-    if(match[krctx->matchLen - 1] == '*'){
-        krctx->isPrefix = true;
-    }
-}
-
-static void KeysReader_Free(void* ctx){
+void KeysReaderCtx_Free(void* ctx){
     KeysReaderCtx* krctx = ctx;
     if(krctx->match){
         RG_FREE(krctx->match);
+    }
+    if(krctx->event){
+        RG_FREE(krctx->event);
     }
     for(size_t i = 0 ; i < array_len(krctx->pendingRecords) ; ++i){
         RedisGears_FreeRecord(krctx->pendingRecords[i]);
@@ -195,7 +171,24 @@ static void KeysReader_Free(void* ctx){
     RG_FREE(krctx);
 }
 
-static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
+static void RG_KeysReaderCtxSerialize(void* ctx, Gears_BufferWriter* bw){
+    KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
+    RedisGears_BWWriteString(bw, krctx->match);
+    RedisGears_BWWriteString(bw, krctx->event);
+    RedisGears_BWWriteLong(bw, krctx->readValue);
+    RedisGears_BWWriteLong(bw, krctx->isPattern);
+}
+
+static void RG_KeysReaderCtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
+    KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
+    char* match =
+    krctx->match = RG_STRDUP(RedisGears_BRReadString(br));
+    krctx->event = RG_STRDUP(RedisGears_BRReadString(br));
+    krctx->readValue = RedisGears_BRReadLong(br);
+    krctx->isPattern = RedisGears_BRReadLong(br);
+}
+
+static Record* GetStringValueRecord(RedisModuleKey* handler){
     size_t len;
     char* val = RedisModule_StringDMA(handler, &len, REDISMODULE_READ);
     char* strVal = RG_ALLOC(len + 1);
@@ -204,12 +197,11 @@ static Record* ValueToStringMapper(Record *record, RedisModuleKey* handler){
 
     Record* strRecord = RedisGears_StringRecordCreate(strVal, len);
 
-    RedisGears_KeyRecordSetVal(record, strRecord);
-    return record;
+    return strRecord;
 }
 
-static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
-    RedisModuleCallReply *reply = RedisModule_Call(ctx, "HGETALL", "c", RedisGears_KeyRecordGetKey(record, NULL));
+static Record* ValueToHashSetMapper(const char* keyStr, RedisModuleCtx* ctx){
+    RedisModuleCallReply *reply = RedisModule_Call(ctx, "HGETALL", "c", keyStr);
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
     size_t len = RedisModule_CallReplyLength(reply);
     assert(len % 2 == 0);
@@ -230,13 +222,12 @@ static Record* ValueToHashSetMapper(Record *record, RedisModuleCtx* ctx){
         Record* valRecord = RedisGears_StringRecordCreate(valCStr, valStrLen);
         RedisGears_HashSetRecordSet(hashSetRecord, keyCStr, valRecord);
     }
-    RedisGears_KeyRecordSetVal(record, hashSetRecord);
     RedisModule_FreeCallReply(reply);
-    return record;
+    return hashSetRecord;
 }
 
-static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
-    RedisModuleCallReply *reply = RedisModule_Call(ctx, "lrange", "cll", RedisGears_KeyRecordGetKey(record, NULL), 0, -1);
+static Record* ValueToListMapper(const char* keyStr, RedisModuleCtx* ctx){
+    RedisModuleCallReply *reply = RedisModule_Call(ctx, "lrange", "cll", keyStr, 0, -1);
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
     size_t len = RedisModule_CallReplyLength(reply);
     Record *listRecord = RedisGears_ListRecordCreate(10);
@@ -254,61 +245,55 @@ static Record* ValueToListMapper(Record *record, RedisModuleCtx* ctx){
         RedisGears_ListRecordAdd(listRecord, strRecord);
     }
     RedisModule_FreeCallReply(reply);
-    RedisGears_KeyRecordSetVal(record, listRecord);
-    return record;
+    return listRecord;
 }
 
-static Record* ValueToRecordMapper(RedisModuleCtx* rctx, Record* record, RedisModuleKey* handler){
+static Record* GetValueRecord(RedisModuleCtx* rctx, const char* keyStr, RedisModuleKey* handler){
     switch(RedisModule_KeyType(handler)){
     case REDISMODULE_KEYTYPE_STRING:
-        return ValueToStringMapper(record, handler);
+        return GetStringValueRecord(handler);
         break;
     case REDISMODULE_KEYTYPE_LIST:
-        return ValueToListMapper(record, rctx);
+        return ValueToListMapper(keyStr, rctx);
         break;
     case REDISMODULE_KEYTYPE_HASH:
-        return ValueToHashSetMapper(record, rctx);
+        return ValueToHashSetMapper(keyStr, rctx);
         break;
     default:
         // we do not want how to parse this type, we will return a key record with no value
-        return record;
+        return NULL;
     }
 }
 
 static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx, RedisModuleString* key){
     size_t keyLen;
     const char* keyStr = RedisModule_StringPtrLen(key, &keyLen);
-    Record* record = NULL;
+    Record* record = RedisGears_HashSetRecordCreate();
 
     char* keyCStr = RG_ALLOC(keyLen + 1);
     memcpy(keyCStr, keyStr, keyLen);
     keyCStr[keyLen] = '\0';
 
-    RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
-    if(!keyHandler){
-        if(readerCtx->readValue){
-            // if we reached here and the key does not exists
-            // lets return a dictionary with only the key indicating that the key was deleted.
-            Record* keyRecord = RedisGears_StringRecordCreate(keyCStr, keyLen);
-            record = RedisGears_HashSetRecordCreate();
-            RedisGears_HashSetRecordSet(record, "key", keyRecord);
-            return record;
+    Record* keyRecord = RedisGears_StringRecordCreate(keyCStr, keyLen);
+    RedisGears_HashSetRecordSet(record, "key", keyRecord);
+
+    if(readerCtx->readValue){
+        RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
+        if(keyHandler){
+            Record* val = GetValueRecord(rctx, keyCStr, keyHandler);
+            RedisGears_HashSetRecordSet(record, "value", val);
+            RedisModule_CloseKey(keyHandler);
+        }else{
+            RedisGears_HashSetRecordSet(record, "value", NULL);
         }
-        RG_FREE(keyCStr);
-        return NULL;
     }
 
-    if(!readerCtx->readValue){
-        record = RedisGears_StringRecordCreate(keyCStr, keyLen);
+    if(readerCtx->event){
+        Record* eventRecord = RedisGears_StringRecordCreate(readerCtx->event, strlen(readerCtx->event));
+        RedisGears_HashSetRecordSet(record, "event", eventRecord);
     }else{
-        record = RedisGears_KeyRecordCreate();
-
-        RedisGears_KeyRecordSetKey(record, keyCStr, keyLen);
-
-        ValueToRecordMapper(rctx, record, keyHandler);
+        RedisGears_HashSetRecordSet(record, "event", NULL);
     }
-
-    RedisModule_CloseKey(keyHandler);
 
     return record;
 }
@@ -376,22 +361,18 @@ static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* reade
 static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
     Record* record = NULL;
-    if(readerCtx->isPrefix){
+    if(readerCtx->isPattern){
         record = KeysReader_ScanNextKey(RedisGears_GetRedisModuleCtx(ectx), readerCtx);
     }else{
         if(readerCtx->isDone){
             return NULL;
         }
-        if(!readerCtx->readValue){
-            record = RedisGears_StringRecordCreate(RG_STRDUP(readerCtx->match), readerCtx->matchLen);
-        }else{
-            RedisModuleString* key = RedisModule_CreateString(NULL, readerCtx->match, readerCtx->matchLen);
-            RedisModuleCtx* rctx = RedisGears_GetRedisModuleCtx(ectx);
-            LockHandler_Acquire(rctx);
-            record = KeysReader_ReadKey(rctx, readerCtx, key);
-            LockHandler_Release(rctx);
-            RedisModule_FreeString(NULL, key);
-        }
+        RedisModuleString* key = RedisModule_CreateString(NULL, readerCtx->match, strlen(readerCtx->match));
+        RedisModuleCtx* rctx = RedisGears_GetRedisModuleCtx(ectx);
+        LockHandler_Acquire(rctx);
+        record = KeysReader_ReadKey(rctx, readerCtx, key);
+        LockHandler_Release(rctx);
+        RedisModule_FreeString(NULL, key);
         readerCtx->isDone = true;
     }
     return record;
@@ -759,12 +740,12 @@ KeysReaderTriggerArgs* KeysReaderTriggerArgs_Create(const char* regex, char** ev
 }
 
 static Reader* KeysReader_Create(void* arg){
-    KeysReaderCtx* ctx = KeysReaderCtx_Create(arg, true);
+    KeysReaderCtx* ctx = arg;
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
         .next = KeysReader_Next,
-        .free = KeysReader_Free,
+        .free = KeysReaderCtx_Free,
         .serialize = RG_KeysReaderCtxSerialize,
         .deserialize = RG_KeysReaderCtxDeserialize,
     };
@@ -772,13 +753,14 @@ static Reader* KeysReader_Create(void* arg){
 }
 
 static Reader* KeysOnlyReader_Create(void* arg){
-    KeysReaderCtx* ctx = KeysReaderCtx_Create(arg, false);
+    KeysReaderCtx* ctx = arg;
     Reader* r = RG_ALLOC(sizeof(*r));
     *r = (Reader){
         .ctx = ctx,
         .next = KeysReader_Next,
-        .free = KeysReader_Free,
-        .reset = KeysReaderCtx_Reset,
+        .free = KeysReaderCtx_Free,
+        .reset = NULL,
+//        .reset = KeysReaderCtx_Reset,
         .serialize = RG_KeysReaderCtxSerialize,
         .deserialize = RG_KeysReaderCtxDeserialize,
     };

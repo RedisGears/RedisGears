@@ -788,7 +788,7 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
     RedisGears_DropExecution(ep);
 }
 
-static PyObject* run(PyObject *self, PyObject *args){
+static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
 
@@ -830,7 +830,29 @@ static PyObject* run(PyObject *self, PyObject *args){
             arg = RedisGears_StreamReaderCtxCreate(regexStr, "0-0");
         }else if(strcmp(RedisGears_GetReader(pfep->fep), "KeysReader") == 0 ||
                  strcmp(RedisGears_GetReader(pfep->fep), "KeysOnlyReader") == 0){
-            arg = RG_STRDUP(regexStr);
+            bool isPattern = true;
+            PyObject* pyIsPattern = PyDict_GetItemString(kargs, "isPattern");
+            if(pyIsPattern){
+                if(!PyBool_Check(pyIsPattern)){
+                    PyErr_SetString(GearsError, "isPattern value is not boolean");
+                    return NULL;
+                }
+                if(pyIsPattern == Py_False){
+                    isPattern = false;
+                }
+            }
+            bool readValue = true;
+            PyObject* pyReadValue = PyDict_GetItemString(kargs, "readValue");
+            if(pyReadValue){
+                if(!PyBool_Check(pyReadValue)){
+                    PyErr_SetString(GearsError, "readValue value is not boolean");
+                    return NULL;
+                }
+                if(pyReadValue == Py_False){
+                    readValue = false;
+                }
+            }
+            arg = RedisGears_KeysReaderCtxCreate(regexStr, readValue, NULL, isPattern);
         }else{
             PyErr_SetString(GearsError, "Given reader do not support run");
             return NULL;
@@ -1194,7 +1216,7 @@ PyMethodDef PyFlatExecutionMethods[] = {
     {"flatmap", flatmap, METH_VARARGS, "flat map a record to many records"},
     {"limit", limit, METH_VARARGS, "limit the results to a give size and offset"},
     {"accumulate", accumulate, METH_VARARGS, "accumulate the records to a single record"},
-    {"run", run, METH_VARARGS, "start the execution"},
+    {"run", (PyCFunction)run, METH_VARARGS|METH_KEYWORDS, "start the execution"},
     {"register", (PyCFunction)registerExecution, METH_VARARGS|METH_KEYWORDS, "register the execution on an event"},
     {NULL, NULL, 0, NULL}
 };
@@ -1389,14 +1411,15 @@ static PyObject* RedisConfigGet(PyObject *cls, PyObject *args){
     return valPyStr;
 }
 
-static PyObject* RedisLog(PyObject *cls, PyObject *args){
-    PyObject* logLevel = NULL;
+static PyObject* RedisLog(PyObject *cls, PyObject *args, PyObject *kargs){
+    PyObject* logLevel = PyDict_GetItemString(kargs, "level");
     PyObject* logMsg = NULL;
     if(PyTuple_Size(args) < 1 || PyTuple_Size(args) > 2){
         PyErr_SetString(GearsError, "log function must get a log message as input");
         return NULL;
     }
     if(PyTuple_Size(args) == 2){
+        RedisModule_Log(NULL, "warning", "Specify log level as the first argument to log function is depricated, use key argument 'level' instead");
         logLevel = PyTuple_GetItem(args, 0);
         logMsg = PyTuple_GetItem(args, 1);
     }else{
@@ -2131,7 +2154,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"atomicCtx", atomicCtx, METH_VARARGS, "creating a atomic ctx for atomic block"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
-    {"log", RedisLog, METH_VARARGS, "write a message into the redis log file"},
+    {"log", (PyCFunction)RedisLog, METH_VARARGS|METH_KEYWORDS, "write a message into the redis log file"},
     {"config_get", RedisConfigGet, METH_VARARGS, "write a message into the redis log file"},
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
@@ -2695,6 +2718,11 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     char* key;
     Arr(char*) keys;
     size_t len;
+    if(!record){
+        Py_INCREF(Py_None);
+        RG_PyObjRecordSet(res, Py_None);
+        return res;
+    }
     switch(RedisGears_RecordGetType(record)){
     case STRING_RECORD:
         str = RedisGears_StringRecordGet(record, &len);

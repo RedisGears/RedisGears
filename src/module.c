@@ -225,6 +225,14 @@ static void RG_StreamReaderCtxFree(StreamReaderCtx* readerCtx){
     StreamReaderCtx_Free(readerCtx);
 }
 
+static KeysReaderCtx* RG_KeysReaderCtxCreate(const char* match, bool readValue, const char* event, bool isPattern){
+    return KeysReaderCtx_Create(match, readValue, event, isPattern);
+}
+
+static void RG_KeysReaderCtxFree(KeysReaderCtx* readerCtx){
+    KeysReaderCtx_Free(readerCtx);
+}
+
 static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
     return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
@@ -576,6 +584,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
     REGISTER_API(StreamReaderCtxFree, ctx);
+    REGISTER_API(KeysReaderCtxCreate, ctx);
+    REGISTER_API(KeysReaderCtxFree, ctx);
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
     REGISTER_API(StreamReaderTriggerArgsFree, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);

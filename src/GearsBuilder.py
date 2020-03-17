@@ -104,7 +104,7 @@ class GearsBuilder():
                                              lambda a, r: (a[0] + r, a[1] + 1),
                                              lambda a, r: (a[0] + r[0], a[1] + r[1])).map(lambda x: x[0] / x[1])
 
-    def run(self, arg=None, convertToStr=True, collect=True):
+    def run(self, arg=None, convertToStr=True, collect=True, *args, **kargs):
         '''
         Starting the execution
         '''
@@ -115,7 +115,7 @@ class GearsBuilder():
         arg = arg if arg else self.defaultArg
         if(self.realReader == 'ShardsIDReader'):
             arg = ShardReaderCallback
-        self.gearsCtx.run(arg)
+        self.gearsCtx.run(arg, *args, **kargs)
 
     def register(self,
                  regex='*',
