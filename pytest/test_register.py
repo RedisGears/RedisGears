@@ -494,9 +494,20 @@ def testRegistersReplicatedToSlave():
     except Exception:
         env.assertTrue(False, message='Failed waiting for keys to update')
 
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for r in executions:
-         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
+    ## make sure registrations did not run on slave (if it did NumOfKeys would get to 200)
+    try:
+        with TimeLimit(5):
+            done = False
+            while not done:
+                done = True
+                executions = env.cmd('RG.DUMPEXECUTIONS')
+                for r in executions:
+                    try:
+                        env.cmd('RG.DROPEXECUTION', r[1])
+                    except Exception:
+                        done = False
+    except Exception:
+        env.assertTrue(False, message='Failed dropping all the executions')
 
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
