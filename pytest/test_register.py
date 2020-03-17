@@ -906,3 +906,11 @@ def testCommandReaderCluster(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='GetNumShard')").ok()
     env.expect('RG.TRIGGER', 'GetNumShard').equal([str(env.shardsCount)])
+
+def testCommandReaderWithCountBy(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x[1:]).countby(lambda x: x).register(trigger='test1')").ok()
+    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
+
+    # we need to check twice to make sure the execution reset are not causing issues
+    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
