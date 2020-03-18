@@ -1750,6 +1750,8 @@ static void ExecutionStep_Reset(ExecutionStep* es){
             Gears_dictReleaseIterator(iter);
             Gears_dictEmpty(es->accumulateByKey.accumulators, NULL);
 
+        }else{
+            es->accumulateByKey.accumulators = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
         }
         break;
     default:
