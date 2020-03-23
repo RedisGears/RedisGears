@@ -2316,6 +2316,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     int res = FlatExecutionPlan_Serialize(&bw, fep, err);
     if(res != REDISMODULE_OK){
         Gears_BufferFree(buff);
+        callbacks->freeTriggerArgs(args);
         return 0;
     }
 

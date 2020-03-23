@@ -788,6 +788,46 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
     RedisGears_DropExecution(ep);
 }
 
+static void* runCreateStreamReaderArgs(const char* pattern, PyObject *kargs){
+    const char* defaultFromIdStr = "0-0";
+    const char* fromIdStr = defaultFromIdStr;
+    PyObject* pyFromId = PyDict_GetItemString(kargs, "fromId");
+    if(pyFromId){
+        if(!PyUnicode_Check(pyFromId)){
+            PyErr_SetString(GearsError, "fromId argument must be a string");
+            return NULL;
+        }
+        fromIdStr = PyUnicode_AsUTF8AndSize(pyFromId, NULL);
+    }
+    return RedisGears_StreamReaderCtxCreate(pattern, fromIdStr);
+}
+
+static void* runCreateKeysReaderArgs(const char* pattern, PyObject *kargs){
+    bool noScan = false;
+    PyObject* pyNoScan = PyDict_GetItemString(kargs, "noScan");
+    if(pyNoScan){
+        if(!PyBool_Check(pyNoScan)){
+            PyErr_SetString(GearsError, "exactMatch value is not boolean");
+            return NULL;
+        }
+        if(pyNoScan == Py_True){
+            noScan = true;
+        }
+    }
+    bool readValue = true;
+    PyObject* pyReadValue = PyDict_GetItemString(kargs, "readValue");
+    if(pyReadValue){
+        if(!PyBool_Check(pyReadValue)){
+            PyErr_SetString(GearsError, "readValue value is not boolean");
+            return NULL;
+        }
+        if(pyReadValue == Py_False){
+            readValue = false;
+        }
+    }
+    return RedisGears_KeysReaderCtxCreate(pattern, readValue, NULL, noScan);
+}
+
 static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
@@ -803,8 +843,8 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         return NULL;
     }
 
-    char* defaultRegexStr = "*";
-    char* regexStr = defaultRegexStr;
+    const char* defaultRegexStr = "*";
+    const char* patternStr = defaultRegexStr;
     void* arg;
     if (strcmp(RedisGears_GetReader(pfep->fep), "PythonReader") == 0){
         if(PyTuple_Size(args) != 1){
@@ -819,44 +859,25 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         Py_INCREF((PyObject*)arg);
     }else{
         if(PyTuple_Size(args) > 0){
-            PyObject* regex = PyTuple_GetItem(args, 0);
-            if(!PyUnicode_Check(regex)){
+            PyObject* pattern = PyTuple_GetItem(args, 0);
+            if(!PyUnicode_Check(pattern)){
                 PyErr_SetString(GearsError, "regex argument must be a string");
                 return NULL;
             }
-            regexStr = (char*)PyUnicode_AsUTF8AndSize(regex, NULL);
+            patternStr = PyUnicode_AsUTF8AndSize(pattern, NULL);
         }
         if(strcmp(RedisGears_GetReader(pfep->fep), "StreamReader") == 0){
-            arg = RedisGears_StreamReaderCtxCreate(regexStr, "0-0");
-        }else if(strcmp(RedisGears_GetReader(pfep->fep), "KeysReader") == 0 ||
-                 strcmp(RedisGears_GetReader(pfep->fep), "KeysOnlyReader") == 0){
-            bool isPattern = true;
-            PyObject* pyIsPattern = PyDict_GetItemString(kargs, "isPattern");
-            if(pyIsPattern){
-                if(!PyBool_Check(pyIsPattern)){
-                    PyErr_SetString(GearsError, "isPattern value is not boolean");
-                    return NULL;
-                }
-                if(pyIsPattern == Py_False){
-                    isPattern = false;
-                }
-            }
-            bool readValue = true;
-            PyObject* pyReadValue = PyDict_GetItemString(kargs, "readValue");
-            if(pyReadValue){
-                if(!PyBool_Check(pyReadValue)){
-                    PyErr_SetString(GearsError, "readValue value is not boolean");
-                    return NULL;
-                }
-                if(pyReadValue == Py_False){
-                    readValue = false;
-                }
-            }
-            arg = RedisGears_KeysReaderCtxCreate(regexStr, readValue, NULL, isPattern);
+            arg = runCreateStreamReaderArgs(patternStr, kargs);
+        }else if(strcmp(RedisGears_GetReader(pfep->fep), "KeysReader") == 0){
+            arg = runCreateKeysReaderArgs(patternStr, kargs);
         }else{
-            PyErr_SetString(GearsError, "Given reader do not support run");
+            PyErr_SetString(GearsError, "Given reader do not support run or not exists");
             return NULL;
         }
+    }
+
+    if(arg == NULL){
+        return NULL;
     }
 
     char* err = NULL;
@@ -871,9 +892,12 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         if(strcmp(RedisGears_GetReader(pfep->fep), "StreamReader") == 0){
             RedisGears_StreamReaderCtxFree(arg);
         }else if(strcmp(RedisGears_GetReader(pfep->fep), "KeysReader") == 0){
-            RG_FREE(arg);
-        }else{
+            RedisGears_KeysReaderCtxFree(arg);
+        }else if(strcmp(RedisGears_GetReader(pfep->fep), "PythonReader") == 0){
             Py_DECREF((PyObject*)arg);
+        }else{
+            RedisModule_Log(NULL, "warning", "unknown reader when try to free reader args");
+            assert(false);
         }
         return NULL;
     }
@@ -908,7 +932,7 @@ static int registerStrKeyTypeToInt(const char* keyType){
     return -1;
 }
 
-static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, ExecutionMode mode){
+static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, ExecutionMode mode){
     Arr(char*) eventTypes = NULL;
     Arr(int) keyTypes = NULL;
 
@@ -917,6 +941,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, Execu
     if(pyEventTypes && pyEventTypes != Py_None){
         PyObject* eventTypesIterator = PyObject_GetIter(pyEventTypes);
         if(!eventTypesIterator){
+            PyErr_SetString(GearsError, "given eventTypes is not iterable");
             return NULL;
         }
         eventTypes = array_new(char*, 10);
@@ -940,6 +965,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, Execu
     if(pyKeyTypes && pyKeyTypes != Py_None){
         PyObject* keyTypesIterator = PyObject_GetIter(pyKeyTypes);
         if(!keyTypesIterator){
+            PyErr_SetString(GearsError, "given keyTypes is not iterable");
             return NULL;
         }
         keyTypes = array_new(char*, 10);
@@ -965,7 +991,20 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* regexStr, Execu
         }
         Py_DECREF(keyTypesIterator);
     }
-    return RedisGears_KeysReaderTriggerArgsCreate(regexStr, eventTypes, keyTypes);
+
+    bool readValue = true;
+    PyObject* pyReadValue = PyDict_GetItemString(kargs, "readValue");
+    if(pyReadValue){
+        if(!PyBool_Check(pyReadValue)){
+            PyErr_SetString(GearsError, "readValue is not boolean");
+            return NULL;
+        }
+        if(pyReadValue == Py_False){
+            readValue = false;
+        }
+    }
+
+    return RedisGears_KeysReaderTriggerArgsCreate(prefix, eventTypes, keyTypes, readValue);
 }
 
 static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
@@ -981,7 +1020,7 @@ static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
     return OnFailedPolicyUnknown;
 }
 
-static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr, ExecutionMode mode){
+static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, ExecutionMode mode){
     size_t batch = 1;
     PyObject* pyBatch = PyDict_GetItemString(kargs, "batch");
     if(pyBatch){
@@ -1050,28 +1089,18 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* regexStr, Exe
         }
     }
 
-    return RedisGears_StreamReaderTriggerArgsCreate(regexStr, batch, durationMS, onFailedPolicy, retryInterval, trimStream);
-}
-
-static void registerFreeArgs(FlatExecutionPlan* fep, void* args){
-    const char* reader = RedisGears_GetReader(fep);
-    if (strcmp(reader, "KeysReader") == 0 ||
-            strcmp(reader, "KeysOnlyReader") == 0) {
-        RedisGears_KeysReaderTriggerArgsFree(args);
-    }else if (strcmp(reader, "StreamReader") == 0){
-        RedisGears_StreamReaderTriggerArgsFree(args);
-    }
+    return RedisGears_StreamReaderTriggerArgsCreate(prefix, batch, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
 static void* registerCreateCommandArgs(PyObject *kargs){
     const char* trigger = NULL;
     PyObject* pyTrigger = PyDict_GetItemString(kargs, "trigger");
     if(!pyTrigger){
-        PyErr_SetString(GearsError, "command argument was not given");
+        PyErr_SetString(GearsError, "trigger argument was not given");
         return NULL;
     }
     if(!PyUnicode_Check(pyTrigger)){
-        PyErr_SetString(GearsError, "command argument is not string");
+        PyErr_SetString(GearsError, "trigger argument is not string");
         return NULL;
     }
     trigger = PyUnicode_AsUTF8AndSize(pyTrigger, NULL);
@@ -1084,12 +1113,12 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
         return registerCreateCommandArgs(kargs);
     }
 
-    char* defaultRegexStr = "*";
-    const char* regexStr = defaultRegexStr;
-    PyObject* regex = PyDict_GetItemString(kargs, "regex");
-    if(regex){
-        if(PyUnicode_Check(regex)){
-            regexStr = PyUnicode_AsUTF8AndSize(regex, NULL);
+    char* defaultPrefixStr = "*";
+    const char* prefixStr = defaultPrefixStr;
+    PyObject* prefix = PyDict_GetItemString(kargs, "prefix");
+    if(prefix){
+        if(PyUnicode_Check(prefix)){
+            prefixStr = PyUnicode_AsUTF8AndSize(prefix, NULL);
         }else{
             PyErr_SetString(GearsError, "regex argument must be a string");
             return NULL;
@@ -1098,9 +1127,9 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
 
     if (strcmp(reader, "KeysReader") == 0 ||
             strcmp(reader, "KeysOnlyReader") == 0) {
-        return registerCreateKeysArgs(kargs, regexStr, mode);
+        return registerCreateKeysArgs(kargs, prefixStr, mode);
     }else if (strcmp(reader, "StreamReader") == 0){
-        return registerCreateStreamArgs(kargs, regexStr, mode);
+        return registerCreateStreamArgs(kargs, prefixStr, mode);
     }
     PyErr_SetString(GearsError, "given reader does not exists or does not support register");
     return NULL;
@@ -1136,7 +1165,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         }
     }
 
-    PyObject* onRegistered = PyDict_GetItemString(kargs, "OnRegistered");
+    PyObject* onRegistered = PyDict_GetItemString(kargs, "onRegistered");
     if(onRegistered && onRegistered != Py_None){
         if(!PyFunction_Check(onRegistered)){
             PyErr_SetString(GearsError, "OnRegistered argument must be a function");
@@ -1164,7 +1193,6 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         }else{
             PyErr_SetString(GearsError, "Failed register execution");
         }
-        registerFreeArgs(pfep->fep, executionArgs);
         return NULL;
     }
 

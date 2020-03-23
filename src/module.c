@@ -225,24 +225,24 @@ static void RG_StreamReaderCtxFree(StreamReaderCtx* readerCtx){
     StreamReaderCtx_Free(readerCtx);
 }
 
-static KeysReaderCtx* RG_KeysReaderCtxCreate(const char* match, bool readValue, const char* event, bool isPattern){
-    return KeysReaderCtx_Create(match, readValue, event, isPattern);
+static KeysReaderCtx* RG_KeysReaderCtxCreate(const char* match, bool readValue, const char* event, bool noScan){
+    return KeysReaderCtx_Create(match, readValue, event, noScan);
 }
 
 static void RG_KeysReaderCtxFree(KeysReaderCtx* readerCtx){
     KeysReaderCtx_Free(readerCtx);
 }
 
-static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
-    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
+static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* prefix, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
+    return StreamReaderTriggerArgs_Create(prefix, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
 static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
     return StreamReaderTriggerArgs_Free(args);
 }
 
-static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
-    return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* prefix, char** eventTypes, int* keyTypes, bool readValue){
+    return KeysReaderTriggerArgs_Create(prefix, eventTypes, keyTypes, readValue);
 }
 
 static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
