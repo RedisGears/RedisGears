@@ -389,7 +389,7 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
 
         Record* valRecord = RedisGears_StringRecordCreate(idCStr, len);
         Record* keyRecord = RedisGears_StringRecordCreate(RG_STRDUP(readerCtx->streamKeyName), strlen(readerCtx->streamKeyName));
-        RedisGears_HashSetRecordSet(r, "msg_id", valRecord);
+        RedisGears_HashSetRecordSet(r, "id", valRecord);
         RedisGears_HashSetRecordSet(r, "value", recordValues);
         RedisGears_HashSetRecordSet(r, "key", keyRecord);
         RedisModuleCallReply *values = RedisModule_CallReplyArrayElement(element, 1);
