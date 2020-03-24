@@ -191,8 +191,8 @@ static void RG_KeysReaderCtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears
     if(RedisGears_BRReadLong(br)){
         krctx->event = RG_STRDUP(RedisGears_BRReadString(br));
         // having an even means this execution was triggered by a registration and the fact
-        // that we deserialize it means that the event did not accured on this shard,
-        // there is no need to suply any data to the execution os lets mark ourself as done
+        // that we deserialize it means that the event did not occurred on this shard,
+        // there is no need to supply any data to the execution so lets mark ourself as done
         krctx->isDone = true;
     }
     krctx->readValue = RedisGears_BRReadLong(br);
@@ -803,21 +803,6 @@ static Reader* KeysReader_Create(void* arg){
     return r;
 }
 
-static Reader* KeysOnlyReader_Create(void* arg){
-    KeysReaderCtx* ctx = arg;
-    Reader* r = RG_ALLOC(sizeof(*r));
-    *r = (Reader){
-        .ctx = ctx,
-        .next = KeysReader_Next,
-        .free = KeysReaderCtx_Free,
-        .reset = NULL,
-//        .reset = KeysReaderCtx_Reset,
-        .serialize = RG_KeysReaderCtxSerialize,
-        .deserialize = RG_KeysReaderCtxDeserialize,
-    };
-    return r;
-}
-
 static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(FlatExecutionPlan*)){
     if(!keysReaderRegistration){
         RedisModule_SaveUnsigned(rdb, 0); // done
@@ -866,10 +851,6 @@ static bool KeysReader_ShouldContinue(FlatExecutionPlan* fep){
 
 static void KeysReader_RdbSave(RedisModuleIO *rdb){
     GenericKeysReader_RdbSave(rdb, KeysReader_ShouldContinue);
-}
-
-static void KeysOnlyReader_RdbSave(RedisModuleIO *rdb){
-    GenericKeysReader_RdbSave(rdb, KeysOnlyReader_ShouldContinue);
 }
 
 static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
@@ -928,10 +909,6 @@ static void KeysReader_Clear(){
     GenricKeysReader_Clear(KeysReader_ShouldContinue);
 }
 
-static void KeysOnlyReader_Clear(){
-    GenricKeysReader_Clear(KeysOnlyReader_ShouldContinue);
-}
-
 static void KeysReader_FreeArgs(void* args){
     KeysReaderTriggerArgs_Free(args);
 }
@@ -947,17 +924,4 @@ RedisGears_ReaderCallbacks KeysReader = {
         .rdbSave = KeysReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,
         .clear = KeysReader_Clear,
-};
-
-RedisGears_ReaderCallbacks KeysOnlyReader = {
-        .create = KeysOnlyReader_Create,
-        .registerTrigger = KeysReader_RegisrterTrigger,
-        .unregisterTrigger = KeysReader_UnregisterTrigger,
-        .serializeTriggerArgs = KeysReader_SerializeArgs,
-        .deserializeTriggerArgs = KeysReader_DeserializeArgs,
-        .freeTriggerArgs = KeysReader_FreeArgs,
-        .dumpRegistratioData = KeysReader_DumpRegistrationData,
-        .rdbSave = KeysOnlyReader_RdbSave,
-        .rdbLoad = KeysReader_RdbLoad,
-        .clear = KeysOnlyReader_Clear,
 };

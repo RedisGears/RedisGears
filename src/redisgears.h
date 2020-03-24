@@ -97,7 +97,6 @@ typedef struct Reader{
  * Default readers to use
  */
 #define KeysReader KeysReader
-#define KeysOnlyReader KeysOnlyReader
 #define StreamReader StreamReader
 #define CommandReader CommandReader
 #define ShardIDReader ShardIDReader

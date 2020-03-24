@@ -743,7 +743,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     Cluster_Init();
 
     RGM_RegisterReader(KeysReader);
-    RGM_RegisterReader(KeysOnlyReader);
     RGM_RegisterReader(StreamReader);
     RGM_RegisterReader(CommandReader);
     RGM_RegisterReader(ShardIDReader);

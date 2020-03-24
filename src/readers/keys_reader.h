@@ -5,7 +5,6 @@
 #include "redisgears.h"
 
 extern RedisGears_ReaderCallbacks KeysReader;
-extern RedisGears_ReaderCallbacks KeysOnlyReader;
 
 int KeysReader_Initialize(RedisModuleCtx* ctx);
 

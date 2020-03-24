@@ -24,7 +24,7 @@ def CreateKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator
                        give pattern
     patternGenerator - a callbacks to generate different pattern on each shard. If given, the callback
                        will run on each shard and the return tuple (pattern, isPattern) will be used.
-                       If this argument is given the pattern and isPattern arguments are ignored.
+                       If this argument is given the pattern and noScan arguments are ignored.
     '''
     def KeysOnlyReader():
         nonlocal pattern
