@@ -1,55 +1,74 @@
-# Examples
+# RedisGears Examples
+The following sections consist of various [recipes](glossary.md#recipe) and basic examples showing the uses for RedisGears.
+
+To contribute your example or recipe (and get the credit for it), click the "Edit this page" button at the top to submit a Pull Request.
+
+## Recipes
+This is a list of RedisGears recipes that can be used as-is or as an inspiration source.
+
+| Recipe | Description | Author | License | URL |
+| --- | --- | --- | --- | --- |
+| WriteBehind | Write-Behind and Write-Through from Redis to other SQL/No-SQL databases | [RedisLabs](https://redislabs.com/) | BSD-3-Clause | [git](https://github.com/RedisGears/WriteBehind/) |
+| AnimalRecognitionDemo | An example of using Redis Streams, RedisGears and RedisAI for Realtime Video Analytics (i.e. filtering cats) | [RedisLabs](https://redislabs.com/) | BSD-3-Clause | [git](https://github.com/RedisGears/AnimalRecognitionDemo) |
+| EdgeRealtimeVideoAnalytics | An example of using Redis Streams, RedisGears, RedisAI and RedisTimeSeries for Realtime Video Analytics (i.e. counting people) | [RedisLabs](https://redislabs.com/) | Apache-2.0 | [git](https://github.com/RedisGears/EdgeRealtimeVideoAnalytics) |
 
 ## Word Count
-Assumes that your data is located in redis keys, each key is a sentence (string). 
-This Gears script allows you to count how many unique words there are.
-```
-# creating gears builder
-bg = GearsBuilder()
+The counting of words.
 
-# getting the value from each key
-bg.map(lambda x: x['value'])
+**Author: [RedisLabs](https://redislabs.com/)**
 
-# split each line to words
-bg.flatmap(lambda x: x.split())
+**Assumptions**
 
-# count for each word how many times it appears
-bg.countby()
+All keys store Redis String values. Each value is a sentence.
 
-# starting the execution
-bg.run()
+**Python API**
+
+```python
+{{ include('examples/word-count.py') }}
 ```
 
+## Delete by Key Prefix
+Deletes all the keys with name beginning with a prefix and return their count.
 
-## Delete Keys by Prefix
-Delete all the keys that starts with `city:`
-```
-# creating gears builder
-bg = GearsBuilder()
+**Author: [RedisLabs](https://redislabs.com/)**
 
-# getting the key name
-bg.map(lambda x: x['key'])
+**Assumptions**
 
-# split each line to words
-bg.foreach(lambda x: execute('del', x))
+There may be keys in the database. Some of these may have names beginning with the "delete_me:" prefix.
 
-# count how many keys was deleted
-bg.count()
+**Python API**
 
-# starting the execution on 'city:*'
-bg.run('city:*')
+```python
+{{ include('examples/del-by-prefix.py') }}
 ```
 
-## Stream Processing
-Put each record that enter stream `s1` into a hash
+## Basic Redis Stream Processing
+
+Copy every new message from the Redis Stream to a Redis Hash key.
+
+**Author: [RedisLabs](https://redislabs.com/)**
+
+**Assumptions**
+
+An input Redis Stream is stored under the "mystream" key.
+
+**Python API**
+
+```python
+{{ include('examples/stream-logger.py') }}
 ```
-# creating gears builder
-bg = GearsBuilder('StreamReader')
 
-# Set the data in the hash
-bg.foreach(lambda x: execute('hmset', x['streamId'], *x))
+## Distributed Monte Carlo Estimation of Pi's Value
 
-# register the execution on `s1`
-bg.register('s1')
+Estimate Pi by throwing darts at a carefully-constructed dartboard.
+
+!!! tip "There are far better ways to get Pi's value"
+    This example is intended for educational purposes only. For all practical purposes, you'd be better off using the constant value of 3.14159265359.
+
+**Author: [RedisLabs](https://redislabs.com/)**
+
+**Python API**
+
+```python
+{{ include('examples/monte-carlo-pi.py') }}
 ```
-

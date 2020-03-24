@@ -1,7 +1,7 @@
-site_name: RedisGears - Dynamic Execution Framework for Redis
+site_name: RedisGears
 site_url: http://redisgears.io
 repo_url: https://github.com/RedisGears/RedisGears
-repo_name: RedisLabsModules/RedisGears
+repo_name: RedisGears/RedisGears
 
 google_analytics:
   - 'UA-92003007-1'
@@ -23,21 +23,39 @@ theme:
   feature:
     tabs: false
 
-pages:
+nav:
   - 'Home': 'index.md'
   - 'Quickstart': 'quickstart.md'
-  - 'Overview': 'overview.md'
-  - 'Commands': 'commands.md'
-  - 'Streaming API': 'gears_streaming.md'
+  - 'Introduction': 'intro.md'
+  - 'Reference':
+    - 'Runtime': 'runtime.md'
+    - 'Functions': 'functions.md'
+    - 'Readers': 'readers.md'
+    - 'Operations': 'operations.md'
+    - 'Commands': 'commands.md'
+    - 'Configuration': 'configuration.md'
   - 'Examples': 'examples.md'
-  - 'Gears Configuration': 'configuration.md'
-  - Design Documents:
+  - 'Clients': 'clients.md'
+  - 'Design':
     - 'Sub-Interpreters': 'subinterpreters.md'
-  - 'Contributor agreement': contrib.md
+  - 'Glossary': 'glossary.md'
+  - 'Contributing': 'contrib.md'
 
 markdown_extensions:
   - admonition
   - codehilite:
       guess_lang: False
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
   - toc:
       permalink: True
+
+plugins:
+  - search
+  - include:
+      src_path: docs/snippets
+  - versions-menu:
+      exclude-regexes:
+        - '0\.[1-4]'
+      include-regex: '([0-9]+)\.([0-9]+)'
