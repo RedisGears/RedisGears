@@ -8,4 +8,4 @@ gb.map(lambda x: int(x['value']['age']))
 gb.accumulate(maximum)
 gb.run('person:*')
 
-## Expected result: [60]
+## Expected result: [70]
