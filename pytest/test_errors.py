@@ -293,6 +293,15 @@ class testStepsWrongArgs:
     def testKeysReadeReadValueBadValue(self):
         self.env.expect('rg.pyexecute', 'GearsBuilder().register(readValue=1)').error()
 
+    def testKeysOnlyReadeBadCount(self):
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder("KeysOnlyReader").run(count="noNunber")')
+        self.env.assertContains('value is not an integer', res[1][0])
+
+    def testKeysOnlyReadeBadPatternGenerator(self):
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder("KeysOnlyReader").run(patternGenerator="adwaw")')
+        self.env.assertContains('object is not callable', res[1][0])
+
+
 class testGetExecutionErrorReporting:
     def __init__(self):
         self.env = Env()

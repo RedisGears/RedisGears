@@ -1253,6 +1253,9 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     	    r = step->reader.r->next(&ectx, step->reader.r->ctx);
             GETTIME(&_te);
     	    step->executionDuration += DURATION;
+    	    if(!r && ectx.err){
+    	        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+    	    }
     	}
         break;
     case MAP:

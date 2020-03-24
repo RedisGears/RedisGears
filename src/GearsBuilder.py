@@ -15,14 +15,12 @@ globals()['str'] = str
 
 redisgears._saveGlobals()
 
-'''
-'''
-def CreateKeysOnlyReader(pattern='*', count=1000, exactMatch=False, patternGenerator=None):
+def CreateKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator=None):
     '''
     Create a KeysOnlyReader callback as a python reader
     pattern          - keys pattern to return
     count            - count parameter given to scan command (ignored if isPattern is false)
-    exactMatch       - boolean indicating if exact match is require, i.e, do not use scan and just return the
+    noScan           - boolean indicating if exact match is require, i.e, do not use scan and just return the
                        give pattern
     patternGenerator - a callbacks to generate different pattern on each shard. If given, the callback
                        will run on each shard and the return tuple (pattern, isPattern) will be used.
@@ -31,12 +29,13 @@ def CreateKeysOnlyReader(pattern='*', count=1000, exactMatch=False, patternGener
     def KeysOnlyReader():
         nonlocal pattern
         nonlocal count
-        nonlocal exactMatch
+        nonlocal noScan
         nonlocal patternGenerator
         if patternGenerator is not None:
-            pattern, exactMatch = patternGenerator()
-        if exactMatch:
-            yield pattern
+            pattern, noScan = patternGenerator()
+        if noScan:
+            if execute('exists', pattern) == 1:
+                yield pattern
         else:
             count = str(count)
             cursor, keys = execute('scan', '0', 'MATCH', str(pattern), 'COUNT', count)

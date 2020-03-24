@@ -2407,6 +2407,9 @@ int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **ar
 }
 
 char* getPyError() {
+    if(!PyErr_Occurred()){
+        return NULL;
+    }
     PyObject *pType, *pValue, *pTraceback;
     PyErr_Fetch(&pType, &pValue, &pTraceback);
     PyErr_NormalizeException(&pType, &pValue, &pTraceback);
@@ -2442,8 +2445,12 @@ char* getPyError() {
     char* err =  RG_STRDUP(strTraceback);
     Py_DECREF(pStrTraceback);
     Py_DECREF(pModuleName);
-    Py_DECREF(pType);
-    Py_DECREF(pValue);
+    if(pType){
+        Py_DECREF(pType);
+    }
+    if(pValue){
+        Py_DECREF(pValue);
+    }
     if(pTraceback){
         Py_DECREF(pTraceback);
     }
@@ -3032,10 +3039,14 @@ static int RedisGearsPy_Stats(RedisModuleCtx *ctx, RedisModuleString **argv, int
 typedef struct PythonReaderCtx{
     PyObject* callback;
     PyObject* generator;
+    bool isDone;
 }PythonReaderCtx;
 
 static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
     PythonReaderCtx* pyCtx = ctx;
+    if(pyCtx->isDone){
+        return NULL;
+    }
 
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     assert(sctx);
@@ -3048,6 +3059,12 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
         PyObject* callback = pyCtx->callback;
         pyRecord = PyObject_CallObject(callback, pArgs);
         Py_DECREF(pArgs);
+        if(!pyRecord){
+            fetchPyError(rctx);
+            RedisGearsPy_Unlock(old);
+            pyCtx->isDone = true;
+            return NULL;
+        }
         if(PyGen_Check(pyRecord)) {
             pyCtx->generator = PyObject_GetIter(pyRecord);
             Py_DECREF(pyRecord);
@@ -3056,8 +3073,10 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
     }else{
         pyRecord = PyIter_Next(pyCtx->generator);
     }
-    if(pyRecord == Py_None || pyRecord == NULL){
+    if(!pyRecord){
+        fetchPyError(rctx);
         RedisGearsPy_Unlock(old);
+        pyCtx->isDone = true;
         return NULL;
     }
     RedisGearsPy_Unlock(old);
@@ -3100,6 +3119,7 @@ static Reader* PythonReader_Create(void* arg){
     PythonReaderCtx* pyCtx = RG_ALLOC(sizeof(*pyCtx));
     pyCtx->callback = callback;
     pyCtx->generator = NULL;
+    pyCtx->isDone = false;
     Reader* ret = RG_ALLOC(sizeof(*ret));
     *ret = (Reader){
             .ctx = pyCtx,

@@ -661,3 +661,41 @@ def testKeysReaderDontReadValue(env):
     res = env.cmd('RG.PYEXECUTE', "GB().run(readValue=False)")
     res = [eval(r) for r in res[0]]
     env.assertEqual(res, [{'key':'x', 'event': None}])
+
+def testKeysOnlyReader(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'z', '1')
+    conn.execute_command('set', 'y', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run()").equal([['x', 'y', 'z'],[]])
+
+def testKeysOnlyReaderWithPattern(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'z', '1')
+    conn.execute_command('set', 'y', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run('x')").equal([['x'],[]])
+
+def testKeysOnlyReaderWithCount(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'z', '1')
+    conn.execute_command('set', 'y', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run(count=1)").equal([['x', 'y', 'z'],[]])
+
+def testKeysOnlyReaderWithNoScan(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'x1', '1')
+    conn.execute_command('set', 'x2', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').run('x', noScan=True)").equal([['x'],[]])
+
+def testKeysOnlyReaderWithPatternGenerator(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+def Generator():
+    return ('x{%s}' % hashtag(), True)
+GB('KeysOnlyReader').count().run(patternGenerator=Generator)
+    '''
+    env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('set', 'x{%s}' % hashtag(), '1')).run()")
+    env.expect('RG.PYEXECUTE', script).equal([[str(env.shardsCount)],[]])
