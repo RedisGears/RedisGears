@@ -9,4 +9,4 @@ gb.map(lambda x: int(x['value']['age']))
 gb.accumulate(prepare_avg)
 gb.run('person:*')
 
-## Expected result: [(74, 2)]
+## Expected result: [(84, 2)]
