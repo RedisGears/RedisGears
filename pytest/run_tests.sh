@@ -21,10 +21,10 @@ run_tests() {
 
 	if [[ $shards == 0 ]]; then
 		echo "no cluster on $env_prefix"
-		RLTest --clear-logs --module ../redisgears.so --env $env_prefix "$@"
+		python -m RLTest --clear-logs --module ../redisgears.so --env $env_prefix "$@"
 	else
 		echo "cluster mode, $nodes shard"
-		RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count $shards "$@"
+		python -m RLTest --clear-logs --module ../redisgears.$module_suffix --env $env_prefix-cluster --shards-count $shards "$@"
 	fi
 }
 
