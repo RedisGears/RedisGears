@@ -1129,7 +1129,7 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
         }
     }
 
-    if (strcmp(reader, "KeysReader")){
+    if (strcmp(reader, "KeysReader") == 0){
         return registerCreateKeysArgs(kargs, prefixStr, mode);
     }else if (strcmp(reader, "StreamReader") == 0){
         return registerCreateStreamArgs(kargs, prefixStr, mode);
