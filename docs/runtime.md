@@ -114,17 +114,17 @@ This function prints a message to Redis' log.
 
 **Python API**
 ```python
-def Log(level='notice', message)
+def Log(message, level='notice')
 ```
 
 _Arguments_
 
+* _message_: the message to output
 * _level_: the message's log level can be one of these:
     * **'debug'**
     * **'verbose'**
     * **'notice'**
     * **'warning'**
-* _message_: the message to output
 
 **Examples**
 ```python
