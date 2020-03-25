@@ -243,7 +243,7 @@ The next change to the flow is much more significant. It adds a new operation be
 
 The `filter()` operation invokes the filtering function once for every input record it gets. The input record denoted as `x` in the examples, is a dictionary in our case and the function checks whether the value of its `key` key conforms to the requested pattern.
 
-The main difference between the function that uses the reader's key pattern and the one using the step is in time when the filtering act happens. In the key pattern's case, filtering is done by the reader itself - after it obtains the keys' names but before reading their values. Conversely, with the `filter()` operation in the flow, the reader reads all keys (and their values), that are only then are turned to records and filtered by the step.
+The main difference between the function that uses the reader's key pattern and the one using the step is in time when the filtering act happens. In the key pattern's case, filtering is done by the reader itself - after it obtains the keys' names but before reading their values. Conversely, with the `filter()` operation in the flow, the reader reads all keys (and their values), that are only then turned to records and filtered by the step.
 
 Functions can be as complex as needed and can consist of any number of steps that are executed sequentially. Furthermore, RedisGears Python API allows the use of all of the language's features to be used, including importing and using external packages.
 
