@@ -66,8 +66,8 @@ class GearsBuilder('KeysReader', defaultArg='*').run(noScan=False, readValue=Tru
 _Arguments_
 
 * _defaultArg_: a glob-like pattern of key names
-* _noScan_: if True search for the given pattern as is and do not perform any keys scan, default False
-* _readValue_: if False will not read the key value (the **'type'** and **'value'** fields will not be suplied), default True.
+* _noScan_: if True search for the given pattern as is and do not perform any keys scan
+* _readValue_: if False will not read the key value (the **'type'** and **'value'** fields will not be suplied)
 
 **_Event Mode_**
 
@@ -78,7 +78,7 @@ class GearsBuilder('KeysReader').register(prefix='*', eventTypes=None,
 
 _Arguments_
 
-* _prefix_: a prefix of key names, default '*'
+* _prefix_: a prefix of key names
 * _eventTypes_: a whitelist of event types that trigger execution when the [KeysReader](readers.md#keysreader) are used. The list may contain one or more:
     * Any Redis or module command
     * Any [Redis event](https://redis.io/topics/notifications)
@@ -86,7 +86,7 @@ _Arguments_
 * _keyTypes_: a whitelist of key types that trigger execution when using the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
     * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
     * Redis module types: 'module'
-* _readValue_: if False will not read the key value (the **'type'** and **'value'** fields will not be suplied), default True.
+* _readValue_: if False will not read the key value (the **'type'** and **'value'** fields will not be suplied)
 
 _Return_
 
@@ -150,10 +150,10 @@ Not supported.
 ```python
 class GearsBuilder('KeysOnlyReader').run(pattern='*', count=1000, noScan=False, patternGenerator=None)
 ```
-* _pattern_: pattern of keys to return, default '*'
-* _count_: count argument to give to the scan command, default '1000'
+* _pattern_: pattern of keys to return
+* _count_: count argument to give to the scan command
 * _noScan_: do not use scan only read the key as given by the _pattern_ argument
-* patternGenerator: a callbacks to generate different pattern on each shard. If given, the callback will run on each shard and the return tuple (pattern, isPattern) will be used. If this argument is given the pattern and noScan arguments are ignored.
+* _patternGenerator_: a callbacks to generate different pattern on each shard. If given, the callback will run on each shard and the return tuple (pattern, isPattern) will be used. If this argument is given the pattern and noScan arguments are ignored.
 
 
 ## StreamReader
@@ -180,7 +180,7 @@ The reader reads the Stream from the beginning to the last message in it. Each m
 Its operation can be controlled with the following:
 
   * Key name: the name of the key storing the Stream
-  * fromId: message id from which to start read messages, default '0-0'
+  * fromId: message id from which to start read messages
 
 **Event Mode**
 
@@ -195,7 +195,7 @@ Its operation can be controlled with the following:
     * **'continue'**: ignores a failure and continues to the next execution. This is the default policy.
     * **'abort'**: stops further executions.
     * **'retry'**: retries the execution after an interval specified with onFailedRetryInterval (default is one second).
-  * trimStream: if True the stream will automatically be trimmed after executions will finished, default True.
+  * trimStream: if True the stream will automatically be trimmed after executions will finished
   
 **Python API**
 
@@ -208,7 +208,7 @@ class GearsBuilder('StreamReader', defaultArg='*').run(fromId='0-0')
 _Arguments_
 
 * _defaultArg_: the name or prefix of keys that store Streams
-* _fromId_: message id from which to start read messages, default '0-0'
+* _fromId_: message id from which to start read messages
 
 **_Event Mode_**
 
@@ -223,7 +223,7 @@ _Arguments_
 * _durration_: the time to wait before execution is triggered, regardless of the batch size (0 for no durration)
 * _onFailedPolicy_: the policy for handling execution failures, values should be as describe above
 * _onFailedRetryInterval_: the interval (im miliseconads) in which to retry in case _onFailedPolicy_ is **'retry'**
-* _trimStream_: if True the stream will automatically be trimmed after executions will finished, default True.
+* _trimStream_: if True the stream will automatically be trimmed after executions will finished
 
 _Return_
 
