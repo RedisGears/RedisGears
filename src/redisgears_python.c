@@ -1440,7 +1440,7 @@ static PyObject* RedisConfigGet(PyObject *cls, PyObject *args){
 }
 
 static PyObject* RedisLog(PyObject *cls, PyObject *args, PyObject *kargs){
-    PyObject* logLevel = PyDict_GetItemString(kargs, "level");
+    PyObject* logLevel = kargs? PyDict_GetItemString(kargs, "level") : NULL;
     PyObject* logMsg = NULL;
     if(PyTuple_Size(args) < 1 || PyTuple_Size(args) > 2){
         PyErr_SetString(GearsError, "log function must get a log message as input");
