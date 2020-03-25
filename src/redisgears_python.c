@@ -89,6 +89,10 @@ typedef struct PythonSessionCtx{
     PythonRequirementCtx** requirements;
 }PythonSessionCtx;
 
+static PyObject* GearsPyDict_GetItemString(PyObject* dict, const char* key){
+    return (dict ? PyDict_GetItemString(dict, key) : NULL);
+}
+
 static bool PythonRequirementCtx_DownloadRequirement(PythonRequirementCtx* req){
 #define RETRY 3
 #define RETRY_SLEEP_IN_SEC 1
@@ -791,7 +795,7 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
 static void* runCreateStreamReaderArgs(const char* pattern, PyObject *kargs){
     const char* defaultFromIdStr = "0-0";
     const char* fromIdStr = defaultFromIdStr;
-    PyObject* pyFromId = PyDict_GetItemString(kargs, "fromId");
+    PyObject* pyFromId = GearsPyDict_GetItemString(kargs, "fromId");
     if(pyFromId){
         if(!PyUnicode_Check(pyFromId)){
             PyErr_SetString(GearsError, "fromId argument must be a string");
@@ -804,7 +808,7 @@ static void* runCreateStreamReaderArgs(const char* pattern, PyObject *kargs){
 
 static void* runCreateKeysReaderArgs(const char* pattern, PyObject *kargs){
     bool noScan = false;
-    PyObject* pyNoScan = PyDict_GetItemString(kargs, "noScan");
+    PyObject* pyNoScan = GearsPyDict_GetItemString(kargs, "noScan");
     if(pyNoScan){
         if(!PyBool_Check(pyNoScan)){
             PyErr_SetString(GearsError, "exactMatch value is not boolean");
@@ -815,7 +819,7 @@ static void* runCreateKeysReaderArgs(const char* pattern, PyObject *kargs){
         }
     }
     bool readValue = true;
-    PyObject* pyReadValue = PyDict_GetItemString(kargs, "readValue");
+    PyObject* pyReadValue = GearsPyDict_GetItemString(kargs, "readValue");
     if(pyReadValue){
         if(!PyBool_Check(pyReadValue)){
             PyErr_SetString(GearsError, "readValue value is not boolean");
@@ -937,7 +941,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
     Arr(int) keyTypes = NULL;
 
     // getting even types white list (no list == all event types)
-    PyObject* pyEventTypes = PyDict_GetItemString(kargs, "eventTypes");
+    PyObject* pyEventTypes = GearsPyDict_GetItemString(kargs, "eventTypes");
     if(pyEventTypes && pyEventTypes != Py_None){
         PyObject* eventTypesIterator = PyObject_GetIter(pyEventTypes);
         if(!eventTypesIterator){
@@ -961,7 +965,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
     }
 
     // getting key types white list (no list == all key types)
-    PyObject* pyKeyTypes = PyDict_GetItemString(kargs, "keyTypes");
+    PyObject* pyKeyTypes = GearsPyDict_GetItemString(kargs, "keyTypes");
     if(pyKeyTypes && pyKeyTypes != Py_None){
         PyObject* keyTypesIterator = PyObject_GetIter(pyKeyTypes);
         if(!keyTypesIterator){
@@ -993,7 +997,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
     }
 
     bool readValue = true;
-    PyObject* pyReadValue = PyDict_GetItemString(kargs, "readValue");
+    PyObject* pyReadValue = GearsPyDict_GetItemString(kargs, "readValue");
     if(pyReadValue){
         if(!PyBool_Check(pyReadValue)){
             PyErr_SetString(GearsError, "readValue is not boolean");
@@ -1022,7 +1026,7 @@ static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
 
 static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, ExecutionMode mode){
     size_t batch = 1;
-    PyObject* pyBatch = PyDict_GetItemString(kargs, "batch");
+    PyObject* pyBatch = GearsPyDict_GetItemString(kargs, "batch");
     if(pyBatch){
         if(PyNumber_Check(pyBatch)){
             batch = PyNumber_AsSsize_t(pyBatch, NULL);
@@ -1033,7 +1037,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, Execu
     }
 
     size_t durationMS = 0;
-    PyObject* pydurationInSec = PyDict_GetItemString(kargs, "duration");
+    PyObject* pydurationInSec = GearsPyDict_GetItemString(kargs, "duration");
     if(pydurationInSec){
         if(PyNumber_Check(pydurationInSec)){
             durationMS = PyNumber_AsSsize_t(pydurationInSec, NULL);
@@ -1044,7 +1048,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, Execu
     }
 
     OnFailedPolicy onFailedPolicy = OnFailedPolicyContinue;
-    PyObject* pyOnFailedPolicy = PyDict_GetItemString(kargs, "onFailedPolicy");
+    PyObject* pyOnFailedPolicy = GearsPyDict_GetItemString(kargs, "onFailedPolicy");
     if(pyOnFailedPolicy){
         if(PyUnicode_Check(pyOnFailedPolicy)){
             const char* onFailedPolicyStr = PyUnicode_AsUTF8AndSize(pyOnFailedPolicy, NULL);
@@ -1064,7 +1068,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, Execu
     }
 
     size_t retryInterval = 1;
-    PyObject* pyRetryInterval = PyDict_GetItemString(kargs, "onFailedRetryInterval");
+    PyObject* pyRetryInterval = GearsPyDict_GetItemString(kargs, "onFailedRetryInterval");
     if(pyRetryInterval){
         if(PyNumber_Check(pyRetryInterval)){
             retryInterval = PyNumber_AsSsize_t(pyRetryInterval, NULL);
@@ -1075,7 +1079,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, Execu
     }
 
     bool trimStream = true;
-    PyObject* pyTrimStream = PyDict_GetItemString(kargs, "trimStream");
+    PyObject* pyTrimStream = GearsPyDict_GetItemString(kargs, "trimStream");
     if(pyTrimStream){
         if(PyBool_Check(pyTrimStream)){
             if(Py_True == pyTrimStream){
@@ -1094,7 +1098,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, Execu
 
 static void* registerCreateCommandArgs(PyObject *kargs){
     const char* trigger = NULL;
-    PyObject* pyTrigger = PyDict_GetItemString(kargs, "trigger");
+    PyObject* pyTrigger = GearsPyDict_GetItemString(kargs, "trigger");
     if(!pyTrigger){
         PyErr_SetString(GearsError, "trigger argument was not given");
         return NULL;
@@ -1115,7 +1119,7 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
 
     char* defaultPrefixStr = "*";
     const char* prefixStr = defaultPrefixStr;
-    PyObject* prefix = PyDict_GetItemString(kargs, "prefix");
+    PyObject* prefix = GearsPyDict_GetItemString(kargs, "prefix");
     if(prefix){
         if(PyUnicode_Check(prefix)){
             prefixStr = PyUnicode_AsUTF8AndSize(prefix, NULL);
@@ -1125,8 +1129,7 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
         }
     }
 
-    if (strcmp(reader, "KeysReader") == 0 ||
-            strcmp(reader, "KeysOnlyReader") == 0) {
+    if (strcmp(reader, "KeysReader")){
         return registerCreateKeysArgs(kargs, prefixStr, mode);
     }else if (strcmp(reader, "StreamReader") == 0){
         return registerCreateStreamArgs(kargs, prefixStr, mode);
@@ -1144,7 +1147,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         return NULL;
     }
 
-    PyObject* pymode = PyDict_GetItemString(kargs, "mode");
+    PyObject* pymode = GearsPyDict_GetItemString(kargs, "mode");
     ExecutionMode mode = ExecutionModeAsync;
     if(pymode){
         if(PyUnicode_Check(pymode)){
@@ -1165,7 +1168,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         }
     }
 
-    PyObject* onRegistered = PyDict_GetItemString(kargs, "onRegistered");
+    PyObject* onRegistered = GearsPyDict_GetItemString(kargs, "onRegistered");
     if(onRegistered && onRegistered != Py_None){
         if(!PyFunction_Check(onRegistered)){
             PyErr_SetString(GearsError, "OnRegistered argument must be a function");
@@ -1440,7 +1443,7 @@ static PyObject* RedisConfigGet(PyObject *cls, PyObject *args){
 }
 
 static PyObject* RedisLog(PyObject *cls, PyObject *args, PyObject *kargs){
-    PyObject* logLevel = kargs? PyDict_GetItemString(kargs, "level") : NULL;
+    PyObject* logLevel = GearsPyDict_GetItemString(kargs, "level");
     PyObject* logMsg = NULL;
     if(PyTuple_Size(args) < 1 || PyTuple_Size(args) > 2){
         PyErr_SetString(GearsError, "log function must get a log message as input");
