@@ -31,18 +31,18 @@ A record is output for each input key. The record is a dictionary structure that
 
   * **'key'**: the name of the key
   * **'value'**: the value of the key
-  * **'type'**: the type of the key (string, hash, set, zset, list, module)
-  * **'event'**: the event that trigger the execution (None if the execution created using [run](functions.md#run) function)
+  * **'type'**: the core Redis type may be: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
+  * **'event'**: the event that triggered the execution (`#!python None` if the execution was created via the [run](functions.md#run) function)
 
 **Batch Mode**
 
-The reader scans the entire database for keys. For each key found, it first reads a key's name, then fetches its value (unless use with 'readValue' option set to 'False') and finally generates a record.
+The reader scans the entire database for keys. For each key found, it first reads a key's name, then fetches its value (unless used with `#!python readValue=False` argument) and finally generates a record.
 
 Its operation can be controlled by the following means:
 
   * Glob-like pattern: generates records only for key names that match the pattern
-  * Read or not read the value
-  * Use scan or just search of the specified key
+  * Read value: a Boolean specifying whether the value is read or not
+  * Use scanning: a Boolean specifying whether to scan and match the pattern or use it as an explicit key name
 
 **Event Mode**
 
@@ -53,7 +53,7 @@ Its operation can be controlled with the following means:
   * Prefix: generates records only for key names that start with the prefix
   * Events: same, but only for whitelisted events
   * Types: same, but only for whitelisted data types
-  * ReadValue: boolean indicating whether to read or not to read the value
+  * Read value: a Boolean specifying whether the value is read or not
 
 **Python API**
 
@@ -66,8 +66,8 @@ class GearsBuilder('KeysReader', defaultArg='*').run(noScan=False, readValue=Tru
 _Arguments_
 
 * _defaultArg_: a glob-like pattern of key names
-* _noScan_: if True search for the given pattern as is and do not perform any keys scan
-* _readValue_: if False will not read the key value (the **'type'** and **'value'** fields will not be suplied)
+* _noScan_: when `#!python True` the pattern is used as an explicit key name
+* _readValue_: when `#!python False` the value will not be read, so the **'type'** and **'value'** of the record will be set to `#!python None`
 
 **_Event Mode_**
 
@@ -82,11 +82,10 @@ _Arguments_
 * _eventTypes_: a whitelist of event types that trigger execution when the [KeysReader](readers.md#keysreader) are used. The list may contain one or more:
     * Any Redis or module command
     * Any [Redis event](https://redis.io/topics/notifications)
-
 * _keyTypes_: a whitelist of key types that trigger execution when using the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
     * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
     * Redis module types: 'module'
-* _readValue_: if False will not read the key value (the **'type'** and **'value'** fields will not be suplied)
+* _readValue_: when `#!python False` the value will not be read, so the **'type'** and **'value'** of the record will be set to `#!python None`
 
 _Return_
 
@@ -119,7 +118,7 @@ The value is cast from the Redis type as follows:
 ```
 
 ## KeysOnlyReader
-The **KeysOnlyReader** is implemented as a python reader and so are not support register. It returns keys names as string records.
+The **KeysOnlyReader** is implemented as a [PythonReader](#pythonreader) and therefore does not support the [`register()` action](functions.md#register). It returns keys' names as string records.
 
 **Input**
 
@@ -129,35 +128,35 @@ The reader scans the entire database and any keys that are found can be used as 
 
 A record is output for each input key. The record is a simple string that is the key's name.
 
-
 **Batch Mode**
 
 The reader scans the entire database for keys. For each key found, it returns the key as a string record.
 
 Its operation can be controlled by the following means:
 
-  * pattern of keys to return
-  * scan count to use
-  * whether or not to use scan or just return the key given by the pattern argument
-  * patternGenerator, a way to create pattern which are different in each shard
-  
+  * Glob-like pattern: generates records only for key names that match the pattern
+  * Scan count: the amount of effort each scan iteration will invest
+  * Use scanning: a Boolean specifying whether to scan and match the pattern or use it as an explicit key name
+  * Shard-specific pattern: customizes the pattern for each shard
+
 **Event Mode**
 
 Not supported.
 
 **Python API**
 
+**_Batch Mode_**
+
 ```python
 class GearsBuilder('KeysOnlyReader').run(pattern='*', count=1000, noScan=False, patternGenerator=None)
 ```
 * _pattern_: pattern of keys to return
-* _count_: count argument to give to the scan command
-* _noScan_: do not use scan only read the key as given by the _pattern_ argument
-* _patternGenerator_: a callbacks to generate different pattern on each shard. If given, the callback will run on each shard and the return tuple (pattern, isPattern) will be used. If this argument is given the pattern and noScan arguments are ignored.
-
+* _count_: the `COUNT` argument to the [Redis `SCAN` command](https://redis.io/commands/scan)
+* _noScan_: when `#!python True` the pattern is used as an explicit key name
+* _patternGenerator_: a callback that returns a shard-specific pattern. If provided it overrides the _pattern_ and _noScan_ arguments. The callback will be called by each shard and is expected to return a tuple with two items, the first being the _pattern_ string and the other the _noScan_ value.
 
 ## StreamReader
-The **StreamReader** reads the messages from a [Redis Stream](glossary.md#stream) and generates records from these.
+The **StreamReader** reads the messages from one or more [Redis Streams](glossary.md#stream) and generates records from these.
 
 **Input**
 
@@ -167,11 +166,11 @@ The reader reads messages from the Stream value of a Redis key.
 
 A record is output for each message in the input Stream. The record is a dictionary structure with the following key:
 
+  * **key**: the Stream key name as string
   * **id**: the message's id in the Stream
-  * **key**: the stream key name as string
   * **value**: a python dictionary contains the message
 
-All field-value pairs in the message's data are included as key-value pairs in the record under the _value_ field.
+All field-value pairs in the message's data are included as key-value pairs in the record under the _value_ key.
 
 **Batch Mode**
 
@@ -180,7 +179,7 @@ The reader reads the Stream from the beginning to the last message in it. Each m
 Its operation can be controlled with the following:
 
   * Key name: the name of the key storing the Stream
-  * fromId: message id from which to start read messages
+  * Start ID: message ID from which to start reading messages
 
 **Event Mode**
 
@@ -195,8 +194,8 @@ Its operation can be controlled with the following:
     * **'continue'**: ignores a failure and continues to the next execution. This is the default policy.
     * **'abort'**: stops further executions.
     * **'retry'**: retries the execution after an interval specified with onFailedRetryInterval (default is one second).
-  * trimStream: if True the stream will automatically be trimmed after executions will finished
-  
+  * Trimming: whether or not to trim the stream
+
 **Python API**
 
 **_Batch Mode_**
@@ -220,17 +219,17 @@ _Arguments_
 
 * _prefix_: the name or prefix of keys that store Streams
 * _batch_: the number of new messages that trigger execution
-* _durration_: the time to wait before execution is triggered, regardless of the batch size (0 for no durration)
+* _duration_: the time to wait before execution is triggered, regardless of the batch size (0 for no duration)
 * _onFailedPolicy_: the policy for handling execution failures, values should be as describe above
-* _onFailedRetryInterval_: the interval (im miliseconads) in which to retry in case _onFailedPolicy_ is **'retry'**
-* _trimStream_: if True the stream will automatically be trimmed after executions will finished
+* _onFailedRetryInterval_: the interval (in milliseconds) in which to retry in case _onFailedPolicy_ is **'retry'**
+* _trimStream_: when `#!python True` the stream will be trimmed after execution
 
 _Return_
 
 The output record's type is a `#!python dict` with fields and values as explained above.
 
 ## PythonReader
-The reader is executed with a function callback that is a Python generator.
+The reader is executed with a function callback that is a [Python generator](https://wiki.python.org/moin/Generators).
 
 **Input**
 
@@ -248,9 +247,19 @@ The reader iterates the generator's yielded records.
 
 Not supported.
 
-**Examples**
+**Python API**
 
 **_Batch Mode_**
+
+```python
+class GearsBuilder('PythonReader').run(generator)
+```
+
+_Arguments_
+
+* _generator_: the [generator](https://wiki.python.org/moin/Generators) function callback
+
+**Examples**
 
 ```python
 {{ include('readers/pythonreader-run.py') }}
@@ -283,28 +292,34 @@ The reader returns a single record that is the shard's identifier.
 
 Not supported.
 
-**Examples**
+**Python API**
 
 **_Batch Mode_**
+
+```python
+class GearsBuilder('ShardsIDReader').run()
+```
+
+_Arguments_
+
+None.
+
+**Examples**
 
 ```python
 {{ include('readers/shardidreader-run.py') }}
 ```
 
 ## CommandReader
-The command reader allows you to trigger an execution on command, the command is _RG.TRIGGER_ and its gets the trigger name and arguments
-
-Its operation can be controlled with the following argument to [register](functions.md#register) function:
-
-* trigger: the name of the trigger
+The **CommandReader** reads the trigger name and arguments sent by an [`RG.TRIGGER` command](commands.md#rgtrigger).
 
 **Input**
 
-A RG.TRIGGER command that triggers the execution
+The arguments of the [`RG.TRIGGER` command](commands.md#rgtrigger).
 
 **Output**
 
-A list record contains all the given arguments as strings including the trigger name itself
+The trigger's name and arguments.
 
 **Batch Mode**
 
@@ -312,9 +327,31 @@ Not supported.
 
 **Event Mode**
 
+The reader returns a list record with elements being the trigger's name followed by any arguments that were provided.
+
+**Python API**
+
+**_Event Mode_**
+
 ```python
-GB('CommandReader').register(trigger='test')
+class GearsBuilder('CommandReader').register(trigger=None)
 ```
-Then to trigger this execution one need to run `RG.TRIGGER test arg1 arg2 ...`
 
+_Arguments_
 
+* _trigger_: the trigger's name
+
+**Examples**
+
+First, call [`RG.PYEXECUTE`](commands.md#rgpyexecute) with the following:
+
+```python
+{{ include('readers/shardidreader-run.py') }}
+```
+
+Then, you can do this:
+
+```
+redis> RG.TRIGGER CountVonCount bat bat
+1) "CountVonCount got 2 arguments! Ah ah ah!"
+```

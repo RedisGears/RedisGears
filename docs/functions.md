@@ -205,7 +205,7 @@ The **Register** action registers a function as an event handler. The function i
 ```python
 class GearsBuilder.register(regex='*', mode='async', batch=1, duration=0,
   eventTypes=None, keyTypes=None, onRegistered=None, onFailedPolicy="continue",
-  onFailedRetryInterval=1)
+  onFailedRetryInterval=1, trigger=None)
 ```
 
 _Arguments_
@@ -231,6 +231,7 @@ _Arguments_
     * **'abort'**: stops further executions
     * **'retry'**: retries the execution after an interval specified with _onFailedRetryInterval_
 * _onFailedRetryInterval_: the interval in seconds between retries of failed executions of a function that uses the [StreamReader](readers.md#streamreader) reader
+* _trigger_: the trigger's name for a function that uses the [CommandReader](readers.md#commandreader) reader.
 
 **Examples**
 ```python
