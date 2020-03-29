@@ -604,6 +604,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(AbortExecution, ctx);
     REGISTER_API(GetId, ctx);
 
+    REGISTER_API(RecordCreate, ctx);
+    REGISTER_API(RecordTypeCreate, ctx);
     REGISTER_API(FreeRecord, ctx);
     REGISTER_API(RecordGetType, ctx);
     REGISTER_API(KeyRecordCreate, ctx);
@@ -727,6 +729,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_Log(ctx, "notice", "RedisAI api loaded successfully.");
         globals.redisAILoaded = true;
     }
+
+    Record_Initialize();
 
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
     	RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
