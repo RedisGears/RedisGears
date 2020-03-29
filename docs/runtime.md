@@ -72,15 +72,15 @@ class atomic()
 {{ include('runtime/atomic.py') }}
 ```
 
-## ConfigGet
-The `ConfigGet()` function is imported to the runtime's environment by default.
+## configGet
+The `configGet()` function is imported to the runtime's environment by default.
 
 This function fetches the current value of a RedisGears [configuration](#configuration.md) option.
 
 **Python API**
 
 ```python
-def ConfigGet(key)
+def configGet(key)
 ```
 
 _Arguments_
@@ -93,15 +93,15 @@ _Arguments_
 {{ include('runtime/configget.py') }}
 ```
 
-## GearsConfigGet
-The `GearsConfigGet()` function is imported to the runtime's environment by default.
+## gearsConfigGet
+The `gearsConfigGet()` function is imported to the runtime's environment by default.
 
 This function fetches the current value of a RedisGears [configuration](configuration.md) option and returns a default value if that key does not exist.
 
 **Python API**
 
 ```python
-def GearsConfigGet(key, default=None)
+def gearsConfigGet(key, default=None)
 ```
 
 _Arguments_
@@ -132,15 +132,15 @@ def hashtag()
 {{ include('runtime/hashtag.py') }}
 ```
 
-## Log
-The `Log()` function is imported to the runtime's environment by default.
+## log
+The `log()` function is imported to the runtime's environment by default.
 
 This function prints a message to Redis' log.
 
 **Python API**
 
 ```python
-def Log(message, level='notice')
+def log(message, level='notice')
 ```
 
 _Arguments_
