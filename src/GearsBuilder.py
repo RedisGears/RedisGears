@@ -6,8 +6,8 @@ from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
-from redisgears import log as Log
-from redisgears import config_get as ConfigGet
+from redisgears import log
+from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 
 
@@ -15,7 +15,7 @@ globals()['str'] = str
 
 redisgears._saveGlobals()
 
-def CreateKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator=None):
+def createKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator=None):
     '''
     Create a KeysOnlyReader callback as a python reader
     pattern          - keys pattern to return
@@ -26,7 +26,7 @@ def CreateKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator
                        will run on each shard and the return tuple (pattern, isPattern) will be used.
                        If this argument is given the pattern and noScan arguments are ignored.
     '''
-    def KeysOnlyReader():
+    def keysOnlyReader():
         nonlocal pattern
         nonlocal count
         nonlocal noScan
@@ -45,9 +45,9 @@ def CreateKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator
                 cursor, keys = execute('scan', cursor, 'MATCH', str(pattern), 'COUNT', count)
             for k in keys:
                 yield k
-    return KeysOnlyReader
+    return keysOnlyReader
 
-def ShardReaderCallback():
+def shardReaderCallback():
     res = execute('RG.INFOCLUSTER')
     if res == 'no cluster mode':
         yield '1'
@@ -148,9 +148,9 @@ class GearsBuilder():
             self.gearsCtx.collect()
         arg = arg if arg else self.defaultArg
         if(self.realReader == 'ShardsIDReader'):
-            arg = ShardReaderCallback
+            arg = shardReaderCallback
         if(self.realReader == 'KeysOnlyReader'):
-            arg = CreateKeysOnlyReader(arg, **kargs)
+            arg = createKeysOnlyReader(arg, **kargs)
         self.gearsCtx.run(arg, **kargs)
 
     def register(self, prefix='*', convertToStr=True, collect=True, **kargs):
@@ -185,7 +185,16 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
     for s in pipe.steps:
         s.AddToGB(gb, globalsDict)
 
-def GearsConfigGet(key, default=None):
+def gearsConfigGet(key, default=None):
     val = ConfigGet(key)
     return val if val is not None else default
 
+def genDeprecated(deprecatedName, name, target):
+    def method(*argc, **nargs):
+        log('%s is deprecated, use %s instead' % (str(deprecatedName), str(name)), level='warning')
+        return target(*argc, **nargs)
+    globals()[deprecatedName] = method
+
+genDeprecated('Log', 'log', log)
+genDeprecated('ConfigGet', 'configGet', configGet)
+genDeprecated('GearsConfigGet', 'gearsConfigGet', gearsConfigGet)
