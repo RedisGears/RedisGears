@@ -246,7 +246,7 @@ class testStepsWrongArgs:
         self.env.expect('rg.pyexecute', 'GB("PythonReader").run("*")').error().contains('pyreader argument must be a functio')
         self.env.expect('rg.pyexecute', 'GB("PythonReader").run()').error().contains('pyreader argument must be a functio')
         self.env.expect('rg.pyexecute', 'GB("PythonReader", "*").run()').error().contains('pyreader argument must be a functio')
-        self.env.expect('rg.pyexecute', 'GB("PythonReader", ShardReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
+        self.env.expect('rg.pyexecute', 'GB("PythonReader", shardReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
 
     def testStreamReaderBadFromIdFormat(self):
         self.conn.execute_command('XADD', 's', '*', 'foo', 'bar', 'foo1', 'bar1')
