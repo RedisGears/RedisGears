@@ -1211,6 +1211,7 @@ typedef struct PyAtomic{
 static PyObject* atomicEnter(PyObject *self, PyObject *args){
     PyAtomic* pyAtomic = (PyAtomic*)self;
     LockHandler_Acquire(pyAtomic->ctx);
+    RedisModule_Replicate(pyAtomic->ctx, "multi", "");
     Py_INCREF(self);
     return self;
 }
@@ -1218,6 +1219,7 @@ static PyObject* atomicEnter(PyObject *self, PyObject *args){
 static PyObject* atomicExit(PyObject *self, PyObject *args){
     PyAtomic* pyAtomic = (PyAtomic*)self;
     LockHandler_Release(pyAtomic->ctx);
+    RedisModule_Replicate(pyAtomic->ctx, "exec", "");
     Py_INCREF(self);
     return self;
 }
