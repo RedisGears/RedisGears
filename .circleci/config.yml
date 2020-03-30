@@ -150,7 +150,7 @@ jobs:
   deploy_docs:
     docker:
       - image: 'python:buster'
-      - image: redislabs/redisgears:latest
+      - image: redislabs/redisgears:edge
     steps:
       - run:
           name: Setup executor
