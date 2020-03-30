@@ -200,11 +200,16 @@ extern RecordType* keyRecordType;
 extern RecordType* keysHandlerRecordType;
 extern RecordType* hashSetRecordType;
 
+typedef int (*RecordSendReply)(Record* record, RedisModuleCtx* rctx);
+typedef int (*RecordSerialize)(Gears_BufferWriter* bw, Record* base, char** err);
+typedef Record* (*RecordDeserialize)(Gears_BufferReader* br);
+typedef void (*RecordFree)(Record* base);
+
 RecordType* MODULE_API_FUNC(RedisGears_RecordTypeCreate)(const char* name, size_t size,
-                                                         int (*sendReply)(Record* record, RedisModuleCtx* rctx),
-                                                         int (*serialize)(Gears_BufferWriter* bw, Record* base, char** err),
-                                                         Record* (*deserialize)(Gears_BufferReader* br),
-                                                         void (*free)(Record* base));
+                                                         RecordSendReply,
+                                                         RecordSerialize,
+                                                         RecordDeserialize,
+                                                         RecordFree);
 Record*  MODULE_API_FUNC(RedisGears_RecordCreate)(RecordType* type);
 
 void MODULE_API_FUNC(RedisGears_FreeRecord)(Record* record);

@@ -173,8 +173,21 @@ static int KeysHandlerRecord_Serialize(Gears_BufferWriter* bw, Record* base, cha
 }
 
 static int HashSetRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
-    HashSetRecord* r = (HashSetRecord*)base;
-    // todo: complete
+    HashSetRecord* record = (HashSetRecord*)base;
+    Gears_dictIterator *iter;
+    Gears_dictEntry *entry;
+    RedisGears_BWWriteLong(bw, Gears_dictSize(record->d));
+    iter = Gears_dictGetIterator(record->d);
+    entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        const char* k = Gears_dictGetKey(entry);
+        Record* temp = Gears_dictGetVal(entry);
+        RedisGears_BWWriteString(bw, k);
+        if(RG_SerializeRecord(bw, temp, err) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
+    }
+    Gears_dictReleaseIterator(iter);
     return REDISMODULE_OK;
 }
 
@@ -227,12 +240,18 @@ static Record* KeyRecord_Deserialize(Gears_BufferReader* br){
 static Record* KeysHandlerRecord_Deserialize(Gears_BufferReader* br){
     // todo: what we can do here is to read the key and create a serializable record
     assert(false && "can not deserialize key handler record");
-    return REDISMODULE_OK;
+    return NULL;
 }
 
 static Record* HashSetRecord_Deserialize(Gears_BufferReader* br){
-    // todo: complete
-    return NULL;
+    Record* record = RedisGears_HashSetRecordCreate();
+    size_t len = RedisGears_BRReadLong(br);
+    for(size_t i = 0 ; i < len ; ++i){
+        char* k = RedisGears_BRReadString(br);
+        Record* r = RG_DeserializeRecord(br);
+        RedisGears_HashSetRecordSet(record, k, r);
+    }
+    return record;
 }
 
 static int StringRecord_SendReply(Record* r, RedisModuleCtx* rctx){
@@ -275,9 +294,20 @@ static int KeysHandlerRecord_SendReply(Record* r, RedisModuleCtx* rctx){
     return REDISMODULE_OK;
 }
 
-static int HashSetRecord_SendReply(Record* r, RedisModuleCtx* rctx){
-    // todo: complete
-    RedisModule_ReplyWithStringBuffer(rctx, "HASH SET RECORD", strlen("HASH SET RECORD"));
+static int HashSetRecord_SendReply(Record* base, RedisModuleCtx* rctx){
+    HashSetRecord* record = (HashSetRecord*)base;
+    Gears_dictIterator *iter;
+    Gears_dictEntry *entry;
+    RedisModule_ReplyWithArray(rctx, Gears_dictSize(record->d));
+    iter = Gears_dictGetIterator(record->d);
+    entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        const char* k = Gears_dictGetKey(entry);
+        Record* temp = Gears_dictGetVal(entry);
+        RedisModule_ReplyWithCString(rctx, k);
+        RG_RecordSendReply(temp, rctx);
+    }
+    Gears_dictReleaseIterator(iter);
     return REDISMODULE_OK;
 }
 
@@ -302,10 +332,10 @@ int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx){
 }
 
 RecordType* RG_RecordTypeCreate(const char* name, size_t size,
-                                int (*sendReply)(Record* record, RedisModuleCtx* rctx),
-                                int (*serialize)(Gears_BufferWriter* bw, Record* base, char** err),
-                                Record* (*deserialize)(Gears_BufferReader* br),
-                                void (*free)(Record* base)){
+                                RecordSendReply sendReply,
+                                RecordSerialize serialize,
+                                RecordDeserialize deserialize,
+                                RecordFree free){
     RecordType* ret = RG_ALLOC(sizeof(RecordType));
     *ret = (RecordType){
             .name = RG_STRDUP(name),

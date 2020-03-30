@@ -68,10 +68,10 @@ Record* RG_ErrorRecordCreate(char* val, size_t len);
 void Record_Initialize();
 Record* RG_RecordCreate(RecordType* type);
 RecordType* RG_RecordTypeCreate(const char* name, size_t size,
-                                int (*sendReply)(Record* record, RedisModuleCtx* rctx),
-                                int (*serialize)(Gears_BufferWriter* bw, Record* base, char** err),
-                                Record* (*deserialize)(Gears_BufferReader* br),
-                                void (*free)(Record* base));
+                                RecordSendReply,
+                                RecordSerialize,
+                                RecordDeserialize,
+                                RecordFree);
 
 
 
