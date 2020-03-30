@@ -1253,6 +1253,9 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     	    r = step->reader.r->next(&ectx, step->reader.r->ctx);
             GETTIME(&_te);
     	    step->executionDuration += DURATION;
+    	    if(!r && ectx.err){
+    	        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+    	    }
     	}
         break;
     case MAP:
@@ -2316,6 +2319,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     int res = FlatExecutionPlan_Serialize(&bw, fep, err);
     if(res != REDISMODULE_OK){
         Gears_BufferFree(buff);
+        callbacks->freeTriggerArgs(args);
         return 0;
     }
 

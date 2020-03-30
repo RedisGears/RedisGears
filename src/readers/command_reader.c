@@ -164,7 +164,7 @@ static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode 
     CommandReaderTriggerArgs* crtArgs = args;
     CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger);
     if(crtCtx){
-        *err = RG_STRDUP("Command already registered");
+        *err = RG_STRDUP("trigger already registered");
         return REDISMODULE_ERR;
     }
 

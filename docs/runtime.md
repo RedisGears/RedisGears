@@ -28,7 +28,7 @@ The `GearsBuilder` class is imported to the runtime's environment by default.
 
 It exposes the functionality of the function's [context builder](functions.md#context-builder).
 
-## Execute
+## execute
 The `execute()` function is imported to the runtime's environment by default.
 
 This function executes an arbitrary Redis command.
@@ -39,6 +39,7 @@ This function executes an arbitrary Redis command.
       * [Redis commands](https://redis.io/commands)
 
 **Python API**
+
 ```python
 def execute(command, *args)
 ```
@@ -49,18 +50,37 @@ _Arguments_
 * _args_: the command's arguments
 
 **Examples**
+
 ```python
 {{ include('runtime/execute.py') }}
 ```
 
-## ConfigGet
-The `ConfigGet()` function is imported to the runtime's environment by default.
+## atomic
+The `atomic()` Python context is imported to the runtime's environment by default.
+
+The context ensures that all operations in it are executed atomically by blocking the main Redis process.
+
+**Python API**
+
+```python
+class atomic()
+```
+
+**Examples**
+
+```python
+{{ include('runtime/atomic.py') }}
+```
+
+## configGet
+The `configGet()` function is imported to the runtime's environment by default.
 
 This function fetches the current value of a RedisGears [configuration](#configuration.md) option.
 
 **Python API**
+
 ```python
-def ConfigGet(key)
+def configGet(key)
 ```
 
 _Arguments_
@@ -68,18 +88,20 @@ _Arguments_
 * _key_: the configuration option key
 
 **Examples**
+
 ```python
 {{ include('runtime/configget.py') }}
 ```
 
-## GearsConfigGet
-The `GearsConfigGet()` function is imported to the runtime's environment by default.
+## gearsConfigGet
+The `gearsConfigGet()` function is imported to the runtime's environment by default.
 
 This function fetches the current value of a RedisGears [configuration](configuration.md) option and returns a default value if that key does not exist.
 
 **Python API**
+
 ```python
-def GearsConfigGet(key, default=None)
+def gearsConfigGet(key, default=None)
 ```
 
 _Arguments_
@@ -88,45 +110,50 @@ _Arguments_
 * _default_: a default value
 
 **Examples**
+
 ```python
 {{ include('runtime/gearsconfigget.py') }}
 ```
 
-## Hashtag
+## hashtag
 The `hashtag()` function is imported to the runtime's environment by default.
 
 This function returns a hashtag that maps to the lowest hash slot served by the local engine's shard. Put differently, it is useful as a hashtag for partitioning in a cluster.
 
 **Python API**
+
 ```python
 def hashtag()
 ```
 
 **Examples**
+
 ```python
 {{ include('runtime/hashtag.py') }}
 ```
 
-## Log
-The `Log()` function is imported to the runtime's environment by default.
+## log
+The `log()` function is imported to the runtime's environment by default.
 
 This function prints a message to Redis' log.
 
 **Python API**
+
 ```python
-def Log(level='notice', message)
+def log(message, level='notice')
 ```
 
 _Arguments_
 
+* _message_: the message to output
 * _level_: the message's log level can be one of these:
     * **'debug'**
     * **'verbose'**
     * **'notice'**
     * **'warning'**
-* _message_: the message to output
 
 **Examples**
+
 ```python
 {{ include('runtime/log.py') }}
 ```

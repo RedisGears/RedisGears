@@ -78,7 +78,7 @@ class testBasic:
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res[0]]
         for i in range(100):
-            self.env.assertContains({'value': str(i), 'key': str(i)}, res)
+            self.env.assertContains({'value': str(i), 'type': 'string', 'event': 'None', 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicFilterQuery(self):
@@ -86,7 +86,7 @@ class testBasic:
         res = self.env.cmd('rg.getresultsblocking', id)
         res = [yaml.load(r) for r in res[0]]
         for i in range(50, 100):
-            self.env.assertContains({'value': str(i), 'key': str(i)}, res)
+            self.env.assertContains({'value': str(i), 'type': 'string', 'event': 'None', 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
 
     def testBasicMapQuery(self):
@@ -215,7 +215,7 @@ def testBasicWithRun(env):
                                   "run('stream')")
     env.assertEqual(len(res[0]), 1)
     res = eval(res[0][0])
-    env.assertEqual(res['test'], '1')
+    env.assertEqual(res['value']['test'], '1')
 
 def testTimeEvent(env):
     conn = getConnectionByEnv(env)
@@ -622,3 +622,80 @@ def Loop(r):
 GB('ShardsIDReader').map(Loop).run()
 '''
     env.expect('RG.PYEXECUTE', longExecution).equal([['1'], ['Execution max idle reached']])
+
+def testStreamReaderFromId(env):
+    conn = getConnectionByEnv(env)
+
+    id1 = conn.execute_command('XADD', 's', '*', 'foo', 'bar', 'foo1', 'bar1')
+    id2 = conn.execute_command('XADD', 's', '*', 'foo2', 'bar2', 'foo3', 'bar3')
+
+    res = env.cmd('RG.PYEXECUTE', "GB('StreamReader').run('s')")
+
+    res = [eval(r) for r in res[0]]
+
+    env.assertEqual([r['value'] for r in res], [{'foo': 'bar', 'foo1': 'bar1'}, {'foo2': 'bar2', 'foo3': 'bar3'}])
+
+    res = env.cmd('RG.PYEXECUTE', "GB('StreamReader').run('s', fromId='%s')" % id1)
+
+    res = [eval(r) for r in res[0]]
+
+    env.assertEqual([r['value'] for r in res], [{'foo2': 'bar2', 'foo3': 'bar3'}])
+
+def testKeysReaderKeyType(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'r', '1')
+    conn.execute_command('lpush', 'l', '1', '2', '3')
+    conn.execute_command('sadd', 's', '1', '2', '3')
+    conn.execute_command('hset', 'h', 'key', 'val')
+    conn.execute_command('zadd', 'z', '1', 'm')
+
+    env.expect('RG.PYEXECUTE', 'GB().map(lambda x: x["type"]).sort().run()').equal([['hash', 'list', 'set', 'string', 'zset'],[]])
+
+def testKeysReaderNoScan(env):
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "GB().map(lambda x: x['type']).distinct().run('test', noScan=True)").equal([['empty'],[]])
+
+def testKeysReaderDontReadValue(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    res = env.cmd('RG.PYEXECUTE', "GB().run(readValue=False)")
+    res = [eval(r) for r in res[0]]
+    env.assertEqual(res, [{'key':'x', 'event': None}])
+
+def testKeysOnlyReader(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'z', '1')
+    conn.execute_command('set', 'y', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run()").equal([['x', 'y', 'z'],[]])
+
+def testKeysOnlyReaderWithPattern(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'z', '1')
+    conn.execute_command('set', 'y', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run('x')").equal([['x'],[]])
+
+def testKeysOnlyReaderWithCount(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'z', '1')
+    conn.execute_command('set', 'y', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run(count=1)").equal([['x', 'y', 'z'],[]])
+
+def testKeysOnlyReaderWithNoScan(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'x1', '1')
+    conn.execute_command('set', 'x2', '1')
+    env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').run('x', noScan=True)").equal([['x'],[]])
+
+def testKeysOnlyReaderWithPatternGenerator(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+def Generator():
+    return ('x{%s}' % hashtag(), True)
+GB('KeysOnlyReader').count().run(patternGenerator=Generator)
+    '''
+    env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('set', 'x{%s}' % hashtag(), '1')).run()")
+    env.expect('RG.PYEXECUTE', script).equal([[str(env.shardsCount)],[]])

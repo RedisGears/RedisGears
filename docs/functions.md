@@ -203,34 +203,21 @@ The **Register** action registers a function as an event handler. The function i
 
 **Python API**
 ```python
-class GearsBuilder.register(regex='*', mode='async', batch=1, duration=0,
-  eventTypes=None, keyTypes=None, onRegistered=None, onFailedPolicy="continue",
-  onFailedRetryInterval=1)
+class GearsBuilder.register(convertToStr=True, collect=True, mode='async', onRegistered=None)
 ```
 
 _Arguments_
 
-* _regex_: An optional argument that's passed to the reader as its _defaultArg_. It means the following:
-    * A key prefix for the [KeysReader](readers.md#keysreader) and [KeysOnlyReader](readers.md#keysonlyreaders) readers
-    * A key name or prefix for the [StreamReader](readers.md#streamreader) reader
+* _convertToStr_: when `True` adds a [map](operations.md#map) operation to the flow's end that stringifies records
+* _collect_: when `True` adds a [collect](operations.md#collect) operation to flow's end
+
 * _mode_: the execution mode of the triggered function. Can be one of:
     * **'async'**: execution will be asynchronous across the entire cluster
     * **'async_local'**: execution will be asynchronous and restricted to the handling shard
     * **'sync'**: execution will be synchronous and local
-* _batch_: the batch size that triggers execution for the [StreamReader](readers.md#streamreader) reader
-* _duration_: the interval between executions for the [StreamReader](readers.md#streamreader) reader (takes precedence over the _batch_ argument)
-* _eventTypes_: A whitelist of event types that trigger for the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more:
-    * Any Redis or module command
-    * Any [Redis event](https://redis.io/topics/notifications)
-* _keyTypes_: A whitelist of key types that trigger execution for the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
-    * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
-    * For module data types: 'module'
 * _onRegistered_: A function [callback](operations.md#callback) that's called on each shard upon function registration. It is a good place to initialize non-serializable objects such as network connections.
-* _onFailedPolicy_: A policy for handling failures of the function when using the [StreamReader](readers.md#streamreader) reader. It can be set to one of the following:
-    * **'continue'**: ignores a failure and continues to the next execution
-    * **'abort'**: stops further executions
-    * **'retry'**: retries the execution after an interval specified with _onFailedRetryInterval_
-* _onFailedRetryInterval_: the interval in seconds between retries of failed executions of a function that uses the [StreamReader](readers.md#streamreader) reader
+
+Notice that more argumets can be passed to the register function, those arguments are depends on the reader and specified for each reader on the [readers](readers.md) page.
 
 **Examples**
 ```python

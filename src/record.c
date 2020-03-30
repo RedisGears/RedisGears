@@ -71,6 +71,9 @@ void RG_FreeRecord(Record* record){
     Gears_dictIterator *iter;
     Gears_dictEntry *entry;
     Record* temp;
+    if(!record){
+        return;
+    }
     switch(record->type){
     case STRING_RECORD:
     case ERROR_RECORD:

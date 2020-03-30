@@ -6,8 +6,8 @@ from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
-from redisgears import log as Log
-from redisgears import config_get as ConfigGet
+from redisgears import log
+from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 
 
@@ -15,7 +15,39 @@ globals()['str'] = str
 
 redisgears._saveGlobals()
 
-def ShardReaderCallback():
+def createKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator=None):
+    '''
+    Create a KeysOnlyReader callback as a python reader
+    pattern          - keys pattern to return
+    count            - count parameter given to scan command (ignored if isPattern is false)
+    noScan           - boolean indicating if exact match is require, i.e, do not use scan and just return the
+                       give pattern
+    patternGenerator - a callbacks to generate different pattern on each shard. If given, the callback
+                       will run on each shard and the return tuple (pattern, isPattern) will be used.
+                       If this argument is given the pattern and noScan arguments are ignored.
+    '''
+    def keysOnlyReader():
+        nonlocal pattern
+        nonlocal count
+        nonlocal noScan
+        nonlocal patternGenerator
+        if patternGenerator is not None:
+            pattern, noScan = patternGenerator()
+        if noScan:
+            if execute('exists', pattern) == 1:
+                yield pattern
+        else:
+            count = str(count)
+            cursor, keys = execute('scan', '0', 'MATCH', str(pattern), 'COUNT', count)
+            while cursor != '0':
+                for k in keys:
+                    yield k
+                cursor, keys = execute('scan', cursor, 'MATCH', str(pattern), 'COUNT', count)
+            for k in keys:
+                yield k
+    return keysOnlyReader
+
+def shardReaderCallback():
     res = execute('RG.INFOCLUSTER')
     if res == 'no cluster mode':
         yield '1'
@@ -28,6 +60,8 @@ class GearsBuilder():
         self.realReader = reader
         if(reader == 'ShardsIDReader'):
             reader = 'PythonReader'
+        if(reader == 'KeysOnlyReader'):
+            reader = 'PythonReader'    
         self.reader = reader
         self.gearsCtx = gearsCtx(self.reader, desc)
         self.defaultArg = defaultArg
@@ -104,7 +138,7 @@ class GearsBuilder():
                                              lambda a, r: (a[0] + r, a[1] + 1),
                                              lambda a, r: (a[0] + r[0], a[1] + r[1])).map(lambda x: x[0] / x[1])
 
-    def run(self, arg=None, convertToStr=True, collect=True):
+    def run(self, arg=None, convertToStr=True, collect=True, **kargs):
         '''
         Starting the execution
         '''
@@ -114,38 +148,21 @@ class GearsBuilder():
             self.gearsCtx.collect()
         arg = arg if arg else self.defaultArg
         if(self.realReader == 'ShardsIDReader'):
-            arg = ShardReaderCallback
-        self.gearsCtx.run(arg)
+            arg = shardReaderCallback
+        if(self.realReader == 'KeysOnlyReader'):
+            arg = createKeysOnlyReader(arg, **kargs)
+        self.gearsCtx.run(arg, **kargs)
 
-    def register(self,
-                 regex='*',
-                 mode='async',
-                 batch=1,
-                 duration=0,
-                 eventTypes=None,
-                 keyTypes=None,
-                 onRegistered=None,
-                 onFailedPolicy="continue",
-                 onFailedRetryInterval=1,
-                 trimStream=True,
-                 trigger=None,
-                 convertToStr=True,
-                 collect=True):
+    def register(self, prefix='*', convertToStr=True, collect=True, **kargs):
         if(convertToStr):
             self.gearsCtx.map(lambda x: str(x))
         if(collect):
             self.gearsCtx.collect()
-        self.gearsCtx.register(regex=regex,
-                               mode=mode,
-                               batch=batch,
-                               duration=duration,
-                               eventTypes=eventTypes,
-                               keyTypes=keyTypes,
-                               OnRegistered=onRegistered,
-                               onFailedPolicy=onFailedPolicy,
-                               onFailedRetryInterval=onFailedRetryInterval,
-                               trimStream=trimStream,
-                               trigger=trigger)
+        kargs['prefix'] = prefix # this is for backword comptability
+        if 'regex' in kargs:
+            Log('Using regex argument with register is depricated and missleading, use prefix instead.', level='warning')
+            kargs['prefix'] = kargs['regex']
+        self.gearsCtx.register(**kargs)
 
 def createDecorator(f):
     def deco(self, *args):
@@ -168,7 +185,16 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
     for s in pipe.steps:
         s.AddToGB(gb, globalsDict)
 
-def GearsConfigGet(key, default=None):
+def gearsConfigGet(key, default=None):
     val = ConfigGet(key)
     return val if val is not None else default
 
+def genDeprecated(deprecatedName, name, target):
+    def method(*argc, **nargs):
+        log('%s is deprecated, use %s instead' % (str(deprecatedName), str(name)), level='warning')
+        return target(*argc, **nargs)
+    globals()[deprecatedName] = method
+
+genDeprecated('Log', 'log', log)
+genDeprecated('ConfigGet', 'configGet', configGet)
+genDeprecated('GearsConfigGet', 'gearsConfigGet', gearsConfigGet)

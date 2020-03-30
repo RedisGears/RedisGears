@@ -97,7 +97,6 @@ typedef struct Reader{
  * Default readers to use
  */
 #define KeysReader KeysReader
-#define KeysOnlyReader KeysOnlyReader
 #define StreamReader StreamReader
 #define CommandReader CommandReader
 #define ShardIDReader ShardIDReader
@@ -181,10 +180,13 @@ typedef struct CommandReaderTriggerArgs CommandReaderTriggerArgs;
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
 
-StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream);
+KeysReaderCtx* MODULE_API_FUNC(RedisGears_KeysReaderCtxCreate)(const char* match, bool readValue, const char* event, bool noScan);
+void MODULE_API_FUNC(RedisGears_KeysReaderCtxFree)(KeysReaderCtx*);
+
+StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* prefix, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream);
 void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
 
-KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* regex, Arr(char*) eventTypes, Arr(int) keyTypes);
+KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* prefix, Arr(char*) eventTypes, Arr(int) keyTypes, bool readValue);
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
 CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
@@ -442,6 +444,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetReader);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderCtxCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderCtxFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsCreate);
