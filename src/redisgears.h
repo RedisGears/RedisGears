@@ -32,17 +32,6 @@ typedef struct WorkerData WorkerData;
 typedef struct ExecutionThreadPool ExecutionThreadPool;
 
 /**
- * Records type definitions
- */
-#define KEY_HANDLER_RECORD_TYPE 1
-#define LONG_RECORD_TYPE 2
-#define DOUBLE_RECORD_TYPE 3
-#define STRING_RECORD_TYPE 4
-#define LIST_RECORD_TYPE 5
-#define KEY_RECORD_TYPE 6
-#define HASH_SET_RECORD_TYPE 7
-
-/**
  * Execttion modes:
  * 1. ExecutionModeSync       - execution will run on the same thread that trigger it
  *                              also implies that the execution is local and not distributed
@@ -193,10 +182,38 @@ CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCre
 void MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsFree)(CommandReaderTriggerArgs* args);
 
 /**
- * Records handling functions
+ * Records handling
  */
+
+typedef struct RecordType RecordType;
+
+typedef struct Record{
+    RecordType* type;
+}Record;
+
+extern RecordType* listRecordType;
+extern RecordType* stringRecordType;
+extern RecordType* errorRecordType;
+extern RecordType* longRecordType;
+extern RecordType* doubleRecordType;
+extern RecordType* keyRecordType;
+extern RecordType* keysHandlerRecordType;
+extern RecordType* hashSetRecordType;
+
+typedef int (*RecordSendReply)(Record* record, RedisModuleCtx* rctx);
+typedef int (*RecordSerialize)(Gears_BufferWriter* bw, Record* base, char** err);
+typedef Record* (*RecordDeserialize)(Gears_BufferReader* br);
+typedef void (*RecordFree)(Record* base);
+
+RecordType* MODULE_API_FUNC(RedisGears_RecordTypeCreate)(const char* name, size_t size,
+                                                         RecordSendReply,
+                                                         RecordSerialize,
+                                                         RecordDeserialize,
+                                                         RecordFree);
+Record*  MODULE_API_FUNC(RedisGears_RecordCreate)(RecordType* type);
+
 void MODULE_API_FUNC(RedisGears_FreeRecord)(Record* record);
-int MODULE_API_FUNC(RedisGears_RecordGetType)(Record* r);
+RecordType* MODULE_API_FUNC(RedisGears_RecordGetType)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordCreate)();
 void MODULE_API_FUNC(RedisGears_KeyRecordSetKey)(Record* r, char* key, size_t len);
 void MODULE_API_FUNC(RedisGears_KeyRecordSetVal)(Record* r, Record* val);
@@ -462,6 +479,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
 	REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
 	REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
 
+	REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordCreate);
+	REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordTypeCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, FreeRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordGetType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeyRecordCreate);

@@ -5,7 +5,7 @@
 #include "redisgears_memory.h"
 
 Record* CountReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
-    assert(RedisGears_RecordGetType(records) == LIST_RECORD_TYPE);
+    assert(RedisGears_RecordGetType(records) == listRecordType);
     Record* res =RedisGears_LongRecordCreate(RedisGears_ListRecordLen(records));
     RedisGears_FreeRecord(records);
     return res;

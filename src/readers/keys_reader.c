@@ -463,7 +463,7 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     if(errorsLen > 0){
         ++rData->numFailures;
         Record* r = RedisGears_GetError(ctx, 0);
-        assert(RedisGears_RecordGetType(r) == ERROR_RECORD);
+        assert(RedisGears_RecordGetType(r) == errorRecordType);
         if(rData->lastError){
             RG_FREE(rData->lastError);
         }

@@ -655,7 +655,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     if(errorsLen > 0){
         ++srctx->numFailures;
         Record* r = RedisGears_GetError(ctx, 0);
-        assert(RedisGears_RecordGetType(r) == ERROR_RECORD);
+        assert(RedisGears_RecordGetType(r) == errorRecordType);
         if(srctx->lastError){
             RG_FREE(srctx->lastError);
         }
