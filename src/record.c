@@ -8,266 +8,564 @@
 #include "redisgears_python.h"
 #endif
 
+typedef struct RecordType{
+    size_t id;
+    char* name;
+    size_t size;
+    int (*sendReply)(Record* record, RedisModuleCtx* rctx);
+    int (*serialize)(Gears_BufferWriter* bw, Record* base, char** err);
+    Record* (*deserialize)(Gears_BufferReader* br);
+    void (*free)(Record* base);
+}RecordType;
+
 typedef struct KeysHandlerRecord{
+    Record base;
     RedisModuleKey *keyHandler;
 }KeysHandlerRecord;
 
 typedef struct LongRecord{
+    Record base;
     long num;
 }LongRecord;
 
 typedef struct DoubleRecord{
+    Record base;
     double num;
 }DoubleRecord;
 
 typedef struct StringRecord{
+    Record base;
     size_t len;
     char* str;
 }StringRecord;
 
 typedef struct ListRecord{
+    Record base;
     Record** records;
 }ListRecord;
 
-#ifdef WITHPYTHON
-typedef struct PythonRecord{
-    PyObject* obj;
-}PythonRecord;
-#endif
-
 typedef struct KeyRecord{
+    Record base;
     char* key;
     size_t len;
     Record* record;
 }KeyRecord;
 
 typedef struct HashSetRecord{
+    Record base;
     Gears_dict* d;
 }HashSetRecord;
 
-typedef struct Record{
-    union{
-        KeysHandlerRecord keyHandlerRecord;
-        LongRecord longRecord;
-        StringRecord stringRecord;
-        DoubleRecord doubleRecord;
-        ListRecord listRecord;
-        KeyRecord keyRecord;
-        HashSetRecord hashSetRecord;
-#ifdef WITHPYTHON
-        PythonRecord pyRecord;
-#endif
-    };
-    enum RecordType type;
-}Record;
+RecordType StopRecordType;
 
+Record StopRecord;
 
-Record StopRecord = {
-        .type = STOP_RECORD,
-};
+RecordType* listRecordType;
+RecordType* stringRecordType;
+RecordType* errorRecordType;
+RecordType* longRecordType;
+RecordType* doubleRecordType;
+RecordType* keyRecordType;
+RecordType* keysHandlerRecordType;
+RecordType* hashSetRecordType;
 
+static RecordType** recordsTypes;
 
-void RG_FreeRecord(Record* record){
+Record* RG_RecordCreate(RecordType* type){
+    Record* ret = RG_ALLOC(type->size);
+    ret->type = type;
+    return ret;
+}
+
+static void StringRecord_Free(Record* base){
+    StringRecord* record = (StringRecord*)base;
+    RG_FREE(record->str);
+}
+
+static void DoubleRecord_Free(Record* base){}
+
+static void LongRecord_Free(Record* base){}
+
+static void ListRecord_Free(Record* base){
+    ListRecord* record = (ListRecord*)base;
+    for(size_t i = 0 ; i < RedisGears_ListRecordLen(base) ; ++i){
+        RG_FreeRecord(record->records[i]);
+    }
+    array_free(record->records);
+}
+
+static void KeyRecord_Free(Record* base){
+    KeyRecord* record = (KeyRecord*)base;
+    if(record->key){
+        RG_FREE(record->key);
+    }
+    if(record->record){
+        RG_FreeRecord(record->record);
+    }
+}
+
+static void KeysHandlerRecord_Free(Record* base){
+    KeysHandlerRecord* record = (KeysHandlerRecord*)base;
+    RedisModule_CloseKey(record->keyHandler);
+}
+
+static void HashSetRecord_Free(Record* base){
+    HashSetRecord* record = (HashSetRecord*)base;
     Gears_dictIterator *iter;
     Gears_dictEntry *entry;
-    Record* temp;
-    switch(record->type){
-    case STRING_RECORD:
-    case ERROR_RECORD:
-        RG_FREE(record->stringRecord.str);
-        break;
-    case LONG_RECORD:
-    case DOUBLE_RECORD:
-        break;
-    case LIST_RECORD:
-        for(size_t i = 0 ; i < RedisGears_ListRecordLen(record) ; ++i){
-            RG_FreeRecord(record->listRecord.records[i]);
-        }
-        array_free(record->listRecord.records);
-        break;
-    case KEY_RECORD:
-        if(record->keyRecord.key){
-            RG_FREE(record->keyRecord.key);
-        }
-        if(record->keyRecord.record){
-            RG_FreeRecord(record->keyRecord.record);
-        }
-        break;
-    case KEY_HANDLER_RECORD:
-        RedisModule_CloseKey(record->keyHandlerRecord.keyHandler);
-        break;
-    case HASH_SET_RECORD:
-        iter = Gears_dictGetIterator(record->hashSetRecord.d);
-        entry = NULL;
-        while((entry = Gears_dictNext(iter))){
-            temp = Gears_dictGetVal(entry);
-            RG_FreeRecord(temp);
-        }
-        Gears_dictReleaseIterator(iter);
-        Gears_dictRelease(record->hashSetRecord.d);
-        break;
-#ifdef WITHPYTHON
-    case PY_RECORD:
-    	if(record->pyRecord.obj){
-    	    void* old = RedisGearsPy_Lock(NULL);
-	    if(record->pyRecord.obj != Py_None){
-		Py_DECREF(record->pyRecord.obj);
-            }
-            RedisGearsPy_Unlock(old);
-    	}
-        break;
-#endif
-    default:
-        assert(false);
+    iter = Gears_dictGetIterator(record->d);
+    entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        Record* temp = Gears_dictGetVal(entry);
+        RG_FreeRecord(temp);
     }
+    Gears_dictReleaseIterator(iter);
+    Gears_dictRelease(record->d);
+}
+
+static int StringRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+    StringRecord* r = (StringRecord*)base;
+    RedisGears_BWWriteBuffer(bw, r->str, r->len);
+    return REDISMODULE_OK;
+}
+
+static int LongRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+    LongRecord* r = (LongRecord*)base;
+    RedisGears_BWWriteLong(bw, r->num);
+    return REDISMODULE_OK;
+}
+
+static int DoubleRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+    DoubleRecord* r = (DoubleRecord*)base;
+    RedisGears_BWWriteLong(bw, (long)r->num);
+    return REDISMODULE_OK;
+}
+
+static int ListRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+    ListRecord* r = (ListRecord*)base;
+    RedisGears_BWWriteLong(bw, RedisGears_ListRecordLen(base));
+    for(size_t i = 0 ; i < RedisGears_ListRecordLen(base) ; ++i){
+        if(RG_SerializeRecord(bw, r->records[i], err) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
+    }
+    return REDISMODULE_OK;
+}
+
+static int KeyRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+    KeyRecord* r = (KeyRecord*)base;
+    RedisGears_BWWriteString(bw, r->key);
+    if(r->record){
+        RedisGears_BWWriteLong(bw, 1); // value exists
+        if(RG_SerializeRecord(bw, r->record, err) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
+    }else{
+        RedisGears_BWWriteLong(bw, 0); // value missing
+    }
+    return REDISMODULE_OK;
+}
+
+static int KeysHandlerRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+    // todo: what we can do here is to read the key and create a serializable record
+    assert(false && "can not serialize key handler record");
+    return REDISMODULE_OK;
+}
+
+static int HashSetRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+    HashSetRecord* record = (HashSetRecord*)base;
+    Gears_dictIterator *iter;
+    Gears_dictEntry *entry;
+    RedisGears_BWWriteLong(bw, Gears_dictSize(record->d));
+    iter = Gears_dictGetIterator(record->d);
+    entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        const char* k = Gears_dictGetKey(entry);
+        Record* temp = Gears_dictGetVal(entry);
+        RedisGears_BWWriteString(bw, k);
+        if(RG_SerializeRecord(bw, temp, err) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
+    }
+    Gears_dictReleaseIterator(iter);
+    return REDISMODULE_OK;
+}
+
+static Record* StringRecord_Deserialize(Gears_BufferReader* br){
+    size_t size;
+    const char* temp = RedisGears_BRReadBuffer(br, &size);
+    char* temp1 = RG_ALLOC(size);
+    memcpy(temp1, temp, size);
+    return RG_StringRecordCreate(temp1, size);
+}
+
+static Record* LongRecord_Deserialize(Gears_BufferReader* br){
+    return RG_LongRecordCreate(RedisGears_BRReadLong(br));
+}
+
+static Record* ErrorRecord_Deserialize(Gears_BufferReader* br){
+    size_t size;
+    const char* temp = RedisGears_BRReadBuffer(br, &size);
+    char* temp1 = RG_ALLOC(size);
+    memcpy(temp1, temp, size);
+    return RG_ErrorRecordCreate(temp1, size);
+}
+
+static Record* DoubleRecord_Deserialize(Gears_BufferReader* br){
+    return RG_DoubleRecordCreate((double)RedisGears_BRReadLong(br));
+}
+
+static Record* ListRecord_Deserialize(Gears_BufferReader* br){
+    size_t size = (size_t)RedisGears_BRReadLong(br);
+    Record* r = RG_ListRecordCreate(size);
+    for(size_t i = 0 ; i < size ; ++i){
+        RG_ListRecordAdd(r, RG_DeserializeRecord(br));
+    }
+    return r;
+}
+
+static Record* KeyRecord_Deserialize(Gears_BufferReader* br){
+    Record* r = RedisGears_KeyRecordCreate();
+    char* key = RG_STRDUP(RedisGears_BRReadString(br));
+    RG_KeyRecordSetKey(r, key, strlen(key));
+    bool isValExists = (bool)RedisGears_BRReadLong(br);
+    if(isValExists){
+        RedisGears_KeyRecordSetVal(r, RG_DeserializeRecord(br));
+    }else{
+        RedisGears_KeyRecordSetVal(r, NULL);
+    }
+    return r;
+}
+
+static Record* KeysHandlerRecord_Deserialize(Gears_BufferReader* br){
+    // todo: what we can do here is to read the key and create a serializable record
+    assert(false && "can not deserialize key handler record");
+    return NULL;
+}
+
+static Record* HashSetRecord_Deserialize(Gears_BufferReader* br){
+    Record* record = RedisGears_HashSetRecordCreate();
+    size_t len = RedisGears_BRReadLong(br);
+    for(size_t i = 0 ; i < len ; ++i){
+        char* k = RedisGears_BRReadString(br);
+        Record* r = RG_DeserializeRecord(br);
+        RedisGears_HashSetRecordSet(record, k, r);
+    }
+    return record;
+}
+
+static int StringRecord_SendReply(Record* r, RedisModuleCtx* rctx){
+    size_t listLen;
+    char* str = RedisGears_StringRecordGet(r, &listLen);
+    RedisModule_ReplyWithStringBuffer(rctx, str, listLen);
+    return REDISMODULE_OK;
+}
+
+static int LongRecord_SendReply(Record* r, RedisModuleCtx* rctx){
+    RedisModule_ReplyWithLongLong(rctx, RedisGears_LongRecordGet(r));
+    return REDISMODULE_OK;
+}
+
+static int DoubleRecord_SendReply(Record* r, RedisModuleCtx* rctx){
+    RedisModule_ReplyWithDouble(rctx, RedisGears_DoubleRecordGet(r));
+    return REDISMODULE_OK;
+}
+
+static int ListRecord_SendReply(Record* r, RedisModuleCtx* rctx){
+    size_t listLen = RedisGears_ListRecordLen(r);
+    RedisModule_ReplyWithArray(rctx, listLen);
+    for(int i = 0 ; i < listLen ; ++i){
+        RG_RecordSendReply(RedisGears_ListRecordGet(r, i), rctx);
+    }
+    return REDISMODULE_OK;
+}
+
+static int KeyRecord_SendReply(Record* r, RedisModuleCtx* rctx){
+    RedisModule_ReplyWithArray(rctx, 2);
+    size_t keyLen;
+    char* key = RedisGears_KeyRecordGetKey(r, &keyLen);
+    RedisModule_ReplyWithStringBuffer(rctx, key, keyLen);
+    RG_RecordSendReply(RedisGears_KeyRecordGetVal(r), rctx);
+    return REDISMODULE_OK;
+}
+
+static int KeysHandlerRecord_SendReply(Record* r, RedisModuleCtx* rctx){
+    RedisModule_ReplyWithStringBuffer(rctx, "KEY HANDLER RECORD", strlen("KEY HANDLER RECORD"));
+    return REDISMODULE_OK;
+}
+
+static int HashSetRecord_SendReply(Record* base, RedisModuleCtx* rctx){
+    HashSetRecord* record = (HashSetRecord*)base;
+    Gears_dictIterator *iter;
+    Gears_dictEntry *entry;
+    RedisModule_ReplyWithArray(rctx, Gears_dictSize(record->d));
+    iter = Gears_dictGetIterator(record->d);
+    entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        const char* k = Gears_dictGetKey(entry);
+        Record* temp = Gears_dictGetVal(entry);
+        RedisModule_ReplyWithCString(rctx, k);
+        RG_RecordSendReply(temp, rctx);
+    }
+    Gears_dictReleaseIterator(iter);
+    return REDISMODULE_OK;
+}
+
+int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err){
+    RedisGears_BWWriteLong(bw, r->type->id);
+    return r->type->serialize(bw, r, err);
+}
+
+Record* RG_DeserializeRecord(Gears_BufferReader* br){
+    size_t typeId = RedisGears_BRReadLong(br);
+    assert(typeId >= 0 && typeId < array_len(recordsTypes));
+    RecordType* type = recordsTypes[typeId];
+    return type->deserialize(br);
+}
+
+int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx){
+    if(!record->type->sendReply){
+        RedisModule_ReplyWithCString(rctx, record->type->name);
+        return REDISMODULE_OK;
+    }
+    return record->type->sendReply(record, rctx);
+}
+
+RecordType* RG_RecordTypeCreate(const char* name, size_t size,
+                                RecordSendReply sendReply,
+                                RecordSerialize serialize,
+                                RecordDeserialize deserialize,
+                                RecordFree free){
+    RecordType* ret = RG_ALLOC(sizeof(RecordType));
+    *ret = (RecordType){
+            .name = RG_STRDUP(name),
+            .size = size,
+            .sendReply = sendReply,
+            .serialize = serialize,
+            .deserialize = deserialize,
+            .free = free,
+    };
+    recordsTypes = array_append(recordsTypes, ret);
+    ret->id = array_len(recordsTypes) - 1;
+    return ret;
+}
+
+void Record_Initialize(){
+    recordsTypes = array_new(RecordType*, 10);
+    listRecordType = RG_RecordTypeCreate("ListRecord", sizeof(ListRecord),
+                                         ListRecord_SendReply,
+                                         ListRecord_Serialize,
+                                         ListRecord_Deserialize,
+                                         ListRecord_Free);
+
+    stringRecordType = RG_RecordTypeCreate("StringRecord", sizeof(StringRecord),
+                                           StringRecord_SendReply,
+                                           StringRecord_Serialize,
+                                           StringRecord_Deserialize,
+                                           StringRecord_Free);
+
+    errorRecordType = RG_RecordTypeCreate("ErrorRecord", sizeof(StringRecord),
+                                          StringRecord_SendReply,
+                                          StringRecord_Serialize,
+                                          ErrorRecord_Deserialize,
+                                          StringRecord_Free);
+
+    longRecordType = RG_RecordTypeCreate("LongRecord", sizeof(LongRecord),
+                                         LongRecord_SendReply,
+                                         LongRecord_Serialize,
+                                         LongRecord_Deserialize,
+                                         LongRecord_Free);
+
+    doubleRecordType = RG_RecordTypeCreate("DoubleRecord", sizeof(DoubleRecord),
+                                           DoubleRecord_SendReply,
+                                           DoubleRecord_Serialize,
+                                           DoubleRecord_Deserialize,
+                                           DoubleRecord_Free);
+
+    keyRecordType = RG_RecordTypeCreate("KeyRecord", sizeof(KeyRecord),
+                                        KeyRecord_SendReply,
+                                        KeyRecord_Serialize,
+                                        KeyRecord_Deserialize,
+                                        KeyRecord_Free);
+
+    keysHandlerRecordType = RG_RecordTypeCreate("KeysHandlerRecord", sizeof(KeysHandlerRecord),
+                                                KeysHandlerRecord_SendReply,
+                                                KeysHandlerRecord_Serialize,
+                                                KeysHandlerRecord_Deserialize,
+                                                KeysHandlerRecord_Free);
+
+    hashSetRecordType = RG_RecordTypeCreate("HashSetRecord", sizeof(HashSetRecord),
+                                            HashSetRecord_SendReply,
+                                            HashSetRecord_Serialize,
+                                            HashSetRecord_Deserialize,
+                                            HashSetRecord_Free);
+}
+
+void RG_FreeRecord(Record* record){
+    if(!record){
+        return;
+    }
+    record->type->free(record);
     RG_FREE(record);
 }
 
-int RG_RecordGetType(Record* r){
+RecordType* RG_RecordGetType(Record* r){
     return r->type;
 }
 Record* RG_KeyRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = KEY_RECORD;
-    ret->keyRecord.key = NULL;
-    ret->keyRecord.len = 0;
-    ret->keyRecord.record = NULL;
-    return ret;
+    KeyRecord* ret = (KeyRecord*)RG_RecordCreate(keyRecordType);
+    ret->key = NULL;
+    ret->len = 0;
+    ret->record = NULL;
+    return &ret->base;
 }
 
-void RG_KeyRecordSetKey(Record* r, char* key, size_t len){
-    assert(r->type == KEY_RECORD);
-    r->keyRecord.key = key;
-    r->keyRecord.len = len;
+void RG_KeyRecordSetKey(Record* base, char* key, size_t len){
+    assert(base->type == keyRecordType);
+    KeyRecord* r = (KeyRecord*)base;
+    r->key = key;
+    r->len = len;
 }
-void RG_KeyRecordSetVal(Record* r, Record* val){
-    assert(r->type == KEY_RECORD);
-    r->keyRecord.record = val;
+void RG_KeyRecordSetVal(Record* base, Record* val){
+    assert(base->type == keyRecordType);
+    KeyRecord* r = (KeyRecord*)base;
+    r->record = val;
 }
 
-Record* RG_KeyRecordGetVal(Record* r){
-    assert(r->type == KEY_RECORD);
-    return r->keyRecord.record;
+Record* RG_KeyRecordGetVal(Record* base){
+    assert(base->type == keyRecordType);
+    KeyRecord* r = (KeyRecord*)base;
+    return r->record;
 }
-char* RG_KeyRecordGetKey(Record* r, size_t* len){
-    assert(r->type == KEY_RECORD);
+char* RG_KeyRecordGetKey(Record* base, size_t* len){
+    assert(base->type == keyRecordType);
+    KeyRecord* r = (KeyRecord*)base;
     if(len){
-        *len = r->keyRecord.len;
+        *len = r->len;
     }
-    return r->keyRecord.key;
+    return r->key;
 }
 Record* RG_ListRecordCreate(size_t initSize){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = LIST_RECORD;
-    ret->listRecord.records = array_new(Record*, initSize);
-    return ret;
+    ListRecord* ret = (ListRecord*)RG_RecordCreate(listRecordType);
+    ret->records = array_new(Record*, initSize);
+    return &ret->base;
 }
 
-size_t RG_ListRecordLen(Record* r){
-    assert(r->type == LIST_RECORD);
-    return array_len(r->listRecord.records);
+size_t RG_ListRecordLen(Record* base){
+    assert(base->type == listRecordType);
+    ListRecord* r = (ListRecord*)base;
+    return array_len(r->records);
 }
 
-void RG_ListRecordAdd(Record* r, Record* element){
-    assert(r->type == LIST_RECORD);
-    r->listRecord.records = array_append(r->listRecord.records, element);
+void RG_ListRecordAdd(Record* base, Record* element){
+    assert(base->type == listRecordType);
+    ListRecord* r = (ListRecord*)base;
+    r->records = array_append(r->records, element);
 }
 
-Record* RG_ListRecordGet(Record* r, size_t index){
-    assert(r->type == LIST_RECORD);
-    assert(RG_ListRecordLen(r) > index && index >= 0);
-    return r->listRecord.records[index];
+Record* RG_ListRecordGet(Record* base, size_t index){
+    assert(base->type == listRecordType);
+    assert(RG_ListRecordLen(base) > index && index >= 0);
+    ListRecord* r = (ListRecord*)base;
+    return r->records[index];
 }
 
-Record* RG_ListRecordPop(Record* r){
-    return array_pop(r->listRecord.records);
+Record* RG_ListRecordPop(Record* base){
+    assert(base->type == listRecordType);
+    ListRecord* r = (ListRecord*)base;
+    return array_pop(r->records);
 }
 
 Record* RG_StringRecordCreate(char* val, size_t len){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = STRING_RECORD;
-    ret->stringRecord.str = val;
-    ret->stringRecord.len = len;
-    return ret;
+    StringRecord* ret = (StringRecord*)RG_RecordCreate(stringRecordType);
+    ret->str = val;
+    ret->len = len;
+    return &ret->base;
 }
 
-char* RG_StringRecordGet(Record* r, size_t* len){
-    assert(r->type == STRING_RECORD || r->type == ERROR_RECORD);
+char* RG_StringRecordGet(Record* base, size_t* len){
+    assert(base->type == stringRecordType || base->type == errorRecordType);
+    StringRecord* r = (StringRecord*)base;
     if(len){
-        *len = r->stringRecord.len;
+        *len = r->len;
     }
-    return r->stringRecord.str;
+    return r->str;
 }
 
-void RG_StringRecordSet(Record* r, char* val, size_t len){
-    assert(r->type == STRING_RECORD || r->type == ERROR_RECORD);
-    r->stringRecord.str = val;
-    r->stringRecord.len = len;
+void RG_StringRecordSet(Record* base, char* val, size_t len){
+    assert(base->type == stringRecordType || base->type == errorRecordType);
+    StringRecord* r = (StringRecord*)base;
+    r->str = val;
+    r->len = len;
 }
 
 Record* RG_DoubleRecordCreate(double val){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = DOUBLE_RECORD;
-    ret->doubleRecord.num = val;
-    return ret;
+    DoubleRecord* ret = (DoubleRecord*)RG_RecordCreate(doubleRecordType);
+    ret->num = val;
+    return &ret->base;
 }
 
-double RG_DoubleRecordGet(Record* r){
-    assert(r->type == DOUBLE_RECORD);
-    return r->doubleRecord.num;
+double RG_DoubleRecordGet(Record* base){
+    assert(base->type == doubleRecordType);
+    DoubleRecord* r = (DoubleRecord*)base;
+    return r->num;
 }
 
-void RG_DoubleRecordSet(Record* r, double val){
-    assert(r->type == DOUBLE_RECORD);
-    r->doubleRecord.num = val;
+void RG_DoubleRecordSet(Record* base, double val){
+    assert(base->type == doubleRecordType);
+    DoubleRecord* r = (DoubleRecord*)base;
+    r->num = val;
 }
 
 Record* RG_LongRecordCreate(long val){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = LONG_RECORD;
-    ret->longRecord.num = val;
-    return ret;
+    LongRecord* ret = (LongRecord*)RG_RecordCreate(longRecordType);
+    ret->num = val;
+    return &ret->base;
 }
-long RG_LongRecordGet(Record* r){
-    assert(r->type == LONG_RECORD);
-    return r->longRecord.num;
+long RG_LongRecordGet(Record* base){
+    assert(base->type == longRecordType);
+    LongRecord* r = (LongRecord*)base;
+    return r->num;
 }
-void RG_LongRecordSet(Record* r, long val){
-    assert(r->type == LONG_RECORD);
-    r->longRecord.num = val;
+void RG_LongRecordSet(Record* base, long val){
+    assert(base->type == longRecordType);
+    LongRecord* r = (LongRecord*)base;
+    r->num = val;
 }
 
 Record* RG_HashSetRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = HASH_SET_RECORD;
-    ret->hashSetRecord.d = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
-    return ret;
+    HashSetRecord* ret = (HashSetRecord*)RG_RecordCreate(hashSetRecordType);
+    ret->d = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
+    return &ret->base;
 }
 
-int RG_HashSetRecordSet(Record* r, char* key, Record* val){
-    assert(r->type == HASH_SET_RECORD);
-    Record* oldVal = RG_HashSetRecordGet(r, key);
+int RG_HashSetRecordSet(Record* base, char* key, Record* val){
+    assert(base->type == hashSetRecordType);
+    HashSetRecord* r = (HashSetRecord*)base;
+    Record* oldVal = RG_HashSetRecordGet(base, key);
     if(oldVal){
         RG_FreeRecord(oldVal);
-        Gears_dictDelete(r->hashSetRecord.d, key);
+        Gears_dictDelete(r->d, key);
     }
-    return Gears_dictAdd(r->hashSetRecord.d, key, val) == DICT_OK;
+    return Gears_dictAdd(r->d, key, val) == DICT_OK;
 }
 
-Record* RG_HashSetRecordGet(Record* r, char* key){
-    assert(r->type == HASH_SET_RECORD);
-    Gears_dictEntry *entry = Gears_dictFind(r->hashSetRecord.d, key);
+Record* RG_HashSetRecordGet(Record* base, char* key){
+    assert(base->type == hashSetRecordType);
+    HashSetRecord* r = (HashSetRecord*)base;
+    Gears_dictEntry *entry = Gears_dictFind(r->d, key);
     if(!entry){
         return 0;
     }
     return Gears_dictGetVal(entry);
 }
 
-char** RG_HashSetRecordGetAllKeys(Record* r){
-    assert(r->type == HASH_SET_RECORD);
-    Gears_dictIterator *iter = Gears_dictGetIterator(r->hashSetRecord.d);
+char** RG_HashSetRecordGetAllKeys(Record* base){
+    assert(base->type == hashSetRecordType);
+    HashSetRecord* r = (HashSetRecord*)base;
+    Gears_dictIterator *iter = Gears_dictGetIterator(r->d);
     Gears_dictEntry *entry = NULL;
-    char** ret = array_new(char*, Gears_dictSize(r->hashSetRecord.d));
+    char** ret = array_new(char*, Gears_dictSize(r->d));
     while((entry = Gears_dictNext(iter))){
         char* key = Gears_dictGetKey(entry);
         ret = array_append(ret, key);
@@ -277,146 +575,20 @@ char** RG_HashSetRecordGetAllKeys(Record* r){
 }
 
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = KEY_HANDLER_RECORD;
-    ret->keyHandlerRecord.keyHandler = handler;
-    return ret;
+    KeysHandlerRecord* ret = (KeysHandlerRecord*)RG_RecordCreate(keysHandlerRecordType);
+    ret->keyHandler = handler;
+    return &ret->base;
 }
 
-RedisModuleKey* RG_KeyHandlerRecordGet(Record* r){
-    assert(r->type == KEY_HANDLER_RECORD);
-    return r->keyHandlerRecord.keyHandler;
+RedisModuleKey* RG_KeyHandlerRecordGet(Record* base){
+    assert(base->type == keysHandlerRecordType);
+    KeysHandlerRecord* r = (KeysHandlerRecord*)base;
+    return r->keyHandler;
 }
 
 Record* RG_ErrorRecordCreate(char* val, size_t len){
-    Record* ret = RG_StringRecordCreate(val, len);
-    ret->type = ERROR_RECORD;
-    return ret;
+    StringRecord* ret = (StringRecord*)RG_RecordCreate(errorRecordType);
+    ret->str = val;
+    ret->len = len;
+    return &ret->base;
 }
-
-#ifdef WITHPYTHON
-Record* RG_PyObjRecordCreate(){
-    Record* ret = RG_ALLOC(sizeof(Record));
-    ret->type = PY_RECORD;
-    ret->pyRecord.obj = NULL;
-    return ret;
-}
-
-PyObject* RG_PyObjRecordGet(Record* r){
-    assert(r->type == PY_RECORD);
-    return r->pyRecord.obj;
-}
-
-void RG_PyObjRecordSet(Record* r, PyObject* obj){
-    assert(r->type == PY_RECORD);
-    r->pyRecord.obj = obj;
-}
-#endif
-
-int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err){
-    RedisGears_BWWriteLong(bw, r->type);
-    switch(r->type){
-    case STRING_RECORD:
-    case ERROR_RECORD:
-        RedisGears_BWWriteBuffer(bw, r->stringRecord.str, r->stringRecord.len);
-        break;
-    case LONG_RECORD:
-        RedisGears_BWWriteLong(bw, r->longRecord.num);
-        break;
-    case DOUBLE_RECORD:
-        RedisGears_BWWriteLong(bw, (long)r->doubleRecord.num);
-        break;
-    case LIST_RECORD:
-        RedisGears_BWWriteLong(bw, RedisGears_ListRecordLen(r));
-        for(size_t i = 0 ; i < RedisGears_ListRecordLen(r) ; ++i){
-            if(RG_SerializeRecord(bw, r->listRecord.records[i], err) != REDISMODULE_OK){
-                return REDISMODULE_ERR;
-            }
-        }
-        break;
-    case KEY_RECORD:
-        RedisGears_BWWriteString(bw, r->keyRecord.key);
-        if(r->keyRecord.record){
-            RedisGears_BWWriteLong(bw, 1); // value exists
-            if(RG_SerializeRecord(bw, r->keyRecord.record, err) != REDISMODULE_OK){
-                return REDISMODULE_ERR;
-            }
-        }else{
-            RedisGears_BWWriteLong(bw, 0); // value missing
-        }
-        break;
-    case KEY_HANDLER_RECORD:
-        assert(false && "can not serialize key handler record");
-        break;
-#ifdef WITHPYTHON
-    case PY_RECORD:
-        if(RedisGearsPy_PyObjectSerialize(r->pyRecord.obj, bw, err) != REDISMODULE_OK){
-            return REDISMODULE_ERR;
-        }
-        break;
-#endif
-    default:
-        assert(false);
-    }
-    return REDISMODULE_OK;
-}
-
-Record* RG_DeserializeRecord(Gears_BufferReader* br){
-    enum RecordType type = RedisGears_BRReadLong(br);
-    Record* r;
-    char* temp;
-    char* temp1;
-    size_t size;
-    switch(type){
-    case STRING_RECORD:
-        temp = RedisGears_BRReadBuffer(br, &size);
-        temp1 = RG_ALLOC(size);
-        memcpy(temp1, temp, size);
-        r = RG_StringRecordCreate(temp1, size);
-        break;
-    case ERROR_RECORD:
-        temp = RedisGears_BRReadBuffer(br, &size);
-        temp1 = RG_ALLOC(size);
-        memcpy(temp1, temp, size);
-        r = RG_ErrorRecordCreate(temp1, size);
-        break;
-    case LONG_RECORD:
-        r = RG_LongRecordCreate(RedisGears_BRReadLong(br));
-        break;
-    case DOUBLE_RECORD:
-        r = RG_DoubleRecordCreate((double)RedisGears_BRReadLong(br));
-        break;
-    case LIST_RECORD:
-        size = (size_t)RedisGears_BRReadLong(br);
-        r = RG_ListRecordCreate(size);
-        for(size_t i = 0 ; i < size ; ++i){
-            RG_ListRecordAdd(r, RG_DeserializeRecord(br));
-        }
-        break;
-    case KEY_RECORD:
-        r = RedisGears_KeyRecordCreate();
-        char* key = RG_STRDUP(RedisGears_BRReadString(br));
-        RG_KeyRecordSetKey(r, key, strlen(key));
-        bool isValExists = (bool)RedisGears_BRReadLong(br);
-        if(isValExists){
-            RedisGears_KeyRecordSetVal(r, RG_DeserializeRecord(br));
-        }else{
-            RedisGears_KeyRecordSetVal(r, NULL);
-        }
-        break;
-    case KEY_HANDLER_RECORD:
-        assert(false && "can not deserialize key handler record");
-        break;
-#ifdef WITHPYTHON
-    case PY_RECORD:
-        r = RG_PyObjRecordCreate();
-        PyObject* obj = RedisGearsPy_PyObjectDeserialize(br);
-        r->pyRecord.obj = obj;
-        break;
-#endif
-    default:
-        assert(false);
-    }
-    return r;
-}
-

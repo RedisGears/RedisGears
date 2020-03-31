@@ -88,8 +88,10 @@ def standalone(image):
         ('docs/snippets/readers/shardidreader-run.py', [[1], []]),
         ('docs/snippets/readers/streamreader-register.py', b'OK'),
         ('docs/snippets/readers/streamreader-run.py', [[], []]),
+        ('docs/snippets/readers/commandreader-register.py', b'OK'),
         ('docs/snippets/runtime/configget.py', b'OK'),
         ('docs/snippets/runtime/execute.py', b'OK'),
+        ('docs/snippets/runtime/atomic.py', [[1], []]),
         ('docs/snippets/runtime/gearsconfigget.py', b'OK'),
         ('docs/snippets/runtime/hashtag.py', b'OK'),
         ('docs/snippets/runtime/log.py', [[], []]),
@@ -99,6 +101,7 @@ def standalone(image):
 def test_snippet(standalone, snippet, expected):
     with open(snippet, 'rb') as f:
         src = f.read()
+    standalone.flushall()
     r = standalone.execute_command('RG.PYEXECUTE', src)
     if type(expected) is list:
         assert len(expected[0]) == len(r[0])

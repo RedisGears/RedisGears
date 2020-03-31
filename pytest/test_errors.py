@@ -89,9 +89,9 @@ GB('StreamReader').map(test).run()
 class testStepsErrors:
     def __init__(self):
         self.env = Env()
-        conn = getConnectionByEnv(self.env)
-        conn.execute_command('set', 'x', '1')
-        conn.execute_command('set', 'y', '1')
+        self.conn = getConnectionByEnv(self.env)
+        self.conn.execute_command('set', 'x', '1')
+        self.conn.execute_command('set', 'y', '1')
 
     def testForEachError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().foreach(lambda x: notexists(x)).collect().run()')
@@ -140,31 +140,43 @@ class testStepsErrors:
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
         self.env.assertLessEqual(1, res[1])
 
+
 def testCommandReaderWithRun(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").run()').error().contains('reader do not support run')
 
 def testCommandReaderWithBadArgs(env):
-    env.expect('rg.pyexecute', 'GB("CommandReader").register("bla")').error().contains('command argument is not string')
+    env.expect('rg.pyexecute', 'GB("CommandReader").register("test")').error().contains('trigger argument was not given')
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger=1)').error().contains('trigger argument is not string')
 
 def testCommandReaderRegisterSameCommand(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').ok()
-    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').error().contains('Command already registered')
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').error().contains('trigger already registered')
 
 def testCommandReaderRegisterWithExcpetionCommand(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(trigger="command")').ok()
     env.expect('rg.trigger', 'command').error().contains("'noexists' is not defined")
 
+def testNoSerializableRegistrationWithAllReaders(env):
+    script = '''
+import redis
+r = redis.Redis()
+GB('%s').map(lambda x: r).register(trigger='test')
+    '''
+    env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis').error()
+    env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis').error()
+    env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis').error()
 
 class testStepsWrongArgs:
     def __init__(self):
         self.env = Env()
+        self.conn = getConnectionByEnv(self.env)
 
     def testRegisterWithWrongRegexType(self):
         self.env.expect('rg.pyexecute', 'GB().register(1)').error().contains('regex argument must be a string')
 
     def testRegisterWithWrongEventKeysTypesList(self):
-        self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=1)').error().contains('object is not iterable')
-        self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=1)').error().contains('object is not iterable')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=1)').error().contains('not iterable')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=1)').error().contains('not iterable')
         self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=[1, 2, 3])').error().contains('type is not string')
         self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=[1, 2, 3])').error().contains('type is not string')
 
@@ -234,7 +246,61 @@ class testStepsWrongArgs:
         self.env.expect('rg.pyexecute', 'GB("PythonReader").run("*")').error().contains('pyreader argument must be a functio')
         self.env.expect('rg.pyexecute', 'GB("PythonReader").run()').error().contains('pyreader argument must be a functio')
         self.env.expect('rg.pyexecute', 'GB("PythonReader", "*").run()').error().contains('pyreader argument must be a functio')
-        self.env.expect('rg.pyexecute', 'GB("PythonReader", ShardReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
+        self.env.expect('rg.pyexecute', 'GB("PythonReader", shardReaderCallback).run("*")').error().contains('pyreader argument must be a functio')
+
+    def testStreamReaderBadFromIdFormat(self):
+        self.conn.execute_command('XADD', 's', '*', 'foo', 'bar', 'foo1', 'bar1')
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").run("s", fromId="test")').equal([[], ['ERR Invalid stream ID specified as stream command argument']])
+
+    def testStreamReaderBadFromId(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").run("s", fromId=1)').error()
+
+    def testKeysReaderNoScanBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().run(noScan=1)').error()
+
+    def testKeysReaderReadValueBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().run(readValue=1)').error()
+
+    def testOnRegisteredBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().register(onRegistered=1)').error()
+
+    def testRegisterModeBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().register(mode=1)').error()
+        self.env.expect('rg.pyexecute', 'GearsBuilder().register(mode="test")').error()
+
+    def testRegisterPrefixBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().register(prefix=1)').error()
+
+    def testStreamReaderBatchBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(batch="test")').error()
+
+    def testStreamReaderBatchBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(batch="test")').error()
+
+    def testStreamReaderDurationBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(duration="test")').error()
+
+    def testStreamReaderOnFailedPolicyBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(onFailedPolicy="test")').error()
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(onFailedPolicy=1)').error()
+
+    def testStreamReaderOnFailedRetryIntervalBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(onFailedRetryInterval="test")').error()
+
+    def testStreamReaderTrimStreamBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(trimStream="test")').error()
+        
+    def testKeysReadeReadValueBadValue(self):
+        self.env.expect('rg.pyexecute', 'GearsBuilder().register(readValue=1)').error()
+
+    def testKeysOnlyReadeBadCount(self):
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder("KeysOnlyReader").run(count="noNunber")')
+        self.env.assertContains('value is not an integer', res[1][0])
+
+    def testKeysOnlyReadeBadPatternGenerator(self):
+        res = self.env.cmd('rg.pyexecute', 'GearsBuilder("KeysOnlyReader").run(patternGenerator="adwaw")')
+        self.env.assertContains('object is not callable', res[1][0])
+
 
 class testGetExecutionErrorReporting:
     def __init__(self):

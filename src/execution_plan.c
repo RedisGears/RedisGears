@@ -672,7 +672,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
         if(record == &StopRecord){
             return record;
         }
-        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+        if(RedisGears_RecordGetType(record) == errorRecordType){
             return record;
         }
 	    START_TIMER;
@@ -706,7 +706,7 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
     if(record == &StopRecord){
     	goto end;
     }
-    if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+    if(RedisGears_RecordGetType(record) == errorRecordType){
         goto end;
     }
     if(record != NULL){
@@ -750,10 +750,10 @@ static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep*
         if(r == &StopRecord){
             goto end;
         }
-        if(RedisGears_RecordGetType(r) == ERROR_RECORD){
+        if(RedisGears_RecordGetType(r) == errorRecordType){
             goto end;
         }
-        if(RedisGears_RecordGetType(r) != LIST_RECORD){
+        if(RedisGears_RecordGetType(r) != listRecordType){
             goto end;
         }
     	ADD_DURATION(step->executionDuration);
@@ -787,7 +787,7 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
     	r = record;
     	goto end;
     }
-    if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+    if(RedisGears_RecordGetType(record) == errorRecordType){
         r = record;
         goto end;
     }
@@ -822,10 +822,10 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
         if(record == &StopRecord){
             goto end;
         }
-        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+        if(RedisGears_RecordGetType(record) == errorRecordType){
             goto end;
         }
-        assert(RedisGears_RecordGetType(record) == KEY_RECORD);
+        assert(RedisGears_RecordGetType(record) == keyRecordType);
         size_t keyLen;
         char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
         Gears_dictEntry* entry = Gears_dictFind(step->group.d, key);
@@ -870,10 +870,10 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     if(record == &StopRecord){
         goto end;
     }
-    if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+    if(RedisGears_RecordGetType(record) == errorRecordType){
         goto end;
     }
-    assert(RedisGears_RecordGetType(record) == KEY_RECORD);
+    assert(RedisGears_RecordGetType(record) == keyRecordType);
     size_t keyLen;
     char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
     ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
@@ -920,7 +920,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
             Gears_BufferFree(buff);
             goto end;
         }
-        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+        if(RedisGears_RecordGetType(record) == errorRecordType){
             // this is an error record which should stay with us so lets return it
             Gears_BufferFree(buff);
             goto end;
@@ -1084,7 +1084,7 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     if(record == NULL){
         goto end;
     }
-    if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+    if(RedisGears_RecordGetType(record) == errorRecordType){
         goto end;
     }
     ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
@@ -1110,7 +1110,7 @@ static Record* ExecutionPlan_LimitNextRecord(ExecutionPlan* ep, ExecutionStep* s
         if(record == &StopRecord){
             goto end;
         }
-        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+        if(RedisGears_RecordGetType(record) == errorRecordType){
             goto end;
         }
 
@@ -1146,7 +1146,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         if(record == &StopRecord){
             goto end;
         }
-        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+        if(RedisGears_RecordGetType(record) == errorRecordType){
             goto end;
         }
         ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
@@ -1182,10 +1182,10 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		if(record == &StopRecord){
 			goto end;
 		}
-		if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+		if(RedisGears_RecordGetType(record) == errorRecordType){
 		    goto end;
 		}
-		assert(RedisGears_RecordGetType(record) == KEY_RECORD);
+		assert(RedisGears_RecordGetType(record) == keyRecordType);
 		char* key = RedisGears_KeyRecordGetKey(record, NULL);
 		Record* val = RedisGears_KeyRecordGetVal(record);
 		RedisGears_KeyRecordSetVal(record, NULL);
@@ -1235,7 +1235,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
         goto end;
 	}
 	record = Gears_dictGetVal(entry);
-	assert(RedisGears_RecordGetType(record) == KEY_RECORD);
+	assert(RedisGears_RecordGetType(record) == keyRecordType);
 end:
 	ADD_DURATION(step->executionDuration);
     return record;
@@ -1253,6 +1253,9 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     	    r = step->reader.r->next(&ectx, step->reader.r->ctx);
             GETTIME(&_te);
     	    step->executionDuration += DURATION;
+    	    if(!r && ectx.err){
+    	        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+    	    }
     	}
         break;
     case MAP:
@@ -1314,7 +1317,7 @@ static bool ExecutionPlan_Execute(ExecutionPlan* ep, RedisModuleCtx* rctx){
             // Execution need to be stopped, lets wait for a while.
             return false;
         }
-        if(RedisGears_RecordGetType(record) == ERROR_RECORD){
+        if(RedisGears_RecordGetType(record) == errorRecordType){
             ExecutionPlan_WriteError(ep, record);
         }else{
             ExecutionPlan_WriteResult(ep, record);
@@ -2316,6 +2319,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     int res = FlatExecutionPlan_Serialize(&bw, fep, err);
     if(res != REDISMODULE_OK){
         Gears_BufferFree(buff);
+        callbacks->freeTriggerArgs(args);
         return 0;
     }
 

@@ -7,14 +7,14 @@
 #include "redisgears_memory.h"
 
 bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
-    if(RedisGears_RecordGetType(r) != HASH_SET_RECORD_TYPE){
+    if(RedisGears_RecordGetType(r) != hashSetRecordType){
         return false;
     }
     size_t len;
     Arr(char*) keys = RedisGears_HashSetRecordGetAllKeys(r);
     for(size_t i = 0 ; i < len ; ++i){
         Record* val = RedisGears_HashSetRecordGet(r, keys[i]);
-        if(RedisGears_RecordGetType(val) == STRING_RECORD_TYPE){
+        if(RedisGears_RecordGetType(val) == stringRecordType){
             size_t len;
             char* valStr = RedisGears_StringRecordGet(val, &len);
             int valInt = atol(valStr);
