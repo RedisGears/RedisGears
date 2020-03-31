@@ -214,7 +214,7 @@ To see how this works in practice, we'll refactor our function to use a [**`filt
 !!! example "Example: `filter()` operation"
     ```
     127.0.0.1:6379> RG.PYEXECUTE "GB().filter(lambda x: x['key'].startswith('person:')).run()"
-    1) 1) "{'key': 'person:1', 'value': {'age': '60', 'name': 'Rick Sanchez'}}"
+    1) 1) "{'key': 'person:1', 'value': {'age': '70', 'name': 'Rick Sanchez'}}"
        2) "{'key': 'person:2', 'value': {'age': '14', 'name': 'Morty Smith'}}"
     2) (empty list or set)
     ```
