@@ -51,6 +51,7 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
 
     def testUnregisterWithStreamReader(self):
         res = self.env.cmd('rg.pyexecute', "GearsBuilder('StreamReader')."
+                                      "map(lambda x: x['value'])."
                                       "flatmap(lambda x: [(a[0], a[1]) for a in x.items()])."
                                       "repartition(lambda x: x[0])."
                                       "foreach(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
@@ -280,7 +281,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
 def testBasicStream(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rg.pyexecute', "GearsBuilder()."
-                                  "filter(lambda x:x['key'] != 'values')."
+                                  "filter(lambda x:x['key'] != 'values' and x['type'] != 'empty')."
                                   "repartition(lambda x: 'values')."
                                   "foreach(lambda x: redisgears.executeCommand('lpush', 'values', x['value']))."
                                   "register('*')", 'UNBLOCKING')
@@ -308,7 +309,7 @@ def testBasicStream(env):
 def testBasicStreamRegisterOnPrefix(env):
     conn = getConnectionByEnv(env)
     env.expect('rg.pyexecute', "GearsBuilder('StreamReader')."
-                               "map(lambda x: str(x))."
+                               "map(lambda x: str(x['value']))."
                                "repartition(lambda x: 'new_key')."
                                "foreach(lambda x: redisgears.executeCommand('set', 'new_key', x))."
                                "register('s*')").ok()
@@ -321,7 +322,7 @@ def testBasicStreamRegisterOnPrefix(env):
     try:
         with TimeLimit(5):
             res = ''
-            while res is None or "{'name': 'test', 'streamId': " not in res:
+            while res is None or "{'name': 'test'}" not in res:
                 res = conn.get('new_key')
     except Exception:
         env.assertTrue(False, message='Failed get correct data from new_key')
@@ -331,13 +332,13 @@ def testBasicStreamRegisterOnPrefix(env):
     try:
         with TimeLimit(5):
             res = ''
-            while res is None or "{'name': 'test1', 'streamId': " not in res:
+            while res is None or "{'name': 'test1'}" not in res:
                 res = conn.get('new_key')
     except Exception:
         env.assertTrue(False, message='Failed get correct data from new_key')
 
     conn.execute_command('xadd', 'rstream1', '*', 'name', 'test2')
-    env.assertContains("{'name': 'test1', 'streamId': ", conn.get('new_key'))
+    env.assertContains("{'name': 'test1'}", conn.get('new_key'))
 
     time.sleep(0.1) # waiting for all the execution to be fully created on all the shards
 
@@ -358,7 +359,7 @@ def testBasicStreamRegisterOnPrefix(env):
 def testBasicStreamProcessing(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('rg.pyexecute', "GearsBuilder('StreamReader')."
-                                  "flatmap(lambda x: [(a[0], a[1]) for a in x.items()])."
+                                  "flatmap(lambda x: [(a[0], a[1]) for a in x['value'].items()])."
                                   "repartition(lambda x: x[0])."
                                   "foreach(lambda x: redisgears.executeCommand('set', x[0], x[1]))."
                                   "map(lambda x: str(x))."
@@ -388,7 +389,9 @@ def testBasicStreamProcessing(env):
 
 def testRegistersOnPrefix(env):
     conn = getConnectionByEnv(env)
-    env.cmd('rg.pyexecute', "GB().map(lambda x: ('pref2:' + x['key'].split(':')[1], x['value']))."
+    env.cmd('rg.pyexecute', "GB()."
+                            "filter(lambda x: x['type'] != 'empty')."
+                            "map(lambda x: ('pref2:' + x['key'].split(':')[1], x['value']))."
                             "repartition(lambda x: x[0])."
                             "foreach(lambda x: execute('set', x[0], x[1]))."
                             "register(regex='pref1:*')")
@@ -419,7 +422,7 @@ def testRegistersOnPrefix(env):
 def testRegistersSurviveRestart(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB().filter(lambda x: 'NumOfKeys' not in x['key'])."
-                            "foreach(lambda x: execute('incrby', 'NumOfKeys{%s}' % (hashtag()), ('1' if 'value' in x.keys() else '-1')))."
+                            "foreach(lambda x: execute('incrby', 'NumOfKeys{%s}' % (hashtag()), ('-1' if x['event'] == 'del' else '1')))."
                             "register(mode='async_local')")
 
     # todo: change it not to use sleep
@@ -739,7 +742,7 @@ def testKeysReaderEventTypeFilter(env):
 
     # count how many lpush and rpush happened
     env.cmd('rg.pyexecute', "GB().repartition(lambda x: 'counter')."
-                            "filter(lambda x: 'value' in x.keys())."
+                            "filter(lambda x: 'value' in x.keys() and x['type'] != 'empty')."
                             "foreach(lambda x: execute('incr', 'counter'))."
                             "register(regex='*', eventTypes=['lpush', 'rpush'])")
 
@@ -757,7 +760,6 @@ def testKeysReaderEventTypeFilter(env):
     except Exception as e:
         print e
         env.assertTrue(False, message='Failed waiting for counter to reach 2')
-        raw_input('stopped')
 
     ## make sure other commands are not triggers executions
     conn.set('x', '1')
@@ -785,7 +787,7 @@ def testKeysReaderKeyTypeFilter(env):
 
     # count how many lpush and rpush happened
     env.cmd('rg.pyexecute', "GB().repartition(lambda x: 'counter')."
-                            "filter(lambda x: 'value' in x.keys())."
+                            "filter(lambda x: x['type'] != 'empty')."
                             "foreach(lambda x: execute('incr', 'counter'))."
                             "register(regex='*', keyTypes=['list'])")
 
@@ -914,3 +916,24 @@ def testCommandReaderWithCountBy(env):
 
     # we need to check twice to make sure the execution reset are not causing issues
     env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
+
+def testKeyReaderRegisterDontReadValues(env):
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "GB('KeysReader').foreach(lambda x: x.pop('event', None)).repartition(lambda x: 'l').foreach(lambda x: execute('lpush', 'l', str(x))).register(readValue=False, eventTypes=['set'])").ok()
+
+    time.sleep(0.5) # make sure registration reached all shards
+
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'y', '2')
+    conn.execute_command('set', 'z', '3')
+
+
+    try:
+        with TimeLimit(4):
+            while True:
+                res = conn.execute_command('lrange', 'l', '0', '-1')
+                if set(res) == set(["{'key': 'z'}", "{'key': 'y'}", "{'key': 'x'}"]):
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for list to popultae')

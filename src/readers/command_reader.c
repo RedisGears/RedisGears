@@ -164,7 +164,7 @@ static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode 
     CommandReaderTriggerArgs* crtArgs = args;
     CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger);
     if(crtCtx){
-        *err = RG_STRDUP("Command already registered");
+        *err = RG_STRDUP("trigger already registered");
         return REDISMODULE_ERR;
     }
 
@@ -416,7 +416,7 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
     if(errorsLen > 0){
         ++crtCtx->numFailures;
         Record* r = RedisGears_GetError(ep, 0);
-        assert(RedisGears_RecordGetType(r) == ERROR_RECORD);
+        assert(RedisGears_RecordGetType(r) == errorRecordType);
         if(crtCtx->lastError){
             RG_FREE(crtCtx->lastError);
         }

@@ -14,25 +14,10 @@
 #include <Python.h>
 #endif
 
-enum RecordType{
-    KEY_HANDLER_RECORD = 1,
-    LONG_RECORD,
-    DOUBLE_RECORD,
-    STRING_RECORD,
-    LIST_RECORD,
-    KEY_RECORD,
-    HASH_SET_RECORD,
-    STOP_RECORD, // telling the execution plan to stop the execution.
-    ERROR_RECORD, // telling the execution plan an error acquire
-#ifdef WITHPYTHON
-    PY_RECORD
-#endif
-};
-
 extern Record StopRecord;
 
 void RG_FreeRecord(Record* record);
-int RG_RecordGetType(Record* r);
+RecordType* RG_RecordGetType(Record* r);
 
 /** key record api **/
 Record* RG_KeyRecordCreate();
@@ -76,14 +61,17 @@ RedisModuleKey* RG_KeyHandlerRecordGet(Record* r);
 
 int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err);
 Record* RG_DeserializeRecord(Gears_BufferReader* br);
-
-#ifdef WITHPYTHON
-Record* RG_PyObjRecordCreate();
-PyObject* RG_PyObjRecordGet(Record* r);
-void RG_PyObjRecordSet(Record* r, PyObject* obj);
-#endif
+int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx);
 
 Record* RG_ErrorRecordCreate(char* val, size_t len);
+
+void Record_Initialize();
+Record* RG_RecordCreate(RecordType* type);
+RecordType* RG_RecordTypeCreate(const char* name, size_t size,
+                                RecordSendReply,
+                                RecordSerialize,
+                                RecordDeserialize,
+                                RecordFree);
 
 
 

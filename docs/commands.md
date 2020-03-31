@@ -19,6 +19,7 @@ The following sections describe the supported commands.
 | [`RG.PYEXECUTE`](#rgpyexecute) | Executes a Python function |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
+| [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
 
 **Syntax Conventions**
@@ -52,7 +53,7 @@ A simple 'OK' if successful, or an error if the execution does not exist or had 
 **Examples**
 
 ```
-127.0.0.1:6379> RG.ABORTEXECUTION 0000000000000000000000000000000000000000-1
+redis> RG.ABORTEXECUTION 0000000000000000000000000000000000000000-1
 OK
 ```
 
@@ -76,9 +77,9 @@ An array with an entry per key. The entry is a String being the value or an erro
 **Examples**
 
 ```
-127.0.0.1:6379> RG.CONFIGGET ProfileExecutions
+redis> RG.CONFIGGET ProfileExecutions
 1) (integer) 0
-127.0.0.1:6379> RG.CONFIGGET foo
+redis> RG.CONFIGGET foo
 1) (error) (error) Unsupported config parameter: foo
 ```
 
@@ -103,11 +104,11 @@ An array with an entry per key. The entry is simple 'OK' string, or an error if 
 **Examples**
 
 ```
-127.0.0.1:6379> RG.CONFIGSET ProfileExecutions 1
+redis> RG.CONFIGSET ProfileExecutions 1
 1) OK
-127.0.0.1:6379> RG.CONFIGSET foo bar
+redis> RG.CONFIGSET foo bar
 1) OK - value was saved in extra config dictionary
-127.0.0.1:6379> RG.CONFIGGET foo
+redis> RG.CONFIGGET foo
 1) "bar"
 ```
 
@@ -131,7 +132,7 @@ A simple 'OK' if successful, or an error if the execution does not exist or is s
 **Examples**
 
 ```
-127.0.0.1:6379> RG.DROPEXECUTION 0000000000000000000000000000000000000000-1
+redis> RG.DROPEXECUTION 0000000000000000000000000000000000000000-1
 OK
 ```
 
@@ -154,7 +155,7 @@ An array with an entry per execution. Each entry is made of alternating key name
 **Examples**
 
 ```
-127.0.0.1:6379> RG.DUMPEXECUTIONS
+redis> RG.DUMPEXECUTIONS
 1) 1) "executionId"
    2) "0000000000000000000000000000000000000000-0"
    3) "status"
@@ -194,7 +195,7 @@ An array with an entry per registration. Each entry is made of alternating key n
 **Examples**
 
 ```
-127.0.0.1:6379> RG.DUMPREGISTRATIONS
+redis> RG.DUMPREGISTRATIONS
 1)  1) "id"
     2) "0000000000000000000000000000000000000000-2"
     3) "reader"
@@ -265,9 +266,9 @@ An array if successful, or an error if the execution does not exist or is still 
 **Examples**
 
 ```
-127.0.0.1:6379> RG.PYEXECUTE "GB().run()" UNBLOCKING
+redis> RG.PYEXECUTE "GB().run()" UNBLOCKING
 "0000000000000000000000000000000000000000-4"
-127.0.0.1:6379> RG.GETEXECUTION 0000000000000000000000000000000000000000-4
+redis> RG.GETEXECUTION 0000000000000000000000000000000000000000-4
 1) 1) "shard_id"
    2) "0000000000000000000000000000000000000000"
    3) "execution_plan"
@@ -332,7 +333,7 @@ An array if successful, or an error if the execution does not exist or is still 
 **Examples**
 
 ```
-127.0.0.1:6379> RG.GETRESULTS 0000000000000000000000000000000000000000-4
+redis> RG.GETRESULTS 0000000000000000000000000000000000000000-4
 1) (empty list or set)
 2) (empty list or set)
 ```
@@ -357,7 +358,7 @@ An array of if successful, or an error if the execution does not exist. The repl
 **Examples**
 
 ```
-127.0.0.1:6379> RG.GETRESULTS 0000000000000000000000000000000000000000-4
+redis> RG.GETRESULTS 0000000000000000000000000000000000000000-4
 1) (empty list or set)
 2) (empty list or set)
 ```
@@ -446,7 +447,7 @@ RG.PYEXECUTE "<function>" [REQUIREMENTS "<dep> ..."] [UNBLOCKING]
 
 _Arguments_
 
-* _function-definition_: the Python function
+* _function_: the Python function
 * _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 * _UNBLOCKING_: doesn't block the client during execution
 
@@ -463,7 +464,7 @@ A simple 'OK' string is returned if the function has no output (i.e. it doesn't 
 **Examples**
 
 ```
-127.0.0.1:6379> RG.PYEXECUTE "GB().run()"
+redis> RG.PYEXECUTE "GB().run()"
 1) (empty list or set)
 2) (empty list or set)
 ```
@@ -488,7 +489,7 @@ An array that consists of alternating key name and value entries as follows:
 **Examples**
 
 ```
-127.0.0.1:6379> RG.PYSTATS
+redis> RG.PYSTATS
 1) "TotalAllocated"
 2) (integer) 113803317
 3) "PeakAllocated"
@@ -516,8 +517,35 @@ A simple 'OK' string.
 **Examples**
 
 ```
-127.0.0.1:6379> RG.REFRESHCLUSTER
+redis> RG.REFRESHCLUSTER
 OK
+```
+
+## RG.TRIGGER
+The **RG.TRIGGER** command triggers the execution of a registered [CommandReader](readers.md#commandreader) function.
+
+**Redis API**
+
+```
+RG.TRIGGER <trigger> [arg ...]
+```
+
+_Arguments_
+
+* **trigger**: the trigger's name
+* **arg**: any additional arguments
+
+_Return_
+
+An array containing the function's output records.
+
+**Examples**
+
+```
+redis> RG.PYEXECUTE "GB('CommandReader').register(trigger='mytrigger')"
+OK
+redis> RG.TRIGGER mytrigger foo bar
+1) "['mytrigger', 'foo', 'bar']"
 ```
 
 ## RG.UNREGISTER

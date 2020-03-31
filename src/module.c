@@ -225,16 +225,24 @@ static void RG_StreamReaderCtxFree(StreamReaderCtx* readerCtx){
     StreamReaderCtx_Free(readerCtx);
 }
 
-static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* streamName, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
-    return StreamReaderTriggerArgs_Create(streamName, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
+static KeysReaderCtx* RG_KeysReaderCtxCreate(const char* match, bool readValue, const char* event, bool noScan){
+    return KeysReaderCtx_Create(match, readValue, event, noScan);
+}
+
+static void RG_KeysReaderCtxFree(KeysReaderCtx* readerCtx){
+    KeysReaderCtx_Free(readerCtx);
+}
+
+static StreamReaderTriggerArgs* RG_StreamReaderTriggerArgsCreate(const char* prefix, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream){
+    return StreamReaderTriggerArgs_Create(prefix, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
 static void RG_StreamReaderTriggerArgsFree(StreamReaderTriggerArgs* args){
     return StreamReaderTriggerArgs_Free(args);
 }
 
-static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* regex, char** eventTypes, int* keyTypes){
-    return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes);
+static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* prefix, char** eventTypes, int* keyTypes, bool readValue){
+    return KeysReaderTriggerArgs_Create(prefix, eventTypes, keyTypes, readValue);
 }
 
 static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
@@ -576,6 +584,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
     REGISTER_API(StreamReaderCtxFree, ctx);
+    REGISTER_API(KeysReaderCtxCreate, ctx);
+    REGISTER_API(KeysReaderCtxFree, ctx);
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
     REGISTER_API(StreamReaderTriggerArgsFree, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
@@ -594,6 +604,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(AbortExecution, ctx);
     REGISTER_API(GetId, ctx);
 
+    REGISTER_API(RecordCreate, ctx);
+    REGISTER_API(RecordTypeCreate, ctx);
     REGISTER_API(FreeRecord, ctx);
     REGISTER_API(RecordGetType, ctx);
     REGISTER_API(KeyRecordCreate, ctx);
@@ -718,6 +730,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         globals.redisAILoaded = true;
     }
 
+    Record_Initialize();
+
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
     	RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
 		return REDISMODULE_ERR;
@@ -733,7 +747,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     Cluster_Init();
 
     RGM_RegisterReader(KeysReader);
-    RGM_RegisterReader(KeysOnlyReader);
     RGM_RegisterReader(StreamReader);
     RGM_RegisterReader(CommandReader);
     RGM_RegisterReader(ShardIDReader);
