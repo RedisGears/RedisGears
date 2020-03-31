@@ -31,6 +31,7 @@ RUN ./deps/readies/bin/getpy2
 RUN ./system-setup.py
 RUN make fetch SHOW=1
 RUN make all SHOW=1
+RUN NUMERIC=1 ./getver > artifacts/VERSION
 
 ARG PACK=0
 ARG TEST=0
@@ -54,7 +55,10 @@ RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
 COPY --from=builder /build/redisgears.so $REDIS_MODULES/
 COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts/
 
-RUN tar --warning=no-timestamp  -xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C /
+RUN set -xe ;\
+	d=/var/opt/redislabs/modules/rg/`cat /var/opt/redislabs/artifacts/VERSION`/deps ;\
+	mkdir -p $d ;\
+	tar --warning=no-timestamp  -xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C $d
 
 RUN if [ "$PACK" != "1" ]; then rm -rf /var/opt/redislabs/artifacts; fi
 

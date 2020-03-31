@@ -16,6 +16,7 @@
 #include "common.h"
 #include "GearsBuilder.auto.h"
 #include "cloudpickle.auto.h"
+#include "version.h"
 
 #define SUB_INTERPRETER_TYPE "subInterpreterType"
 
@@ -3140,17 +3141,15 @@ RedisGears_ReaderCallbacks PythonReader = {
         .create = PythonReader_Create,
 };
 
-#define PYENV_INSTALL_DIR "/var/opt/redislabs/lib/modules/"
-#define PYENV_DIR PYENV_INSTALL_DIR"python3"
-#define PYENV_HOME_DIR PYENV_DIR "/.venv"
-#define PYENV_BIN_DIR PYENV_HOME_DIR "/bin"
-#define PYENV_ACTIVATE PYENV_HOME_DIR "/activate_this.py"
-#define PYENV_ACTIVATE_SCRIPT PYENV_BIN_DIR "/activate"
 
+char *pyenv_dir;
+char *pyenv_install_dir;
+char *pyenv_home_dir;
+char *pyenv_activate_script;
 
 
 bool PyEnvExist() {
-    DIR* dir = opendir(PYENV_DIR);
+    DIR* dir = opendir(pyenv_dir);
     if (dir) {
         closedir(dir);
         return true;
@@ -3158,32 +3157,47 @@ bool PyEnvExist() {
     return false;
 }
 
+
 static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
-#define SHA_256_SIZE 64
-#define DEPS_FILE_PATH "/tmp/deps.%s.%s.tgz"
-#define DEPS_FILE_DIR "/tmp/deps.%s.%s/"
-#define LOCAL_VENV PYENV_DIR"/%s"
+#define PYENV_INSTALL_DIR_FMT   "/var/opt/redislabs/modules/rg/%d/deps/"
+#define SHA_256_SIZE            64
+#define TMP_DEPS_FILE_PATH_FMT  "/tmp/deps.%s.%s.tgz"
+#define TMP_DEPS_FILE_DIR_FMT   "/tmp/deps.%s.%s/"
+
+    rg_asprintf(&pyenv_install_dir, PYENV_INSTALL_DIR_FMT, REDISGEARS_MODULE_VERSION);
+    rg_asprintf(&pyenv_dir, "%s/python3", pyenv_install_dir);
+    rg_asprintf(&pyenv_home_dir, "%s/.venv", pyenv_dir);
+    rg_asprintf(&pyenv_activate_script, "%s/bin/activate", pyenv_home_dir);
+
     const char *no_deps = getenv("GEARS_NO_DEPS");
     bool skip_deps_install = no_deps && !strcmp(no_deps, "1");
     const char* shardUid = GetShardUniqueId();
+    
+    RedisModule_Log(ctx, "notice", "Looking for Python installation at %s", pyenv_dir);
     if (!PyEnvExist()){
         if (skip_deps_install) {
             RedisModule_Log(ctx, "warning", "No Python installation found and GEARS_NO_DEPS=1: aborting");
             return REDISMODULE_ERR;
         }
+        
+        if (! GearsConfig_DownloadPyenv()) {
+            RedisModule_Log(ctx, "warning", "No Python installation found and DLPyenv=0");
+            return REDISMODULE_ERR;
+        }
+        
         const char* expectedSha256 = GearsConfig_GetDependenciesSha256();
 
-        ExecCommand(ctx, "rm -rf "DEPS_FILE_PATH, shardUid, expectedSha256);
+        ExecCommand(ctx, "rm -rf "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "curl -o "DEPS_FILE_PATH" %s", shardUid, expectedSha256, GearsConfig_GetDependenciesUrl());
+        ExecCommand(ctx, "curl -s -o "TMP_DEPS_FILE_PATH_FMT" %s", shardUid, expectedSha256, GearsConfig_GetDependenciesUrl());
 
         char* sha256Command;
-        rg_asprintf(&sha256Command, "sha256sum "DEPS_FILE_PATH, shardUid, expectedSha256);
+        rg_asprintf(&sha256Command, "sha256sum "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
         FILE* f = popen(sha256Command, "r");
         RG_FREE(sha256Command);
         char sha256[SHA_256_SIZE];
         if(fscanf(f, "%64s", sha256) != 1){
-            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "DEPS_FILE_PATH, shardUid, expectedSha256);
+            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
             pclose(f);
             return REDISMODULE_ERR;
         }
@@ -3194,20 +3208,30 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             return REDISMODULE_ERR;
         }
 
-        ExecCommand(ctx, "rm -rf "DEPS_FILE_DIR, shardUid, expectedSha256);
-        ExecCommand(ctx, "mkdir -p "DEPS_FILE_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "rm -rf "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256);
+        ExecCommand(ctx, "mkdir -p "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "tar -xvf "DEPS_FILE_PATH" -C "DEPS_FILE_DIR, shardUid, expectedSha256, shardUid, expectedSha256);
-
-        ExecCommand(ctx, "mkdir -p "PYENV_INSTALL_DIR);
-        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/var/opt/redislabs/lib/modules/python3/ "PYENV_INSTALL_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "tar -xvf "TMP_DEPS_FILE_PATH_FMT" -C "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256, shardUid, expectedSha256);
+        char *old_path;
+        rg_asprintf(&old_path, TMP_DEPS_FILE_DIR_FMT"/var/opt/redislabs/lib/modules/python3/", shardUid, expectedSha256);
+        DIR *old_dir = opendir(old_path);
+        RG_FREE(old_path);
+        if (old_dir) {
+            closedir(old_dir);
+            ExecCommand(ctx, "rm -rf "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256);
+            RedisModule_Log(ctx, "warning", "Internal error: incompatiple Pyenv format");
+            return REDISMODULE_ERR;
+        }
+        
+        ExecCommand(ctx, "mkdir -p %s", pyenv_install_dir);
+        ExecCommand(ctx, "mv "TMP_DEPS_FILE_DIR_FMT"/python3/ %s", shardUid, expectedSha256, pyenv_install_dir);
     }else{
-        RedisModule_Log(ctx, "notice", "Found python installation under: "PYENV_DIR);
+        RedisModule_Log(ctx, "notice", "Found python installation under: %s", pyenv_dir);
     }
     if(!skip_deps_install && GearsConfig_CreateVenv()){
         rg_asprintf(&venvDir, "%s/.venv-%s", GearsConfig_GetVenvWorkingPath(), shardUid);
     }else{
-        venvDir = PYENV_HOME_DIR;
+        venvDir = pyenv_home_dir;
     }
     DIR* dir = opendir(venvDir);
     if(!dir){
@@ -3216,7 +3240,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             return REDISMODULE_ERR;
         }
         ExecCommand(ctx, "mkdir -p %s", venvDir);
-        int rc = ExecCommand(ctx, "/bin/bash -c \"source " PYENV_ACTIVATE_SCRIPT "; python -m virtualenv %s\"", venvDir);
+        int rc = ExecCommand(ctx, "/bin/bash -c \"source %s; python -m virtualenv %s\"", pyenv_activate_script, venvDir);
         if (rc) {
             RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
             ExecCommand(ctx, "rm -rf %s", venvDir);
@@ -3301,7 +3325,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
 	char* arg = "Embeded";
 	size_t len = strlen(arg);
-    char* progName = PYENV_DIR;
+    char* progName = pyenv_dir;
     Py_SetProgramName((wchar_t *)progName);
 
     EmbRedisGears.m_methods = EmbRedisGearsMethods;

@@ -17,6 +17,7 @@ long long GearsConfig_GetProfileExecutions();
 long long GearsConfig_GetPythonAttemptTraceback();
 const char* GearsConfig_GetDependenciesUrl();
 const char* GearsConfig_GetDependenciesSha256();
+long long GearsConfig_DownloadPyenv();
 long long GearsConfig_CreateVenv();
 long long GearsConfig_ExecutionThreads();
 long long GearsConfig_ExecutionMaxIdleTime();

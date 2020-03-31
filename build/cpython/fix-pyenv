@@ -6,7 +6,15 @@ set -e
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ROOT=$(cd $HERE/../..; pwd)
 
-cd /var/opt/redislabs/lib/modules/python3/.venv
+REDISLABS_DIR=/var/opt/redislabs
+
+VERSION=$(NUMERIC=1 $ROOT/getver)
+if [[ -z $VERSION ]]; then
+	>&2 echo "Cannot determine module version. Aborting."
+	exit 1
+fi
+
+cd $REDISLABS_DIR/modules/rg/$VERSION/deps/python3/.venv
 
 # fix shebangs
 $ROOT/deps/cpython/Tools/scripts/pathfix.py -n -i "/usr/bin/env python" . bin/* > /dev/null 2>&1 || true
@@ -22,7 +30,7 @@ fi
 
 # fix activate scripts
 for f in `grep -ril '\.venv' bin/activate*` .project; do
-	sed -i "s/\(['\"]\).*\(\/redislabs\/lib\/modules\/python3\)/\1\/var\/opt\2/" $f
+	sed -i "s/\(['\"]\).*\(\/redislabs\/lib\/modules\/rg\)/\1\/var\/opt\2/" $f
 done
 
 exit 0

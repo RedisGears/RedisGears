@@ -36,7 +36,7 @@ class RedisGearsSetup(paella.Setup):
 
         # pip cannot build gevent on ARM
         self.install("python-psutil python-gevent")
-        self.pip_install("pipenv")
+        self.pip_install("pipenv jinja2")
 
     def redhat_compat(self):
         self.group_install("'Development Tools'")

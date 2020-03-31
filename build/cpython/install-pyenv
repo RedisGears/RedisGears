@@ -5,7 +5,15 @@ set -e
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ROOT=$(cd $HERE/../..; pwd)
 
-[[ -z $PYTHON_ROOT ]] && PYTHON_ROOT=/var/opt/redislabs/lib/modules/python3
+REDISLABS_DIR=/var/opt/redislabs
+
+VERSION=$(NUMERIC=1 $ROOT/getver)
+if [[ -z $VERSION ]]; then
+	>&2 echo "Cannot determine module version. Aborting."
+	exit 1
+fi
+
+[[ -z $PYTHON_ROOT ]] && PYTHON_ROOT=$REDISLABS_DIR/modules/rg/$VERSION/deps/python3
 PYTHON=$PYTHON_ROOT/bin/python3
 
 cp $HERE/Pipfile* $PYTHON_ROOT

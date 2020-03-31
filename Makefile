@@ -45,6 +45,8 @@ GEARS_VERSION:=$(shell $(ROOT)/getver)
 
 #----------------------------------------------------------------------------------------------
 
+MODULE_VERSION:=$(shell NUMERIC=1 $(ROOT)/getver)
+
 DEPENDENCIES=cpython libevent
 
 ifneq ($(filter all deps $(DEPENDENCIES) pyenv pack ramp_pack,$(MAKECMDGOALS)),)
@@ -102,6 +104,7 @@ CC_FLAGS += \
 	-DREDISMODULE_EXPERIMENTAL_API
 
 TARGET=$(BINROOT)/redisgears.so
+TARGET.snapshot=$(BINROOT)/snappshot/redisgears.so
 
 ifeq ($(DEBUG),1)
 CC_FLAGS += -g -O0 -DVALGRIND
@@ -199,7 +202,7 @@ define build_deps_args # type (release|snapshot)
 $$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c artifacts/$(1)/$(DEPS_TAR.$(1))
 	$$(SHOW)$$(CC) $$(CC_FLAGS) -c $$< -o $$@ \
 		-DDEPENDENCIES_URL=\"$$(DEPS_URL_BASE.$(1))/$$(DEPS_TAR.$(1))\" \
-		-DDEPENDENCIES_SHA256=\"$$(shell cat artifacts/$(1)/$$(DEPS_TAR.$(1)).sha256)\"
+		-DDEPENDENCIES_SHA256=\"$$(file <artifacts/$(1)/$$(DEPS_TAR.$(1)).sha256)\"
 endef
 
 $(eval $(call build_deps_args,release))

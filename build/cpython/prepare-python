@@ -3,17 +3,25 @@
 set -e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-. $HERE/../../deps/readies/shibumi/functions
+ROOT=$(cd $HERE/../..; pwd)
+
+. $ROOT/deps/readies/shibumi/functions
 
 REDISLABS_DIR=/var/opt/redislabs
 USER=`whoami`
 
-if [[ -z $LOCAL ]]; then
-	echo "LOCAL argument undefined. Aborting."
+VERSION=$(NUMERIC=1 $ROOT/getver)
+if [[ -z $VERSION ]]; then
+	>&2 echo "Cannot determine module version. Aborting."
 	exit 1
 fi
 
-[[ -z $GLOBAL ]] && GLOBAL=$REDISLABS_DIR/lib/modules/python3
+if [[ -z $LOCAL ]]; then
+	>&2 echo "LOCAL argument undefined. Aborting."
+	exit 1
+fi
+
+[[ -z $GLOBAL ]] && GLOBAL=$REDISLABS_DIR/modules/rg/$VERSION/deps/python3
 
 if [[ $PYENV_IN_SITU == 1 ]]; then
 	$SUDO find $(dirname $GLOBAL) -name $(basename $GLOBAL) -type l -delete

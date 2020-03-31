@@ -11,8 +11,6 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#define PYTHON_HOME_DIR "PYTHON_HOME_DIR"
-
 extern char DependenciesUrl[];
 extern char DependenciesSha256[];
 
@@ -47,6 +45,7 @@ typedef struct RedisGears_Config{
     ConfigVal maxExecutionsPerRegistration;
     ConfigVal profileExecutions;
     ConfigVal pythonAttemptTraceback;
+    ConfigVal downloadPyenv;
     ConfigVal createVenv;
     ConfigVal executionThreads;
     ConfigVal executionMaxIdleTime;
@@ -197,6 +196,23 @@ static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_DownloadPyenvGet(){
+    return &DefaultGearsConfig.downloadPyenv;
+}
+
+static bool ConfigVal_DownloadPyenvSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.downloadPyenv.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static const ConfigVal* ConfigVal_ExecutionThreadsGet(){
     return &DefaultGearsConfig.executionThreads;
 }
@@ -283,6 +299,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .configurableAtRunTime = false,
     },
     {
+        .name = "DLPyenv",
+        .getter = ConfigVal_DownloadPyenvGet,
+        .setter = ConfigVal_DownloadPyenvSet,
+        .configurableAtRunTime = false,
+    },
+    {
         .name = "VenvWorkingPath",
         .getter = ConfigVal_VenvWorkingPathGet,
         .setter = ConfigVal_VenvWorkingPathSet,
@@ -310,7 +332,7 @@ static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* confi
 
     if(sendReply){
         char fmt1[256] = "(error) ";
-        strncat(fmt1, fmt, sizeof(fmt1));
+        strncat(fmt1, fmt, sizeof(fmt1)-1);
         RedisModuleString* rms = RedisModule_CreateStringPrintf(ctx, fmt1, configItem);
         const char* err = RedisModule_StringPtrLen(rms, NULL);
         RedisModule_ReplyWithError(ctx, err);
@@ -476,6 +498,10 @@ long long GearsConfig_CreateVenv(){
     return DefaultGearsConfig.createVenv.val.longVal;
 }
 
+long long GearsConfig_DownloadPyenv(){
+    return DefaultGearsConfig.downloadPyenv.val.longVal;
+}
+
 long long GearsConfig_ExecutionThreads(){
     return DefaultGearsConfig.executionThreads.val.longVal;
 }
@@ -551,6 +577,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .type = STR,
         },
         .createVenv = {
+            .val.longVal = 0,
+            .type = LONG,
+        },
+        .downloadPyenv = {
             .val.longVal = 0,
             .type = LONG,
         },
