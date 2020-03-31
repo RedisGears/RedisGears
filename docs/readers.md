@@ -1,0 +1,236 @@
+# RedisGears Readers
+The **reader** is the mandatory first step of any [RedisGears function](functions.md), and every function has exactly one reader. A reader reads data and generates input [records](glossary.md#record) from it. The input records are consumed by the function.
+
+A function's reader is declared when initializing its `#!python class GearsBuilder` [context builder](functions.md#context-builder).
+
+RedisGears supports several types of readers that operate on different types of input data. Furthermore, each reader may be used to process [batch](glossary.md#batch-processing) [streaming](glossary.md#event-processing) data.
+
+| Reader | Output | Batch | Event |
+| --- | --- | --- | --- |
+| [KeysReader](#keysreader) | Redis keys and values | Yes | Yes |
+| [KeysOnlyReader](#keysonlyreader) | Redis keys | Yes | Yes |
+| [StreamReader](#streamreader) | Redis Stream messages | Yes | Yes |
+| [PythonReader](#pythonreader) | Arbitrary | Yes | No |
+| [ShardIDReader](#shardidreader) | Shard ID | Yes | No |
+
+The following sections describe the different readers' operation.
+
+## KeysReader
+The **KeysReader** scans the Redis database.
+
+It generates records from keys and their respective values.
+
+**Input**
+
+The reader scans the entire database and any keys that are found can be used as input for generating records.
+
+**Output**
+
+A record is output for each input key. The record is a dictionary-like structure that has two keys and their respective values:
+
+  * **'key'**: the name of the key
+  * **'value'**: the value of the key
+
+**Batch Mode**
+
+The reader scans the entire database for keys. For each key found, it first reads a key's name, then fetches its value and finally generates a record.
+
+Its operation can be controlled by the following means:
+
+  * Glob-like pattern: generates records only for key names that match the pattern
+
+**Event Mode**
+
+The reader is executed in response to events that are generated from write operations in the Redis database.
+
+Its operation can be controlled with the following:
+
+  * Prefix: generates records only for key names that start with the prefix
+  * Events: same, but only for whitelisted events
+  * Types: same, but only for whitelisted data types
+
+**Python API**
+
+**_Batch Mode_**
+
+```python
+class GearsBuilder('KeysReader', defaultArg='*').run()
+```
+
+_Arguments_
+
+* _defaultArg_: a glob-like pattern of key names
+
+**_Event Mode_**
+
+```python
+class GearsBuilder('KeysReader', defaultArg='*').register(eventTypes=None,
+  keyTypes=None)
+```
+
+_Arguments_
+
+* _defaultArg_: a prefix of key names
+* _eventTypes_: a whitelist of event types that trigger execution when the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers are used. The list may contain one or more:
+    * Any Redis or module command
+    * Any [Redis event](https://redis.io/topics/notifications)
+
+* _keyTypes_: a whitelist of key types that trigger execution when using the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
+    * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
+    * Redis module types: 'module'
+
+_Return_
+
+The output record's type is a `#!python dict`.
+
+The value is cast from the Redis type as follows:
+
+| Redis type | Python type |
+| --- | --- |
+| string | `#!python str` |
+| hash | `#!python dict` |
+| list | `#!python None` |
+| set | `#!python None` |
+| zset | `#!python None` |
+| stream | `#!python None` |
+| module | `#!python None` |
+
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/keysreader-run.py') }}
+```
+
+**_Event Mode_**
+
+```python
+{{ include('readers/keysreader-register.py') }}
+```
+
+## KeysOnlyReader
+The **KeysOnlyReader** is identical in every respect to the [**KeysReader**](#keysreader), except in its output.
+
+**Output**
+
+A record is output for each input key. The record is a simple string that is the key's name.
+
+**Python API**
+
+```python
+class GearsBuilder('KeysOnlyReader', defaultArg='*')
+```
+
+## StreamReader
+The **StreamReader** reads the messages from a [Redis Stream](glossary.md#stream) and generates records from these.
+
+**Input**
+
+The reader reads messages from the Stream value of a Redis key.
+
+**Output**
+
+A record is output for each message in the input Stream. The record is a dictionary-like structure with the following key:
+
+  * **streamId**: the message's id in the Stream
+
+Additionally, all field-value pairs in the message's data are included as key-value pairs in the record.
+
+**Batch Mode**
+
+The reader reads the Stream from the beginning to the last message in it. Each message generates a record.
+
+Its operation can be controlled with the following:
+
+  * Key name: the name of the key storing the Stream
+
+**Event Mode**
+
+The reader is executed in response to events generated by new messages added to the stream.
+
+Its operation can be controlled with the following:
+
+  * Key name or prefix: the name or prefix of keys that store Streams
+  * Batch size: the number of new messages that trigger execution
+  * Duration: the time to wait before execution is triggered, regardless of the batch size
+  * Failure policy: the policy for handling execution failures. May be one of:
+    * **'continue'**: ignores a failure and continues to the next execution. This is the default policy.
+    * **'abort'**: stops further executions.
+    * **'retry'**: retries the execution after an interval specified with onFailedRetryInterval (default is one second).
+
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/streamreader-run.py') }}
+```
+
+**_Event Mode_**
+
+```python
+{{ include('readers/streamreader-register.py') }}
+```
+
+## PythonReader
+The reader is executed with a function callback that is a Python generator.
+
+**Input**
+
+A generator function callback.
+
+**Output**
+
+Anything `yield`ed by the generator function callback.
+
+**Batch Mode**
+
+The reader iterates the generator's yielded records.
+
+**Event Mode**
+
+Not supported.
+
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/pythonreader-run.py') }}
+```
+
+## ShardsIDReader
+The reader returns a single record that is the shard's cluster identifier.
+
+!!! info "RedisGears Trivia"
+    The 'ShardsIDReader' is implemented using the 'PythonReader' reader and this generator callback:
+
+    ```python
+    def ShardReaderCallback():
+    res = execute('RG.INFOCLUSTER')
+    if res == 'no cluster mode':
+        yield '1'
+    else:
+        yield res[1]
+    ```
+
+**Output**
+
+The shard's cluster identifier.
+
+**Batch Mode**
+
+The reader returns a single record that is the shard's identifier.
+
+**Event Mode**
+
+Not supported.
+
+**Examples**
+
+**_Batch Mode_**
+
+```python
+{{ include('readers/shardidreader-run.py') }}
+```

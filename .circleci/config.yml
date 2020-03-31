@@ -5,7 +5,13 @@ commands:
     parameters:
       platform:
         type: string
-    steps: 
+      build_params:
+        type: string
+        default: ""
+      test_params:
+        type: string
+        default: ""
+    steps:
       - checkout
       - run:
           name: Submodule checkout
@@ -17,11 +23,11 @@ commands:
           name: Build
           command: |
             make get_deps
-            make all OS_VERSION=<<parameters.platform>> SHOW=1
+            make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1
       - run:
           name: Test
-          command: make test
-      - store_test_results:
+          command: make test <<parameters.test_params>>
+      - store_artifacts:
           path: pytest/logs
 
   platform-build-steps:
@@ -59,16 +65,23 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
-    environment:
-      - BUILD_DIR: build-debian
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
-      - run:
-          name: Redis_5_upgrade
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd ./redis; git fetch; git checkout 5.0.7; make; make install
       - build-steps:
           platform: debian
-  
+
+  valgrind:
+    docker:
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
+    steps:
+      - run:
+          name: Build Redis for Valgrind
+          command: cd ..; git clone https://github.com/antirez/redis.git; cd redis; git checkout 5.0.7; make valgrind; make install
+      - build-steps:
+          platform: debian
+          build_params: DEBUG=1
+          test_params: DEBUG=1
+
   platform-build:
     parameters:
       platform:
@@ -87,7 +100,6 @@ jobs:
           name: Fix macOS Python installation
           command: |
             brew update || true
-            # brew reinstall -f python2
       - build-steps:
           platform: macosx
 
@@ -111,7 +123,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -124,7 +136,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'redisfab/rmbuilder:5.0.7-x64-buster'
     steps:
       - attach_workspace:
           at: artifacts
@@ -137,11 +149,26 @@ jobs:
 
   deploy_docs:
     docker:
-      - image: 'redislabsmodules/rmbuilder:latest'
+      - image: 'python:buster'
+      - image: redislabs/redisgears:latest
     steps:
-      - checkout
       - run:
-          name: Build Docs
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip wget
+            bash <(curl -fsSL https://get.docker.com)
+            cd ..; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"; unzip awscliv2.zip;./aws/install
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Instal dependencies
+          command: pip install -r docs/requirements.txt
+      - run:
+          name: Verify code snippets
+          command: python -m pytest -s -v docs/snippets
+      - run:
+          name: Build docs
           command: mkdocs build
       - run:
           name: Deploy Docs to S3
@@ -188,6 +215,12 @@ workflows:
           name: build-xenial
           platform: xenial
           <<: *platform-builds-flow-defs
+      - valgrind:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9].*/
       - macos:
           filters:
             branches:
@@ -204,8 +237,7 @@ workflows:
           <<: *platform-builds-requires
           filters:
             branches:
-              only:
-                - master
+              only: master
       - deploy_releases:
           <<: *platform-builds-requires
           filters:
@@ -213,11 +245,13 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v[0-9].*/
-
+# TODO: deploy_docs should run only when 'docs/' or 'mkdocs.yml' change
       - deploy_docs:
           filters:
             branches:
-              only: master
+              only:
+                - master
+                - /^[0-9]+\.[0-9]+$/
 
   nightly:
     triggers:
@@ -229,3 +263,4 @@ workflows:
                  - master
     jobs:
       - macos
+      - valgrind

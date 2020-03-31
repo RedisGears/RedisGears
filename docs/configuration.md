@@ -1,108 +1,120 @@
-# Run-time configuration
+# RedisGears Configuration
+RedisGears provides configuration options that control its operation. These options can be set when the module is bootstrapped and in some cases also during runtime.
 
-RedisGears supports a few run-time configuration options that should be determined when loading the module. In time more options will be added.
+The following sections describe the configuration options the means for setting them.
 
-## Passing Configuration Options During Loading
+**Bootstrap Configuration**
 
-In general, passing configuration options is done by appending arguments after the `--loadmodule` argument in the command line, `loadmodule` configuration directive in a Redis config file, or the `MODULE LOAD` command. For example:
+Configuration options can be set when the module is loaded. The options are passed as a list of option names and their respective values. Configuration is supported both when using the `loadmodule` configuration directive as well as via the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load).
 
-In redis.conf:
+!!! example "Example: Setting configuration options"
+    For setting the module's configuration options from the command line use:
 
-```
-loadmodule redisgears.so OPT1 OPT2
-```
+    ```
+    redis-server --loadmodule /path/to/redisgears.so <option> <value> ...
+    ```
 
-From redis-cli:
+    For setting the module's configuration options in with .conf file use the following format:
 
-```
-127.0.0.6379> MODULE load redisgears.so OPT1 OPT2
-```
+    ```
+    loadmodule /path/to/redisgears.so <option> <value> ...
+    ```
 
-From command line:
+    For setting the module's configuration with the [`MODULE LOAD`](https://redis.io/commands/module-load) command use:
 
-```
-$ redis-server --loadmodule ./redisgears.so OPT1 OPT2
-```
+    ```
+    127.0.0.1:6379> loadmodule /path/to/redisgears.so <option> <value> ...
+    ```
 
-## Passing configuration options at runtime
+**Runtime Configuration**
 
-It is possible to modify certain configuration parameters at runtime using `RG.CONFIGSET` command. The command receives the configuration parameter's name and its value. For example, the following will enable the excution profiler:
-```
-$ RG.CONFIGSET ProfileExecutions 1
-```
+Some configuration options may be set at runtime. Refer to each option's description for runtime configurability.
 
-## RedisGears configuration options
+!!! abstract "Related commands"
+    The following RedisGears commands are related to configuration:
+
+    * [`RG.CONFIGGET`](commands.md#rgconfigget)
+    * [`RG.CONFIGSET`](commands.md#rgconfigset)
 
 ## MaxExecutions
+The **MaxExecutions** configuration option controls the maximum number of executions that will be saved in the executions list. Once this threshold value is reached, older executions will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status)) are deleted.
 
-The maximum amount of execution to save. When reach this number, old execution will be deleted in a FIFO order. Notice that only the execution that has been finished will be deleted (pending execution will be deleted on done).
+_Expected Value_
 
-### Default
+Integer
 
-1000
+_Default Value_
 
-### Configurable at Runitime
+"1000"
 
-** Yes
+_Runtime Configurability_
 
-### Example
+Supported.
+
+!!! note
+    Changing this option will impact the creation of new executions only.
+
+**Examples**
 
 ```
-$ redis-server --loadmodule ./redisearch.so MaxExecutions 10
+127.0.0.1:6379> RG.CONFIGSET MaxExecutions 10
+OK
 ```
-
----
 
 ## MaxExecutionsPerRegistration
+The **MaxExecutionsPerRegistration** configuration option controls the maximum number of executions that are saved in the list per registration. Once this threshold value is reached, older executions for that registration will be deleted from the list by order of their creation (FIFO). Only executions that had finished (e.g. the 'done' or 'aborted' [status](functions.md#execution-status)) are deleted.
 
-The maximum amount of execution to save per registration. When reach this number, old execution will be deleted in a FIFO order. Notice that only the execution that has been finished will be deleted (pending execution will be deleted on done).
+_Expected Value_
 
-### Default
+Integer
 
-100
+_Default Value_
 
-### Configurable at Runitime
+"100"
 
-** Yes
+_Runtime Configurability_
 
-### Example
+Supported.
+
+!!! note
+    Changing this option will impact the creation of new executions only.
+
+**Examples**
 
 ```
-$ redis-server --loadmodule ./redisearch.so MaxExecutionsPerRegistration 10
+$ 127.0.0.1:6379> RG.CONFIGSET MaxExecutionsPerRegistration 10
+OK
 ```
-
----
 
 ## ProfileExecutions
+The **ProfileExecutions** configuration option controls whether executions are profiled.
 
-Controls whether the internal execution plan profiler is active.
+!!! important "Profiling impacts performance"
+    Profiling requires reading the server's clock, which is a costly operation in terms of performance. Execution profiling is recommended only for debugging purposes and should be disabled in production.
 
-Note: enabling the profiler impacts overall performance - use with judiciously and with caution.
+_Expected Value_
 
-Possible values:
-* 0 - disabled
-* not 0 - enabled
+0 (disabled) or 1 (enabled)
 
-### Default
+_Default Value_
 
-0 (disabled)
+"0"
 
-### Configurable at Runitime
+_Runtime Configurability_
 
-** Yes
+Supported
 
 ## PythonAttemptTraceback
+The **PythonAttemptTraceback** configuration option controls whether the engine tries producing stack traces for Python runtime errors.
 
-Controls whether traceback is attempted onw Python errors.
+_Expected Value_
 
-Possible values:
-* 0 - disabled
-* not 0 - enabled
+0 (disabled) or 1 (enabled)
 
-## Default
+_Default Value_
 
-1 (enableds)
+"1"
 
-### Configurable at Runitime
+_Runtime Configurability_
 
-** Yes
+Supported
