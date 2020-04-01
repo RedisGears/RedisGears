@@ -16,6 +16,7 @@
 #include "common.h"
 #include "GearsBuilder.auto.h"
 #include "cloudpickle.auto.h"
+#include "version.h"
 
 #define SUB_INTERPRETER_TYPE "subInterpreterType"
 
@@ -3157,13 +3158,19 @@ RedisGears_ReaderCallbacks PythonReader = {
         .create = PythonReader_Create,
 };
 
-#define PYENV_INSTALL_DIR "/var/opt/redislabs/lib/modules/"
-#define PYENV_DIR PYENV_INSTALL_DIR"python3"
-#define PYENV_HOME_DIR PYENV_DIR "/.venv"
-#define PYENV_BIN_DIR PYENV_HOME_DIR "/bin"
-#define PYENV_ACTIVATE PYENV_HOME_DIR "/activate_this.py"
-#define PYENV_ACTIVATE_SCRIPT PYENV_BIN_DIR "/activate"
+static char* PYENV_DIR;
+static char* PYENV_HOME_DIR;
+static char* PYENV_BIN_DIR;
+static char* PYENV_ACTIVATE;
+static char* PYENV_ACTIVATE_SCRIPT;
 
+static void InitializeGlobalPaths(){
+    rg_asprintf(&PYENV_DIR, "%s/python3_%d/", GearsConfig_GetPythonInstallationDir(), REDISEARCH_MODULE_VERSION);
+    rg_asprintf(&PYENV_HOME_DIR, "%s/.venv/", PYENV_DIR);
+    rg_asprintf(&PYENV_BIN_DIR, "%s/bin", PYENV_HOME_DIR);
+    rg_asprintf(&PYENV_ACTIVATE, "%s/activate_this.py", PYENV_BIN_DIR);
+    rg_asprintf(&PYENV_ACTIVATE_SCRIPT, "%s/activate", PYENV_BIN_DIR);
+}
 
 
 bool PyEnvExist() {
@@ -3216,13 +3223,13 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
 
         ExecCommand(ctx, "tar -xvf "DEPS_FILE_PATH" -C "DEPS_FILE_DIR, shardUid, expectedSha256, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "mkdir -p "PYENV_INSTALL_DIR);
-        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/var/opt/redislabs/lib/modules/python3/ "PYENV_INSTALL_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "mkdir -p %s", GearsConfig_GetPythonInstallationDir());
+        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/var/opt/redislabs/lib/modules/python3/ %s", shardUid, expectedSha256, PYENV_DIR);
     }else{
-        RedisModule_Log(ctx, "notice", "Found python installation under: "PYENV_DIR);
+        RedisModule_Log(ctx, "notice", "Found python installation under: %s", PYENV_DIR);
     }
     if(!skip_deps_install && GearsConfig_CreateVenv()){
-        rg_asprintf(&venvDir, "%s/.venv-%s", GearsConfig_GetVenvWorkingPath(), shardUid);
+        rg_asprintf(&venvDir, "%s/.venv-%s", GearsConfig_GetPythonInstallationDir(), shardUid);
     }else{
         venvDir = PYENV_HOME_DIR;
     }
@@ -3233,7 +3240,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             return REDISMODULE_ERR;
         }
         ExecCommand(ctx, "mkdir -p %s", venvDir);
-        int rc = ExecCommand(ctx, "/bin/bash -c \"source " PYENV_ACTIVATE_SCRIPT "; python -m virtualenv %s\"", venvDir);
+        int rc = ExecCommand(ctx, "/bin/bash -c \"source %s; python -m virtualenv %s\"", PYENV_ACTIVATE_SCRIPT, venvDir);
         if (rc) {
             RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
             ExecCommand(ctx, "rm -rf %s", venvDir);
@@ -3355,6 +3362,8 @@ static Record* PythonRecord_Deserialize(Gears_BufferReader* br){
 }
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
+    InitializeGlobalPaths();
+
     if(RedisGears_InstallDeps(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "Failed installing python dependencies");
         return REDISMODULE_ERR;
@@ -3371,10 +3380,9 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
     PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
     PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
-	char* arg = "Embeded";
-	size_t len = strlen(arg);
-    char* progName = PYENV_DIR;
-    Py_SetProgramName((wchar_t *)progName);
+    char* arg = "Embeded";
+    size_t len = strlen(arg);
+    Py_SetPythonHome(Py_DecodeLocale(PYENV_DIR, NULL));
 
     EmbRedisGears.m_methods = EmbRedisGearsMethods;
     EmbRedisGears.m_size = sizeof(EmbRedisGearsMethods) / sizeof(*EmbRedisGearsMethods);

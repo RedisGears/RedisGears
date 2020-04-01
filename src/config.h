@@ -21,6 +21,6 @@ long long GearsConfig_CreateVenv();
 long long GearsConfig_ExecutionThreads();
 long long GearsConfig_ExecutionMaxIdleTime();
 const char* GearsConfig_GetExtraConfigVals(const char* key);
-const char* GearsConfig_GetVenvWorkingPath();
+const char* GearsConfig_GetPythonInstallationDir();
 
 #endif /* SRC_CONFIG_H_ */

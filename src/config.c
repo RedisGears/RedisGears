@@ -11,8 +11,6 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#define PYTHON_HOME_DIR "PYTHON_HOME_DIR"
-
 extern char DependenciesUrl[];
 extern char DependenciesSha256[];
 
@@ -53,6 +51,7 @@ typedef struct RedisGears_Config{
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
     ConfigVal venvWorkingPath;
+    ConfigVal pythonInstallationDir;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -148,18 +147,18 @@ static bool ConfigVal_DependenciesSha256Set(ArgsIterator* iter){
     return true;
 }
 
-static const ConfigVal* ConfigVal_VenvWorkingPathGet(){
-    return &DefaultGearsConfig.venvWorkingPath;
+static const ConfigVal* ConfigVal_PythonInstallationDirGet(){
+    return &DefaultGearsConfig.pythonInstallationDir;
 }
 
-static bool ConfigVal_VenvWorkingPathSet(ArgsIterator* iter){
+static bool ConfigVal_PythonInstallationDirSet(ArgsIterator* iter){
     RedisModuleString* val = ArgsIterator_Next(iter);
     if(!val){
         return false;
     }
-    RG_FREE(DefaultGearsConfig.venvWorkingPath.val.str);
+    RG_FREE(DefaultGearsConfig.pythonInstallationDir.val.str);
     const char* valStr = RedisModule_StringPtrLen(val, NULL);
-    DefaultGearsConfig.venvWorkingPath.val.str = RG_STRDUP(valStr);
+    DefaultGearsConfig.pythonInstallationDir.val.str = RG_STRDUP(valStr);
     return true;
 }
 
@@ -283,12 +282,6 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .configurableAtRunTime = false,
     },
     {
-        .name = "VenvWorkingPath",
-        .getter = ConfigVal_VenvWorkingPathGet,
-        .setter = ConfigVal_VenvWorkingPathSet,
-        .configurableAtRunTime = false,
-    },
-    {
         .name = "ExecutionThreads",
         .getter = ConfigVal_ExecutionThreadsGet,
         .setter = ConfigVal_ExecutionThreadsSet,
@@ -299,6 +292,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_ExecutionMaxIdleTimeGet,
         .setter = ConfigVal_ExecutionMaxIdleTimeSet,
         .configurableAtRunTime = true,
+    },
+    {
+        .name = "PythonInstallationDir",
+        .getter = ConfigVal_PythonInstallationDirGet,
+        .setter = ConfigVal_PythonInstallationDirSet,
+        .configurableAtRunTime = false,
     },
     {
         NULL,
@@ -461,8 +460,8 @@ const char* GearsConfig_GetExtraConfigVals(const char* key){
     return Gears_dictFetchValue(Gears_ExtraConfig, key);
 }
 
-const char* GearsConfig_GetVenvWorkingPath(){
-    return DefaultGearsConfig.venvWorkingPath.val.str;
+const char* GearsConfig_GetPythonInstallationDir(){
+    return DefaultGearsConfig.pythonInstallationDir.val.str;
 }
 
 const char* GearsConfig_GetDependenciesUrl(){
@@ -562,8 +561,8 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 5000,
             .type = LONG,
         },
-        .venvWorkingPath = {
-            .val.str = RG_STRDUP("/var/opt/redislabs/lib"),
+        .pythonInstallationDir = {
+            .val.str = RG_STRDUP("/var/opt/redislabs/lib/modules/"),
             .type = STR,
         },
     };
