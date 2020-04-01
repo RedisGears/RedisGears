@@ -5,4 +5,4 @@
 
 LIBPYTHON=$(CPYTHON_BINDIR)/libpython3.7m-fixed.a
 
-export CPYTHON_PREFIX=$(abspath $(BINROOT)/python3)
+export CPYTHON_PREFIX=$(abspath $(CPYTHON_BINDIR)/../python3)

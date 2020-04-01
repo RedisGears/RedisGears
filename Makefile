@@ -115,7 +115,7 @@ CC_FLAGS += \
 	-DREDISMODULE_EXPERIMENTAL_API
 
 TARGET=$(BINROOT)/redisgears.so
-TARGET.snapshot=$(BINROOT)/snappshot/redisgears.so
+TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
 
 ifeq ($(DEBUG),1)
 CC_FLAGS += -g -O0 -DVALGRIND
@@ -215,7 +215,7 @@ define build_deps_args # type (release|snapshot)
 $$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c artifacts/$(1)/$(DEPS_TAR.$(1))
 	$$(SHOW)$$(CC) $$(CC_FLAGS) -c $$< -o $$@ \
 		-DDEPENDENCIES_URL=\"$$(DEPS_URL_BASE.$(1))/$$(DEPS_TAR.$(1))\" \
-		-DDEPENDENCIES_SHA256=\"$$(file <artifacts/$(1)/$$(DEPS_TAR.$(1)).sha256)\"
+		-DDEPENDENCIES_SHA256=\"$$(shell cat artifacts/$(1)/$$(DEPS_TAR.$(1)).sha256)\"
 endef
 
 $(eval $(call build_deps_args,release))
@@ -313,7 +313,7 @@ endif
 
 clean:
 ifeq ($(ALL),1)
-	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(notdir $(TARGET)) $(BINROOT)/redislabs
+	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(TARGET.snapshot) $(notdir $(TARGET)) $(BINROOT)/redislabs
 else
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET.snapshot) $(TARGET:.so=.a) $(notdir $(TARGET)) \

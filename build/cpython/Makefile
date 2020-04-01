@@ -20,7 +20,7 @@ CONFIGURE_TARGET=$(BINDIR)/libpython3.7m.a
 CONFIGURE_PYTHON=$(BINDIR)/python
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-MK_ALL_TARGETS=bindirs build cpython
+MK_ALL_TARGETS=bindirs build
 MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
 
 export CPYTHON_PREFIX=$(abspath $(BINROOT)/python3)
@@ -66,10 +66,6 @@ $(TARGET): $(CONFIGURE_TARGET)
 # else
 # 	$(SHOW)$(OBJCOPY) --localize-symbol PyGILState_Ensure --localize-symbol PyGILState_Release $@
 # endif
-
-#----------------------------------------------------------------------------------------------
-
-$(CPYTHON): $(CONFIGURE_PYTHON)
 	@echo Installing Python...
 ifneq ($(VERBOSE),1)
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
@@ -77,10 +73,3 @@ else
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install
 endif
 	$(SHOW)PYTHON=$(CPYTHON) ./install-pyextras
-
-cpython: $(DEFAULT_TARGETS) $(CPYTHON)
-
-clean-cpython:
-	$(SHOW)rm -rf $(CPYTHON_PREFIX)
-
-.PHONY: cpython clean-cpython
