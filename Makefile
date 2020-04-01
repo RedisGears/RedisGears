@@ -23,7 +23,6 @@ make deps       # build dependant modules
 make libevent   # build libevent
 make hiredis    # build hiredis
 make cpython    # build cpython
-make pyenv      # install cpython and virtual environment
 make all        # build all libraries and packages
 
 make test          # run tests
@@ -38,7 +37,7 @@ make verify-packs  # verify signatures of packages vs module so
 make show-version  # show module version
 endef
 
-MK_ALL_TARGETS=bindirs deps pyenv build ramp_pack verify-packs
+MK_ALL_TARGETS=bindirs deps build ramp_pack verify-packs
 
 include $(MK)/defs
 
@@ -48,7 +47,7 @@ GEARS_VERSION:=$(shell $(ROOT)/getver)
 
 DEPENDENCIES=cpython libevent hiredis
 
-ifneq ($(filter all deps $(DEPENDENCIES) pyenv pack ramp_pack,$(MAKECMDGOALS)),)
+ifneq ($(filter all deps $(DEPENDENCIES) pack ramp_pack,$(MAKECMDGOALS)),)
 DEPS=1
 endif
 
@@ -176,7 +175,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) pyenv static pack ramp_pack test setup fetch
+.PHONY: deps $(DEPENDENCIES) static pack ramp_pack test setup fetch
 
 # build: bindirs $(TARGET)
 
@@ -276,10 +275,6 @@ cpython: $(LIBPYTHON)
 $(LIBPYTHON):
 	@echo Building cpython...
 	$(SHOW)$(MAKE) --no-print-directory -C build/cpython DEBUG=
-
-pyenv:
-	@echo Building pyenv...
-	$(SHOW)$(MAKE) --no-print-directory -C build/cpython DEBUG= pyenv
 
 #----------------------------------------------------------------------------------------------
 

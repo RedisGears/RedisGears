@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo "Installing Python extras..."
+$PYTHON -m pip install https://github.com/RedisGears/redisgears-py.git
+$PYTHON -m pip install virtualenv

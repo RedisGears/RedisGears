@@ -70,25 +70,12 @@ pack() {
 	local artifact="$1"
 	local vertag="$2"
 
-	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$vertag.zip
-
-	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
-	ramp="$(command -v python) -m RAMP.ramp" 
-	cat <<- EOF > $packer
-		cd $ROOT
-		GEARS_NO_DEPS=1 $ramp pack $GEARS_SO -m ramp.yml -o $packfile | tail -1
-	EOF
-
-	cd $CPYTHON_PREFIX
-
-	export LANG=en_US.utf-8
-	export LC_ALL=en_US.utf-8
-	# export LC_ALL=C.UTF-8
-	# export LANG=C.UTF-8
-	
-	packname=`pipenv run bash $packer`
 	cd $ROOT
-	[[ -f $packer && $VERBOSE != 1 ]] && rm -f $packer
+
+	local ramp="$(command -v python) -m RAMP.ramp" 
+	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$vertag.zip
+	local packname=$(GEARS_NO_DEPS=1 $ramp pack -m ramp.yml -o $packfile $GEARS_SO | tail -1)
+
 	if [[ -z $packname ]]; then
 		echo Failed to pack $artifact
 		exit 1

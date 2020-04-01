@@ -20,16 +20,12 @@ CONFIGURE_TARGET=$(BINDIR)/libpython3.7m.a
 CONFIGURE_PYTHON=$(BINDIR)/python
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
-MK_ALL_TARGETS=bindirs build pyenv
-MK_CLEAN_ALL_DIRS += $(BINDIR_CPYTHON_PREFIX) $(REDISLABS_CPYTHON_PREFIX)
+MK_ALL_TARGETS=bindirs build cpython
+MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
 
-REDISLABS_DIR=/var/opt/redislabs
-export REDISLABS_CPYTHON_PREFIX=$(REDISLABS_DIR)/lib/modules/python3
-BINDIR_CPYTHON_PREFIX=$(BINROOT)/redislabs/lib/modules/python3
-REDISLABS_LIBPYTHON=$(REDISLABS_CPYTHON_PREFIX)/lib/libpython3.7m.a
-REDISLABS_PYTHON=$(REDISLABS_CPYTHON_PREFIX)/bin/python3
-PYENV_DIR=$(REDISLABS_CPYTHON_PREFIX)/.venv
-PYENV_PYTHON=$(PYENV_DIR)/bin/python3
+export CPYTHON_PREFIX=$(abspath $(BINROOT)/python3)
+LIBPYTHON=$(CPYTHON_PREFIX)/lib/libpython3.7m.a
+CPYTHON=$(CPYTHON_PREFIX)/bin/python3
 
 include $(MK)/defs
 
@@ -53,7 +49,7 @@ PYTHON_ENCODING ?= ucs4
 
 CONFIGURE_FLAGS += \
 	$(if $(eq $(PYTHON_ENCODING),),,--enable-unicode=$(PYTHON_ENCODING)) \
-	--prefix=$(REDISLABS_CPYTHON_PREFIX)
+	--prefix=$(CPYTHON_PREFIX)
 
 #----------------------------------------------------------------------------------------------
 
@@ -73,34 +69,18 @@ $(TARGET): $(CONFIGURE_TARGET)
 
 #----------------------------------------------------------------------------------------------
 
-$(REDISLABS_PYTHON) : $(CONFIGURE_PYTHON)
+$(CPYTHON): $(CONFIGURE_PYTHON)
 	@echo Installing Python...
-	$(SHOW)SUDO=$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) PYENV_IN_SITU=$(PYENV_IN_SITU) ./prepare-python
 ifneq ($(VERBOSE),1)
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install 2>&1 > $(abspath $(CONFIGURE_BUILD_DIR))/python-install.log
 else
 	$(SHOW)make -C $(CONFIGURE_BUILD_DIR) install
 endif
+	$(SHOW)PYTHON=$(CPYTHON) ./install-pyextras
 
-$(PYENV_PYTHON) : $(REDISLABS_PYTHON)
-	$(SHOW)PYTHON_PATH=$(REDISLABS_CPYTHON_PREFIX) ./install-pyenv
+cpython: $(DEFAULT_TARGETS) $(CPYTHON)
 
-ifneq ($(FIX_LINK),1)
-pyenv: $(DEFAULT_TARGETS) $(PYENV_PYTHON)
-else
-pyenv:
-	$(SHOW)$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) ./relink-pyenv
-endif
+clean-cpython:
+	$(SHOW)rm -rf $(CPYTHON_PREFIX)
 
-clean-pyenv:
-	$(SHOW)$(SUDO) LOCAL=$(BINDIR_CPYTHON_PREFIX) GLOBAL=$(REDISLABS_CPYTHON_PREFIX) ./clean-pyenv
-	
-.PHONY: pyenv clean-pyenv
-
-#----------------------------------------------------------------------------------------------
-
-ifeq ($(DIAG),1)
-$(info *** CONFIGURE_PYTHON=$(CONFIGURE_PYTHON))
-$(info *** CONFIGURE_TARGET=$(CONFIGURE_TARGET))
-$(info pyenv : $(PYENV_PYTHON) : $(REDISLABS_PYTHON) : $(CONFIGURE_TARGET) $(CONFIGURE_PYTHON))
-endif
+.PHONY: cpython clean-cpython
