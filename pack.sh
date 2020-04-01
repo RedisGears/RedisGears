@@ -70,12 +70,13 @@ pack() {
 	local artifact="$1"
 	local vertag="$2"
 
-	cd $ROOT
+	cd $CPYTHON_PREFIX
 
 	local ramp="$(command -v python) -m RAMP.ramp" 
 	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$vertag.zip
 	local packname=$(GEARS_NO_DEPS=1 $ramp pack -m ramp.yml -o $packfile $GEARS_SO | tail -1)
 
+	cd $ROOT
 	if [[ -z $packname ]]; then
 		echo Failed to pack $artifact
 		exit 1
