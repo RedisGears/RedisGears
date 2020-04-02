@@ -5,4 +5,5 @@
 
 LIBPYTHON=$(CPYTHON_BINDIR)/libpython3.7m-fixed.a
 
-export CPYTHON_PREFIX=$(abspath $(CPYTHON_BINDIR)/../python3)
+GEARS_VERSION:=$(shell $(ROOT)/getver)
+export CPYTHON_PREFIX=$(abspath $(CPYTHON_BINDIR)/../python3_$(GEARS_VERSION))

@@ -704,8 +704,8 @@ void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-	RedisModule_Log(ctx, "notice", "RedisGears version %d.%d.%d, git_sha=%s",
-			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
+	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s",
+	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA);
 
 	getRedisVersion();

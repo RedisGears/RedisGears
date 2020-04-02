@@ -136,7 +136,7 @@ CPYTHON_DIR=deps/cpython
 
 CC_FLAGS += \
 	-DWITHPYTHON \
-	-DCPYTHON_PATH=\"$(CPYTHON_PREFIX)/\" \
+	-DCPYTHON_PATH=\"$(abspath $(BINROOT))/\" \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
 	-I$(BINROOT)/cpython \
@@ -331,7 +331,7 @@ artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot): $(TARGET)
 
 artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
 	@echo Packing dependencies...
-	$(SHOW)RAMP=0 DEPS=1 ./pack.sh $(TARGET)
+	$(SHOW)RAMP=0 DEPS=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) ./pack.sh $(TARGET)
 
 ramp_pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 

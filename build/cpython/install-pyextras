@@ -4,3 +4,4 @@ echo "Installing Python extras..."
 $PYTHON -m pip install --upgrade pip
 $PYTHON -m pip install https://github.com/RedisGears/redisgears-py.git
 $PYTHON -m pip install virtualenv
+$PYTHON -m pip install wheel

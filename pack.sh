@@ -94,7 +94,7 @@ pack_deps() {
 	TAR_PATH=$(realpath $TAR)
 	cd $CPYTHON_PREFIX/
 	# find . -name __pycache__ -type d -exec rm -rf {} \; 2>> /dev/null || true
-	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
+	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,python3_$VERSION/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
 	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256

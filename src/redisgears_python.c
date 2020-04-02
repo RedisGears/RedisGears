@@ -125,7 +125,11 @@ static bool PythonRequirementCtx_DownloadRequirement(PythonRequirementCtx* req){
 #define RETRY_SLEEP_IN_SEC 1
     int exitCode;
     for(size_t i = 0 ; i < RETRY; ++i){
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip wheel %s\"", venvDir, req->basePath, req->name);
+        if(GearsConfig_CreateVenv()){
+            exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip wheel %s\"", venvDir, req->basePath, req->name);
+        }else{
+            exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s;%s/bin/python3 -m pip wheel %s\"", req->basePath, venvDir, req->name);
+        }
         if(exitCode != 0){
             sleep(RETRY_SLEEP_IN_SEC);
             continue;
@@ -164,7 +168,12 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
     }
     filesInDir[array_len(filesInDir) - 1] = '\0';
 
-    int exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip install %s\"", venvDir, req->basePath, filesInDir);
+    int exitCode;
+    if(GearsConfig_CreateVenv()){
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip install %s\"", venvDir, req->basePath, filesInDir);
+    }else{
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s;%s/bin/python3 -m pip install %s\"", req->basePath, venvDir, filesInDir);
+    }
     array_free(filesInDir);
     return exitCode == 0;
 }
@@ -3165,7 +3174,7 @@ static char* PYENV_ACTIVATE;
 static char* PYENV_ACTIVATE_SCRIPT;
 
 static void InitializeGlobalPaths(){
-    rg_asprintf(&PYENV_DIR, "%s/python3_%d/", GearsConfig_GetPythonInstallationDir(), REDISEARCH_MODULE_VERSION);
+    rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
     rg_asprintf(&PYENV_HOME_DIR, "%s/.venv/", PYENV_DIR);
     rg_asprintf(&PYENV_BIN_DIR, "%s/bin", PYENV_HOME_DIR);
     rg_asprintf(&PYENV_ACTIVATE, "%s/activate_this.py", PYENV_BIN_DIR);
@@ -3224,31 +3233,28 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
         ExecCommand(ctx, "tar -xvf "DEPS_FILE_PATH" -C "DEPS_FILE_DIR, shardUid, expectedSha256, shardUid, expectedSha256);
 
         ExecCommand(ctx, "mkdir -p %s", GearsConfig_GetPythonInstallationDir());
-        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/var/opt/redislabs/lib/modules/python3/ %s", shardUid, expectedSha256, PYENV_DIR);
+        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/python3_%s/ %s", shardUid, expectedSha256, REDISGEARS_VERSION_STR, PYENV_DIR);
     }else{
         RedisModule_Log(ctx, "notice", "Found python installation under: %s", PYENV_DIR);
     }
-    if(!skip_deps_install && GearsConfig_CreateVenv()){
+    if(GearsConfig_CreateVenv()){
         rg_asprintf(&venvDir, "%s/.venv-%s", GearsConfig_GetPythonInstallationDir(), shardUid);
-    }else{
-        venvDir = PYENV_HOME_DIR;
-    }
-    DIR* dir = opendir(venvDir);
-    if(!dir){
-        if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python venv found and GEARS_NO_DEPS=1: aborting");
-            return REDISMODULE_ERR;
-        }
-        ExecCommand(ctx, "mkdir -p %s", venvDir);
-        int rc = ExecCommand(ctx, "/bin/bash -c \"source %s; python -m virtualenv %s\"", PYENV_ACTIVATE_SCRIPT, venvDir);
-        if (rc) {
-            RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
-            ExecCommand(ctx, "rm -rf %s", venvDir);
-            return REDISMODULE_ERR;
+        DIR* dir = opendir(venvDir);
+        if(!dir){
+            ExecCommand(ctx, "mkdir -p %s", venvDir);
+            int rc = ExecCommand(ctx, "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
+            if (rc) {
+                RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
+                ExecCommand(ctx, "rm -rf %s", venvDir);
+                return REDISMODULE_ERR;
+            }
+        }else{
+            RedisModule_Log(ctx, "notice", "Found venv installation under: %s", venvDir);
+            closedir(dir);
         }
     }else{
-        RedisModule_Log(ctx, "notice", "Found venv installation under: %s", venvDir);
-        closedir(dir);
+        // we are not operating inside virtual env
+        venvDir = RG_STRDUP(PYENV_DIR);
     }
     return REDISMODULE_OK;
 }
@@ -3393,7 +3399,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyImport_AppendInittab("redisAI", &PyInit_RedisAI);
 
     Py_Initialize();
-    RedisGears_SetupPyEnv(ctx);
+    if(GearsConfig_CreateVenv()){
+        // lets activate the virtual env we are operate in
+        RedisGears_SetupPyEnv(ctx);
+    }
     PyEval_InitThreads();
     wchar_t* arg2 = Py_DecodeLocale(arg, &len);
     PySys_SetArgv(1, &arg2);

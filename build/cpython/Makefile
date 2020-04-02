@@ -7,6 +7,7 @@ ROOT=../..
 include $(ROOT)/deps/readies/mk/main
 
 MK.configure=1
+GEARS_VERSION:=$(shell $(ROOT)/getver)
 
 #----------------------------------------------------------------------------------------------
 
@@ -21,9 +22,9 @@ CONFIGURE_PYTHON=$(BINDIR)/python
 TARGET=$(BINDIR)/libpython3.7m-fixed.a
 
 MK_ALL_TARGETS=bindirs build
-MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
 
-export CPYTHON_PREFIX=$(abspath $(BINROOT)/python3)
+export CPYTHON_PREFIX=$(abspath $(BINROOT)/python3_$(GEARS_VERSION))
+MK_CLEAN_ALL_DIRS += $(CPYTHON_PREFIX)
 LIBPYTHON=$(CPYTHON_PREFIX)/lib/libpython3.7m.a
 CPYTHON=$(CPYTHON_PREFIX)/bin/python3
 
