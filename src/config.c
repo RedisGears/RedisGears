@@ -50,7 +50,6 @@ typedef struct RedisGears_Config{
     ConfigVal executionMaxIdleTime;
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
-    ConfigVal venvWorkingPath;
     ConfigVal pythonInstallationDir;
     ConfigVal downloadDeps;
 }RedisGears_Config;

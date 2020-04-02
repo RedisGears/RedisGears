@@ -118,3 +118,93 @@ _Default Value_
 _Runtime Configurability_
 
 Supported
+
+## DownloadDeps
+The **DownloadDeps** configuration option controls whether or not RedisGears will try to download the python dependencies if those are missing.
+
+_Expected Value_
+
+0 (disabled) or 1 (enabled)
+
+_Default Value_
+
+"1"
+
+_Runtime Configurability_
+
+Not Supported
+
+## DependenciesUrl
+The **DependenciesUrl** configuration option controls the location from which RedisGears tries to download its dependencies.
+
+_Expected Value_
+
+Url like string
+
+_Default Value_
+
+The default value matches the RedisGears version.
+
+_Runtime Configurability_
+
+Not Supported
+
+## DependenciesSha256
+The **DependenciesSha256** configuration option specify the sha265sum of the python dependencies. This sha will be verified after RedisGears download the python dependencies and if sha check failed RedisGears will failed the Redis startup process.
+
+_Expected Value_
+
+String
+
+_Default Value_
+
+The default value matches the RedisGears version.
+
+_Runtime Configurability_
+
+Not Supported
+
+## pythonInstallationDir
+The **pythonInstallationDir** configuration option controls where RedisGears will install/search for the python dependencies.
+
+_Expected Value_
+
+string
+
+_Default Value_
+
+?
+
+_Runtime Configurability_
+
+Not Supported
+
+## CreateVenv
+The **CreateVenv** configuration option controls whether the engine will create a virtual environment for the python run.
+
+_Expected Value_
+
+0 (disabled) or 1 (enabled)
+
+_Default Value_
+
+"0"
+
+_Runtime Configurability_
+
+Not Supported
+
+## ExecutionThreads
+The **ExecutionThreads** configuration option controls the number of threads that will run executions.
+
+_Expected Value_
+
+Any number greater than 1
+
+_Default Value_
+
+"3"
+
+_Runtime Configurability_
+
+Not Supported
