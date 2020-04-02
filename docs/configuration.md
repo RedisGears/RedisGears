@@ -150,7 +150,7 @@ _Runtime Configurability_
 Not Supported
 
 ## DependenciesSha256
-The **DependenciesSha256** configuration option specify the sha265sum of the python dependencies. This sha will be verified after RedisGears download the python dependencies and if sha check failed RedisGears will failed the Redis startup process.
+The **DependenciesSha256** configuration option specifies the sha265sum of the python dependencies. This sha will be verified after RedisGears download the python dependencies and if sha check failed RedisGears will failed the Redis startup process.
 
 _Expected Value_
 
