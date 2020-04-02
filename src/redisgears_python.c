@@ -3197,7 +3197,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
 #define DEPS_FILE_DIR "/tmp/deps.%s.%s/"
 #define LOCAL_VENV PYENV_DIR"/%s"
     const char *no_deps = getenv("GEARS_NO_DEPS");
-    bool skip_deps_install = no_deps && !strcmp(no_deps, "1");
+    bool skip_deps_install = no_deps && !strcmp(no_deps, "1") || !GearsConfig_DownloadDeps();
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
         if (skip_deps_install) {

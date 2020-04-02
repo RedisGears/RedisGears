@@ -52,6 +52,7 @@ typedef struct RedisGears_Config{
     ConfigVal dependenciesSha256;
     ConfigVal venvWorkingPath;
     ConfigVal pythonInstallationDir;
+    ConfigVal downloadDeps;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -196,6 +197,23 @@ static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_DownloadDepsGet(){
+    return &DefaultGearsConfig.downloadDeps;
+}
+
+static bool ConfigVal_DownloadDepsSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.downloadDeps.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static const ConfigVal* ConfigVal_ExecutionThreadsGet(){
     return &DefaultGearsConfig.executionThreads;
 }
@@ -297,6 +315,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "PythonInstallationDir",
         .getter = ConfigVal_PythonInstallationDirGet,
         .setter = ConfigVal_PythonInstallationDirSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "DownloadDeps",
+        .getter = ConfigVal_DownloadDepsGet,
+        .setter = ConfigVal_DownloadDepsSet,
         .configurableAtRunTime = false,
     },
     {
@@ -475,6 +499,10 @@ long long GearsConfig_CreateVenv(){
     return DefaultGearsConfig.createVenv.val.longVal;
 }
 
+long long GearsConfig_DownloadDeps(){
+    return DefaultGearsConfig.downloadDeps.val.longVal;
+}
+
 long long GearsConfig_ExecutionThreads(){
     return DefaultGearsConfig.executionThreads.val.longVal;
 }
@@ -564,6 +592,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         .pythonInstallationDir = {
             .val.str = RG_STRDUP(CPYTHON_PATH),
             .type = STR,
+        },
+        .downloadDeps = {
+            .val.longVal = 1,
+            .type = LONG,
         },
     };
 
