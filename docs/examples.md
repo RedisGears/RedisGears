@@ -58,6 +58,20 @@ An input Redis Stream is stored under the "mystream" key.
 {{ include('examples/stream-logger.py') }}
 ```
 
+## Automatic Expiry
+
+Sets the time to live (TTL) for every updated key to one hour.
+
+**Author: [RedisLabs](https://redislabs.com/)**
+
+**Python API**
+
+```python
+{{ include('examples/automatic-expire.py') }}
+```
+
+**Author: [RedisLabs](https://redislabs.com/)**
+
 ## Distributed Monte Carlo Estimation of Pi's Value
 
 Estimate Pi by throwing darts at a carefully-constructed dartboard.
