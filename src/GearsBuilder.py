@@ -61,7 +61,7 @@ class GearsBuilder():
         if(reader == 'ShardsIDReader'):
             reader = 'PythonReader'
         if(reader == 'KeysOnlyReader'):
-            reader = 'PythonReader'    
+            reader = 'PythonReader'
         self.reader = reader
         self.gearsCtx = gearsCtx(self.reader, desc)
         self.defaultArg = defaultArg
@@ -186,7 +186,7 @@ def RunGearsRemoteBuilder(pipe, globalsDict):
         s.AddToGB(gb, globalsDict)
 
 def gearsConfigGet(key, default=None):
-    val = ConfigGet(key)
+    val = configGet(key)
     return val if val is not None else default
 
 def genDeprecated(deprecatedName, name, target):
