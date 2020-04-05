@@ -40,6 +40,7 @@ def standalone(image):
 @pytest.mark.parametrize(
     'snippet,expected',
     [
+        ('docs/snippets/examples/automatic-expire.py', b'OK'),
         ('docs/snippets/examples/del-by-prefix.py', [[], []]),
         ('docs/snippets/examples/monte-carlo-pi.py', [[b'foo'], []]),
         ('docs/snippets/examples/stream-logger.py', b'OK'),
