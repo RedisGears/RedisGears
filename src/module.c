@@ -708,6 +708,9 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
 			REDISGEARS_GIT_SHA);
 
+	getRedisVersion();
+	RedisModule_Log(ctx, "notice", "Redis version as observed by RedisGears: %d.%d.%d", redisMajorVersion, redisMinorVersion, redisPatchVersion);
+
 	if(LockHandler_Initialize() != REDISMODULE_OK){
 	    RedisModule_Log(ctx, "warning", "could not initialize lock handler");
         return REDISMODULE_ERR;

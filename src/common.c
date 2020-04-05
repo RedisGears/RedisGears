@@ -15,6 +15,11 @@
 
 static char* shardUniqueId = NULL;
 
+int redisMajorVersion;
+int redisMinorVersion;
+int redisPatchVersion;
+
+
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, ID_LEN);
 }
@@ -175,3 +180,20 @@ int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
 
     return exitCode;
 }
+
+void getRedisVersion() {
+  RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+  RedisModuleCallReply *reply = RedisModule_Call(ctx, "info", "c", "server");
+  assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING);
+  size_t len;
+  const char *replyStr = RedisModule_CallReplyStringPtr(reply, &len);
+
+  int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &redisMajorVersion, &redisMinorVersion,
+                 &redisPatchVersion);
+
+  assert(n == 3);
+
+  RedisModule_FreeCallReply(reply);
+  RedisModule_FreeThreadSafeContext(ctx);
+}
+
