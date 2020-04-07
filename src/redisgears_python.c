@@ -3242,6 +3242,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
         DIR* dir = opendir(venvDir);
         if(!dir){
             ExecCommand(ctx, "mkdir -p %s", venvDir);
+            setenv("VIRTUALENV_OVERRIDE_APP_DATA", venvDir, 1);
             int rc = ExecCommand(ctx, "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
             if (rc) {
                 RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
