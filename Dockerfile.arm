@@ -7,7 +7,7 @@ ARG OSNICK=buster
 ARG ARCH=arm64v8
 
 #----------------------------------------------------------------------------------------------
-FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5 AS builder
+FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.8 AS builder
 
 RUN [ "cross-build-start" ]
 
@@ -26,7 +26,7 @@ RUN if [ "$TEST" = "1" ]; then TEST= make test; fi
 RUN [ "cross-build-end" ]
 
 #----------------------------------------------------------------------------------------------
-FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.5
+FROM redisfab/redis-${ARCH}-${OSNICK}-xbuild:5.0.8
 
 RUN [ "cross-build-start" ]
 
