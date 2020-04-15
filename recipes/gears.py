@@ -15,6 +15,10 @@ parser.add_argument(
     '--port', default=6379, type=int,
     help='redis port')
 
+parser.add_argument(
+    '--requirements', default=None,
+    help='requirements file')
+
 parser.add_argument('path', help='scripts paths')
 parser.add_argument('extra_args', help='extra argument to send with the script', nargs='*', default=[])
 
@@ -40,6 +44,12 @@ try:
 except:
     print('Cannot connect to Redis. Aborting.')
     exit(1)
+
+if args.requirements is not None:
+    args.extra_args.append('REQUIREMENTS')
+    with open(args.requirements, 'r') as f:
+        requirements = [(el.strip()) for el in f.readlines()] 
+        args.extra_args = [*args.extra_args, *requirements]
 
 f = open(args.path, 'rt')
 script = f.read()
