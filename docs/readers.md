@@ -261,8 +261,16 @@ _Arguments_
 
 **Examples**
 
+The following example shows how to use the reader with a simple generator:
+
 ```python
-{{ include('readers/pythonreader-run.py') }}
+{{ include('readers/pythonreader-run-001.py') }}
+```
+
+In cases where the generator needs additional input arguments, use a function callback that returns a generator function like so:
+
+```python
+{{ include('readers/pythonreader-run-002.py') }}
 ```
 
 ## ShardsIDReader
