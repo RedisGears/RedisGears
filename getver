@@ -21,7 +21,7 @@ else
 		#include "src/version.h"
 
 		int main(int argc, char *argv[]) {
-				printf("%ld\n", REDISGEARS_MODULE_VERSION);
+				printf("%d\n", REDISGEARS_MODULE_VERSION);
 				return 0;
 		}
 		EOF

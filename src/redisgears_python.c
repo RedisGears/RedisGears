@@ -138,7 +138,7 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
     }
     filesInDir[array_len(filesInDir) - 1] = '\0';
 
-    int exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip install %s\"", venvDir, req->basePath, filesInDir);
+    int exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate; cd %s; python -m pip install --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
     array_free(filesInDir);
     return exitCode == 0;
 }

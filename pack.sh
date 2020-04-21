@@ -1,7 +1,7 @@
 #!/bin/bash
 
 error() {
-	>&2 echo "There are errors."
+	>&2 echo "$0: There are errors."
 	exit 1
 }
 
@@ -132,12 +132,6 @@ cd $ROOT
 NUMVER=$(NUMERIC=1 $ROOT/getver)
 SEMVER=$($ROOT/getver)
 
-CPYTHON_PREFIX=${CPYTHON_PREFIX:-/var/opt/redislabs/modules/rg/$NUMVER/deps/python3}
-if [[ ! -d $CPYTHON_PREFIX ]]; then
-	>&2 echo $CPYTHON_PREFIX does not exist
-	exit 1
-fi
-
 RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$SEMVER.zip
 SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
 RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$SEMVER.tgz
@@ -155,16 +149,22 @@ if [[ $JUST_PRINT == 1 ]]; then
 	exit 0
 fi
 
+CPYTHON_PREFIX=${CPYTHON_PREFIX:-/var/opt/redislabs/modules/rg/$NUMVER/deps/python3}
+if [[ ! -d $CPYTHON_PREFIX ]]; then
+	>&2 echo "$0: $CPYTHON_PREFIX does not exist"
+	exit 1
+fi
+
 mkdir -p artifacts/snapshot artifacts/release
 
 if [[ $RAMP == 1 ]]; then
 	if ! command -v redis-server > /dev/null; then
-		>&2 echo Cannot find redis-server. Aborting.
+		>&2 echo "$0: Cannot find redis-server. Aborting."
 		exit 1
 	fi
 
-	[[ -z $1 ]] && >&2 echo Nothing to pack. Aborting. && exit 1
-	[[ ! -f $1 ]] && >&2 echo $1 does not exist. Aborting. && exit 1
+	[[ -z $1 ]] && >&2 echo "$0: Nothing to pack. Aborting." && exit 1
+	[[ ! -f $1 ]] && >&2 echo "$0: $1 does not exist. Aborting." && exit 1
 	
 	RELEASE_SO=$(realpath $1)
 	SNAPSHOT_SO=$(dirname $RELEASE_SO)/snapshot/$(basename $RELEASE_SO)
