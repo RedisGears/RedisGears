@@ -3174,11 +3174,25 @@ static char* PYENV_ACTIVATE;
 static char* PYENV_ACTIVATE_SCRIPT;
 
 static void InitializeGlobalPaths(){
-    rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
+    const char* moduleDataDir = getenv("modulesdatadir");
+    if(moduleDataDir){
+        // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
+        rg_asprintf(&PYENV_DIR, "%s/%s/%d/python3_%s/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISEARCH_MODULE_VERSION, REDISGEARS_VERSION_STR);
+    }else{
+        rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
+    }
     rg_asprintf(&PYENV_HOME_DIR, "%s/.venv/", PYENV_DIR);
     rg_asprintf(&PYENV_BIN_DIR, "%s/bin", PYENV_HOME_DIR);
     rg_asprintf(&PYENV_ACTIVATE, "%s/activate_this.py", PYENV_BIN_DIR);
     rg_asprintf(&PYENV_ACTIVATE_SCRIPT, "%s/activate", PYENV_BIN_DIR);
+}
+
+static void PrintGlobalPaths(RedisModuleCtx* ctx){
+    RedisModule_Log(ctx, "notice", "PYENV_DIR: %s", PYENV_DIR);
+    RedisModule_Log(ctx, "notice", "PYENV_HOME_DIR: %s", PYENV_HOME_DIR);
+    RedisModule_Log(ctx, "notice", "PYENV_BIN_DIR: %s", PYENV_BIN_DIR);
+    RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE: %s", PYENV_ACTIVATE);
+    RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE_SCRIPT: %s", PYENV_ACTIVATE_SCRIPT);
 }
 
 
@@ -3197,11 +3211,11 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
 #define DEPS_FILE_DIR "/tmp/deps.%s.%s/"
 #define LOCAL_VENV PYENV_DIR"/%s"
     const char *no_deps = getenv("GEARS_NO_DEPS");
-    bool skip_deps_install = no_deps && !strcmp(no_deps, "1") || !GearsConfig_DownloadDeps();
+    bool skip_deps_install = no_deps && !strcmp(no_deps, "1") || !GearsConfig_DownloadDeps() || IsEnterprise();
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
         if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python installation found and GEARS_NO_DEPS=1: aborting");
+            RedisModule_Log(ctx, "warning", "No Python installation found and auto install is not enable, aborting.");
             return REDISMODULE_ERR;
         }
         const char* expectedSha256 = GearsConfig_GetDependenciesSha256();
@@ -3370,7 +3384,7 @@ static Record* PythonRecord_Deserialize(Gears_BufferReader* br){
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
     InitializeGlobalPaths();
-
+    PrintGlobalPaths(ctx);
     if(RedisGears_InstallDeps(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "Failed installing python dependencies");
         return REDISMODULE_ERR;
