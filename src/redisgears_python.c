@@ -3177,7 +3177,7 @@ static void InitializeGlobalPaths(){
     const char* moduleDataDir = getenv("modulesdatadir");
     if(moduleDataDir){
         // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
-        rg_asprintf(&PYENV_DIR, "%s/%s/%d/python3_%s/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISEARCH_MODULE_VERSION, REDISGEARS_VERSION_STR);
+        rg_asprintf(&PYENV_DIR, "%s/%s/%d/deps/python3_%s/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISEARCH_MODULE_VERSION, REDISGEARS_VERSION_STR);
     }else{
         rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
     }
