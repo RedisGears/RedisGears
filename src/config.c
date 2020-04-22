@@ -546,10 +546,6 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
         } \
     } while (false)
 
-#ifndef CPYTHON_PATH
-#define CPYTHON_PATH "/var/opt/redislabs/lib/modules/"
-#endif
-
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
     DefaultGearsConfig = (RedisGears_Config){
         .maxExecutions = {
@@ -589,7 +585,7 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .type = LONG,
         },
         .pythonInstallationDir = {
-            .val.str = RG_STRDUP(CPYTHON_PATH),
+            .val.str = RG_STRDUP("/var/opt/redislabs/modules/rg"),
             .type = STR,
         },
         .downloadDeps = {

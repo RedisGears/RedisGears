@@ -173,7 +173,7 @@ String
 
 _Default Value_
 
-?
+/var/opt/redislabs/modules/rg
 
 _Runtime Configurability_
 

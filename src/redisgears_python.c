@@ -3173,13 +3173,37 @@ static char* PYENV_BIN_DIR;
 static char* PYENV_ACTIVATE;
 static char* PYENV_ACTIVATE_SCRIPT;
 
+static bool PathExist(const char* path) {
+    DIR* dir = opendir(path);
+    if (dir) {
+        closedir(dir);
+        return true;
+    }
+    return false;
+}
+
+static bool PyEnvExist() {
+    return PathExist(PYENV_DIR);
+}
+
 static void InitializeGlobalPaths(){
     const char* moduleDataDir = getenv("modulesdatadir");
     if(moduleDataDir){
         // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
         rg_asprintf(&PYENV_DIR, "%s/%s/%d/deps/python3_%s/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISEARCH_MODULE_VERSION, REDISGEARS_VERSION_STR);
     }else{
+        // try build path first if its exists
+#ifdef CPYTHON_PATH
+        rg_asprintf(&PYENV_DIR, "%s/python3_%s/", CPYTHON_PATH, REDISGEARS_VERSION_STR);
+
+        if(!PyEnvExist()){
+            RG_FREE(PYENV_DIR);
+            rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
+        }
+#else
         rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
+#endif
+
     }
     rg_asprintf(&PYENV_HOME_DIR, "%s/.venv/", PYENV_DIR);
     rg_asprintf(&PYENV_BIN_DIR, "%s/bin", PYENV_HOME_DIR);
@@ -3193,16 +3217,6 @@ static void PrintGlobalPaths(RedisModuleCtx* ctx){
     RedisModule_Log(ctx, "notice", "PYENV_BIN_DIR: %s", PYENV_BIN_DIR);
     RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE: %s", PYENV_ACTIVATE);
     RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE_SCRIPT: %s", PYENV_ACTIVATE_SCRIPT);
-}
-
-
-bool PyEnvExist() {
-    DIR* dir = opendir(PYENV_DIR);
-    if (dir) {
-        closedir(dir);
-        return true;
-    }
-    return false;
 }
 
 static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
