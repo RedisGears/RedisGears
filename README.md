@@ -1,7 +1,7 @@
 [![GitHub issues](https://img.shields.io/github/release/RedisGears/RedisGears.svg?sort=semver)](https://github.com/RedisGears/RedisGears/releases)
 [![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
 [![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/redislabs/redisgears.svg)](https://hub.docker.com/r/redislabs/redisgears/builds/)
-[![Mailing List](https://img.shields.io/badge/Mailing%20List-RedisGears-blue)](https://groups.google.com/forum/#!forum/redisgears)
+[![Forum](https://img.shields.io/badge/Forum-RedisGears-blue)](https://forum.redislabs.com/c/modules/redisgears)
 [![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 # RedisGears
@@ -27,7 +27,7 @@ RedisGears supports full python syntax and low level c api. In addition you can 
 * GearsQL - SQL like language for quering your data.
 
 ## Mailing List / Forum
-Got questions? Feel free to ask at the [RedisGears mailing list](https://groups.google.com/forum/#!forum/redisgears).
+Got questions? Feel free to ask at the [RedisGears forum](https://forum.redislabs.com/c/modules/redisgears).
 
 # License
 Redis Source Available License Agreement - see [LICENSE](LICENSE)
