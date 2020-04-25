@@ -104,7 +104,14 @@ CC_FLAGS += \
 	-fPIC -std=gnu99 \
 	-MMD -MF $(@:.o=.d) \
 	-include $(SRCDIR)/common.h \
-	-I$(SRCDIR) -I$(BINDIR) -Ideps/ -I. -I deps/libevent/include/ -Ibin/$(FULL_VARIANT.release)/libevent/include/ -Ideps/hiredis/ -Ideps/hiredis/adapters/\
+	-I$(SRCDIR) \
+	-I$(BINDIR) \
+	-Ideps \
+	-I. \
+	-I deps/libevent/include \
+	-Ibin/$(FULL_VARIANT.release)/libevent/include \
+	-Ideps/hiredis \
+	-Ideps/hiredis/adapters \
 	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
 	-DREDISMODULE_EXPERIMENTAL_API
 
