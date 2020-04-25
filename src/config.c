@@ -332,7 +332,7 @@ static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* confi
 
     if(sendReply){
         char fmt1[256] = "(error) ";
-        strncat(fmt1, fmt, sizeof(fmt1));
+        strncat(fmt1, fmt, sizeof(fmt1)-1);
         RedisModuleString* rms = RedisModule_CreateStringPrintf(ctx, fmt1, configItem);
         const char* err = RedisModule_StringPtrLen(rms, NULL);
         RedisModule_ReplyWithError(ctx, err);

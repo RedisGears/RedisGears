@@ -172,9 +172,9 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
 
     int exitCode;
     if(GearsConfig_CreateVenv()){
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip install %s\"", venvDir, req->basePath, filesInDir);
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate; cd %s; python -m pip install --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
     }else{
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s;%s/bin/python3 -m pip install %s\"", req->basePath, venvDir, filesInDir);
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s; %s/bin/python3 -m pip install --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
     }
     array_free(filesInDir);
     return exitCode == 0;
@@ -3266,7 +3266,7 @@ static void InitializeGlobalPaths(){
     const char* moduleDataDir = getenv("modulesdatadir");
     if(moduleDataDir){
         // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
-        rg_asprintf(&PYENV_DIR, "%s/%s/%d/deps/python3_%s/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISEARCH_MODULE_VERSION, REDISGEARS_VERSION_STR);
+        rg_asprintf(&PYENV_DIR, "%s/%s/%d/deps/python3_%s/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION, REDISGEARS_VERSION_STR);
     }else{
         // try build path first if its exists
 #ifdef CPYTHON_PATH
@@ -3296,31 +3296,32 @@ static void PrintGlobalPaths(RedisModuleCtx* ctx){
 }
 
 static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
-#define SHA_256_SIZE 64
-#define DEPS_FILE_PATH "/tmp/deps.%s.%s.tgz"
-#define DEPS_FILE_DIR "/tmp/deps.%s.%s/"
-#define LOCAL_VENV PYENV_DIR"/%s"
+#define SHA_256_SIZE            64
+#define TMP_DEPS_FILE_PATH_FMT  "/tmp/deps.%s.%s.tgz"
+#define TMP_DEPS_FILE_DIR_FMT   "/tmp/deps.%s.%s/"
+#define LOCAL_VENV_FMT          PYENV_DIR"/%s"
+
     const char *no_deps = getenv("GEARS_NO_DEPS");
     bool skip_deps_install = no_deps && !strcmp(no_deps, "1") || !GearsConfig_DownloadDeps() || IsEnterprise();
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
         if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python installation found and auto install is not enable, aborting.");
+            RedisModule_Log(ctx, "warning", "No Python installation found and auto install is not enabled, aborting.");
             return REDISMODULE_ERR;
         }
         const char* expectedSha256 = GearsConfig_GetDependenciesSha256();
 
-        ExecCommand(ctx, "rm -rf "DEPS_FILE_PATH, shardUid, expectedSha256);
+        ExecCommand(ctx, "rm -rf "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "curl -o "DEPS_FILE_PATH" %s", shardUid, expectedSha256, GearsConfig_GetDependenciesUrl());
+        ExecCommand(ctx, "curl -o "TMP_DEPS_FILE_PATH_FMT" %s", shardUid, expectedSha256, GearsConfig_GetDependenciesUrl());
 
         char* sha256Command;
-        rg_asprintf(&sha256Command, "sha256sum "DEPS_FILE_PATH, shardUid, expectedSha256);
+        rg_asprintf(&sha256Command, "sha256sum "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
         FILE* f = popen(sha256Command, "r");
         RG_FREE(sha256Command);
         char sha256[SHA_256_SIZE];
         if(fscanf(f, "%64s", sha256) != 1){
-            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "DEPS_FILE_PATH, shardUid, expectedSha256);
+            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
             pclose(f);
             return REDISMODULE_ERR;
         }
@@ -3331,13 +3332,13 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             return REDISMODULE_ERR;
         }
 
-        ExecCommand(ctx, "rm -rf "DEPS_FILE_DIR, shardUid, expectedSha256);
-        ExecCommand(ctx, "mkdir -p "DEPS_FILE_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "rm -rf "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256);
+        ExecCommand(ctx, "mkdir -p "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "tar -xvf "DEPS_FILE_PATH" -C "DEPS_FILE_DIR, shardUid, expectedSha256, shardUid, expectedSha256);
+        ExecCommand(ctx, "tar -xvzf "TMP_DEPS_FILE_PATH_FMT" -C "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256, shardUid, expectedSha256);
 
         ExecCommand(ctx, "mkdir -p %s", GearsConfig_GetPythonInstallationDir());
-        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/python3_%s/ %s", shardUid, expectedSha256, REDISGEARS_VERSION_STR, PYENV_DIR);
+        ExecCommand(ctx, "mv "TMP_DEPS_FILE_DIR_FMT"/python3_%s/ %s", shardUid, expectedSha256, REDISGEARS_VERSION_STR, PYENV_DIR);
     }else{
         RedisModule_Log(ctx, "notice", "Found python installation under: %s", PYENV_DIR);
     }

@@ -31,3 +31,7 @@ exclude_commands:
     - rg.pyfreeinterpreter
 overide_command:
     - {"command_arity": -1, "command_name": "rg.trigger", "first_key": 2, "flags": ["readonly"], "last_key": 2, "step": 1}
+dependencies:
+    {{GEARS_PYTHON3_NAME}}:
+        url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_PYTHON3_FNAME}}
+        sha256: {{GEARS_PYTHON3_SHA256}}
