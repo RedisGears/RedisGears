@@ -32,4 +32,6 @@ exclude_commands:
 overide_command:
     - {"command_arity": -1, "command_name": "rg.trigger", "first_key": 2, "flags": ["readonly"], "last_key": 2, "step": 1}
 dependencies:
-    - {"name": "python3", "url": "http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_DEPS_FNAME}}", "sha256": "{{GEARS_DEPS_SHA256}}"}
+    python3:
+        url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_DEPS_FNAME}}
+        sha256: {{GEARS_DEPS_SHA256}}

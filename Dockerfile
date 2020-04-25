@@ -58,7 +58,7 @@ COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts/
 RUN set -xe ;\
 	d=/var/opt/redislabs/modules/rg/`cat /var/opt/redislabs/artifacts/VERSION`/deps ;\
 	mkdir -p $d ;\
-	tar --warning=no-timestamp  -xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C $d
+	tar --warning=no-timestamp -xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C $d
 
 RUN if [ "$PACK" != "1" ]; then rm -rf /var/opt/redislabs/artifacts; fi
 
