@@ -704,17 +704,23 @@ void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-	RedisModule_Log(ctx, "notice", "RedisGears version %d.%d.%d, git_sha=%s",
-			REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH,
+	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s",
+	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA);
 
-	getRedisVersion();
-	RedisModule_Log(ctx, "notice", "Redis version as observed by RedisGears: %d.%d.%d", redisMajorVersion, redisMinorVersion, redisPatchVersion);
+    getRedisVersion();
+    RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",
+	                redisMajorVersion, redisMinorVersion, redisPatchVersion,
+	                IsEnterprise() ? "enterprise" : "oss");
+    if (IsEnterprise()) {
+        RedisModule_Log(ctx, "notice", "Redis Enterprise version found by RedisGears : %d.%d.%d-%d",
+                        rlecMajorVersion, rlecMinorVersion, rlecPatchVersion, rlecBuild);
+    }
 
-	if(LockHandler_Initialize() != REDISMODULE_OK){
+    if(LockHandler_Initialize() != REDISMODULE_OK){
 	    RedisModule_Log(ctx, "warning", "could not initialize lock handler");
         return REDISMODULE_ERR;
-	}
+    }
 
     if(RedisGears_RegisterApi(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not register RedisGears api");

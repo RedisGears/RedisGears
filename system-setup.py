@@ -89,6 +89,7 @@ class RedisGearsSetup(paella.Setup):
 
     def linux_last(self):
         self.install("valgrind")
+        self.pip_install("jinja2")
 
     def macosx(self):
         if sh('xcode-select -p') == '':

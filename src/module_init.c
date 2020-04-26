@@ -28,7 +28,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         printf("failed loading symbols: %s\r\n", dlerror());
     }
 
-    if (RedisModule_Init(ctx, "rg", REDISEARCH_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
+    if (RedisModule_Init(ctx, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION, REDISMODULE_APIVER_1) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
     }
 

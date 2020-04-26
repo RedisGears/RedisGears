@@ -1,11 +1,15 @@
 #!/bin/bash
 
 error() {
-	echo "There are errors."
+	>&2 echo "$0: There are errors."
 	exit 1
 }
 
-trap error ERR
+if [[ -z $_Dbg_DEBUGGER_LEVEL ]]; then
+	trap error ERR
+fi
+
+#----------------------------------------------------------------------------------------------
 
 if [[ $1 == --help || $1 == help ]]; then
 	cat <<-END
@@ -23,13 +27,16 @@ if [[ $1 == --help || $1 == help ]]; then
 		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
 		JUST_PRINT=1  Only print package names, do not generate
 
+		VARIANT=name        Build variant (empty for standard packages)
 		BRANCH=name         Branch name for snapshot packages
 		GITSHA=1            Append Git SHA to shapshot package names
-		CPYTHON_PREFIX=dir  Location of Python environment
+		CPYTHON_PREFIX=dir  Python install dir
 
 	END
 	exit 0
 fi
+
+#----------------------------------------------------------------------------------------------
 
 RAMP=${RAMP:-1}
 DEPS=${DEPS:-1}
@@ -41,75 +48,55 @@ SNAPSHOT=${SNAPSHOT:-1}
 [[ $IGNERR == 1 ]] || set -e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT=$HERE
 . $HERE/deps/readies/shibumi/functions
 
 ARCH=$(./deps/readies/bin/platform --arch)
 OS=$(./deps/readies/bin/platform --os)
 OSNICK=$(./deps/readies/bin/platform --osnick)
 
-getver() {
-	local getver_c=$(mktemp "${TMPDIR:-/tmp}"/getver-XXXXXXX.c)
-	cat <<- EOF > $getver_c
-		#include <stdio.h>
-
-		#include "src/version.h"
-
-		int main(int argc, char *argv[]) {
-				printf("%d.%d.%d\n", REDISGEARS_VERSION_MAJOR, REDISGEARS_VERSION_MINOR, REDISGEARS_VERSION_PATCH);
-				return 0;
-		}
-		EOF
-	local prog=$(mktemp "${TMPDIR:-/tmp}"/getver.XXXXXXX)
-	gcc -I. -o $prog $getver_c
-	local ver=`$prog`
-	rm -f $prog $getver_c
-	echo $ver
-}
+#----------------------------------------------------------------------------------------------
 
 pack() {
+	# artifact=release|snapshot
 	local artifact="$1"
-	local vertag="$2"
+	local pack_fname="$2"
 
-	local packfile=$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$vertag.zip
-
-	local packer=$(mktemp "${TMPDIR:-/tmp}"/pack.XXXXXXX)
-	ramp="$(command -v python) -m RAMP.ramp" 
-	cat <<- EOF > $packer
-		cd $ROOT
-		GEARS_NO_DEPS=1 $ramp pack $GEARS_SO -m ramp.yml -o $packfile | tail -1
-	EOF
-
-	cd $CPYTHON_PREFIX
-
-	export LANG=en_US.utf-8
-	export LC_ALL=en_US.utf-8
-	# export LC_ALL=C.UTF-8
-	# export LANG=C.UTF-8
-	
-	packname=`pipenv run bash $packer`
 	cd $ROOT
-	[[ -f $packer && $VERBOSE != 1 ]] && rm -f $packer
+	local ramp="$(command -v python) -m RAMP.ramp" 
+	local packfile=artifacts/$artifact/$pack_fname
+	
+	./deps/readies/bin/xtx -d GEARS_PYTHON3_NAME=python3_$SEMVER -d GEARS_PYTHON3_FNAME=$URL_FNAME -d GEARS_PYTHON3_SHA256=$(cat $DEPS.sha256) ramp.yml > /tmp/ramp.yml
+	local packname=$(GEARS_NO_DEPS=1 $ramp pack -m /tmp/ramp.yml -o $packfile $GEARS_SO 2> /tmp/ramp.err | tail -1)
+
 	if [[ -z $packname ]]; then
-		echo Failed to pack $artifact
+		>&2 echo Failed to pack $artifact
+		cat /tmp/ramp.err >&2
 		exit 1
 	fi
 	
-	mv $packname artifacts/$artifact/
 	echo "Created artifacts/$artifact/$packname"
 }
 
+#----------------------------------------------------------------------------------------------
+
 pack_deps() {
 	CPYTHON_PREFIX=${CPYTHON_PREFIX:-/var/opt/redislabs/lib/modules/python3}
+	if [[ -z $CPYTHON_PREFIX ]]; then
+		>&2 echo "$0: $CPYTHON_PREFIX is not defined"
+		exit 1
+	fi
 	if [[ ! -d $CPYTHON_PREFIX ]]; then
-		echo $CPYTHON_PREFIX does not exist
+		>&2 echo "$0: $CPYTHON_PREFIX does not exist"
 		exit 1
 	fi
 
 	local TAR=artifacts/release/$RELEASE_deps
 	TAR_PATH=$(realpath $TAR)
-	cd $CPYTHON_PREFIX/
+	cd $CPYTHON_PREFIX
 	# find . -name __pycache__ -type d -exec rm -rf {} \; 2>> /dev/null || true
-	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,$CPYTHON_PREFIX/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
+	export SEMVER
+	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,python3_$SEMVER/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
 	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
@@ -121,6 +108,8 @@ pack_deps() {
 	# ( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
 	echo Created $TAR1
 }
+
+#----------------------------------------------------------------------------------------------
 
 # export ROOT=`git rev-parse --show-toplevel`
 export ROOT=$(realpath $HERE)
@@ -138,11 +127,15 @@ export PYTHONWARNINGS=ignore
 
 cd $ROOT
 
-VERSION=$(getver)
+NUMVER=$(NUMERIC=1 $ROOT/getver)
+SEMVER=$($ROOT/getver)
 
-RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$VERSION.zip
-SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
-RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$VERSION.tgz
+if [[ ! -z $VARIANT ]]; then
+	VARIANT=-${VARIANT}
+fi
+RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$SEMVER${VARIANT}.zip
+SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.${BRANCH}${VARIANT}.zip
+RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$SEMVER.tgz
 SNAPSHOT_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
 
 if [[ $JUST_PRINT == 1 ]]; then
@@ -161,22 +154,22 @@ mkdir -p artifacts/snapshot artifacts/release
 
 if [[ $RAMP == 1 ]]; then
 	if ! command -v redis-server > /dev/null; then
-		echo Cannot find redis-server. Aborting.
+		>&2 echo "$0: Cannot find redis-server. Aborting."
 		exit 1
 	fi
 
-	[[ -z $1 ]] && echo Nothing to pack. Aborting. && exit 1
-	[[ ! -f $1 ]] && echo $1 does not exist. Aborting. && exit 1
+	[[ -z $1 ]] && >&2 echo "$0: Nothing to pack. Aborting." && exit 1
+	[[ ! -f $1 ]] && >&2 echo "$0: $1 does not exist. Aborting." && exit 1
 	
 	RELEASE_SO=$(realpath $1)
 	SNAPSHOT_SO=$(dirname $RELEASE_SO)/snapshot/$(basename $RELEASE_SO)
 fi
 
-if [[ $RAMP == 1 ]]; then
-	GEARS_SO=$RELEASE_SO pack release "{semantic_version}"
-	GEARS_SO=$SNAPSHOT_SO pack snapshot "$BRANCH"
-fi
-
 if [[ $DEPS == 1 ]]; then
 	pack_deps
+fi
+
+if [[ $RAMP == 1 ]]; then
+	GEARS_SO=$RELEASE_SO DEPS=artifacts/release/$RELEASE_deps URL_FNAME=$RELEASE_deps pack release "$RELEASE_ramp"
+	GEARS_SO=$SNAPSHOT_SO DEPS=artifacts/snapshot/$SNAPSHOT_deps URL_FNAME=snapshots/$SNAPSHOT_deps pack snapshot "$SNAPSHOT_ramp"
 fi

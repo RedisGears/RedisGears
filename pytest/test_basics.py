@@ -699,3 +699,14 @@ GB('KeysOnlyReader').count().run(patternGenerator=Generator)
     '''
     env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('set', 'x{%s}' % hashtag(), '1')).run()")
     env.expect('RG.PYEXECUTE', script).equal([[str(env.shardsCount)],[]])
+
+def testWithMultiExec(env):
+    env.skipOnCluster()
+    conn = getConnectionByEnv(env)
+    conn.execute_command('multi')
+    conn.execute_command('rg.pyexecute', 'GB().run()')
+    try:
+        conn.execute_command('exec')
+        env.assertTrue(True, message='Did not get error when running gear in multi exec')
+    except Exception:
+        env.assertTrue(True, message='Got error when running gear in multi exec')

@@ -11,8 +11,6 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#define PYTHON_HOME_DIR "PYTHON_HOME_DIR"
-
 extern char DependenciesUrl[];
 extern char DependenciesSha256[];
 
@@ -52,7 +50,9 @@ typedef struct RedisGears_Config{
     ConfigVal executionMaxIdleTime;
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
-    ConfigVal venvWorkingPath;
+    ConfigVal pythonInstallationDir;
+    ConfigVal downloadDeps;
+    ConfigVal foreceDownloadDepsOnEnterprise;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -148,18 +148,18 @@ static bool ConfigVal_DependenciesSha256Set(ArgsIterator* iter){
     return true;
 }
 
-static const ConfigVal* ConfigVal_VenvWorkingPathGet(){
-    return &DefaultGearsConfig.venvWorkingPath;
+static const ConfigVal* ConfigVal_PythonInstallationDirGet(){
+    return &DefaultGearsConfig.pythonInstallationDir;
 }
 
-static bool ConfigVal_VenvWorkingPathSet(ArgsIterator* iter){
+static bool ConfigVal_PythonInstallationDirSet(ArgsIterator* iter){
     RedisModuleString* val = ArgsIterator_Next(iter);
     if(!val){
         return false;
     }
-    RG_FREE(DefaultGearsConfig.venvWorkingPath.val.str);
+    RG_FREE(DefaultGearsConfig.pythonInstallationDir.val.str);
     const char* valStr = RedisModule_StringPtrLen(val, NULL);
-    DefaultGearsConfig.venvWorkingPath.val.str = RG_STRDUP(valStr);
+    DefaultGearsConfig.pythonInstallationDir.val.str = RG_STRDUP(valStr);
     return true;
 }
 
@@ -191,6 +191,40 @@ static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
 
     if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
         DefaultGearsConfig.createVenv.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static const ConfigVal* ConfigVal_DownloadDepsGet(){
+    return &DefaultGearsConfig.downloadDeps;
+}
+
+static bool ConfigVal_DownloadDepsSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.downloadDeps.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static const ConfigVal* ConfigVal_ForceDownloadDepsOnEnterpriseGet(){
+    return &DefaultGearsConfig.foreceDownloadDepsOnEnterprise;
+}
+
+static bool ConfigVal_ForceDownloadDepsOnEnterpriseSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.foreceDownloadDepsOnEnterprise.val.longVal = n;
         return true;
     } else {
         return false;
@@ -283,12 +317,6 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .configurableAtRunTime = false,
     },
     {
-        .name = "VenvWorkingPath",
-        .getter = ConfigVal_VenvWorkingPathGet,
-        .setter = ConfigVal_VenvWorkingPathSet,
-        .configurableAtRunTime = false,
-    },
-    {
         .name = "ExecutionThreads",
         .getter = ConfigVal_ExecutionThreadsGet,
         .setter = ConfigVal_ExecutionThreadsSet,
@@ -301,6 +329,24 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .configurableAtRunTime = true,
     },
     {
+        .name = "PythonInstallationDir",
+        .getter = ConfigVal_PythonInstallationDirGet,
+        .setter = ConfigVal_PythonInstallationDirSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "DownloadDeps",
+        .getter = ConfigVal_DownloadDepsGet,
+        .setter = ConfigVal_DownloadDepsSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "ForceDownloadDepsOnEnterprise",
+        .getter = ConfigVal_ForceDownloadDepsOnEnterpriseGet,
+        .setter = ConfigVal_ForceDownloadDepsOnEnterpriseSet,
+        .configurableAtRunTime = false,
+    },
+    {
         NULL,
     },
 };
@@ -310,7 +356,7 @@ static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* confi
 
     if(sendReply){
         char fmt1[256] = "(error) ";
-        strncat(fmt1, fmt, sizeof(fmt1));
+        strncat(fmt1, fmt, sizeof(fmt1)-1);
         RedisModuleString* rms = RedisModule_CreateStringPrintf(ctx, fmt1, configItem);
         const char* err = RedisModule_StringPtrLen(rms, NULL);
         RedisModule_ReplyWithError(ctx, err);
@@ -461,8 +507,8 @@ const char* GearsConfig_GetExtraConfigVals(const char* key){
     return Gears_dictFetchValue(Gears_ExtraConfig, key);
 }
 
-const char* GearsConfig_GetVenvWorkingPath(){
-    return DefaultGearsConfig.venvWorkingPath.val.str;
+const char* GearsConfig_GetPythonInstallationDir(){
+    return DefaultGearsConfig.pythonInstallationDir.val.str;
 }
 
 const char* GearsConfig_GetDependenciesUrl(){
@@ -474,6 +520,14 @@ const char* GearsConfig_GetDependenciesSha256(){
 
 long long GearsConfig_CreateVenv(){
     return DefaultGearsConfig.createVenv.val.longVal;
+}
+
+long long GearsConfig_DownloadDeps(){
+    return DefaultGearsConfig.downloadDeps.val.longVal;
+}
+
+long long GearsConfig_ForceDownloadDepsOnEnterprise(){
+    return DefaultGearsConfig.downloadDeps.val.longVal;
 }
 
 long long GearsConfig_ExecutionThreads(){
@@ -520,10 +574,6 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
         } \
     } while (false)
 
-#ifndef CPYTHON_PATH
-#define CPYTHON_PATH "/usr/bin/"
-#endif
-
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
     DefaultGearsConfig = (RedisGears_Config){
         .maxExecutions = {
@@ -562,9 +612,17 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 5000,
             .type = LONG,
         },
-        .venvWorkingPath = {
-            .val.str = RG_STRDUP("/var/opt/redislabs/lib"),
+        .pythonInstallationDir = {
+            .val.str = RG_STRDUP("/var/opt/redislabs/modules/rg"),
             .type = STR,
+        },
+        .downloadDeps = {
+            .val.longVal = 1,
+            .type = LONG,
+        },
+        .foreceDownloadDepsOnEnterprise = {
+            .val.longVal = 0,
+            .type = LONG,
         },
     };
 

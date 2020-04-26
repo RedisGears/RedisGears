@@ -16,6 +16,8 @@
 #include "common.h"
 #include "GearsBuilder.auto.h"
 #include "cloudpickle.auto.h"
+#include "version.h"
+#include "utils/thpool.h"
 
 #define SUB_INTERPRETER_TYPE "subInterpreterType"
 
@@ -113,6 +115,7 @@ typedef struct PythonSessionCtx{
     char sessionIdStr[STR_ID_LEN];
     PyObject* globalsDict;
     PythonRequirementCtx** requirements;
+    bool isInstallationNeeded;
 }PythonSessionCtx;
 
 static PyObject* GearsPyDict_GetItemString(PyObject* dict, const char* key){
@@ -124,7 +127,11 @@ static bool PythonRequirementCtx_DownloadRequirement(PythonRequirementCtx* req){
 #define RETRY_SLEEP_IN_SEC 1
     int exitCode;
     for(size_t i = 0 ; i < RETRY; ++i){
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip wheel %s\"", venvDir, req->basePath, req->name);
+        if(GearsConfig_CreateVenv()){
+            exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip wheel %s\"", venvDir, req->basePath, req->name);
+        }else{
+            exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s;%s/bin/python3 -m pip wheel %s\"", req->basePath, venvDir, req->name);
+        }
         if(exitCode != 0){
             sleep(RETRY_SLEEP_IN_SEC);
             continue;
@@ -163,7 +170,12 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
     }
     filesInDir[array_len(filesInDir) - 1] = '\0';
 
-    int exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip install %s\"", venvDir, req->basePath, filesInDir);
+    int exitCode;
+    if(GearsConfig_CreateVenv()){
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate; cd %s; python -m pip install --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
+    }else{
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s; %s/bin/python3 -m pip install --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
+    }
     array_free(filesInDir);
     return exitCode == 0;
 }
@@ -219,7 +231,7 @@ static PythonRequirementCtx* PythonRequirementCtx_Create(const char* requirement
     ret->name = RG_STRDUP(requirement);
     rg_asprintf(&ret->basePath, "%s/%s", venvDir, ret->name);
     ret->wheels = array_new(char*, 10);
-    // refCount is starting from 2, one hold by RequirementsDict and once by the called.
+    // refCount is starting from 2, one hold by RequirementsDict and once by the caller.
     // currently we basically never delete requirments so we will know not to reinstall them
     // to save time
     ret->refCount = 2;
@@ -366,6 +378,20 @@ static PythonSessionCtx* PythonSessionCtx_Get(char* id){
     return Gears_dictFetchValue(SessionsDict, id);
 }
 
+static int PythonSessionCtx_DownloadAndInstallDeps(PythonSessionCtx* session){
+    for(size_t i = 0 ; i < array_len(session->requirements) ; ++i){
+        PythonRequirementCtx* req = session->requirements[i];
+        if(!PythonRequirementCtx_DownloadRequirement(req)){
+            return false;
+        }
+
+        if(!PythonRequirementCtx_InstallRequirement(req)){
+            return false;
+        }
+    }
+    return true;
+}
+
 static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** requirementsList, size_t requirementsListLen){
     // creating a new global dict for this session
     void* old = RedisGearsPy_Lock(NULL);
@@ -376,6 +402,7 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** re
     *session = (PythonSessionCtx){
             .refCount = 1,
             .globalsDict = globalDict,
+            .isInstallationNeeded = false,
     };
     SetId(NULL, session->sessionId, session->sessionIdStr, &CurrSessionId);
 
@@ -388,22 +415,9 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** re
 
         if(!req){
             req = PythonRequirementCtx_Create(requirementsList[i]);
+            session->isInstallationNeeded = true;
 
             if(!req){
-                PythonSessionCtx_Free(session);
-                session = NULL;
-                break;
-            }
-
-            if(!PythonRequirementCtx_DownloadRequirement(req)){
-                PythonRequirementCtx_Free(req);
-                PythonSessionCtx_Free(session);
-                session = NULL;
-                break;
-            }
-
-            if(!PythonRequirementCtx_InstallRequirement(req)){
-                PythonRequirementCtx_Free(req);
                 PythonSessionCtx_Free(session);
                 session = NULL;
                 break;
@@ -2344,14 +2358,121 @@ static void RedisGearsPy_GetRequirementsList(const char** requirementsList, Redi
     }
 }
 
+typedef struct BackgroundDepsInstallCtx{
+    PythonSessionCtx* session;
+    RedisModuleBlockedClient *bc;
+    char* script;
+    DoneCallbackFunction doneFunction;
+}BackgroundDepsInstallCtx;
+
+static Gears_threadpool installDepsPool = NULL;
+
+static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstallCtx* bdiCtx, bool isBlocking){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    ptctx->currentCtx = rctx;
+    ptctx->createdExecution = NULL;
+
+    void* old = RedisGearsPy_Lock(bdiCtx->session);
+    PyObject *v = PyRun_StringFlags(bdiCtx->script, Py_file_input, ptctx->currSession->globalsDict, ptctx->currSession->globalsDict, NULL);
+
+    if(!v){
+        char* err = getPyError();
+        if(!err){
+            RedisModule_ReplyWithError(rctx, "failed running the given script");
+        }else{
+            RedisModule_ReplyWithError(rctx, err);
+            RG_FREE(err);
+        }
+
+        if(ptctx->createdExecution){
+            // error occured, we need to abort the created execution.
+            int res = RedisGears_AbortExecution(ptctx->createdExecution);
+            assert(res == REDISMODULE_OK);
+            RedisGears_DropExecution(ptctx->createdExecution);
+        }
+
+        RedisGearsPy_Unlock(old);
+
+        ptctx->createdExecution = NULL;
+        ptctx->currentCtx = NULL;
+        return;
+    }
+
+    if(ptctx->createdExecution){
+        if(isBlocking){
+            RedisModuleBlockedClient* bc = bdiCtx->bc;
+            bdiCtx->bc = NULL; // we are taking ownership of the blocked client
+            if(!bc){
+                bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 0);
+            }
+            RedisGears_AddOnDoneCallback(ptctx->createdExecution, bdiCtx->doneFunction, bc);
+        }else{
+            const char* id = RedisGears_GetId(ptctx->createdExecution);
+            RedisModule_ReplyWithStringBuffer(rctx, id, strlen(id));
+        }
+    }else{
+        RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
+    }
+    RedisGearsPy_Unlock(old);
+
+    ptctx->createdExecution = NULL;
+    ptctx->currentCtx = NULL;
+}
+
+static void RedisGearsPy_InstallDepsAndExecute(void* ctx){
+    BackgroundDepsInstallCtx* bdiCtx = ctx;
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bdiCtx->bc);
+    if(!PythonSessionCtx_DownloadAndInstallDeps(bdiCtx->session)){
+        RedisModule_ReplyWithError(rctx, "Could not satisfy requirments (look at redis log file for more information)");
+        LockHandler_Acquire(rctx);
+        goto done;
+    }
+
+    LockHandler_Acquire(rctx);
+    RedisGearsPy_InnerExecute(rctx, bdiCtx, true);
+
+done:
+    // free bdiCtx
+
+    PythonSessionCtx_Free(bdiCtx->session);
+    RG_FREE(bdiCtx->script);
+    if(bdiCtx->bc){
+        RedisModule_UnblockClient(bdiCtx->bc, NULL);
+    }
+    RG_FREE(bdiCtx);
+
+    LockHandler_Release(rctx);
+    RedisModule_FreeThreadSafeContext(rctx);
+}
+
+static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
+                                    RedisModuleBlockedClient *bc,
+                                    const char* script,
+                                    DoneCallbackFunction doneFunction){
+    BackgroundDepsInstallCtx* bdiCtx = RG_ALLOC(sizeof(*bdiCtx));
+    *bdiCtx = (BackgroundDepsInstallCtx){
+            .session = session,
+            .bc = bc,
+            .script = RG_STRDUP(script),
+            doneFunction = doneFunction,
+    };
+
+    Gears_thpool_add_work(installDepsPool, RedisGearsPy_InstallDepsAndExecute, bdiCtx);
+}
+
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    int ctxFlags = RedisModule_GetContextFlags(ctx);
+
+    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI)){
+        RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec or lua");
+        return REDISMODULE_OK;
+    }
+
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
 
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    ptctx->currentCtx = ctx;
     bool isBlocking = true;
     size_t requirementsArg = 3;
     if(argc >= 3){
@@ -2371,59 +2492,30 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         }
     }
 
-    ptctx->createdExecution = NULL;
-
-    PyObject *v;
-
     PythonSessionCtx* session = PythonSessionCtx_Create(requirementsList, reqLen);
     if(!session){
-        RedisModule_ReplyWithError(ctx, "Could not satisfy requirments");
-        ptctx->createdExecution = NULL;
-        ptctx->currentCtx = NULL;
-        return REDISMODULE_OK;
-    }
-    void* old = RedisGearsPy_Lock(session);
-    v = PyRun_StringFlags(script, Py_file_input, ptctx->currSession->globalsDict, ptctx->currSession->globalsDict, NULL);
-    PythonSessionCtx_Free(ptctx->currSession);
-
-    if(!v){
-        char* err = getPyError();
-        if(!err){
-            RedisModule_ReplyWithError(ctx, "failed running the given script");
-        }else{
-            RedisModule_ReplyWithError(ctx, err);
-            RG_FREE(err);
-        }
-
-        if(ptctx->createdExecution){
-            // error occured, we need to abort the created execution.
-            int res = RedisGears_AbortExecution(ptctx->createdExecution);
-            assert(res == REDISMODULE_OK);
-            RedisGears_DropExecution(ptctx->createdExecution);
-        }
-
-        RedisGearsPy_Unlock(old);
-
-        ptctx->createdExecution = NULL;
-        ptctx->currentCtx = NULL;
+        RedisModule_ReplyWithError(ctx, "Could not satisfy requirments, look at the log file for more information.");
         return REDISMODULE_OK;
     }
 
-    if(ptctx->createdExecution){
-        if(isBlocking){
-            RedisModuleBlockedClient *bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 1000000);
-            RedisGears_AddOnDoneCallback(ptctx->createdExecution, ptctx->doneFunction, bc);
-        }else{
-            const char* id = RedisGears_GetId(ptctx->createdExecution);
-            RedisModule_ReplyWithStringBuffer(ctx, id, strlen(id));
-        }
-    }else{
-        RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
-    }
-    RedisGearsPy_Unlock(old);
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
-    ptctx->createdExecution = NULL;
-    ptctx->currentCtx = NULL;
+    if(session->isInstallationNeeded){
+        RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
+        RedisGearsPy_BackgroundExecute(session, bc, script, ptctx->doneFunction);
+        return REDISMODULE_OK;
+    }
+
+    BackgroundDepsInstallCtx bdiCtx = (BackgroundDepsInstallCtx){
+            .session = session,
+            .bc = NULL,
+            .script = (char*)script,
+            .doneFunction = ptctx->doneFunction,
+    };
+
+    RedisGearsPy_InnerExecute(ctx, &bdiCtx, isBlocking);
+
+    PythonSessionCtx_Free(session);
 
     return REDISMODULE_OK;
 }
@@ -3157,17 +3249,15 @@ RedisGears_ReaderCallbacks PythonReader = {
         .create = PythonReader_Create,
 };
 
-#define PYENV_INSTALL_DIR "/var/opt/redislabs/lib/modules/"
-#define PYENV_DIR PYENV_INSTALL_DIR"python3"
-#define PYENV_HOME_DIR PYENV_DIR "/.venv"
-#define PYENV_BIN_DIR PYENV_HOME_DIR "/bin"
-#define PYENV_ACTIVATE PYENV_HOME_DIR "/activate_this.py"
-#define PYENV_ACTIVATE_SCRIPT PYENV_BIN_DIR "/activate"
+static char* PYINSTALL_DIR;
+static char* PYENV_DIR;
+static char* PYENV_HOME_DIR;
+static char* PYENV_BIN_DIR;
+static char* PYENV_ACTIVATE;
+static char* PYENV_ACTIVATE_SCRIPT;
 
-
-
-bool PyEnvExist() {
-    DIR* dir = opendir(PYENV_DIR);
+static bool PathExist(const char* path) {
+    DIR* dir = opendir(path);
     if (dir) {
         closedir(dir);
         return true;
@@ -3175,32 +3265,77 @@ bool PyEnvExist() {
     return false;
 }
 
+static bool PyEnvExist() {
+    return PathExist(PYENV_DIR);
+}
+
+static void InitializeGlobalPaths(){
+    const char* moduleDataDir = getenv("modulesdatadir");
+    if(moduleDataDir){
+        // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
+        rg_asprintf(&PYINSTALL_DIR, "%s/%s/%d/deps/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION);
+    }else{
+        // try build path first if its exists
+#ifdef CPYTHON_PATH
+        rg_asprintf(&PYINSTALL_DIR, "%s/", CPYTHON_PATH);
+
+        // we create it temporary to check if exists
+        rg_asprintf(&PYENV_DIR, "%s/python3_%s/", PYINSTALL_DIR, REDISGEARS_VERSION_STR);
+
+        if(!PyEnvExist()){
+            RG_FREE(PYINSTALL_DIR);
+            rg_asprintf(&PYINSTALL_DIR, "%s/", GearsConfig_GetPythonInstallationDir());
+        }
+
+        RG_FREE(PYENV_DIR);
+#else
+        rg_asprintf(&PYINSTALL_DIR, "%s/", GearsConfig_GetPythonInstallationDir());
+#endif
+
+    }
+    rg_asprintf(&PYENV_DIR, "%s/python3_%s/", PYINSTALL_DIR, REDISGEARS_VERSION_STR);
+    rg_asprintf(&PYENV_HOME_DIR, "%s/.venv/", PYENV_DIR);
+    rg_asprintf(&PYENV_BIN_DIR, "%s/bin", PYENV_HOME_DIR);
+    rg_asprintf(&PYENV_ACTIVATE, "%s/activate_this.py", PYENV_BIN_DIR);
+    rg_asprintf(&PYENV_ACTIVATE_SCRIPT, "%s/activate", PYENV_BIN_DIR);
+}
+
+static void PrintGlobalPaths(RedisModuleCtx* ctx){
+    RedisModule_Log(ctx, "notice", "PYENV_DIR: %s", PYENV_DIR);
+    RedisModule_Log(ctx, "notice", "PYENV_HOME_DIR: %s", PYENV_HOME_DIR);
+    RedisModule_Log(ctx, "notice", "PYENV_BIN_DIR: %s", PYENV_BIN_DIR);
+    RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE: %s", PYENV_ACTIVATE);
+    RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE_SCRIPT: %s", PYENV_ACTIVATE_SCRIPT);
+}
+
 static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
-#define SHA_256_SIZE 64
-#define DEPS_FILE_PATH "/tmp/deps.%s.%s.tgz"
-#define DEPS_FILE_DIR "/tmp/deps.%s.%s/"
-#define LOCAL_VENV PYENV_DIR"/%s"
+#define SHA_256_SIZE            64
+#define TMP_DEPS_FILE_PATH_FMT  "/tmp/deps.%s.%s.tgz"
+#define TMP_DEPS_FILE_DIR_FMT   "/tmp/deps.%s.%s/"
+#define LOCAL_VENV_FMT          PYENV_DIR"/%s"
+
     const char *no_deps = getenv("GEARS_NO_DEPS");
-    bool skip_deps_install = no_deps && !strcmp(no_deps, "1");
+    bool skip_deps_install = (no_deps && !strcmp(no_deps, "1")) || !GearsConfig_DownloadDeps() ||
+                             (IsEnterprise() && !GearsConfig_ForceDownloadDepsOnEnterprise());
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
         if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python installation found and GEARS_NO_DEPS=1: aborting");
+            RedisModule_Log(ctx, "warning", "No Python installation found and auto install is not enabled, aborting.");
             return REDISMODULE_ERR;
         }
         const char* expectedSha256 = GearsConfig_GetDependenciesSha256();
 
-        ExecCommand(ctx, "rm -rf "DEPS_FILE_PATH, shardUid, expectedSha256);
+        ExecCommand(ctx, "rm -rf "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "curl -o "DEPS_FILE_PATH" %s", shardUid, expectedSha256, GearsConfig_GetDependenciesUrl());
+        ExecCommand(ctx, "curl -o "TMP_DEPS_FILE_PATH_FMT" %s", shardUid, expectedSha256, GearsConfig_GetDependenciesUrl());
 
         char* sha256Command;
-        rg_asprintf(&sha256Command, "sha256sum "DEPS_FILE_PATH, shardUid, expectedSha256);
+        rg_asprintf(&sha256Command, "sha256sum "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
         FILE* f = popen(sha256Command, "r");
         RG_FREE(sha256Command);
         char sha256[SHA_256_SIZE];
         if(fscanf(f, "%64s", sha256) != 1){
-            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "DEPS_FILE_PATH, shardUid, expectedSha256);
+            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
             pclose(f);
             return REDISMODULE_ERR;
         }
@@ -3211,37 +3346,35 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             return REDISMODULE_ERR;
         }
 
-        ExecCommand(ctx, "rm -rf "DEPS_FILE_DIR, shardUid, expectedSha256);
-        ExecCommand(ctx, "mkdir -p "DEPS_FILE_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "rm -rf "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256);
+        ExecCommand(ctx, "mkdir -p "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "tar -xvf "DEPS_FILE_PATH" -C "DEPS_FILE_DIR, shardUid, expectedSha256, shardUid, expectedSha256);
+        ExecCommand(ctx, "tar -xvzf "TMP_DEPS_FILE_PATH_FMT" -C "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "mkdir -p "PYENV_INSTALL_DIR);
-        ExecCommand(ctx, "mv "DEPS_FILE_DIR"/var/opt/redislabs/lib/modules/python3/ "PYENV_INSTALL_DIR, shardUid, expectedSha256);
+        ExecCommand(ctx, "mkdir -p %s", PYINSTALL_DIR);
+        ExecCommand(ctx, "mv "TMP_DEPS_FILE_DIR_FMT"/python3_%s/ %s", shardUid, expectedSha256, REDISGEARS_VERSION_STR, PYINSTALL_DIR);
     }else{
-        RedisModule_Log(ctx, "notice", "Found python installation under: "PYENV_DIR);
+        RedisModule_Log(ctx, "notice", "Found python installation under: %s", PYENV_DIR);
     }
-    if(!skip_deps_install && GearsConfig_CreateVenv()){
-        rg_asprintf(&venvDir, "%s/.venv-%s", GearsConfig_GetVenvWorkingPath(), shardUid);
-    }else{
-        venvDir = PYENV_HOME_DIR;
-    }
-    DIR* dir = opendir(venvDir);
-    if(!dir){
-        if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python venv found and GEARS_NO_DEPS=1: aborting");
-            return REDISMODULE_ERR;
-        }
-        ExecCommand(ctx, "mkdir -p %s", venvDir);
-        int rc = ExecCommand(ctx, "/bin/bash -c \"source " PYENV_ACTIVATE_SCRIPT "; python -m virtualenv %s\"", venvDir);
-        if (rc) {
-            RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
-            ExecCommand(ctx, "rm -rf %s", venvDir);
-            return REDISMODULE_ERR;
+    if(GearsConfig_CreateVenv()){
+        rg_asprintf(&venvDir, "%s/.venv-%s", GearsConfig_GetPythonInstallationDir(), shardUid);
+        DIR* dir = opendir(venvDir);
+        if(!dir){
+            ExecCommand(ctx, "mkdir -p %s", venvDir);
+            setenv("VIRTUALENV_OVERRIDE_APP_DATA", venvDir, 1);
+            int rc = ExecCommand(ctx, "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
+            if (rc) {
+                RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
+                ExecCommand(ctx, "rm -rf %s", venvDir);
+                return REDISMODULE_ERR;
+            }
+        }else{
+            RedisModule_Log(ctx, "notice", "Found venv installation under: %s", venvDir);
+            closedir(dir);
         }
     }else{
-        RedisModule_Log(ctx, "notice", "Found venv installation under: %s", venvDir);
-        closedir(dir);
+        // we are not operating inside virtual env
+        venvDir = RG_STRDUP(PYENV_DIR);
     }
     return REDISMODULE_OK;
 }
@@ -3355,6 +3488,9 @@ static Record* PythonRecord_Deserialize(Gears_BufferReader* br){
 }
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
+    installDepsPool = Gears_thpool_init(1);
+    InitializeGlobalPaths();
+    PrintGlobalPaths(ctx);
     if(RedisGears_InstallDeps(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "Failed installing python dependencies");
         return REDISMODULE_ERR;
@@ -3371,10 +3507,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
     PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
     PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
-	char* arg = "Embeded";
-	size_t len = strlen(arg);
-    char* progName = PYENV_DIR;
-    Py_SetProgramName((wchar_t *)progName);
+    char* arg = "Embeded";
+    size_t len = strlen(arg);
+    wchar_t *pyHome = Py_DecodeLocale(PYENV_DIR, NULL);
+    Py_SetPythonHome(pyHome);
+    PyMem_RawFree(pyHome);
 
     EmbRedisGears.m_methods = EmbRedisGearsMethods;
     EmbRedisGears.m_size = sizeof(EmbRedisGearsMethods) / sizeof(*EmbRedisGearsMethods);
@@ -3385,7 +3522,10 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyImport_AppendInittab("redisAI", &PyInit_RedisAI);
 
     Py_Initialize();
-    RedisGears_SetupPyEnv(ctx);
+    if(GearsConfig_CreateVenv()){
+        // lets activate the virtual env we are operate in
+        RedisGears_SetupPyEnv(ctx);
+    }
     PyEval_InitThreads();
     wchar_t* arg2 = Py_DecodeLocale(arg, &len);
     PySys_SetArgv(1, &arg2);

@@ -28,14 +28,22 @@ extern int redisMajorVersion;
 extern int redisMinorVersion;
 extern int redisPatchVersion;
 
+extern int rlecMajorVersion;
+extern int rlecMinorVersion;
+extern int rlecPatchVersion;
+extern int rlecBuild;
 
+static inline int IsEnterprise() {
+  return rlecMajorVersion != -1;
+}
+
+void getRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);
 int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
 char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*));
 const char* GetShardUniqueId();
 int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);
-void getRedisVersion();
 
 #endif /* SRC_COMMANDS_H_ */
 

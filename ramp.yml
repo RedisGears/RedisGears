@@ -4,7 +4,7 @@ email: meir@redislabs.com
 description: Dynamic execution framework for your Redis data
 homepage: 'http://redisgears.io'
 license: Redis Source Available License Agreement
-command_line_args: "CreateVenv 1"
+command_line_args: "CreateVenv 1 DownloadDeps 0"
 min_redis_version: '5.0.7'
 min_redis_pack_version: '5.4.11'
 config_command: "RG.CONFIGSET"
@@ -31,3 +31,7 @@ exclude_commands:
     - rg.pyfreeinterpreter
 overide_command:
     - {"command_arity": -1, "command_name": "rg.trigger", "first_key": 2, "flags": ["readonly"], "last_key": 2, "step": 1}
+dependencies:
+    {{GEARS_PYTHON3_NAME}}:
+        url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_PYTHON3_FNAME}}
+        sha256: {{GEARS_PYTHON3_SHA256}}

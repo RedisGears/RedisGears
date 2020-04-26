@@ -54,8 +54,8 @@ def test(x):
 
 GB('StreamReader').map(test).register()
 '''
-        self.env.expect('rg.pyexecute', script1).error().contains('Error occured when serialized a python callback')
-        self.env.expect('rg.pyexecute', script2).error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script1, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script2, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
 
 def testRunFailureOnSerialization(env):
     if env.shardsCount < 2:

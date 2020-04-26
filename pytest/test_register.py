@@ -183,6 +183,16 @@ GB().map(InfinitLoop).register('*', mode='async_local')
 
     env.expect('RG.UNREGISTER', registrationId, 'abortpending').ok()
 
+    try:
+        with TimeLimit(2):
+            done = False
+            while not done:
+                registrations = len(env.cmd('RG.DUMPEXECUTIONS'))
+                if registrations == 1:
+                    done = True
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Could not wait for executions to be deleted')
     env.assertEqual(len(env.cmd('RG.DUMPEXECUTIONS')), 1)
 
     try:
