@@ -14,7 +14,7 @@
 #define MAX_SLOT 16384
 #define RG_INNER_MSG_COMMAND "RG.INNERMSGCOMMAND"
 
-void Cluster_SendMsg(char* id, char* function, char* msg, size_t len);
+void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len);
 #define Cluster_SendMsgM(id, function, msg, len) Cluster_SendMsg(id, #function, msg, len);
 void Cluster_RegisterMsgReceiver(char* function, RedisModuleClusterMessageReceiver receiver);
 #define Cluster_RegisterMsgReceiverM(function) Cluster_RegisterMsgReceiver(#function, function);
@@ -24,7 +24,7 @@ void Cluster_Init();
 char* Cluster_GetMyId();
 const char* Cluster_GetMyHashTag();
 bool Cluster_IsMyId(char* id);
-char* Cluster_GetNodeIdByKey(char* key);
+const char* Cluster_GetNodeIdByKey(char* key);
 int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Cluster_RedisGearsHello(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
