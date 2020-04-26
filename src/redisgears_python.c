@@ -3249,6 +3249,7 @@ RedisGears_ReaderCallbacks PythonReader = {
         .create = PythonReader_Create,
 };
 
+static char* PYINSTALL_DIR;
 static char* PYENV_DIR;
 static char* PYENV_HOME_DIR;
 static char* PYENV_BIN_DIR;
@@ -3272,21 +3273,27 @@ static void InitializeGlobalPaths(){
     const char* moduleDataDir = getenv("modulesdatadir");
     if(moduleDataDir){
         // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
-        rg_asprintf(&PYENV_DIR, "%s/%s/%d/deps/python3_%s/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION, REDISGEARS_VERSION_STR);
+        rg_asprintf(&PYINSTALL_DIR, "%s/%s/%d/deps/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION);
     }else{
         // try build path first if its exists
 #ifdef CPYTHON_PATH
-        rg_asprintf(&PYENV_DIR, "%s/python3_%s/", CPYTHON_PATH, REDISGEARS_VERSION_STR);
+        rg_asprintf(&PYINSTALL_DIR, "%s/", CPYTHON_PATH);
+
+        // we create it temporary to check if exists
+        rg_asprintf(&PYENV_DIR, "%s/python3_%s/", PYINSTALL_DIR, REDISGEARS_VERSION_STR);
 
         if(!PyEnvExist()){
-            RG_FREE(PYENV_DIR);
-            rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
+            RG_FREE(PYINSTALL_DIR);
+            rg_asprintf(&PYINSTALL_DIR, "%s/", GearsConfig_GetPythonInstallationDir());
         }
+
+        RG_FREE(PYENV_DIR);
 #else
-        rg_asprintf(&PYENV_DIR, "%s/python3_%s/", GearsConfig_GetPythonInstallationDir(), REDISGEARS_VERSION_STR);
+        rg_asprintf(&PYINSTALL_DIR, "%s/", GearsConfig_GetPythonInstallationDir());
 #endif
 
     }
+    rg_asprintf(&PYENV_DIR, "%s/python3_%s/", PYINSTALL_DIR, REDISGEARS_VERSION_STR);
     rg_asprintf(&PYENV_HOME_DIR, "%s/.venv/", PYENV_DIR);
     rg_asprintf(&PYENV_BIN_DIR, "%s/bin", PYENV_HOME_DIR);
     rg_asprintf(&PYENV_ACTIVATE, "%s/activate_this.py", PYENV_BIN_DIR);
@@ -3344,8 +3351,8 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
 
         ExecCommand(ctx, "tar -xvzf "TMP_DEPS_FILE_PATH_FMT" -C "TMP_DEPS_FILE_DIR_FMT, shardUid, expectedSha256, shardUid, expectedSha256);
 
-        ExecCommand(ctx, "mkdir -p %s", GearsConfig_GetPythonInstallationDir());
-        ExecCommand(ctx, "mv "TMP_DEPS_FILE_DIR_FMT"/python3_%s/ %s", shardUid, expectedSha256, REDISGEARS_VERSION_STR, PYENV_DIR);
+        ExecCommand(ctx, "mkdir -p %s", PYINSTALL_DIR);
+        ExecCommand(ctx, "mv "TMP_DEPS_FILE_DIR_FMT"/python3_%s/ %s", shardUid, expectedSha256, REDISGEARS_VERSION_STR, PYINSTALL_DIR);
     }else{
         RedisModule_Log(ctx, "notice", "Found python installation under: %s", PYENV_DIR);
     }
