@@ -56,7 +56,7 @@ COPY --from=builder /build/redisgears.so $REDIS_MODULES/
 COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts/
 
 RUN set -xe ;\
-	d=/var/opt/redislabs/modules/rg/`cat /var/opt/redislabs/artifacts/VERSION`/deps ;\
+	d=/var/opt/redislabs/modules/rg/ ;\
 	mkdir -p $d ;\
 	tar --warning=no-timestamp -xzf /var/opt/redislabs/artifacts/release/redisgears-dependencies.*.tgz -C $d
 
