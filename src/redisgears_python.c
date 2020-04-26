@@ -2463,7 +2463,7 @@ static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     int ctxFlags = RedisModule_GetContextFlags(ctx);
 
-    if(ctxFlags && REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI){
+    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI)){
         RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec or lua");
         return REDISMODULE_OK;
     }
