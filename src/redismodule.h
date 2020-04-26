@@ -104,6 +104,9 @@
 #define REDISMODULE_NOTIFY_STREAM (1<<10)     /* t */
 #define REDISMODULE_NOTIFY_ALL (REDISMODULE_NOTIFY_GENERIC | REDISMODULE_NOTIFY_STRING | REDISMODULE_NOTIFY_LIST | REDISMODULE_NOTIFY_SET | REDISMODULE_NOTIFY_HASH | REDISMODULE_NOTIFY_ZSET | REDISMODULE_NOTIFY_EXPIRED | REDISMODULE_NOTIFY_EVICTED | REDISMODULE_NOTIFY_STREAM)      /* A */
 
+// available on redis 6 enterprise and above
+#define REDISMODULE_NOTIFY_TRIMMED (1<<30)     /* trimmed by reshard trimming */
+
 
 /* A special pointer that we can use between the core and the module to signal
  * field deletion, and that is impossible to be a valid pointer. */
@@ -371,6 +374,8 @@ int REDISMODULE_API_FUNC(RedisModule_CommandFilterArgDelete)(RedisModuleCommandF
 
 // enterprise api
 int REDISMODULE_API_FUNC(RedisModule_AvoidReplicaTraffic)();
+int REDISMODULE_API_FUNC(RedisModule_ShardingGetKeySlot)(RedisModuleString *keyname);
+void REDISMODULE_API_FUNC(RedisModule_ShardingGetSlotRange)(int *first_slot, int *last_slot);
 
 /* This is included inline inside each Redis module. */
 static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int apiver) __attribute__((unused));
@@ -545,6 +550,8 @@ static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int 
 
     // enterprise api
     REDISMODULE_GET_API(AvoidReplicaTraffic);
+    REDISMODULE_GET_API(ShardingGetKeySlot);
+    REDISMODULE_GET_API(ShardingGetSlotRange);
 
     if (RedisModule_IsModuleNameBusy && RedisModule_IsModuleNameBusy(name)) return REDISMODULE_ERR;
     RedisModule_SetModuleAttribs(ctx,name,ver,apiver);

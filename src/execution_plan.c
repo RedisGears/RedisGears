@@ -927,7 +927,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
         }
         size_t len;
         char* key = RedisGears_KeyRecordGetKey(record, &len);
-        char* shardIdToSendRecord = Cluster_GetNodeIdByKey(key);
+        const char* shardIdToSendRecord = Cluster_GetNodeIdByKey(key);
         if(memcmp(shardIdToSendRecord, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0){
             // this record should stay with us, lets return it.
         	Gears_BufferFree(buff);
