@@ -600,7 +600,7 @@ void Cluster_SendClusterSet(RedisModuleCtx *ctx, RedisModuleString** argv, int a
     write(notify[1], &msgStruct, sizeof(Msg*));
 }
 
-void Cluster_SendMsg(char* id, char* function, char* msg, size_t len){
+void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len){
     Msg* msgStruct = RG_ALLOC(sizeof(*msgStruct));
     if(id){
         memcpy(msgStruct->sendMsg.idToSend, id, REDISMODULE_NODE_ID_LEN);
@@ -641,9 +641,30 @@ const char* Cluster_GetMyHashTag(){
     return CurrCluster->myHashTag;
 }
 
-unsigned int keyHashSlot(char *key, int keylen);
+uint16_t Gears_crc16(const char *buf, int len);
 
-char* Cluster_GetNodeIdByKey(char* key){
+static unsigned int keyHashSlot(char *key, int keylen) {
+    int s, e; /* start-end indexes of { and } */
+
+    for (s = 0; s < keylen; s++)
+        if (key[s] == '{') break;
+
+    /* No '{' ? Hash the whole key. This is the base case. */
+    if (s == keylen) return Gears_crc16(key,keylen) & 0x3FFF;
+
+    /* '{' found? Check if we have the corresponding '}'. */
+    for (e = s+1; e < keylen; e++)
+        if (key[e] == '}') break;
+
+    /* No '}' or nothing between {} ? Hash the whole key. */
+    if (e == keylen || e == s+1) return Gears_crc16(key,keylen) & 0x3FFF;
+
+    /* If we are here there is both a { and a } on its right. Hash
+     * what is in the middle between { and }. */
+    return Gears_crc16(key+s+1,e-s-1) & 0x3FFF;
+}
+
+const char* Cluster_GetNodeIdByKey(char* key){
     unsigned int slot = keyHashSlot(key, strlen(key));
     return CurrCluster->slots[slot]->id;
 }

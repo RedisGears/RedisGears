@@ -105,6 +105,7 @@ typedef struct PythonRequirementCtx{
     char* basePath;
     char* name;
     char** wheels;
+    volatile bool isInstalled;
 }PythonRequirementCtx;
 
 Gears_dict* RequirementsDict = NULL;
@@ -239,6 +240,8 @@ static PythonRequirementCtx* PythonRequirementCtx_Create(const char* requirement
     Gears_dictAdd(RequirementsDict, ret->name, ret);
 
     PythonRequirementCtx_VerifyBasePath(ret);
+
+    ret->isInstalled = false;
 
     return ret;
 }
@@ -381,6 +384,9 @@ static PythonSessionCtx* PythonSessionCtx_Get(char* id){
 static int PythonSessionCtx_DownloadAndInstallDeps(PythonSessionCtx* session){
     for(size_t i = 0 ; i < array_len(session->requirements) ; ++i){
         PythonRequirementCtx* req = session->requirements[i];
+        if(req->isInstalled){
+            continue;
+        }
         if(!PythonRequirementCtx_DownloadRequirement(req)){
             return false;
         }
@@ -388,6 +394,7 @@ static int PythonSessionCtx_DownloadAndInstallDeps(PythonSessionCtx* session){
         if(!PythonRequirementCtx_InstallRequirement(req)){
             return false;
         }
+        req->isInstalled = true;
     }
     return true;
 }
@@ -422,6 +429,12 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** re
                 session = NULL;
                 break;
             }
+        }
+
+        if(!req->isInstalled){
+            // it could be that the requirement already exits but not yet installed
+            // in this case we will move the execution to background installation also.
+            session->isInstallationNeeded = true;
         }
 
         session->requirements = array_append(session->requirements , req);
