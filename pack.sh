@@ -27,6 +27,7 @@ if [[ $1 == --help || $1 == help ]]; then
 		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
 		JUST_PRINT=1  Only print package names, do not generate
 
+		VARIANT=name        Build variant (empty for standard packages)
 		BRANCH=name         Branch name for snapshot packages
 		GITSHA=1            Append Git SHA to shapshot package names
 		CPYTHON_PREFIX=dir  Python install dir
@@ -57,12 +58,13 @@ OSNICK=$(./deps/readies/bin/platform --osnick)
 #----------------------------------------------------------------------------------------------
 
 pack() {
+	# artifact=release|snapshot
 	local artifact="$1"
-	local vertag="$2"
+	local pack_fname="$2"
 
 	cd $ROOT
 	local ramp="$(command -v python) -m RAMP.ramp" 
-	local packfile=artifacts/$artifact/$PACKAGE_NAME.$OS-$OSNICK-$ARCH.$vertag.zip
+	local packfile=artifacts/$artifact/$pack_fname
 	
 	./deps/readies/bin/xtx -d GEARS_PYTHON3_NAME=python3_$SEMVER -d GEARS_PYTHON3_FNAME=$URL_FNAME -d GEARS_PYTHON3_SHA256=$(cat $DEPS.sha256) ramp.yml > /tmp/ramp.yml
 	local packname=$(GEARS_NO_DEPS=1 $ramp pack -m /tmp/ramp.yml -o $packfile $GEARS_SO 2> /tmp/ramp.err | tail -1)
@@ -128,8 +130,11 @@ cd $ROOT
 NUMVER=$(NUMERIC=1 $ROOT/getver)
 SEMVER=$($ROOT/getver)
 
-RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$SEMVER.zip
-SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$BRANCH.zip
+if [[ ! -z $VARIANT ]]; then
+	VARIANT=-${VARIANT}
+fi
+RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$SEMVER${VARIANT}.zip
+SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.${BRANCH}${VARIANT}.zip
 RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$SEMVER.tgz
 SNAPSHOT_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
 
@@ -165,6 +170,6 @@ if [[ $DEPS == 1 ]]; then
 fi
 
 if [[ $RAMP == 1 ]]; then
-	GEARS_SO=$RELEASE_SO DEPS=artifacts/release/$RELEASE_deps URL_FNAME=$RELEASE_deps pack release "{semantic_version}"
-	GEARS_SO=$SNAPSHOT_SO DEPS=artifacts/snapshot/$SNAPSHOT_deps URL_FNAME=snapshots/$SNAPSHOT_deps pack snapshot "$BRANCH"
+	GEARS_SO=$RELEASE_SO DEPS=artifacts/release/$RELEASE_deps URL_FNAME=$RELEASE_deps pack release "$RELEASE_ramp"
+	GEARS_SO=$SNAPSHOT_SO DEPS=artifacts/snapshot/$SNAPSHOT_deps URL_FNAME=snapshots/$SNAPSHOT_deps pack snapshot "$SNAPSHOT_ramp"
 fi

@@ -60,6 +60,7 @@ ifeq ($(WITHPYTHON),1)
 export PYTHON_ENCODING ?= ucs4
 
 CPYTHON_BINDIR=bin/$(FULL_VARIANT.release)/cpython
+CPYTHON_BINROOT=bin/$(FULL_VARIANT.release)
 
 include build/cpython/Makefile.defs
 
@@ -136,7 +137,7 @@ CPYTHON_DIR=deps/cpython
 
 CC_FLAGS += \
 	-DWITHPYTHON \
-	-DCPYTHON_PATH=\"$(abspath $(BINROOT))/\" \
+	-DCPYTHON_PATH=\"$(abspath $(CPYTHON_BINROOT))/\" \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
 	-I$(BINROOT)/cpython \
@@ -200,8 +201,10 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 #----------------------------------------------------------------------------------------------
 
-RAMP.release:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=1 SNAPSHOT=0 ./pack.sh)
-RAMP.snapshot:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+RAMP_VARIANT=$(subst release,,$(FLAVOR))$(_VARIANT.string)
+
+RAMP.release:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=1 SNAPSHOT=0 VARIANT=$(RAMP_VARIANT) ./pack.sh)
+RAMP.snapshot:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=0 SNAPSHOT=1 VARIANT=$(RAMP_VARIANT) ./pack.sh)
 DEPS_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
 DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
 
@@ -327,7 +330,7 @@ endif
 
 artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot): $(TARGET) ramp.yml
 	@echo Packing module...
-	$(SHOW)RAMP=1 DEPS=0 ./pack.sh $(TARGET)
+	$(SHOW)RAMP=1 DEPS=0 VARIANT=$(RAMP_VARIANT) ./pack.sh $(TARGET)
 
 artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
 	@echo Packing dependencies...
