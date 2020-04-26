@@ -44,7 +44,6 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
 char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*));
 const char* GetShardUniqueId();
 int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);
-void getRedisVersion();
 
 #endif /* SRC_COMMANDS_H_ */
 

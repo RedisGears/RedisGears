@@ -231,7 +231,7 @@ static PythonRequirementCtx* PythonRequirementCtx_Create(const char* requirement
     ret->name = RG_STRDUP(requirement);
     rg_asprintf(&ret->basePath, "%s/%s", venvDir, ret->name);
     ret->wheels = array_new(char*, 10);
-    // refCount is starting from 2, one hold by RequirementsDict and once by the called.
+    // refCount is starting from 2, one hold by RequirementsDict and once by the caller.
     // currently we basically never delete requirments so we will know not to reinstall them
     // to save time
     ret->refCount = 2;
@@ -2461,6 +2461,13 @@ static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
 }
 
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    int ctxFlags = RedisModule_GetContextFlags(ctx);
+
+    if(ctxFlags && REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI){
+        RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec or lua");
+        return REDISMODULE_OK;
+    }
+
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
@@ -2487,14 +2494,13 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     PythonSessionCtx* session = PythonSessionCtx_Create(requirementsList, reqLen);
     if(!session){
-        RedisModule_ReplyWithError(ctx, "Could not satisfy requirments");
+        RedisModule_ReplyWithError(ctx, "Could not satisfy requirments, look at the log file for more information.");
         return REDISMODULE_OK;
     }
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
     if(session->isInstallationNeeded){
-        // todo: make sure block is allow
         RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
         RedisGearsPy_BackgroundExecute(session, bc, script, ptctx->doneFunction);
         return REDISMODULE_OK;
@@ -3302,7 +3308,8 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
 #define LOCAL_VENV_FMT          PYENV_DIR"/%s"
 
     const char *no_deps = getenv("GEARS_NO_DEPS");
-    bool skip_deps_install = no_deps && !strcmp(no_deps, "1") || !GearsConfig_DownloadDeps() || IsEnterprise();
+    bool skip_deps_install = (no_deps && !strcmp(no_deps, "1")) || !GearsConfig_DownloadDeps() ||
+                             (IsEnterprise() && !GearsConfig_ForceDownloadDepsOnEnterprise());
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
         if (skip_deps_install) {

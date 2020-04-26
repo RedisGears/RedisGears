@@ -52,6 +52,7 @@ typedef struct RedisGears_Config{
     ConfigVal dependenciesSha256;
     ConfigVal pythonInstallationDir;
     ConfigVal downloadDeps;
+    ConfigVal foreceDownloadDepsOnEnterprise;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -213,6 +214,23 @@ static bool ConfigVal_DownloadDepsSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_ForceDownloadDepsOnEnterpriseGet(){
+    return &DefaultGearsConfig.foreceDownloadDepsOnEnterprise;
+}
+
+static bool ConfigVal_ForceDownloadDepsOnEnterpriseSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        DefaultGearsConfig.foreceDownloadDepsOnEnterprise.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static const ConfigVal* ConfigVal_ExecutionThreadsGet(){
     return &DefaultGearsConfig.executionThreads;
 }
@@ -320,6 +338,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "DownloadDeps",
         .getter = ConfigVal_DownloadDepsGet,
         .setter = ConfigVal_DownloadDepsSet,
+        .configurableAtRunTime = false,
+    },
+    {
+        .name = "ForceDownloadDepsOnEnterprise",
+        .getter = ConfigVal_ForceDownloadDepsOnEnterpriseGet,
+        .setter = ConfigVal_ForceDownloadDepsOnEnterpriseSet,
         .configurableAtRunTime = false,
     },
     {
@@ -502,6 +526,10 @@ long long GearsConfig_DownloadDeps(){
     return DefaultGearsConfig.downloadDeps.val.longVal;
 }
 
+long long GearsConfig_ForceDownloadDepsOnEnterprise(){
+    return DefaultGearsConfig.downloadDeps.val.longVal;
+}
+
 long long GearsConfig_ExecutionThreads(){
     return DefaultGearsConfig.executionThreads.val.longVal;
 }
@@ -590,6 +618,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .downloadDeps = {
             .val.longVal = 1,
+            .type = LONG,
+        },
+        .foreceDownloadDepsOnEnterprise = {
+            .val.longVal = 0,
             .type = LONG,
         },
     };
