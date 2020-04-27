@@ -21,6 +21,15 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 ## Building
 
+### Clone
+To get the code and its submodules do the following:
+```
+git clone https://github.com/RedisGears/RedisGears.git
+cd RedisGears
+git submodule update --init --recursive
+```
+
+
 ### Prerequisites
 * Install [Redis 5.0](https://redis.io/) on your machine.
 * On macOS install Xcode command line tools:
