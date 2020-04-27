@@ -55,6 +55,11 @@ make all
 ## Loading
 To load the module on the same server is was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
+For example to load the module to local Redis after you followed [Building](#building) steps run:
+```
+redis-server --loadmodule ./redisgears.io
+```
+
 In case you've compiled the module on a different server than the one loading it, copy the contents of the '/var/opt/redislabs/lib/modules` to the server.
 
 ## Testing
