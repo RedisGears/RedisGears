@@ -31,4 +31,3 @@ Got questions? Feel free to ask at the [RedisGears forum](https://forum.redislab
 
 # License
 Redis Source Available License Agreement - see [LICENSE](LICENSE)
-
