@@ -30,7 +30,7 @@ The reader scans the entire database and any keys that are found can be used as 
 A record is output for each input key. The record is a dictionary structure that has four keys and their respective values:
 
   * **'key'**: the name of the key
-  * **'value'**: the value of the key.Can be empty if event is delete
+  * **'value'**: the value of the key (`#!python None` if the deleted)
   * **'type'**: the core Redis type may be: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
   * **'event'**: the event that triggered the execution (`#!python None` if the execution was created via the [run](functions.md#run) function)
 
