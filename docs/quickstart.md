@@ -21,6 +21,15 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 ## Building
 
+### Clone
+To get the code and its submodules do the following:
+```
+git clone https://github.com/RedisGears/RedisGears.git
+cd RedisGears
+git submodule update --init --recursive
+```
+
+
 ### Prerequisites
 * Install [Redis 5.0](https://redis.io/) on your machine.
 * On macOS install Xcode command line tools:
@@ -45,6 +54,11 @@ make all
 
 ## Loading
 To load the module on the same server is was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
+
+For example to load the module to local Redis after you followed [Building](#building) steps run:
+```
+redis-server --loadmodule ./redisgears.io
+```
 
 In case you've compiled the module on a different server than the one loading it, copy the contents of the '/var/opt/redislabs/lib/modules` to the server.
 
