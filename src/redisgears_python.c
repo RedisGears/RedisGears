@@ -129,9 +129,9 @@ static bool PythonRequirementCtx_DownloadRequirement(PythonRequirementCtx* req){
     int exitCode;
     for(size_t i = 0 ; i < RETRY; ++i){
         if(GearsConfig_CreateVenv()){
-            exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd %s;python -m pip wheel %s\"", venvDir, req->basePath, req->name);
+            exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate;cd '%s';python -m pip wheel '%s'\"", venvDir, req->basePath, req->name);
         }else{
-            exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s;%s/bin/python3 -m pip wheel %s\"", req->basePath, venvDir, req->name);
+            exitCode = ExecCommand(NULL, "/bin/bash -c \"cd '%s';%s/bin/python3 -m pip wheel '%s'\"", req->basePath, venvDir, req->name);
         }
         if(exitCode != 0){
             sleep(RETRY_SLEEP_IN_SEC);
@@ -160,22 +160,26 @@ static bool PythonRequirementCtx_DownloadRequirement(PythonRequirementCtx* req){
 }
 
 static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
+    assert(array_len(req->wheels) > 0);
     char* filesInDir = array_new(char, 10);
+    filesInDir = array_append(filesInDir, '\'');
     for(size_t i = 0 ; i < array_len(req->wheels) ; ++i){
         char* c = req->wheels[i];
         while(*c){
             filesInDir = array_append(filesInDir, *c);
             ++c;
         }
+        filesInDir = array_append(filesInDir, '\'');
         filesInDir = array_append(filesInDir, ' ');
+        filesInDir = array_append(filesInDir, '\'');
     }
-    filesInDir[array_len(filesInDir) - 1] = '\0';
+    filesInDir[array_len(filesInDir) - 2] = '\0';
 
     int exitCode;
     if(GearsConfig_CreateVenv()){
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate; cd %s; python -m pip install --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate; cd '%s'; python -m pip install --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
     }else{
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd %s; %s/bin/python3 -m pip install --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd '%s'; %s/bin/python3 -m pip install --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
     }
     array_free(filesInDir);
     return exitCode == 0;
@@ -199,7 +203,7 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
     }
 
     PythonRequirementCtx_VerifyBasePath(reqCtx);
-    ExecCommand(NULL, "rm -rf %s", reqCtx->basePath);
+    ExecCommand(NULL, "rm -rf '%s'", reqCtx->basePath);
     Gears_dictDelete(RequirementsDict, reqCtx->name);
     RG_FREE(reqCtx->name);
     RG_FREE(reqCtx->basePath);
@@ -223,7 +227,7 @@ static PythonRequirementCtx* PythonRequirementCtx_Get(const char* requirement){
 static PythonRequirementCtx* PythonRequirementCtx_Create(const char* requirement){
 
     // first lets create basePath
-    int exitCode = ExecCommand(NULL, "mkdir -p %s/%s", venvDir, requirement);
+    int exitCode = ExecCommand(NULL, "mkdir -p '%s/%s'", venvDir, requirement);
     if(exitCode != 0){
         return NULL;
     }
@@ -2265,103 +2269,16 @@ PyMethodDef EmbRedisAIMethods[] = {
 };
 
 static int RedisGearsPy_FreeInterpreter(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    RedisGearsPy_Lock(NULL);
-	Py_Finalize();
-	RedisModule_ReplyWithSimpleString(ctx, "OK");
-	return REDISMODULE_OK;
+//    RedisGearsPy_Lock(NULL);
+//	Py_Finalize();
+//	RedisModule_ReplyWithSimpleString(ctx, "OK");
+//	return REDISMODULE_OK;
+    RedisModule_ReplyWithCString(ctx, "Free interpreter is not longer supported");
+    return REDISMODULE_OK;
 }
 
 static int RedisGearsPy_ExecuteRemote(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc != 2){
-        return RedisModule_WrongArity(ctx);
-    }
-
-    PythonSessionCtx* session = PythonSessionCtx_Create(NULL, 0);
-    if(!session){
-        RedisModule_ReplyWithError(ctx, "Could not satisfy requirments");
-        return REDISMODULE_OK;
-    }
-
-    // deserialize gears remote builder
-    size_t len;
-    const char* serializedGRB = RedisModule_StringPtrLen(argv[1], &len);
-
-    Gears_Buffer* buff = Gears_BufferCreate();
-    Gears_BufferWriter bw;
-    Gears_BufferWriterInit(&bw, buff);
-    RedisGears_BWWriteBuffer(&bw, serializedGRB, len);
-
-    Gears_BufferReader br;
-    Gears_BufferReaderInit(&br, buff);
-
-    char* err = NULL;
-    PyObject * grb = RedisGearsPy_PyCallbackDeserialize(NULL, &br, &err);
-
-    Gears_BufferFree(buff);
-
-    if(!grb){
-        if(err){
-            RedisModule_Log(ctx, "warning", "could not deserialize GearsRemoteBuilder, error='%s'", *err);
-            RG_FREE(err);
-        }else{
-            RedisModule_ReplyWithError(ctx, "could not deserialize GearsRemoteBuilder");
-        }
-        return REDISMODULE_OK;
-    }
-
-    void* old = RedisGearsPy_Lock(session);
-
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
-
-    DoneCallbackFunction oldDoneFunction = ptctx->doneFunction;
-    ptctx->doneFunction = onDoneSerializeResults;
-
-    ptctx->currentCtx = ctx;
-
-    ptctx->createdExecution = NULL;
-
-    PyObject* pArgs = PyTuple_New(2);
-    PyTuple_SetItem(pArgs, 0, grb);
-    PyObject* globalsDict = PyDict_Copy(pyGlobals);
-    PyTuple_SetItem(pArgs, 1, globalsDict);
-    PyObject* v = PyObject_CallObject(runGearsRemoteBuilderCallback, pArgs);
-    Py_DECREF(pArgs);
-
-    ptctx->doneFunction = oldDoneFunction;
-
-    if(!v){
-        char* err = getPyError();
-        if(!err){
-            RedisModule_ReplyWithError(ctx, "failed running the given script");
-        }else{
-            RedisModule_ReplyWithError(ctx, err);
-            RG_FREE(err);
-        }
-        if(ptctx->createdExecution){
-            // error occured, we need to abort the created execution.
-            int res = RedisGears_AbortExecution(ptctx->createdExecution);
-            assert(res == REDISMODULE_OK);
-            RedisGears_DropExecution(ptctx->createdExecution);
-        }
-
-        RedisGearsPy_Unlock(old);
-
-        ptctx->createdExecution = NULL;
-        ptctx->currentCtx = NULL;
-        return REDISMODULE_OK;
-    }
-
-    if(ptctx->createdExecution){
-        RedisModuleBlockedClient *bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 1000000);
-        RedisGears_AddOnDoneCallback(ptctx->createdExecution, ptctx->doneFunction, bc);
-    }else{
-        RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
-    }
-    RedisGearsPy_Unlock(old);
-
-    ptctx->createdExecution = NULL;
-    ptctx->currentCtx = NULL;
-
+    RedisModule_ReplyWithCString(ctx, "Execute remote is not longer supported");
     return REDISMODULE_OK;
 }
 

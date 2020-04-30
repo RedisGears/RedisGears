@@ -555,6 +555,24 @@ def testDependenciesInstall(env):
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redisgraph'", res[0][0])
 
+def testDependenciesInstallWithVersionGreater(env):
+    conn = getConnectionByEnv(env)
+    res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                            "map(lambda x: str(__import__('redis')))."
+                            "collect().distinct().run()", 'REQUIREMENTS', 'redis>=3')
+    env.assertEqual(len(res[0]), 1)
+    env.assertEqual(len(res[1]), 0)
+    env.assertContains("<module 'redis'", res[0][0])
+
+def testDependenciesInstallWithVersionEqual(env):
+    conn = getConnectionByEnv(env)
+    res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
+                            "map(lambda x: str(__import__('redis')))."
+                            "collect().distinct().run()", 'REQUIREMENTS', 'redis==3')
+    env.assertEqual(len(res[0]), 1)
+    env.assertEqual(len(res[1]), 0)
+    env.assertContains("<module 'redis'", res[0][0])
+
 def testDependenciesInstallFailure(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
