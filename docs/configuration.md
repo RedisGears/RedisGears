@@ -23,7 +23,7 @@ Configuration options can be set when the module is loaded. The options are pass
     For setting the module's configuration with the [`MODULE LOAD`](https://redis.io/commands/module-load) command use:
 
     ```
-    127.0.0.1:6379> loadmodule /path/to/redisgears.so <option> <value> ...
+    127.0.0.1:6379> MODULE LOAD /path/to/redisgears.so <option> <value> ...
     ```
 
 **Runtime Configuration**
