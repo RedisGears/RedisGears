@@ -701,6 +701,32 @@ void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     LockHandler_Release(ctx);
 }
 
+static int CheckSupportedVestion(){
+    RedisVersion supportedVersion = {
+            .redisMajorVersion = 5,
+            .redisMinorVersion = 0,
+            .redisPatchVersion = 7
+    };
+
+    if(currVesion.redisMajorVersion < supportedVersion.redisMajorVersion){
+        return REDISMODULE_ERR;
+    }
+
+    if(currVesion.redisMajorVersion == supportedVersion.redisMajorVersion){
+        if(currVesion.redisMinorVersion < supportedVersion.redisMinorVersion){
+            return REDISMODULE_ERR;
+        }
+
+        if(currVesion.redisMinorVersion == supportedVersion.redisMinorVersion){
+            if(currVesion.redisPatchVersion < supportedVersion.redisPatchVersion){
+                return REDISMODULE_ERR;
+            }
+        }
+    }
+
+    return REDISMODULE_OK;
+}
+
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -710,11 +736,16 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     getRedisVersion();
     RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",
-	                redisMajorVersion, redisMinorVersion, redisPatchVersion,
-	                IsEnterprise() ? "enterprise" : "oss");
+                    currVesion.redisMajorVersion, currVesion.redisMinorVersion, currVesion.redisPatchVersion,
+	                IsEnterprise() ? (isCrdt ? "enterprise-crdt" : "enterprise") : "oss");
     if (IsEnterprise()) {
         RedisModule_Log(ctx, "notice", "Redis Enterprise version found by RedisGears : %d.%d.%d-%d",
                         rlecMajorVersion, rlecMinorVersion, rlecPatchVersion, rlecBuild);
+    }
+
+    if(CheckSupportedVestion() != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "Redis version is to old, please upgrade to redis 5.0.7 and above.");
+        return REDISMODULE_ERR;
     }
 
     if(LockHandler_Initialize() != REDISMODULE_OK){

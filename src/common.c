@@ -15,14 +15,14 @@
 
 static char* shardUniqueId = NULL;
 
-int redisMajorVersion;
-int redisMinorVersion;
-int redisPatchVersion;
+RedisVersion currVesion;
 
 int rlecMajorVersion;
 int rlecMinorVersion;
 int rlecPatchVersion;
 int rlecBuild;
+
+bool isCrdt;
 
 
 static uint64_t idHashFunction(const void *key){
@@ -130,8 +130,8 @@ void getRedisVersion() {
     size_t len;
     const char *replyStr = RedisModule_CallReplyStringPtr(reply, &len);
 
-    int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &redisMajorVersion,
-                 &redisMinorVersion, &redisPatchVersion);
+    int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &currVesion.redisMajorVersion,
+                 &currVesion.redisMinorVersion, &currVesion.redisPatchVersion);
 
     assert(n == 3);
 
@@ -149,6 +149,17 @@ void getRedisVersion() {
     }
 
     RedisModule_FreeCallReply(reply);
+
+    isCrdt = true;
+    reply = RedisModule_Call(ctx, "CRDT.CONFIG", "cc", "GET", "active-gc");
+    if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        isCrdt = false;
+    }
+
+    if(reply){
+        RedisModule_FreeCallReply(reply);
+    }
+
     RedisModule_FreeThreadSafeContext(ctx);
 }
 

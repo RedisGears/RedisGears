@@ -24,14 +24,20 @@
 
 extern Gears_dictType* dictTypeHeapIdsPtr;
 
-extern int redisMajorVersion;
-extern int redisMinorVersion;
-extern int redisPatchVersion;
+typedef struct RedisVersion{
+    int redisMajorVersion;
+    int redisMinorVersion;
+    int redisPatchVersion;
+}RedisVersion;
+
+extern RedisVersion currVesion;
 
 extern int rlecMajorVersion;
 extern int rlecMinorVersion;
 extern int rlecPatchVersion;
 extern int rlecBuild;
+
+extern bool isCrdt;
 
 static inline int IsEnterprise() {
   return rlecMajorVersion != -1;
