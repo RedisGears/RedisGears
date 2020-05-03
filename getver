@@ -2,7 +2,7 @@
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
-getver_c=$(mktemp "${TMPDIR:-/tmp}"/getver-XXXXXXX.c)
+getver_c=$(mktemp "${TMPDIR:-/tmp}/getver-XXXXXXX.c")
 if [[ $NUMERIC != 1 ]]; then
 	cat <<- EOF > $getver_c
 		#include <stdio.h>
@@ -26,7 +26,7 @@ else
 		}
 		EOF
 fi
-prog=$(mktemp "${TMPDIR:-/tmp}"/getver.XXXXXXX)
+prog=$(mktemp "${TMPDIR:-/tmp}/getver.XXXXXXX")
 gcc -I$HERE -o $prog $getver_c
 ver=`$prog`
 rm -f $prog $getver_c
