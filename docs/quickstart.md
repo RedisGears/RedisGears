@@ -21,6 +21,29 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 ## Building
 
+### Prerequisites
+* Install build-essential:
+
+```
+sudo apt-get install build-essential
+```
+
+* Install [Redis 6.0.1 or higher](https://redis.io/) on your machine.
+
+```
+git clone https://github.com/antirez/redis.git
+cd redis
+git checkout 6.0.1 
+make
+make install
+```
+
+* On macOS install Xcode command line tools:
+
+```
+xcode-select --install
+```
+
 ### Clone
 To get the code and its submodules do the following:
 ```
@@ -29,21 +52,12 @@ cd RedisGears
 git submodule update --init --recursive
 ```
 
-
-### Prerequisites
-* Install [Redis 5.0](https://redis.io/) on your machine.
-* On macOS install Xcode command line tools:
-
-```
-xcode-select --install
-```
-
-* Run: `make setup`
-
 ### Compiling
-To compile the module do the following:
+Inside the RedisGears directory run the following:
 
 ```
+./deps/readies/bin/getpy2
+make setup
 make fetch
 make all
 ```
