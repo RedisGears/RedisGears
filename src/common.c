@@ -15,15 +15,41 @@
 
 static char* shardUniqueId = NULL;
 
-int redisMajorVersion;
-int redisMinorVersion;
-int redisPatchVersion;
+RedisVersion currVesion;
+
+RedisVersion supportedVersion = {
+        .redisMajorVersion = 5,
+        .redisMinorVersion = 0,
+        .redisPatchVersion = 7,
+};
 
 int rlecMajorVersion;
 int rlecMinorVersion;
 int rlecPatchVersion;
 int rlecBuild;
 
+bool isCrdt;
+
+
+int CheckSupportedVestion(){
+    if(currVesion.redisMajorVersion < supportedVersion.redisMajorVersion){
+        return REDISMODULE_ERR;
+    }
+
+    if(currVesion.redisMajorVersion == supportedVersion.redisMajorVersion){
+        if(currVesion.redisMinorVersion < supportedVersion.redisMinorVersion){
+            return REDISMODULE_ERR;
+        }
+
+        if(currVesion.redisMinorVersion == supportedVersion.redisMinorVersion){
+            if(currVesion.redisPatchVersion < supportedVersion.redisPatchVersion){
+                return REDISMODULE_ERR;
+            }
+        }
+    }
+
+    return REDISMODULE_OK;
+}
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, ID_LEN);
@@ -130,8 +156,8 @@ void getRedisVersion() {
     size_t len;
     const char *replyStr = RedisModule_CallReplyStringPtr(reply, &len);
 
-    int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &redisMajorVersion,
-                 &redisMinorVersion, &redisPatchVersion);
+    int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &currVesion.redisMajorVersion,
+                 &currVesion.redisMinorVersion, &currVesion.redisPatchVersion);
 
     assert(n == 3);
 
@@ -149,6 +175,17 @@ void getRedisVersion() {
     }
 
     RedisModule_FreeCallReply(reply);
+
+    isCrdt = true;
+    reply = RedisModule_Call(ctx, "CRDT.CONFIG", "cc", "GET", "active-gc");
+    if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        isCrdt = false;
+    }
+
+    if(reply){
+        RedisModule_FreeCallReply(reply);
+    }
+
     RedisModule_FreeThreadSafeContext(ctx);
 }
 

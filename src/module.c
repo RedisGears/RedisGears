@@ -710,11 +710,18 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     getRedisVersion();
     RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",
-	                redisMajorVersion, redisMinorVersion, redisPatchVersion,
-	                IsEnterprise() ? "enterprise" : "oss");
+                    currVesion.redisMajorVersion, currVesion.redisMinorVersion, currVesion.redisPatchVersion,
+	                IsEnterprise() ? (isCrdt ? "enterprise-crdt" : "enterprise") : "oss");
     if (IsEnterprise()) {
         RedisModule_Log(ctx, "notice", "Redis Enterprise version found by RedisGears : %d.%d.%d-%d",
                         rlecMajorVersion, rlecMinorVersion, rlecPatchVersion, rlecBuild);
+    }
+
+    if(CheckSupportedVestion() != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "Redis version is to old, please upgrade to redis %d.%d.%d and above.", supportedVersion.redisMajorVersion,
+                                                                                                                supportedVersion.redisMinorVersion,
+                                                                                                                supportedVersion.redisPatchVersion);
+        return REDISMODULE_ERR;
     }
 
     if(LockHandler_Initialize() != REDISMODULE_OK){
