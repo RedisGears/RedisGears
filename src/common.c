@@ -17,6 +17,12 @@ static char* shardUniqueId = NULL;
 
 RedisVersion currVesion;
 
+RedisVersion supportedVersion = {
+        .redisMajorVersion = 5,
+        .redisMinorVersion = 0,
+        .redisPatchVersion = 7
+};
+
 int rlecMajorVersion;
 int rlecMinorVersion;
 int rlecPatchVersion;
@@ -24,6 +30,26 @@ int rlecBuild;
 
 bool isCrdt;
 
+
+int CheckSupportedVestion(){
+    if(currVesion.redisMajorVersion < supportedVersion.redisMajorVersion){
+        return REDISMODULE_ERR;
+    }
+
+    if(currVesion.redisMajorVersion == supportedVersion.redisMajorVersion){
+        if(currVesion.redisMinorVersion < supportedVersion.redisMinorVersion){
+            return REDISMODULE_ERR;
+        }
+
+        if(currVesion.redisMinorVersion == supportedVersion.redisMinorVersion){
+            if(currVesion.redisPatchVersion < supportedVersion.redisPatchVersion){
+                return REDISMODULE_ERR;
+            }
+        }
+    }
+
+    return REDISMODULE_OK;
+}
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, ID_LEN);

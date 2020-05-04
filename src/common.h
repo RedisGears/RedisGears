@@ -31,6 +31,7 @@ typedef struct RedisVersion{
 }RedisVersion;
 
 extern RedisVersion currVesion;
+extern RedisVersion supportedVersion;
 
 extern int rlecMajorVersion;
 extern int rlecMinorVersion;
@@ -43,6 +44,7 @@ static inline int IsEnterprise() {
   return rlecMajorVersion != -1;
 }
 
+int CheckSupportedVestion();
 void getRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);
