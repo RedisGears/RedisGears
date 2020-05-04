@@ -18,9 +18,9 @@ static char* shardUniqueId = NULL;
 RedisVersion currVesion;
 
 RedisVersion supportedVersion = {
-        .redisMajorVersion = 6,
+        .redisMajorVersion = 5,
         .redisMinorVersion = 0,
-        .redisPatchVersion = 0,
+        .redisPatchVersion = 7,
 };
 
 int rlecMajorVersion;
