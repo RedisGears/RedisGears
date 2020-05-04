@@ -208,3 +208,18 @@ _Default Value_
 _Runtime Configurability_
 
 Not Supported
+
+## ExecutionMaxIdleTime
+The **ExecutionMaxIdleTime** configuration option controls the amount of time (in milliseconds) an execution is allowed to stay idle before RedisGears aborts it. Idle execution means no progress is made on executing it. The main reason an execution is not progress is that it is waiting for another shard to send as Records (and this shard crashed and those records will never be sent). Notice that the moment an execution starts to make progress again the timer is reset.
+
+_Expected Value_
+
+Any integer greater than 0
+
+_Default Value_
+
+"5 seconds"
+
+_Runtime Configurability_
+
+Supported

@@ -22,10 +22,26 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 ## Building
 
 ### Prerequisites
-* Install build-essential:
-
+* Install git
+for debian like systems:
 ```
-sudo apt-get install build-essential
+apt-get install git
+```
+for fedora like systems:
+```
+yum install git
+```
+
+
+* Install build-essential (or the equavalent to your system):
+for debian like systems:
+```
+apt-get install build-essential
+```
+for fedora like systems:
+```
+yum install devtoolset-7
+scl enable devtoolset-7 bash
 ```
 
 * Install [Redis 6.0.1 or higher](https://redis.io/) on your machine.
@@ -62,15 +78,17 @@ make fetch
 make all
 ```
 
+You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbol link to it on the main directory (called `redisgears.os`).
+
 ## Loading
-To load the module on the same server is was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
+To load the module on the same server it was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
 For example to load the module to local Redis after you followed [Building](#building) steps run:
 ```
 redis-server --loadmodule ./redisgears.io
 ```
 
-In case you've compiled the module on a different server than the one loading it, copy the contents of the '/var/opt/redislabs/lib/modules` to the server.
+In case you've compiled the module on a different server than the one loading it, copy the directory `bin/linux-x64-release/python3_<version>` (the version is the current version compiled) to the server on some location and give RedisGears this location using [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter (notice, the directoty name should not be changed).
 
 ## Testing
 Tests are written in Python and the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
