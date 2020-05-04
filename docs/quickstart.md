@@ -23,22 +23,22 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 ### Prerequisites
 * Install git
-for debian like systems:
+for Debian like systems:
 ```
 apt-get install git
 ```
-for fedora like systems:
+for Fedora like systems:
 ```
 yum install git
 ```
 
 
 * Install build-essential (or the equavalent to your system):
-for debian like systems:
+for Debian like systems:
 ```
 apt-get install build-essential
 ```
-for fedora like systems:
+for Fedora like systems:
 ```
 yum install devtoolset-7
 scl enable devtoolset-7 bash
