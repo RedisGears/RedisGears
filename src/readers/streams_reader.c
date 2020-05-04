@@ -158,8 +158,19 @@ static void StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx*
     bool ret = StreamReader_VerifyCallReply(rctx, reply, "Failed on XINFO command", "warning");
     assert(ret);
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-    assert(RedisModule_CallReplyLength(reply) > 10);
-    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, 9);
+    size_t lastGeneratedIdIndex = 0;
+    for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; i+=2){
+        RedisModuleCallReply *currReply = RedisModule_CallReplyArrayElement(reply, i);
+        size_t currReplyStrLen;
+        const char* currReplyStr = RedisModule_CallReplyStringPtr(currReply, &currReplyStrLen);
+        if(strncmp(currReplyStr, "last-generated-id", currReplyStrLen) == 0){
+            lastGeneratedIdIndex = i + 1;
+            break;
+        }
+    }
+    assert(lastGeneratedIdIndex > 0);
+    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, lastGeneratedIdIndex);
+    assert(RedisModule_CallReplyType(idReply) == REDISMODULE_REPLY_STRING);
     const char* idStr = RedisModule_CallReplyStringPtr(idReply, NULL);
     ssrctx->lastId = StreamReader_ParseStreamId(idStr);
     RedisModule_FreeCallReply(reply);
