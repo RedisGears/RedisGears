@@ -34,7 +34,7 @@ yum install git
 
 
 * Install build-essential (or the equavalent to your system):
-for Debian like systems:
+for Debian-like systems:
 ```
 apt-get install build-essential
 ```
