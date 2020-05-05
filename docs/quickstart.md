@@ -88,7 +88,7 @@ For example to load the module to local Redis after you followed [Building](#bui
 redis-server --loadmodule ./redisgears.io
 ```
 
-In case you've compiled the module on a different server than the one loading it, copy the directory `bin/linux-x64-release/python3_<version>` (the version is the current version compiled) to the server on some location and give RedisGears this location using [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter (notice, the directoty name should not be changed).
+If you compiled the module on a different server than the one loading it, copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>` should not be changed.
 
 ## Testing
 Tests are written in Python and the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
