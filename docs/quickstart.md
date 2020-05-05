@@ -38,7 +38,7 @@ for Debian-like systems:
 ```
 apt-get install build-essential
 ```
-for Fedora like systems:
+for Fedora-like systems:
 ```
 yum install devtoolset-7
 scl enable devtoolset-7 bash
