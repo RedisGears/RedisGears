@@ -316,7 +316,7 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
         if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
             assert(false);
         }
 
@@ -325,7 +325,7 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
 
         int ret = CommandReader_RegisrterTrigger(fep, mode, crtArgs, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "Could not register on rdbload execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not register on rdbload execution, error='%s'", err);
             assert(false);
         }
 
