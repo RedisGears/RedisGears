@@ -73,7 +73,7 @@ Inside the RedisGears directory run the following:
 
 ```
 ./deps/readies/bin/getpy2
-make setup
+make setup # might require root privileges for installations
 make fetch
 make all
 ```
