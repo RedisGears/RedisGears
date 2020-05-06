@@ -84,9 +84,6 @@ typedef struct PythonThreadCtx{
 static void onDone(ExecutionPlan* ep, void* privateData);
 char* getPyError();
 
-/* callback that get gears remote builder and run it, used for python client */
-static PyObject *runGearsRemoteBuilderCallback;
-
 #define PYTHON_ERROR "error running python code"
 
 static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, char** err);
@@ -3377,6 +3374,11 @@ static int PythonRecord_SendReply(Record* r, RedisModuleCtx* rctx){
         size_t len;
         char* str = (char*)PyUnicode_AsUTF8AndSize(obj, &len);
         RedisModule_ReplyWithStringBuffer(rctx, (char*)str, len);
+    }else if(PyBytes_Check(obj)) {
+        size_t len;
+        char* str;
+        PyBytes_AsStringAndSize(obj, &str, &len);
+        RedisModule_ReplyWithStringBuffer(rctx, str, len);
     }else{
         RedisModule_ReplyWithStringBuffer(rctx, "PY RECORD", strlen("PY RECORD"));
     }
@@ -3602,10 +3604,6 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     	RedisModule_Log(ctx, "warning", "could not register command rg.pystats");
 		return REDISMODULE_ERR;
     }
-
-    runGearsRemoteBuilderCallback = PyDict_GetItemString(pyGlobals, "RunGearsRemoteBuilder");
-    assert(runGearsRemoteBuilderCallback);
-    Py_INCREF(runGearsRemoteBuilderCallback);
 
     PyEval_SaveThread();
 
