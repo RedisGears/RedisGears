@@ -1112,7 +1112,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err);
         if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
             assert(false);
         }
 
@@ -1122,7 +1122,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = StreamReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
             assert(false);
         }
         FlatExecutionPlan_AddToRegisterDict(fep);
