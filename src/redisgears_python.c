@@ -84,9 +84,6 @@ typedef struct PythonThreadCtx{
 static void onDone(ExecutionPlan* ep, void* privateData);
 char* getPyError();
 
-/* callback that get gears remote builder and run it, used for python client */
-static PyObject *runGearsRemoteBuilderCallback;
-
 #define PYTHON_ERROR "error running python code"
 
 static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, char** err);
@@ -1616,17 +1613,7 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
 }
 
 static bool verifyOrLoadRedisAI(){
-    if(!globals.redisAILoaded){
-        RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
-        if(RedisAI_Initialize(ctx) != REDISMODULE_OK){
-            PyErr_SetString(GearsError, "RedisAI is not loaded, it is not possible to use AI interface.");
-            RedisModule_FreeThreadSafeContext(ctx);
-            return false;
-        }
-        RedisModule_FreeThreadSafeContext(ctx);
-        globals.redisAILoaded = true;
-    }
-    return true;
+    return globals.redisAILoaded;
 }
 
 #define verifyRedisAILoaded() \
@@ -1933,11 +1920,10 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
     // TODO: deal with errors better
     RAI_Error err = {0};
-    RedisAI_ModelRun(pyg->g, &err);
+    RedisAI_ModelRun(&pyg->g, 1, &err);
     if (err.code) {
-        printf("ERROR: %s\n", err.detail);
-        Py_INCREF(Py_None);
-        return Py_None;
+        PyErr_SetString(GearsError, err.detail);
+        return NULL;
     }
     PyObject* tensorList = PyList_New(0);
     for(size_t i = 0 ; i < RedisAI_ModelRunCtxNumOutputs(pyg->g) ; ++i){
@@ -2049,9 +2035,8 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     RAI_Error err = {0};
     RedisAI_ScriptRun(pys->s, &err);
     if (err.code) {
-        printf("ERROR: %s\n", err.detail);
-        Py_INCREF(Py_None);
-        return Py_None;
+        PyErr_SetString(GearsError, err.detail);
+        return NULL;
     }
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, 0));
@@ -3387,6 +3372,11 @@ static int PythonRecord_SendReply(Record* r, RedisModuleCtx* rctx){
         size_t len;
         char* str = (char*)PyUnicode_AsUTF8AndSize(obj, &len);
         RedisModule_ReplyWithStringBuffer(rctx, (char*)str, len);
+    }else if(PyBytes_Check(obj)) {
+        size_t len;
+        char* str;
+        PyBytes_AsStringAndSize(obj, &str, &len);
+        RedisModule_ReplyWithStringBuffer(rctx, str, len);
     }else{
         RedisModule_ReplyWithStringBuffer(rctx, "PY RECORD", strlen("PY RECORD"));
     }
@@ -3612,10 +3602,6 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     	RedisModule_Log(ctx, "warning", "could not register command rg.pystats");
 		return REDISMODULE_ERR;
     }
-
-    runGearsRemoteBuilderCallback = PyDict_GetItemString(pyGlobals, "RunGearsRemoteBuilder");
-    assert(runGearsRemoteBuilderCallback);
-    Py_INCREF(runGearsRemoteBuilderCallback);
 
     PyEval_SaveThread();
 

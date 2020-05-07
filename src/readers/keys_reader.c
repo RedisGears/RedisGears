@@ -203,7 +203,7 @@ static Record* GetStringValueRecord(RedisModuleKey* handler, RedisModuleCtx* ctx
     size_t len;
     char* val = NULL;
     RedisModuleCallReply *r = NULL;
-    if(!isCrdt){
+    if(!gearsIsCrdt){
         val = RedisModule_StringDMA(handler, &len, REDISMODULE_READ);
     } else {
         // on crdt the string llapi is not supported so we need to use rm_call
@@ -886,7 +886,7 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
         if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
             assert(false);
         }
 
@@ -896,7 +896,7 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = KeysReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
             assert(false);
         }
 

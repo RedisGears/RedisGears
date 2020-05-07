@@ -18,20 +18,20 @@ static char* shardUniqueId = NULL;
 RedisVersion currVesion;
 
 RedisVersion supportedVersion = {
-        .redisMajorVersion = 5,
+        .redisMajorVersion = 6,
         .redisMinorVersion = 0,
-        .redisPatchVersion = 7,
+        .redisPatchVersion = 0,
 };
 
-int rlecMajorVersion;
-int rlecMinorVersion;
-int rlecPatchVersion;
-int rlecBuild;
+int gearsRlecMajorVersion;
+int gearsRlecMinorVersion;
+int gearsRlecPatchVersion;
+int gearsRlecBuild;
 
-bool isCrdt;
+bool gearsIsCrdt;
 
 
-int CheckSupportedVestion(){
+int GearsCheckSupportedVestion(){
     if(currVesion.redisMajorVersion < supportedVersion.redisMajorVersion){
         return REDISMODULE_ERR;
     }
@@ -149,7 +149,7 @@ char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
     return ret;
 }
 
-void getRedisVersion() {
+void GearsGetRedisVersion() {
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModuleCallReply *reply = RedisModule_Call(ctx, "info", "c", "server");
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING);
@@ -161,14 +161,14 @@ void getRedisVersion() {
 
     assert(n == 3);
 
-    rlecMajorVersion = -1;
-    rlecMinorVersion = -1;
-    rlecPatchVersion = -1;
-    rlecBuild = -1;
+    gearsRlecMajorVersion = -1;
+    gearsRlecMinorVersion = -1;
+    gearsRlecPatchVersion = -1;
+    gearsRlecBuild = -1;
     char *enterpriseStr = strstr(replyStr, "rlec_version:");
     if (enterpriseStr) {
-        n = sscanf(enterpriseStr, "rlec_version:%d.%d.%d-%d", &rlecMajorVersion, &rlecMinorVersion,
-                   &rlecPatchVersion, &rlecBuild);
+        n = sscanf(enterpriseStr, "rlec_version:%d.%d.%d-%d", &gearsRlecMajorVersion, &gearsRlecMinorVersion,
+                   &gearsRlecPatchVersion, &gearsRlecBuild);
         if (n != 4) {
             RedisModule_Log(NULL, "warning", "Could not extract enterprise version");
         }
@@ -176,10 +176,10 @@ void getRedisVersion() {
 
     RedisModule_FreeCallReply(reply);
 
-    isCrdt = true;
+    gearsIsCrdt = true;
     reply = RedisModule_Call(ctx, "CRDT.CONFIG", "cc", "GET", "active-gc");
     if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
-        isCrdt = false;
+        gearsIsCrdt = false;
     }
 
     if(reply){
