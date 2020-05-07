@@ -208,3 +208,18 @@ _Default Value_
 _Runtime Configurability_
 
 Not Supported
+
+## ExecutionMaxIdleTime
+The **ExecutionMaxIdleTime** configuration option controls the maximal amount of idle time (in milliseconds) before execution is aborted. Idle time means no progress is made by the execution. The main reason for idle time is an execution that's blocked on waiting for records from another shard that had failed (i.e. crashed). In that case, the execution will be aborted after the specified time limit. The idle timer is reset once the execution starts progressing again.
+
+_Expected Value_
+
+Any integer greater than 0
+
+_Default Value_
+
+"5 seconds"
+
+_Runtime Configurability_
+
+Supported
