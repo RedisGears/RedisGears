@@ -21,13 +21,6 @@
 
 #define SUB_INTERPRETER_TYPE "subInterpreterType"
 
-/* TODO: this needs to be exported from RAI via an API */
-typedef struct RAI_Error {
- int code;
- char* detail;
- char* detail_oneline;
-} RAI_Error;
-
 static PyObject* pyGlobals;
 PyObject* GearsError;
 PyObject* ForceStoppedError;
@@ -1918,13 +1911,15 @@ static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
 static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
-    // TODO: deal with errors better
-    RAI_Error err = {0};
-    RedisAI_ModelRun(&pyg->g, 1, &err);
-    if (err.code) {
-        PyErr_SetString(GearsError, err.detail);
+    RAI_Error* err;
+    RedisAI_InitError(&err);
+    RedisAI_ModelRun(&pyg->g, 1, err);
+    if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        RedisAI_FreeError(err);
         return NULL;
     }
+    RedisAI_FreeError(err);
     PyObject* tensorList = PyList_New(0);
     for(size_t i = 0 ; i < RedisAI_ModelRunCtxNumOutputs(pyg->g) ; ++i){
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
@@ -2031,13 +2026,15 @@ static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
 static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
-    // TODO: deal with errors better
-    RAI_Error err = {0};
-    RedisAI_ScriptRun(pys->s, &err);
-    if (err.code) {
-        PyErr_SetString(GearsError, err.detail);
+    RAI_Error* err;
+    RedisAI_InitError(&err);
+    RedisAI_ScriptRun(pys->s, err);
+    if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        RedisAI_FreeError(err);
         return NULL;
     }
+    RedisAI_FreeError(err);
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, 0));
     return (PyObject*)pyt;
