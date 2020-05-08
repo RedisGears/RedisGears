@@ -304,6 +304,7 @@ static int HashSetRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     while((entry = Gears_dictNext(iter))){
         const char* k = Gears_dictGetKey(entry);
         Record* temp = Gears_dictGetVal(entry);
+        RedisModule_ReplyWithArray(rctx, 2);
         RedisModule_ReplyWithCString(rctx, k);
         RG_RecordSendReply(temp, rctx);
     }
@@ -324,6 +325,10 @@ Record* RG_DeserializeRecord(Gears_BufferReader* br){
 }
 
 int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx){
+    if(!record){
+        RedisModule_ReplyWithNull(rctx);
+        return REDISMODULE_OK;
+    }
     if(!record->type->sendReply){
         RedisModule_ReplyWithCString(rctx, record->type->name);
         return REDISMODULE_OK;
