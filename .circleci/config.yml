@@ -97,9 +97,12 @@ jobs:
       xcode: 11.3.0
     steps:
       - run:
-          name: Fix macOS Python installation
+          name: Fix macOS setup
           command: |
             brew update || true
+            # workaround for ramp pack failure
+            sudo mkdir -p /var/opt/redislabs
+            sudo chmod 777 /var/opt/redislabs           
       - build-steps:
           platform: macosx
 
