@@ -100,10 +100,10 @@ class RedisGearsSetup(paella.Setup):
                 wget -q -O gettext.tgz https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz ;\
                 tar -xzf gettext.tgz -C / ;\
                 ./configure ;\
-                make -j {};\
+                make;\
                 make install ; )
             rm -rf $dir
-            """.format())
+            """)
 
         self.install("llvm")
         self.install("zlib openssl readline coreutils libiconv")
