@@ -15,15 +15,41 @@
 
 static char* shardUniqueId = NULL;
 
-int redisMajorVersion;
-int redisMinorVersion;
-int redisPatchVersion;
+RedisVersion currVesion;
 
-int rlecMajorVersion;
-int rlecMinorVersion;
-int rlecPatchVersion;
-int rlecBuild;
+RedisVersion supportedVersion = {
+        .redisMajorVersion = 6,
+        .redisMinorVersion = 0,
+        .redisPatchVersion = 0,
+};
 
+int gearsRlecMajorVersion;
+int gearsRlecMinorVersion;
+int gearsRlecPatchVersion;
+int gearsRlecBuild;
+
+bool gearsIsCrdt;
+
+
+int GearsCheckSupportedVestion(){
+    if(currVesion.redisMajorVersion < supportedVersion.redisMajorVersion){
+        return REDISMODULE_ERR;
+    }
+
+    if(currVesion.redisMajorVersion == supportedVersion.redisMajorVersion){
+        if(currVesion.redisMinorVersion < supportedVersion.redisMinorVersion){
+            return REDISMODULE_ERR;
+        }
+
+        if(currVesion.redisMinorVersion == supportedVersion.redisMinorVersion){
+            if(currVesion.redisPatchVersion < supportedVersion.redisPatchVersion){
+                return REDISMODULE_ERR;
+            }
+        }
+    }
+
+    return REDISMODULE_OK;
+}
 
 static uint64_t idHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, ID_LEN);
@@ -123,32 +149,43 @@ char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
     return ret;
 }
 
-void getRedisVersion() {
+void GearsGetRedisVersion() {
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModuleCallReply *reply = RedisModule_Call(ctx, "info", "c", "server");
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING);
     size_t len;
     const char *replyStr = RedisModule_CallReplyStringPtr(reply, &len);
 
-    int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &redisMajorVersion,
-                 &redisMinorVersion, &redisPatchVersion);
+    int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &currVesion.redisMajorVersion,
+                 &currVesion.redisMinorVersion, &currVesion.redisPatchVersion);
 
     assert(n == 3);
 
-    rlecMajorVersion = -1;
-    rlecMinorVersion = -1;
-    rlecPatchVersion = -1;
-    rlecBuild = -1;
+    gearsRlecMajorVersion = -1;
+    gearsRlecMinorVersion = -1;
+    gearsRlecPatchVersion = -1;
+    gearsRlecBuild = -1;
     char *enterpriseStr = strstr(replyStr, "rlec_version:");
     if (enterpriseStr) {
-        n = sscanf(enterpriseStr, "rlec_version:%d.%d.%d-%d", &rlecMajorVersion, &rlecMinorVersion,
-                   &rlecPatchVersion, &rlecBuild);
+        n = sscanf(enterpriseStr, "rlec_version:%d.%d.%d-%d", &gearsRlecMajorVersion, &gearsRlecMinorVersion,
+                   &gearsRlecPatchVersion, &gearsRlecBuild);
         if (n != 4) {
             RedisModule_Log(NULL, "warning", "Could not extract enterprise version");
         }
     }
 
     RedisModule_FreeCallReply(reply);
+
+    gearsIsCrdt = true;
+    reply = RedisModule_Call(ctx, "CRDT.CONFIG", "cc", "GET", "active-gc");
+    if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        gearsIsCrdt = false;
+    }
+
+    if(reply){
+        RedisModule_FreeCallReply(reply);
+    }
+
     RedisModule_FreeThreadSafeContext(ctx);
 }
 

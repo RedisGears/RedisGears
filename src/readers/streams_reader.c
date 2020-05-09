@@ -158,8 +158,19 @@ static void StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx*
     bool ret = StreamReader_VerifyCallReply(rctx, reply, "Failed on XINFO command", "warning");
     assert(ret);
     assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-    assert(RedisModule_CallReplyLength(reply) > 10);
-    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, 9);
+    size_t lastGeneratedIdIndex = 0;
+    for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; i+=2){
+        RedisModuleCallReply *currReply = RedisModule_CallReplyArrayElement(reply, i);
+        size_t currReplyStrLen;
+        const char* currReplyStr = RedisModule_CallReplyStringPtr(currReply, &currReplyStrLen);
+        if(strncmp(currReplyStr, "last-generated-id", currReplyStrLen) == 0){
+            lastGeneratedIdIndex = i + 1;
+            break;
+        }
+    }
+    assert(lastGeneratedIdIndex > 0);
+    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, lastGeneratedIdIndex);
+    assert(RedisModule_CallReplyType(idReply) == REDISMODULE_REPLY_STRING);
     const char* idStr = RedisModule_CallReplyStringPtr(idReply, NULL);
     ssrctx->lastId = StreamReader_ParseStreamId(idStr);
     RedisModule_FreeCallReply(reply);
@@ -858,7 +869,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPe
 }
 
 static bool StreamReader_IsStream(RedisModuleKey *kp){
-    if(redisMajorVersion <= 5){
+    if(currVesion.redisMajorVersion <= 5){
         return RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp) == 6;
     }else{
         return RedisModule_KeyType(kp) == 7;
@@ -1101,7 +1112,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err);
         if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
             assert(false);
         }
 
@@ -1111,7 +1122,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = StreamReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
             assert(false);
         }
         FlatExecutionPlan_AddToRegisterDict(fep);

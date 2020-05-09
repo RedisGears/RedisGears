@@ -12,7 +12,7 @@ All functions use that interpreter. Each function has its globals dictionary tha
 !!! info "Further reference"
     For more information refer to:
 
-      * [Sub-interpreters design](subinterpreters.md)
+      * [Isolation Technics design](isolation_technics.md)
 
 ## Environment
 The interpreter's environment can be extended with any dependent package that can later be imported and used by functions in their respective sub-interpreters.

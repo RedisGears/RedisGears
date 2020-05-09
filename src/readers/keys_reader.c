@@ -199,14 +199,26 @@ static void RG_KeysReaderCtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears
     krctx->noScan = RedisGears_BRReadLong(br);
 }
 
-static Record* GetStringValueRecord(RedisModuleKey* handler){
+static Record* GetStringValueRecord(RedisModuleKey* handler, RedisModuleCtx* ctx, const char* keyStr){
     size_t len;
-    char* val = RedisModule_StringDMA(handler, &len, REDISMODULE_READ);
+    char* val = NULL;
+    RedisModuleCallReply *r = NULL;
+    if(!gearsIsCrdt){
+        val = RedisModule_StringDMA(handler, &len, REDISMODULE_READ);
+    } else {
+        // on crdt the string llapi is not supported so we need to use rm_call
+        r = RedisModule_Call(ctx, "GET", "c", keyStr);
+        val = (char*)RedisModule_CallReplyStringPtr(r, &len);
+    }
     char* strVal = RG_ALLOC(len + 1);
     memcpy(strVal, val, len);
     strVal[len] = '\0';
 
     Record* strRecord = RedisGears_StringRecordCreate(strVal, len);
+
+    if(r){
+        RedisModule_FreeCallReply(r);
+    }
 
     return strRecord;
 }
@@ -262,7 +274,7 @@ static Record* ValueToListMapper(const char* keyStr, RedisModuleCtx* ctx){
 static Record* GetValueRecord(RedisModuleCtx* rctx, const char* keyStr, RedisModuleKey* handler){
     switch(RedisModule_KeyType(handler)){
     case REDISMODULE_KEYTYPE_STRING:
-        return GetStringValueRecord(handler);
+        return GetStringValueRecord(handler, rctx, keyStr);
         break;
     case REDISMODULE_KEYTYPE_LIST:
         return ValueToListMapper(keyStr, rctx);
@@ -757,7 +769,7 @@ static void KeysReader_RegisterKeySpaceEvent(){
         RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
         keysReaderRegistration = Gears_listCreate();
         int event = REDISMODULE_NOTIFY_ALL;
-        if(redisMajorVersion >= 6 && IsEnterprise()){
+        if(currVesion.redisMajorVersion >= 6 && IsEnterprise()){
             // we get the trimmed notification on enterprise only from redis v6 and above
             event |= REDISMODULE_NOTIFY_TRIMMED;
         }
@@ -874,7 +886,7 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
         if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
             assert(false);
         }
 
@@ -884,7 +896,7 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = KeysReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
+            RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
             assert(false);
         }
 

@@ -701,6 +701,18 @@ void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     LockHandler_Release(ctx);
 }
 
+static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
+    if(subevent == REDISMODULE_SUBEVENT_MODULE_LOADED){
+        RedisModule_Log(ctx, "notice", "Got module load event, trying to reinitialize RedisAI api");
+        if(RedisAI_Initialize(ctx) != REDISMODULE_OK){
+            RedisModule_Log(ctx, "warning", "could not initialize RediAI api, running without AI support.");
+        }else{
+            RedisModule_Log(ctx, "notice", "RedisAI api loaded successfully.");
+            globals.redisAILoaded = true;
+        }
+    }
+}
+
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -708,13 +720,20 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA);
 
-    getRedisVersion();
+    GearsGetRedisVersion();
     RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",
-	                redisMajorVersion, redisMinorVersion, redisPatchVersion,
-	                IsEnterprise() ? "enterprise" : "oss");
+                    currVesion.redisMajorVersion, currVesion.redisMinorVersion, currVesion.redisPatchVersion,
+	                IsEnterprise() ? (gearsIsCrdt ? "enterprise-crdt" : "enterprise") : "oss");
     if (IsEnterprise()) {
         RedisModule_Log(ctx, "notice", "Redis Enterprise version found by RedisGears : %d.%d.%d-%d",
-                        rlecMajorVersion, rlecMinorVersion, rlecPatchVersion, rlecBuild);
+                        gearsRlecMajorVersion, gearsRlecMinorVersion, gearsRlecPatchVersion, gearsRlecBuild);
+    }
+
+    if(GearsCheckSupportedVestion() != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "Redis version is to old, please upgrade to redis %d.%d.%d and above.", supportedVersion.redisMajorVersion,
+                                                                                                                supportedVersion.redisMinorVersion,
+                                                                                                                supportedVersion.redisPatchVersion);
+        return REDISMODULE_ERR;
     }
 
     if(LockHandler_Initialize() != REDISMODULE_OK){
@@ -869,6 +888,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
+    RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_ModuleChange, RedisGears_OnModuleLoad);
 
     isInitiated = true;
     return REDISMODULE_OK;

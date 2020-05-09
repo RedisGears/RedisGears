@@ -1,7 +1,6 @@
 import redisgears
 import redisgears as rg
 from redisgears import executeCommand as execute
-from redisgears import executeCommand as execute
 from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
@@ -179,11 +178,6 @@ for k in PyFlatExecution.__dict__:
     setattr(GearsBuilder, k, createDecorator(PyFlatExecution.__dict__[k]))
 
 GB = GearsBuilder
-
-def RunGearsRemoteBuilder(pipe, globalsDict):
-    gb = GB(pipe.reader, pipe.defaultArg)
-    for s in pipe.steps:
-        s.AddToGB(gb, globalsDict)
 
 def gearsConfigGet(key, default=None):
     val = configGet(key)
