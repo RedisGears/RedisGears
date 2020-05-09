@@ -93,8 +93,20 @@ class RedisGearsSetup(paella.Setup):
     def macosx(self):
         if sh('xcode-select -p') == '':
             fatal("Xcode tools are not installed. Please run xcode-select --install.")
-        self.install("libtool autoconf automake llvm")
-        self.install("zlib openssl readline coreutils")
+        self.install("libtool autoconf automake")
+        self.run("""
+            dir=$(mktemp -d /tmp/gettext.XXXXXX)
+            (cd $dir ;\
+                wget -q -O gettext.tgz https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz ;\
+                tar -xzf gettext.tgz -C / ;\
+                ./configure ;\
+                make -j {};\
+                make install ; )
+            rm -rf $dir
+            """.format())
+
+        self.install("llvm")
+        self.install("zlib openssl readline coreutils libiconv")
         if not self.has_command("redis-server"):
             self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils

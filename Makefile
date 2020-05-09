@@ -128,6 +128,10 @@ endif
 
 ifeq ($(OS),macosx)
 LD_FLAGS += -undefined dynamic_lookup
+LD_FLAGS += \
+	-framework CoreFoundation \
+	$(GETTEXT_PREFIX)/lib/libintl.a \
+	-liconv
 endif
 
 #----------------------------------------------------------------------------------------------
@@ -154,9 +158,15 @@ endif
 
 ifneq ($(OS),macosx)
 EMBEDDED_LIBS += -lutil
+else
+
 endif
 
 endif # WITHPYTHON
+
+ifeq ($(SHOW_LD_LIBS),1)
+LD_FLAGS += -Wl,-t
+endif
 
 ifeq ($(OS),macosx)
 EMBEDDED_LIBS += $(LIBEVENT) $(HIREDIS)
