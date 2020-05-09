@@ -96,16 +96,19 @@ class RedisGearsSetup(paella.Setup):
         self.install("libtool autoconf automake")
         self.run("""
             dir=$(mktemp -d /tmp/gettext.XXXXXX)
-            (cd $dir ;\
-                wget -q -O gettext.tgz https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz ;\
-                tar -xzf gettext.tgz -C / ;\
-                ./configure ;\
-                make;\
-                make install ; )
+            base=$(pwd)
+            cd $dir
+            wget -q -O gettext.tgz https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz
+            tar xzf gettext.tgz
+            cd gettext-0.20.2
+            ./configure
+            make
+            make install
+            cd $base
             rm -rf $dir
             """)
 
-        self.install("llvm")
+        # self.install("llvm")
         self.install("zlib openssl readline coreutils libiconv")
         if not self.has_command("redis-server"):
             self.install("redis")
