@@ -168,7 +168,7 @@ static int KeyRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err)
 
 static int KeysHandlerRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
     // todo: what we can do here is to read the key and create a serializable record
-    assert(false && "can not serialize key handler record");
+    RedisModule_Assert(false && "can not serialize key handler record");
     return REDISMODULE_OK;
 }
 
@@ -239,7 +239,7 @@ static Record* KeyRecord_Deserialize(Gears_BufferReader* br){
 
 static Record* KeysHandlerRecord_Deserialize(Gears_BufferReader* br){
     // todo: what we can do here is to read the key and create a serializable record
-    assert(false && "can not deserialize key handler record");
+    RedisModule_Assert(false && "can not deserialize key handler record");
     return NULL;
 }
 
@@ -304,6 +304,7 @@ static int HashSetRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     while((entry = Gears_dictNext(iter))){
         const char* k = Gears_dictGetKey(entry);
         Record* temp = Gears_dictGetVal(entry);
+        RedisModule_ReplyWithArray(rctx, 2);
         RedisModule_ReplyWithCString(rctx, k);
         RG_RecordSendReply(temp, rctx);
     }
@@ -318,12 +319,16 @@ int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err){
 
 Record* RG_DeserializeRecord(Gears_BufferReader* br){
     size_t typeId = RedisGears_BRReadLong(br);
-    assert(typeId >= 0 && typeId < array_len(recordsTypes));
+    RedisModule_Assert(typeId >= 0 && typeId < array_len(recordsTypes));
     RecordType* type = recordsTypes[typeId];
     return type->deserialize(br);
 }
 
 int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx){
+    if(!record){
+        RedisModule_ReplyWithNull(rctx);
+        return REDISMODULE_OK;
+    }
     if(!record->type->sendReply){
         RedisModule_ReplyWithCString(rctx, record->type->name);
         return REDISMODULE_OK;
@@ -421,24 +426,24 @@ Record* RG_KeyRecordCreate(){
 }
 
 void RG_KeyRecordSetKey(Record* base, char* key, size_t len){
-    assert(base->type == keyRecordType);
+    RedisModule_Assert(base->type == keyRecordType);
     KeyRecord* r = (KeyRecord*)base;
     r->key = key;
     r->len = len;
 }
 void RG_KeyRecordSetVal(Record* base, Record* val){
-    assert(base->type == keyRecordType);
+    RedisModule_Assert(base->type == keyRecordType);
     KeyRecord* r = (KeyRecord*)base;
     r->record = val;
 }
 
 Record* RG_KeyRecordGetVal(Record* base){
-    assert(base->type == keyRecordType);
+    RedisModule_Assert(base->type == keyRecordType);
     KeyRecord* r = (KeyRecord*)base;
     return r->record;
 }
 char* RG_KeyRecordGetKey(Record* base, size_t* len){
-    assert(base->type == keyRecordType);
+    RedisModule_Assert(base->type == keyRecordType);
     KeyRecord* r = (KeyRecord*)base;
     if(len){
         *len = r->len;
@@ -452,26 +457,26 @@ Record* RG_ListRecordCreate(size_t initSize){
 }
 
 size_t RG_ListRecordLen(Record* base){
-    assert(base->type == listRecordType);
+    RedisModule_Assert(base->type == listRecordType);
     ListRecord* r = (ListRecord*)base;
     return array_len(r->records);
 }
 
 void RG_ListRecordAdd(Record* base, Record* element){
-    assert(base->type == listRecordType);
+    RedisModule_Assert(base->type == listRecordType);
     ListRecord* r = (ListRecord*)base;
     r->records = array_append(r->records, element);
 }
 
 Record* RG_ListRecordGet(Record* base, size_t index){
-    assert(base->type == listRecordType);
-    assert(RG_ListRecordLen(base) > index && index >= 0);
+    RedisModule_Assert(base->type == listRecordType);
+    RedisModule_Assert(RG_ListRecordLen(base) > index && index >= 0);
     ListRecord* r = (ListRecord*)base;
     return r->records[index];
 }
 
 Record* RG_ListRecordPop(Record* base){
-    assert(base->type == listRecordType);
+    RedisModule_Assert(base->type == listRecordType);
     ListRecord* r = (ListRecord*)base;
     return array_pop(r->records);
 }
@@ -484,7 +489,7 @@ Record* RG_StringRecordCreate(char* val, size_t len){
 }
 
 char* RG_StringRecordGet(Record* base, size_t* len){
-    assert(base->type == stringRecordType || base->type == errorRecordType);
+    RedisModule_Assert(base->type == stringRecordType || base->type == errorRecordType);
     StringRecord* r = (StringRecord*)base;
     if(len){
         *len = r->len;
@@ -493,7 +498,7 @@ char* RG_StringRecordGet(Record* base, size_t* len){
 }
 
 void RG_StringRecordSet(Record* base, char* val, size_t len){
-    assert(base->type == stringRecordType || base->type == errorRecordType);
+    RedisModule_Assert(base->type == stringRecordType || base->type == errorRecordType);
     StringRecord* r = (StringRecord*)base;
     r->str = val;
     r->len = len;
@@ -506,13 +511,13 @@ Record* RG_DoubleRecordCreate(double val){
 }
 
 double RG_DoubleRecordGet(Record* base){
-    assert(base->type == doubleRecordType);
+    RedisModule_Assert(base->type == doubleRecordType);
     DoubleRecord* r = (DoubleRecord*)base;
     return r->num;
 }
 
 void RG_DoubleRecordSet(Record* base, double val){
-    assert(base->type == doubleRecordType);
+    RedisModule_Assert(base->type == doubleRecordType);
     DoubleRecord* r = (DoubleRecord*)base;
     r->num = val;
 }
@@ -523,12 +528,12 @@ Record* RG_LongRecordCreate(long val){
     return &ret->base;
 }
 long RG_LongRecordGet(Record* base){
-    assert(base->type == longRecordType);
+    RedisModule_Assert(base->type == longRecordType);
     LongRecord* r = (LongRecord*)base;
     return r->num;
 }
 void RG_LongRecordSet(Record* base, long val){
-    assert(base->type == longRecordType);
+    RedisModule_Assert(base->type == longRecordType);
     LongRecord* r = (LongRecord*)base;
     r->num = val;
 }
@@ -540,7 +545,7 @@ Record* RG_HashSetRecordCreate(){
 }
 
 int RG_HashSetRecordSet(Record* base, char* key, Record* val){
-    assert(base->type == hashSetRecordType);
+    RedisModule_Assert(base->type == hashSetRecordType);
     HashSetRecord* r = (HashSetRecord*)base;
     Record* oldVal = RG_HashSetRecordGet(base, key);
     if(oldVal){
@@ -551,7 +556,7 @@ int RG_HashSetRecordSet(Record* base, char* key, Record* val){
 }
 
 Record* RG_HashSetRecordGet(Record* base, char* key){
-    assert(base->type == hashSetRecordType);
+    RedisModule_Assert(base->type == hashSetRecordType);
     HashSetRecord* r = (HashSetRecord*)base;
     Gears_dictEntry *entry = Gears_dictFind(r->d, key);
     if(!entry){
@@ -561,7 +566,7 @@ Record* RG_HashSetRecordGet(Record* base, char* key){
 }
 
 char** RG_HashSetRecordGetAllKeys(Record* base){
-    assert(base->type == hashSetRecordType);
+    RedisModule_Assert(base->type == hashSetRecordType);
     HashSetRecord* r = (HashSetRecord*)base;
     Gears_dictIterator *iter = Gears_dictGetIterator(r->d);
     Gears_dictEntry *entry = NULL;
@@ -581,7 +586,7 @@ Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler){
 }
 
 RedisModuleKey* RG_KeyHandlerRecordGet(Record* base){
-    assert(base->type == keysHandlerRecordType);
+    RedisModule_Assert(base->type == keysHandlerRecordType);
     KeysHandlerRecord* r = (KeysHandlerRecord*)base;
     return r->keyHandler;
 }

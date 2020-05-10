@@ -128,7 +128,7 @@ static void CommandReader_Serialize(void* ctx, Gears_BufferWriter* bw){
     CommandReaderCtx* readerCtx = ctx;
     char* err = NULL;
     int res = RG_SerializeRecord(bw, readerCtx->args->argv, &err);
-    assert(res == REDISMODULE_OK);
+    RedisModule_Assert(res == REDISMODULE_OK);
 }
 
 static void CommandReader_Deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
@@ -237,7 +237,7 @@ static void* CommandReader_DeserializeArgs(Gears_BufferReader* br){
 
 static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     CommandReaderTriggerCtx* crtCtx = CommandReader_FindByFep(fep);
-    assert(crtCtx);
+    RedisModule_Assert(crtCtx);
     RedisModule_ReplyWithArray(ctx, 14);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(crtCtx->mode == ExecutionModeSync){
@@ -285,7 +285,7 @@ static void CommandReader_RdbSave(RedisModuleIO *rdb){
         RedisModule_SaveSigned(rdb, crtCtx->mode);
 
         int res = FlatExecutionPlan_Serialize(&bw, crtCtx->fep, NULL);
-        assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+        RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
 
         CommandReader_SerializeArgs(crtCtx->args, &bw);
 
@@ -316,8 +316,8 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
         if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
-            assert(false);
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Assert(false);
         }
 
         CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br);
@@ -325,8 +325,8 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
 
         int ret = CommandReader_RegisrterTrigger(fep, mode, crtArgs, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "Could not register on rdbload execution, error='%s'", err);
-            assert(false);
+            RedisModule_Log(NULL, "warning", "Could not register on rdbload execution, error='%s'", err);
+            RedisModule_Assert(false);
         }
 
         FlatExecutionPlan_AddToRegisterDict(fep);
@@ -416,7 +416,7 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
     if(errorsLen > 0){
         ++crtCtx->numFailures;
         Record* r = RedisGears_GetError(ep, 0);
-        assert(RedisGears_RecordGetType(r) == errorRecordType);
+        RedisModule_Assert(RedisGears_RecordGetType(r) == errorRecordType);
         if(crtCtx->lastError){
             RG_FREE(crtCtx->lastError);
         }

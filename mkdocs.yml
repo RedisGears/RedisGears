@@ -37,7 +37,7 @@ nav:
   - 'Examples': 'examples.md'
   - 'Clients': 'clients.md'
   - 'Design':
-    - 'Sub-Interpreters': 'subinterpreters.md'
+    - 'Isolation Technics': 'isolation_technics.md'
   - 'Glossary': 'glossary.md'
   - 'Contributing': 'contrib.md'
 

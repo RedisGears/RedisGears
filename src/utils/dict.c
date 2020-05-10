@@ -227,7 +227,7 @@ int Gears_dictRehash(Gears_dict *d, int n) {
 
         /* Note that rehashidx can't overflow as we are sure there are more
          * elements because ht[0].used != 0 */
-        assert(d->ht[0].size > (unsigned long)d->rehashidx);
+        RedisModule_Assert(d->ht[0].size > (unsigned long)d->rehashidx);
         while(d->ht[0].table[d->rehashidx] == NULL) {
             d->rehashidx++;
             if (--empty_visits == 0) return 1;
@@ -633,7 +633,7 @@ void Gears_dictReleaseIterator(Gears_dictIterator *iter)
         if (iter->safe)
             iter->d->iterators--;
         else
-            assert(iter->fingerprint == dictFingerprint(iter->d));
+            RedisModule_Assert(iter->fingerprint == dictFingerprint(iter->d));
     }
     RG_FREE(iter);
 }

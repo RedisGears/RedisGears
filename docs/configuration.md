@@ -23,7 +23,7 @@ Configuration options can be set when the module is loaded. The options are pass
     For setting the module's configuration with the [`MODULE LOAD`](https://redis.io/commands/module-load) command use:
 
     ```
-    127.0.0.1:6379> loadmodule /path/to/redisgears.so <option> <value> ...
+    127.0.0.1:6379> MODULE LOAD /path/to/redisgears.so <option> <value> ...
     ```
 
 **Runtime Configuration**
@@ -208,3 +208,18 @@ _Default Value_
 _Runtime Configurability_
 
 Not Supported
+
+## ExecutionMaxIdleTime
+The **ExecutionMaxIdleTime** configuration option controls the maximal amount of idle time (in milliseconds) before execution is aborted. Idle time means no progress is made by the execution. The main reason for idle time is an execution that's blocked on waiting for records from another shard that had failed (i.e. crashed). In that case, the execution will be aborted after the specified time limit. The idle timer is reset once the execution starts progressing again.
+
+_Expected Value_
+
+Any integer greater than 0
+
+_Default Value_
+
+"5 seconds"
+
+_Runtime Configurability_
+
+Supported

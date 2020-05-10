@@ -110,10 +110,10 @@ static inline uint32_t array_len(array_t arr) {
 
 static inline void *array_trimm(array_t arr, uint32_t len, uint32_t cap) {
   array_hdr_t *arr_hdr = array_hdr(arr);
-  assert(len >= 0 && "trimming len is negative");
-  assert((cap == -1 || cap > 0 || len == cap) && "trimming capacity is illegal");
-  assert((cap == -1 || cap >= len) && "trimming len is greater then capacity");
-  assert((len <= arr_hdr->len) && "trimming len is greater then current len");
+  RedisModule_Assert(len >= 0 && "trimming len is negative");
+  RedisModule_Assert((cap == -1 || cap > 0 || len == cap) && "trimming capacity is illegal");
+  RedisModule_Assert((cap == -1 || cap >= len) && "trimming len is greater then capacity");
+  RedisModule_Assert((len <= arr_hdr->len) && "trimming len is greater then current len");
   arr_hdr->len = len;
   if (cap != -1) {
     arr_hdr->cap = cap;
@@ -159,7 +159,7 @@ static void array_free(array_t arr) {
 /* Pop the top element from the array, reduce the size and return it */
 #define array_pop(arr)               \
   ({                                 \
-    assert(array_hdr(arr)->len > 0); \
+    RedisModule_Assert(array_hdr(arr)->len > 0); \
     arr[--(array_hdr(arr)->len)];    \
   })
 

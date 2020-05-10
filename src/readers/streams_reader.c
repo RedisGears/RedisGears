@@ -128,7 +128,7 @@ static int StreamReader_StreamIdCompare(StreamId id1, StreamId id2){
 static StreamId StreamReader_ParseStreamId(const char* streamId){
     StreamId ret;
     int res = sscanf(streamId, "%ld-%ld", &ret.second, &ret.first);
-    assert(res == 2);
+    RedisModule_Assert(res == 2);
     return ret;
 }
 
@@ -156,10 +156,21 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_GetShallowCopy(StreamReade
 static void StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx* ssrctx){
     RedisModuleCallReply *reply = RedisModule_Call(rctx, "XINFO", "cc", "STREAM", ssrctx->keyName);
     bool ret = StreamReader_VerifyCallReply(rctx, reply, "Failed on XINFO command", "warning");
-    assert(ret);
-    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-    assert(RedisModule_CallReplyLength(reply) > 10);
-    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, 9);
+    RedisModule_Assert(ret);
+    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+    size_t lastGeneratedIdIndex = 0;
+    for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; i+=2){
+        RedisModuleCallReply *currReply = RedisModule_CallReplyArrayElement(reply, i);
+        size_t currReplyStrLen;
+        const char* currReplyStr = RedisModule_CallReplyStringPtr(currReply, &currReplyStrLen);
+        if(strncmp(currReplyStr, "last-generated-id", currReplyStrLen) == 0){
+            lastGeneratedIdIndex = i + 1;
+            break;
+        }
+    }
+    RedisModule_Assert(lastGeneratedIdIndex > 0);
+    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, lastGeneratedIdIndex);
+    RedisModule_Assert(RedisModule_CallReplyType(idReply) == REDISMODULE_REPLY_STRING);
     const char* idStr = RedisModule_CallReplyStringPtr(idReply, NULL);
     ssrctx->lastId = StreamReader_ParseStreamId(idStr);
     RedisModule_FreeCallReply(reply);
@@ -210,14 +221,14 @@ static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx
 }
 
 static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
-    assert(srtctx->refCount > 0);
+    RedisModule_Assert(srtctx->refCount > 0);
 
     if((--srtctx->refCount) == 0){
         Gears_listNode* n = NULL;
 
         // if we free registration there must not be any pending executions.
         // either all executions was finished or aborted
-        assert(Gears_listLength(srtctx->localPendingExecutions) == 0);
+        RedisModule_Assert(Gears_listLength(srtctx->localPendingExecutions) == 0);
 
         while((n = Gears_listFirst(srtctx->localDoneExecutions))){
             char* epIdStr = Gears_listNodeValue(n);
@@ -341,7 +352,7 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
         }
 
     }else{
-        assert(readerCtx->streamId);
+        RedisModule_Assert(readerCtx->streamId);
         reply = RedisModule_Call(ctx, "XREAD", "ccc", "STREAMS", readerCtx->streamKeyName, readerCtx->streamId);
         if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
             LockHandler_Release(ctx);
@@ -362,20 +373,20 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
         readerCtx->isDone = true;
         return;
     }
-    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-    assert(RedisModule_CallReplyLength(reply) == 1);
+    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+    RedisModule_Assert(RedisModule_CallReplyLength(reply) == 1);
     RedisModuleCallReply *streamReply = RedisModule_CallReplyArrayElement(reply, 0);
-    assert(RedisModule_CallReplyType(streamReply) == REDISMODULE_REPLY_ARRAY);
-    assert(RedisModule_CallReplyLength(streamReply) == 2);
+    RedisModule_Assert(RedisModule_CallReplyType(streamReply) == REDISMODULE_REPLY_ARRAY);
+    RedisModule_Assert(RedisModule_CallReplyLength(streamReply) == 2);
     RedisModuleCallReply *elements = RedisModule_CallReplyArrayElement(streamReply, 1);
-    assert(RedisModule_CallReplyType(elements) == REDISMODULE_REPLY_ARRAY);
+    RedisModule_Assert(RedisModule_CallReplyType(elements) == REDISMODULE_REPLY_ARRAY);
     for(size_t i = 0 ; i < RedisModule_CallReplyLength(elements) ; ++i){
         Record* r = RedisGears_HashSetRecordCreate();
         Record* recordValues = RedisGears_HashSetRecordCreate();
         RedisModuleCallReply *element = RedisModule_CallReplyArrayElement(elements, i);
-        assert(RedisModule_CallReplyType(element) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyType(element) == REDISMODULE_REPLY_ARRAY);
         RedisModuleCallReply *id = RedisModule_CallReplyArrayElement(element, 0);
-        assert(RedisModule_CallReplyType(id) == REDISMODULE_REPLY_STRING);
+        RedisModule_Assert(RedisModule_CallReplyType(id) == REDISMODULE_REPLY_STRING);
 
         size_t len;
         lastReadId = RedisModule_CallReplyStringPtr(id, &len);
@@ -393,8 +404,8 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
         RedisGears_HashSetRecordSet(r, "value", recordValues);
         RedisGears_HashSetRecordSet(r, "key", keyRecord);
         RedisModuleCallReply *values = RedisModule_CallReplyArrayElement(element, 1);
-        assert(RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY);
-        assert(RedisModule_CallReplyLength(values) % 2 == 0);
+        RedisModule_Assert(RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyLength(values) % 2 == 0);
         for(size_t j = 0 ; j < RedisModule_CallReplyLength(values) ; j+=2){
             RedisModuleCallReply *key = RedisModule_CallReplyArrayElement(values, j);
             const char* keyStr = RedisModule_CallReplyStringPtr(key, &len);
@@ -525,7 +536,7 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
     }
     RedisModuleCallReply* reply = RedisModule_Call(staticCtx, "XACK", "!ccv", readerCtx->streamKeyName, readerCtx->consumerGroup, readerCtx->batchIds, (size_t)array_len(readerCtx->batchIds));
     bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
-    assert(ret);
+    RedisModule_Assert(ret);
 
     RedisModule_FreeCallReply(reply);
 
@@ -533,8 +544,8 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
 
         reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
         ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed XLEN messages", "warning");
-        assert(ret);
-        assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
+        RedisModule_Assert(ret);
+        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
 
         long long streamLen = RedisModule_CallReplyInteger(reply);
 
@@ -543,12 +554,12 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
         long long streamLenForTrim = streamLen - array_len(readerCtx->batchIds);
         if(streamLenForTrim < 0){
             RedisModule_Log(NULL, "warning", "try to trim stream to negative len, fatal!!");
-            assert(false);
+            RedisModule_Assert(false);
         }
 
         reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", streamLenForTrim);
         ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed Trim messages", "warning");
-        assert(ret);
+        RedisModule_Assert(ret);
 
         RedisModule_FreeCallReply(reply);
 
@@ -641,7 +652,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             epIdStr = Gears_listNodeValue(head);
             ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
             if(ep){
-                assert(EPIsFlagOn(ep, EFDone));
+                RedisModule_Assert(EPIsFlagOn(ep, EFDone));
                 RedisGears_DropExecution(ep);
             }
             RG_FREE(epIdStr);
@@ -655,7 +666,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     if(errorsLen > 0){
         ++srctx->numFailures;
         Record* r = RedisGears_GetError(ctx, 0);
-        assert(RedisGears_RecordGetType(r) == errorRecordType);
+        RedisModule_Assert(RedisGears_RecordGetType(r) == errorRecordType);
         if(srctx->lastError){
             RG_FREE(srctx->lastError);
         }
@@ -676,7 +687,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             }else if(srctx->args->onFailedPolicy == OnFailedPolicyAbort){
                 srctx->status = StreamRegistrationStatus_ABORTED;
             }else{
-                assert(false);
+                RedisModule_Assert(false);
             }
         }else{
             ackAndTrim = true;
@@ -847,7 +858,7 @@ static StreamReaderTriggerCtx* StreamReader_GetStreamTriggerCtxByFep(FlatExecuti
 
 static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPending){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, STREAM_TRIGGER_FLAG_POP);
-    assert(srctx);
+    RedisModule_Assert(srctx);
 
     if(abortPending){
         StreamReader_AbortPendings(srctx);
@@ -858,7 +869,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPe
 }
 
 static bool StreamReader_IsStream(RedisModuleKey *kp){
-    if(redisMajorVersion <= 5){
+    if(currVesion.redisMajorVersion <= 5){
         return RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp) == 6;
     }else{
         return RedisModule_KeyType(kp) == 7;
@@ -876,29 +887,29 @@ static void* StreamReader_ScanForStreams(void* pd){
         RedisModule_ThreadSafeContextUnlock(staticCtx);
 
         bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed scanning keys on background", "warning");
-        assert(ret);
+        RedisModule_Assert(ret);
 
-        assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
 
-        assert(RedisModule_CallReplyLength(reply) == 2);
+        RedisModule_Assert(RedisModule_CallReplyLength(reply) == 2);
 
         RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
 
-        assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
+        RedisModule_Assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
 
         RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
         RedisModule_StringToLongLong(cursorStr, &cursor);
         RedisModule_FreeString(NULL, cursorStr);
 
         RedisModuleCallReply *keysReply = RedisModule_CallReplyArrayElement(reply, 1);
-        assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
         if(RedisModule_CallReplyLength(keysReply) < 1){
             RedisModule_FreeCallReply(reply);
             continue;
         }
         for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
             RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
-            assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
+            RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
 
             RedisModule_ThreadSafeContextLock(staticCtx);
@@ -943,7 +954,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode m
             RedisModule_Log(staticCtx, "warning", "could not register key space even.");
         }
     }
-    assert(staticCtx);
+    RedisModule_Assert(staticCtx);
     StreamReaderTriggerCtx* srctx = StreamReaderTriggerCtx_Create(fep, mode, arg);
     Gears_listAddNodeHead(streamsRegistration, srctx);
 
@@ -1001,7 +1012,7 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
 
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
-    assert(srctx);
+    RedisModule_Assert(srctx);
     RedisModule_ReplyWithArray(ctx, 16);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(srctx->mode == ExecutionModeSync){
@@ -1047,7 +1058,7 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
         RedisModule_ReplyWithStringBuffer(ctx, "ABORTED", strlen("ABORTED"));
         break;
     default:
-        assert(false);
+        RedisModule_Assert(false);
     }
 }
 
@@ -1068,7 +1079,7 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
         RedisModule_SaveUnsigned(rdb, 1); // has more
         size_t len;
         int res = FlatExecutionPlan_Serialize(&bw, srctx->fep, NULL);
-        assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+        RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
 
         StreamReader_SerializeArgs(srctx->args, &bw);
 
@@ -1088,7 +1099,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
     while(RedisModule_LoadUnsigned(rdb)){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
-        assert(data);
+        RedisModule_Assert(data);
 
         Gears_Buffer buff = {
                 .buff = data,
@@ -1101,8 +1112,8 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err);
         if(!fep){
-            RedisModule_Log(NULL, "Could not deserialize flat execution, error='%s'", err);
-            assert(false);
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Assert(false);
         }
 
         void* args = StreamReader_DeserializeArgs(&reader);
@@ -1111,8 +1122,8 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = StreamReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "Could not register flat execution, error='%s'", err);
-            assert(false);
+            RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
+            RedisModule_Assert(false);
         }
         FlatExecutionPlan_AddToRegisterDict(fep);
     }

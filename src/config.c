@@ -440,7 +440,7 @@ static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* c
         RedisModule_ReplyWithDouble(ctx, confVal->val.doubleVal);
         break;
     default:
-        assert(false);
+        RedisModule_Assert(false);
     }
 }
 
@@ -552,7 +552,7 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
             RedisModule_Log(ctx, "notice", "%s:%lf", val->name, v->val.doubleVal);
             break;
         default:
-            assert(0);
+            RedisModule_Assert(0);
         }
     }
 

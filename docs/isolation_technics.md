@@ -1,0 +1,17 @@
+# RedisGears Design: Isolation technics
+RedisGears ships with an embedded [Python Interpreter](runtime.md#python-interpreter). This makes it possible to run Python code using the [`RG.PYEXECUTE` command](commands.md#rgpyexecute). Because the interpreter is a singleton that's shared among all calls to `RG.PYEXECUTE`, there's the risk of different executions using the same identifiers (e.g. global variables, functions, or class names).
+
+One way to address this problem is by restarting the interpreter before each execution. However, an interpreter restart is a time-costly operation that renders this approach less-than-desirable. Also, two executions may be parallel, either in two different threads or even in the same thread (while the execution of the Python code itself is always non-parallelized, the rest of the execution's lifecycle maybe). When more than one execution is running, restarting the interpreter is no longer an option.
+
+Currently, RedisGears uses global dictionaries that isolate the context of the execution from each other. This means that if two executions declare the same function name (with different implementations) they will not step on each other's toes. Though this isolation is sufficient in most cases it isn't perfect. The biggest shortcoming of this approach is importing modules: all executions that import a module `X` will get the same instance of module `X`. This means that even if we create a virtual environment per execution with a different implementation of module `X` all the executions will use the first implementation that was imported.
+
+Another way to address this issue is with [Python's Sub-Interpreters](https://docs.python.org/3/c-api/init.html#sub-interpreter-support). A sub-interpreter is an (almost) separate environment for the execution of Python code. The Python C API makes it possible to create a new sub-interpreter using `Py_NewInterpreter`, destroy it using `Py_EndInterpreter`, and switch between sub-interpreters using `PyThreadState_Swap`.
+
+RedisGears used sub-interpreters before, but because we found out that some libraries are not compatible with sub-interpreter we decided to switch to global dictionaries. We are planning to return the sub-interpreter support in the future with some On/Off switch to still allow using libraries that are not compatible with it. The idea is to maintain the association between the user's call to `RG.PYEXECUTE` and its respective sub-interpreter.
+
+When `RG.PYEXECUTE` is called, a new sub-interpreter will be created to execute the provided script. That sub-interpreter will also be "inherited" by all subsequent operations - i.e. executions and registrations, that the script created. Because there may be multiple owners of the sub-interpreter, RedisGears will keep an internal reference count for each sub-interpreter so it can be safely freed.
+
+Notice that the isolation between Sub-Interpreters is also not perfect. For example, when using low-level file operations like `os.close()` they can (accidentally or maliciously) affect each other’s open files because of the way extensions are shared between sub-interpreters.
+
+!!! info "Further reference"
+    * [Python Sub-Interpreters](https://docs.python.org/3/c-api/init.html)

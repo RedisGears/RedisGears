@@ -158,7 +158,7 @@ static void Cluster_Reconnect(evutil_socket_t s, short what, void *arg){
 }
 
 static Node* CreateNode(const char* id, const char* ip, unsigned short port, const char* password, const char* unixSocket, size_t minSlot, size_t maxSlot){
-    assert(!GetNode(id));
+    RedisModule_Assert(!GetNode(id));
     Node* n = RG_ALLOC(sizeof(*n));
     *n = (Node){
             .id = RG_STRDUP(id),
@@ -212,7 +212,7 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     if(!c->data){
         return;
     }
-    assert(reply->type == REDIS_REPLY_STATUS);
+    RedisModule_Assert(reply->type == REDIS_REPLY_STATUS);
     Node* n = (Node*)b;
     Gears_listNode* node = Gears_listFirst(n->pendingMessages);
     Gears_listDelNode(n->pendingMessages, node);
@@ -223,7 +223,7 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
     if(!reply){
         return;
     }
-    assert(reply->type == REDIS_REPLY_STRING);
+    RedisModule_Assert(reply->type == REDIS_REPLY_STRING);
     if(!c->data){
         return;
     }
@@ -304,15 +304,15 @@ static void Cluster_ConnectToShards(){
 
 static char* Cluster_ReadRunId(RedisModuleCtx* ctx){
     RedisModuleCallReply *infoReply = RedisModule_Call(ctx, "info", "c", "server");
-    assert(RedisModule_CallReplyType(infoReply) == REDISMODULE_REPLY_STRING);
+    RedisModule_Assert(RedisModule_CallReplyType(infoReply) == REDISMODULE_REPLY_STRING);
     size_t len;
     const char* infoStrReply = RedisModule_CallReplyStringPtr(infoReply, &len);
     const char* runId = strstr(infoStrReply, "run_id:");
-    assert(runId);
+    RedisModule_Assert(runId);
     const char* runIdStr = runId + strlen("run_id:");
-    assert(runIdStr);
+    RedisModule_Assert(runIdStr);
     const char* endLine = strstr(runIdStr, "\r\n");
-    assert(endLine);
+    RedisModule_Assert(endLine);
     len = (size_t)(endLine - runIdStr);
     char* runIdFinal = RG_ALLOC(sizeof(char) * (len + 1));
     memcpy(runIdFinal, runIdStr, len);
@@ -344,7 +344,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
     CurrCluster->nodes = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
     long long numOfRanges;
-    assert(RedisModule_StringToLongLong(argv[8], &numOfRanges) == REDISMODULE_OK);
+    RedisModule_Assert(RedisModule_StringToLongLong(argv[8], &numOfRanges) == REDISMODULE_OK);
 
     CurrCluster->isClusterMode = numOfRanges > 1;
 
@@ -358,9 +358,9 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         realId[REDISMODULE_NODE_ID_LEN] = '\0';
 
         long long minslot;
-        assert(RedisModule_StringToLongLong(argv[i + 3], &minslot) == REDISMODULE_OK);
+        RedisModule_Assert(RedisModule_StringToLongLong(argv[i + 3], &minslot) == REDISMODULE_OK);
         long long maxslot;
-        assert(RedisModule_StringToLongLong(argv[i + 4], &maxslot) == REDISMODULE_OK);
+        RedisModule_Assert(RedisModule_StringToLongLong(argv[i + 4], &maxslot) == REDISMODULE_OK);
 
         const char* addr = RedisModule_StringPtrLen(argv[i + 6], NULL);
         char* passEnd = strstr(addr, "@");
@@ -420,21 +420,21 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
     CurrCluster->nodes = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
     RedisModuleCallReply *allSlotsRelpy = RedisModule_Call(ctx, "cluster", "c", "slots");
-    assert(RedisModule_CallReplyType(allSlotsRelpy) == REDISMODULE_REPLY_ARRAY);
+    RedisModule_Assert(RedisModule_CallReplyType(allSlotsRelpy) == REDISMODULE_REPLY_ARRAY);
     for(size_t i = 0 ; i < RedisModule_CallReplyLength(allSlotsRelpy) ; ++i){
         RedisModuleCallReply *slotRangeRelpy = RedisModule_CallReplyArrayElement(allSlotsRelpy, i);
 
         RedisModuleCallReply *minslotRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 0);
-        assert(RedisModule_CallReplyType(minslotRelpy) == REDISMODULE_REPLY_INTEGER);
+        RedisModule_Assert(RedisModule_CallReplyType(minslotRelpy) == REDISMODULE_REPLY_INTEGER);
         long long minslot = RedisModule_CallReplyInteger(minslotRelpy);
 
         RedisModuleCallReply *maxslotRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 1);
-        assert(RedisModule_CallReplyType(maxslotRelpy) == REDISMODULE_REPLY_INTEGER);
+        RedisModule_Assert(RedisModule_CallReplyType(maxslotRelpy) == REDISMODULE_REPLY_INTEGER);
         long long maxslot = RedisModule_CallReplyInteger(maxslotRelpy);
 
         RedisModuleCallReply *nodeDetailsRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 2);
-        assert(RedisModule_CallReplyType(nodeDetailsRelpy) == REDISMODULE_REPLY_ARRAY);
-        assert(RedisModule_CallReplyLength(nodeDetailsRelpy) == 3);
+        RedisModule_Assert(RedisModule_CallReplyType(nodeDetailsRelpy) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyLength(nodeDetailsRelpy) == 3);
         RedisModuleCallReply *nodeipReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 0);
         RedisModuleCallReply *nodeportReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 1);
         RedisModuleCallReply *nodeidReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 2);
@@ -474,7 +474,7 @@ static void Cluster_FreeMsg(Msg* msg){
     case CLUSTER_SET_MSG:
         break;
     default:
-        assert(false);
+        RedisModule_Assert(false);
     }
     RG_FREE(msg);
 }
@@ -556,7 +556,7 @@ static void Cluster_MsgArrive(evutil_socket_t s, short what, void *arg){
         RedisModule_FreeThreadSafeContext(ctx);
         break;
     default:
-        assert(false);
+        RedisModule_Assert(false);
     }
     Cluster_FreeMsg(msg);
 }

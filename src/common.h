@@ -24,20 +24,28 @@
 
 extern Gears_dictType* dictTypeHeapIdsPtr;
 
-extern int redisMajorVersion;
-extern int redisMinorVersion;
-extern int redisPatchVersion;
+typedef struct RedisVersion{
+    int redisMajorVersion;
+    int redisMinorVersion;
+    int redisPatchVersion;
+}RedisVersion;
 
-extern int rlecMajorVersion;
-extern int rlecMinorVersion;
-extern int rlecPatchVersion;
-extern int rlecBuild;
+extern RedisVersion currVesion;
+extern RedisVersion supportedVersion;
+
+extern int gearsRlecMajorVersion;
+extern int gearsRlecMinorVersion;
+extern int gearsRlecPatchVersion;
+extern int gearsRlecBuild;
+
+extern bool gearsIsCrdt;
 
 static inline int IsEnterprise() {
-  return rlecMajorVersion != -1;
+  return gearsRlecMajorVersion != -1;
 }
 
-void getRedisVersion();
+int GearsCheckSupportedVestion();
+void GearsGetRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);
 int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
