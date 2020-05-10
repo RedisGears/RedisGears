@@ -28,6 +28,7 @@ make all        # build all libraries and packages
 make test          # run tests
   DEBUG=1          # run tests with Valgrind
   TEST=test        # run specific `test` with Python debugger
+  TEST_ARGS=args   # additional RLTest arguments
   GDB=1            # (with TEST=...) run with GDB
 
 make pack          # build packages (ramp & dependencies)
@@ -126,9 +127,13 @@ CC_FLAGS += -O2 -Wno-unused-result
 endif
 
 ifeq ($(OS),macosx)
-LD_FLAGS += -undefined dynamic_lookup
+LD_FLAGS += \
+	-framework CoreFoundation \
+	-undefined dynamic_lookup
 endif
 
+#----------------------------------------------------------------------------------------------
+# cpython-related definitions
 #----------------------------------------------------------------------------------------------
 
 ifeq ($(WITHPYTHON), 1)
@@ -143,7 +148,7 @@ CC_FLAGS += \
 	-I$(BINROOT)/cpython \
 	-Ibin/$(FULL_VARIANT.release)/cpython
 
-LD_FLAGS += 
+LD_FLAGS += -lutil
 
 EMBEDDED_LIBS += $(LIBPYTHON)
 
@@ -151,11 +156,23 @@ ifeq ($(wildcard $(LIBPYTHON)),)
 MISSING_DEPS += $(LIBPYTHON)
 endif
 
-ifneq ($(OS),macosx)
-EMBEDDED_LIBS += -lutil
+ifeq ($(OS),macosx)
+LD_FLAGS += \
+	$(GETTEXT_PREFIX)/lib/libintl.a \
+	-liconv
 endif
 
 endif # WITHPYTHON
+
+#----------------------------------------------------------------------------------------------
+
+ifeq ($(SHOW_LD_LIBS),1)
+LD_FLAGS += -Wl,-t
+endif
+
+ifeq ($(OS),macosx)
+EMBEDDED_LIBS += $(LIBEVENT) $(HIREDIS)
+endif
 
 ifeq ($(wildcard $(LIBEVENT)),)
 MISSING_DEPS += $(LIBEVENT)
@@ -229,7 +246,9 @@ $(eval $(call build_deps_args,snapshot))
 ifeq ($(OS),macosx)
 EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
-EMBEDDED_LIBS_FLAGS=-Wl,-Bstatic $(HIREDIS) $(LIBEVENT) -Wl,-Bdynamic -Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+EMBEDDED_LIBS_FLAGS=\
+	-Wl,-Bstatic $(HIREDIS) $(LIBEVENT) -Wl,-Bdynamic \
+	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
 endif
 
 STRIP:=strip --strip-debug --strip-unneeded
@@ -371,7 +390,7 @@ test: __sep
 ifeq ($(DEBUG),1)
 	$(SHOW)set -e; cd pytest; VALGRIND=1 ./run_tests.sh
 else ifneq ($(TEST),)
-	@set -e; cd pytest; PYDEBUG=1 RLTest --test $(TEST) $(RLTEST_GDB) -s --module $(abspath $(TARGET))
+	@set -e; cd pytest; PYDEBUG=1 RLTest --test $(TEST) $(TEST_ARGS) $(RLTEST_GDB) -s --module $(abspath $(TARGET))
 else
 	$(SHOW)set -e; cd pytest; ./run_tests.sh
 endif

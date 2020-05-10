@@ -675,7 +675,8 @@ In reality, the `countby()` operation is implemented efficiently by an assortmen
 
 We've introduced two new operations: [`localgroupby()`](operations.md#localgroupby) and [`groupby()`](operations.md#groupby). Both perform the same type of operation, that is the grouping of records but differ in regards of where they run.
 
-The first operation, `localgroupby()`, is run locally by each shard's engine. The global `groupby()` operation is run only on the originating worker and is preceded by a `collect()` operation.
+The first operation, `localgroupby()`, is run locally by each shard's engine. The global `groupby()` applies the extractor function to the local data , shuffles the records to appropriate shards and then applies the accumulator function locally.
+
 
 Both global and local group operations expect two functions as their arguments. The first function is an extractor, whereas the second is an accumulator. While the accumulating functions for previous operations we've used had only used two arguments (namely the accumulator, "a", and the record, "r"), group operations precede these with another "k" argument that represents the key on which grouping is performed.
 
@@ -696,8 +697,23 @@ The local grouping accumulator increases the count for each input family name re
  | +------------------+ |   | +------------------+ |   | +------------------+ |
  | | Sanchez  | 1     | |   | | Smith    | 2     | |   | | Smith    | 1     | |
  | | Pibbles  | 1     | |   | +-+----------------+ |   | +-+----------------+ |
- | +-+--------+-------+ |   +---|------------------+   +---|------------------+
- |   v groupby()        |       |                          |
+ | +-+--------+-------+ |   |                      |   |                      |
+ +----------------------+   +----------------------+   +----------------------+
+ |   v repartition()    |   |   v repartition()    |   |   v repartition()    |
+ | +-+--------+-------+ |   | +-+--------+-------+ |   | +-+--------+-------+ |
+ | | Key      | Value | |   | | Key      | Value | |   | | Key      | Value | |
+ | +------------------+ |   | +------------------+ |   | +------------------+ |
+ | | Pibbles  | 1     | |   | | Sanchez  | 1     | |   | | Smith    | 2     | |
+ | +------------------+ |   | +------------------+ |   | | Smith    | 1     | |
+ |                      |   |                      |   | +------------------+ |
+ |   v localgroupby()   |   |   v localgroupby()   |   |   v localgroupby()   |
+ | +-+--------+-------+ |   | +-+--------+-------+ |   | +-+--------+-------+ |
+ | | Key      | Value | |   | | Key      | Value | |   | | Key      | Value | |
+ | +------------------+ |   | +------------------+ |   | +------------------+ |
+ | | Pibbles  | 1     | |   | | Sanchez  | 1     | |   | | Smith    | 3     | |
+ | +------------------+ |   | +------------------+ |   | +------------------+ |
+ |                      |   +---|------------------+   +---|------------------+
+ |                      |       |                          |
  | +-+--------+-------+ |       |   Implicit collect()     |
  | | Key      | Value |<--------+--------------------------+
  | +------------------+ |
