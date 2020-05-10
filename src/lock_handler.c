@@ -60,8 +60,8 @@ void LockHandler_Acquire(RedisModuleCtx* ctx){
 
 void LockHandler_Release(RedisModuleCtx* ctx){
     LockHandlerCtx* lh = pthread_getspecific(_lockKey);
-    assert(lh);
-    assert(lh->lockCounter > 0);
+    RedisModule_Assert(lh);
+    RedisModule_Assert(lh->lockCounter > 0);
     if(--lh->lockCounter == 0){
         RedisModule_ThreadSafeContextUnlock(ctx);
     }

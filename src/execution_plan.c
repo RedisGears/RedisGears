@@ -188,7 +188,7 @@ ExecutionThreadPool* ExecutionPlan_CreateThreadPool(const char* name, size_t num
 static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
     if(wd->status == WorkerStatus_ShuttingDown){
         RedisModule_Log(NULL, "warning", "Got a message to a shuttingdown worker, fatal!!!");
-        assert(false);
+        RedisModule_Assert(false);
     }
     if(msg->type == WORKER_FREE){
         wd->status = WorkerStatus_ShuttingDown;
@@ -455,7 +455,7 @@ int FlatExecutionPlan_Serialize(Gears_BufferWriter* bw, FlatExecutionPlan* fep, 
         RedisGears_BWWriteLong(bw, 1); // PD exists
         RedisGears_BWWriteString(bw, fep->PDType);
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
-        assert(type);
+        RedisModule_Assert(type);
         if(type->serialize(fep->PD, bw, err) != REDISMODULE_OK){
             return REDISMODULE_ERR;
         }
@@ -522,7 +522,7 @@ static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const c
     // read FEP id
     size_t len;
     char* idBuff = RedisGears_BRReadBuffer(&br, &len);
-    assert(len == ID_LEN);
+    RedisModule_Assert(len == ID_LEN);
     FlatExecutionPlan_SetID(ret, idBuff);
 
     long long hasDesc = RedisGears_BRReadLong(&br);
@@ -596,7 +596,7 @@ static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const c
     // we need to deserialize the fep now so we will have the deserialize clean version of it.
     // it might changed after to something we can not serialize
     const char* d = FlatExecutionPlan_SerializeInternal(ret, NULL, NULL);
-    assert(d);
+    RedisModule_Assert(d);
     return REDISMODULE_OK;
 
 error:
@@ -611,7 +611,7 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br, char** 
     if(PDExists){
         ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
         ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
-        assert(type);
+        RedisModule_Assert(type);
         ret->PD = type->deserialize(ret, br, err);
         if(!ret->PD){
             goto error;
@@ -646,7 +646,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_BufferWriterInit(&bw, buff);
     size_t len;
     int res = FlatExecutionPlan_Serialize(&bw, ep->fep, NULL);
-    assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
+    RedisModule_Assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
     RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
@@ -825,7 +825,7 @@ static Record* ExecutionPlan_GroupNextRecord(ExecutionPlan* ep, ExecutionStep* s
         if(RedisGears_RecordGetType(record) == errorRecordType){
             goto end;
         }
-        assert(RedisGears_RecordGetType(record) == keyRecordType);
+        RedisModule_Assert(RedisGears_RecordGetType(record) == keyRecordType);
         size_t keyLen;
         char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
         Gears_dictEntry* entry = Gears_dictFind(step->group.d, key);
@@ -873,7 +873,7 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     if(RedisGears_RecordGetType(record) == errorRecordType){
         goto end;
     }
-    assert(RedisGears_RecordGetType(record) == keyRecordType);
+    RedisModule_Assert(RedisGears_RecordGetType(record) == keyRecordType);
     size_t keyLen;
     char* key = RedisGears_KeyRecordGetKey(record, &keyLen);
     ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
@@ -949,7 +949,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
                 record = RG_ErrorRecordCreate(err, strlen(err));
                 err = NULL;
                 serializationRes = RG_SerializeRecord(&bw, record, &err);
-                assert(serializationRes == REDISMODULE_OK);
+                RedisModule_Assert(serializationRes == REDISMODULE_OK);
                 RedisGears_FreeRecord(record);
             }
 
@@ -1034,7 +1034,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			    record = RG_ErrorRecordCreate(err, strlen(err));
 			    err = NULL;
 			    serializationRes = RG_SerializeRecord(&bw, record, &err);
-			    assert(serializationRes == REDISMODULE_OK);
+			    RedisModule_Assert(serializationRes == REDISMODULE_OK);
 			    RedisGears_FreeRecord(record);
 			}
 
@@ -1185,7 +1185,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		if(RedisGears_RecordGetType(record) == errorRecordType){
 		    goto end;
 		}
-		assert(RedisGears_RecordGetType(record) == keyRecordType);
+		RedisModule_Assert(RedisGears_RecordGetType(record) == keyRecordType);
 		char* key = RedisGears_KeyRecordGetKey(record, NULL);
 		Record* val = RedisGears_KeyRecordGetVal(record);
 		RedisGears_KeyRecordSetVal(record, NULL);
@@ -1214,7 +1214,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		if(!keyRecord){
 			keyRecord = RedisGears_KeyRecordCreate();
 			RedisGears_KeyRecordSetKey(keyRecord, RG_STRDUP(key), strlen(key));
-			assert(Gears_dictFetchValue(step->accumulateByKey.accumulators, key) == NULL);
+			RedisModule_Assert(Gears_dictFetchValue(step->accumulateByKey.accumulators, key) == NULL);
 			Gears_dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
 		}
 		RedisGears_KeyRecordSetVal(keyRecord, accumulator);
@@ -1235,7 +1235,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
         goto end;
 	}
 	record = Gears_dictGetVal(entry);
-	assert(RedisGears_RecordGetType(record) == keyRecordType);
+	RedisModule_Assert(RedisGears_RecordGetType(record) == keyRecordType);
 end:
 	ADD_DURATION(step->executionDuration);
     return record;
@@ -1295,7 +1295,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
     	r = ExecutionPlan_AccumulateByKeyNextRecord(ep, step, rctx);
 		break;
     default:
-        assert(false);
+        RedisModule_Assert(false);
         return NULL;
     }
     return r;
@@ -1442,7 +1442,7 @@ ActionResult EPStatus_RunningAction(ExecutionPlan* ep){
 
 ActionResult EPStatus_PendingClusterAction(ExecutionPlan* ep){
     // if we are here we must be the initiator
-    assert(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0);
+    RedisModule_Assert(memcmp(ep->id, Cluster_GetMyId(), REDISMODULE_NODE_ID_LEN) == 0);
 
     // we are the initiator, lets notify everyone that its safe to complete the execution
     Cluster_SendMsgM(NULL, ExecutionPlan_TeminateExecution, ep->id, ID_LEN);
@@ -1494,7 +1494,7 @@ static void ExecutionPlan_Main(RedisModuleCtx* ctx, ExecutionPlan* ep){
         case COMPLETED:
             return;
         default:
-            assert(false);
+            RedisModule_Assert(false);
         }
     }
 }
@@ -1514,11 +1514,11 @@ void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
 
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
     int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
-    assert(res == DICT_OK);
+    RedisModule_Assert(res == DICT_OK);
 }
 
 static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg, char** err){
-    assert(callbacks->registerTrigger);
+    RedisModule_Assert(callbacks->registerTrigger);
     if(callbacks->registerTrigger(fep, mode, arg, err) != REDISMODULE_OK){
         return REDISMODULE_ERR;
     }
@@ -1530,7 +1530,7 @@ static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears
     // call the on registered callback if set
     if(fep->onRegisteredStep.stepName){
         RedisGears_FlatExecutionOnRegisteredCallback onRegistered = FlatExecutionOnRegisteredsMgmt_Get(fep->onRegisteredStep.stepName);
-        assert(onRegistered);
+        RedisModule_Assert(onRegistered);
         onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
     }
     return REDISMODULE_OK;
@@ -1555,8 +1555,8 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     }
 
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-    assert(callbacks);
-    assert(callbacks->deserializeTriggerArgs);
+    RedisModule_Assert(callbacks);
+    RedisModule_Assert(callbacks->deserializeTriggerArgs);
 
     void* args = callbacks->deserializeTriggerArgs(&br);
     ExecutionMode mode = RedisGears_BRReadLong(&br);
@@ -1579,7 +1579,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
 
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep){
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
-    assert(readerStep->type == READER);
+    RedisModule_Assert(readerStep->type == READER);
     return readerStep->reader.r;
 }
 
@@ -1595,7 +1595,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
         }else{
             // reader do not support reset, lets free and recreate
             ExecutionStep* readerStep = array_pop(ep->steps);
-            assert(readerStep->type == READER);
+            RedisModule_Assert(readerStep->type == READER);
             readerStep->reader.r->free(readerStep->reader.r->ctx);
             RG_FREE(readerStep->reader.r);
             ReaderStep rs = ExecutionPlan_NewReader(fep->reader, arg);
@@ -1758,7 +1758,7 @@ static void ExecutionStep_Reset(ExecutionStep* es){
         }
         break;
     default:
-        assert(false);
+        RedisModule_Assert(false);
     }
 }
 
@@ -1790,7 +1790,7 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
 }
 
 static void ExecutionPlan_RunSync(ExecutionPlan* ep){
-    assert(ep->mode == ExecutionModeSync);
+    RedisModule_Assert(ep->mode == ExecutionModeSync);
 
     INIT_TIMER;
     GETTIME(&_ts);
@@ -1801,7 +1801,7 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     GETTIME(&_te);
 
     // Sync execution can not stop in the middle
-    assert(isDone);
+    RedisModule_Assert(isDone);
     ep->executionDuration += DURATION;
 
     ep->status = DONE;
@@ -1859,7 +1859,7 @@ static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, 
 
 static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatExecutionPlan* fep, bool abortPending){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-    assert(callbacks->unregisterTrigger);
+    RedisModule_Assert(callbacks->unregisterTrigger);
 
     // replicate to slave and aof
     RedisModule_SelectDb(ctx, 0);
@@ -1883,7 +1883,7 @@ static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const
     Gears_BufferReaderInit(&br, &buff);
     size_t idLen;
     char* id = RedisGears_BRReadBuffer(&br, &idLen);
-    assert(idLen == ID_LEN);
+    RedisModule_Assert(idLen == ID_LEN);
     bool abortPendind = RedisGears_BRReadLong(&br);
     FlatExecutionPlan* fep = FlatExecutionPlan_FindId(id);
     if(!fep){
@@ -1912,7 +1912,7 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     }
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
-    assert(idLen == ID_LEN);
+    RedisModule_Assert(idLen == ID_LEN);
 
     // Execution recieved from another shards is always async
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, ExecutionModeAsync, NULL, NULL, NULL);
@@ -1929,7 +1929,7 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
         pool = ExectuionPlan_GetThreadPool(threadPoolName);
         if(!pool){
             RedisModule_Log(ctx, "warning", "Failed findin pool for execution %s", threadPoolName);
-            assert(false);
+            RedisModule_Assert(false);
         }
     }
 
@@ -1956,7 +1956,7 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
         return;
     }
     size_t stepId = RedisGears_BRReadLong(&br);
-    assert(epIdLen == ID_LEN);
+    RedisModule_Assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, COLLECT);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
@@ -2004,7 +2004,7 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
         return;
     }
     size_t stepId = RedisGears_BRReadLong(&br);
-    assert(epIdLen == ID_LEN);
+    RedisModule_Assert(epIdLen == ID_LEN);
     Record* r = RG_DeserializeRecord(&br);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, REPARTITION);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
@@ -2082,7 +2082,7 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
 }
 
 static void ExecutionPlan_ExecutionTerminate(RedisModuleCtx* ctx, ExecutionPlan* ep){
-    assert(ep->status == WAITING_FOR_INITIATOR_TERMINATION);
+    RedisModule_Assert(ep->status == WAITING_FOR_INITIATOR_TERMINATION);
     ExecutionPlan_Main(ctx, ep);
 }
 
@@ -2099,18 +2099,18 @@ static void ExecutionPlan_StepDone(RedisModuleCtx* ctx, ExecutionPlan* ep, size_
 	size_t totalShardsCompleted;
 	switch(stepType){
 	case REPARTITION:
-		assert(ep->steps[stepId]->type == REPARTITION);
+	    RedisModule_Assert(ep->steps[stepId]->type == REPARTITION);
 		totalShardsCompleted = ++ep->steps[stepId]->repartion.totalShardsCompleted;
 		break;
 	case COLLECT:
-		assert(ep->steps[stepId]->type == COLLECT);
+	    RedisModule_Assert(ep->steps[stepId]->type == COLLECT);
 		totalShardsCompleted = ++ep->steps[stepId]->collect.totalShardsCompleted;
 		break;
 	default:
-		assert(false);
+	    RedisModule_Assert(false);
 	}
 
-	assert(Cluster_GetSize() - 1 >= totalShardsCompleted);
+	RedisModule_Assert(Cluster_GetSize() - 1 >= totalShardsCompleted);
 	if((Cluster_GetSize() - 1) == totalShardsCompleted){ // no need to wait to myself
 	    ExecutionPlan_Main(ctx, ep);
 	}else{
@@ -2123,15 +2123,15 @@ static void ExecutionPlan_AddStepRecord(RedisModuleCtx* ctx, ExecutionPlan* ep, 
 	Record*** pendings = NULL;
 	switch(stepType){
 	case REPARTITION:
-		assert(ep->steps[stepId]->type == REPARTITION);
+	    RedisModule_Assert(ep->steps[stepId]->type == REPARTITION);
 		pendings = &(ep->steps[stepId]->repartion.pendings);
 		break;
 	case COLLECT:
-		assert(ep->steps[stepId]->type == COLLECT);
+	    RedisModule_Assert(ep->steps[stepId]->type == COLLECT);
 		pendings = &(ep->steps[stepId]->collect.pendings);
 		break;
 	default:
-		assert(false);
+	    RedisModule_Assert(false);
 	}
 	*pendings = array_append(*pendings, r);
 	if(array_len(*pendings) >= MAX_PENDING_TO_START_RUNNING){
@@ -2204,7 +2204,7 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
         ExecutionPlan_ExecutionTerminate(ctx, ep);
         break;
 	default:
-		assert(false);
+	    RedisModule_Assert(false);
 	}
 	ExectuionPlan_WorkerMsgFree(msg);
 }
@@ -2252,7 +2252,7 @@ WorkerData* ExecutionPlan_CreateWorker(ExecutionThreadPool* pool){
 static void ExecutionPlan_FreeWorkerInternal(WorkerData* wd){
     if(Gears_listLength(wd->notifications) > 1){
         RedisModule_Log(NULL, "warning", "Worker was freed but not empty, fatal!!!");
-        assert(false);
+        RedisModule_Assert(false);
     }
     Gears_listRelease(wd->notifications);
     RedisModule_FreeThreadSafeContext(wd->ctx);
@@ -2304,12 +2304,12 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
 
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-    assert(callbacks); // todo: handle as error in future
+    RedisModule_Assert(callbacks); // todo: handle as error in future
     if(!callbacks->registerTrigger){
         return 0;
     }
 
-    assert(callbacks->serializeTriggerArgs);
+    RedisModule_Assert(callbacks->serializeTriggerArgs);
 
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
@@ -2359,7 +2359,7 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode,
 
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(reader->reader);
-    assert(callbacks); // todo: handle as error in future
+    RedisModule_Assert(callbacks); // todo: handle as error in future
     return (ReaderStep){.r = callbacks->create(arg)};
 }
 
@@ -2426,7 +2426,7 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
 		es->accumulateByKey.iter = NULL;
 		break;
     default:
-        assert(false);
+        RedisModule_Assert(false);
     }
     es->executionDuration = 0;
     return es;
@@ -2566,7 +2566,7 @@ static void ExecutionStep_Free(ExecutionStep* es){
     	}
 		break;
 	default:
-        assert(false);
+	    RedisModule_Assert(false);
     }
     RG_FREE(es);
 }
@@ -2661,7 +2661,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         return;
     }
 
-    assert(fep->refCount == 0);
+    RedisModule_Assert(fep->refCount == 0);
 
     for(size_t i = 0 ; i < fep->executionPoolSize ; ++i){
         ExecutionPlan_FreeRaw(fep->executionPool[i]);
@@ -2694,7 +2694,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(fep->onExecutionStartStep.stepName){
         RG_FREE(fep->onExecutionStartStep.stepName);
         if(fep->onExecutionStartStep.arg.stepArg){
-            assert(fep->onExecutionStartStep.arg.type);
+            RedisModule_Assert(fep->onExecutionStartStep.arg.type);
             fep->onExecutionStartStep.arg.type->free(fep->onExecutionStartStep.arg.stepArg);
         }
     }
@@ -2702,7 +2702,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(fep->onRegisteredStep.stepName){
         RG_FREE(fep->onRegisteredStep.stepName);
         if(fep->onRegisteredStep.arg.stepArg){
-            assert(fep->onRegisteredStep.arg.type);
+            RedisModule_Assert(fep->onRegisteredStep.arg.type);
             fep->onRegisteredStep.arg.type->free(fep->onRegisteredStep.arg.stepArg);
         }
     }
@@ -2710,7 +2710,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(fep->onUnpausedStep.stepName){
         RG_FREE(fep->onUnpausedStep.stepName);
         if(fep->onUnpausedStep.arg.stepArg){
-            assert(fep->onUnpausedStep.arg.type);
+            RedisModule_Assert(fep->onUnpausedStep.arg.type);
             fep->onUnpausedStep.arg.type->free(fep->onUnpausedStep.arg.stepArg);
         }
     }
@@ -2748,21 +2748,21 @@ void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallb
     fep->onExecutionStartStep.stepName = onStartCallback;
     fep->onExecutionStartStep.arg.stepArg = onStartArg;
     fep->onExecutionStartStep.arg.type = ExecutionOnStartsMgmt_GetArgType(onStartCallback);
-    assert(fep->onExecutionStartStep.arg.type);
+    RedisModule_Assert(fep->onExecutionStartStep.arg.type);
 }
 
 void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onUnpausedCallback, void* onUnpausedArg){
     fep->onUnpausedStep.stepName = onUnpausedCallback;
     fep->onUnpausedStep.arg.stepArg = onUnpausedArg;
     fep->onUnpausedStep.arg.type = ExecutionOnUnpausedsMgmt_GetArgType(onUnpausedCallback);
-    assert(fep->onUnpausedStep.arg.type);
+    RedisModule_Assert(fep->onUnpausedStep.arg.type);
 }
 
 void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg){
     fep->onRegisteredStep.stepName = onRegisteredCallback;
     fep->onRegisteredStep.arg.stepArg = onRegisteredArg;
     fep->onRegisteredStep.arg.type = FlatExecutionOnRegisteredsMgmt_GetArgType(onRegisteredCallback);
-    assert(fep->onRegisteredStep.arg.type);
+    RedisModule_Assert(fep->onRegisteredStep.arg.type);
 }
 
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg){
