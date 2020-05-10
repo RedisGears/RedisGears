@@ -225,6 +225,7 @@ workflows:
             tags:
               only: /^v[0-9].*/
       - macos:
+          filters:
             branches:
               ignore: /.*/
             tags:
