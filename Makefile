@@ -159,7 +159,7 @@ endif
 ifeq ($(OS),macosx)
 LD_FLAGS += \
 	$(GETTEXT_PREFIX)/lib/libintl.a \
-	-liconv \
+	-liconv
 endif
 
 endif # WITHPYTHON
