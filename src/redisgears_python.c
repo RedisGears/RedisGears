@@ -1740,6 +1740,11 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     Py_DECREF(dimsIter);
 
     RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
+    if(!t){
+        PyErr_SetString(GearsError, "Failed creating tensor, make sure you put the right data type.");
+        array_free(dims);
+        return NULL;
+    }
     size_t size = PyByteArray_Size(pyBlob);
     const char* blob = PyByteArray_AsString(pyBlob);
     RedisAI_TensorSetData(t, blob, size);
