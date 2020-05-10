@@ -127,11 +127,9 @@ CC_FLAGS += -O2 -Wno-unused-result
 endif
 
 ifeq ($(OS),macosx)
-LD_FLAGS += -undefined dynamic_lookup
 LD_FLAGS += \
 	-framework CoreFoundation \
-	$(GETTEXT_PREFIX)/lib/libintl.a \
-	-liconv
+	-undefined dynamic_lookup
 endif
 
 #----------------------------------------------------------------------------------------------
@@ -156,10 +154,11 @@ ifeq ($(wildcard $(LIBPYTHON)),)
 MISSING_DEPS += $(LIBPYTHON)
 endif
 
-ifneq ($(OS),macosx)
-EMBEDDED_LIBS += -lutil
-else
-
+ifeq ($(OS),macosx)
+LD_FLAGS += \
+	$(GETTEXT_PREFIX)/lib/libintl.a \
+	-liconv \
+	-lutil
 endif
 
 endif # WITHPYTHON
