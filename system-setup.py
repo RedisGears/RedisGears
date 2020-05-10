@@ -89,13 +89,27 @@ class RedisGearsSetup(paella.Setup):
 
     def linux_last(self):
         self.install("valgrind")
-        self.pip_install("jinja2")
 
     def macosx(self):
         if sh('xcode-select -p') == '':
             fatal("Xcode tools are not installed. Please run xcode-select --install.")
-        self.install("libtool autoconf automake llvm")
-        self.install("zlib openssl readline coreutils")
+        self.install("libtool autoconf automake")
+        self.run("""
+            dir=$(mktemp -d /tmp/gettext.XXXXXX)
+            base=$(pwd)
+            cd $dir
+            wget -q -O gettext.tgz https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz
+            tar xzf gettext.tgz
+            cd gettext-0.20.2
+            ./configure
+            make
+            make install
+            cd $base
+            rm -rf $dir
+            """)
+
+        # self.install("llvm")
+        self.install("zlib openssl readline coreutils libiconv")
         if not self.has_command("redis-server"):
             self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
@@ -107,7 +121,9 @@ class RedisGearsSetup(paella.Setup):
         # redis-py-cluster should be installed from git due to redis-py dependency
         self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
-        self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
+        self.run("python -m pip uninstall -y ramp-packer")
+        self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@rafi-args1")
+        self.pip_install("jinja2")
 
 #----------------------------------------------------------------------------------------------
 
