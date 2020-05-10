@@ -1790,6 +1790,10 @@ static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     Py_DECREF(dimsIter);
 
     t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
+    if(!t){
+        PyErr_SetString(GearsError, "Failed creating tensor, make sure you put the right data type.");
+        goto error;
+    }
 
     PyObject* values = PyTuple_GetItem(args, 2);
     PyObject* valuesIter = PyObject_GetIter(pyDims);
