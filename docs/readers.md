@@ -354,7 +354,7 @@ _Arguments_
 First, call [`RG.PYEXECUTE`](commands.md#rgpyexecute) with the following:
 
 ```python
-{{ include('readers/shardidreader-run.py') }}
+{{ include('readers/commandreader-register.py') }}
 ```
 
 Then, you can do this:
