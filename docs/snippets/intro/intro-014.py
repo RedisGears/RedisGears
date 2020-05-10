@@ -17,7 +17,6 @@ def summer(k, a, r):
 # Use local and global groupby operations
 gb = GearsBuilder()
 gb.localgroupby(fname, counter)
-gb.collect()
 gb.groupby(key, summer)
 gb.run('person:*')
 
