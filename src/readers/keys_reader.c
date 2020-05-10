@@ -73,7 +73,7 @@ static void KeysReaderRegisterData_Free(KeysReaderRegisterData* rData){
 
         // if we free registration there must not be any pending executions.
         // either all executions was finished or aborted
-        assert(Gears_listLength(rData->localPendingExecutions) == 0);
+        RedisModule_Assert(Gears_listLength(rData->localPendingExecutions) == 0);
 
         while((n = Gears_listFirst(rData->localDoneExecutions))){
             char* epIdStr = Gears_listNodeValue(n);
@@ -225,9 +225,9 @@ static Record* GetStringValueRecord(RedisModuleKey* handler, RedisModuleCtx* ctx
 
 static Record* ValueToHashSetMapper(const char* keyStr, RedisModuleCtx* ctx){
     RedisModuleCallReply *reply = RedisModule_Call(ctx, "HGETALL", "c", keyStr);
-    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
     size_t len = RedisModule_CallReplyLength(reply);
-    assert(len % 2 == 0);
+    RedisModule_Assert(len % 2 == 0);
     Record *hashSetRecord = RedisGears_HashSetRecordCreate();
     for(int i = 0 ; i < len ; i+=2){
         RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(reply, i);
@@ -251,12 +251,12 @@ static Record* ValueToHashSetMapper(const char* keyStr, RedisModuleCtx* ctx){
 
 static Record* ValueToListMapper(const char* keyStr, RedisModuleCtx* ctx){
     RedisModuleCallReply *reply = RedisModule_Call(ctx, "lrange", "cll", keyStr, 0, -1);
-    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
     size_t len = RedisModule_CallReplyLength(reply);
     Record *listRecord = RedisGears_ListRecordCreate(10);
     for(int i = 0 ; i < len ; ++i){
         RedisModuleCallReply *r = RedisModule_CallReplyArrayElement(reply, i);
-        assert(RedisModule_CallReplyType(r) == REDISMODULE_REPLY_STRING);
+        RedisModule_Assert(RedisModule_CallReplyType(r) == REDISMODULE_REPLY_STRING);
         RedisModuleString* key = RedisModule_CreateStringFromCallReply(r);
         size_t vaLen;
         const char* val = RedisModule_StringPtrLen(key, &vaLen);
@@ -367,13 +367,13 @@ static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* reade
             return NULL;
         }
 
-        assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
 
-        assert(RedisModule_CallReplyLength(reply) == 2);
+        RedisModule_Assert(RedisModule_CallReplyLength(reply) == 2);
 
         RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
 
-        assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
+        RedisModule_Assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
 
         RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
         RedisModule_StringToLongLong(cursorStr, &readerCtx->cursorIndex);
@@ -384,7 +384,7 @@ static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* reade
         }
 
         RedisModuleCallReply *keysReply = RedisModule_CallReplyArrayElement(reply, 1);
-        assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
         if(RedisModule_CallReplyLength(keysReply) < 1){
             RedisModule_FreeCallReply(reply);
             if(readerCtx->isDone){
@@ -395,7 +395,7 @@ static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* reade
         }
         for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
             RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
-            assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
+            RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
             Record* record = KeysReader_ReadKey(rctx, readerCtx, key);
             if(record == NULL){
@@ -461,7 +461,7 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
                 epIdStr = Gears_listNodeValue(head);
                 ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
                 if(ep){
-                    assert(EPIsFlagOn(ep, EFDone));
+                    RedisModule_Assert(EPIsFlagOn(ep, EFDone));
                     RedisGears_DropExecution(ep);
                 }
                 RG_FREE(epIdStr);
@@ -475,7 +475,7 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     if(errorsLen > 0){
         ++rData->numFailures;
         Record* r = RedisGears_GetError(ctx, 0);
-        assert(RedisGears_RecordGetType(r) == errorRecordType);
+        RedisModule_Assert(RedisGears_RecordGetType(r) == errorRecordType);
         if(rData->lastError){
             RG_FREE(rData->lastError);
         }
@@ -655,7 +655,7 @@ static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
 
 static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPending){
     KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, FindRegistrationDataFlagPop);
-    assert(rData);
+    RedisModule_Assert(rData);
 
     if(abortPending){
         // unregister require aborting all pending executions
@@ -706,14 +706,14 @@ static const char* KeysReader_GetKeyTypeStr(int keyType){
     case REDISMODULE_KEYTYPE_MODULE:
         return "module";
     default:
-        assert(false);
+        RedisModule_Assert(false);
         return NULL;
     }
 }
 
 static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, 0);
-    assert(rData);
+    RedisModule_Assert(rData);
     RedisModule_ReplyWithArray(ctx, 14);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(rData->mode == ExecutionModeSync){
@@ -841,7 +841,7 @@ static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(Fl
 
         // serialize args
         int res = FlatExecutionPlan_Serialize(&bw, rData->fep, NULL);
-        assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+        RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
 
         KeysReader_SerializeArgs(rData->args, &bw);
 
@@ -887,7 +887,7 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err);
         if(!fep){
             RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
-            assert(false);
+            RedisModule_Assert(false);
         }
 
         void* args = KeysReader_DeserializeArgs(&br);
@@ -897,7 +897,7 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int ret = KeysReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
             RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
-            assert(false);
+            RedisModule_Assert(false);
         }
 
         FlatExecutionPlan_AddToRegisterDict(fep);
