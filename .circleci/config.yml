@@ -237,6 +237,13 @@ workflows:
               only: /.*/
             tags:
               only: /.*/
+      - valgrind:
+          name: valgrind-diag
+          filters:
+            branches:
+              only: /.*/
+            tags:
+              only: /.*/
       # - build-multiarch-docker:
       #     filters:
       #       branches:

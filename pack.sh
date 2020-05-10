@@ -67,12 +67,17 @@ pack() {
 	local packfile=artifacts/$artifact/$pack_fname
 	
 	./deps/readies/bin/xtx -d GEARS_PYTHON3_NAME=python3_$SEMVER -d GEARS_PYTHON3_FNAME=$URL_FNAME -d GEARS_PYTHON3_SHA256=$(cat $DEPS.sha256) ramp.yml > /tmp/ramp.yml
-	local packname=$(GEARS_NO_DEPS=1 $ramp pack -m /tmp/ramp.yml -o $packfile $GEARS_SO 2> /tmp/ramp.err | tail -1)
+	
+	# local packname=$(GEARS_NO_DEPS=1 $ramp pack -m /tmp/ramp.yml -o $packfile $GEARS_SO 2> /tmp/ramp.err | tail -1)
+	rm -f /tmp/ramp.fname
+	GEARS_NO_DEPS=1 $ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname --verbose --debug -o $packfile $GEARS_SO >/tmp/ramp.err 2>&1 || true
 
-	if [[ -z $packname ]]; then
+	if [[ ! -f /tmp/ramp.fname ]]; then
 		>&2 echo Failed to pack $artifact
 		cat /tmp/ramp.err >&2
 		exit 1
+	else
+		local packname=`cat /tmp/ramp.fname`
 	fi
 	
 	echo "Created artifacts/$artifact/$packname"
