@@ -131,7 +131,7 @@ Record* Command_AbortExecutionMap(ExecutionCtx* rctx, Record *data, void* arg){
         LockHandler_Release(ctx);
 #endif
     }
-    assert(false);
+    RedisModule_Assert(false);
     return NULL;
 }
 

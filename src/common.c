@@ -152,14 +152,14 @@ char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
 void GearsGetRedisVersion() {
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModuleCallReply *reply = RedisModule_Call(ctx, "info", "c", "server");
-    assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING);
+    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING);
     size_t len;
     const char *replyStr = RedisModule_CallReplyStringPtr(reply, &len);
 
     int n = sscanf(replyStr, "# Server\nredis_version:%d.%d.%d", &currVesion.redisMajorVersion,
                  &currVesion.redisMinorVersion, &currVesion.redisPatchVersion);
 
-    assert(n == 3);
+    RedisModule_Assert(n == 3);
 
     gearsRlecMajorVersion = -1;
     gearsRlecMinorVersion = -1;
@@ -193,9 +193,9 @@ const char* GetShardUniqueId() {
     if(!shardUniqueId){
         RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
         RedisModuleCallReply *reply = RedisModule_Call(ctx, "CONFIG", "cc", "GET", "logfile");
-        assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
         RedisModuleCallReply *uuidReply = RedisModule_CallReplyArrayElement(reply, 1);
-        assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
+        RedisModule_Assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
         size_t len;
         const char* logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
         const char* last = strrchr(logFileName, '/');

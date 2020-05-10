@@ -270,13 +270,13 @@ static const char* RG_GetId(ExecutionPlan* ep){
 
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && RedisGears_IsDone(ep));
+    RedisModule_Assert(ep && RedisGears_IsDone(ep));
 	return array_len(ep->results);
 }
 
 static long long RG_GetErrorsLen(ExecutionPlan* ep){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && RedisGears_IsDone(ep));
+    RedisModule_Assert(ep && RedisGears_IsDone(ep));
 	return array_len(ep->errors);
 }
 
@@ -294,15 +294,15 @@ static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCa
 
 static Record* RG_GetRecord(ExecutionPlan* ep, long long i){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && RedisGears_IsDone(ep));
-	assert(i >= 0 && i < array_len(ep->results));
+    RedisModule_Assert(ep && RedisGears_IsDone(ep));
+    RedisModule_Assert(i >= 0 && i < array_len(ep->results));
 	return ep->results[i];
 }
 
 static Record* RG_GetError(ExecutionPlan* ep, long long i){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
-	assert(ep && RedisGears_IsDone(ep));
-	assert(i >= 0 && i < array_len(ep->errors));
+    RedisModule_Assert(ep && RedisGears_IsDone(ep));
+    RedisModule_Assert(i >= 0 && i < array_len(ep->errors));
 	return ep->errors[i];
 }
 
@@ -505,9 +505,9 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         for(readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
                 strlen(readerName) > 0 ;
                 readerName = RedisModule_LoadStringBuffer(rdb, NULL)){
-            assert(readerName);
+            RedisModule_Assert(readerName);
             RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(readerName);
-            assert(callbacks->rdbLoad);
+            RedisModule_Assert(callbacks->rdbLoad);
             callbacks->rdbLoad(rdb, encver);
             RedisModule_Free(readerName);
         }
