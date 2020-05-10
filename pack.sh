@@ -70,13 +70,18 @@ pack() {
 	# rm -f /tmp/ramp.fname
 	# GEARS_NO_DEPS=1 $ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname --verbose --debug -o $packfile $GEARS_SO >/tmp/ramp.err 2>&1 || true
 
-	if [[ ! -f /tmp/ramp.fname ]]; then
+	if [[ -z $packname ]]; then
 		>&2 echo Failed to pack $artifact
 		cat /tmp/ramp.err >&2
 		exit 1
-	else
-		local packname=`cat /tmp/ramp.fname`
 	fi
+	# if [[ ! -f /tmp/ramp.fname ]]; then
+	# 	>&2 echo Failed to pack $artifact
+	# 	cat /tmp/ramp.err >&2
+	# 	exit 1
+	# else
+	# 	local packname=`cat /tmp/ramp.fname`
+	# fi
 
 	echo "Created artifacts/$artifact/$packname"
 }
