@@ -2,6 +2,6 @@
 gb = GB()
 gb.aggregateby(lambda x: x['value'],
                [],
-               lambda a, r: a + [r],
-               lambda a, r: a + x)
+               lambda k, a, r: a + [r],
+               lambda k, a, r: a + x)
 gb.run()
