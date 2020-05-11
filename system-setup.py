@@ -36,7 +36,7 @@ class RedisGearsSetup(paella.Setup):
 
         # pip cannot build gevent on ARM
         self.install("python-psutil")
-        if self.os == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
+        if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
             self.install("python-gevent")
         else:
             self.pip_install("gevent")
