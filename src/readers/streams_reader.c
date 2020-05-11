@@ -869,11 +869,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPe
 }
 
 static bool StreamReader_IsStream(RedisModuleKey *kp){
-    if(currVesion.redisMajorVersion <= 5){
-        return RedisModule_KeyType(kp) == 0 || RedisModule_KeyType(kp) == 6;
-    }else{
-        return RedisModule_KeyType(kp) == 7;
-    }
+    return RedisModule_KeyType(kp) == REDISMODULE_KEYTYPE_STREAM;
 }
 
 static void* StreamReader_ScanForStreams(void* pd){
