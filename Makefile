@@ -148,7 +148,7 @@ CC_FLAGS += \
 	-I$(BINROOT)/cpython \
 	-Ibin/$(FULL_VARIANT.release)/cpython
 
-LD_FLAGS += -lutil
+LD_FLAGS +=
 
 EMBEDDED_LIBS += $(LIBPYTHON)
 
@@ -160,6 +160,8 @@ ifeq ($(OS),macosx)
 LD_FLAGS += \
 	$(GETTEXT_PREFIX)/lib/libintl.a \
 	-liconv
+else
+EMBEDDED_LIBS += -lutil
 endif
 
 endif # WITHPYTHON
