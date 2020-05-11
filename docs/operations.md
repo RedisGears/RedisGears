@@ -283,7 +283,7 @@ The operation is made of these steps:
   1. extraction of the groups using [extractor](#extractor)
   1. The local [reducer](#reducer) is executed locally and initialized with the zero value
   1. A global [repartition](#repartition) operation that uses the [extractor](#extractor)
-  1. The global [reducer](#reducer) is executed on each shards when we know values are located correctly on the cluster
+  1. The global [reducer](#reducer) is executed on each shard once it is repartitioned with its relevant keys
 
 Output list of records, one for each key. The output records consist of the grouping key and its respective reducer's value.
 
