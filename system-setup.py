@@ -123,10 +123,10 @@ class RedisGearsSetup(paella.Setup):
 
     def common_last(self):
         # redis-py-cluster should be installed from git due to redis-py dependency
+        self.run("python -m pip uninstall -y ramp-packer RLTest")
         self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
-        self.run("python -m pip uninstall -y ramp-packer")
-        self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@rafi-args1")
+        self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
         self.pip_install("jinja2")
 
 #----------------------------------------------------------------------------------------------
