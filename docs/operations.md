@@ -276,16 +276,16 @@ _Arguments_
 ## AggregateBy
 The sugar **AggregateBy** operation performs many-to-less mapping (N:M) of records.
 
-It is similar to the [Aggregate](#aggregate) operation but aggregates per key. It requires a an [extractor](#extractor) callback, a zero value and two [accumulator](#accumulator) callbacks for computing the local and global aggregates.
+It is similar to the [Aggregate](#aggregate) operation but aggregates per key. It requires a an [extractor](#extractor) callback, a zero value and two [reducers](#reducer) callbacks for computing the local and global aggregates.
 
 The operation is made of these steps:
 
+  1. extraction of the groups using [extractor](#extractor)
+  1. The local [reducer](#reducer) is executed locally and initialized with the zero value
   1. A global [repartition](#repartition) operation that uses the [extractor](#extractor)
-  1. The local [accumulator](#accumulator) is executed locally and initialized with the zero value
-  1. A global [collect](#operation) moves all records to the originating engine
-  1. The global [accumulator](#accumulator) is executed locally by the originating engine
+  1. The global [reducer](#reducer) is executed on each shards when we know values are located correctly on the cluster
 
-Output list of records, one for each key. The output records consist of the grouping key and its respective accumulator's value.
+Output list of records, one for each key. The output records consist of the grouping key and its respective reducer's value.
 
 **Python API**
 ```python
@@ -296,8 +296,8 @@ _Arguments_
 
 * _e_: a key [extractor](#extractor) function callback
 * _z_: the aggregate's zero value
-* _l_: a local [accumulator](#accumulator) function callback
-* _g_: a global [accumulator](#accumulator) function callback
+* _l_: a local [reducer](#reducer) function callback
+* _g_: a global [reducer](#reducer) function callback
 
 **Examples**
 ```python
