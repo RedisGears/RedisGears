@@ -35,7 +35,11 @@ class RedisGearsSetup(paella.Setup):
         self.install("zip unzip")
 
         # pip cannot build gevent on ARM
-        self.install("python-psutil python-gevent")
+        self.install("python-psutil")
+        if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
+            self.install("python-gevent")
+        else:
+            self.pip_install("gevent")
         self.pip_install("pipenv")
 
     def redhat_compat(self):
