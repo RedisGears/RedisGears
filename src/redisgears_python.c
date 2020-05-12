@@ -3489,13 +3489,6 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
-    PyObject* pName = PyUnicode_FromString("gearsclient");
-    PyObject* redisGearsClientModule = PyImport_Import(pName);
-    Py_DECREF(pName);
-    if(!redisGearsClientModule){
-        RedisModule_Log(ctx, "warning", "gearsclient is not installed on the virtual env, will not be able to run with the python client.");
-    }
-
     pName = PyUnicode_FromString("redisgears");
     PyObject* redisGearsModule = PyImport_Import(pName);
     Py_DECREF(pName);
