@@ -2410,6 +2410,9 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         const char* requirements = RedisModule_StringPtrLen(argv[requirementsArg - 1], NULL);
         if(strcasecmp(requirements, "REQUIREMENTS") == 0){
             RedisGearsPy_GetRequirementsList(requirementsList, argv + requirementsArg, reqLen);
+        }else{
+            RedisModule_ReplyWithError(ctx, "Extra unkown arguments was given.");
+            return REDISMODULE_OK;
         }
     }
 

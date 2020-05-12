@@ -166,6 +166,9 @@ GB('%s').map(lambda x: r).register(trigger='test')
     env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis').error()
     env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis').error()
 
+def testExtraUnknownArgumentsReturnError(env):
+    env.expect('RG.PYEXECUTE', 'GB().run()', 'exta', 'unknown', 'arguments').error()
+
 class testStepsWrongArgs:
     def __init__(self):
         self.env = Env()
