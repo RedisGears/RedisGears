@@ -37,7 +37,7 @@ nav:
   - 'Examples': 'examples.md'
   - 'Clients': 'clients.md'
   - 'Design':
-    - 'Isolation Technics': 'isolation_technics.md'
+    - 'Isolation Technics': 'isolation_techniques.md'
   - 'Glossary': 'glossary.md'
   - 'Contributing': 'contrib.md'
 

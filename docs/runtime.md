@@ -7,12 +7,12 @@ The following sections describe the runtime environment.
 ## Python Interpreter
 RedisGears embeds a Python version 3.7.2+ interpreter.
 
-All functions use that interpreter. Each call to `RG.PYEXECUTE` maintains its own globals dictionary that isolates its execution context from other calls. This means that all the functions submitted in that call share the interpreter and  globals dictionary.
+All functions use this interpreter. Each call to `RG.PYEXECUTE` maintains its own globals dictionary that isolates its execution context from other calls. This means that all of the functions submitted in a given call share the same interpreter and globals dictionary.
 
 !!! info "Further reference"
     For more information refer to:
 
-      * [Isolation Technics design](isolation_technics.md)
+      * [Isolation Techniques design](isolation_techniques.md)
 
 ## Environment
 The interpreter's environment can be extended with any dependent package that can later be imported and used by functions in their respective sub-interpreters.

@@ -1,9 +1,9 @@
 # RedisGears Readers
-The **reader** is the mandatory first step of any [RedisGears function](functions.md), and every function has exactly one reader. A reader reads data and generates input [records](glossary.md#record) from it. The input records are consumed by the function.
+The **reader** is the mandatory first step of any [RedisGears function](functions.md). Every function has exactly one reader. A reader reads data and generates input [records](glossary.md#record) from it. The input records are consumed by the function.
 
 A function's reader is declared when initializing its `#!python class GearsBuilder` [context builder](functions.md#context-builder).
 
-RedisGears supports several types of readers that operate on different types of input data. Furthermore, each reader may be used to process [batch](glossary.md#batch-processing) [streaming](glossary.md#event-processing) data.
+RedisGears supports several types of readers that operate on different types of input data. Furthermore, each reader may be used to process [batch](glossary.md#batch-processing) and [streaming](glossary.md#event-processing) data.
 
 | Reader | Output | Batch | Event |
 | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ RedisGears supports several types of readers that operate on different types of 
 | [ShardIDReader](#shardidreader) | Shard ID | Yes | No |
 | [CommandReader](#commandreader) | Command arguments | No | Yes |
 
-The following sections describe the different readers' operation.
+The following sections describe each reader.
 
 ## KeysReader
 The **KeysReader** scans the Redis database.
@@ -23,11 +23,11 @@ It generates records from keys and their respective values.
 
 **Input**
 
-The reader scans the entire database and any keys that are found can be used as input for generating records.
+The reader scans the entire database, and any keys it finds can be used as input for generating records.
 
 **Output**
 
-A record is output for each input key. The record is a dictionary structure that has four keys and their respective values:
+A record is generated for each input key. The record is a dictionary structure that has four keys and their respective values:
 
   * **'key'**: the name of the key
   * **'value'**: the value of the key (`#!python None` if the deleted)
@@ -36,9 +36,9 @@ A record is output for each input key. The record is a dictionary structure that
 
 **Batch Mode**
 
-The reader scans the entire database for keys. For each key found, it first reads a key's name, then fetches its value (unless used with `#!python readValue=False` argument) and finally generates a record.
+The reader scans the entire database for keys. For each key found, it first reads the key's name, then fetches its value (unless used with `#!python readValue=False` argument), and finally generates a record.
 
-Its operation can be controlled by the following means:
+You can control the reader's batch operation by the following means:
 
   * Glob-like pattern: generates records only for key names that match the pattern
   * Read value: a Boolean specifying whether the value is read or not
@@ -48,7 +48,7 @@ Its operation can be controlled by the following means:
 
 The reader is executed in response to events that are generated from write operations in the Redis database.
 
-Its operation can be controlled with the following means:
+You can control the reader's event operation by the following means:
 
   * Prefix: generates records only for key names that start with the prefix
   * Events: same, but only for whitelisted events

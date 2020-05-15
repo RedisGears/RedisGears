@@ -4,7 +4,7 @@ The following sections consist of various [recipes](glossary.md#recipe) and basi
 To contribute your example or recipe (and get the credit for it), click the "Edit this page" button at the top to submit a Pull Request.
 
 ## Recipes
-This is a list of RedisGears recipes that can be used as-is or as an inspiration source.
+This is a list of RedisGears recipes that can be used as-is or as a source of inspiration.
 
 | Recipe | Description | Author | License | URL |
 | --- | --- | --- | --- | --- |
@@ -28,7 +28,7 @@ All keys store Redis String values. Each value is a sentence.
 ```
 
 ## Delete by Key Prefix
-Deletes all the keys with name beginning with a prefix and return their count.
+Deletes all keys whose name begins with a specified prefix and return their count.
 
 **Author: [RedisLabs](https://redislabs.com/)**
 
@@ -44,7 +44,7 @@ There may be keys in the database. Some of these may have names beginning with t
 
 ## Basic Redis Stream Processing
 
-Copy every new message from the Redis Stream to a Redis Hash key.
+Copy every new message from a Redis Stream to a Redis Hash key.
 
 **Author: [RedisLabs](https://redislabs.com/)**
 
@@ -72,12 +72,12 @@ Sets the time to live (TTL) for every updated key to one hour.
 
 **Author: [RedisLabs](https://redislabs.com/)**
 
-## Distributed Monte Carlo Estimation of Pi's Value
+## Distributed Monte Carlo to Estimate _pi_
 
-Estimate Pi by throwing darts at a carefully-constructed dartboard.
+Estimate _pi_ by throwing darts at a carefully-constructed dartboard.
 
 !!! tip "There are far better ways to get Pi's value"
-    This example is intended for educational purposes only. For all practical purposes, you'd be better off using the constant value of 3.14159265359.
+    This example is intended for educational purposes only. For all practical purposes, you'd be better off using the constant value 3.14159265359.
 
 **Author: [RedisLabs](https://redislabs.com/)**
 

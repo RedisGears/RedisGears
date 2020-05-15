@@ -3,9 +3,11 @@
 [![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 ## What is RedisGears?
-RedisGears is a serverless engine for transaction, [batch](glossary.md#batch-processing) and [event-driven](glossary.md#event-processing) data processing in Redis. It is a dynamic framework for the execution of [functions](functions.md) that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C [APIs](glossary.md#api).
+RedisGears is an engine for data processing in Redis. RedisGears supports transaction, [batch](glossary.md#batch-processing), and [event-driven](glossary.md#event-processing) processing of Redis data. To use RedisGears, you write [functions](functions.md) that describe how your data should be processed. You then submit this code to your Redis deployment for remote execution.
 
-For example, you can use RedisGears to [count the words](examples.md#word-count) in Redis:
+As of v1.0.0, code for RedisGears must be written in Python. However, an internal C [API](glossary.md#api) exists and can be used by other Redis modules. In addition, support for other languages, including Java and JavaScript, is being planned.
+
+To take a simple example, you can use RedisGears to [count the words](examples.md#word-count) in Redis:
 
 ```python
 {{ include('examples/word-count.py') }}
@@ -40,11 +42,11 @@ In broad strokes, the following diagram depicts RedisGears' components:
 
 ## Where Next?
   * The [Introduction](intro.md) is the recommended starting point
-  * The [Overview](glossary.md) page summarizes the concepts used by RedisGears
-  * The reference pages about RedisGears' [Runtime](runtime.md), [Functions](functions.md), [Readers](readers.md) and [Operations](operations.md)
-  * The RedisGears [Commands](commands.md) reference
-  * The [Quickstart](quickstart.md) page provides information about getting, building, installing and running RedisGears
-  * There are interesting uses and RedisGears recipes in the [Examples](examples.md)
+  * The [Overview](glossary.md) page summarizes important RedisGears concepts
+  * The reference pages describe RedisGears' [Runtime](runtime.md), [Functions](functions.md), [Readers](readers.md) and [Operations](operations.md)
+  * The RedisGears [Commands](commands.md) reference describe all commands
+  * The [Quickstart](quickstart.md) page provides information about getting, building, installing, and running RedisGears
+  * There are interesting RedisGears uses cases and recipes on the [Examples](examples.md) page
 
 ## Quick Links
   * [Source code repository](https://github.com/RedisGears/RedisGears)
@@ -52,7 +54,7 @@ In broad strokes, the following diagram depicts RedisGears' components:
   * [Docker image](https://hub.docker.com/r/redislabs/redisgears/)
 
 ## Contact Us
-If you have questions, want to provide feedback or perhaps report an issue or [contribute some code](contrib.md), here's where we're listening to you:
+If you have questions or feedback, or want to report an issue or [contribute some code](https://cla-assistant.io/RedisGears/RedisGears), here's where you can get in touch:
 
   * [Mailing list](https://forum.redislabs.com/c/modules/redisgears)
   * [Gitter chatroom](https://badges.gitter.im/RedisLabs/RedisGears.svg)
