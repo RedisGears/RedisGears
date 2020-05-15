@@ -16,7 +16,7 @@ The following sections describe the supported commands.
 | [`RG.GETRESULTS`](#rggetresults) | Returns the results from an execution |
 | [`RG.GETRESULTSBLOCKING`](#rggetresultsblocking) | Blocks the client until execution ends |
 | [`RG.INFOCLUSTER`](#rginfocluster) | Returns cluster information |
-| [`RG.PYEXECUTE`](#rgpyexecute) | Executes Python functions and registers functions for event-drive processing |
+| [`RG.PYEXECUTE`](#rgpyexecute) | Executes Python functions and registers functions for event-driven processing |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes a node's view of the cluster |
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
