@@ -104,7 +104,7 @@ A function always:
 A RedisGears **reader** is the mandatory first step of any function. Every function has exactly one reader. A reader reads data and generates input records from it. The input records are consumed by the function.
 
 ??? info "Further reference"
-    Refer to the [Readers page](readers.md) for a complete reference about the various readers types and their operation.
+    Refer to the [Readers page](readers.md) for a complete reference about the various reader types and their operation.
 
 ## Record
 A RedisGears **record** is the basic abstraction that represents data in the function's flow. Input data records are passed from one step to the next and are finally returned as the result.
@@ -134,7 +134,7 @@ The **result** of a function is the set of output records it produces after exec
     Results are described at the [Functions page](functions.md#result).
 
 ## Execution
-Whenever a RedisGears function is executed, it generates data. This is referred to as an **execution**. Every execution is uniquely identified by an ID, and consists of the results, errors, and other information generated while executing.
+An **execution** is a single run of a RedisGears function. Every execution is uniquely identified by an ID, and every execution consists of the results, errors, and other information generated while executing.
 
 ??? info "Further reference"
     Executions are described at the [Functions page](functions.md#execution).

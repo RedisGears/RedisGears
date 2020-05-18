@@ -48,7 +48,7 @@ You can control the reader's batch operation by the following means:
 
 The reader is executed in response to events that are generated from write operations in the Redis database.
 
-You can control the reader's event operation by the following means:
+You can control the reader's event operation as follows:
 
   * Prefix: generates records only for key names that start with the prefix
   * Events: same, but only for whitelisted events
@@ -66,8 +66,8 @@ class GearsBuilder('KeysReader', defaultArg='*').run(noScan=False, readValue=Tru
 _Arguments_
 
 * _defaultArg_: a glob-like pattern of key names
-* _noScan_: when `#!python True` the pattern is used as an explicit key name
-* _readValue_: when `#!python False` the value will not be read, so the **'type'** and **'value'** of the record will be set to `#!python None`
+* _noScan_: when `#!python True`, the pattern is used as an explicit key name
+* _readValue_: when `#!python False`, the value will not be read, so the **'type'** and **'value'** of the record will be set to `#!python None`
 
 **_Event Mode_**
 
@@ -132,7 +132,7 @@ A record is output for each input key. The record is a simple string that is the
 
 The reader scans the entire database for keys. For each key found, it returns the key as a string record.
 
-Its operation can be controlled by the following means:
+Its operation can be controlled as follows:
 
   * Glob-like pattern: generates records only for key names that match the pattern
   * Scan count: the amount of effort each scan iteration will invest

@@ -149,7 +149,7 @@ class GearsBuilder(reader='KeysReader', defaultArg='*', desc=None)
 _Arguments_
 
 * _reader_: the function's [reader](readers.md)
-* _defaultArg_: Optional argument that the reader may need. These are usually a key's name, prefix, glob, or a regular expression. Its use depends on the function's reader type and action.
+* _defaultArg_: Optional arguments that the reader may need. These are usually a key's name, prefix, glob, or a regular expression. Its use depends on the function's reader type and action.
 * _desc_: an optional description
 
 **Examples**
@@ -163,10 +163,10 @@ gb.register()
 ```
 
 ## Actions
-An action is a special type of operation that terminates a function. The two most common actions are `run()` and `register()`.
+An action is a special type of operation that terminates a function. The current supported actions are `run()` and `register()`.
 
 ### Run
-The **Run** action runs a function as a batch job. In this case, the function will be executed once and then exit once the data is exhausted by its reader.
+The **Run** action runs a function as a batch job. In this case, the function will be executed once and then exit as soon as the data is exhausted by its reader.
 
 Trying to run more than one function in the same execution will fail with an error.
 

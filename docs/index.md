@@ -44,7 +44,7 @@ In broad strokes, the following diagram depicts RedisGears' components:
   * The [Introduction](intro.md) is the recommended starting point
   * The [Overview](glossary.md) page summarizes important RedisGears concepts
   * The reference pages describe RedisGears' [Runtime](runtime.md), [Functions](functions.md), [Readers](readers.md) and [Operations](operations.md)
-  * The RedisGears [Commands](commands.md) reference describe all commands
+  * The RedisGears [Commands](commands.md) reference describes all commands
   * The [Quickstart](quickstart.md) page provides information about getting, building, installing, and running RedisGears
   * There are interesting RedisGears uses cases and recipes on the [Examples](examples.md) page
 
