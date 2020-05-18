@@ -8,7 +8,7 @@
 
 RedisGears is an engine for data processing in Redis. RedisGears supports transaction, [batch](docs/glossary.md#batch-processing) and [event-driven](docs/glossary.md#event-processing) processing of Redis data. To use RedisGears, you write [functions](docs/functions.md) that describe how your data should be processed. You then submit this code to your Redis deployment for remote execution.
 
-As of the v1.0.0, code for RedisGears must be written in Python. However, an internal C [APIs](glossary.md#api) exists and can be used by other Redis modules. In addition, support for other languages, including Java and JavaScript, is being planned.
+As of v1.0.0, code for RedisGears must be written in Python. However, an internal C [APIs](glossary.md#api) exists and can be used by other Redis modules. In addition, support for other languages, including Java and JavaScript, is being planned.
 
 * The RedisGears Homepage: https://oss.redislabs.com/redisgears
 * Get to sixth gear with an [Introduction to RedisGears](https://oss.redislabs.com/redisgears/intro.html)
