@@ -67,7 +67,7 @@ typedef struct ArgType ArgType;
 typedef void (*ArgFree)(void* arg);
 typedef void* (*ArgDuplicate)(void* arg);
 typedef int (*ArgSerialize)(void* arg, Gears_BufferWriter* bw, char** err);
-typedef void* (*ArgDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br, char** err);
+typedef void* (*ArgDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err);
 typedef char* (*ArgToString)(void* arg);
 
 /**
@@ -93,11 +93,14 @@ typedef struct Reader{
 /**
  * Create a new argument type with the given name and callbacks.
  */
-ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
+ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, int version, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
 
 /**
  * Function that allows to read/write from buffers. Use when implementing serialize/deserialize
  */
+#define LONG_READ_ERROR LLONG_MAX
+#define BUFF_READ_ERROR NULL
+
 void MODULE_API_FUNC(RedisGears_BWWriteLong)(Gears_BufferWriter* bw, long val);
 void MODULE_API_FUNC(RedisGears_BWWriteString)(Gears_BufferWriter* bw, const char* str);
 void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(Gears_BufferWriter* bw, const char* buff, size_t len);

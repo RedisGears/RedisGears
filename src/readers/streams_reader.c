@@ -1106,7 +1106,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         Gears_BufferReaderInit(&reader, &buff);
 
         char* err = NULL;
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err);
+        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err, encver);
         if(!fep){
             RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
             RedisModule_Assert(false);
