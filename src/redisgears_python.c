@@ -125,7 +125,9 @@ typedef struct PythonSessionCtx{
 }PythonSessionCtx;
 
 static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader* br, int version, char** err);
+static PythonRequirementCtx* PythonRequirement_Deserialize(Gears_BufferReader* br, char** err);
 static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_BufferWriter* bw, char** err);
+static int PythonRequirement_Serialize(PythonRequirementCtx* req, Gears_BufferWriter* bw, char** err);
 
 static PyObject* GearsPyDict_GetItemString(PyObject* dict, const char* key){
     return (dict ? PyDict_GetItemString(dict, key) : NULL);
@@ -200,9 +202,9 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
 
     int exitCode;
     if(GearsConfig_CreateVenv()){
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate; cd '%s'; python -m pip install --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"source %s/bin/activate; cd '%s'; python -m pip install --no-index --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
     }else{
-        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd '%s'; %s/bin/python3 -m pip install --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
+        exitCode = ExecCommand(NULL, "/bin/bash -c \"cd '%s'; %s/bin/python3 -m pip install --no-index --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
     }
     array_free(filesInDir);
     if(exitCode == 0){
@@ -270,9 +272,8 @@ static void* PythonSessionRequirements_Deserialize(FlatExecutionPlan* fep, Gears
     }
     PythonRequirementCtx** reqs = array_new(PythonRequirementCtx*, 10);
     size_t reqsLen = RedisGears_BRReadLong(br);
-    int reqVersion = RedisGears_BRReadLong(br);
     for(size_t i = 0 ; i < reqsLen ; ++i){
-        PythonRequirementCtx* req = PythonRequirementCtx_Deserialize(br, reqVersion, err);
+        PythonRequirementCtx* req = PythonRequirement_Deserialize(br, err);
         if(!req){
             goto error;
         }
@@ -292,9 +293,8 @@ error:
 static int PythonSessionRequirements_Serialize(void* arg, Gears_BufferWriter* bw, char** err){
     PythonRequirementCtx** reqs = arg;
     RedisGears_BWWriteLong(bw, array_len(reqs));
-    RedisGears_BWWriteLong(bw, PY_REQ_VERSION);
     for(size_t i = 0 ; i < array_len(reqs) ; ++i){
-        if(PythonRequirementCtx_Serialize(reqs[i], bw, err) != REDISMODULE_OK){
+        if(PythonRequirement_Serialize(reqs[i], bw, err) != REDISMODULE_OK){
             return REDISMODULE_ERR;
         }
     }
@@ -369,6 +369,7 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
     if(version > PY_REQ_VERSION){
         return NULL;
     }
+    wheelData* wheelsData = array_new(wheelData, 10);
     PythonRequirementCtx* req = NULL;
     const char* name = RedisGears_BRReadString(br);
     if(name == BUFF_READ_ERROR){
@@ -380,8 +381,6 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
         *err = RG_STRDUP("Bad serialization format on reading requirement wheels amount");
         goto done;
     }
-
-    wheelData* wheelsData = array_new(wheelData, 10);;
 
     for(size_t i = 0 ; i < nWheels ; ++i){
         const char* fileName = RedisGears_BRReadString(br);
@@ -451,6 +450,15 @@ done:
     return req;
 }
 
+static PythonRequirementCtx* PythonRequirement_Deserialize(Gears_BufferReader* br, char** err){
+    int version = RedisGears_BRReadLong(br);
+    if(version == LONG_READ_ERROR){
+        *err = RG_STRDUP("Bad serialization format on reading requirement version");
+        return NULL;
+    }
+    return PythonRequirementCtx_Deserialize(br, version, err);
+}
+
 static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_BufferWriter* bw, char** err){
     if(!req->isDownloaded){
         // requirement is not downloaded yet and so we can not serialized it
@@ -496,6 +504,11 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         RG_FREE(filePath);
     }
     return REDISMODULE_OK;
+}
+
+static int PythonRequirement_Serialize(PythonRequirementCtx* req, Gears_BufferWriter* bw, char** err){
+    RedisGears_BWWriteLong(bw, PY_REQ_VERSION);
+    return PythonRequirementCtx_Serialize(req, bw, err);
 }
 
 static void* PythonSessionCtx_ShellowCopy(void* arg){
@@ -3340,19 +3353,29 @@ static void RedisGearsPy_Free(void* ctx, void * p){
 	RG_FREE(m);
 }
 
-static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementCtx* req, int version){
-    RedisModule_ReplyWithArray(ctx, 6);
+static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementCtx* req){
+    RedisModule_ReplyWithArray(ctx, 10);
 
-    RedisModule_ReplyWithCString(ctx, "Version");
-    RedisModule_ReplyWithLongLong(ctx, version);
+    RedisModule_ReplyWithCString(ctx, "GearReqVersion");
+    RedisModule_ReplyWithLongLong(ctx, PY_REQ_VERSION);
 
     RedisModule_ReplyWithCString(ctx, "Name");
     RedisModule_ReplyWithCString(ctx, req->installName);
 
+    RedisModule_ReplyWithCString(ctx, "IsDownloaded");
+    RedisModule_ReplyWithCString(ctx, req->isDownloaded ? "true" : "false");
+
+    RedisModule_ReplyWithCString(ctx, "IsInstalled");
+    RedisModule_ReplyWithCString(ctx, req->isInstalled ? "true" : "false");
+
     RedisModule_ReplyWithCString(ctx, "Wheels");
-    RedisModule_ReplyWithArray(ctx, array_len(req->wheels));
-    for(size_t i = 0 ; i < array_len(req->wheels) ; ++i){
-        RedisModule_ReplyWithCString(ctx, req->wheels[i]);
+    if(req->isDownloaded){
+        RedisModule_ReplyWithArray(ctx, array_len(req->wheels));
+        for(size_t i = 0 ; i < array_len(req->wheels) ; ++i){
+            RedisModule_ReplyWithCString(ctx, req->wheels[i]);
+        }
+    }else{
+        RedisModule_ReplyWithCString(ctx, "Requirement was not yet downloaded so wheels are not available");
     }
 }
 
@@ -3433,6 +3456,20 @@ static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModu
     return REDISMODULE_OK;
 }
 
+static int RedisGearsPy_DumpRequirements(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+
+    RedisModule_ReplyWithArray(ctx, Gears_dictSize(RequirementsDict));
+    Gears_dictIterator *iter = Gears_dictGetIterator(RequirementsDict);
+    Gears_dictEntry *entry = NULL;
+    while((entry = Gears_dictNext(iter))){
+        PythonRequirementCtx* req = Gears_dictGetVal(entry);
+        RedisGearsPy_SendReqMetaData(ctx, req);
+    }
+    Gears_dictReleaseIterator(iter);
+
+    return REDISMODULE_OK;
+}
+
 static int RedisGearsPy_ImportRequirement(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     Gears_Buffer* buff = Gears_BufferCreate();
 
@@ -3445,16 +3482,15 @@ static int RedisGearsPy_ImportRequirement(RedisModuleCtx *ctx, RedisModuleString
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, buff);
 
-    int version = RedisGears_BRReadLong(&br);
-
     char* err = NULL;
-    PythonRequirementCtx* req = PythonRequirementCtx_Deserialize(&br, version, &err);
+    PythonRequirementCtx* req = PythonRequirement_Deserialize(&br, &err);
     if(!req){
         if(!err){
             err = RG_STRDUP("Failed deserialize requirement");
         }
         RedisModule_ReplyWithError(ctx, err);
         RG_FREE(err);
+        Gears_BufferFree(buff);
         return REDISMODULE_OK;
     }
 
@@ -3498,9 +3534,8 @@ static int RedisGearsPy_ExportRequirement(RedisModuleCtx *ctx, RedisModuleString
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
-    Gears_BufferWriterWriteLong(&bw, PY_REQ_VERSION); // write the version
     char* err = NULL;
-    if(PythonRequirementCtx_Serialize(req, &bw, &err) != REDISMODULE_OK){
+    if(PythonRequirement_Serialize(req, &bw, &err) != REDISMODULE_OK){
         PythonRequirementCtx_Free(req);
         Gears_BufferFree(buff);
         if(!err){
@@ -3513,7 +3548,7 @@ static int RedisGearsPy_ExportRequirement(RedisModuleCtx *ctx, RedisModuleString
 
     RedisModule_ReplyWithArray(ctx, 2);
 
-    RedisGearsPy_SendReqMetaData(ctx, req, PY_REQ_VERSION);
+    RedisGearsPy_SendReqMetaData(ctx, req);
 
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
 
@@ -3616,6 +3651,7 @@ static void PythonReader_Serialize(void* ctx, Gears_BufferWriter* bw){
 
 static void PythonReader_Deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
     PythonReaderCtx* pyCtx = ctx;
+    // this serialized data reached from another shard (not rdb) so its save to assume the version is PY_OBJECT_TYPE_VERSION
     pyCtx->callback = RedisGearsPy_PyCallbackDeserialize(fep, br, PY_OBJECT_TYPE_VERSION, NULL);
     RedisModule_Assert(pyCtx->callback);
 }
@@ -3920,7 +3956,6 @@ static int RedisGearsPy_LoadRegistrations(RedisModuleIO *rdb, int encver, int wh
     // first we need to clear all existing requirements
     RedisGearsPy_ClearRequirements();
 
-    int reqsVersion = RedisModule_LoadUnsigned(rdb);
     char* err = NULL;
     char *data = NULL;
     PythonRequirementCtx* req = NULL;
@@ -3934,7 +3969,7 @@ static int RedisGearsPy_LoadRegistrations(RedisModuleIO *rdb, int encver, int wh
         };
         Gears_BufferReader br;
         Gears_BufferReaderInit(&br, &buff);
-        req = PythonRequirementCtx_Deserialize(&br, reqsVersion, &err);
+        req = PythonRequirement_Deserialize(&br, &err);
         if(!req){
             goto error;
         }
@@ -3968,7 +4003,6 @@ error:
 }
 
 static void RedisGearsPy_SaveRegistrations(RedisModuleIO *rdb, int when){
-    RedisModule_SaveUnsigned(rdb, PY_REQ_VERSION);
     Gears_dictIterator *iter = Gears_dictGetIterator(RequirementsDict);
     Gears_dictEntry *entry = NULL;
     Gears_Buffer* buff = Gears_BufferCreate();
@@ -3978,7 +4012,7 @@ static void RedisGearsPy_SaveRegistrations(RedisModuleIO *rdb, int when){
         PythonRequirementCtx* req = Gears_dictGetVal(entry);
         Gears_BufferClear(buff);
         char* err = NULL;
-        if(PythonRequirementCtx_Serialize(req, &bw, &err) != REDISMODULE_OK){
+        if(PythonRequirement_Serialize(req, &bw, &err) != REDISMODULE_OK){
             RedisModule_LogIOError(rdb, "warning", "Failed serializing requirement %s (%s)", req->installName, err ? err : "Unknow error");
             RG_FREE(err);
         }else{
@@ -4221,6 +4255,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     if (RedisModule_CreateCommand(ctx, "rg.pyimportreq", RedisGearsPy_ImportRequirement, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.pyimportreq");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.pydumpreqs", RedisGearsPy_DumpRequirements, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.pydumpreqs");
         return REDISMODULE_ERR;
     }
 

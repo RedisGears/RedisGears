@@ -546,40 +546,45 @@ def testRecordSerializationFailure(env):
                   "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
     env.assertEqual(len(res[1]), env.shardsCount - 1) # the initiator will not raise error
 
-def testDependenciesInstall(env):
+def testDependenciesInstall():
+    env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redisgraph')))."
                             "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
-    env.assertEqual(len(res[0]), 1)
+    env.assertEqual(len(res[0]), env.shardsCount)
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redisgraph'", res[0][0])
 
-def testDependenciesInstallWithVersionGreater(env):
+def testDependenciesInstallWithVersionGreater():
+    env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redis')))."
                             "collect().distinct().run()", 'REQUIREMENTS', 'redis>=3')
-    env.assertEqual(len(res[0]), 1)
+    env.assertEqual(len(res[0]), env.shardsCount)
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redis'", res[0][0])
 
-def testDependenciesInstallWithVersionEqual(env):
+def testDependenciesInstallWithVersionEqual():
+    env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redis')))."
                             "collect().distinct().run()", 'REQUIREMENTS', 'redis==3')
-    env.assertEqual(len(res[0]), 1)
+    env.assertEqual(len(res[0]), env.shardsCount)
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redis'", res[0][0])
 
-def testDependenciesInstallFailure(env):
+def testDependenciesInstallFailure():
+    env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: __import__('redisgraph'))."
                                "collect().distinct().run()", 'REQUIREMENTS', 'blabla').error().contains('satisfy requirments')
 
-def testDependenciesWithRegister(env):
+def testDependenciesWithRegister():
+    env = Env(moduleArgs='CreateVenv 1')
     env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB()."
                                "map(lambda x: __import__('redisgraph'))."
@@ -589,7 +594,7 @@ def testDependenciesWithRegister(env):
         res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                       "map(lambda x: str(__import__('redisgraph')))."
                                       "collect().distinct().run()")
-        env.assertEqual(len(res[0]), 1)
+        env.assertEqual(len(res[0]), env.shardsCount)
         env.assertEqual(len(res[1]), 0)
         env.assertContains("<module 'redisgraph'", res[0][0])
 
