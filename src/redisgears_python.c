@@ -365,6 +365,7 @@ static void PythonSessionCtx_Free(void* arg){
         Gears_dictDelete(SessionsDict, session->sessionId);
         PythonSessionCtx_FreeRequirementsList(session->requirements);
         void* old = RedisGearsPy_Lock(NULL);
+        PyDict_Clear(session->globalsDict);
         Py_DECREF(session->globalsDict);
         RedisGearsPy_Unlock(old);
         RG_FREE(session);
@@ -3239,8 +3240,10 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
 #define LOCAL_VENV_FMT          PYENV_DIR"/%s"
 
     const char *no_deps = getenv("GEARS_NO_DEPS");
-    bool skip_deps_install = (no_deps && !strcmp(no_deps, "1")) || !GearsConfig_DownloadDeps() ||
-                             (IsEnterprise() && !GearsConfig_ForceDownloadDepsOnEnterprise());
+    bool skip_deps_install = (no_deps && !strcmp(no_deps, "1")) || !GearsConfig_DownloadDeps();
+    if(!skip_deps_install && IsEnterprise()){
+        skip_deps_install = GearsConfig_ForceDownloadDepsOnEnterprise();
+    }
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
         if (skip_deps_install) {
