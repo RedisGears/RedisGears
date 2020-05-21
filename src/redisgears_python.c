@@ -649,6 +649,7 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
         }else{
             // we set the req version to 0, only at gears v1.0.0 we added the serialized
             // requirement to the session so we need to read it and install it here
+            RedisModule_Log(NULL, "notice", "Loading an old rdb registrations that comes with a requirement. the requirent will also be installed.");
             req = PythonRequirementCtx_Deserialize(br, 0, err);
             if(!req){
                 PythonSessionCtx_Free(s);

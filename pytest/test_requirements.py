@@ -102,7 +102,24 @@ def testDependenciesSavedToRDB():
         for r in res:
             env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)
 
+def testAof(env):
+    env = Env(moduleArgs='CreateVenv 1', useAof=True)
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
 
+    res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').flatmap(lambda x: execute('RG.PYDUMPREQS')).run()")
+    env.assertEqual(len(err), 0)
+    env.assertEqual(len(res), env.shardsCount)
+    for r in res:
+        env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)
+
+    env.broadcast('debug', 'loadaof')
+
+    res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').flatmap(lambda x: execute('RG.PYDUMPREQS')).run()")
+    env.assertEqual(len(err), 0)
+    env.assertEqual(len(res), env.shardsCount)
+    for r in res:
+        env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)    
 
 def testDependenciesImportSerializationError():
     env = Env(moduleArgs='CreateVenv 1')
