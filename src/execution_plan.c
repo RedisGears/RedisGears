@@ -1542,12 +1542,14 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
     char* err = NULL;
+    // this reached from another shard it safe to assume it the same as our version
     FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
     if(!fep){
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
-        if(err){
-            RG_FREE(err);
+        if(!err){
+            err = RG_STRDUP("Unknown error");
         }
+        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+        RG_FREE(err);
         return;
     }
 

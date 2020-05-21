@@ -367,6 +367,7 @@ typedef struct{
 
 static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader* br, int version, char** err){
     if(version > PY_REQ_VERSION){
+        *err = RG_STRDUP("Requirement version is not compatible, upgrade to newer RedisGears.");
         return NULL;
     }
     wheelData* wheelsData = array_new(wheelData, 10);
@@ -644,6 +645,7 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
             const char* reqName = RedisGears_BRReadString(br);
             req = PythonRequirementCtx_Get(reqName);
             if(!req){
+                rg_asprintf(err, "session missing requirement (%s)", reqName);
                 PythonSessionCtx_Free(s);
                 return NULL;
             }
@@ -653,6 +655,9 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
             RedisModule_Log(NULL, "notice", "Loading an old rdb registrations that comes with a requirement. the requirent will also be installed.");
             req = PythonRequirementCtx_Deserialize(br, 0, err);
             if(!req){
+                if(!*err){
+                    *err = RG_STRDUP("Failed deserializing requirement");
+                }
                 PythonSessionCtx_Free(s);
                 return NULL;
             }
