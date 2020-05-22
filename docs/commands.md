@@ -18,7 +18,7 @@ The following sections describe the supported commands.
 | [`RG.INFOCLUSTER`](#rginfocluster) | Returns cluster information |
 | [`RG.PYEXECUTE`](#rgpyexecute) | Executes a Python function |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
-| [`RG.PYDUMPREQS`](#rgpystats) | Returns all the requirements (with information about each requirement) |
+| [`RG.PYDUMPREQS`](#rgpystats) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
