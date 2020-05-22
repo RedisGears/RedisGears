@@ -18,6 +18,7 @@ The following sections describe the supported commands.
 | [`RG.INFOCLUSTER`](#rginfocluster) | Returns cluster information |
 | [`RG.PYEXECUTE`](#rgpyexecute) | Executes a Python function |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
+| [`RG.PYDUMPREQS`](#rgpystats) | Returns all the requirements (with information about each requirement) |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
@@ -496,6 +497,41 @@ redis> RG.PYSTATS
 4) (integer) 8432603
 5) "CurrAllocated"
 6) (integer) 5745816
+```
+
+## RG.PYDUMPREQS
+The **RG.PYDUMPREQS** command returns a list of all the python requirements available (with information about each requirement).
+
+**Redis API**
+
+```
+RG.PYDUMPREQS
+```
+
+_Return_
+
+An array that consists of alternating key name and value entries as follows:
+
+* **GearReqVersion**: an internal version of the requirement given by redis gears (do not confuse between this and the requirement python version)
+* **Name**: the name of the requirement as it was given to the REQUIREMENTS argument on [RG.PYEXECUTE](commands.md#rgpyexecute) command
+* **IsDownloaded**: true if the requirement wheels was successfully download otherwise false
+* **IsInstalled**: true if the requirement wheels was successfully installed otherwise false
+* **Wheels**: a list of wheels required by the requirement
+
+**Examples**
+
+```
+127.0.0.1:6379> RG.PYDUMPREQS
+1)  1) "GearReqVersion"
+    2) (integer) 1
+    3) "Name"
+    4) "redis"
+    5) "IsDownloaded"
+    6) "true"
+    7) "IsInstalled"
+    8) "true"
+    9) "Wheels"
+   10) 1) "redis-3.5.2-py2.py3-none-any.whl"
 ```
 
 ## RG.REFRESHCLUSTER
