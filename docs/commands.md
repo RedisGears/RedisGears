@@ -512,7 +512,7 @@ _Return_
 
 An array that consists of alternating key name and value entries as follows:
 
-* **GearReqVersion**: an internal version of the requirement given by redis gears (do not confuse between this and the requirement python version)
+* **GearReqVersion**: an internally-assigned version of the requirement (note: this isn't the package's version)
 * **Name**: the name of the requirement as it was given to the REQUIREMENTS argument on [RG.PYEXECUTE](commands.md#rgpyexecute) command
 * **IsDownloaded**: true if the requirement wheels was successfully download otherwise false
 * **IsInstalled**: true if the requirement wheels was successfully installed otherwise false
