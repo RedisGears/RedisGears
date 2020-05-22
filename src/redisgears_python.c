@@ -2573,7 +2573,9 @@ static void RedisGears_OnRequirementInstallationDone(ExecutionPlan* ep, void* pr
 }
 
 static ExecutionPlan* RedisGearsPy_DistributeRequirements(PythonRequirementCtx** requirements, RedisGears_OnExecutionDoneCallback doneCallback, void* pd, char** err){
+#define REQUIREMENT_INSTALL_MAX_IDLE_TIME 60000 // 1 minute
     FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader);
+    RedisGears_SetMaxIdleTime(fep, REQUIREMENT_INSTALL_MAX_IDLE_TIME);
     RGM_Map(fep, RedisGearsPy_InstallRequirementsMapper, PythonSessionRequirements_Dup(requirements));
     RGM_Collect(fep);
     ExecutionPlan* ep = RGM_Run(fep, ExecutionModeAsync, NULL, doneCallback, pd, err);

@@ -141,6 +141,10 @@ static int RG_SetDesc(FlatExecutionPlan* fep, const char* desc){
     return 1;
 }
 
+static void RG_SetMaxIdleTime(FlatExecutionPlan* fep, long long executionMaxIdleTime){
+    fep->executionMaxIdleTime = executionMaxIdleTime;
+}
+
 static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
     FlatExecutionPlan_SetPrivateData(fep, type, PD);
 }
@@ -565,6 +569,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterReducer, ctx);
     REGISTER_API(CreateCtx, ctx);
     REGISTER_API(SetDesc, ctx);
+    REGISTER_API(SetMaxIdleTime, ctx);
     REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
     REGISTER_API(SetFlatExecutionPrivateData, ctx);
     REGISTER_API(GetFlatExecutionPrivateDataFromFep, ctx);

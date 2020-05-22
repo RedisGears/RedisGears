@@ -277,6 +277,7 @@ int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnRegisteredCallback)(char* 
  */
 FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* readerName);
 int MODULE_API_FUNC(RedisGears_SetDesc)(FlatExecutionPlan* ctx, const char* desc);
+void MODULE_API_FUNC(RedisGears_SetMaxIdleTime)(FlatExecutionPlan* fep, long long executionMaxIdleTime);
 #define RGM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
 
 /**
@@ -444,6 +445,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterReducer);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CreateCtx);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetDesc);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetMaxIdleTime);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFlatExecutionPrivateDataType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionPrivateData);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFlatExecutionPrivateDataFromFep);
