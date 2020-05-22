@@ -513,7 +513,7 @@ _Return_
 An array that consists of alternating key name and value entries as follows:
 
 * **GearReqVersion**: an internally-assigned version of the requirement (note: this isn't the package's version)
-* **Name**: the name of the requirement as it was given to the REQUIREMENTS argument on [RG.PYEXECUTE](commands.md#rgpyexecute) command
+* **Name**: the name of the requirement as it was given to the `REQUIREMENTS` argument of the  [RG.PYEXECUTE](commands.md#rgpyexecute) command
 * **IsDownloaded**: true if the requirement wheels was successfully download otherwise false
 * **IsInstalled**: true if the requirement wheels was successfully installed otherwise false
 * **Wheels**: a list of wheels required by the requirement
