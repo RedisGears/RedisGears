@@ -59,8 +59,8 @@ def testDependenciesBasicExportImport():
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
     md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph')
-    env.assertEqual(md[5], 'true')
-    env.assertEqual(md[7], 'true')
+    env.assertEqual(md[5], 'yes')
+    env.assertEqual(md[7], 'yes')
     env.stop()
     env.start()
     conn = getConnectionByEnv(env)
@@ -70,7 +70,7 @@ def testDependenciesBasicExportImport():
     env.assertEqual(len(err), 0)
     env.assertEqual(len(res), env.shardsCount)
     for r in res:
-        env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)
+        env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)
 
 def testDependenciesReplicatedToSlave():
     env = Env(useSlaves=True, env='oss', moduleArgs='CreateVenv 1')
@@ -86,8 +86,8 @@ def testDependenciesReplicatedToSlave():
             while len(res) < 1:
                 res = slaveConn.execute_command('RG.PYDUMPREQS')
             env.assertEqual(len(res), 1)
-            env.assertEqual(res[0][5], 'true')
-            env.assertEqual(res[0][7], 'true')
+            env.assertEqual(res[0][5], 'yes')
+            env.assertEqual(res[0][7], 'yes')
     except Exception:
         env.assertTrue(False, message='Failed waiting for requirement to reach slave')
 
@@ -100,7 +100,7 @@ def testDependenciesSavedToRDB():
         env.assertEqual(len(err), 0)
         env.assertEqual(len(res), env.shardsCount)
         for r in res:
-            env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)
+            env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)
 
 def testAof(env):
     env = Env(moduleArgs='CreateVenv 1', useAof=True)
@@ -111,7 +111,7 @@ def testAof(env):
     env.assertEqual(len(err), 0)
     env.assertEqual(len(res), env.shardsCount)
     for r in res:
-        env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)
+        env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)
 
     env.broadcast('debug', 'loadaof')
 
@@ -119,7 +119,7 @@ def testAof(env):
     env.assertEqual(len(err), 0)
     env.assertEqual(len(res), env.shardsCount)
     for r in res:
-        env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)    
+        env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)    
 
 def testDependenciesImportSerializationError():
     env = Env(moduleArgs='CreateVenv 1')

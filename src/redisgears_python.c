@@ -3372,10 +3372,10 @@ static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementC
     RedisModule_ReplyWithCString(ctx, req->installName);
 
     RedisModule_ReplyWithCString(ctx, "IsDownloaded");
-    RedisModule_ReplyWithCString(ctx, req->isDownloaded ? "true" : "false");
+    RedisModule_ReplyWithCString(ctx, req->isDownloaded ? "yes" : "no");
 
     RedisModule_ReplyWithCString(ctx, "IsInstalled");
-    RedisModule_ReplyWithCString(ctx, req->isInstalled ? "true" : "false");
+    RedisModule_ReplyWithCString(ctx, req->isInstalled ? "yes" : "no");
 
     RedisModule_ReplyWithCString(ctx, "Wheels");
     if(req->isDownloaded){

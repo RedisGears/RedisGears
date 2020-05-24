@@ -514,8 +514,8 @@ An array that consists of alternating key name and value entries as follows:
 
 * **GearReqVersion**: an internally-assigned version of the requirement (note: this isn't the package's version)
 * **Name**: the name of the requirement as it was given to the `REQUIREMENTS` argument of the  [RG.PYEXECUTE](commands.md#rgpyexecute) command
-* **IsDownloaded**: true if the requirement wheels was successfully download otherwise false
-* **IsInstalled**: true if the requirement wheels was successfully installed otherwise false
+* **IsDownloaded**: `yes` if the requirement wheels was successfully download otherwise `no`
+* **IsInstalled**: `yes` if the requirement wheels was successfully installed otherwise `false`
 * **Wheels**: a list of wheels required by the requirement
 
 **Examples**
@@ -527,9 +527,9 @@ An array that consists of alternating key name and value entries as follows:
     3) "Name"
     4) "redis"
     5) "IsDownloaded"
-    6) "true"
+    6) "yes"
     7) "IsInstalled"
-    8) "true"
+    8) "yes"
     9) "Wheels"
    10) 1) "redis-3.5.2-py2.py3-none-any.whl"
 ```
