@@ -527,7 +527,7 @@ long long GearsConfig_DownloadDeps(){
 }
 
 long long GearsConfig_ForceDownloadDepsOnEnterprise(){
-    return DefaultGearsConfig.downloadDeps.val.longVal;
+    return DefaultGearsConfig.foreceDownloadDepsOnEnterprise.val.longVal;
 }
 
 long long GearsConfig_ExecutionThreads(){
