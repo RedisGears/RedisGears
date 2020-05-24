@@ -73,7 +73,7 @@ def testDependenciesBasicExportImport():
         env.assertContains("'IsDownloaded', 'true', 'IsInstalled', 'true'", r)
 
 def testDependenciesReplicatedToSlave():
-    env = Env(useSlaves=True, env='oss')
+    env = Env(useSlaves=True, env='oss', moduleArgs='CreateVenv 1')
     if env.envRunner.debugger is not None:
         env.skip() # valgrind is not working correctly with replication
 
