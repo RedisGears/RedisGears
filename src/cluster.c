@@ -212,8 +212,12 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     if(!c->data){
         return;
     }
-    RedisModule_Assert(reply->type == REDIS_REPLY_STATUS);
     Node* n = (Node*)b;
+    if(reply->type != REDIS_REPLY_STATUS){
+        RedisModule_Log(NULL, "warning", "Got a none REDIS_REPLY_STATUS reply from shard %s, will disconnect and try to reconnect (usually it happened because bulk size is to small, try to increase proto-max-bulk-len)", n->id);
+        redisAsyncDisconnect(c);
+        return;
+    }
     Gears_listNode* node = Gears_listFirst(n->pendingMessages);
     Gears_listDelNode(n->pendingMessages, node);
 }
