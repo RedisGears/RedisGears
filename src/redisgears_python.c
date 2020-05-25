@@ -1806,33 +1806,6 @@ static bool verifyOrLoadRedisAI(){
         return NULL;\
     }
 
-static PyObject* tensorGetDims(PyObject *cls, PyObject *args){
-    verifyRedisAILoaded();
-    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
-    int numDims = RedisAI_TensorNumDims(pyt->t);
-    PyObject *tuple = PyTuple_New(numDims);
-    for(int i = 0 ; i < numDims ; ++i){
-        long long dim = RedisAI_TensorDim(pyt->t, i);
-        PyObject* pyDim = PyLong_FromLongLong(dim);
-        PyTuple_SetItem(tuple, i, pyDim);
-    }
-    return tuple;
-}
-
-static PyObject* tensorGetDataAsBlob(PyObject *cls, PyObject *args){
-    verifyRedisAILoaded();
-    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
-    size_t size = RedisAI_TensorByteSize(pyt->t);
-    char* data = RedisAI_TensorData(pyt->t);
-    return PyByteArray_FromStringAndSize(data, size);
-}
-
-static PyObject* tensorToFlatList(PyObject *cls, PyObject *args){
-    verifyRedisAILoaded();
-    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
-    return PyTensor_ToFlatList(pyt);
-}
-
 static PyObject *PyTensor_ToStr(PyObject * pyObj){
     PyTensor* pyt = (PyTensor*)pyObj;
     return PyObject_Repr(PyTensor_ToFlatList(pyt));
@@ -1868,6 +1841,57 @@ static PyTypeObject PyTensorType = {
     "PyTensor",                /* tp_doc */
 };
 
+static PyObject* tensorGetDims(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to tensorGetDims");
+        return NULL;
+    }
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
+        return NULL;
+    }
+    int numDims = RedisAI_TensorNumDims(pyt->t);
+    PyObject *tuple = PyTuple_New(numDims);
+    for(int i = 0 ; i < numDims ; ++i){
+        long long dim = RedisAI_TensorDim(pyt->t, i);
+        PyObject* pyDim = PyLong_FromLongLong(dim);
+        PyTuple_SetItem(tuple, i, pyDim);
+    }
+    return tuple;
+}
+
+static PyObject* tensorGetDataAsBlob(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to tensorGetDataAsBlob");
+        return NULL;
+    }
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
+        return NULL;
+    }
+    size_t size = RedisAI_TensorByteSize(pyt->t);
+    char* data = RedisAI_TensorData(pyt->t);
+    return PyByteArray_FromStringAndSize(data, size);
+}
+
+static PyObject* tensorToFlatList(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to tensorToFlatList");
+        return NULL;
+    }
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
+        return NULL;
+    }
+    return PyTensor_ToFlatList(pyt);
+}
+
 static size_t getDimsRecursive(PyObject *list, long long** dims){
     if(!PyList_Check(list)){
         return 0;
@@ -1890,6 +1914,10 @@ static void getAllValues(PyObject *list, double** values){
 
 static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 3){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to createTensorFromBlob");
+        return NULL;
+    }
     PyObject* typeName = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(typeName)){
         PyErr_SetString(GearsError, "type argument must be a string");
@@ -1902,7 +1930,6 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
     PyObject* pyDims = PyTuple_GetItem(args, 1);
-    long long* dims = array_new(long long, 10);
     PyObject* dimsIter = PyObject_GetIter(pyDims);
     PyObject* currDim = NULL;
     if(dimsIter == NULL){
@@ -1910,6 +1937,7 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "dims argument must be iterable");
         return NULL;
     }
+    long long* dims = array_new(long long, 10);
 
     while((currDim = PyIter_Next(dimsIter)) != NULL){
         if(!PyLong_Check(currDim)){
@@ -1947,6 +1975,10 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
 
 static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 3){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to createTensorFromValues");
+        return NULL;
+    }
     RAI_Tensor* t = NULL;
     PyObject* typeName = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(typeName)){
@@ -1956,13 +1988,14 @@ static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
     // todo: combine to a single function!!
     PyObject* pyDims = PyTuple_GetItem(args, 1);
-    if(!PyIter_Check(pyDims)){
-        PyErr_SetString(GearsError, "dims argument must be iterable");
-        return NULL;
-    }
     long long* dims = array_new(long long, 10);
     PyObject* dimsIter = PyObject_GetIter(pyDims);
     PyObject* currDim = NULL;
+    if(dimsIter == NULL){
+        PyErr_Clear();
+        PyErr_SetString(GearsError, "dims argument must be iterable");
+        return NULL;
+    }
     while((currDim = PyIter_Next(dimsIter)) != NULL){
         if(!PyLong_Check(currDim)){
             PyErr_SetString(GearsError, "dims arguments must be long");
@@ -1987,7 +2020,11 @@ static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     }
 
     PyObject* values = PyTuple_GetItem(args, 2);
-    PyObject* valuesIter = PyObject_GetIter(pyDims);
+    if(!PyIter_Check(values)){
+        PyErr_SetString(GearsError, "values argument must be iterable");
+        goto error;
+    }
+    PyObject* valuesIter = PyObject_GetIter(values);
     PyObject* currValue = NULL;
     size_t index = 0;
     while((currValue = PyIter_Next(valuesIter)) != NULL){
@@ -2054,6 +2091,10 @@ static PyTypeObject PyGraphRunnerType = {
 
 static PyObject* createModelRunner(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to createModelRunner");
+        return NULL;
+    }
     PyObject* keyName = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(keyName)){
         PyErr_SetString(GearsError, "key argument must be a string");
@@ -2066,7 +2107,17 @@ static PyObject* createModelRunner(PyObject *cls, PyObject *args){
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
 
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
-    // todo: check for type, add api for this
+    if(RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_MODULE){
+        RedisModule_FreeString(ctx, keyRedisStr);
+        RedisModule_CloseKey(key);
+        LockHandler_Release(ctx);
+        RedisModule_FreeThreadSafeContext(ctx);
+        PyErr_SetString(GearsError, "given key do not contain RedisAI model");
+        return NULL;
+    }
+    // todo:
+    // It might be another module key, we need api from RedisAI to verify
+    // it really an RedisAI model
     RAI_Model *g = RedisModule_ModuleTypeGetValue(key);
     RAI_ModelRunCtx* runCtx = RedisAI_ModelRunCtxCreate(g);
 
@@ -2083,7 +2134,15 @@ static PyObject* createModelRunner(PyObject *cls, PyObject *args){
 
 static PyObject* modelRunnerAddInput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 3){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to modelRunnerAddInput");
+        return NULL;
+    }
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pyg, (PyObject*)&PyGraphRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyGraphRunner");
+        return NULL;
+    }
     PyObject* inputName = PyTuple_GetItem(args, 1);
     if(!PyUnicode_Check(inputName)){
         PyErr_SetString(GearsError, "input name argument must be a string");
@@ -2091,13 +2150,25 @@ static PyObject* modelRunnerAddInput(PyObject *cls, PyObject *args){
     }
     const char* inputNameStr = PyUnicode_AsUTF8AndSize(inputName, NULL);
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 2);
+    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTensorType");
+        return NULL;
+    }
     RedisAI_ModelRunCtxAddInput(pyg->g, inputNameStr, pyt->t);
     return PyLong_FromLong(1);
 }
 
 static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 2){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to modelRunnerAddOutput");
+        return NULL;
+    }
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pyg, (PyObject*)&PyGraphRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyGraphRunner");
+        return NULL;
+    }
     PyObject* outputName = PyTuple_GetItem(args, 1);
     if(!PyUnicode_Check(outputName)){
         PyErr_SetString(GearsError, "output name argument must be a string");
@@ -2110,7 +2181,15 @@ static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
 
 static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to modelRunnerRun");
+        return NULL;
+    }
     PyGraphRunner* pyg = (PyGraphRunner*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pyg, (PyObject*)&PyGraphRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyGraphRunner");
+        return NULL;
+    }
     RAI_Error* err;
     RedisAI_InitError(&err);
     RedisAI_ModelRun(&pyg->g, 1, err);
@@ -2171,6 +2250,10 @@ static PyTypeObject PyTorchScriptRunnerType = {
 
 static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 2){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to createScriptRunner");
+        return NULL;
+    }
     PyObject* keyName = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(keyName)){
         PyErr_SetString(GearsError, "key name argument must be a string");
@@ -2190,7 +2273,20 @@ static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
     RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, keyNameStr, strlen(keyNameStr));
 
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyRedisStr, REDISMODULE_READ);
-    // todo: check for type, add api for this
+
+    if(RedisModule_KeyType(key) != REDISMODULE_KEYTYPE_MODULE){
+        RedisModule_FreeString(ctx, keyRedisStr);
+        RedisModule_CloseKey(key);
+        LockHandler_Release(ctx);
+        RedisModule_FreeThreadSafeContext(ctx);
+        PyErr_SetString(GearsError, "given key do not contain RedisAI script");
+        return NULL;
+    }
+
+    // todo:
+    // It might be another module key, we need api from RedisAI to verify
+    // it really an RedisAI model
+
     RAI_Script *s = RedisModule_ModuleTypeGetValue(key);
 
     const char* fnNameStr = PyUnicode_AsUTF8AndSize(fnName, NULL);
@@ -2210,22 +2306,50 @@ static PyObject* createScriptRunner(PyObject *cls, PyObject *args){
 
 static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 2){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to scriptRunnerAddInput");
+        return NULL;
+    }
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pys, (PyObject*)&PyTorchScriptRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
+        return NULL;
+    }
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
+    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
+        return NULL;
+    }
     RedisAI_ScriptRunCtxAddInput(pys->s, pyt->t);
     return PyLong_FromLong(1);
 }
 
 static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to scriptRunnerAddOutput");
+        return NULL;
+    }
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pys, (PyObject*)&PyTorchScriptRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
+        return NULL;
+    }
     RedisAI_ScriptRunCtxAddOutput(pys->s);
     return PyLong_FromLong(1);
 }
 
 static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to scriptRunnerRun");
+        return NULL;
+    }
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pys, (PyObject*)&PyTorchScriptRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
+        return NULL;
+    }
     RAI_Error* err;
     RedisAI_InitError(&err);
     RedisAI_ScriptRun(pys->s, err);
