@@ -361,9 +361,9 @@ def testStopListening(env):
     env.skipOnCluster()
 
     with ShardMock(env) as shardMock:
-        env.expect('RG.NETWORKTEST').equal('OK')
-
         conn = shardMock.GetConnection()
+        
+        env.expect('RG.NETWORKTEST').equal('OK')
 
         env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
 
