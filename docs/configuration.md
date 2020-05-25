@@ -238,3 +238,18 @@ _Default Value_
 _Runtime Configurability_
 
 Supported
+
+## SendMsgRetries
+The **SendMsgRetries** configuration option controls the maximal amount of retries RedisGears will try to send a message before it gives up. Sent failure is considered either an error reply or a disconnection before getting ack on the message. 0 value indicates RedisGears to never give up.
+
+_Expected Value_
+
+Any integer greater or eqaul 0
+
+_Default Value_
+
+3
+
+_Runtime Configurability_
+
+Supported
