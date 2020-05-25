@@ -233,7 +233,7 @@ Any integer greater than 0
 
 _Default Value_
 
-"30 seconds"
+30000
 
 _Runtime Configurability_
 
