@@ -141,6 +141,10 @@ static int RG_SetDesc(FlatExecutionPlan* fep, const char* desc){
     return 1;
 }
 
+static void RG_SetMaxIdleTime(FlatExecutionPlan* fep, long long executionMaxIdleTime){
+    fep->executionMaxIdleTime = executionMaxIdleTime;
+}
+
 static void RG_SetFlatExecutionPrivateData(FlatExecutionPlan* fep, const char* type, void* PD){
     FlatExecutionPlan_SetPrivateData(fep, type, PD);
 }
@@ -376,10 +380,11 @@ static ExecutionPlan* RG_GetExecution(const char* id){
 	return ep;
 }
 
-static ArgType* RG_CreateType(char* name, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring){
+static ArgType* RG_CreateType(char* name, int version, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring){
     ArgType* ret = RG_ALLOC(sizeof(*ret));
     *ret = (ArgType){
         .type = RG_STRDUP(name),
+        .version = version,
         .free = free,
         .dup = dup,
         .serialize = serialize,
@@ -564,6 +569,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterReducer, ctx);
     REGISTER_API(CreateCtx, ctx);
     REGISTER_API(SetDesc, ctx);
+    REGISTER_API(SetMaxIdleTime, ctx);
     REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
     REGISTER_API(SetFlatExecutionPrivateData, ctx);
     REGISTER_API(GetFlatExecutionPrivateDataFromFep, ctx);
@@ -784,12 +790,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     ExecutionPlan_Initialize();
 
-#ifdef WITHPYTHON
-    if(RedisGearsPy_Init(ctx) != REDISMODULE_OK){
-        return REDISMODULE_ERR;
-    }
-#endif
-
     Cluster_RegisterMsgReceiverM(RG_OnDropExecutionMsgReceived);
     Cluster_RegisterMsgReceiverM(RG_NetworkTest);
 
@@ -797,6 +797,12 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_Log(ctx, "warning", "failed create RedisGear DataType");
         return REDISMODULE_ERR;
     }
+
+#ifdef WITHPYTHON
+    if(RedisGearsPy_Init(ctx) != REDISMODULE_OK){
+        return REDISMODULE_ERR;
+    }
+#endif
 
     if(Command_Init() != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not initialize commands.");
@@ -834,7 +840,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     }
 
     if (RedisModule_CreateCommand(ctx, RG_INNER_REGISTER_COMMAND, ExecutionPlan_InnerRegister, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_MSG_COMMAND);
+        RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_REGISTER_COMMAND);
         return REDISMODULE_ERR;
     }
 

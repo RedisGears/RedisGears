@@ -48,6 +48,7 @@ typedef struct RedisGears_Config{
     ConfigVal createVenv;
     ConfigVal executionThreads;
     ConfigVal executionMaxIdleTime;
+    ConfigVal pythonInstallReqMaxIdleTime;
     ConfigVal dependenciesUrl;
     ConfigVal dependenciesSha256;
     ConfigVal pythonInstallationDir;
@@ -271,6 +272,26 @@ static bool ConfigVal_ExecutionMaxIdleTimeSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_PythonInstallReqMaxIdleTimeGet(){
+    return &DefaultGearsConfig.pythonInstallReqMaxIdleTime;
+}
+
+static bool ConfigVal_PythonInstallReqMaxIdleTimeSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if(n <= 0){
+            return false;
+        }
+        DefaultGearsConfig.pythonInstallReqMaxIdleTime.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static Gears_dict* Gears_ExtraConfig = NULL;
 
 static Gears_ConfigVal Gears_ConfigVals[] = {
@@ -326,6 +347,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .name = "ExecutionMaxIdleTime",
         .getter = ConfigVal_ExecutionMaxIdleTimeGet,
         .setter = ConfigVal_ExecutionMaxIdleTimeSet,
+        .configurableAtRunTime = true,
+    },
+    {
+        .name = "PythonInstallReqMaxIdleTime",
+        .getter = ConfigVal_PythonInstallReqMaxIdleTimeGet,
+        .setter = ConfigVal_PythonInstallReqMaxIdleTimeSet,
         .configurableAtRunTime = true,
     },
     {
@@ -538,6 +565,10 @@ long long GearsConfig_ExecutionMaxIdleTime(){
     return DefaultGearsConfig.executionMaxIdleTime.val.longVal;
 }
 
+long long GearsConfig_PythonInstallReqMaxIdleTime(){
+    return DefaultGearsConfig.executionMaxIdleTime.val.longVal;
+}
+
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
@@ -610,6 +641,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .executionMaxIdleTime = {
             .val.longVal = 5000,
+            .type = LONG,
+        },
+        .pythonInstallReqMaxIdleTime = {
+            .val.longVal = 30000,
             .type = LONG,
         },
         .pythonInstallationDir = {
