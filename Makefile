@@ -364,14 +364,18 @@ pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
 
 verify-packs:
 	@set -e ;\
-	MOD=`./deps/readies/bin/redis-cmd --loadmodule $(TARGET) -- RG.CONFIGGET dependenciesSha256` ;\
+	MOD=`./deps/readies/bin/redis-cmd --loadmodule $(TARGET) -- RG.CONFIGGET dependenciesSha256 2> /tmp/redisgears-sha.err` ;\
+	if [[ -z $MOD ]]; then \
+		>2& cat /tmp/redisgears-sha.err ;\
+		exit 1 ;\
+	fi ;\
 	REL=`cat artifacts/release/$(DEPS_TAR.release).sha256` ;\
 	SNAP=`cat artifacts/snapshot/$(DEPS_TAR.snapshot).sha256` ;\
 	if [[ $$MOD != $$REL || $$REL != $$SNAP ]]; then \
 		echo "Module and package SHA256 don't match." ;\
-		echo "$$MOD" ;\
-		echo "$$REL" ;\
-		echo "$$SNAP" ;\
+		echo "\"$$MOD\"" ;\
+		echo "\"$$REL\"" ;\
+		echo "\"$$SNAP\"" ;\
 		exit 1 ;\
 	else \
 		echo "Signatures match." ;\
