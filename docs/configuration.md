@@ -223,3 +223,18 @@ _Default Value_
 _Runtime Configurability_
 
 Supported
+
+## PythonInstallReqMaxIdleTime
+The **PythonInstallReqMaxIdleTime** configuration option controls the maximal amount of idle time (in milliseconds) before Python's requirements installation is aborted. Idle time means that the installation makes no progress. The main reason for idle time is the same as for **ExecutionMaxIdleTime**.
+
+_Expected Value_
+
+Any integer greater than 0
+
+_Default Value_
+
+30000
+
+_Runtime Configurability_
+
+Supported
