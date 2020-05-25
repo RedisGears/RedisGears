@@ -11,7 +11,7 @@
 #include <redisgears_memory.h>
 #include "lock_handler.h"
 #include "slots_table.h"
-
+#include "config.h"
 #include <libevent.h>
 
 typedef enum NodeStatus{
@@ -118,6 +118,7 @@ static void FreeNode(Node* n){
 typedef struct SentMessages{
     size_t sizes[5];
     char* args[5];
+    size_t retries;
 }SentMessages;
 
 static void SentMessages_Free(void* ptr){
@@ -212,8 +213,12 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     if(!c->data){
         return;
     }
-    RedisModule_Assert(reply->type == REDIS_REPLY_STATUS);
     Node* n = (Node*)b;
+    if(reply->type != REDIS_REPLY_STATUS){
+        RedisModule_Log(NULL, "warning", "Received an invalid status reply from shard %s, will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id);
+        redisAsyncDisconnect(c);
+        return;
+    }
     Gears_listNode* node = Gears_listFirst(n->pendingMessages);
     Gears_listDelNode(n->pendingMessages, node);
 }
@@ -245,7 +250,13 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
             Gears_listNode *node = NULL;
             while((node = Gears_listNext(iter)) != NULL){
                 SentMessages* sentMsg = Gears_listNodeValue(node);
-                redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
+                ++sentMsg->retries;
+                if(GearsConfig_SendMsgRetries() == 0 || sentMsg->retries < GearsConfig_SendMsgRetries()){
+                    redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
+                }else{
+                    RedisModule_Log(NULL, "warning", "Gave up of message because failed to send it for more then %lld time", GearsConfig_SendMsgRetries());
+                    Gears_listDelNode(n->pendingMessages, node);
+                }
             }
             Gears_listReleaseIterator(iter);
         }
@@ -481,6 +492,7 @@ static void Cluster_FreeMsg(Msg* msg){
 
 static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
     SentMessages* sentMsg = RG_ALLOC(sizeof(SentMessages));
+    sentMsg->retries = 0;
     sentMsg->args[0] = RG_INNER_MSG_COMMAND;
     sentMsg->sizes[0] = strlen(sentMsg->args[0]);
     sentMsg->args[1] = CurrCluster->myId;

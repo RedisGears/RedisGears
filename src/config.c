@@ -54,6 +54,7 @@ typedef struct RedisGears_Config{
     ConfigVal pythonInstallationDir;
     ConfigVal downloadDeps;
     ConfigVal foreceDownloadDepsOnEnterprise;
+    ConfigVal sendMsgRetries;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -232,6 +233,26 @@ static bool ConfigVal_ForceDownloadDepsOnEnterpriseSet(ArgsIterator* iter){
     }
 }
 
+static const ConfigVal* ConfigVal_SendMsgRetriesGet(){
+    return &DefaultGearsConfig.sendMsgRetries;
+}
+
+static bool ConfigVal_SendMsgRetriesSet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val) return false;
+    long long n;
+
+    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
+        if(n < 0){
+            return false;
+        }
+        DefaultGearsConfig.sendMsgRetries.val.longVal = n;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static const ConfigVal* ConfigVal_ExecutionThreadsGet(){
     return &DefaultGearsConfig.executionThreads;
 }
@@ -372,6 +393,12 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_ForceDownloadDepsOnEnterpriseGet,
         .setter = ConfigVal_ForceDownloadDepsOnEnterpriseSet,
         .configurableAtRunTime = false,
+    },
+    {
+        .name = "SendMsgRetries",
+        .getter = ConfigVal_SendMsgRetriesGet,
+        .setter = ConfigVal_SendMsgRetriesSet,
+        .configurableAtRunTime = true,
     },
     {
         NULL,
@@ -565,9 +592,14 @@ long long GearsConfig_ExecutionMaxIdleTime(){
     return DefaultGearsConfig.executionMaxIdleTime.val.longVal;
 }
 
+long long GearsConfig_SendMsgRetries(){
+    return DefaultGearsConfig.sendMsgRetries.val.longVal;
+}
+
 long long GearsConfig_PythonInstallReqMaxIdleTime(){
     return DefaultGearsConfig.executionMaxIdleTime.val.longVal;
 }
+
 
 static void GearsConfig_Print(RedisModuleCtx* ctx){
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
@@ -657,6 +689,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         },
         .foreceDownloadDepsOnEnterprise = {
             .val.longVal = 0,
+            .type = LONG,
+        },
+        .sendMsgRetries = {
+            .val.longVal = 3,
             .type = LONG,
         },
     };
