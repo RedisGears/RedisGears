@@ -215,7 +215,7 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     }
     Node* n = (Node*)b;
     if(reply->type != REDIS_REPLY_STATUS){
-        RedisModule_Log(NULL, "warning", "Got a none REDIS_REPLY_STATUS reply from shard %s, will disconnect and try to reconnect (usually it happened because bulk size is to small, try to increase proto-max-bulk-len)", n->id);
+        RedisModule_Log(NULL, "warning", "Received an invalid status reply from shard %s, will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id);
         redisAsyncDisconnect(c);
         return;
     }
