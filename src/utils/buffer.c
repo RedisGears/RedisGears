@@ -8,6 +8,7 @@
 #include "buffer.h"
 #include <string.h>
 #include "../redisgears_memory.h"
+#include "redisgears.h"
 
 
 Gears_Buffer* Gears_BufferNew(size_t initialCap){
@@ -59,6 +60,9 @@ void Gears_BufferReaderInit(Gears_BufferReader* br, Gears_Buffer* buff){
 }
 
 long Gears_BufferReaderReadLong(Gears_BufferReader* br){
+    if(br->location + sizeof(long) > br->buff->size){
+        return LONG_READ_ERROR;
+    }
     long ret = *(long*)(&br->buff->buff[br->location]);
     br->location += sizeof(long);
     return ret;
@@ -66,6 +70,9 @@ long Gears_BufferReaderReadLong(Gears_BufferReader* br){
 
 char* Gears_BufferReaderReadBuff(Gears_BufferReader* br, size_t* len){
     *len = (size_t)Gears_BufferReaderReadLong(br);
+    if((*len == LONG_READ_ERROR) || (br->location + *len > br->buff->size)){
+        return BUFF_READ_ERROR;
+    }
     char* ret = br->buff->buff + br->location;
     br->location += *len;
     return ret;
