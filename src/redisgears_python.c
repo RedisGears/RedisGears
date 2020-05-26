@@ -2601,6 +2601,7 @@ static void RedisGearsPy_DownloadWheelsAndDistribute(void* ctx){
     }
 
     LockHandler_Release(rctx);
+    RedisModule_FreeThreadSafeContext(rctx);
     return;
 
 error:
