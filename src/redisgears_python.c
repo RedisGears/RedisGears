@@ -2020,11 +2020,11 @@ static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     }
 
     PyObject* values = PyTuple_GetItem(args, 2);
-    if(!PyIter_Check(values)){
+    PyObject* valuesIter = PyObject_GetIter(values);
+    if(valuesIter == NULL){
         PyErr_SetString(GearsError, "values argument must be iterable");
         goto error;
     }
-    PyObject* valuesIter = PyObject_GetIter(values);
     PyObject* currValue = NULL;
     size_t index = 0;
     while((currValue = PyIter_Next(valuesIter)) != NULL){
