@@ -3532,6 +3532,8 @@ static void RedisGearsPy_DoneImportRequirement(ExecutionPlan* ep, void* privateD
     RedisModule_UnblockClient(bc, NULL);
 
     RedisGears_DropExecution(ep);
+
+    RedisModule_FreeThreadSafeContext(rctx);
 }
 
 static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
