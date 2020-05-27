@@ -1,6 +1,7 @@
 from RLTest import Env
 from common import getConnectionByEnv
 from common import TimeLimit
+import uuid
 
 def testDependenciesInstall():
     env = Env(moduleArgs='CreateVenv 1')
@@ -37,7 +38,7 @@ def testDependenciesInstallFailure():
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: __import__('redisgraph'))."
-                               "collect().distinct().run()", 'REQUIREMENTS', 'blabla1').error().contains('satisfy requirments')
+                               "collect().distinct().run()", 'REQUIREMENTS', str(uuid.uuid4())).error().contains('satisfy requirments')
 
 def testDependenciesWithRegister():
     env = Env(moduleArgs='CreateVenv 1')
