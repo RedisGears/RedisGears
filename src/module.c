@@ -463,8 +463,13 @@ static WorkerData* RG_WorkerDataCreate(ExecutionThreadPool* pool){
 static void RG_WorkerDataFree(WorkerData* worker){
     ExecutionPlan_FreeWorker(worker);
 }
-WorkerData* RG_WorkerDataGetShallowCopy(WorkerData* worker){
+
+static WorkerData* RG_WorkerDataGetShallowCopy(WorkerData* worker){
     return ExecutionPlan_WorkerGetShallowCopy(worker);
+}
+
+static void RG_ReturnResultsAndErrors(ExecutionPlan* ep, RedisModuleCtx *ctx){
+    Command_ReturnResultsAndErrors(ep, ctx);
 }
 
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
@@ -663,6 +668,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(ExecutionThreadPoolCreate, ctx);
     REGISTER_API(WorkerDataFree, ctx);
     REGISTER_API(WorkerDataGetShallowCopy, ctx);
+    REGISTER_API(ReturnResultsAndErrors, ctx);
+
 
     return REDISMODULE_OK;
 }
