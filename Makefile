@@ -43,7 +43,7 @@ MK_ALL_TARGETS=bindirs deps build ramp_pack verify-packs
 include $(MK)/defs
 
 GEARS_VERSION:=$(shell $(ROOT)/getver)
-OS_VERSION:=$(shell python $(ROOT)/getos.py)
+OS_VERSION_DESC:=$(shell python $(ROOT)/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -115,7 +115,7 @@ CC_FLAGS += \
 	-Ideps/hiredis \
 	-Ideps/hiredis/adapters \
 	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
-	-DREDISGEARS_OS_VERSION=\"$(OS_VERSION)\" \
+	-DREDISGEARS_OS_VERSION=\"$(OS_VERSION_DESC)\" \
 	-DREDISMODULE_EXPERIMENTAL_API
 
 TARGET=$(BINROOT)/redisgears.so
