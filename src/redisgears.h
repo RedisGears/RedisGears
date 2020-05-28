@@ -410,6 +410,7 @@ WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataCreate)(ExecutionThreadPool* po
 void MODULE_API_FUNC(RedisGears_WorkerDataFree)(WorkerData* worker);
 WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataGetShallowCopy)(WorkerData* worker);
 
+const char* MODULE_API_FUNC(RedisGears_GetCompiledOs)();
 int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
 void MODULE_API_FUNC(RedisGears_ReturnResultsAndErrors)(ExecutionPlan* ep, RedisModuleCtx *ctx);

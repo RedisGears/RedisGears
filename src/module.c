@@ -37,6 +37,10 @@
 #define REDISGEARS_GIT_SHA "unknown"
 #endif
 
+#ifndef REDISGEARS_OS_VERSION
+#define REDISGEARS_OS_VERSION "unknown"
+#endif
+
 #define REGISTER_API(name, ctx) \
     do{\
         RedisGears_ ## name = RG_ ## name;\
@@ -550,6 +554,10 @@ static void RG_DropLocalyOnDone(ExecutionPlan* ctx, void* privateData){
     EPTurnOnFlag(ctx, EFIsLocalyFreedOnDoneCallback);
 }
 
+static const char* RG_GetCompiledOs(){
+    return REDISGEARS_OS_VERSION;
+}
+
 static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     if(!RedisModule_ExportSharedAPI){
         RedisModule_Log(ctx, "warning", "redis version are not compatible with shared api, running without expose c level api to other modules.");
@@ -668,8 +676,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(ExecutionThreadPoolCreate, ctx);
     REGISTER_API(WorkerDataFree, ctx);
     REGISTER_API(WorkerDataGetShallowCopy, ctx);
+    REGISTER_API(GetCompiledOs, ctx);
     REGISTER_API(ReturnResultsAndErrors, ctx);
-
 
     return REDISMODULE_OK;
 }
@@ -729,9 +737,10 @@ static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s",
+	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s, compiled_os=%s",
 	        REDISGEARS_VERSION_STR,
-			REDISGEARS_GIT_SHA);
+			REDISGEARS_GIT_SHA,
+			REDISGEARS_OS_VERSION);
 
     GearsGetRedisVersion();
     RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",
