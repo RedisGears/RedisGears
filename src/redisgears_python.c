@@ -28,6 +28,7 @@
 #define PY_SESSION_TYPE_WITH_REQ_NAMES_ONLY 1
 
 #define PY_REQ_VERSION 1
+#define PY_REQ_VERSION_WITH_OS_VERSION 1
 #define PY_SESSION_REQ_VERSION 1
 
 #define SUB_INTERPRETER_TYPE "subInterpreterType"
@@ -377,6 +378,19 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
         *err = RG_STRDUP("Bad serialization format on reading requirement name");
         goto done;
     }
+
+    if(version >= PY_REQ_VERSION_WITH_OS_VERSION){
+        const char* os = RedisGears_BRReadString(br);
+        if(os == BUFF_READ_ERROR){
+            *err = RG_STRDUP("Bad serialization format on reading requirement os");
+            goto done;
+        }
+        if(strcmp(os, RedisGears_GetCompiledOs()) != 0){
+            *err = RG_STRDUP("Requirement was compiled on different os (compiled_os = %s, current_os = %s)");
+            goto done;
+        }
+    }
+
     long nWheels = RedisGears_BRReadLong(br);
     if(nWheels == LONG_READ_ERROR){
         *err = RG_STRDUP("Bad serialization format on reading requirement wheels amount");
@@ -470,6 +484,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         return REDISMODULE_ERR;
     }
     RedisGears_BWWriteString(bw, req->installName);
+    RedisGears_BWWriteString(bw, RedisGears_GetCompiledOs());
     RedisGears_BWWriteLong(bw, array_len(req->wheels));
     for(size_t i = 0 ; i < array_len(req->wheels) ; ++i){
         char* wheel = req->wheels[i];
@@ -3487,7 +3502,7 @@ static void RedisGearsPy_Free(void* ctx, void * p){
 }
 
 static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementCtx* req){
-    RedisModule_ReplyWithArray(ctx, 10);
+    RedisModule_ReplyWithArray(ctx, 12);
 
     RedisModule_ReplyWithCString(ctx, "GearReqVersion");
     RedisModule_ReplyWithLongLong(ctx, PY_REQ_VERSION);
@@ -3500,6 +3515,9 @@ static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementC
 
     RedisModule_ReplyWithCString(ctx, "IsInstalled");
     RedisModule_ReplyWithCString(ctx, req->isInstalled ? "yes" : "no");
+
+    RedisModule_ReplyWithCString(ctx, "CompiledOs");
+    RedisModule_ReplyWithCString(ctx, RedisGears_GetCompiledOs());
 
     RedisModule_ReplyWithCString(ctx, "Wheels");
     if(req->isDownloaded){
