@@ -128,6 +128,7 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
         self.pip_install("jinja2")
+        self.pip_install("distro")
 
 #----------------------------------------------------------------------------------------------
 
