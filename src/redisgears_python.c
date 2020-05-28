@@ -2709,6 +2709,8 @@ static void RedisGears_OnRequirementInstallationDone(ExecutionPlan* ep, void* pr
         RedisModule_UnblockClient(bdiCtx->bc, NULL);
     }
     RG_FREE(bdiCtx);
+
+    RedisModule_FreeThreadSafeContext(rctx);
 }
 
 static ExecutionPlan* RedisGearsPy_DistributeRequirements(PythonRequirementCtx** requirements, RedisGears_OnExecutionDoneCallback doneCallback, void* pd, char** err){
