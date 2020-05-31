@@ -133,7 +133,7 @@ static void CommandReader_Serialize(void* ctx, Gears_BufferWriter* bw){
 
 static void CommandReader_Deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
     CommandReaderCtx* readerCtx = ctx;
-    Record* argv = RG_DeserializeRecord(br);
+    Record* argv = RG_DeserializeRecord(fep, br);
     readerCtx->args = CommandReaderArgs_CreateFromRecord(argv);
 }
 

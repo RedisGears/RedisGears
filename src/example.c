@@ -5,6 +5,7 @@
 
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "record.h"
 
 bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
     if(RedisGears_RecordGetType(r) != hashSetRecordType){

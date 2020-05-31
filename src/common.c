@@ -12,6 +12,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include "utils/arr_rm_alloc.h"
+#include "redisgears.h"
 
 static char* shardUniqueId = NULL;
 
@@ -217,13 +218,13 @@ const char* GetShardUniqueId() {
     return shardUniqueId;
 }
 
-int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
-    char* command;
+int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, va_list __arg) {
     va_list ap;
-    va_start(ap, __fmt);
+    va_copy(ap, __arg);
+    char* command;
 
     rg_vasprintf(&command, __fmt, ap);
-    RedisModule_Log(ctx, "notice", "Executing : %s", command);
+    RedisModule_Log(ctx, logLevel, "Executing : %s", command);
     FILE* f = popen(command, "r");
     if (f == NULL) {
         RG_FREE(command);
@@ -234,7 +235,7 @@ int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
     /* Read the output a line at a time - output it. */
     char path[1035];
     while (fgets(path, sizeof(path), f) != NULL) {
-        RedisModule_Log(ctx, "notice", "%s", path);
+        RedisModule_Log(ctx, logLevel, "%s", path);
     }
 
     /* close */
@@ -251,6 +252,18 @@ int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
     }
 
     RG_FREE(command);
+
+    va_end(ap);
+
+    return exitCode;
+}
+
+int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
+    char* command;
+    va_list ap;
+    va_start(ap, __fmt);
+
+    int exitCode = ExecCommandVList(ctx, "notice", __fmt, ap);
 
     va_end(ap);
 

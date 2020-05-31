@@ -19,9 +19,6 @@
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
-#define ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
-#define STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
-
 extern Gears_dictType* dictTypeHeapIdsPtr;
 
 typedef struct RedisVersion{
@@ -52,6 +49,7 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
 char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*));
 const char* GetShardUniqueId();
 int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);
+int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, va_list __arg);
 
 #endif /* SRC_COMMANDS_H_ */
 

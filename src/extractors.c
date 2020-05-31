@@ -3,6 +3,7 @@
 #include <string.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "record.h"
 
 char* KeyRecordStrValueExtractor(RedisModuleCtx* rctx, Record *record, void* arg, size_t* len, char** err){
     if(RedisGears_RecordGetType(record) != keyRecordType){
