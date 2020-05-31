@@ -12,6 +12,9 @@
 #include "redismodule.h"
 #include "utils/arr_rm_alloc.h"
 
+#define ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
+#define STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
+
 #define REDISGEARS_LLAPI_VERSION 1
 
 #define MODULE_API_FUNC(x) (*x)
@@ -194,18 +197,18 @@ typedef struct Record{
     RecordType* type;
 }Record;
 
-extern RecordType* listRecordType;
-extern RecordType* stringRecordType;
-extern RecordType* errorRecordType;
-extern RecordType* longRecordType;
-extern RecordType* doubleRecordType;
-extern RecordType* keyRecordType;
-extern RecordType* keysHandlerRecordType;
-extern RecordType* hashSetRecordType;
+RecordType* MODULE_API_FUNC(RedisGears_GetListRecordType)();
+RecordType* MODULE_API_FUNC(RedisGears_GetStringRecordType)();
+RecordType* MODULE_API_FUNC(RedisGears_GetErrorRecordType)();
+RecordType* MODULE_API_FUNC(RedisGears_GetLongRecordType)();
+RecordType* MODULE_API_FUNC(RedisGears_GetDoubleRecordType)();
+RecordType* MODULE_API_FUNC(RedisGears_GetKeyRecordType)();
+RecordType* MODULE_API_FUNC(RedisGears_GetKeysHandlerRecordType)();
+RecordType* MODULE_API_FUNC(RedisGears_GetHashSetRecordType)();
 
 typedef int (*RecordSendReply)(Record* record, RedisModuleCtx* rctx);
 typedef int (*RecordSerialize)(Gears_BufferWriter* bw, Record* base, char** err);
-typedef Record* (*RecordDeserialize)(Gears_BufferReader* br);
+typedef Record* (*RecordDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br);
 typedef void (*RecordFree)(Record* base);
 
 RecordType* MODULE_API_FUNC(RedisGears_RecordTypeCreate)(const char* name, size_t size,
@@ -333,11 +336,11 @@ int MODULE_API_FUNC(RedisGears_GroupBy)(FlatExecutionPlan* ctx, char* extraxtorN
 
 int MODULE_API_FUNC(RedisGears_AccumulateBy)(FlatExecutionPlan* ctx, char* extraxtorName, void* extractorArg, char* accumulateName, void* accumulateArg);
 #define RGM_AccumulateBy(ctx, extractor, extractorArg, accumulate, accumulateArg)\
-		RedisGears_AccumulateBy(ctx, #extractor, extractorArg, #accumulate, accumulateArg)
+        RedisGears_AccumulateBy(ctx, #extractor, extractorArg, #accumulate, accumulateArg)
 
 int MODULE_API_FUNC(RedisGears_LocalAccumulateBy)(FlatExecutionPlan* ctx, char* extraxtorName, void* extractorArg, char* accumulateName, void* accumulateArg);
 #define RGM_LocalAccumulateBy(ctx, extractor, extractorArg, accumulate, accumulateArg)\
-		RedisGears_LocalAccumulateBy(ctx, #extractor, extractorArg, #accumulate, accumulateArg)
+        RedisGears_LocalAccumulateBy(ctx, #extractor, extractorArg, #accumulate, accumulateArg)
 
 int MODULE_API_FUNC(RedisGears_Collect)(FlatExecutionPlan* ctx);
 #define RGM_Collect(ctx) RedisGears_Collect(ctx)
@@ -415,6 +418,14 @@ int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
 void MODULE_API_FUNC(RedisGears_ReturnResultsAndErrors)(ExecutionPlan* ep, RedisModuleCtx *ctx);
 
+void MODULE_API_FUNC(RedisGears_GetShardUUID)(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
+
+void MODULE_API_FUNC(RedisGears_LockHanlderAcquire)(RedisModuleCtx* ctx);
+void MODULE_API_FUNC(RedisGears_LockHanlderRelease)(RedisModuleCtx* ctx);
+int MODULE_API_FUNC(RedisGears_ExecuteCommand)(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, ...);
+
+int MODULE_API_FUNC(RedisGears_RegisterPlugin)(const char* name, int version);
+
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
@@ -422,7 +433,255 @@ void MODULE_API_FUNC(RedisGears_ReturnResultsAndErrors)(ExecutionPlan* ep, Redis
             return REDISMODULE_ERR; \
         }
 
-static int RedisGears_Initialize(RedisModuleCtx* ctx){
+#define REDISMODULE_MODULE_INIT_FUNCTION(ctx, name) \
+        if(RedisModule_GetApi("RedisModule_" #name, &RedisModule_ ## name) != REDISMODULE_OK){ \
+            RedisModule_Log(ctx, "warning", "could not initialize RedisModule_" #name "\r\n");\
+            return REDISMODULE_ERR; \
+        }
+
+static int RedisGears_InitializeRedisModuleApi(RedisModuleCtx* ctx){
+    void *getapifuncptr = ((void**)ctx)[0];
+    RedisModule_GetApi = (int (*)(const char *, void *)) (unsigned long)getapifuncptr;
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Alloc);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Calloc);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Free);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Realloc);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Strdup);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateCommand);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetModuleAttribs);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, IsModuleNameBusy);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, WrongArity);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithLongLong);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithError);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithSimpleString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithArray);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithNullArray);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithEmptyArray);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplySetArrayLength);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithStringBuffer);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithCString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithEmptyString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithVerbatimString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithNull);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithCallReply);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplyWithLongDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetSelectedDb);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SelectDb);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, OpenKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CloseKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, KeyType);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ValueLength);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ListPush);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ListPop);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringToLongLong);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringToDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringToLongDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Call);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CallReplyProto);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeCallReply);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CallReplyInteger);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CallReplyType);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CallReplyLength);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CallReplyArrayElement);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CallReplyStringPtr);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateStringFromCallReply);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateStringFromLongLong);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateStringFromDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateStringFromLongDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateStringFromString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateStringPrintf);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringPtrLen);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, AutoMemory);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Replicate);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ReplicateVerbatim);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DeleteKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, UnlinkKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringSet);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringDMA);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringTruncate);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetExpire);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetExpire);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ResetDataset);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DbSize);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, RandomKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetAdd);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetIncrby);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetScore);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetRem);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetRangeStop);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetFirstInScoreRange);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetLastInScoreRange);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetFirstInLexRange);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetLastInLexRange);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetRangeCurrentElement);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetRangeNext);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetRangePrev);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ZsetRangeEndReached);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, HashSet);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, HashGet);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, IsKeysPositionRequest);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, KeyAtPos);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetClientId);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetContextFlags);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, AvoidReplicaTraffic);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, PoolAlloc);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateDataType);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ModuleTypeSetValue);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ModuleTypeReplaceValue);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ModuleTypeGetType);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ModuleTypeGetValue);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, IsIOError);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetModuleOptions);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SignalModifiedKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveUnsigned);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadUnsigned);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveSigned);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadSigned);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveStringBuffer);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadStringBuffer);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveFloat);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadFloat);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveLongDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadLongDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SaveDataTypeToString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LoadDataTypeFromString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, EmitAOF);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Log);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LogIOError);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, _Assert);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, LatencyAddSample);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringAppendBuffer);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, RetainString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StringCompare);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetContextFromIO);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetKeyNameFromIO);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetKeyNameFromModuleKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Milliseconds);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DigestAddStringBuffer);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DigestAddLongLong);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DigestEndSequence);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateDict);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeDict);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictSize);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictSetC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictReplaceC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictSet);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictReplace);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictGetC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictGet);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictDelC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictDel);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictIteratorStartC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictIteratorStart);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictIteratorStop);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictIteratorReseekC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictIteratorReseek);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictNextC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictPrevC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictNext);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictPrev);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictCompare);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DictCompareC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, RegisterInfoFunc);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoAddSection);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoBeginDictField);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoEndDictField);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoAddFieldString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoAddFieldCString);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoAddFieldDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoAddFieldLongLong);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, InfoAddFieldULongLong);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetServerInfo);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeServerInfo);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ServerInfoGetField);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ServerInfoGetFieldC);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ServerInfoGetFieldSigned);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ServerInfoGetFieldUnsigned);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ServerInfoGetFieldDouble);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetClientInfoById);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, PublishMessage);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SubscribeToServerEvent);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetLRU);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetLRU);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetLFU);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetLFU);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, BlockClientOnKeys);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SignalKeyAsReady);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetBlockedClientReadyKey);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ScanCursorCreate);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ScanCursorRestart);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ScanCursorDestroy);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Scan);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ScanKey);
+
+#ifdef REDISMODULE_EXPERIMENTAL_API
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetThreadSafeContext);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeThreadSafeContext);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ThreadSafeContextLock);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ThreadSafeContextUnlock);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, BlockClient);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, UnblockClient);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, IsBlockedReplyRequest);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, IsBlockedTimeoutRequest);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetBlockedClientPrivateData);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetBlockedClientHandle);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, AbortBlock);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetDisconnectCallback);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SubscribeToKeyspaceEvents);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, NotifyKeyspaceEvent);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetNotifyKeyspaceEvents);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, BlockedClientDisconnected);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, RegisterClusterMessageReceiver);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SendClusterMessage);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetClusterNodeInfo);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetClusterNodesList);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeClusterNodesList);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateTimer);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, StopTimer);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetTimerInfo);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetMyClusterID);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetClusterSize);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetRandomBytes);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetRandomHexChars);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetClusterFlags);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ExportSharedAPI);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetSharedAPI);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, RegisterCommandFilter);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, UnregisterCommandFilter);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CommandFilterArgsCount);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CommandFilterArgGet);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CommandFilterArgInsert);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CommandFilterArgReplace);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CommandFilterArgDelete);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, Fork);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, ExitFromChild);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, KillForkChild);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetUsedMemoryRatio);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, MallocSize);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, CreateModuleUser);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeModuleUser);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetModuleUserACL);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, DeauthenticateAndCloseClient);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, AuthenticateClientWithACLUser);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, AuthenticateClientWithUser);
+#endif
+    return REDISMODULE_OK;
+}
+
+static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int version, bool initRedisModuleAPI){
+    if(initRedisModuleAPI){
+        if(RedisGears_InitializeRedisModuleApi(ctx) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
+    }
     if(!RedisModule_GetSharedAPI){
         RedisModule_Log(ctx, "warning", "redis version is not compatible with module shared api, use redis 5.0.4 or above.");
         return REDISMODULE_ERR;
@@ -484,11 +743,11 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetErrorsLen);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetError);
-	REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
-	REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
 
-	REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordCreate);
-	REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordTypeCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordTypeCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, FreeRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordGetType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeyRecordCreate);
@@ -542,11 +801,35 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataGetShallowCopy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ReturnResultsAndErrors);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetShardUUID);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, LockHanlderAcquire);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, LockHanlderRelease);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecuteCommand);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetListRecordType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetStringRecordType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetErrorRecordType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetLongRecordType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetDoubleRecordType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetKeyRecordType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetKeysHandlerRecordType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetHashSetRecordType);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterPlugin);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;
     }
+
+    if(RedisGears_RegisterPlugin(name, version) != REDISMODULE_OK){
+        return REDISMODULE_ERR;
+    }
+
     return REDISMODULE_OK;
 }
+
+#define RedisGears_InitAsGearPlugin(ctx, pluginName, version) RedisGears_Initialize(ctx, pluginName, version, true)
+#define RedisGears_InitAsRedisModule(ctx, pluginName, version) RedisGears_Initialize(ctx, pluginName, version, false)
 
 #endif /* SRC_REDISGEARG_H_ */

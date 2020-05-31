@@ -2207,7 +2207,9 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
+    PyThreadState *_save = PyEval_SaveThread();
     RedisAI_ModelRun(&pyg->g, 1, err);
+    PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
@@ -2367,7 +2369,9 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
+    PyThreadState *_save = PyEval_SaveThread();
     RedisAI_ScriptRun(pys->s, err);
+    PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
@@ -4075,7 +4079,7 @@ static void PythonRecord_Free(Record* base){
     }
 }
 
-static Record* PythonRecord_Deserialize(Gears_BufferReader* br){
+static Record* PythonRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     Record* r = PyObjRecordCreate();
     PyObject* obj = RedisGearsPy_PyObjectDeserialize(br);
     PyObjRecordSet(r, obj);

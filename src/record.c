@@ -14,7 +14,7 @@ typedef struct RecordType{
     size_t size;
     int (*sendReply)(Record* record, RedisModuleCtx* rctx);
     int (*serialize)(Gears_BufferWriter* bw, Record* base, char** err);
-    Record* (*deserialize)(Gears_BufferReader* br);
+    Record* (*deserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br);
     void (*free)(Record* base);
 }RecordType;
 
@@ -191,7 +191,7 @@ static int HashSetRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** 
     return REDISMODULE_OK;
 }
 
-static Record* StringRecord_Deserialize(Gears_BufferReader* br){
+static Record* StringRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
     char* temp1 = RG_ALLOC(size);
@@ -199,11 +199,11 @@ static Record* StringRecord_Deserialize(Gears_BufferReader* br){
     return RG_StringRecordCreate(temp1, size);
 }
 
-static Record* LongRecord_Deserialize(Gears_BufferReader* br){
+static Record* LongRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     return RG_LongRecordCreate(RedisGears_BRReadLong(br));
 }
 
-static Record* ErrorRecord_Deserialize(Gears_BufferReader* br){
+static Record* ErrorRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
     char* temp1 = RG_ALLOC(size);
@@ -211,44 +211,44 @@ static Record* ErrorRecord_Deserialize(Gears_BufferReader* br){
     return RG_ErrorRecordCreate(temp1, size);
 }
 
-static Record* DoubleRecord_Deserialize(Gears_BufferReader* br){
+static Record* DoubleRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     return RG_DoubleRecordCreate((double)RedisGears_BRReadLong(br));
 }
 
-static Record* ListRecord_Deserialize(Gears_BufferReader* br){
+static Record* ListRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     size_t size = (size_t)RedisGears_BRReadLong(br);
     Record* r = RG_ListRecordCreate(size);
     for(size_t i = 0 ; i < size ; ++i){
-        RG_ListRecordAdd(r, RG_DeserializeRecord(br));
+        RG_ListRecordAdd(r, RG_DeserializeRecord(fep, br));
     }
     return r;
 }
 
-static Record* KeyRecord_Deserialize(Gears_BufferReader* br){
+static Record* KeyRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     Record* r = RedisGears_KeyRecordCreate();
     char* key = RG_STRDUP(RedisGears_BRReadString(br));
     RG_KeyRecordSetKey(r, key, strlen(key));
     bool isValExists = (bool)RedisGears_BRReadLong(br);
     if(isValExists){
-        RedisGears_KeyRecordSetVal(r, RG_DeserializeRecord(br));
+        RedisGears_KeyRecordSetVal(r, RG_DeserializeRecord(fep, br));
     }else{
         RedisGears_KeyRecordSetVal(r, NULL);
     }
     return r;
 }
 
-static Record* KeysHandlerRecord_Deserialize(Gears_BufferReader* br){
+static Record* KeysHandlerRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     // todo: what we can do here is to read the key and create a serializable record
     RedisModule_Assert(false && "can not deserialize key handler record");
     return NULL;
 }
 
-static Record* HashSetRecord_Deserialize(Gears_BufferReader* br){
+static Record* HashSetRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     Record* record = RedisGears_HashSetRecordCreate();
     size_t len = RedisGears_BRReadLong(br);
     for(size_t i = 0 ; i < len ; ++i){
         char* k = RedisGears_BRReadString(br);
-        Record* r = RG_DeserializeRecord(br);
+        Record* r = RG_DeserializeRecord(fep, br);
         RedisGears_HashSetRecordSet(record, k, r);
     }
     return record;
@@ -317,11 +317,11 @@ int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err){
     return r->type->serialize(bw, r, err);
 }
 
-Record* RG_DeserializeRecord(Gears_BufferReader* br){
+Record* RG_DeserializeRecord(FlatExecutionPlan* fep, Gears_BufferReader* br){
     size_t typeId = RedisGears_BRReadLong(br);
     RedisModule_Assert(typeId >= 0 && typeId < array_len(recordsTypes));
     RecordType* type = recordsTypes[typeId];
-    return type->deserialize(br);
+    return type->deserialize(fep, br);
 }
 
 int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx){

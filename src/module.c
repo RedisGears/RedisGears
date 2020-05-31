@@ -32,6 +32,8 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include "lock_handler.h"
+#include <dlfcn.h>
+#include <dirent.h>
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -40,6 +42,13 @@
 #ifndef REDISGEARS_OS_VERSION
 #define REDISGEARS_OS_VERSION "unknown"
 #endif
+
+typedef struct Plugin{
+    char* name;
+    int version;
+}Plugin;
+
+Gears_dict* plugins = NULL;
 
 #define REGISTER_API(name, ctx) \
     do{\
@@ -476,8 +485,87 @@ static void RG_ReturnResultsAndErrors(ExecutionPlan* ep, RedisModuleCtx *ctx){
     Command_ReturnResultsAndErrors(ep, ctx);
 }
 
+static void RG_GetShardUUID(char* finalId, char* idBuf, char* idStrBuf, long long* lastID){
+    SetId(finalId, idBuf, idStrBuf, lastID);
+}
+
+static void RG_LockHanlderAcquire(RedisModuleCtx* ctx){
+    LockHandler_Acquire(ctx);
+}
+
+static void RG_LockHanlderRelease(RedisModuleCtx* ctx){
+    LockHandler_Release(ctx);
+}
+
+static RecordType* RG_GetListRecordType(){
+    return listRecordType;
+}
+
+static RecordType* RG_GetStringRecordType(){
+    return stringRecordType;
+}
+
+static RecordType* RG_GetErrorRecordType(){
+    return errorRecordType;
+}
+
+static RecordType* RG_GetLongRecordType(){
+    return longRecordType;
+}
+
+static RecordType* RG_GetDoubleRecordType(){
+    return doubleRecordType;
+}
+
+static RecordType* RG_GetKeyRecordType(){
+    return keyRecordType;
+}
+
+static RecordType* RG_GetKeysHandlerRecordType(){
+    return keysHandlerRecordType;
+}
+
+static RecordType* RG_GetHashSetRecordType(){
+    return hashSetRecordType;
+}
+
+static int RG_ExecuteCommand(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, ...) {
+    char* command;
+    va_list ap;
+    va_start(ap, __fmt);
+
+    int exitCode = ExecCommandVList(ctx, logLevel, __fmt, ap);
+
+    va_end(ap);
+
+    return exitCode;
+}
+
+static int RG_RegisterPlugin(const char* name, int version) {
+    if(Gears_dictFetchValue(plugins, name)){
+        RedisModule_Log(NULL, "warning", "Plugin %s already exists", name);
+        return REDISMODULE_ERR;
+    }
+    Plugin* plugin = RG_ALLOC(sizeof(*plugin));
+    plugin->name = RG_STRDUP(name);
+    plugin->version = version;
+    Gears_dictAdd(plugins, (char*)name, plugin);
+    RedisModule_Log(NULL, "warning", "Loading plugin %s version %d ", name, version);
+    return REDISMODULE_OK;
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
+        // save loaded plugins
+        RedisModule_SaveUnsigned(rdb, Gears_dictSize(plugins));
+        Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
+        Gears_dictEntry *curr = NULL;
+        while((curr = Gears_dictNext(iter))){
+            Plugin* p = Gears_dictGetVal(curr);
+            RedisModule_SaveStringBuffer(rdb, p->name, strlen(p->name) + 1 /* for \0*/);
+            RedisModule_SaveUnsigned(rdb, p->version);
+        }
+        Gears_dictReleaseIterator(iter);
         return;
     }
     Gears_dictIterator* iter = Gears_dictGetIterator(Readerdict);
@@ -502,6 +590,30 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         return REDISMODULE_ERR; // could not load rdb created with higher Gears version!
     }
     if(when == REDISMODULE_AUX_BEFORE_RDB){
+
+        if(encver >= VERSION_WITH_PLUGINS_NAMES){
+            // verify loaded plugins
+            size_t nplugins = RedisModule_LoadUnsigned(rdb);
+            for(size_t i = 0 ; i < nplugins ; ++i){
+                size_t nameLen;
+                char* name = RedisModule_LoadStringBuffer(rdb, &nameLen);
+                int version = RedisModule_LoadUnsigned(rdb);
+                Plugin* p = Gears_dictFetchValue(plugins, name);
+                if(!p){
+                    RedisModule_LogIOError(rdb, "warning", "Plugin %s does not exists and required to load rdb", name);
+                    RedisModule_Free(name);
+                    return REDISMODULE_ERR;
+                }
+                if(p->version < version){
+                    RedisModule_LogIOError(rdb, "warning", "Plugin %s with version %d required but found version %d", name, version, p->version);
+                    RedisModule_Free(name);
+                    return REDISMODULE_ERR;
+                }
+                RedisModule_Free(name);
+            }
+        }
+
+        // clear registrations
         Gears_dictIterator* iter = Gears_dictGetIterator(Readerdict);
         Gears_dictEntry *curr = NULL;
         while((curr = Gears_dictNext(iter))){
@@ -679,6 +791,22 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetCompiledOs, ctx);
     REGISTER_API(ReturnResultsAndErrors, ctx);
 
+    REGISTER_API(GetShardUUID, ctx);
+    REGISTER_API(LockHanlderAcquire, ctx);
+    REGISTER_API(LockHanlderRelease, ctx);
+    REGISTER_API(ExecuteCommand, ctx);
+
+    REGISTER_API(GetListRecordType, ctx);
+    REGISTER_API(GetStringRecordType, ctx);
+    REGISTER_API(GetErrorRecordType, ctx);
+    REGISTER_API(GetLongRecordType, ctx);
+    REGISTER_API(GetDoubleRecordType, ctx);
+    REGISTER_API(GetKeyRecordType, ctx);
+    REGISTER_API(GetKeysHandlerRecordType, ctx);
+    REGISTER_API(GetHashSetRecordType, ctx);
+
+    REGISTER_API(RegisterPlugin, ctx);
+
     return REDISMODULE_OK;
 }
 
@@ -732,6 +860,71 @@ static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent
             globals.redisAILoaded = true;
         }
     }
+}
+
+static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
+    // fills the wheels array
+    DIR *dr = opendir(GearsConfig_GetPluginsDirectory());
+    if(!dr){
+        RedisModule_Log(ctx, "warning", "Plugins directory does not exists");
+        return REDISMODULE_OK;
+    }
+    struct dirent *de;
+    while ((de = readdir(dr))){
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0){
+            continue;
+        }
+        char* c = de->d_name;
+        char* sufix = strstr(c, ".");
+        if(!sufix){
+            continue;
+        }
+        if(strcmp(sufix, ".so") == 0){
+            // found so file
+            char* soPath;
+            rg_asprintf(&soPath, "%s/%s", GearsConfig_GetPluginsDirectory(), c);
+            RedisModule_Log(ctx, "notice", "Loading plugin from file %s", soPath);
+            void* handler = dlopen(soPath, RTLD_NOW|RTLD_LOCAL);
+
+            if (handler == NULL) {
+                RedisModule_Log(ctx, "warning", "Failed loading gears plugin %s, error='%s'", soPath, dlerror());
+                RG_FREE(soPath);
+                continue;
+            }
+            int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
+            if (onload == NULL) {
+                dlclose(handler);
+                RedisModule_Log(ctx, "warning",
+                    "Gears plugin %s does not export RedisGears_OnLoad() symbol",soPath);
+                RG_FREE(soPath);
+                continue;
+            }
+            if (onload(ctx) == REDISMODULE_ERR) {
+                dlclose(handler);
+                RedisModule_Log(ctx, "warning",
+                    "Module %s initialization failed", soPath);
+                RG_FREE(soPath);
+                return REDISMODULE_ERR;
+            }
+        }
+    }
+    closedir(dr);
+
+    return REDISMODULE_OK;
+}
+
+static int Command_DumpPlugins(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    RedisModule_ReplyWithArray(ctx, Gears_dictSize(plugins));
+    Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
+    Gears_dictEntry *curr = NULL;
+    while((curr = Gears_dictNext(iter))){
+        Plugin* p = Gears_dictGetVal(curr);
+        RedisModule_ReplyWithArray(ctx, 2);
+        RedisModule_ReplyWithCString(ctx, p->name);
+        RedisModule_ReplyWithLongLong(ctx, p->version);
+    }
+    Gears_dictReleaseIterator(iter);
+    return REDISMODULE_OK;
 }
 
 static bool isInitiated = false;
@@ -910,7 +1103,18 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
+    if (RedisModule_CreateCommand(ctx, "rg.dumpplugins", Command_DumpPlugins, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.dumpplugins");
+        return REDISMODULE_ERR;
+    }
+
     RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_ModuleChange, RedisGears_OnModuleLoad);
+
+    plugins = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
+    if (RedisGears_InitializePlugins(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "RedisGears plugin initialization failed");
+        return REDISMODULE_ERR;
+    }
 
     isInitiated = true;
     return REDISMODULE_OK;
