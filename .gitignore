@@ -73,3 +73,6 @@ commit.txt
 /venv
 Pipfile.lock
 /site
+
+*.class
+*.jar
