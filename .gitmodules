@@ -10,3 +10,6 @@
 [submodule "deps/hiredis"]
 	path = deps/hiredis
 	url = https://github.com/redis/hiredis.git
+[submodule "deps/openj9-openjdk-jdk14"]
+	path = deps/openj9-openjdk-jdk14
+	url = https://github.com/ibmruntimes/openj9-openjdk-jdk14.git
