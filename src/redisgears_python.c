@@ -4447,7 +4447,7 @@ static void PythonRecord_Free(Record* base){
     }
 }
 
-static Record* PythonRecord_Deserialize(Gears_BufferReader* br){
+static Record* PythonRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
     Record* r = PyObjRecordCreate();
     PyObject* obj = RedisGearsPy_PyObjectDeserialize(br);
     PyObjRecordSet(r, obj);

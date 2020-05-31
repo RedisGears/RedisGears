@@ -588,7 +588,8 @@ static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const c
 
     // we need to deserialize the fep now so we will have the deserialize clean version of it.
     // it might changed after to something we can not serialize
-    const char* d = FlatExecutionPlan_SerializeInternal(ret, NULL, NULL);
+    char* tempErr = NULL;
+    const char* d = FlatExecutionPlan_SerializeInternal(ret, NULL, &tempErr);
     RedisModule_Assert(d);
     return REDISMODULE_OK;
 
@@ -1956,7 +1957,7 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     }
     size_t stepId = RedisGears_BRReadLong(&br);
     RedisModule_Assert(epIdLen == ID_LEN);
-    Record* r = RG_DeserializeRecord(&br);
+    Record* r = RG_DeserializeRecord(ep->fep, &br);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, COLLECT);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -2004,7 +2005,7 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     }
     size_t stepId = RedisGears_BRReadLong(&br);
     RedisModule_Assert(epIdLen == ID_LEN);
-    Record* r = RG_DeserializeRecord(&br);
+    Record* r = RG_DeserializeRecord(ep->fep, &br);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, REPARTITION);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }

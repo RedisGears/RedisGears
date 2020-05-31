@@ -26,5 +26,6 @@ long long GearsConfig_SendMsgRetries();
 long long GearsConfig_PythonInstallReqMaxIdleTime();
 const char* GearsConfig_GetExtraConfigVals(const char* key);
 const char* GearsConfig_GetPythonInstallationDir();
+const char* GearsConfig_GetPluginsDirectory();
 
 #endif /* SRC_CONFIG_H_ */

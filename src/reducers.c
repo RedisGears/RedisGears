@@ -3,6 +3,7 @@
 #include <string.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "record.h"
 
 Record* CountReducer(RedisModuleCtx* rctx, char* key, size_t keyLen, Record *records, void* arg, char** err){
     RedisModule_Assert(RedisGears_RecordGetType(records) == listRecordType);
