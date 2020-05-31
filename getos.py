@@ -124,6 +124,9 @@ class Platform:
         elif self.arch == 'armv7l':
             self.arch = 'arm32v7'
 
+    def triplet(self):
+        return '-'.join([self.os, self.osnick, self.arch])
+
     def is_debian_compat(self):
         return self.dist == 'debian' or self.dist == 'ubuntu' or self.dist == 'linuxmint'
 
