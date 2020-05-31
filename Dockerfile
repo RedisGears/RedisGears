@@ -69,4 +69,7 @@ RUN	set -e ;\
 	cd /var/opt/redislabs/modules/rg/ ;\
 	ln -s python3 python3_`cat /var/opt/redislabs/artifacts/VERSION`
 
+RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
+RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
+
 CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so"]
