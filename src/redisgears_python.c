@@ -1756,19 +1756,28 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
 
-    RedisModuleString** argements = array_new(RedisModuleString*, 10);
+    RedisModuleString** arguments = array_new(RedisModuleString*, 10);
     for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
-        PyObject* argument = PyTuple_GetItem(args, i);
-        PyObject* argumentStr = PyObject_Str(argument);
         size_t argLen;
-        const char* argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
+        const char* argumentCStr = NULL;
+        PyObject* argument = PyTuple_GetItem(args, i);
+        if(PyByteArray_Check(argument)) {
+            argLen = PyByteArray_Size(argument);
+            argumentCStr = PyByteArray_AsString(argument);
+        } else if(PyBytes_Check(argument)) {
+            argLen = PyBytes_Size(argument);
+            argumentCStr = PyBytes_AsString(argument);
+        } else {
+            PyObject* argumentStr = PyObject_Str(argument);
+            argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
+            Py_DECREF(argumentStr);
+        }
         RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
-        Py_DECREF(argumentStr);
-        argements = array_append(argements, argumentRedisStr);
+        arguments = array_append(arguments, argumentRedisStr);
     }
 
     PyObject* res = NULL;
-    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", argements, array_len(argements));
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", arguments, array_len(arguments));
     if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
         size_t len;
         const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
@@ -1781,7 +1790,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         RedisModule_FreeCallReply(reply);
     }
 
-    array_free_ex(argements, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
+    array_free_ex(arguments, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -2374,9 +2383,14 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
         return NULL;
     }
     RedisAI_FreeError(err);
-    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-    pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, 0));
-    return (PyObject*)pyt;
+    PyObject* tensorList = PyList_New(0);
+    for(size_t i = 0 ; i < RedisAI_ScriptRunCtxNumOutputs(pys->s) ; ++i){
+        PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, i));
+        PyList_Append(tensorList, (PyObject*)pyt);
+        Py_DECREF(pyt);
+    }
+    return tensorList;
 }
 
 #define TIME_EVENT_ENCVER 2
