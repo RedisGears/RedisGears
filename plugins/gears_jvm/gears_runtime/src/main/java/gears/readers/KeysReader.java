@@ -1,5 +1,7 @@
 package gears.readers;
 
+import gears.operations.OnRegisteredOperation;
+
 public class KeysReader extends BaseReader {
 	/**
 	 * 
@@ -10,18 +12,19 @@ public class KeysReader extends BaseReader {
 	private boolean readValues;
 	private String[] eventTypes;
 	private String[] keyTypes;
-	private ExecutionMode mode;
 
-	public KeysReader() {}
+	public KeysReader(ExecutionMode mode, OnRegisteredOperation onRegistered) {
+		super(mode, onRegistered);
+	}
 	
 	public KeysReader(String pattern, ExecutionMode mode, boolean noScan, boolean readValues, String[] eventTypes, String[] keyTypes) {
-		super();
+		super(mode, null);
 		this.pattern = pattern;
 		this.noScan = noScan;
 		this.readValues = readValues;
 		this.eventTypes = eventTypes;
 		this.keyTypes = keyTypes;
-		this.mode = mode;
+		this.setMode(mode);
 	}
 	
 	public KeysReader(String pattern) {
@@ -87,15 +90,6 @@ public class KeysReader extends BaseReader {
 
 	public KeysReader setKeyTypes(String[] keyTypes) {
 		this.keyTypes = keyTypes;
-		return this;
-	}
-
-	public ExecutionMode getMode() {
-		return mode;
-	}
-
-	public KeysReader setMode(ExecutionMode mode) {
-		this.mode = mode;
 		return this;
 	}
 }

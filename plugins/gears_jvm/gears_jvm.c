@@ -161,6 +161,9 @@ jmethodID gearsAccumulatorMethodId = NULL;
 jclass gearsAccumulateByCls = NULL;
 jmethodID gearsAccumulateByMethodId = NULL;
 
+jclass gearsOnRegisteredCls = NULL;
+jmethodID gearsOnRegisteredMethodId = NULL;
+
 jclass baseRecordCls = NULL;
 jmethodID baseRecordToStr = NULL;
 
@@ -175,13 +178,35 @@ jclass listRecordCls = NULL;
 jmethodID listRecordGetMethodId = NULL;
 jmethodID listRecordLenMethodId = NULL;
 
+jclass gearsBaseReaderCls = NULL;
+jfieldID keysBaseReaderModeField = NULL;
+jfieldID keysBaseReaderOnRegisteredField = NULL;
+
 jclass gearsKeyReaderCls = NULL;
 jfieldID keysReaderPatternField = NULL;
 jfieldID keysReaderNoscanField = NULL;
 jfieldID keysReaderReadValuesField = NULL;
 jfieldID keysReaderEventTypesField = NULL;
 jfieldID keysReaderKeyTypesField = NULL;
-jfieldID keysReaderModeField = NULL;
+
+jclass gearsExecutionModeCls = NULL;
+jobject gearsExecutionModeAsync = NULL;
+jobject gearsExecutionModeSync = NULL;
+jobject gearsExecutionModeAsyncLocal = NULL;
+
+jclass gearsStreamReaderCls = NULL;
+jfieldID streamReaderPatternField = NULL;
+jfieldID streamReaderStartIdField = NULL;
+jfieldID streamReaderBatchSizeField = NULL;
+jfieldID streamReaderDurationField = NULL;
+jfieldID streamReaderFailurePolicyField = NULL;
+jfieldID streamReaderRetryIntervalField = NULL;
+jfieldID streamReaderTrimStreamField = NULL;
+
+jclass gearsStreamReaderFailedPolicyCls = NULL;
+jclass gearsStreamReaderFailedPolicyContinueCls = NULL;
+jclass gearsStreamReaderFailedPolicyAbortCls = NULL;
+jclass gearsStreamReaderFailedPolicyRetryCls = NULL;
 
 jclass exceptionCls = NULL;
 
@@ -553,6 +578,9 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             JVM_TryFindClass(jvm_tld->env, "gears/operations/AccumulateByOperation", gearsAccumulateByCls);
             JVM_TryFindMethod(jvm_tld->env, gearsAccumulateByCls, "Accumulateby", "(Ljava/lang/String;Lgears/records/BaseRecord;Lgears/records/BaseRecord;)Lgears/records/BaseRecord;", gearsAccumulateByMethodId);
 
+            JVM_TryFindClass(jvm_tld->env, "gears/operations/OnRegisteredOperation", gearsOnRegisteredCls);
+            JVM_TryFindMethod(jvm_tld->env, gearsOnRegisteredCls, "OnRegistered", "()V", gearsOnRegisteredMethodId);
+
             JVM_TryFindClass(jvm_tld->env, "gears/records/BaseRecord", baseRecordCls);
 
             JVM_TryFindMethod(jvm_tld->env, baseRecordCls, "toString", "()Ljava/lang/String;", baseRecordToStr);
@@ -567,13 +595,100 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
 
             JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "Set", "(Ljava/lang/String;Lgears/records/BaseRecord;)V", hashRecordSet);
 
+            JVM_TryFindClass(jvm_tld->env, "gears/readers/BaseReader", gearsBaseReaderCls);
+            JVM_TryFindField(jvm_tld->env, gearsBaseReaderCls, "mode", "Lgears/readers/ExecutionMode;", keysBaseReaderModeField);
+            JVM_TryFindField(jvm_tld->env, gearsBaseReaderCls, "onRegistered", "Lgears/operations/OnRegisteredOperation;", keysBaseReaderOnRegisteredField);
+
             JVM_TryFindClass(jvm_tld->env, "gears/readers/KeysReader", gearsKeyReaderCls);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "pattern", "Ljava/lang/String;", keysReaderPatternField);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "noScan", "Z", keysReaderNoscanField);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "readValues", "Z", keysReaderReadValuesField);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "eventTypes", "[Ljava/lang/String;", keysReaderEventTypesField);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "keyTypes", "[Ljava/lang/String;", keysReaderKeyTypesField);
-            JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "mode", "Lgears/readers/ExecutionMode;", keysReaderModeField);
+
+            JVM_TryFindClass(jvm_tld->env, "gears/readers/StreamReader", gearsStreamReaderCls);
+            JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "pattern", "Ljava/lang/String;", streamReaderPatternField);
+            JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "startId", "Ljava/lang/String;", streamReaderStartIdField);
+            JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "batchSize", "I", streamReaderBatchSizeField);
+            JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "duration", "I", streamReaderDurationField);
+            JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "failurePolicy", "Lgears/readers/StreamReader$FailurePolicy;", streamReaderFailurePolicyField);
+            JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "failureRertyInterval", "I", streamReaderRetryIntervalField);
+            JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "trimStream", "Z", streamReaderTrimStreamField);
+
+            JVM_TryFindClass(jvm_tld->env, "gears/readers/StreamReader$FailurePolicy", gearsStreamReaderFailedPolicyCls);
+            jfieldID temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsStreamReaderFailedPolicyCls, "CONTINUE", "Lgears/readers/StreamReader$FailurePolicy;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding FailedPolicy.CONTINUE enum");
+                return NULL;
+            }
+            gearsStreamReaderFailedPolicyContinueCls = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsStreamReaderFailedPolicyCls, temp);
+            if(!gearsStreamReaderFailedPolicyContinueCls){
+                RedisModule_Log(NULL, "warning", "Failed loading FailedPolicy.CONTINUE enum");
+                return NULL;
+            }
+            gearsStreamReaderFailedPolicyContinueCls = JVM_TurnToGlobal(jvm_tld->env, gearsStreamReaderFailedPolicyContinueCls);
+
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsStreamReaderFailedPolicyCls, "ABORT", "Lgears/readers/StreamReader$FailurePolicy;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding FailedPolicy.ABORT enum");
+                return NULL;
+            }
+            gearsStreamReaderFailedPolicyAbortCls = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsStreamReaderFailedPolicyCls, temp);
+            if(!gearsStreamReaderFailedPolicyAbortCls){
+                RedisModule_Log(NULL, "warning", "Failed loading FailedPolicy.ABORT enum");
+                return NULL;
+            }
+            gearsStreamReaderFailedPolicyAbortCls = JVM_TurnToGlobal(jvm_tld->env, gearsStreamReaderFailedPolicyAbortCls);
+
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsStreamReaderFailedPolicyCls, "RETRY", "Lgears/readers/StreamReader$FailurePolicy;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding FailedPolicy.RETRY enum");
+                return NULL;
+            }
+            gearsStreamReaderFailedPolicyRetryCls = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsStreamReaderFailedPolicyCls, temp);
+            if(!gearsStreamReaderFailedPolicyRetryCls){
+                RedisModule_Log(NULL, "warning", "Failed loading FailedPolicy.RETRY enum");
+                return NULL;
+            }
+            gearsStreamReaderFailedPolicyRetryCls = JVM_TurnToGlobal(jvm_tld->env, gearsStreamReaderFailedPolicyRetryCls);
+
+            JVM_TryFindClass(jvm_tld->env, "gears/readers/ExecutionMode", gearsExecutionModeCls);
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "ASYNC", "Lgears/readers/ExecutionMode;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding ExecutionPlan.ASYNC enum");
+                return NULL;
+            }
+            gearsExecutionModeAsync = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsExecutionModeCls, temp);
+            if(!gearsExecutionModeAsync){
+                RedisModule_Log(NULL, "warning", "Failed loading ExecutionPlan.ASYNC enum");
+                return NULL;
+            }
+            gearsExecutionModeAsync = JVM_TurnToGlobal(jvm_tld->env, gearsExecutionModeAsync);
+
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "SYNC", "Lgears/readers/ExecutionMode;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding ExecutionPlan.SYNC enum");
+                return NULL;
+            }
+            gearsExecutionModeSync = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsExecutionModeCls, temp);
+            if(!gearsExecutionModeSync){
+                RedisModule_Log(NULL, "warning", "Failed loading ExecutionPlan.SYNC enum");
+                return NULL;
+            }
+            gearsExecutionModeSync = JVM_TurnToGlobal(jvm_tld->env, gearsExecutionModeSync);
+
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "ASYNC_LOCAL", "Lgears/readers/ExecutionMode;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding ExecutionPlan.ASYNC_LOCAL enum");
+                return NULL;
+            }
+            gearsExecutionModeAsyncLocal = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsExecutionModeCls, temp);
+            if(!gearsExecutionModeAsyncLocal){
+                RedisModule_Log(NULL, "warning", "Failed loading ExecutionPlan.ASYNC_LOCAL enum");
+                return NULL;
+            }
+            gearsExecutionModeAsyncLocal = JVM_TurnToGlobal(jvm_tld->env, gearsExecutionModeAsyncLocal);
+
 
             JVM_TryFindClass(jvm_tld->env, "java/lang/Exception", exceptionCls);
 
@@ -755,20 +870,209 @@ static void JVM_OnExecutionDoneCallback(ExecutionPlan* ctx, void* privateData){
     RedisModule_FreeThreadSafeContext(rctx);
 }
 
+void* JVM_CreateRunStreamReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+    jclass readerCls = (*env)->GetObjectClass(env, reader);
+    if(!(*env)->IsSameObject(env, readerCls, gearsStreamReaderCls)){
+        (*env)->ThrowNew(env, exceptionCls, "Reader was changed!!!! Stop hacking!!!!");
+        return NULL;
+    }
+
+    jobject pattern = (*env)->GetObjectField(env, reader, streamReaderPatternField);
+    if(!pattern){
+        (*env)->ThrowNew(env, exceptionCls, "Stream reader pattern argument can not be NULL");
+        return NULL;
+    }
+
+    jobject startId = (*env)->GetObjectField(env, reader, streamReaderStartIdField);
+    if(!startId){
+        (*env)->ThrowNew(env, exceptionCls, "Stream reader startId argument can not be NULL");
+        return NULL;
+    }
+
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+    const char* startIdStr = (*env)->GetStringUTFChars(env, startId, JNI_FALSE);
+
+    StreamReaderCtx* readerCtx = RedisGears_StreamReaderCtxCreate(patternStr, startIdStr);
+
+    (*env)->ReleaseStringUTFChars(env, pattern, patternStr);
+    (*env)->ReleaseStringUTFChars(env, startId, startIdStr);
+
+    return readerCtx;
+}
+
+void* JVM_CreateRunKeyReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+    jclass readerCls = (*env)->GetObjectClass(env, reader);
+    if(!(*env)->IsSameObject(env, readerCls, gearsKeyReaderCls)){
+        (*env)->ThrowNew(env, exceptionCls, "Reader was changed!!!! Stop hacking!!!!");
+        return NULL;
+    }
+
+    jobject pattern = (*env)->GetObjectField(env, reader, keysReaderPatternField);
+    if(!pattern){
+        (*env)->ThrowNew(env, exceptionCls, "Keys reader pattern argument can not be NULL");
+        return NULL;
+    }
+
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+
+    jboolean readValues = (*env)->GetBooleanField(env, reader, keysReaderReadValuesField);
+    jboolean noScan = (*env)->GetBooleanField(env, reader, keysReaderNoscanField);
+
+    KeysReaderCtx* readerCtx = RedisGears_KeysReaderCtxCreate(patternStr, readValues, NULL, noScan);
+
+    (*env)->ReleaseStringUTFChars(env, pattern, patternStr);
+
+    return readerCtx;
+}
+
 void* JVM_CreateRunReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
     if(strcmp(RedisGears_GetReader(fep), "KeysReader") == 0){
-        jobject pattern = (*env)->GetObjectField(env, reader, keysReaderPatternField);
+        return JVM_CreateRunKeyReaderArgs(env, fep, reader);
+    }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
+        return JVM_CreateRunStreamReaderArgs(env, fep, reader);
+    }
+    (*env)->ThrowNew(env, exceptionCls, "Given reader does not exists");
+    return NULL;
+}
 
-        const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+static int JVM_RegisterStrKeyTypeToInt(const char* keyType){
+    if(strcmp(keyType, "string") == 0){
+        return REDISMODULE_KEYTYPE_STRING;
+    }
+    if(strcmp(keyType, "list") == 0){
+        return REDISMODULE_KEYTYPE_LIST;
+    }
+    if(strcmp(keyType, "hash") == 0){
+        return REDISMODULE_KEYTYPE_HASH;
+    }
+    if(strcmp(keyType, "set") == 0){
+        return REDISMODULE_KEYTYPE_SET;
+    }
+    if(strcmp(keyType, "zset") == 0){
+        return REDISMODULE_KEYTYPE_ZSET;
+    }
+    if(strcmp(keyType, "module") == 0){
+        return REDISMODULE_KEYTYPE_MODULE;
+    }
+    return -1;
+}
 
-        jboolean readValues = (*env)->GetBooleanField(env, reader, keysReaderReadValuesField);
-        jboolean noScan = (*env)->GetBooleanField(env, reader, keysReaderNoscanField);
+void* JVM_CreateRegisterStreamReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+    jclass readerCls = (*env)->GetObjectClass(env, reader);
+    if(!(*env)->IsSameObject(env, readerCls, gearsStreamReaderCls)){
+        (*env)->ThrowNew(env, exceptionCls, "Reader was changed!!!! Stop hacking!!!!");
+        return NULL;
+    }
 
-        KeysReaderCtx* readerCtx = RedisGears_KeysReaderCtxCreate(patternStr, readValues, NULL, noScan);
+    jobject pattern = (*env)->GetObjectField(env, reader, streamReaderPatternField);
 
-        (*env)->ReleaseStringUTFChars(env, pattern, patternStr);
+    if(!pattern){
+        (*env)->ThrowNew(env, exceptionCls, "stream reader pattern argument can not be NULL");
+        return NULL;
+    }
 
-        return readerCtx;
+    jint batchSize = (*env)->GetIntField(env, reader, streamReaderBatchSizeField);
+    jint duration = (*env)->GetIntField(env, reader, streamReaderDurationField);
+    jint retryInterval = (*env)->GetIntField(env, reader, streamReaderRetryIntervalField);
+    jboolean trimStream = (*env)->GetBooleanField(env, reader, streamReaderTrimStreamField);
+
+    jobject jfailurePolicy = (*env)->GetObjectField(env, reader, streamReaderFailurePolicyField);
+
+    OnFailedPolicy failurePolicy = OnFailedPolicyContinue;
+    if((*env)->IsSameObject(env, jfailurePolicy, gearsStreamReaderFailedPolicyContinueCls)){
+        failurePolicy = OnFailedPolicyContinue;
+    }else if((*env)->IsSameObject(env, jfailurePolicy, gearsStreamReaderFailedPolicyAbortCls)){
+        failurePolicy = OnFailedPolicyAbort;
+    }else if((*env)->IsSameObject(env, jfailurePolicy, gearsStreamReaderFailedPolicyRetryCls)){
+        failurePolicy = OnFailedPolicyRetry;
+    }else{
+        RedisModule_Assert(false);
+    }
+
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+
+
+    StreamReaderTriggerArgs* triggerArgsCtx =
+            RedisGears_StreamReaderTriggerArgsCreate(patternStr,
+                                                     batchSize,
+                                                     duration,
+                                                     failurePolicy,
+                                                     retryInterval,
+                                                     trimStream);
+
+    (*env)->ReleaseStringUTFChars(env, pattern, patternStr);
+
+    return triggerArgsCtx;
+}
+
+void* JVM_CreateRegisterKeysReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+    jclass readerCls = (*env)->GetObjectClass(env, reader);
+    if(!(*env)->IsSameObject(env, readerCls, gearsKeyReaderCls)){
+        (*env)->ThrowNew(env, exceptionCls, "Reader was changed!!!! Stop hacking!!!!");
+        return NULL;
+    }
+
+    jobject pattern = (*env)->GetObjectField(env, reader, keysReaderPatternField);
+
+    if(!pattern){
+        (*env)->ThrowNew(env, exceptionCls, "Keys reader pattern argument can not be NULL");
+        return NULL;
+    }
+
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+
+    jboolean readValues = (*env)->GetBooleanField(env, reader, keysReaderReadValuesField);
+
+    jobject jkeyTypes = (*env)->GetObjectField(env, reader, keysReaderKeyTypesField);
+
+    int* keyTypes = NULL;
+    if(jkeyTypes){
+        jsize jkeyTypesLen = (*env)->GetArrayLength(env, jkeyTypes);
+        if(jkeyTypesLen > 0){
+            keyTypes = array_new(int, jkeyTypesLen);
+            for(size_t i = 0 ; i < jkeyTypesLen ; ++i){
+                jobject jkey = (*env)->GetObjectArrayElement(env, jkeyTypes, i);
+                const char* jkeyStr = (*env)->GetStringUTFChars(env, jkey, JNI_FALSE);
+                int jkeyInt = JVM_RegisterStrKeyTypeToInt(jkeyStr);
+                (*env)->ReleaseStringUTFChars(env, jkey, jkeyStr);
+                if(jkeyInt == -1){
+                    array_free(keyTypes);
+                    (*env)->ThrowNew(env, exceptionCls, "No such key type exists");
+                    return NULL;
+                }
+                keyTypes = array_append(keyTypes, jkeyInt);
+            }
+        }
+    }
+
+    jobject jeventTypes = (*env)->GetObjectField(env, reader, keysReaderEventTypesField);
+
+    char** eventTypes = NULL;
+    if(jeventTypes){
+        jsize jeventTypesLen = (*env)->GetArrayLength(env, jeventTypes);
+        if(jeventTypesLen > 0){
+            eventTypes = array_new(char*, jeventTypesLen);
+            for(size_t i = 0 ; i < jeventTypesLen ; ++i){
+                jobject jevent = (*env)->GetObjectArrayElement(env, jeventTypes, i);
+                const char* jeventStr = (*env)->GetStringUTFChars(env, jevent, JNI_FALSE);
+                eventTypes = array_append(eventTypes, JVM_STRDUP(jeventStr));
+                (*env)->ReleaseStringUTFChars(env, jevent, jeventStr);
+            }
+        }
+    }
+
+    KeysReaderTriggerArgs* triggerArgsCtx = RedisGears_KeysReaderTriggerArgsCreate(patternStr, eventTypes, keyTypes, readValues);
+
+    (*env)->ReleaseStringUTFChars(env, pattern, patternStr);
+
+    return triggerArgsCtx;
+}
+
+void* JVM_CreateRegisterReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+    if(strcmp(RedisGears_GetReader(fep), "KeysReader") == 0){
+        return JVM_CreateRegisterKeysReaderArgs(env, fep, reader);
+    }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
+        return JVM_CreateRegisterStreamReaderArgs(env, fep, reader);
     }
     (*env)->ThrowNew(env, exceptionCls, "Given reader does not exists");
     return NULL;
@@ -801,8 +1105,30 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
 static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader){
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
-    KeysReaderTriggerArgs* krCtx = RedisGears_KeysReaderTriggerArgsCreate("*", NULL, NULL, true);
-    RGM_Register(fep, ExecutionModeAsync, krCtx, &err);
+
+    ExecutionMode mode = ExecutionModeAsync;
+    jobject jmode = (*env)->GetObjectField(env, reader, keysBaseReaderModeField);
+    if((*env)->IsSameObject(env, jmode, gearsExecutionModeAsync)){
+        mode = ExecutionModeAsync;
+    }else if((*env)->IsSameObject(env, jmode, gearsExecutionModeSync)){
+        mode = ExecutionModeSync;
+    }else if((*env)->IsSameObject(env, jmode, gearsExecutionModeAsyncLocal)){
+        mode = ExecutionModeAsyncLocal;
+    }else{
+        RedisModule_Assert(false);
+    }
+
+    jobject onRegistered = (*env)->GetObjectField(env, reader, keysBaseReaderOnRegisteredField);
+    if(onRegistered){
+        onRegistered = JVM_TurnToGlobal(env, onRegistered);
+        RGM_SetFlatExecutionOnRegisteredCallback(fep, JVM_OnRegistered, onRegistered);
+    }
+
+    void* triggerCtx = JVM_CreateRegisterReaderArgs(env, fep, reader);
+    if(!triggerCtx){
+        return;
+    }
+    RGM_Register(fep, mode, triggerCtx, &err);
 }
 
 int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -846,8 +1172,7 @@ int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 
     jmethodID mid = (*env)->GetStaticMethodID(env, cls, "main", "()V");
 
-    if(!mid){
-        err = JVM_STRDUP("Could not find main method in class");
+    if((err = JVM_GetException(env))){
         goto error;
     }
 
@@ -1300,7 +1625,23 @@ static Record* JVMRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader*
     return &r->baseRecord;
 }
 
+static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
+    char* err = NULL;
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
 
+    JVM_PushFrame(jvm_tld->env);
+
+    jobject onRegister = arg;
+    JNIEnv *env = jvm_tld->env;
+
+    (*env)->CallVoidMethod(env, onRegister, gearsOnRegisteredMethodId);
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Exception occured while running OnRegister callback: %s", err);
+        JVM_FREE(err);
+    }
+
+    JVM_PopFrame(env);
+}
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     if(RedisGears_InitAsGearPlugin(ctx, REDISGEARSJVM_PLUGIN_NAME, REDISGEARSJVM_PLUGIN_VERSION) != REDISMODULE_OK){
@@ -1346,6 +1687,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
                                            JVM_SessionToString);
 
     RedisGears_RegisterFlatExecutionPrivateDataType(jvmSessionType);
+
+    RGM_RegisterFlatExecutionOnRegisteredCallback(JVM_OnRegistered, jvmObjectType);
 
     RGM_RegisterMap(JVM_ToJavaRecordMapper, NULL);
     RGM_RegisterMap(JVM_Mapper, jvmObjectType);
