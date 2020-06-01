@@ -12,6 +12,7 @@ import gears.operations.ExtractorOperation;
 import gears.operations.FilterOperation;
 import gears.operations.ForeachOperation;
 import gears.operations.MapOperation;
+import gears.operations.OnRegisteredOperation;
 import gears.readers.BaseReader;
 
 public class GearsBuilder{
@@ -58,7 +59,7 @@ public class GearsBuilder{
 		Init(reader.GetName());
 	}
 	
-	public static byte[] SerializeObject(Object o) throws IOException {
+	private static byte[] SerializeObject(Object o) throws IOException {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		ObjectOutputStream out = new ObjectOutputStream(bos);
 		out.writeObject(o);
@@ -68,7 +69,7 @@ public class GearsBuilder{
 		return bytes;
 	}
 	
-	public static Object DeserializeObject(byte[] bytes, ClassLoader cl) throws IOException, ClassNotFoundException {
+	private static Object DeserializeObject(byte[] bytes, ClassLoader cl) throws IOException, ClassNotFoundException {
 		ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
 		ObjectInput in = new ObjectInputStreamWithLoader(bis, cl);;
 		Object o = in.readObject();
