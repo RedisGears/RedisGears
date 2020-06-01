@@ -249,7 +249,9 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
 }
 
 static char* PythonRequirementCtx_WheelToStr(void* wheel){
-    return RG_STRDUP(wheel);
+    char* str;
+    rg_asprintf(&str, "'%s'", (char*)wheel);
+    return str;
 }
 
 static char* PythonRequirementCtx_ToStr(void* val){
