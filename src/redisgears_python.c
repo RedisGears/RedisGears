@@ -249,7 +249,9 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
 }
 
 static char* PythonRequirementCtx_WheelToStr(void* wheel){
-    return RG_STRDUP(wheel);
+    char* str;
+    rg_asprintf(&str, "'%s'", (char*)wheel);
+    return str;
 }
 
 static char* PythonRequirementCtx_ToStr(void* val){
@@ -2216,7 +2218,9 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
+    PyThreadState* _save = PyEval_SaveThread();
     RedisAI_ModelRun(&pyg->g, 1, err);
+    PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
@@ -2376,7 +2380,9 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
+    PyThreadState* _save = PyEval_SaveThread();
     RedisAI_ScriptRun(pys->s, err);
+    PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
