@@ -136,6 +136,7 @@ jfieldID ptrFieldId = NULL;
 jclass gearsBuilderCls = NULL;
 jmethodID gearsBuilderSerializeObjectMethodId = NULL;
 jmethodID gearsBuilderDeserializeObjectMethodId = NULL;
+jmethodID gearsBuilderOnUnpausedMethodId = NULL;
 
 jclass gearsClassLoaderCls = NULL;
 jmethodID gearsClassLoaderNewMid = NULL;
@@ -559,6 +560,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
 
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "SerializeObject", "(Ljava/lang/Object;)[B", gearsBuilderSerializeObjectMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "DeserializeObject", "([BLjava/lang/ClassLoader;)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "OnUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/MapOperation", gearsMappCls);
             JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "Map", "(Lgears/records/BaseRecord;)Lgears/records/BaseRecord;", gearsMapMethodId);
@@ -781,6 +783,7 @@ static jobject JVM_TurnToGlobal(JNIEnv *env, jobject local){
 static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
     const char* reader = (*env)->GetStringUTFChars(env, strReader, JNI_FALSE);
     FlatExecutionPlan* fep = RedisGears_CreateCtx((char*)reader);
+    RGM_SetFlatExecutionOnUnpausedCallback(fep, JVM_OnUnpaused, NULL);
 
     JVM_ThreadLocalData* tld = JVM_GetThreadLocalData();
     RedisGears_SetFlatExecutionPrivateData(fep, JVM_SESSION_TYPE_NAME, JVM_SessionDup(tld->currSession));
@@ -1643,6 +1646,19 @@ static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
     JVM_PopFrame(env);
 }
 
+static void JVM_OnUnpaused(ExecutionCtx* ctx, void* arg){
+    JVMRunSession* session = RedisGears_GetFlatExecutionPrivateData(ctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
+    JNIEnv *env = jvm_tld->env;
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsBuilderOnUnpausedMethodId, session->sessionClsLoader);
+
+    char* err = NULL;
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Exception occured while running OnRegister callback: %s", err);
+        JVM_FREE(err);
+    }
+}
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     if(RedisGears_InitAsGearPlugin(ctx, REDISGEARSJVM_PLUGIN_NAME, REDISGEARSJVM_PLUGIN_VERSION) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
@@ -1689,6 +1705,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     RedisGears_RegisterFlatExecutionPrivateDataType(jvmSessionType);
 
     RGM_RegisterFlatExecutionOnRegisteredCallback(JVM_OnRegistered, jvmObjectType);
+    RGM_RegisterExecutionOnUnpausedCallback(JVM_OnUnpaused, jvmObjectType);
 
     RGM_RegisterMap(JVM_ToJavaRecordMapper, NULL);
     RGM_RegisterMap(JVM_Mapper, jvmObjectType);

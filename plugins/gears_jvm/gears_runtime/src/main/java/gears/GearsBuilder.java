@@ -59,6 +59,10 @@ public class GearsBuilder{
 		Init(reader.GetName());
 	}
 	
+	private static void OnUnpaused(ClassLoader cl) throws IOException {
+		Thread.currentThread().setContextClassLoader(cl);
+	}
+	
 	private static byte[] SerializeObject(Object o) throws IOException {
 		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		ObjectOutputStream out = new ObjectOutputStream(bos);
