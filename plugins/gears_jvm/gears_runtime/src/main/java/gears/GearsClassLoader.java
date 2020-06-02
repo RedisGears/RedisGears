@@ -7,7 +7,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 
 public class GearsClassLoader {
-	public static URLClassLoader GetNew(String jarFilePath) throws MalformedURLException, FileNotFoundException {
+	public static URLClassLoader getNew(String jarFilePath) throws MalformedURLException, FileNotFoundException {
 		File f = new File(jarFilePath);
 		if(!f.exists()) {
 			throw new FileNotFoundException(jarFilePath + " not exists");

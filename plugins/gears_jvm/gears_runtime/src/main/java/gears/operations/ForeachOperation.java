@@ -6,6 +6,6 @@ import gears.records.BaseRecord;
 
 public interface ForeachOperation extends Serializable {
 
-	public void Foreach(BaseRecord record) throws Exception;
+	public void foreach(Serializable record) throws Exception;
 	
 }

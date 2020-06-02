@@ -73,7 +73,7 @@ static void* DupLimitArg(void* arg){
     return ret;
 }
 
-static int LimitArgSerialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int LimitArgSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     LimitExecutionStepArg* limitArg = arg;
     RedisGears_BWWriteLong(bw, limitArg->offset);
     RedisGears_BWWriteLong(bw, limitArg->len);
@@ -335,27 +335,27 @@ static void FlatExecutionPlan_SerializeReader(FlatExecutionReader* rfep, Gears_B
     RedisGears_BWWriteString(bw, rfep->reader);
 }
 
-static int FlatExecutionPlan_SerializeArg(ArgType* type, void* arg, Gears_BufferWriter* bw, char** err){
+static int FlatExecutionPlan_SerializeArg(FlatExecutionPlan* fep, ArgType* type, void* arg, Gears_BufferWriter* bw, char** err){
     RedisModule_Assert(type && type->serialize);
     RedisGears_BWWriteLong(bw, type->version);
-    return type->serialize(arg, bw, err);
+    return type->serialize(fep, arg, bw, err);
 }
 
-static int FlatExecutionPlan_SerializeStepArg(ArgType* type, void* stepArg, Gears_BufferWriter* bw, char** err){
+static int FlatExecutionPlan_SerializeStepArg(FlatExecutionPlan* fep, ArgType* type, void* stepArg, Gears_BufferWriter* bw, char** err){
     if(stepArg){
         RedisGears_BWWriteLong(bw, 1); // has step args
-        return FlatExecutionPlan_SerializeArg(type, stepArg, bw, err);
+        return FlatExecutionPlan_SerializeArg(fep, type, stepArg, bw, err);
     }else{
         RedisGears_BWWriteLong(bw, 0); // do not have step args
     }
     return REDISMODULE_OK;
 }
 
-static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_BufferWriter* bw, char** err){
+static int FlatExecutionPlan_SerializeStep(FlatExecutionPlan* fep, FlatExecutionStep* step, Gears_BufferWriter* bw, char** err){
     RedisGears_BWWriteLong(bw, step->type);
     RedisGears_BWWriteString(bw, step->bStep.stepName);
     ArgType* type = step->bStep.arg.type;
-    return FlatExecutionPlan_SerializeStepArg(type, step->bStep.arg.stepArg, bw, err);
+    return FlatExecutionPlan_SerializeStepArg(fep, type, step->bStep.arg.stepArg, bw, err);
 }
 
 static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, size_t *len, char** err){
@@ -377,7 +377,7 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
     RedisGears_BWWriteLong(&bw, array_len(fep->steps));
     for(int i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
-        if(FlatExecutionPlan_SerializeStep(step, &bw, err) != REDISMODULE_OK){
+        if(FlatExecutionPlan_SerializeStep(fep, step, &bw, err) != REDISMODULE_OK){
             Gears_BufferFree(fep->serializedFep);
             fep->serializedFep = NULL;
             return NULL;
@@ -397,7 +397,7 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
         RedisGears_BWWriteLong(&bw, 1); // has onExecutionStartStep
         RedisGears_BWWriteString(&bw, fep->onExecutionStartStep.stepName);
         ArgType* type = fep->onExecutionStartStep.arg.type;
-        int res = FlatExecutionPlan_SerializeStepArg(type, fep->onExecutionStartStep.arg.stepArg, &bw, err);
+        int res = FlatExecutionPlan_SerializeStepArg(fep, type, fep->onExecutionStartStep.arg.stepArg, &bw, err);
         if(res != REDISMODULE_OK){
             Gears_BufferFree(fep->serializedFep);
             fep->serializedFep = NULL;
@@ -411,7 +411,7 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
         RedisGears_BWWriteLong(&bw, 1); // has onExecutionStartStep
         RedisGears_BWWriteString(&bw, fep->onUnpausedStep.stepName);
         ArgType* type = fep->onUnpausedStep.arg.type;
-        int res = FlatExecutionPlan_SerializeStepArg(type, fep->onUnpausedStep.arg.stepArg, &bw, err);
+        int res = FlatExecutionPlan_SerializeStepArg(fep, type, fep->onUnpausedStep.arg.stepArg, &bw, err);
         if(res != REDISMODULE_OK){
             Gears_BufferFree(fep->serializedFep);
             fep->serializedFep = NULL;
@@ -425,7 +425,7 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
         RedisGears_BWWriteLong(&bw, 1); // has onExecutionStartStep
         RedisGears_BWWriteString(&bw, fep->onRegisteredStep.stepName);
         ArgType* type = fep->onRegisteredStep.arg.type;
-        int res = FlatExecutionPlan_SerializeStepArg(type, fep->onRegisteredStep.arg.stepArg, &bw, err);
+        int res = FlatExecutionPlan_SerializeStepArg(fep, type, fep->onRegisteredStep.arg.stepArg, &bw, err);
         if(res != REDISMODULE_OK){
             Gears_BufferFree(fep->serializedFep);
             fep->serializedFep = NULL;
@@ -452,7 +452,7 @@ int FlatExecutionPlan_Serialize(Gears_BufferWriter* bw, FlatExecutionPlan* fep, 
         RedisGears_BWWriteString(bw, fep->PDType);
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         RedisModule_Assert(type);
-        if(FlatExecutionPlan_SerializeArg(type, fep->PD, bw, err) != REDISMODULE_OK){
+        if(FlatExecutionPlan_SerializeArg(fep, type, fep->PD, bw, err) != REDISMODULE_OK){
             return REDISMODULE_ERR;
         }
     }else{
@@ -891,6 +891,8 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
     Gears_Buffer* buff;
     Gears_BufferWriter bw;
 
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+
     if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
         return ExecutionPlan_NextRecord(ep, step->prev, rctx);
     }
@@ -937,7 +939,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
             Gears_BufferWriterInit(&bw, buff);
             RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
             RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-            int serializationRes = RG_SerializeRecord(&bw, record, &err);
+            int serializationRes = RG_SerializeRecord(&ectx, &bw, record, &err);
             RedisGears_FreeRecord(record);
             if(serializationRes != REDISMODULE_OK){
                 // we need to clear and rewrite cause buff contains garbage
@@ -946,7 +948,7 @@ static Record* ExecutionPlan_RepartitionNextRecord(ExecutionPlan* ep, ExecutionS
                 RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
                 record = RG_ErrorRecordCreate(err, strlen(err));
                 err = NULL;
-                serializationRes = RG_SerializeRecord(&bw, record, &err);
+                serializationRes = RG_SerializeRecord(&ectx, &bw, record, &err);
                 RedisModule_Assert(serializationRes == REDISMODULE_OK);
                 RedisGears_FreeRecord(record);
             }
@@ -986,6 +988,8 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 	Gears_Buffer* buff;;
 	Gears_BufferWriter bw;
 
+	ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep);
+
 	if(!Cluster_IsClusterMode() || EPIsFlagOn(ep, EFIsLocal)){
 		return ExecutionPlan_NextRecord(ep, step->prev, rctx);
 	}
@@ -1022,7 +1026,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			Gears_BufferWriterInit(&bw, buff);
 			RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution plan id
 			RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
-			int serializationRes = RG_SerializeRecord(&bw, record, &err);
+			int serializationRes = RG_SerializeRecord(&ectx, &bw, record, &err);
 			RedisGears_FreeRecord(record);
 			if(serializationRes != REDISMODULE_OK){
 			    // we need to clear and rewrite cause buff contains garbage
@@ -1031,7 +1035,7 @@ static Record* ExecutionPlan_CollectNextRecord(ExecutionPlan* ep, ExecutionStep*
 			    RedisGears_BWWriteLong(&bw, step->stepId); // serialize step id
 			    record = RG_ErrorRecordCreate(err, strlen(err));
 			    err = NULL;
-			    serializationRes = RG_SerializeRecord(&bw, record, &err);
+			    serializationRes = RG_SerializeRecord(&ectx, &bw, record, &err);
 			    RedisModule_Assert(serializationRes == REDISMODULE_OK);
 			    RedisGears_FreeRecord(record);
 			}
@@ -1957,7 +1961,8 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     }
     size_t stepId = RedisGears_BRReadLong(&br);
     RedisModule_Assert(epIdLen == ID_LEN);
-    Record* r = RG_DeserializeRecord(ep->fep, &br);
+    ExecutionCtx ectx = ExecutionCtx_Initialize(ctx, ep);
+    Record* r = RG_DeserializeRecord(&ectx, &br);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, COLLECT);
 	ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }
@@ -2005,7 +2010,8 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     }
     size_t stepId = RedisGears_BRReadLong(&br);
     RedisModule_Assert(epIdLen == ID_LEN);
-    Record* r = RG_DeserializeRecord(ep->fep, &br);
+    ExecutionCtx ectx = ExecutionCtx_Initialize(ctx, ep);
+    Record* r = RG_DeserializeRecord(&ectx, &br);
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateAddRecord(ep, stepId, r, REPARTITION);
     ExectuionPlan_WorkerMsgSend(ep->assignWorker, msg);
 }

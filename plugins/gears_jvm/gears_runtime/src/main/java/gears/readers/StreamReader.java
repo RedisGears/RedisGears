@@ -33,7 +33,7 @@ public class StreamReader extends BaseReader {
 	}
 
 	@Override
-	public String GetName() {
+	public String getName() {
 		// TODO Auto-generated method stub
 		return "StreamReader";
 	}

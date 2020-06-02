@@ -19,7 +19,7 @@ public abstract class BaseReader implements Serializable{
 		this.onRegistered = onRegistered;
 	}
 	
-	public abstract String GetName();
+	public abstract String getName();
 
 	public ExecutionMode getMode() {
 		return mode;

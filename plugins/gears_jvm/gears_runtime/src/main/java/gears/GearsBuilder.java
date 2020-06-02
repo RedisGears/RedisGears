@@ -1,18 +1,12 @@
 package gears;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutputStream;
-
 import gears.operations.AccumulateByOperation;
 import gears.operations.AccumulateOperation;
 import gears.operations.ExtractorOperation;
 import gears.operations.FilterOperation;
 import gears.operations.ForeachOperation;
 import gears.operations.MapOperation;
-import gears.operations.OnRegisteredOperation;
 import gears.readers.BaseReader;
 
 public class GearsBuilder{
@@ -20,69 +14,67 @@ public class GearsBuilder{
 	private BaseReader reader;
 	private long ptr;
 	
-	private native void Init(String reader);
+	private native void init(String reader);
 	
-	private native void Destroy();
+	private native void destroy();
 	
-	public native GearsBuilder Map(MapOperation mapper);
+	public native GearsBuilder map(MapOperation mapper);
 	
-	public native GearsBuilder FlatMap(MapOperation mapper);
+	public native GearsBuilder flatMap(MapOperation mapper);
 	
-	public native GearsBuilder Foreach(ForeachOperation foreach);
+	public native GearsBuilder foreach(ForeachOperation foreach);
 	
-	public native GearsBuilder Filter(FilterOperation foreach);
+	public native GearsBuilder filter(FilterOperation foreach);
 	
-	public native GearsBuilder AccumulateBy(ExtractorOperation extractor, AccumulateByOperation accumulator);
+	public native GearsBuilder accumulateBy(ExtractorOperation extractor, AccumulateByOperation accumulator);
 	
-	public native GearsBuilder LocalAccumulateBy(ExtractorOperation extractor, AccumulateByOperation accumulator);
+	public native GearsBuilder localAccumulateBy(ExtractorOperation extractor, AccumulateByOperation accumulator);
 	
-	public native GearsBuilder Accumulate(AccumulateOperation accumulator);
+	public native GearsBuilder accumulate(AccumulateOperation accumulator);
 	
-	public native GearsBuilder Collect();
+	public native GearsBuilder collect();
 	
-	public native GearsBuilder Repartition(ExtractorOperation extractor);
+	public static native Object executeArray(String[] command);
 	
-	private native void InnerRun(BaseReader reader);
-	
-	private native void InnerRegister(BaseReader reader);
-	
-	public void Run() {
-		InnerRun(reader);
+	public static Object execute(String... command) {
+		return executeArray(command);
 	}
 	
-	public void Register() {
-		InnerRegister(reader);
+	public native GearsBuilder repartition(ExtractorOperation extractor);
+	
+	private native void innerRun(BaseReader reader);
+	
+	private native void innerRegister(BaseReader reader);
+	
+	public void run() {
+		innerRun(reader);
+	}
+	
+	public void register() {
+		innerRegister(reader);
 	}
 	
 	public GearsBuilder(BaseReader reader) {
 		this.reader = reader;
-		Init(reader.GetName());
+		init(reader.getName());
 	}
 	
-	private static void OnUnpaused(ClassLoader cl) throws IOException {
+	private static void onUnpaused(ClassLoader cl) throws IOException {
 		Thread.currentThread().setContextClassLoader(cl);
 	}
 	
-	private static byte[] SerializeObject(Object o) throws IOException {
-		ByteArrayOutputStream bos = new ByteArrayOutputStream();
-		ObjectOutputStream out = new ObjectOutputStream(bos);
-		out.writeObject(o);
-		out.flush();
-		byte[] bytes = bos.toByteArray();
-		bos.close();
-		return bytes;
+	private static byte[] serializeObject(Object o, GearsObjectOutputStream out) throws IOException {
+		return out.serializeObject(o);
 	}
 	
-	private static Object DeserializeObject(byte[] bytes, ClassLoader cl) throws IOException, ClassNotFoundException {
-		ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
-		ObjectInput in = new ObjectInputStreamWithLoader(bis, cl);;
+	private static Object deserializeObject(byte[] bytes, GearsObjectInputStream in) throws IOException, ClassNotFoundException {
+		in.addData(bytes);
 		Object o = in.readObject();
-		in.close();
 		return o;
 	}
 	
 	@Override
 	protected void finalize() throws Throwable {
-		Destroy();
+		destroy();
 	}
 }
