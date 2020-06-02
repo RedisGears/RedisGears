@@ -24,17 +24,17 @@ public class HashRecord extends BaseRecord {
 		hashMap = new HashMap<String, BaseRecord>();
 	}
 	
-	public void Set(String key, BaseRecord r) {
+	public void set(String key, BaseRecord r) {
 		hashMap.put(key, r);
 	}
 	
-	public void SetMultiple(Object[] data) {
+	public void setMultiple(Object[] data) {
 		for(int i = 0 ; i < data.length ; i+=2) {
 			hashMap.put((String)data[i], (BaseRecord)data[i + 1]);
 		}
 	}
 	
-	public BaseRecord Get(String key) {
+	public BaseRecord get(String key) {
 		return hashMap.get(key);
 	}
 }

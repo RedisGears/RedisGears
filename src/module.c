@@ -529,6 +529,10 @@ static RecordType* RG_GetHashSetRecordType(){
     return hashSetRecordType;
 }
 
+static ExecutionPlan* RG_GetExecutionFromCtx(ExecutionCtx* ectx){
+    return ectx->ep;
+}
+
 static int RG_ExecuteCommand(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, ...) {
     char* command;
     va_list ap;
@@ -772,6 +776,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetTotalDuration, ctx);
     REGISTER_API(GetReadDuration, ctx);
 
+    REGISTER_API(GetExecutionFromCtx, ctx);
     REGISTER_API(SetError, ctx);
     REGISTER_API(GetRedisModuleCtx, ctx);
     REGISTER_API(GetFlatExecutionPrivateData, ctx);

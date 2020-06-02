@@ -6,6 +6,6 @@ import gears.records.BaseRecord;
 
 public interface MapOperation extends Serializable {
 	
-	public BaseRecord Map(BaseRecord record) throws Exception;
+	public Serializable map(Serializable record) throws Exception;
 	
 }

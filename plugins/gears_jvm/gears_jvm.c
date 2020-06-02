@@ -17,6 +17,7 @@ static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader);
 static void JVM_GBDestroy(JNIEnv *env, jobject objectOrClass);
 static jobject JVM_GBMap(JNIEnv *env, jobject objectOrClass, jobject mapper);
 static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader);
+static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray command);
 static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader);
 static jobject JVM_GBAccumulateby(JNIEnv *env, jobject objectOrClass, jobject extractor, jobject accumulator);
 static jobject JVM_GBRepartition(JNIEnv *env, jobject objectOrClass, jobject extractor);
@@ -109,12 +110,19 @@ typedef struct JVMRecord{
 
 long long sessionsId = 0;
 
+typedef struct JVMExecutionSession{
+    jobject executionInputStream;
+    jobject executionOutputStream;
+}JVMExecutionSession;
+
 typedef struct JVMRunSession{
     size_t refCounf;
     char uuid[ID_LEN];
     char uuidStr[STR_ID_LEN];
     char* jarFilePath;
     jobject sessionClsLoader;
+    jobject sessionObjectInputStream;
+    jobject sessionObjectOutputStream;
 }JVMRunSession;
 
 typedef struct JVM_ThreadLocalData{
@@ -133,10 +141,20 @@ JavaVM *jvm = NULL;       /* denotes a Java VM */
 
 jfieldID ptrFieldId = NULL;
 
+jclass gearsObjectCls = NULL;
+
+jclass gearsLongCls = NULL;
+jmethodID gearsLongValueOfMethodId = NULL;
+
 jclass gearsBuilderCls = NULL;
 jmethodID gearsBuilderSerializeObjectMethodId = NULL;
 jmethodID gearsBuilderDeserializeObjectMethodId = NULL;
 jmethodID gearsBuilderOnUnpausedMethodId = NULL;
+
+jclass gearsObjectInputStreamCls = NULL;
+jmethodID gearsObjectInputStreamGetMethodId = NULL;
+jclass gearsObjectOutputStreamCls = NULL;
+jmethodID gearsObjectOutputStreamGetMethodId = NULL;
 
 jclass gearsClassLoaderCls = NULL;
 jmethodID gearsClassLoaderNewMid = NULL;
@@ -216,69 +234,74 @@ ArgType* jvmSessionType = NULL;
 
 JNINativeMethod nativeMethod[] = {
         {
-            .name = "Init",
+            .name = "init",
             .signature = "(Ljava/lang/String;)V",
             .fnPtr = JVM_GBInit,
         },
         {
-            .name = "Destroy",
+            .name = "destroy",
             .signature = "()V",
             .fnPtr = JVM_GBDestroy,
         },
         {
-            .name = "Map",
+            .name = "map",
             .signature = "(Lgears/operations/MapOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBMap,
         },
         {
-            .name = "FlatMap",
+            .name = "flatMap",
             .signature = "(Lgears/operations/MapOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBFlatMap,
         },
         {
-            .name = "AccumulateBy",
+            .name = "accumulateBy",
             .signature = "(Lgears/operations/ExtractorOperation;Lgears/operations/AccumulateByOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBAccumulateby,
         },
         {
-            .name = "Repartition",
+            .name = "repartition",
             .signature = "(Lgears/operations/ExtractorOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBRepartition,
         },
         {
-            .name = "LocalAccumulateBy",
+            .name = "localAccumulateBy",
             .signature = "(Lgears/operations/ExtractorOperation;Lgears/operations/AccumulateByOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBLocalAccumulateby,
         },
         {
-            .name = "Accumulate",
+            .name = "accumulate",
             .signature = "(Lgears/operations/AccumulateOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBAccumulate,
         },
         {
-            .name = "Foreach",
+            .name = "foreach",
             .signature = "(Lgears/operations/ForeachOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBForeach,
         },
         {
-            .name = "Filter",
+            .name = "filter",
             .signature = "(Lgears/operations/FilterOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBFilter,
         },
         {
-            .name = "Collect",
+            .name = "collect",
             .signature = "()Lgears/GearsBuilder;",
             .fnPtr = JVM_GBCollect,
         },
         {
-            .name = "InnerRun",
+            .name = "innerRun",
             .signature = "(Lgears/readers/BaseReader;)V",
             .fnPtr = JVM_GBRun,
         },
         {
-            .name = "InnerRegister",
+            .name = "innerRegister",
             .signature = "(Lgears/readers/BaseReader;)V",
             .fnPtr = JVM_GBRegister,
+        },
+        {
+            .name = "executeArray",
+            .signature = "([Ljava/lang/String;)Ljava/lang/Object;",
+            .fnPtr = JVM_GBExecute,
         },
     };
 
@@ -295,7 +318,17 @@ static void JVM_SessionFree(void* arg){
         JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData();
         JNIEnv *env = jvm_ltd->env;
 
-        (*env)->DeleteGlobalRef(env, s->sessionClsLoader);
+        if(s->sessionClsLoader){
+            (*env)->DeleteGlobalRef(env, s->sessionClsLoader);
+        }
+
+        if(s->sessionObjectInputStream){
+            (*env)->DeleteGlobalRef(env, s->sessionObjectInputStream);
+        }
+
+        if(s->sessionObjectOutputStream){
+            (*env)->DeleteGlobalRef(env, s->sessionObjectOutputStream);
+        }
 
         JVM_FREE(s);
     }
@@ -307,7 +340,7 @@ static void* JVM_SessionDup(void* arg){
     return s;
 }
 
-static int JVM_SessionSerialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     JVMRunSession* s = arg;
 
     RedisGears_BWWriteBuffer(bw, s->uuid, ID_LEN);
@@ -372,6 +405,10 @@ static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, si
 
     s->refCounf = 1;
 
+    s->sessionClsLoader = NULL;
+    s->sessionObjectInputStream = NULL;
+    s->sessionObjectOutputStream = NULL;
+
     JVM_asprintf(&s->jarFilePath, "%s/%s-jars/%s.jar", workingDir, shardUniqueId, s->uuidStr);
 
     FILE *f = fopen(s->jarFilePath, "wb");
@@ -406,6 +443,24 @@ static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, si
     }
 
     s->sessionClsLoader = JVM_TurnToGlobal(env, clsLoader);
+
+    s->sessionObjectInputStream = (*env)->CallStaticObjectMethod(env, gearsObjectInputStreamCls, gearsObjectInputStreamGetMethodId, s->sessionClsLoader);
+
+    if((*err = JVM_GetException(env))){
+        JVM_SessionFree(s);
+        return NULL;
+    }
+
+    s->sessionObjectInputStream = JVM_TurnToGlobal(env, s->sessionObjectInputStream);
+
+    s->sessionObjectOutputStream = (*env)->CallStaticObjectMethod(env, gearsObjectOutputStreamCls, gearsObjectOutputStreamGetMethodId);
+
+    if((*err = JVM_GetException(env))){
+        JVM_SessionFree(s);
+        return NULL;
+    }
+
+    s->sessionObjectOutputStream = JVM_TurnToGlobal(env, s->sessionObjectOutputStream);
 
     RedisModule_DictSetC(JVMSessions, s->uuid, ID_LEN, s);
 
@@ -540,6 +595,11 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             JVM_FREE(jvmOptionsString);
 
             // register native functions
+            JVM_TryFindClass(jvm_tld->env, "java/lang/Object", gearsObjectCls);
+
+            JVM_TryFindClass(jvm_tld->env, "java/lang/Long", gearsLongCls);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsLongCls, "valueOf", "(J)Ljava/lang/Long;", gearsLongValueOfMethodId);
+
             JVM_TryFindClass(jvm_tld->env, "gears/GearsBuilder", gearsBuilderCls);
 
             jint res = (*jvm_tld->env)->RegisterNatives(jvm_tld->env, gearsBuilderCls, nativeMethod, sizeof(nativeMethod)/sizeof(JNINativeMethod));
@@ -550,38 +610,44 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
                 return NULL;
             }
 
+            JVM_TryFindClass(jvm_tld->env, "gears/GearsObjectInputStream", gearsObjectInputStreamCls);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsObjectInputStreamCls, "getGearsObjectInputStream", "(Ljava/lang/ClassLoader;)Lgears/GearsObjectInputStream;", gearsObjectInputStreamGetMethodId);
+
+            JVM_TryFindClass(jvm_tld->env, "gears/GearsObjectOutputStream", gearsObjectOutputStreamCls);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsObjectOutputStreamCls, "getGearsObjectOutputStream", "()Lgears/GearsObjectOutputStream;", gearsObjectOutputStreamGetMethodId);
+
             JVM_TryFindField(jvm_tld->env, gearsBuilderCls, "ptr", "J", ptrFieldId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/GearsClassLoader", gearsClassLoaderCls);
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsClassLoaderCls, "GetNew", "(Ljava/lang/String;)Ljava/net/URLClassLoader;", gearsClassLoaderNewMid);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsClassLoaderCls, "getNew", "(Ljava/lang/String;)Ljava/net/URLClassLoader;", gearsClassLoaderNewMid);
 
             JVM_TryFindClass(jvm_tld->env, "java/lang/ClassLoader", javaClassLoaderCls);
             JVM_TryFindMethod(jvm_tld->env, javaClassLoaderCls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", javaLoadClassNewMid);
 
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "SerializeObject", "(Ljava/lang/Object;)[B", gearsBuilderSerializeObjectMethodId);
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "DeserializeObject", "([BLjava/lang/ClassLoader;)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "OnUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "serializeObject", "(Ljava/lang/Object;Lgears/GearsObjectOutputStream;)[B", gearsBuilderSerializeObjectMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "deserializeObject", "([BLgears/GearsObjectInputStream;)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "onUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/MapOperation", gearsMappCls);
-            JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "Map", "(Lgears/records/BaseRecord;)Lgears/records/BaseRecord;", gearsMapMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "map", "(Ljava/io/Serializable;)Ljava/io/Serializable;", gearsMapMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/ExtractorOperation", gearsExtractorCls);
-            JVM_TryFindMethod(jvm_tld->env, gearsExtractorCls, "Extract", "(Lgears/records/BaseRecord;)Ljava/lang/String;", gearsExtractorMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsExtractorCls, "extract", "(Ljava/io/Serializable;)Ljava/lang/String;", gearsExtractorMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/ForeachOperation", gearsForeachCls);
-            JVM_TryFindMethod(jvm_tld->env, gearsForeachCls, "Foreach", "(Lgears/records/BaseRecord;)V", gearsForeachMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsForeachCls, "foreach", "(Ljava/io/Serializable;)V", gearsForeachMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/FilterOperation", gearsFilterCls);
-            JVM_TryFindMethod(jvm_tld->env, gearsFilterCls, "Filter", "(Lgears/records/BaseRecord;)Z", gearsFilterMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsFilterCls, "filter", "(Ljava/io/Serializable;)Z", gearsFilterMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/AccumulateOperation", gearsAccumulatorCls);
-            JVM_TryFindMethod(jvm_tld->env, gearsAccumulatorCls, "Accumulate", "(Lgears/records/BaseRecord;Lgears/records/BaseRecord;)Lgears/records/BaseRecord;", gearsAccumulatorMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsAccumulatorCls, "accumulate", "(Ljava/io/Serializable;Ljava/io/Serializable;)Ljava/io/Serializable;", gearsAccumulatorMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/AccumulateByOperation", gearsAccumulateByCls);
-            JVM_TryFindMethod(jvm_tld->env, gearsAccumulateByCls, "Accumulateby", "(Ljava/lang/String;Lgears/records/BaseRecord;Lgears/records/BaseRecord;)Lgears/records/BaseRecord;", gearsAccumulateByMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsAccumulateByCls, "accumulateby", "(Ljava/lang/String;Ljava/io/Serializable;Ljava/io/Serializable;)Ljava/io/Serializable;", gearsAccumulateByMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/OnRegisteredOperation", gearsOnRegisteredCls);
-            JVM_TryFindMethod(jvm_tld->env, gearsOnRegisteredCls, "OnRegistered", "()V", gearsOnRegisteredMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsOnRegisteredCls, "onRegistered", "()V", gearsOnRegisteredMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/records/BaseRecord", baseRecordCls);
 
@@ -595,7 +661,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
 
             JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "<init>", "()V", hashRecordCtor);
 
-            JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "Set", "(Ljava/lang/String;Lgears/records/BaseRecord;)V", hashRecordSet);
+            JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "set", "(Ljava/lang/String;Lgears/records/BaseRecord;)V", hashRecordSet);
 
             JVM_TryFindClass(jvm_tld->env, "gears/readers/BaseReader", gearsBaseReaderCls);
             JVM_TryFindField(jvm_tld->env, gearsBaseReaderCls, "mode", "Lgears/readers/ExecutionMode;", keysBaseReaderModeField);
@@ -696,8 +762,8 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
 
 
             JVM_TryFindClass(jvm_tld->env, "gears/records/ListRecord", listRecordCls);
-            JVM_TryFindMethod(jvm_tld->env, listRecordCls, "Get", "(I)Lgears/records/BaseRecord;", listRecordGetMethodId);
-            JVM_TryFindMethod(jvm_tld->env, listRecordCls, "Len", "()I", listRecordLenMethodId);
+            JVM_TryFindMethod(jvm_tld->env, listRecordCls, "get", "(I)Lgears/records/BaseRecord;", listRecordGetMethodId);
+            JVM_TryFindMethod(jvm_tld->env, listRecordCls, "len", "()I", listRecordLenMethodId);
 
 
         }else{
@@ -783,6 +849,7 @@ static jobject JVM_TurnToGlobal(JNIEnv *env, jobject local){
 static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
     const char* reader = (*env)->GetStringUTFChars(env, strReader, JNI_FALSE);
     FlatExecutionPlan* fep = RedisGears_CreateCtx((char*)reader);
+    RGM_SetFlatExecutionOnStartCallback(fep, JVM_OnStart, NULL);
     RGM_SetFlatExecutionOnUnpausedCallback(fep, JVM_OnUnpaused, NULL);
 
     JVM_ThreadLocalData* tld = JVM_GetThreadLocalData();
@@ -1103,6 +1170,89 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
         RedisGears_AddOnDoneCallback(ep, JVM_OnExecutionDoneCallback, bc);
         jvm_ltd->isBlocked = true;
     }
+}
+
+static jobject JVM_GBExecuteParseReply(JNIEnv *env, RedisModuleCallReply *reply){
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY){
+        jobject ret = (*env)->NewObjectArray(env, RedisModule_CallReplyLength(reply), gearsObjectCls, NULL);
+        for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; ++i){
+            RedisModuleCallReply *subReply = RedisModule_CallReplyArrayElement(reply, i);
+            jobject val = JVM_GBExecuteParseReply(env, subReply);
+            (*env)->SetObjectArrayElement(env, ret, i, val);
+        }
+        return ret;
+    }
+
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_STRING ||
+            RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        size_t len;
+        const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
+        char temp[len + 1];
+        memcpy(temp, replyStr, len);
+        temp[len] = '\0';
+        jobject ret = (*env)->NewStringUTF(env, temp);
+        return ret;
+    }
+
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER){
+        long long val = RedisModule_CallReplyInteger(reply);
+        jobject ret = (*env)->CallStaticObjectMethod(env, gearsLongCls, gearsLongValueOfMethodId, val);
+        return ret;
+    }
+    return NULL;
+}
+
+static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray command){
+    size_t len = (*env)->GetArrayLength(env, command);
+    if(len == 0){
+        (*env)->ThrowNew(env, exceptionCls, "No command given to execute");
+        return NULL;
+    }
+    jstring c = (*env)->GetObjectArrayElement(env, command, 0);
+    const char* cStr = (*env)->GetStringUTFChars(env, c, JNI_FALSE);
+
+    RedisModuleString** args = array_new(RedisModuleString*, len);
+    for(size_t i = 1 ; i < len ; ++i){
+        jstring arg = (*env)->GetObjectArrayElement(env, command, i);
+        const char* argStr = (*env)->GetStringUTFChars(env, arg, JNI_FALSE);
+        RedisModuleString* argRedisStr = RedisModule_CreateString(NULL, argStr, strlen(argStr));
+        (*env)->ReleaseStringUTFChars(env, arg, argStr);
+        args = array_append(args, argRedisStr);
+    }
+
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisGears_LockHanlderAcquire(ctx);
+
+    RedisModuleCallReply *reply = RedisModule_Call(ctx, cStr, "!v", args, array_len(args));
+
+    RedisGears_LockHanlderRelease(ctx);
+
+    if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        char* err;
+        if(reply){
+            size_t len;
+            const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
+            err = JVM_ALLOC(len + 1);
+            memcpy(err, replyStr, len);
+            err[len] = '\0';
+            RedisModule_FreeCallReply(reply);
+        }else{
+            err = JVM_STRDUP("Got a NULL reply from redis");
+        }
+        (*env)->ThrowNew(env, exceptionCls, err);
+        JVM_FREE(err);
+        return NULL;
+    }
+
+    jobject res = JVM_GBExecuteParseReply(env, reply);
+
+    RedisModule_FreeCallReply(reply);
+
+    (*env)->ReleaseStringUTFChars(env, c, cStr);
+
+    RedisModule_FreeThreadSafeContext(ctx);
+
+    return res;
 }
 
 static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader){
@@ -1557,13 +1707,13 @@ static char* JVM_ObjectToString(void* arg){
     return JVM_STRDUP("java object");
 }
 
-static int JVM_ObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int JVM_ObjectSerializeInternal(jobject outputStream, void* arg, Gears_BufferWriter* bw, char** err){
     JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
 
     jobject obj = arg;
     JNIEnv *env = jvm_tld->env;
 
-    jbyteArray bytes = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderSerializeObjectMethodId, obj);
+    jbyteArray bytes = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderSerializeObjectMethodId, obj, outputStream);
 
     if((*err = JVM_GetException(env))){
         return REDISMODULE_ERR;
@@ -1582,14 +1732,7 @@ static int JVM_ObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err){
     return REDISMODULE_OK;
 }
 
-static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
-    if(version > JOBJECT_TYPE_VERSION){
-        *err = JVM_STRDUP("Missmatch version, update to newest JVM module");
-        return NULL;
-    }
-
-    JVMRunSession* currSession = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
-
+static void* JVM_ObjectDeserializeInternal(jobject inputStream, Gears_BufferReader* br, char** err){
     size_t len;
     const char* buf = RedisGears_BRReadBuffer(br, &len);
 
@@ -1600,7 +1743,7 @@ static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* b
 
     (*env)->SetByteArrayRegion(env, bytes, 0, len, buf);
 
-    jobject obj = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderDeserializeObjectMethodId, bytes, currSession->sessionClsLoader);
+    jobject obj = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderDeserializeObjectMethodId, bytes, inputStream);
 
     (*env)->DeleteLocalRef(env, bytes);
 
@@ -1614,14 +1757,32 @@ static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* b
     return JVM_TurnToGlobal(env, obj);
 }
 
-static int JVMRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
-    JVMRecord* r = (JVMRecord*)base;
-    return JVM_ObjectSerialize(r->obj, bw, err);
+static int JVM_ObjectSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
+
+    JVMRunSession* session = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+
+    return JVM_ObjectSerializeInternal(session->sessionObjectOutputStream, arg, bw, err);
 }
 
-static Record* JVMRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
+static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+    if(version > JOBJECT_TYPE_VERSION){
+        *err = JVM_STRDUP("Missmatch version, update to newest JVM module");
+        return NULL;
+    }
+
+    JVMRunSession* currSession = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+
+    return JVM_ObjectDeserializeInternal(currSession->sessionObjectInputStream, br, err);
+}
+
+static int JVMRecord_Serialize(ExecutionCtx* ectx, Gears_BufferWriter* bw, Record* base, char** err){
+    JVMRecord* r = (JVMRecord*)base;
+    return JVM_ObjectSerializeInternal(NULL, r->obj, bw, err);
+}
+
+static Record* JVMRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br){
     char* err;
-    jobject obj = JVM_ObjectDeserialize(fep, br, JOBJECT_TYPE_VERSION, &err);
+    jobject obj = JVM_ObjectDeserializeInternal(NULL, br, &err);
     RedisModule_Assert(obj);
     JVMRecord* r = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
     r->obj = obj;
@@ -1644,6 +1805,58 @@ static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
     }
 
     JVM_PopFrame(env);
+}
+
+static void JVM_OnExecutionDone(ExecutionPlan* ctx, void* privateData){
+    JVMExecutionSession* executionSession = privateData;
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
+    JNIEnv *env = jvm_tld->env;
+
+    (*env)->DeleteGlobalRef(env, executionSession->executionInputStream);
+    (*env)->DeleteGlobalRef(env, executionSession->executionOutputStream);
+
+    JVM_FREE(executionSession);
+}
+
+static void JVM_OnStart(ExecutionCtx* ctx, void* arg){
+    // create Object Reader and Object writer for the execution
+    // set it on Execution PD
+
+    char* err = NULL;
+
+    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(ctx);
+
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
+    JNIEnv *env = jvm_tld->env;
+
+    jobject inputStream = (*env)->CallStaticObjectMethod(env, gearsObjectInputStreamCls, gearsObjectInputStreamGetMethodId, s->sessionClsLoader);
+
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Fatal error, failed creating inputStream for execution. error='%s'", err);
+        RedisModule_Assert(false);
+    }
+
+    inputStream = JVM_TurnToGlobal(env, inputStream);
+
+    jobject outputStream = (*env)->CallStaticObjectMethod(env, gearsObjectOutputStreamCls, gearsObjectOutputStreamGetMethodId);
+
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Fatal error, failed creating outputStream for execution. error='%s'", err);
+        RedisModule_Assert(false);
+    }
+
+    outputStream = JVM_TurnToGlobal(env, outputStream);
+
+    JVMExecutionSession* executionSession = JVM_ALLOC(sizeof(*executionSession));
+
+    executionSession->executionInputStream = inputStream;
+    executionSession->executionOutputStream = outputStream;
+
+    RedisGears_SetPrivateData(ctx, executionSession);
+
+    ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ctx);
+
+    RedisGears_AddOnDoneCallback(ep, JVM_OnExecutionDone, executionSession);
 }
 
 static void JVM_OnUnpaused(ExecutionCtx* ctx, void* arg){
@@ -1706,6 +1919,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
 
     RGM_RegisterFlatExecutionOnRegisteredCallback(JVM_OnRegistered, jvmObjectType);
     RGM_RegisterExecutionOnUnpausedCallback(JVM_OnUnpaused, jvmObjectType);
+    RGM_RegisterExecutionOnStartCallback(JVM_OnStart, jvmObjectType);
 
     RGM_RegisterMap(JVM_ToJavaRecordMapper, NULL);
     RGM_RegisterMap(JVM_Mapper, jvmObjectType);

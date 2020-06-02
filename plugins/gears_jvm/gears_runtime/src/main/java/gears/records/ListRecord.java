@@ -16,15 +16,15 @@ public class ListRecord extends BaseRecord {
 		recordList = new ArrayList<BaseRecord>();
 	}
 	
-	public void Add(BaseRecord r) {
+	public void add(BaseRecord r) {
 		recordList.add(r);
 	}
 	
-	public BaseRecord Get(int index) {
+	public BaseRecord get(int index) {
 		return recordList.get(index);
 	}
 	
-	public int Len() {
+	public int len() {
 		return recordList.size();
 	}
 }

@@ -127,13 +127,15 @@ static void CommandReader_Reset(void* ctx, void * arg){
 static void CommandReader_Serialize(void* ctx, Gears_BufferWriter* bw){
     CommandReaderCtx* readerCtx = ctx;
     char* err = NULL;
-    int res = RG_SerializeRecord(bw, readerCtx->args->argv, &err);
+    // we know its a list record that does not need the ExecutionPlan to serialize
+    int res = RG_SerializeRecord(NULL, bw, readerCtx->args->argv, &err);
     RedisModule_Assert(res == REDISMODULE_OK);
 }
 
 static void CommandReader_Deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
     CommandReaderCtx* readerCtx = ctx;
-    Record* argv = RG_DeserializeRecord(fep, br);
+    // we know its a list record that does not need the ExecutionPlan to deserialize
+    Record* argv = RG_DeserializeRecord(NULL, br);
     readerCtx->args = CommandReaderArgs_CreateFromRecord(argv);
 }
 
