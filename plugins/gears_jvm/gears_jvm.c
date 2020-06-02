@@ -1777,12 +1777,14 @@ static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* b
 
 static int JVMRecord_Serialize(ExecutionCtx* ectx, Gears_BufferWriter* bw, Record* base, char** err){
     JVMRecord* r = (JVMRecord*)base;
-    return JVM_ObjectSerializeInternal(NULL, r->obj, bw, err);
+    JVMExecutionSession* es = RedisGears_GetPrivateData(ectx);
+    return JVM_ObjectSerializeInternal(es->executionOutputStream, r->obj, bw, err);
 }
 
 static Record* JVMRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br){
     char* err;
-    jobject obj = JVM_ObjectDeserializeInternal(NULL, br, &err);
+    JVMExecutionSession* es = RedisGears_GetPrivateData(ectx);
+    jobject obj = JVM_ObjectDeserializeInternal(es->executionInputStream, br, &err);
     RedisModule_Assert(obj);
     JVMRecord* r = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
     r->obj = obj;
