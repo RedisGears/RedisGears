@@ -1758,23 +1758,31 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
 
+    // Declare and initialize variables for arguments processing.
+    size_t argLen;
+    const char* argumentCStr = NULL;
+    RedisModuleString* argumentRedisStr = NULL;
     RedisModuleString** arguments = array_new(RedisModuleString*, 10);
     for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
-        size_t argLen;
-        const char* argumentCStr = NULL;
         PyObject* argument = PyTuple_GetItem(args, i);
         if(PyByteArray_Check(argument)) {
+            // Argument is bytearray.
             argLen = PyByteArray_Size(argument);
             argumentCStr = PyByteArray_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
         } else if(PyBytes_Check(argument)) {
+            // Argument is bytes.
             argLen = PyBytes_Size(argument);
             argumentCStr = PyBytes_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
         } else {
+            // Argument is string.
             PyObject* argumentStr = PyObject_Str(argument);
             argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
+            // Decrease ref-count after done processing the argument.
             Py_DECREF(argumentStr);
         }
-        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
         arguments = array_append(arguments, argumentRedisStr);
     }
 
