@@ -69,7 +69,7 @@ typedef struct ArgType ArgType;
  */
 typedef void (*ArgFree)(void* arg);
 typedef void* (*ArgDuplicate)(void* arg);
-typedef int (*ArgSerialize)(void* arg, Gears_BufferWriter* bw, char** err);
+typedef int (*ArgSerialize)(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err);
 typedef void* (*ArgDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err);
 typedef char* (*ArgToString)(void* arg);
 
@@ -207,8 +207,8 @@ RecordType* MODULE_API_FUNC(RedisGears_GetKeysHandlerRecordType)();
 RecordType* MODULE_API_FUNC(RedisGears_GetHashSetRecordType)();
 
 typedef int (*RecordSendReply)(Record* record, RedisModuleCtx* rctx);
-typedef int (*RecordSerialize)(Gears_BufferWriter* bw, Record* base, char** err);
-typedef Record* (*RecordDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br);
+typedef int (*RecordSerialize)(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base, char** err);
+typedef Record* (*RecordDeserialize)(ExecutionCtx* ctx, Gears_BufferReader* br);
 typedef void (*RecordFree)(Record* base);
 
 RecordType* MODULE_API_FUNC(RedisGears_RecordTypeCreate)(const char* name, size_t size,
@@ -403,6 +403,7 @@ RedisModuleCtx* MODULE_API_FUNC(RedisGears_GetRedisModuleCtx)(ExecutionCtx* ectx
 void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx);
 void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionCtx* ectx);
 void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionCtx* ctx, void* PD);
+ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecutionFromCtx)(ExecutionCtx* ectx);
 
 bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 
@@ -788,6 +789,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetPrivateData);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetPrivateData);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecutionFromCtx);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnStartCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnRegisteredCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionOnStartCallback);

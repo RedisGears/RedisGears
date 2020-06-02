@@ -6,6 +6,6 @@ import gears.records.BaseRecord;
 
 public interface AccumulateOperation extends Serializable {
 
-	public BaseRecord Accumulate(BaseRecord accumulator, BaseRecord record) throws Exception;
+	public Serializable accumulate(Serializable accumulator, Serializable record) throws Exception;
 	
 }

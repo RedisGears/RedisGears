@@ -44,7 +44,7 @@ public class KeysReader extends BaseReader {
 	}
 
 	@Override
-	public String GetName() {
+	public String getName() {
 		return "KeysReader";
 	}
 

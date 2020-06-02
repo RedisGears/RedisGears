@@ -210,7 +210,7 @@ static void* Command_StringDup(void* arg){
     return RG_STRDUP(arg);
 }
 
-static int Command_StringSerialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int Command_StringSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     RedisGears_BWWriteString(bw, arg);
     return REDISMODULE_OK;
 }

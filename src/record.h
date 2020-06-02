@@ -67,8 +67,8 @@ void RG_HashSetRecordFreeKeysArray(char** keyArr);
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RG_KeyHandlerRecordGet(Record* r);
 
-int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err);
-Record* RG_DeserializeRecord(FlatExecutionPlan* fep, Gears_BufferReader* br);
+int RG_SerializeRecord(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* r, char** err);
+Record* RG_DeserializeRecord(ExecutionCtx* ctx, Gears_BufferReader* br);
 int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx);
 
 Record* RG_ErrorRecordCreate(char* val, size_t len);

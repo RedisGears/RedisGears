@@ -6,6 +6,6 @@ import gears.records.BaseRecord;
 
 public interface ExtractorOperation extends Serializable {
 	
-	public String Extract(BaseRecord record) throws Exception;
+	public String extract(Serializable record) throws Exception;
 	
 }

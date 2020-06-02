@@ -98,7 +98,7 @@ char* getPyError();
 
 static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err);
 static void TimeEvent_Free(void *value);
-static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw, char** err);
+static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err);
 static PythonThreadCtx* GetPythonThreadCtx();
 
 static long long CurrSessionId = 0;
@@ -296,7 +296,7 @@ error:
     return NULL;
 }
 
-static int PythonSessionRequirements_Serialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int PythonSessionRequirements_Serialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     PythonRequirementCtx** reqs = arg;
     RedisGears_BWWriteLong(bw, array_len(reqs));
     for(size_t i = 0 ; i < array_len(reqs) ; ++i){
@@ -626,7 +626,7 @@ static PythonSessionCtx* PythonSessionCtx_Create(const char** requirementsList, 
     return session;
 }
 
-static int PythonSessionCtx_Serialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int PythonSessionCtx_Serialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     PythonSessionCtx* session = arg;
     RedisGears_BWWriteBuffer(bw, session->sessionId, ID_LEN);
     RedisGears_BWWriteLong(bw, array_len(session->requirements));
@@ -1007,40 +1007,6 @@ static void onDone(ExecutionPlan* ep, void* privateData){
     RedisModuleBlockedClient *bc = privateData;
     RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
     Command_ReturnResultsAndErrors(ep, rctx);
-    RedisModule_UnblockClient(bc, NULL);
-    RedisGears_DropExecution(ep);
-    RedisModule_FreeThreadSafeContext(rctx);
-}
-
-static void onDoneSerializeResults(ExecutionPlan* ep, void* privateData){
-    RedisModuleBlockedClient *bc = privateData;
-    RedisModuleCtx *rctx = RedisModule_GetThreadSafeContext(bc);
-
-    RedisModule_ReplyWithArray(rctx, 2);
-
-    // sending results
-    long long len = RedisGears_GetRecordsLen(ep);
-    RedisModule_ReplyWithArray(rctx, len);
-    Gears_Buffer* buff = Gears_BufferCreate();
-    for(long long i = 0 ; i < len ; ++i){
-        Record* r = RedisGears_GetRecord(ep, i);
-        RedisModule_Assert(RedisGears_RecordGetType(r) == pythonRecordType);
-        PyObject* obj = PyObjRecordGet(r);
-        Gears_BufferWriter bw;
-        Gears_BufferWriterInit(&bw, buff);
-        RedisGearsPy_PyCallbackSerialize(obj, &bw, NULL);
-        Gears_BufferReader br;
-        Gears_BufferReaderInit(&br, buff);
-        size_t len;
-        char* serializedObj = RedisGears_BRReadBuffer(&br, &len);
-        RedisModule_ReplyWithStringBuffer(rctx, serializedObj, len);
-        Gears_BufferClear(buff);
-    }
-    Gears_BufferFree(buff);
-
-    // sending errors
-    Command_ReturnErrors(ep, rctx);
-
     RedisModule_UnblockClient(bc, NULL);
     RedisGears_DropExecution(ep);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -2904,11 +2870,11 @@ static void TimeEvent_RDBSave(RedisModuleIO *rdb, void *value){
     Gears_Buffer* b = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, b);
-    PythonSessionCtx_Serialize(td->session, &bw, NULL);
+    PythonSessionCtx_Serialize(NULL, td->session, &bw, NULL);
     RedisModule_SaveStringBuffer(rdb, b->buff, b->size);
     Gears_BufferClear(b);
     RedisModule_SaveUnsigned(rdb, PY_OBJECT_TYPE_VERSION);
-    int res = RedisGearsPy_PyCallbackSerialize(td->callback, &bw, NULL);
+    int res = RedisGearsPy_PyCallbackSerialize(NULL, td->callback, &bw, NULL);
     RedisModule_Assert(res == REDISMODULE_OK);
     RedisModule_SaveStringBuffer(rdb, b->buff, b->size);
     Gears_BufferFree(b);
@@ -3706,7 +3672,7 @@ static Record* RedisGearsPy_InstallRequirementsMapper(ExecutionCtx* rctx, Record
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     RedisGears_BWWriteLong(&bw, PY_SESSION_REQ_VERSION);
-    if(PythonSessionRequirements_Serialize(reqs, &bw, &err) != REDISMODULE_OK){
+    if(PythonSessionRequirements_Serialize(NULL, reqs, &bw, &err) != REDISMODULE_OK){
         if(!err){
             err = RG_STRDUP("Failed serialize requirement to slave/aof");
         }
@@ -3802,7 +3768,7 @@ void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br){
     return obj;
 }
 
-static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     void* old = RedisGearsPy_Lock(NULL);
     PyObject* callback = arg;
     PyObject *pickleFunction = PyDict_GetItemString(pyGlobals, "dumps");
@@ -4228,7 +4194,7 @@ static void PythonReader_Free(void* ctx){
 
 static void PythonReader_Serialize(void* ctx, Gears_BufferWriter* bw){
     PythonReaderCtx* pyCtx = ctx;
-    int res = RedisGearsPy_PyCallbackSerialize(pyCtx->callback, bw, NULL);
+    int res = RedisGearsPy_PyCallbackSerialize(NULL, pyCtx->callback, bw, NULL);
     RedisModule_Assert(res == REDISMODULE_OK);
 }
 
@@ -4486,7 +4452,7 @@ static int PythonRecord_SendReply(Record* r, RedisModuleCtx* rctx){
     return REDISMODULE_OK;
 }
 
-static int PythonRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int PythonRecord_Serialize(ExecutionCtx* ectx, Gears_BufferWriter* bw, Record* base, char** err){
     PythonRecord* r = (PythonRecord*)base;
     if(RedisGearsPy_PyObjectSerialize(r->obj, bw, err) != REDISMODULE_OK){
         return REDISMODULE_ERR;
@@ -4503,7 +4469,7 @@ static void PythonRecord_Free(Record* base){
     }
 }
 
-static Record* PythonRecord_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br){
+static Record* PythonRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br){
     Record* r = PyObjRecordCreate();
     PyObject* obj = RedisGearsPy_PyObjectDeserialize(br);
     PyObjRecordSet(r, obj);
