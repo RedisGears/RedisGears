@@ -429,6 +429,8 @@ int MODULE_API_FUNC(RedisGears_RegisterPlugin)(const char* name, int version);
 
 const char* MODULE_API_FUNC(RedisGears_GetConfig)(const char* name);
 
+const int MODULE_API_FUNC(RedisGears_ExecutionPlanIsLocal)(ExecutionPlan* ep);
+
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
@@ -822,6 +824,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetConfig);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterPlugin);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionPlanIsLocal);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;
