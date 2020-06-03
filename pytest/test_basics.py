@@ -117,6 +117,19 @@ class testBasic:
         self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
         self.env.cmd('rg.dropexecution', id)
 
+def testBytes(env):
+    conn = getConnectionByEnv(env)
+    conn.set("x", 1)
+    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytes([1,2,3]))).run("x")')
+    env.assertTrue(conn.exists("y"))
+
+
+def testBytearray(env):
+    conn = getConnectionByEnv(env)
+    conn.set("x", 1)
+    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytearray([1,2,3]))).run("x")')
+    env.assertTrue(conn.exists("y"))
+
 
 def testKeysOnlyReader(env):
     conn = getConnectionByEnv(env)

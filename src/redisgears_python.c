@@ -249,7 +249,9 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
 }
 
 static char* PythonRequirementCtx_WheelToStr(void* wheel){
-    return RG_STRDUP(wheel);
+    char* str;
+    rg_asprintf(&str, "'%s'", (char*)wheel);
+    return str;
 }
 
 static char* PythonRequirementCtx_ToStr(void* val){
@@ -1756,19 +1758,36 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
 
-    RedisModuleString** argements = array_new(RedisModuleString*, 10);
+    // Declare and initialize variables for arguments processing.
+    size_t argLen;
+    const char* argumentCStr = NULL;
+    RedisModuleString* argumentRedisStr = NULL;
+    RedisModuleString** arguments = array_new(RedisModuleString*, 10);
     for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
         PyObject* argument = PyTuple_GetItem(args, i);
-        PyObject* argumentStr = PyObject_Str(argument);
-        size_t argLen;
-        const char* argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
-        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
-        Py_DECREF(argumentStr);
-        argements = array_append(argements, argumentRedisStr);
+        if(PyByteArray_Check(argument)) {
+            // Argument is bytearray.
+            argLen = PyByteArray_Size(argument);
+            argumentCStr = PyByteArray_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
+        } else if(PyBytes_Check(argument)) {
+            // Argument is bytes.
+            argLen = PyBytes_Size(argument);
+            argumentCStr = PyBytes_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
+        } else {
+            // Argument is string.
+            PyObject* argumentStr = PyObject_Str(argument);
+            argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
+            // Decrease ref-count after done processing the argument.
+            Py_DECREF(argumentStr);
+        }
+        arguments = array_append(arguments, argumentRedisStr);
     }
 
     PyObject* res = NULL;
-    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", argements, array_len(argements));
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", arguments, array_len(arguments));
     if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
         size_t len;
         const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
@@ -1781,7 +1800,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         RedisModule_FreeCallReply(reply);
     }
 
-    array_free_ex(argements, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
+    array_free_ex(arguments, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1939,8 +1958,8 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         return NULL;
     }
     PyObject* pyBlob = PyTuple_GetItem(args, 2);
-    if(!PyByteArray_Check(pyBlob)){
-        PyErr_SetString(GearsError, "blob argument must be a byte array");
+    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob)){
+        PyErr_SetString(GearsError, "blob argument must be bytes or a byte array");
         return NULL;
     }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
@@ -1979,8 +1998,17 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         array_free(dims);
         return NULL;
     }
-    size_t size = PyByteArray_Size(pyBlob);
-    const char* blob = PyByteArray_AsString(pyBlob);
+    size_t size;
+    const char* blob;
+    if(PyByteArray_Check(pyBlob)) {
+        // Blob is byte array.
+        size = PyByteArray_Size(pyBlob);
+        blob = PyByteArray_AsString(pyBlob);
+    } else {
+        // Blob is bytes.
+        size = PyBytes_Size(pyBlob);
+        blob = PyBytes_AsString(pyBlob);
+    }
     RedisAI_TensorSetData(t, blob, size);
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
@@ -2207,7 +2235,9 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
+    PyThreadState* _save = PyEval_SaveThread();
     RedisAI_ModelRun(&pyg->g, 1, err);
+    PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
@@ -2367,16 +2397,23 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
+    PyThreadState* _save = PyEval_SaveThread();
     RedisAI_ScriptRun(pys->s, err);
+    PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
         return NULL;
     }
     RedisAI_FreeError(err);
-    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-    pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, 0));
-    return (PyObject*)pyt;
+    PyObject* tensorList = PyList_New(0);
+    for(size_t i = 0 ; i < RedisAI_ScriptRunCtxNumOutputs(pys->s) ; ++i){
+        PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, i));
+        PyList_Append(tensorList, (PyObject*)pyt);
+        Py_DECREF(pyt);
+    }
+    return tensorList;
 }
 
 #define TIME_EVENT_ENCVER 2
