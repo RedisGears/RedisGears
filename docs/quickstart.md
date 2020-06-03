@@ -49,7 +49,7 @@ scl enable devtoolset-7 bash
 ```
 git clone https://github.com/antirez/redis.git
 cd redis
-git checkout 6.0.1
+git checkout 6.0
 make
 make install
 ```
