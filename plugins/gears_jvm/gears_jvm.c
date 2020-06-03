@@ -18,7 +18,10 @@ static void JVM_GBDestroy(JNIEnv *env, jobject objectOrClass);
 static jobject JVM_GBMap(JNIEnv *env, jobject objectOrClass, jobject mapper);
 static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader);
 static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray command);
-static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader);
+static void JVM_GBLog(JNIEnv *env, jobject objectOrClass, jstring msg, jobject logLevel);
+static jstring JVM_GBHashtag(JNIEnv *env, jobject objectOrClass);
+static jstring JVM_GBConfigGet(JNIEnv *env, jobject objectOrClass, jstring key);
+static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered);
 static jobject JVM_GBAccumulateby(JNIEnv *env, jobject objectOrClass, jobject extractor, jobject accumulator);
 static jobject JVM_GBRepartition(JNIEnv *env, jobject objectOrClass, jobject extractor);
 static jobject JVM_GBLocalAccumulateby(JNIEnv *env, jobject objectOrClass, jobject extractor, jobject accumulator);
@@ -143,6 +146,9 @@ jfieldID ptrFieldId = NULL;
 
 jclass gearsObjectCls = NULL;
 
+jclass gearsClassCls = NULL;
+jmethodID gearsClassGetNameMethodId = NULL;
+
 jclass gearsLongCls = NULL;
 jmethodID gearsLongValueOfMethodId = NULL;
 
@@ -198,8 +204,6 @@ jmethodID listRecordGetMethodId = NULL;
 jmethodID listRecordLenMethodId = NULL;
 
 jclass gearsBaseReaderCls = NULL;
-jfieldID keysBaseReaderModeField = NULL;
-jfieldID keysBaseReaderOnRegisteredField = NULL;
 
 jclass gearsKeyReaderCls = NULL;
 jfieldID keysReaderPatternField = NULL;
@@ -226,6 +230,12 @@ jclass gearsStreamReaderFailedPolicyCls = NULL;
 jclass gearsStreamReaderFailedPolicyContinueCls = NULL;
 jclass gearsStreamReaderFailedPolicyAbortCls = NULL;
 jclass gearsStreamReaderFailedPolicyRetryCls = NULL;
+
+jclass gearsLogLevelCls = NULL;
+jobject gearsLogLevelNotice = NULL;
+jobject gearsLogLevelDebug = NULL;
+jobject gearsLogLevelVerbose = NULL;
+jobject gearsLogLevelWarning = NULL;
 
 jclass exceptionCls = NULL;
 
@@ -295,13 +305,28 @@ JNINativeMethod nativeMethod[] = {
         },
         {
             .name = "innerRegister",
-            .signature = "(Lgears/readers/BaseReader;)V",
+            .signature = "(Lgears/readers/BaseReader;Lgears/ExecutionMode;Lgears/operations/OnRegisteredOperation;)V",
             .fnPtr = JVM_GBRegister,
         },
         {
             .name = "executeArray",
             .signature = "([Ljava/lang/String;)Ljava/lang/Object;",
             .fnPtr = JVM_GBExecute,
+        },
+        {
+            .name = "log",
+            .signature = "(Ljava/lang/String;Lgears/LogLevel;)V",
+            .fnPtr = JVM_GBLog,
+        },
+        {
+            .name = "hashtag",
+            .signature = "()Ljava/lang/String;",
+            .fnPtr = JVM_GBHashtag,
+        },
+        {
+            .name = "configGet",
+            .signature = "(Ljava/lang/String;)Ljava/lang/String;",
+            .fnPtr = JVM_GBConfigGet,
         },
     };
 
@@ -348,7 +373,7 @@ static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferW
     FILE *f = fopen(s->jarFilePath, "rb");
     if(!f){
         JVM_asprintf(err, "Could not open jar file %s", s->jarFilePath);
-        RedisModule_Log(NULL, "warning", *err);
+        RedisModule_Log(NULL, "warning", "%s", *err);
         return REDISMODULE_ERR;
     }
     fseek(f, 0, SEEK_END);
@@ -360,7 +385,7 @@ static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferW
     if(readData != fsize){
         JVM_FREE(data);
         JVM_asprintf(err, "Could read data from file %s", s->jarFilePath);
-        RedisModule_Log(NULL, "warning", *err);
+        RedisModule_Log(NULL, "warning", "%s", *err);
         return REDISMODULE_ERR;
     }
     fclose(f);
@@ -597,6 +622,10 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             // register native functions
             JVM_TryFindClass(jvm_tld->env, "java/lang/Object", gearsObjectCls);
 
+            JVM_TryFindClass(jvm_tld->env, "java/lang/Class", gearsClassCls);
+            JVM_TryFindMethod(jvm_tld->env, gearsClassCls, "getName", "()Ljava/lang/String;", gearsClassGetNameMethodId);
+
+
             JVM_TryFindClass(jvm_tld->env, "java/lang/Long", gearsLongCls);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsLongCls, "valueOf", "(J)Ljava/lang/Long;", gearsLongValueOfMethodId);
 
@@ -664,8 +693,6 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "set", "(Ljava/lang/String;Lgears/records/BaseRecord;)V", hashRecordSet);
 
             JVM_TryFindClass(jvm_tld->env, "gears/readers/BaseReader", gearsBaseReaderCls);
-            JVM_TryFindField(jvm_tld->env, gearsBaseReaderCls, "mode", "Lgears/readers/ExecutionMode;", keysBaseReaderModeField);
-            JVM_TryFindField(jvm_tld->env, gearsBaseReaderCls, "onRegistered", "Lgears/operations/OnRegisteredOperation;", keysBaseReaderOnRegisteredField);
 
             JVM_TryFindClass(jvm_tld->env, "gears/readers/KeysReader", gearsKeyReaderCls);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "pattern", "Ljava/lang/String;", keysReaderPatternField);
@@ -720,8 +747,8 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             }
             gearsStreamReaderFailedPolicyRetryCls = JVM_TurnToGlobal(jvm_tld->env, gearsStreamReaderFailedPolicyRetryCls);
 
-            JVM_TryFindClass(jvm_tld->env, "gears/readers/ExecutionMode", gearsExecutionModeCls);
-            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "ASYNC", "Lgears/readers/ExecutionMode;");
+            JVM_TryFindClass(jvm_tld->env, "gears/ExecutionMode", gearsExecutionModeCls);
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "ASYNC", "Lgears/ExecutionMode;");
             if(!temp){
                 RedisModule_Log(NULL, "warning", "Failed finding ExecutionPlan.ASYNC enum");
                 return NULL;
@@ -733,7 +760,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             }
             gearsExecutionModeAsync = JVM_TurnToGlobal(jvm_tld->env, gearsExecutionModeAsync);
 
-            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "SYNC", "Lgears/readers/ExecutionMode;");
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "SYNC", "Lgears/ExecutionMode;");
             if(!temp){
                 RedisModule_Log(NULL, "warning", "Failed finding ExecutionPlan.SYNC enum");
                 return NULL;
@@ -745,7 +772,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             }
             gearsExecutionModeSync = JVM_TurnToGlobal(jvm_tld->env, gearsExecutionModeSync);
 
-            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "ASYNC_LOCAL", "Lgears/readers/ExecutionMode;");
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsExecutionModeCls, "ASYNC_LOCAL", "Lgears/ExecutionMode;");
             if(!temp){
                 RedisModule_Log(NULL, "warning", "Failed finding ExecutionPlan.ASYNC_LOCAL enum");
                 return NULL;
@@ -757,6 +784,54 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             }
             gearsExecutionModeAsyncLocal = JVM_TurnToGlobal(jvm_tld->env, gearsExecutionModeAsyncLocal);
 
+            JVM_TryFindClass(jvm_tld->env, "gears/LogLevel", gearsLogLevelCls);
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsLogLevelCls, "NOTICE", "Lgears/LogLevel;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding LogLevel.NOTICE enum");
+                return NULL;
+            }
+            gearsLogLevelNotice = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsLogLevelCls, temp);
+            if(!gearsLogLevelNotice){
+                RedisModule_Log(NULL, "warning", "Failed loading LogLevel.NOTICE enum");
+                return NULL;
+            }
+            gearsLogLevelNotice = JVM_TurnToGlobal(jvm_tld->env, gearsLogLevelNotice);
+
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsLogLevelCls, "DEBUG", "Lgears/LogLevel;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding LogLevel.DEBUG enum");
+                return NULL;
+            }
+            gearsLogLevelDebug= (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsLogLevelCls, temp);
+            if(!gearsLogLevelDebug){
+                RedisModule_Log(NULL, "warning", "Failed loading LogLevel.DEBUG enum");
+                return NULL;
+            }
+            gearsLogLevelDebug = JVM_TurnToGlobal(jvm_tld->env, gearsLogLevelDebug);
+
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsLogLevelCls, "VERBOSE", "Lgears/LogLevel;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding LogLevel.VERBOSE enum");
+                return NULL;
+            }
+            gearsLogLevelVerbose = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsLogLevelCls, temp);
+            if(!gearsLogLevelVerbose){
+                RedisModule_Log(NULL, "warning", "Failed loading LogLevel.VERBOSE enum");
+                return NULL;
+            }
+            gearsLogLevelVerbose = JVM_TurnToGlobal(jvm_tld->env, gearsLogLevelVerbose);
+
+            temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsLogLevelCls, "WARNING", "Lgears/LogLevel;");
+            if(!temp){
+                RedisModule_Log(NULL, "warning", "Failed finding LogLevel.WARNING enum");
+                return NULL;
+            }
+            gearsLogLevelWarning = (*jvm_tld->env)->GetStaticObjectField(jvm_tld->env, gearsLogLevelCls, temp);
+            if(!gearsLogLevelWarning){
+                RedisModule_Log(NULL, "warning", "Failed loading LogLevel.WARNING enum");
+                return NULL;
+            }
+            gearsLogLevelWarning = JVM_TurnToGlobal(jvm_tld->env, gearsLogLevelWarning);
 
             JVM_TryFindClass(jvm_tld->env, "java/lang/Exception", exceptionCls);
 
@@ -810,26 +885,22 @@ static char* JVM_GetException(JNIEnv *env){
         (*env)->ReleaseStringUTFChars(env, message, mstr);
         (*env)->DeleteLocalRef(env, message);
     }else{
-        jmethodID mid = (*env)->GetMethodID(env, clazz, "getName", "()Ljava/lang/String;");
+        // Call the getName() to get a jstring object back
+        jstring strObj = (jstring)(*env)->CallObjectMethod(env, clazz, gearsClassGetNameMethodId);
 
-        if(mid){
+        if(strObj){
 
-            // Call the getName() to get a jstring object back
-            jstring strObj = (jstring)(*env)->CallObjectMethod(env, clazz, mid);
+            // Now get the c string from the java jstring object
+            const char* str = (*env)->GetStringUTFChars(env, strObj, JNI_FALSE);
 
-            if(strObj){
+            // Print the class name
+            err = JVM_STRDUP(str);
 
-                // Now get the c string from the java jstring object
-                const char* str = (*env)->GetStringUTFChars(env, strObj, JNI_FALSE);
-
-                // Print the class name
-                err = JVM_STRDUP(str);
-
-                // Release the memory pinned char array
-                (*env)->ReleaseStringUTFChars(env, strObj, str);
-                (*env)->DeleteLocalRef(env, strObj);
-            }
+            // Release the memory pinned char array
+            (*env)->ReleaseStringUTFChars(env, strObj, str);
+            (*env)->DeleteLocalRef(env, strObj);
         }
+
     }
     if(!err){
         err = JVM_STRDUP("Exception occured during execution");
@@ -837,6 +908,14 @@ static char* JVM_GetException(JNIEnv *env){
     (*env)->DeleteLocalRef(env, clazz);
     (*env)->DeleteLocalRef(env, e);
     RedisModule_Assert(err);
+
+    e = (*env)->ExceptionOccurred(env);
+    if(e){
+        (*env)->ExceptionDescribe(env);
+        (*env)->ExceptionClear(env);
+        (*env)->DeleteLocalRef(env, e);
+    }
+
     return err;
 }
 
@@ -1202,6 +1281,59 @@ static jobject JVM_GBExecuteParseReply(JNIEnv *env, RedisModuleCallReply *reply)
     return NULL;
 }
 
+static jstring JVM_GBConfigGet(JNIEnv *env, jobject objectOrClass, jstring key){
+    if(!key){
+        (*env)->ThrowNew(env, exceptionCls, "Got a NULL key on configGet function");
+        return NULL;
+    }
+
+    const char* keyStr = (*env)->GetStringUTFChars(env, key, JNI_FALSE);
+
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisGears_LockHanlderAcquire(ctx);
+    const char* valCStr = RedisGears_GetConfig(keyStr);
+    if(!valCStr){
+        RedisGears_LockHanlderRelease(ctx);
+        RedisModule_FreeThreadSafeContext(ctx);
+        (*env)->ReleaseStringUTFChars(env, key, keyStr);
+        return NULL;
+    }
+    jstring val = (*env)->NewStringUTF(env, valCStr);
+    RedisGears_LockHanlderRelease(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
+
+    (*env)->ReleaseStringUTFChars(env, key, keyStr);
+
+    return val;
+}
+
+static jstring JVM_GBHashtag(JNIEnv *env, jobject objectOrClass){
+    return (*env)->NewStringUTF(env, RedisGears_GetMyHashTag());
+}
+
+static void JVM_GBLog(JNIEnv *env, jobject objectOrClass, jstring msg, jobject logLevel){
+    if(!msg){
+        (*env)->ThrowNew(env, exceptionCls, "Got a NULL msg on log function");
+        return;
+    }
+    const char* msgStr = (*env)->GetStringUTFChars(env, msg, JNI_FALSE);
+    char* logLevelStr = NULL;
+    if((*env)->IsSameObject(env, logLevel, gearsLogLevelNotice)){
+        logLevelStr = "notice";
+    }else if((*env)->IsSameObject(env, logLevel, gearsLogLevelDebug)){
+        logLevelStr = "debug";
+    }else if((*env)->IsSameObject(env, logLevel, gearsLogLevelVerbose)){
+        logLevelStr = "verbose";
+    }else if((*env)->IsSameObject(env, logLevel, gearsLogLevelWarning)){
+        logLevelStr = "warning";
+    }else{
+        RedisModule_Assert(false);
+    }
+    RedisModule_Log(NULL, logLevelStr, "JAVA_GEARS: %s", msgStr);
+
+    (*env)->ReleaseStringUTFChars(env, msg, msgStr);
+}
+
 static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray command){
     size_t len = (*env)->GetArrayLength(env, command);
     if(len == 0){
@@ -1255,12 +1387,11 @@ static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray co
     return res;
 }
 
-static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader){
+static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered){
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
 
     ExecutionMode mode = ExecutionModeAsync;
-    jobject jmode = (*env)->GetObjectField(env, reader, keysBaseReaderModeField);
     if((*env)->IsSameObject(env, jmode, gearsExecutionModeAsync)){
         mode = ExecutionModeAsync;
     }else if((*env)->IsSameObject(env, jmode, gearsExecutionModeSync)){
@@ -1271,7 +1402,6 @@ static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader){
         RedisModule_Assert(false);
     }
 
-    jobject onRegistered = (*env)->GetObjectField(env, reader, keysBaseReaderOnRegisteredField);
     if(onRegistered){
         onRegistered = JVM_TurnToGlobal(env, onRegistered);
         RGM_SetFlatExecutionOnRegisteredCallback(fep, JVM_OnRegistered, onRegistered);
@@ -1778,13 +1908,17 @@ static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* b
 static int JVMRecord_Serialize(ExecutionCtx* ectx, Gears_BufferWriter* bw, Record* base, char** err){
     JVMRecord* r = (JVMRecord*)base;
     JVMExecutionSession* es = RedisGears_GetPrivateData(ectx);
+    RedisModule_Assert(es);
     return JVM_ObjectSerializeInternal(es->executionOutputStream, r->obj, bw, err);
 }
 
 static Record* JVMRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br){
     char* err;
     JVMExecutionSession* es = RedisGears_GetPrivateData(ectx);
+    RedisModule_Assert(es);
     jobject obj = JVM_ObjectDeserializeInternal(es->executionInputStream, br, &err);
+
+    // record deserialization can not failed
     RedisModule_Assert(obj);
     JVMRecord* r = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
     r->obj = obj;
@@ -1826,6 +1960,14 @@ static void JVM_OnStart(ExecutionCtx* ctx, void* arg){
 
     char* err = NULL;
 
+    ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ctx);
+    if(RedisGears_ExecutionPlanIsLocal(ep)){
+        // execution plan is local to the shard, there is no way it will ever
+        // serialize or deserialize record. No need to create records input and
+        // output stream
+        return;
+    }
+
     JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(ctx);
 
     JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
@@ -1855,8 +1997,6 @@ static void JVM_OnStart(ExecutionCtx* ctx, void* arg){
     executionSession->executionOutputStream = outputStream;
 
     RedisGears_SetPrivateData(ctx, executionSession);
-
-    ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ctx);
 
     RedisGears_AddOnDoneCallback(ep, JVM_OnExecutionDone, executionSession);
 }

@@ -1,6 +1,5 @@
 package gears.readers;
 
-import gears.operations.OnRegisteredOperation;
 
 public class StreamReader extends BaseReader {
 	
@@ -21,8 +20,8 @@ public class StreamReader extends BaseReader {
 	private int failureRertyInterval;
 	private boolean trimStream;
 
-	public StreamReader(ExecutionMode mode, OnRegisteredOperation onRegistered) {
-		super(mode, onRegistered);
+	public StreamReader() {
+		super();
 		this.pattern = "*";
 		this.startId = "0-0";
 		this.batchSize = 1;

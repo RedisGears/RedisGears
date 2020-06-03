@@ -549,6 +549,10 @@ static const char* RG_GetConfig(const char* name) {
     return GearsConfig_GetExtraConfigVals(name);
 }
 
+static const int RG_ExecutionPlanIsLocal(ExecutionPlan* ep) {
+    return EPIsFlagOn(ep, EFIsLocal);
+}
+
 static int RG_RegisterPlugin(const char* name, int version) {
     if(Gears_dictFetchValue(plugins, name)){
         RedisModule_Log(NULL, "warning", "Plugin %s already exists", name);
@@ -817,6 +821,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetConfig, ctx);
 
     REGISTER_API(RegisterPlugin, ctx);
+
+    REGISTER_API(ExecutionPlanIsLocal, ctx);
 
     return REDISMODULE_OK;
 }

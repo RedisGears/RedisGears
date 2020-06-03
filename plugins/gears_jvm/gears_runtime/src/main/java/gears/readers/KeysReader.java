@@ -13,34 +13,38 @@ public class KeysReader extends BaseReader {
 	private String[] eventTypes;
 	private String[] keyTypes;
 
-	public KeysReader(ExecutionMode mode, OnRegisteredOperation onRegistered) {
-		super(mode, onRegistered);
+	public KeysReader() {
+		super();
+		this.pattern = "*";
+		this.noScan = false;
+		this.readValues = true;
+		this.eventTypes = null;
+		this.keyTypes = null;
 	}
 	
-	public KeysReader(String pattern, ExecutionMode mode, boolean noScan, boolean readValues, String[] eventTypes, String[] keyTypes) {
-		super(mode, null);
+	public KeysReader(String pattern, boolean noScan, boolean readValues, String[] eventTypes, String[] keyTypes) {
+		super();
 		this.pattern = pattern;
 		this.noScan = noScan;
 		this.readValues = readValues;
 		this.eventTypes = eventTypes;
 		this.keyTypes = keyTypes;
-		this.setMode(mode);
 	}
 	
 	public KeysReader(String pattern) {
-		this(pattern, ExecutionMode.ASYNC, false, true, null, null);
+		this(pattern, false, true, null, null);
 	}
 	
 	public KeysReader(String pattern, boolean noScan, boolean readValues) {
-		this(pattern, ExecutionMode.ASYNC, noScan, readValues, null, null);
+		this(pattern, noScan, readValues, null, null);
 	}
 	
-	public KeysReader(String prefix, ExecutionMode mode, boolean readValues, String[] eventTypes, String[] keyTypes) {
-		this(prefix, mode, false, readValues, eventTypes, keyTypes);
+	public KeysReader(String prefix, boolean readValues, String[] eventTypes, String[] keyTypes) {
+		this(prefix, false, readValues, eventTypes, keyTypes);
 	}
 	
-	public KeysReader(String prefix, ExecutionMode mode, boolean readValues) {
-		this(prefix, mode, false, readValues, null, null);
+	public KeysReader(String prefix, boolean readValues) {
+		this(prefix, false, readValues, null, null);
 	}
 
 	@Override

@@ -7,6 +7,7 @@ import gears.operations.ExtractorOperation;
 import gears.operations.FilterOperation;
 import gears.operations.ForeachOperation;
 import gears.operations.MapOperation;
+import gears.operations.OnRegisteredOperation;
 import gears.readers.BaseReader;
 
 public class GearsBuilder{
@@ -34,24 +35,47 @@ public class GearsBuilder{
 	
 	public native GearsBuilder collect();
 	
+	public static native String hashtag();
+	
+	public static native String configGet(String key);
+
 	public static native Object executeArray(String[] command);
+	
+	public static native void log(String msg, LogLevel level);
+	
+	public static void log(String msg) {
+		log(msg, LogLevel.NOTICE);
+	}
 	
 	public static Object execute(String... command) {
 		return executeArray(command);
+	}
+	
+	@SuppressWarnings("unchecked")
+	public static <t> t executeCommand(String... command) {
+		return (t) executeArray(command);
 	}
 	
 	public native GearsBuilder repartition(ExtractorOperation extractor);
 	
 	private native void innerRun(BaseReader reader);
 	
-	private native void innerRegister(BaseReader reader);
+	private native void innerRegister(BaseReader reader, ExecutionMode mode, OnRegisteredOperation onRegister);
 	
 	public void run() {
 		innerRun(reader);
 	}
 	
 	public void register() {
-		innerRegister(reader);
+		register(ExecutionMode.ASYNC, null);
+	}
+	
+	public void register(ExecutionMode mode) {
+		register(mode, null);
+	}
+	
+	public void register(ExecutionMode mode, OnRegisteredOperation onRegister) {
+		innerRegister(reader, ExecutionMode.ASYNC, onRegister);
 	}
 	
 	public GearsBuilder(BaseReader reader) {
