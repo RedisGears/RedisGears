@@ -212,7 +212,7 @@ on-master-and-version-tags: &on-master-and-version-tags
 
 platform-build-defs: &platform-build-defs
   requires:
-    - build-and-test
+    - linux-debian
   <<: *on-master-and-version-tags
   # <<: *on-any-branch
 
