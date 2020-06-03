@@ -12,7 +12,7 @@ All functions use this interpreter. Each call to `RG.PYEXECUTE` maintains its ow
 !!! info "Further reference"
     For more information refer to:
 
-      * [Isolation Techniques design](isolation_techniques.md)
+      * [Isolation Techniques design](isolation.md)
 
 ## Environment
 The interpreter's environment can be extended with any dependent package that can later be imported and used by functions in their respective sub-interpreters.
