@@ -1,6 +1,6 @@
-# BUILD redisfab/redisgears-${OSNICK}:M.m.b-${ARCH}
+# BUILD redisfab/redisgears:${VERSION}-${ARCH}-${OSNICK}
 
-ARG REDIS_VER=5.0.8
+ARG REDIS_VER=6.0.1
 
 # OSNICK=bionic|stretch|buster
 ARG OSNICK=buster
@@ -10,6 +10,9 @@ ARG OS=debian:buster-slim
 
 # ARCH=arm64v8|arm32v7
 ARG ARCH=arm64v8
+
+ARG PACK=0
+ARG TEST=0
 
 #----------------------------------------------------------------------------------------------
 FROM redisfab/redis:${REDIS_VER}-${ARCH}-${OSNICK} AS redis
@@ -35,8 +38,8 @@ RUN make fetch SHOW=1
 RUN make all SHOW=1
 RUN NUMERIC=1 ./getver > artifacts/VERSION
 
-ARG PACK=0
-ARG TEST=0
+ARG PACK
+ARG TEST
 
 RUN if [ "$PACK" = "1" ]; then make pack; fi
 RUN if [ "$TEST" = "1" ]; then TEST= make test; fi
@@ -44,7 +47,9 @@ RUN if [ "$TEST" = "1" ]; then TEST= make test; fi
 RUN [ "cross-build-end" ]
 
 #----------------------------------------------------------------------------------------------
-FROM redisfab/redis:${REDIS_VER}-${ARCH}-${OSNICK}
+FROM redisfab/redis-xbuild:${REDIS_VER}-${ARCH}-${OSNICK}
+
+RUN [ "cross-build-start" ]
 
 ARG OSNICK
 ARG OS

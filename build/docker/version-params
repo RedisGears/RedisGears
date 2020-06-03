@@ -1,0 +1,11 @@
+#!/bin/bash
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT=$(cd $HERE/../..; pwd)
+
+ver=`$ROOT/getver`
+if [[ $ver == 99.99.99 ]]; then
+        echo "VERSION=$(git rev-parse --abbrev-ref HEAD)"
+else
+        echo "VERSION=$ver LATEST=1"
+fi
