@@ -59,7 +59,7 @@ commands:
             # cd build/platforms
             # make <<parameters.platform>> VERBOSE=1
             cd build/docker
-            make build publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 PACK=1 ARTIFACTS=1 VERBOSE=1
+            make build publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 VERBOSE=1
           no_output_timeout: 30m
       - persist_to_workspace:
           root: artifacts
@@ -209,12 +209,12 @@ on-master-and-version-tags: &on-master-and-version-tags
     tags:
       only: /^v[0-9].*/
 
+
 platform-build-defs: &platform-build-defs
   requires:
     - build-and-test
   <<: *on-master-and-version-tags
   # <<: *on-any-branch
-
 
 after-platform-builds: &after-platform-builds
   requires:
@@ -242,19 +242,19 @@ workflows:
           platform: xenial
           <<: *platform-build-defs
       - valgrind:
-	      <<: *on-version-tags
-		  # <<: *on-any-branch
+          <<: *on-version-tags
+          # <<: *on-any-branch
       - macos:
-	      <<: *on-version-tags
-		  # <<: *on-any-branch
+          <<: *on-version-tags
+          # <<: *on-any-branch
 #      - build-multiarch-docker:
 #          <<: *on-version-tags
       - deploy_snapshots:
           <<: *after-platform-builds
-		  <<: *on-master
+          <<: *on-master
       - deploy_releases:
           <<: *after-platform-builds
-		  <<: *on-version-tags
+          <<: *on-version-tags
 # TODO: deploy_docs should run only when 'docs/' or 'mkdocs.yml' change
       - deploy_docs:
           filters:
@@ -267,7 +267,7 @@ workflows:
     triggers:
       - schedule:
           cron: "20 17 * * *"
-		  <<: *on-master
+          <<: *on-master
     jobs:
       - macos
       - valgrind
