@@ -678,7 +678,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
         bool filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
         if(ectx.err){
             RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
             goto end;
         }
         if(filterRes){
@@ -714,7 +714,7 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
             if(record){
                 RedisGears_FreeRecord(record);
             }
-            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
         }
     }
 end:
@@ -793,7 +793,7 @@ static Record* ExecutionPlan_ExtractKeyNextRecord(ExecutionPlan* ep, ExecutionSt
     char* buff = step->extractKey.extractor(&ectx, record, step->extractKey.extractorArg.stepArg, &buffLen);
     if(ectx.err){
         RedisGears_FreeRecord(record);
-        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
         goto end;
     }
     r = RedisGears_KeyRecordCreate();
@@ -879,7 +879,7 @@ static Record* ExecutionPlan_ReduceNextRecord(ExecutionPlan* ep, ExecutionStep* 
     RedisGears_KeyRecordSetVal(record, r);
     if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
     }
 end:
 	ADD_DURATION(step->executionDuration);
@@ -1093,7 +1093,7 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
     if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
     }
 end:
 	ADD_DURATION(step->executionDuration);
@@ -1158,7 +1158,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
                 RedisGears_FreeRecord(step->accumulate.accumulator);
                 step->accumulate.accumulator = NULL;
             }
-            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
             goto end;
         }
     	ADD_DURATION(step->executionDuration);
@@ -1210,7 +1210,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		    }
 		    Gears_dictDelete(step->accumulateByKey.accumulators, key);
 			RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
             goto end;
 		}
 		if(!keyRecord){
@@ -1256,7 +1256,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
             GETTIME(&_te);
     	    step->executionDuration += DURATION;
     	    if(!r && ectx.err){
-    	        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+    	        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
     	    }
     	}
         break;

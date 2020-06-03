@@ -1,4 +1,4 @@
-package gears.readers;
+package gears;
 
 public enum ExecutionMode {
 	ASYNC, ASYNC_LOCAL, SYNC
