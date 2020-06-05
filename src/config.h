@@ -22,6 +22,8 @@ long long GearsConfig_DownloadDeps();
 long long GearsConfig_ForceDownloadDepsOnEnterprise();
 long long GearsConfig_ExecutionThreads();
 long long GearsConfig_ExecutionMaxIdleTime();
+long long GearsConfig_SendMsgRetries();
+long long GearsConfig_PythonInstallReqMaxIdleTime();
 const char* GearsConfig_GetExtraConfigVals(const char* key);
 const char* GearsConfig_GetPythonInstallationDir();
 

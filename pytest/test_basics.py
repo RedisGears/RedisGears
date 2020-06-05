@@ -117,6 +117,19 @@ class testBasic:
         self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
         self.env.cmd('rg.dropexecution', id)
 
+def testBytes(env):
+    conn = getConnectionByEnv(env)
+    conn.set("x", 1)
+    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytes([1,2,3]))).run("x")')
+    env.assertTrue(conn.exists("y"))
+
+
+def testBytearray(env):
+    conn = getConnectionByEnv(env)
+    conn.set("x", 1)
+    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytearray([1,2,3]))).run("x")')
+    env.assertTrue(conn.exists("y"))
+
 
 def testKeysOnlyReader(env):
     conn = getConnectionByEnv(env)
@@ -537,7 +550,8 @@ def testConfigGet():
                                "map(lambda x: (GearsConfigGet('TestConfig'), GearsConfigGet('NotExists', 'default')))."
                                "collect().distinct().run()").equal([["('TestVal', 'default')"],[]])
 
-def testRecordSerializationFailure(env):
+def testRecordSerializationFailure():
+    env = Env(moduleArgs='CreateVenv 1')
     if env.shardsCount < 2:  # TODO: RedisGears_IsClusterMode reports false for clusters with 1 shard
         env.skip()
     conn = getConnectionByEnv(env)
@@ -545,53 +559,6 @@ def testRecordSerializationFailure(env):
                   "map(lambda x: __import__('redisgraph'))."
                   "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
     env.assertEqual(len(res[1]), env.shardsCount - 1) # the initiator will not raise error
-
-def testDependenciesInstall(env):
-    conn = getConnectionByEnv(env)
-    res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                            "map(lambda x: str(__import__('redisgraph')))."
-                            "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
-    env.assertEqual(len(res[0]), 1)
-    env.assertEqual(len(res[1]), 0)
-    env.assertContains("<module 'redisgraph'", res[0][0])
-
-def testDependenciesInstallWithVersionGreater(env):
-    conn = getConnectionByEnv(env)
-    res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                            "map(lambda x: str(__import__('redis')))."
-                            "collect().distinct().run()", 'REQUIREMENTS', 'redis>=3')
-    env.assertEqual(len(res[0]), 1)
-    env.assertEqual(len(res[1]), 0)
-    env.assertContains("<module 'redis'", res[0][0])
-
-def testDependenciesInstallWithVersionEqual(env):
-    conn = getConnectionByEnv(env)
-    res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                            "map(lambda x: str(__import__('redis')))."
-                            "collect().distinct().run()", 'REQUIREMENTS', 'redis==3')
-    env.assertEqual(len(res[0]), 1)
-    env.assertEqual(len(res[1]), 0)
-    env.assertContains("<module 'redis'", res[0][0])
-
-def testDependenciesInstallFailure(env):
-    conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                               "map(lambda x: __import__('redisgraph'))."
-                               "collect().distinct().run()", 'REQUIREMENTS', 'blabla').error().contains('satisfy requirments')
-
-def testDependenciesWithRegister(env):
-    env.skipOnCluster()
-    env.expect('RG.PYEXECUTE', "GB()."
-                               "map(lambda x: __import__('redisgraph'))."
-                               "collect().distinct().register()", 'REQUIREMENTS', 'redisgraph').ok()
-
-    for _ in env.reloading_iterator():
-        res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                                      "map(lambda x: str(__import__('redisgraph')))."
-                                      "collect().distinct().run()")
-        env.assertEqual(len(res[0]), 1)
-        env.assertEqual(len(res[1]), 0)
-        env.assertContains("<module 'redisgraph'", res[0][0])
 
 def testAtomic(env):
     conn = getConnectionByEnv(env)

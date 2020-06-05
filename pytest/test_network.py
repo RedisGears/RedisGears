@@ -308,12 +308,61 @@ def testMessageNotResentAfterCrash(env):
             pass
 
 
-def testStopListening(env):
+def testSendRetriesMechanizm(env):
     env.skipOnCluster()
 
     with ShardMock(env) as shardMock:
         conn = shardMock.GetConnection()
 
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+
+        conn.send('-Err\r\n')
+
+        env.assertTrue(conn.is_close())
+
+        # should be a retry
+
+        conn = shardMock.GetConnection()
+
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+
+        conn.send('-Err\r\n')
+
+        env.assertTrue(conn.is_close())
+
+        # should be a retry
+
+        conn = shardMock.GetConnection()
+
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+
+        conn.send('-Err\r\n')
+
+        env.assertTrue(conn.is_close())
+
+        # should not retry
+
+        conn = shardMock.GetConnection()
+
+        # make sure message will not be sent again
+        try:
+            with TimeLimit(1):
+                conn.read_request()
+                env.assertTrue(False)  # we should not get any data after crash
+        except Exception:
+            pass
+
+
+
+
+def testStopListening(env):
+    env.skipOnCluster()
+
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection()
+        
         env.expect('RG.NETWORKTEST').equal('OK')
 
         env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])

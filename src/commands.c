@@ -12,6 +12,8 @@
 static ExecutionThreadPool* mgmtPool;
 static WorkerData* mgmtWorker;
 
+#define STRING_TYPE_VERSION 1
+
 static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     RG_RecordSendReply(record, rctx);
 }
@@ -103,7 +105,7 @@ Record* Command_AbortExecutionMap(ExecutionCtx* rctx, Record *data, void* arg){
         ExecutionPlan* gearsCtx = RedisGears_GetExecution(executionId);
 
         if(!gearsCtx){
-            RedisGears_SetError(rctx, "execution does not exist");
+            RedisGears_SetError(rctx, RG_STRDUP("execution does not exist"));
             LockHandler_Release(ctx);
             return NULL;
         }
@@ -213,7 +215,10 @@ static int Command_StringSerialize(void* arg, Gears_BufferWriter* bw, char** err
     return REDISMODULE_OK;
 }
 
-static void* Command_StringDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, char** err){
+static void* Command_StringDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+    if(version > STRING_TYPE_VERSION){
+        return NULL;
+    }
     const char* id = RedisGears_BRReadString(br);
     return RG_STRDUP(id);
 }
@@ -226,6 +231,7 @@ int Command_Init(){
     mgmtPool = ExecutionPlan_CreateThreadPool("MgmtPool", 1);
     mgmtWorker = ExecutionPlan_CreateWorker(mgmtPool);
     ArgType* stringType = RedisGears_CreateType("StringType",
+                                                STRING_TYPE_VERSION,
                                                 Command_StringFree,
                                                 Command_StringDup,
                                                 Command_StringSerialize,
