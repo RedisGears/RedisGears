@@ -24,12 +24,12 @@ static void ShardIDReader_reset(void* ctx, void * arg){
     sidCtx->isDone = false;
 }
 
-static void ShardIDReader_serialize(void* ctx, Gears_BufferWriter* bw){
-
+static int ShardIDReader_serialize(ExecutionPlan* ep, void* ctx, Gears_BufferWriter* bw, char** err){
+    return REDISMODULE_OK;
 }
 
-static void ShardIDReader_deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
-
+static int ShardIDReader_deserialize(ExecutionPlan* ep, void* ctx, Gears_BufferReader* br, char** err){
+    return REDISMODULE_OK;
 }
 
 static Reader* ShardIDReader_Create(void* arg){

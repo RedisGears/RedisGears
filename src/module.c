@@ -566,6 +566,49 @@ static int RG_RegisterPlugin(const char* name, int version) {
     return REDISMODULE_OK;
 }
 
+static int RG_KeysReaderSetReadRecordCallback(KeysReaderCtx* krCtx, const char* name){
+    return KeysReaderCtx_SetReadRecordCallback(krCtx, name);
+}
+
+static int RG_KeysReaderTriggerArgsSetReadRecordCallback(KeysReaderTriggerArgs* krta, const char* name){
+    return KeysReaderTriggerArgs_SetReadRecordCallback(krta, name);
+}
+
+static void RG_KeysReaderRegisterReadRecordCallback(const char* name, RedisGears_KeysReaderReadRecordCallback callback){
+    KeysReaderReadRecordsMgmt_Add(name, callback, NULL);
+}
+
+static Gears_Buffer* RG_BufferCreate(size_t initCap){
+    return Gears_BufferNew(initCap);
+}
+
+static void RG_BufferFree(Gears_Buffer* buff){
+    Gears_BufferFree(buff);
+}
+
+static void RG_BufferClear(Gears_Buffer* buff){
+    Gears_BufferClear(buff);
+}
+
+const char* RG_BufferGet(Gears_Buffer* buff, size_t* len){
+    if(len){
+        *len = buff->size;
+    }
+    return buff->buff;
+}
+
+static void RG_BufferReaderInit(Gears_BufferReader* br,Gears_Buffer* buff){
+    Gears_BufferReaderInit(br, buff);
+}
+
+static void RG_BufferWriterInit(Gears_BufferWriter* bw,Gears_Buffer* buff){
+    Gears_BufferWriterInit(bw, buff);
+}
+
+FlatExecutionPlan* RG_GetFep(ExecutionPlan* ep){
+    return ep->fep;
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
         // save loaded plugins
@@ -646,7 +689,10 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
             RedisModule_Assert(readerName);
             RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(readerName);
             RedisModule_Assert(callbacks->rdbLoad);
-            callbacks->rdbLoad(rdb, encver);
+            if(callbacks->rdbLoad(rdb, encver) != REDISMODULE_OK){
+                RedisModule_Free(readerName);
+                return REDISMODULE_ERR;
+            }
             RedisModule_Free(readerName);
         }
         RedisModule_Free(readerName);
@@ -689,6 +735,12 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetLLApiVersion, ctx);
 
     REGISTER_API(CreateType, ctx);
+    REGISTER_API(BufferCreate, ctx);
+    REGISTER_API(BufferFree, ctx);
+    REGISTER_API(BufferClear, ctx);
+    REGISTER_API(BufferGet, ctx);
+    REGISTER_API(BufferReaderInit, ctx);
+    REGISTER_API(BufferWriterInit, ctx);
     REGISTER_API(BWWriteLong, ctx);
     REGISTER_API(BWWriteString, ctx);
     REGISTER_API(BWWriteBuffer, ctx);
@@ -737,6 +789,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(CommandReaderTriggerArgsFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
+    REGISTER_API(GetFep, ctx);
     REGISTER_API(IsDone, ctx);
     REGISTER_API(GetRecordsLen, ctx);
     REGISTER_API(GetRecord, ctx);
@@ -823,6 +876,10 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterPlugin, ctx);
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
+
+    REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
+    REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
+    REGISTER_API(KeysReaderRegisterReadRecordCallback, ctx);
 
     return REDISMODULE_OK;
 }

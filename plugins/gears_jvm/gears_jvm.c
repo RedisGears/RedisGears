@@ -34,7 +34,7 @@ static jobject JVM_TurnToGlobal(JNIEnv *env, jobject local);
 static char* JVM_GetException(JNIEnv *env);
 static JVM_ThreadLocalData* JVM_GetThreadLocalData();
 static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, size_t len, char** err);
-
+static jstring JVM_JNITestHelper(JNIEnv *env, jobject objectOrClass, jstring key);
 
 static char* shardUniqueId = NULL;
 static char* workingDir = NULL;
@@ -156,6 +156,8 @@ jclass gearsBuilderCls = NULL;
 jmethodID gearsBuilderSerializeObjectMethodId = NULL;
 jmethodID gearsBuilderDeserializeObjectMethodId = NULL;
 jmethodID gearsBuilderOnUnpausedMethodId = NULL;
+jmethodID gearsJNITestMethodId = NULL;
+jmethodID gearsJNITestMethodId1 = NULL;
 
 jclass gearsObjectInputStreamCls = NULL;
 jmethodID gearsObjectInputStreamGetMethodId = NULL;
@@ -211,6 +213,9 @@ jfieldID keysReaderNoscanField = NULL;
 jfieldID keysReaderReadValuesField = NULL;
 jfieldID keysReaderEventTypesField = NULL;
 jfieldID keysReaderKeyTypesField = NULL;
+
+jclass gearsKeyReaderRecordCls = NULL;
+jmethodID gearsKeyReaderRecordCtrMethodId = NULL;
 
 jclass gearsExecutionModeCls = NULL;
 jobject gearsExecutionModeAsync = NULL;
@@ -327,6 +332,11 @@ JNINativeMethod nativeMethod[] = {
             .name = "configGet",
             .signature = "(Ljava/lang/String;)Ljava/lang/String;",
             .fnPtr = JVM_GBConfigGet,
+        },
+        {
+            .name = "jniTestHelper",
+            .signature = "()V",
+            .fnPtr = JVM_JNITestHelper,
         },
     };
 
@@ -656,6 +666,8 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "serializeObject", "(Ljava/lang/Object;Lgears/GearsObjectOutputStream;)[B", gearsBuilderSerializeObjectMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "deserializeObject", "([BLgears/GearsObjectInputStream;)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "onUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniTest", "()V", gearsJNITestMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniTest1", "()V", gearsJNITestMethodId1);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/MapOperation", gearsMappCls);
             JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "map", "(Ljava/io/Serializable;)Ljava/io/Serializable;", gearsMapMethodId);
@@ -700,6 +712,9 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "readValues", "Z", keysReaderReadValuesField);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "eventTypes", "[Ljava/lang/String;", keysReaderEventTypesField);
             JVM_TryFindField(jvm_tld->env, gearsKeyReaderCls, "keyTypes", "[Ljava/lang/String;", keysReaderKeyTypesField);
+
+            JVM_TryFindClass(jvm_tld->env, "gears/records/KeysReaderRecord", gearsKeyReaderRecordCls);
+            JVM_TryFindMethod(jvm_tld->env, gearsKeyReaderRecordCls, "<init>", "(Ljava/lang/String;Ljava/lang/String;ZLjava/nio/ByteBuffer;)V", gearsKeyReaderRecordCtrMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/readers/StreamReader", gearsStreamReaderCls);
             JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "pattern", "Ljava/lang/String;", streamReaderPatternField);
@@ -1049,7 +1064,99 @@ void* JVM_CreateRunStreamReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject
     return readerCtx;
 }
 
-void* JVM_CreateRunKeyReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+#define LRU_BITS 24
+typedef struct redisObject {
+    unsigned type:4;
+    unsigned encoding:4;
+    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
+                            * LFU data (least significant 8 bits frequency
+                            * and most significant 16 bits access time). */
+    int refcount;
+    void *ptr;
+} robj;
+
+static void JVM_ScanKeyCallback(RedisModuleKey *key, RedisModuleString *field, RedisModuleString *value, void *privdata){
+    Gears_BufferWriter* bw = privdata;
+    size_t fieldCStrLen;
+    const char* fieldCStr = RedisModule_StringPtrLen(field, &fieldCStrLen);
+    size_t valCStrLen = 7;
+    const char* valCStr = "unknown";
+    if(((robj*)value)->encoding == 8){
+        valCStr = RedisModule_StringPtrLen(value, &valCStrLen);
+    }
+    RedisGears_BWWriteBuffer(bw, fieldCStr, fieldCStrLen);
+    RedisGears_BWWriteBuffer(bw, valCStr, valCStrLen);
+}
+
+static jobject JVM_GetSerializedVal(JNIEnv *env, RedisModuleKey* keyPtr, Gears_Buffer* buff){
+    Gears_BufferWriter bw;
+    RedisGears_BufferWriterInit(&bw, buff);
+    if(keyPtr == NULL){
+        RedisGears_BWWriteLong(&bw, -1);
+    }else{
+        int keyType = RedisModule_KeyType(keyPtr);
+        RedisGears_BWWriteLong(&bw, keyType);
+        if(keyType == REDISMODULE_KEYTYPE_HASH){
+            RedisModuleScanCursor* hashCursor = RedisModule_ScanCursorCreate();
+            while(RedisModule_ScanKey(keyPtr, hashCursor, JVM_ScanKeyCallback, &bw));
+            RedisModule_ScanCursorDestroy(hashCursor);
+        }
+        if(keyType == REDISMODULE_KEYTYPE_STRING){
+            size_t len;
+            const char* val = RedisModule_StringDMA(keyPtr, &len, REDISMODULE_READ);
+            RedisGears_BWWriteBuffer(&bw, val, len);
+        }
+    }
+    size_t len;
+    const char* data = RedisGears_BufferGet(buff, &len);
+    return (*env)->NewDirectByteBuffer(env, (void*)data, len);
+}
+
+static Gears_Buffer* recordBuff = NULL;
+
+static Record* JVM_KeyReaderReadRecord(RedisModuleCtx* rctx, RedisModuleString* key, RedisModuleKey* keyPtr, bool readValue, const char* event){
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
+    JNIEnv *env  = jvm_tld->env;
+
+    JVM_PushFrame(env);
+
+    const char* keyCStr = RedisModule_StringPtrLen(key, NULL);
+    jstring jkey = (*env)->NewStringUTF(env, keyCStr);
+    jstring jevent = (*env)->NewStringUTF(env, event);
+
+
+    RedisGears_BufferClear(recordBuff);
+    jobject serializedValue = NULL;
+    if(readValue){
+        RedisModuleKey* tmpPtr = keyPtr;
+        if(!tmpPtr){
+            tmpPtr = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
+        }
+        serializedValue = JVM_GetSerializedVal(env, tmpPtr, recordBuff);
+        if(!keyPtr){
+            RedisModule_CloseKey(tmpPtr);
+        }
+    }
+    jobject obj = (*env)->NewObject(env, gearsKeyReaderRecordCls, gearsKeyReaderRecordCtrMethodId, jkey, jevent, readValue, serializedValue);
+
+    char* err;
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Exception occured when reading key, error='%s'", err);
+        JVM_FREE(err);
+        JVM_PopFrame(env);
+        return NULL;
+    }
+
+    obj = JVM_TurnToGlobal(env, obj);
+
+    JVM_PopFrame(env);
+
+    JVMRecord* r = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
+    r->obj = obj;
+    return &r->baseRecord;
+}
+
+static void* JVM_CreateRunKeyReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
     jclass readerCls = (*env)->GetObjectClass(env, reader);
     if(!(*env)->IsSameObject(env, readerCls, gearsKeyReaderCls)){
         (*env)->ThrowNew(env, exceptionCls, "Reader was changed!!!! Stop hacking!!!!");
@@ -1069,12 +1176,14 @@ void* JVM_CreateRunKeyReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject re
 
     KeysReaderCtx* readerCtx = RedisGears_KeysReaderCtxCreate(patternStr, readValues, NULL, noScan);
 
+    RGM_KeysReaderSetReadRecordCallback(readerCtx, JVM_KeyReaderReadRecord);
+
     (*env)->ReleaseStringUTFChars(env, pattern, patternStr);
 
     return readerCtx;
 }
 
-void* JVM_CreateRunReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+static void* JVM_CreateRunReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
     if(strcmp(RedisGears_GetReader(fep), "KeysReader") == 0){
         return JVM_CreateRunKeyReaderArgs(env, fep, reader);
     }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
@@ -1211,6 +1320,8 @@ void* JVM_CreateRegisterKeysReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobj
     }
 
     KeysReaderTriggerArgs* triggerArgsCtx = RedisGears_KeysReaderTriggerArgsCreate(patternStr, eventTypes, keyTypes, readValues);
+
+    RGM_KeysReaderTriggerArgsSetReadRecordCallback(triggerArgsCtx, JVM_KeyReaderReadRecord);
 
     (*env)->ReleaseStringUTFChars(env, pattern, patternStr);
 
@@ -1359,6 +1470,8 @@ static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray co
 
     RedisGears_LockHanlderRelease(ctx);
 
+    array_free_ex(args, RedisModule_FreeString(NULL, *(RedisModuleString**)ptr));
+
     if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
         char* err;
         if(reply){
@@ -1412,6 +1525,25 @@ static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, j
         return;
     }
     RGM_Register(fep, mode, triggerCtx, &err);
+}
+
+static jstring JVM_JNITestHelper(JNIEnv *env, jobject objectOrClass, jstring key){
+    for(long i = 0 ; i < 100000000 ; ++i){
+        (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNITestMethodId1);
+    }
+}
+
+int JVM_JNITest(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData();
+    JNIEnv *env = jvm_ltd->env;
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNITestMethodId);
+
+//    for(long i = 0 ; i < 100000000 ; ++i){
+//        (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNITestMethodId1);
+//    }
+
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
 }
 
 int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -1530,6 +1662,9 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
 }
 
 static Record* JVM_ToJavaRecordMapper(ExecutionCtx* rctx, Record *data, void* arg){
+    if(RedisGears_RecordGetType(data) == JVMRecordType){
+        return data;
+    }
 
     JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData();
 
@@ -1729,7 +1864,7 @@ static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
     }
 
     if(!res){
-        err = JVM_STRDUP("Got null record on mapper");
+        err = JVM_STRDUP("Got null record on flat mapper");
         goto error;
     }
 
@@ -2020,6 +2155,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
     }
 
+    recordBuff = RedisGears_BufferCreate(100);
     int err = pthread_key_create(&threadLocalData, NULL);
     if(err){
         return REDISMODULE_ERR;
@@ -2059,6 +2195,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
 
     RedisGears_RegisterFlatExecutionPrivateDataType(jvmSessionType);
 
+    RGM_KeysReaderRegisterReadRecordCallback(JVM_KeyReaderReadRecord);
+
     RGM_RegisterFlatExecutionOnRegisteredCallback(JVM_OnRegistered, jvmObjectType);
     RGM_RegisterExecutionOnUnpausedCallback(JVM_OnUnpaused, jvmObjectType);
     RGM_RegisterExecutionOnStartCallback(JVM_OnStart, jvmObjectType);
@@ -2088,7 +2226,12 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.jexecute", JVM_Run, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command gvm.run");
+        RedisModule_Log(ctx, "warning", "could not register command rg.jexecute");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.jnitest", JVM_JNITest, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.jnitest");
         return REDISMODULE_ERR;
     }
 

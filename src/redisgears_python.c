@@ -495,7 +495,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         if(!f){
             RG_FREE(filePath);
             rg_asprintf(err, "Could not open file %s", filePath);
-            RedisModule_Log(NULL, "warning", *err);
+            RedisModule_Log(NULL, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
         fseek(f, 0, SEEK_END);
@@ -508,7 +508,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
             RG_FREE(data);
             RG_FREE(filePath);
             rg_asprintf(err, "Could read data from file %s", filePath);
-            RedisModule_Log(NULL, "warning", *err);
+            RedisModule_Log(NULL, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
         fclose(f);
@@ -3389,7 +3389,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         char* error = getPyError();
         if(err){
             rg_asprintf(err, "Error occured when deserialized a python callback, error=%s",  error);
-            RedisModule_Log(NULL, "warning", *err);
+            RedisModule_Log(NULL, "warning", "%s", *err);
         }else{
             RedisModule_Log(NULL, "warning", "Error occured when deserialized a python callback, error=%s",  error);
         }
@@ -3560,7 +3560,7 @@ static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModu
         if(!err){
             err = RG_STRDUP("On RedisGearsPy_ImportRequirementInternal, failed deserialize requirements");
         }
-        RedisModule_Log(ctx, "warning", err);
+        RedisModule_Log(ctx, "warning", "%s", err);
         RedisModule_ReplyWithError(ctx, err);
         return REDISMODULE_OK;
     }
@@ -3768,17 +3768,16 @@ static void PythonReader_Free(void* ctx){
     RG_FREE(pyCtx);
 }
 
-static void PythonReader_Serialize(void* ctx, Gears_BufferWriter* bw){
+static int PythonReader_Serialize(ExecutionPlan* ep, void* ctx, Gears_BufferWriter* bw, char** err){
     PythonReaderCtx* pyCtx = ctx;
-    int res = RedisGearsPy_PyCallbackSerialize(NULL, pyCtx->callback, bw, NULL);
-    RedisModule_Assert(res == REDISMODULE_OK);
+    return RedisGearsPy_PyCallbackSerialize(RedisGears_GetFep(ep), pyCtx->callback, bw, err);
 }
 
-static void PythonReader_Deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
+static int PythonReader_Deserialize(ExecutionPlan* ep, void* ctx, Gears_BufferReader* br, char** err){
     PythonReaderCtx* pyCtx = ctx;
     // this serialized data reached from another shard (not rdb) so its save to assume the version is PY_OBJECT_TYPE_VERSION
-    pyCtx->callback = RedisGearsPy_PyCallbackDeserialize(fep, br, PY_OBJECT_TYPE_VERSION, NULL);
-    RedisModule_Assert(pyCtx->callback);
+    pyCtx->callback = RedisGearsPy_PyCallbackDeserialize(RedisGears_GetFep(ep), br, PY_OBJECT_TYPE_VERSION, err);
+    return pyCtx->callback? REDISMODULE_OK : REDISMODULE_ERR;
 }
 
 static Reader* PythonReader_Create(void* arg){

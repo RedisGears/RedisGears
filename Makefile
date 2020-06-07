@@ -122,7 +122,7 @@ TARGET=$(BINROOT)/redisgears.so
 TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
 
 ifeq ($(DEBUG),1)
-CC_FLAGS += -g -O0 -DVALGRIND
+CC_FLAGS += -g -O0 -DVALGRIND -fno-omit-frame-pointer
 LD_FLAGS += -g
 else
 CC_FLAGS += -O2 -Wno-unused-result

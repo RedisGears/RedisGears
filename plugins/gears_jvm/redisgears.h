@@ -60,6 +60,7 @@ typedef struct ExecutionThreadPool ExecutionThreadPool;
 
 /******************************* READERS *******************************/
 
+typedef struct Gears_Buffer Gears_Buffer;
 typedef struct Gears_BufferWriter Gears_BufferWriter;
 typedef struct Gears_BufferReader Gears_BufferReader;
 typedef struct ArgType ArgType;
@@ -81,8 +82,8 @@ typedef struct Reader{
     Record* (*next)(ExecutionCtx* rctx, void* ctx);
     void (*free)(void* ctx);
     void (*reset)(void* ctx, void * arg);
-    void (*serialize)(void* ctx, Gears_BufferWriter* bw);
-    void (*deserialize)(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br);
+    int (*serialize)(ExecutionPlan* ep, void* ctx, Gears_BufferWriter* bw, char** err);
+    int (*deserialize)(ExecutionPlan* ep, void* ctx, Gears_BufferReader* br, char** err);
 }Reader;
 
 /**
@@ -98,12 +99,27 @@ typedef struct Reader{
  */
 ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, int version, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
 
+typedef struct Gears_BufferWriter{
+    Gears_Buffer* buff;
+}Gears_BufferWriter;
+
+typedef struct Gears_BufferReader{
+    Gears_Buffer* buff;
+    size_t location;
+}Gears_BufferReader;
+
 /**
  * Function that allows to read/write from buffers. Use when implementing serialize/deserialize
  */
 #define LONG_READ_ERROR LLONG_MAX
 #define BUFF_READ_ERROR NULL
 
+Gears_Buffer* MODULE_API_FUNC(RedisGears_BufferCreate)(size_t initCap);
+void MODULE_API_FUNC(RedisGears_BufferFree)(Gears_Buffer* buff);
+void MODULE_API_FUNC(RedisGears_BufferClear)(Gears_Buffer* buff);
+const char* MODULE_API_FUNC(RedisGears_BufferGet)(Gears_Buffer* buff, size_t* len);
+void MODULE_API_FUNC(RedisGears_BufferReaderInit)(Gears_BufferReader* br, Gears_Buffer* buff);
+void MODULE_API_FUNC(RedisGears_BufferWriterInit)(Gears_BufferWriter* bw, Gears_Buffer* buff);
 void MODULE_API_FUNC(RedisGears_BWWriteLong)(Gears_BufferWriter* bw, long val);
 void MODULE_API_FUNC(RedisGears_BWWriteString)(Gears_BufferWriter* bw, const char* str);
 void MODULE_API_FUNC(RedisGears_BWWriteBuffer)(Gears_BufferWriter* bw, const char* buff, size_t len);
@@ -126,11 +142,11 @@ typedef Reader* (*RedisGears_CreateReaderCallback)(void* arg);
 typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err);
 typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep, bool abortPending);
 typedef void (*RedisGears_ReaderSerializeRegisterArgsCallback)(void* arg, Gears_BufferWriter* bw);
-typedef void* (*RedisGears_ReaderDeserializeRegisterArgsCallback)(Gears_BufferReader* br);
+typedef void* (*RedisGears_ReaderDeserializeRegisterArgsCallback)(Gears_BufferReader* br, int encver);
 typedef void (*RedisGears_ReaderFreeArgsCallback)(void* args);
 typedef void (*RedisGears_ReaderDumpRegistrationData)(RedisModuleCtx* ctx, FlatExecutionPlan* fep);
 typedef void (*RedisGears_ReaderRdbSave)(RedisModuleIO *rdb);
-typedef void (*RedisGears_ReaderRdbLoad)(RedisModuleIO *rdb, int encver);
+typedef int (*RedisGears_ReaderRdbLoad)(RedisModuleIO *rdb, int encver);
 typedef void (*RedisGears_ReaderClear)();
 
 /**
@@ -171,17 +187,24 @@ typedef struct StreamReaderCtx StreamReaderCtx;
 typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
 typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 typedef struct CommandReaderTriggerArgs CommandReaderTriggerArgs;
+typedef Record* (*RedisGears_KeysReaderReadRecordCallback)(RedisModuleCtx* rctx, RedisModuleString* key, RedisModuleKey* keyPtr, bool readValue, const char* event);
 
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
 void MODULE_API_FUNC(RedisGears_StreamReaderCtxFree)(StreamReaderCtx*);
 
 KeysReaderCtx* MODULE_API_FUNC(RedisGears_KeysReaderCtxCreate)(const char* match, bool readValue, const char* event, bool noScan);
+int MODULE_API_FUNC(RedisGears_KeysReaderSetReadRecordCallback)(KeysReaderCtx*, const char* name);
+#define RGM_KeysReaderSetReadRecordCallback(ctx, name) RedisGears_KeysReaderSetReadRecordCallback(ctx, #name)
+void MODULE_API_FUNC(RedisGears_KeysReaderRegisterReadRecordCallback)(const char* name, RedisGears_KeysReaderReadRecordCallback callback);
+#define RGM_KeysReaderRegisterReadRecordCallback(name) RedisGears_KeysReaderRegisterReadRecordCallback(#name, name)
 void MODULE_API_FUNC(RedisGears_KeysReaderCtxFree)(KeysReaderCtx*);
 
 StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreate)(const char* prefix, size_t batchSize, size_t durationMS, OnFailedPolicy onFailedPolicy, size_t retryInterval, bool trimStream);
 void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
 
 KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* prefix, Arr(char*) eventTypes, Arr(int) keyTypes, bool readValue);
+int MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetReadRecordCallback)(KeysReaderTriggerArgs* krta, const char* name);
+#define RGM_KeysReaderTriggerArgsSetReadRecordCallback(krta, name) RedisGears_KeysReaderTriggerArgsSetReadRecordCallback(krta, #name)
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
 CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
@@ -371,6 +394,7 @@ typedef void (*FreePrivateData)(void* privateData);
 
 /******************************* Execution plan operations *******************************/
 
+FlatExecutionPlan* MODULE_API_FUNC(RedisGears_GetFep)(ExecutionPlan* ep);
 bool MODULE_API_FUNC(RedisGears_IsDone)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetRecordsLen)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetErrorsLen)(ExecutionPlan* ctx);
@@ -695,6 +719,12 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetLLApiVersion);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CreateType);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, BufferCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, BufferFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, BufferClear);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, BufferGet);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, BufferReaderInit);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, BufferWriterInit);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, BWWriteLong);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, BWWriteString);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, BWWriteBuffer);
@@ -734,16 +764,20 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderCtxFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderCtxCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderSetReadRecordCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderRegisterReadRecordCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderCtxFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsSetReadRecordCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsFree);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFep);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRecordsLen);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetErrorsLen);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRecord);
