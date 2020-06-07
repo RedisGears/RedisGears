@@ -8,7 +8,7 @@ else
 endif
 
 all:
-	gcc $(GCC_FLAGS) gears_jvm.c -shared -fpic -DREDISMODULE_EXPERIMENTAL_API \
+	gcc $(GCC_FLAGS) gears_jvm.c utils/adlist.c -shared -fpic -DREDISMODULE_EXPERIMENTAL_API \
 	-I$(OPEN_J9_BUILD_DIR)/jdk/include \
 	-I$(OPEN_J9_BUILD_DIR)/jdk/include/linux \
 	-L$(OPEN_J9_BUILD_DIR)/jdk/lib/server \

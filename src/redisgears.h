@@ -303,6 +303,7 @@ int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnRegisteredCallback)(char* 
  */
 FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* readerName);
 int MODULE_API_FUNC(RedisGears_SetDesc)(FlatExecutionPlan* ctx, const char* desc);
+void MODULE_API_FUNC(RedisGears_SetExecutionThreadPool)(FlatExecutionPlan* ctx, ExecutionThreadPool* pool);
 void MODULE_API_FUNC(RedisGears_SetMaxIdleTime)(FlatExecutionPlan* fep, long long executionMaxIdleTime);
 #define RGM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
 
@@ -433,7 +434,9 @@ bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears
 
 const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
 
+typedef void (*ExecutionPoolAddJob)(void* poolCtx, void(*)(void*), void* arg);
 ExecutionThreadPool* MODULE_API_FUNC(RedisGears_ExecutionThreadPoolCreate)(const char* name, size_t numOfThreads);
+ExecutionThreadPool* MODULE_API_FUNC(RedisGears_ExecutionThreadPoolDefine)(const char* name, void* poolCtx, ExecutionPoolAddJob addJob);
 WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataCreate)(ExecutionThreadPool* pool);
 void MODULE_API_FUNC(RedisGears_WorkerDataFree)(WorkerData* worker);
 WorkerData* MODULE_API_FUNC(RedisGears_WorkerDataGetShallowCopy)(WorkerData* worker);
@@ -742,6 +745,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterReducer);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CreateCtx);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetDesc);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetExecutionThreadPool);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetMaxIdleTime);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFlatExecutionPrivateDataType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionPrivateData);

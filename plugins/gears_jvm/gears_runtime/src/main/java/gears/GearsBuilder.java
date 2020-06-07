@@ -43,7 +43,7 @@ public class GearsBuilder{
 	
 	public static native void log(String msg, LogLevel level);
 	
-	public static native void jniTestHelper();
+	public static native void jniTestHelper(long ctx);
 	
 	public static void log(String msg) {
 		log(msg, LogLevel.NOTICE);
@@ -99,14 +99,10 @@ public class GearsBuilder{
 		return o;
 	}
 	
-	private static void jniTest(){
-		jniTestHelper();
+	private static void jniCallHelper(long ctx){
+		jniTestHelper(ctx);
 	}
-	
-	private static void jniTest1(){
 		
-	}
-	
 	@Override
 	protected void finalize() throws Throwable {
 		destroy();

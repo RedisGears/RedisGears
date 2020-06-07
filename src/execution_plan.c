@@ -171,6 +171,8 @@ typedef struct WorkerMsg{
 typedef struct ExecutionThreadPool{
     Gears_threadpool pool;
     char* name;
+    void* poolCtx;
+    ExecutionPoolAddJob addJob;
 }ExecutionThreadPool;
 
 static Gears_dict* poolDictionary;
@@ -187,7 +189,21 @@ ExecutionThreadPool* ExecutionPlan_CreateThreadPool(const char* name, size_t num
     ExecutionThreadPool* ret = RG_ALLOC(sizeof(*ret));
     ret->pool = Gears_thpool_init(numOfThreads);
     ret->name = RG_STRDUP(name);
+    ret->poolCtx = NULL;
+    ret->addJob = NULL;
     Gears_dictAdd(poolDictionary, ret->name, ret);
+    return ret;
+}
+
+ExecutionThreadPool* ExecutionPlan_DefineThreadPool(const char* name, void* poolCtx, ExecutionPoolAddJob addJob){
+    if(ExectuionPlan_GetThreadPool(name)){
+        RedisModule_Log(NULL, "warning", "Pool name already exists, %s", name);
+        return NULL;
+    }
+    ExecutionThreadPool* ret = RG_ALLOC(sizeof(*ret));
+    ret->name = RG_STRDUP(name);
+    ret->poolCtx = poolCtx;
+    ret->addJob = addJob;
     return ret;
 }
 
@@ -203,7 +219,12 @@ static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
     size_t lenBeforeMsg = Gears_listLength(wd->notifications);
 	Gears_listAddNodeTail(wd->notifications, msg);
 	if(lenBeforeMsg == 0){
-	    Gears_thpool_add_work(wd->pool->pool, ExecutionPlan_MessageThreadMain, wd);
+	    if(wd->pool->poolCtx){
+	        wd->pool->addJob(wd->pool->poolCtx, ExecutionPlan_MessageThreadMain, wd);
+	    }else{
+	        Gears_thpool_add_work(wd->pool->pool, ExecutionPlan_MessageThreadMain, wd);
+	    }
+
 	}
 	pthread_mutex_unlock(&wd->lock);
 }
@@ -1703,7 +1724,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
 
 static void ExecutionPlan_Run(ExecutionPlan* ep){
     if(!ep->assignWorker){
-        ep->assignWorker = ExecutionPlan_CreateWorker(NULL);
+        ep->assignWorker = ExecutionPlan_CreateWorker(ep->fep->executionThreadPool);
     }
     ExecutionPlan_RegisterForRun(ep);
 }
@@ -2271,7 +2292,12 @@ static void ExecutionPlan_MessageThreadMain(void *arg){
     Gears_listDelNode(wd->notifications, n);
     if(Gears_listLength(wd->notifications) > 0){
         // need to trigger another call (we are not doing it directly for fairness)
-        Gears_thpool_add_work(wd->pool->pool, ExecutionPlan_MessageThreadMain, wd);
+        if(wd->pool->poolCtx){
+            wd->pool->addJob(wd->pool->poolCtx, ExecutionPlan_MessageThreadMain, wd);
+        }else{
+            Gears_thpool_add_work(wd->pool->pool, ExecutionPlan_MessageThreadMain, wd);
+        }
+
     }
     pthread_mutex_unlock(&wd->lock);
 }
@@ -2663,6 +2689,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->executionPoolSize = 0;
     res->serializedFep = NULL;
     res->executionMaxIdleTime = GearsConfig_ExecutionMaxIdleTime();
+    res->executionThreadPool = NULL;
     res->onExecutionStartStep = (FlatBasicStep){
             .stepName = NULL,
             .arg = {
@@ -2696,6 +2723,10 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
     if (step->bStep.arg.type && step->bStep.arg.type->free){
         step->bStep.arg.type->free(step->bStep.arg.stepArg);
     }
+}
+
+void FlatExecutionPlan_SetThreadPool(FlatExecutionPlan* fep, ExecutionThreadPool* tp){
+    fep->executionThreadPool = tp;
 }
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
@@ -2875,7 +2906,7 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     while((curr = Gears_dictNext(iter))){
         FlatExecutionPlan* fep = Gears_dictGetVal(curr);
-        RedisModule_ReplyWithArray(ctx, 10);
+        RedisModule_ReplyWithArray(ctx, 12);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
         RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
@@ -2904,6 +2935,10 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
         }else{
             RedisModule_ReplyWithNull(ctx);
         }
+
+        RedisModule_ReplyWithStringBuffer(ctx, "ExecutionThreadPool", strlen("ExecutionThreadPool"));
+        const char* executionThreadPool = fep->executionThreadPool ?  fep->executionThreadPool->name : "DefaultPool";
+        RedisModule_ReplyWithStringBuffer(ctx, executionThreadPool, strlen(executionThreadPool));
         ++numElements;
     }
     Gears_dictReleaseIterator(iter);
