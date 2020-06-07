@@ -4192,17 +4192,16 @@ static void PythonReader_Free(void* ctx){
     RG_FREE(pyCtx);
 }
 
-static void PythonReader_Serialize(void* ctx, Gears_BufferWriter* bw){
+static int PythonReader_Serialize(ExecutionPlan* ep, void* ctx, Gears_BufferWriter* bw, char** err){
     PythonReaderCtx* pyCtx = ctx;
-    int res = RedisGearsPy_PyCallbackSerialize(NULL, pyCtx->callback, bw, NULL);
-    RedisModule_Assert(res == REDISMODULE_OK);
+    return RedisGearsPy_PyCallbackSerialize(RedisGears_GetFep(ep), pyCtx->callback, bw, err);
 }
 
-static void PythonReader_Deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
+static int PythonReader_Deserialize(ExecutionPlan* ep, void* ctx, Gears_BufferReader* br, char** err){
     PythonReaderCtx* pyCtx = ctx;
     // this serialized data reached from another shard (not rdb) so its save to assume the version is PY_OBJECT_TYPE_VERSION
-    pyCtx->callback = RedisGearsPy_PyCallbackDeserialize(fep, br, PY_OBJECT_TYPE_VERSION, NULL);
-    RedisModule_Assert(pyCtx->callback);
+    pyCtx->callback = RedisGearsPy_PyCallbackDeserialize(RedisGears_GetFep(ep), br, PY_OBJECT_TYPE_VERSION, err);
+    return pyCtx->callback? REDISMODULE_OK : REDISMODULE_ERR;
 }
 
 static Reader* PythonReader_Create(void* arg){

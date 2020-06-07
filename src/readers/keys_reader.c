@@ -9,6 +9,8 @@
 #include "lock_handler.h"
 #include "record.h"
 #include "config.h"
+#include "mgmt.h"
+#include "version.h"
 
 #include <assert.h>
 
@@ -41,11 +43,13 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx);
 typedef struct KeysReaderCtx{
     char* match;
     char* event;
-    long long cursorIndex;
+    RedisModuleScanCursor* cursor;
     bool isDone;
     Record** pendingRecords;
     bool readValue;
     bool noScan;
+    char* readRecordStr;
+    RedisGears_KeysReaderReadRecordCallback readRecord;
 }KeysReaderCtx;
 
 typedef struct KeysReaderTriggerArgs{
@@ -53,6 +57,8 @@ typedef struct KeysReaderTriggerArgs{
     char** eventTypes;
     int* keyTypes;
     bool readValue;
+    char* readRecordStr;
+    RedisGears_KeysReaderReadRecordCallback readRecord;
 }KeysReaderTriggerArgs;
 
 void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args){
@@ -62,6 +68,9 @@ void KeysReaderTriggerArgs_Free(KeysReaderTriggerArgs* args){
     }
     if(args->keyTypes){
         array_free(args->keyTypes);
+    }
+    if(args->readRecordStr){
+        RG_FREE(args->readRecordStr);
     }
     RG_FREE(args);
 }
@@ -148,13 +157,24 @@ KeysReaderCtx* KeysReaderCtx_Create(const char* match, bool readValue, const cha
     *krctx = (KeysReaderCtx){
         .match = match? RG_STRDUP(match) : NULL,
         .event = event ? RG_STRDUP(event) : NULL,
-        .cursorIndex = 0,
+        .cursor = RedisModule_ScanCursorCreate(),
         .isDone = false,
         .readValue = readValue,
         .noScan = noScan,
         .pendingRecords = array_new(Record*, PENDING_KEYS_INIT_CAP),
+        .readRecordStr = NULL,
+        .readRecord = NULL,
     };
     return krctx;
+}
+
+int KeysReaderCtx_SetReadRecordCallback(KeysReaderCtx* krCtx, const char* readRecordCallback){
+    krCtx->readRecord = KeysReaderReadRecordsMgmt_Get(readRecordCallback);
+    if(!krCtx->readRecord){
+        return REDISMODULE_ERR;
+    }
+    krCtx->readRecordStr = RG_STRDUP(readRecordCallback);
+    return REDISMODULE_OK;
 }
 
 void KeysReaderCtx_Free(void* ctx){
@@ -165,6 +185,10 @@ void KeysReaderCtx_Free(void* ctx){
     if(krctx->event){
         RG_FREE(krctx->event);
     }
+    if(krctx->readRecordStr){
+        RG_FREE(krctx->readRecordStr);
+    }
+    RedisModule_ScanCursorDestroy(krctx->cursor);
     for(size_t i = 0 ; i < array_len(krctx->pendingRecords) ; ++i){
         RedisGears_FreeRecord(krctx->pendingRecords[i]);
     }
@@ -172,7 +196,7 @@ void KeysReaderCtx_Free(void* ctx){
     RG_FREE(krctx);
 }
 
-static void RG_KeysReaderCtxSerialize(void* ctx, Gears_BufferWriter* bw){
+static int RG_KeysReaderCtxSerialize(ExecutionPlan* ep,void* ctx, Gears_BufferWriter* bw, char** err){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     RedisGears_BWWriteString(bw, krctx->match);
     if(krctx->event){
@@ -183,9 +207,17 @@ static void RG_KeysReaderCtxSerialize(void* ctx, Gears_BufferWriter* bw){
     }
     RedisGears_BWWriteLong(bw, krctx->readValue);
     RedisGears_BWWriteLong(bw, krctx->noScan);
+    if(krctx->readRecord){
+        // readRecord callback exists
+        RedisGears_BWWriteLong(bw, 1);
+        RedisGears_BWWriteString(bw, krctx->readRecordStr);
+    }else{
+        RedisGears_BWWriteLong(bw, 0);
+    }
+    return REDISMODULE_OK;
 }
 
-static void RG_KeysReaderCtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
+static int RG_KeysReaderCtxDeserialize(ExecutionPlan* ep, void* ctx, Gears_BufferReader* br, char** err){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     krctx->match = RG_STRDUP(RedisGears_BRReadString(br));
     if(RedisGears_BRReadLong(br)){
@@ -197,6 +229,14 @@ static void RG_KeysReaderCtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears
     }
     krctx->readValue = RedisGears_BRReadLong(br);
     krctx->noScan = RedisGears_BRReadLong(br);
+    krctx->readRecordStr = NULL;
+    krctx->readRecord = NULL;
+    if(RedisGears_BRReadLong(br)){
+        const char* readRecordCallbackName = RedisGears_BRReadString(br);
+        krctx->readRecord = KeysReaderReadRecordsMgmt_Get(readRecordCallbackName);
+        RedisModule_Assert(krctx->readRecord);
+    }
+    return REDISMODULE_OK;
 }
 
 static Record* GetStringValueRecord(RedisModuleKey* handler, RedisModuleCtx* ctx, const char* keyStr){
@@ -315,7 +355,14 @@ static Record* GetTypeRecord(RedisModuleKey* handler){
     return RedisGears_StringRecordCreate(RG_STRDUP(typeStr), strlen(typeStr));
 }
 
-static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx, RedisModuleString* key){
+static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx, RedisModuleString* key, RedisModuleKey* keyPtr){
+    if(readerCtx->readRecord){
+        Record* res = readerCtx->readRecord(rctx, key, keyPtr, readerCtx->readValue, readerCtx->event);
+        if(res){
+            return res;
+        }
+        // fall back to usual read
+    }
     size_t keyLen;
     const char* keyStr = RedisModule_StringPtrLen(key, &keyLen);
     Record* record = RedisGears_HashSetRecordCreate();
@@ -351,6 +398,12 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     return record;
 }
 
+static void KeysReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata){
+    KeysReaderCtx* readerCtx = privdata;
+    Record* record = KeysReader_ReadKey(ctx, readerCtx, keyname, key);
+    readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
+}
+
 static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
     if(array_len(readerCtx->pendingRecords) > 0){
         return array_pop(readerCtx->pendingRecords);
@@ -358,58 +411,78 @@ static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* reade
     if(readerCtx->isDone){
         return NULL;
     }
-    LockHandler_Acquire(rctx);
-    while(true){
-        RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "10000", "MATCH", readerCtx->match);
-        if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
-            if(reply) RedisModule_FreeCallReply(reply);
-            LockHandler_Release(rctx);
-            return NULL;
-        }
 
-        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-
-        RedisModule_Assert(RedisModule_CallReplyLength(reply) == 2);
-
-        RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
-
-        RedisModule_Assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
-
-        RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
-        RedisModule_StringToLongLong(cursorStr, &readerCtx->cursorIndex);
-        RedisModule_FreeString(rctx, cursorStr);
-
-        if(readerCtx->cursorIndex == 0){
-            readerCtx->isDone = true;
-        }
-
-        RedisModuleCallReply *keysReply = RedisModule_CallReplyArrayElement(reply, 1);
-        RedisModule_Assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
-        if(RedisModule_CallReplyLength(keysReply) < 1){
-            RedisModule_FreeCallReply(reply);
-            if(readerCtx->isDone){
-                LockHandler_Release(rctx);
-                return NULL;
-            }
-            continue;
-        }
-        for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
-            RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
-            RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
-            RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
-            Record* record = KeysReader_ReadKey(rctx, readerCtx, key);
-            if(record == NULL){
-                continue;
-            }
-            RedisModule_FreeString(rctx, key);
-            readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
-        }
-        RedisModule_FreeCallReply(reply);
+    while(!readerCtx->isDone){
+        LockHandler_Acquire(rctx);
+        readerCtx->isDone = !RedisModule_Scan(rctx, readerCtx->cursor, KeysReader_ScanCallback, readerCtx);
         LockHandler_Release(rctx);
-        return array_pop(readerCtx->pendingRecords);
+
+        if(array_len(readerCtx->pendingRecords) > 0){
+            return array_pop(readerCtx->pendingRecords);
+        }
     }
     return NULL;
 }
+
+//static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
+//    if(array_len(readerCtx->pendingRecords) > 0){
+//        return array_pop(readerCtx->pendingRecords);
+//    }
+//    if(readerCtx->isDone){
+//        return NULL;
+//    }
+//    LockHandler_Acquire(rctx);
+//    while(true){
+//        RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "10000", "MATCH", readerCtx->match);
+//        if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
+//            if(reply) RedisModule_FreeCallReply(reply);
+//            LockHandler_Release(rctx);
+//            return NULL;
+//        }
+//
+//        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+//
+//        RedisModule_Assert(RedisModule_CallReplyLength(reply) == 2);
+//
+//        RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
+//
+//        RedisModule_Assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
+//
+//        RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
+//        RedisModule_StringToLongLong(cursorStr, &readerCtx->cursorIndex);
+//        RedisModule_FreeString(rctx, cursorStr);
+//
+//        if(readerCtx->cursorIndex == 0){
+//            readerCtx->isDone = true;
+//        }
+//
+//        RedisModuleCallReply *keysReply = RedisModule_CallReplyArrayElement(reply, 1);
+//        RedisModule_Assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
+//        if(RedisModule_CallReplyLength(keysReply) < 1){
+//            RedisModule_FreeCallReply(reply);
+//            if(readerCtx->isDone){
+//                LockHandler_Release(rctx);
+//                return NULL;
+//            }
+//            continue;
+//        }
+//        for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
+//            RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
+//            RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
+//            RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
+//            Record* record = KeysReader_ReadKey(rctx, readerCtx, key);
+//            if(record == NULL){
+//                continue;
+//            }
+//            RedisModule_FreeString(rctx, key);
+//            readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
+//        }
+//        RedisModule_FreeCallReply(reply);
+//        LockHandler_Release(rctx);
+//        return array_pop(readerCtx->pendingRecords);
+//    }
+//    return NULL;
+//}
 
 static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
@@ -423,7 +496,7 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
         RedisModuleString* key = RedisModule_CreateString(NULL, readerCtx->match, strlen(readerCtx->match));
         RedisModuleCtx* rctx = RedisGears_GetRedisModuleCtx(ectx);
         LockHandler_Acquire(rctx);
-        record = KeysReader_ReadKey(rctx, readerCtx, key);
+        record = KeysReader_ReadKey(rctx, readerCtx, key, NULL);
         LockHandler_Release(rctx);
         RedisModule_FreeString(NULL, key);
         readerCtx->isDone = true;
@@ -560,6 +633,10 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
             privateData = KeysReaderRegisterData_GetShallowCopy(rData);
             char* err = NULL;
             KeysReaderCtx* arg = RedisGears_KeysReaderCtxCreate(keyCStr, rData->args->readValue, event, true);
+            if(rData->args->readRecord){
+                arg->readRecordStr = RG_STRDUP(rData->args->readRecordStr);
+                arg->readRecord = rData->args->readRecord;
+            }
             ExecutionPlan* ep = RedisGears_Run(rData->fep, rData->mode, arg, callback, privateData, rData->wd, &err);
             if(!ep){
                 ++rData->numAborted;
@@ -628,9 +705,16 @@ static void KeysReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
     }
 
     RedisGears_BWWriteLong(bw, args->readValue);
+
+    if(args->readRecord){
+        RedisGears_BWWriteLong(bw, 1);
+        RedisGears_BWWriteString(bw, args->readRecordStr);
+    }else{
+        RedisGears_BWWriteLong(bw, 0);
+    }
 }
 
-static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
+static void* KeysReader_DeserializeArgs(Gears_BufferReader* br, int encver){
     char* regex = RedisGears_BRReadString(br);
     char** eventTypes = NULL;
     int* keyTypes = NULL;
@@ -650,7 +734,18 @@ static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
     }
 
     bool readValue = RedisGears_BRReadLong(br);
-    return KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes, readValue);
+    KeysReaderTriggerArgs* ret = KeysReaderTriggerArgs_Create(regex, eventTypes, keyTypes, readValue);
+    if(encver >= VERSION_WITH_KEYS_READER_READ_CALLBACK){
+        if(RedisGears_BRReadLong(br)){
+            const char* readRecordCallback = RedisGears_BRReadString(br);
+            if(KeysReaderTriggerArgs_SetReadRecordCallback(ret, readRecordCallback) != REDISMODULE_OK){
+                RedisModule_Log(NULL, "warning", "Failed loading readRecordCallback");
+                KeysReaderTriggerArgs_Free(ret);
+                ret = NULL;
+            }
+        }
+    }
+    return ret;
 }
 
 static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPending){
@@ -800,8 +895,19 @@ KeysReaderTriggerArgs* KeysReaderTriggerArgs_Create(const char* prefix, char** e
         .eventTypes = eventTypes,
         .keyTypes = keyTypes,
         .readValue = readValue,
+        .readRecordStr = NULL,
+        .readRecord = NULL,
     };
     return ret;
+}
+
+int KeysReaderTriggerArgs_SetReadRecordCallback(KeysReaderTriggerArgs* krta, const char* readRecordCallback){
+    krta->readRecord = KeysReaderReadRecordsMgmt_Get(readRecordCallback);
+    if(!krta->readRecord){
+        return REDISMODULE_ERR;
+    }
+    krta->readRecordStr = RG_STRDUP(readRecordCallback);
+    return REDISMODULE_OK;
 }
 
 static Reader* KeysReader_Create(void* arg){
@@ -870,7 +976,7 @@ static void KeysReader_RdbSave(RedisModuleIO *rdb){
     GenericKeysReader_RdbSave(rdb, KeysReader_ShouldContinue);
 }
 
-static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
+static int KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
     while(RedisModule_LoadUnsigned(rdb)){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
@@ -887,21 +993,31 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, encver);
         if(!fep){
             RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
-            RedisModule_Assert(false);
+            RedisModule_Free(data);
+            return REDISMODULE_ERR;
         }
 
-        void* args = KeysReader_DeserializeArgs(&br);
+        void* args = KeysReader_DeserializeArgs(&br, encver);
         RedisModule_Free(data);
+
+        if(!args){
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
+            FlatExecutionPlan_Free(fep);
+            return REDISMODULE_ERR;
+        }
 
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = KeysReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
             RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
-            RedisModule_Assert(false);
+            KeysReaderTriggerArgs_Free(args);
+            FlatExecutionPlan_Free(fep);
+            return REDISMODULE_ERR;
         }
 
         FlatExecutionPlan_AddToRegisterDict(fep);
     }
+    return REDISMODULE_OK;
 }
 
 static void GenricKeysReader_Clear(bool (*shouldClear)(FlatExecutionPlan*)){
