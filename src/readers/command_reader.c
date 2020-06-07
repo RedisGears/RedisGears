@@ -47,7 +47,7 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numAborted = 0,
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
-            .wd = RedisGears_WorkerDataCreate(NULL),
+            .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
     };
     return ret;
 }

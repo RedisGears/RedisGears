@@ -273,7 +273,7 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .lastError = NULL,
         .localPendingExecutions = Gears_listCreate(),
         .localDoneExecutions = Gears_listCreate(),
-        .wd = RedisGears_WorkerDataCreate(NULL),
+        .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
     };
     return srctx;
 }
