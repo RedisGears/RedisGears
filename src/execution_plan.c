@@ -643,11 +643,29 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     size_t len;
-    int res = FlatExecutionPlan_Serialize(&bw, ep->fep, NULL);
-    RedisModule_Assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
+    char* err = NULL;
+    int res = FlatExecutionPlan_Serialize(&bw, ep->fep, &err);
+    if(res != REDISMODULE_OK){
+        if(!err){
+            err = RG_STRDUP("unknow");
+        }
+        RedisModule_Log(NULL, "warning", "Failed serializing execution plan, error='%s'", err);
+        RG_FREE(err);
+        Gears_BufferFree(buff);
+        return;
+    }
     RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
-    readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
+    res = readerStep->reader.r->serialize(ep, readerStep->reader.r->ctx, &bw, &err);
+    if(res != REDISMODULE_OK){
+        if(!err){
+            err = RG_STRDUP("unknow");
+        }
+        RedisModule_Log(NULL, "warning", "Failed serializing execution plan reader args, error='%s'", err);
+        RG_FREE(err);
+        Gears_BufferFree(buff);
+        return;
+    }
 
     // send the ThreadPool name
     if(ep->assignWorker->pool == epData.defaultPool){
@@ -1562,7 +1580,17 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     RedisModule_Assert(callbacks);
     RedisModule_Assert(callbacks->deserializeTriggerArgs);
 
-    void* args = callbacks->deserializeTriggerArgs(&br);
+    // we got it from another shard that must run the same version as we are
+    void* args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
+    if(!args){
+        if(!err){
+            err = RG_STRDUP("Unknown error");
+        }
+        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan args sent by another shard : %s, error='%s'", sender_id, err);
+        RG_FREE(err);
+        FlatExecutionPlan_Free(fep);
+        return;
+    }
     ExecutionMode mode = RedisGears_BRReadLong(&br);
 
 
@@ -1921,7 +1949,15 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     // Execution recieved from another shards is always async
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, ExecutionModeAsync, NULL, NULL, NULL);
     Reader* reader = ExecutionPlan_GetReader(ep);
-    reader->deserialize(fep, reader->ctx, &br);
+    if(reader->deserialize(ep, reader->ctx, &br, &err) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
+        if(err){
+            RG_FREE(err);
+        }
+        ExecutionPlan_Free(ep);
+        FlatExecutionPlan_Free(fep);
+        return;
+    }
     FlatExecutionPlan_Free(fep);
 
     ExecutionThreadPool* pool;

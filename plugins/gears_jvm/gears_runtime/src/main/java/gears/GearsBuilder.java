@@ -43,6 +43,8 @@ public class GearsBuilder{
 	
 	public static native void log(String msg, LogLevel level);
 	
+	public static native void jniTestHelper();
+	
 	public static void log(String msg) {
 		log(msg, LogLevel.NOTICE);
 	}
@@ -95,6 +97,14 @@ public class GearsBuilder{
 		in.addData(bytes);
 		Object o = in.readObject();
 		return o;
+	}
+	
+	private static void jniTest(){
+		jniTestHelper();
+	}
+	
+	private static void jniTest1(){
+		
 	}
 	
 	@Override

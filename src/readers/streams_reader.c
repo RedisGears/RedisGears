@@ -431,7 +431,7 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
     readerCtx->isDone = true;
 }
 
-static void StreamReader_CtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
+static int StreamReader_CtxDeserialize(ExecutionPlan* ep, void* ctx, Gears_BufferReader* br, char** err){
     StreamReaderCtx* readerCtx = ctx;
     readerCtx->streamKeyName = RG_STRDUP(RedisGears_BRReadString(br));
     if(RedisGears_BRReadLong(br)){
@@ -442,9 +442,10 @@ static void StreamReader_CtxDeserialize(FlatExecutionPlan* fep, void* ctx, Gears
     }
 
     readerCtx->batchSize = RedisGears_BRReadLong(br);
+    return REDISMODULE_OK;
 }
 
-static void StreamReader_CtxSerialize(void* ctx, Gears_BufferWriter* bw){
+static int StreamReader_CtxSerialize(ExecutionPlan* ep, void* ctx, Gears_BufferWriter* bw, char** err){
     StreamReaderCtx* readerCtx = ctx;
 
     RedisGears_BWWriteString(bw, readerCtx->streamKeyName);
@@ -464,6 +465,7 @@ static void StreamReader_CtxSerialize(void* ctx, Gears_BufferWriter* bw){
     }
 
     RedisGears_BWWriteLong(bw, readerCtx->batchSize);
+    return REDISMODULE_OK;
 }
 
 static void StreamReader_Free(void* ctx){
@@ -996,7 +998,7 @@ static void StreamReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, triggerArgs->trimStream);
 }
 
-static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
+static void* StreamReader_DeserializeArgs(Gears_BufferReader* br, int encver){
     char* stream = RedisGears_BRReadString(br);
     size_t batchSize = RedisGears_BRReadLong(br);
     size_t durationMS = RedisGears_BRReadLong(br);
@@ -1091,7 +1093,7 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
     Gears_BufferFree(buff);
 }
 
-static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
+static int StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
     while(RedisModule_LoadUnsigned(rdb)){
         size_t len;
         char* data = RedisModule_LoadStringBuffer(rdb, &len);
@@ -1109,20 +1111,30 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err, encver);
         if(!fep){
             RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
-            RedisModule_Assert(false);
+            RedisModule_Free(data);
+            return REDISMODULE_ERR;
         }
 
-        void* args = StreamReader_DeserializeArgs(&reader);
+        void* args = StreamReader_DeserializeArgs(&reader, encver);
         RedisModule_Free(data);
+        if(!args){
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
+            FlatExecutionPlan_Free(fep);
+            return REDISMODULE_ERR;
+        }
+
 
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = StreamReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
             RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
-            RedisModule_Assert(false);
+            StreamReaderTriggerArgs_Free(args);
+            FlatExecutionPlan_Free(fep);
+            return REDISMODULE_ERR;
         }
         FlatExecutionPlan_AddToRegisterDict(fep);
     }
+    return REDISMODULE_OK;
 }
 
 static void StreamReader_Clear(){
