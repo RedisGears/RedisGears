@@ -62,8 +62,9 @@ COPY --from=builder --chown=redis:redis /build/bin/linux-x64-release/python3_* /
 # This is needed in order to allow extraction of artifacts from platform-specific build
 # There is no use in removing this directory if $PACK !=1, because image side will only
 #   increase if `docker build --squash` if not used.
-COPY --from=builder /build/artifacts/VERSION /var/opt/redislabs/artifacts/VERSION
-COPY --from=builder /build/artifacts/snapshot/ /var/opt/redislabs/artifacts/snapshot
+# COPY --from=builder /build/artifacts/VERSION /var/opt/redislabs/artifacts/VERSION
+# COPY --from=builder /build/artifacts/snapshot/ /var/opt/redislabs/artifacts/snapshot
+COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts
 
 RUN	set -e ;\
 	cd /var/opt/redislabs/modules/rg/ ;\
