@@ -43,6 +43,7 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx);
 typedef struct KeysReaderCtx{
     char* match;
     char* event;
+    long long cursorIndex;
     RedisModuleScanCursor* cursor;
     bool isDone;
     Record** pendingRecords;
@@ -398,11 +399,31 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     return record;
 }
 
-static void KeysReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata){
-    KeysReaderCtx* readerCtx = privdata;
-    Record* record = KeysReader_ReadKey(ctx, readerCtx, keyname, key);
-    readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
-}
+//static void KeysReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata){
+//    KeysReaderCtx* readerCtx = privdata;
+//    Record* record = KeysReader_ReadKey(ctx, readerCtx, keyname, key);
+//    readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
+//}
+//
+//static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
+//    if(array_len(readerCtx->pendingRecords) > 0){
+//        return array_pop(readerCtx->pendingRecords);
+//    }
+//    if(readerCtx->isDone){
+//        return NULL;
+//    }
+//
+//    while(!readerCtx->isDone){
+//        LockHandler_Acquire(rctx);
+//        readerCtx->isDone = !RedisModule_Scan(rctx, readerCtx->cursor, KeysReader_ScanCallback, readerCtx);
+//        LockHandler_Release(rctx);
+//
+//        if(array_len(readerCtx->pendingRecords) > 0){
+//            return array_pop(readerCtx->pendingRecords);
+//        }
+//    }
+//    return NULL;
+//}
 
 static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
     if(array_len(readerCtx->pendingRecords) > 0){
@@ -411,78 +432,58 @@ static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* reade
     if(readerCtx->isDone){
         return NULL;
     }
-
-    while(!readerCtx->isDone){
-        LockHandler_Acquire(rctx);
-        readerCtx->isDone = !RedisModule_Scan(rctx, readerCtx->cursor, KeysReader_ScanCallback, readerCtx);
-        LockHandler_Release(rctx);
-
-        if(array_len(readerCtx->pendingRecords) > 0){
-            return array_pop(readerCtx->pendingRecords);
+    LockHandler_Acquire(rctx);
+    while(true){
+        RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "10000", "MATCH", readerCtx->match);
+        if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
+            if(reply) RedisModule_FreeCallReply(reply);
+            LockHandler_Release(rctx);
+            return NULL;
         }
+
+        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+
+        RedisModule_Assert(RedisModule_CallReplyLength(reply) == 2);
+
+        RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
+
+        RedisModule_Assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
+
+        RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
+        RedisModule_StringToLongLong(cursorStr, &readerCtx->cursorIndex);
+        RedisModule_FreeString(rctx, cursorStr);
+
+        if(readerCtx->cursorIndex == 0){
+            readerCtx->isDone = true;
+        }
+
+        RedisModuleCallReply *keysReply = RedisModule_CallReplyArrayElement(reply, 1);
+        RedisModule_Assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
+        if(RedisModule_CallReplyLength(keysReply) < 1){
+            RedisModule_FreeCallReply(reply);
+            if(readerCtx->isDone){
+                LockHandler_Release(rctx);
+                return NULL;
+            }
+            continue;
+        }
+        for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
+            RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
+            RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
+            RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
+            Record* record = KeysReader_ReadKey(rctx, readerCtx, key, NULL);
+            if(record == NULL){
+                continue;
+            }
+            RedisModule_FreeString(rctx, key);
+            readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
+        }
+        RedisModule_FreeCallReply(reply);
+        LockHandler_Release(rctx);
+        return array_pop(readerCtx->pendingRecords);
     }
     return NULL;
 }
-
-//static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
-//    if(array_len(readerCtx->pendingRecords) > 0){
-//        return array_pop(readerCtx->pendingRecords);
-//    }
-//    if(readerCtx->isDone){
-//        return NULL;
-//    }
-//    LockHandler_Acquire(rctx);
-//    while(true){
-//        RedisModuleCallReply *reply = RedisModule_Call(rctx, "SCAN", "lcccc", readerCtx->cursorIndex, "COUNT", "10000", "MATCH", readerCtx->match);
-//        if (reply == NULL || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR) {
-//            if(reply) RedisModule_FreeCallReply(reply);
-//            LockHandler_Release(rctx);
-//            return NULL;
-//        }
-//
-//        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-//
-//        RedisModule_Assert(RedisModule_CallReplyLength(reply) == 2);
-//
-//        RedisModuleCallReply *cursorReply = RedisModule_CallReplyArrayElement(reply, 0);
-//
-//        RedisModule_Assert(RedisModule_CallReplyType(cursorReply) == REDISMODULE_REPLY_STRING);
-//
-//        RedisModuleString *cursorStr = RedisModule_CreateStringFromCallReply(cursorReply);
-//        RedisModule_StringToLongLong(cursorStr, &readerCtx->cursorIndex);
-//        RedisModule_FreeString(rctx, cursorStr);
-//
-//        if(readerCtx->cursorIndex == 0){
-//            readerCtx->isDone = true;
-//        }
-//
-//        RedisModuleCallReply *keysReply = RedisModule_CallReplyArrayElement(reply, 1);
-//        RedisModule_Assert(RedisModule_CallReplyType(keysReply) == REDISMODULE_REPLY_ARRAY);
-//        if(RedisModule_CallReplyLength(keysReply) < 1){
-//            RedisModule_FreeCallReply(reply);
-//            if(readerCtx->isDone){
-//                LockHandler_Release(rctx);
-//                return NULL;
-//            }
-//            continue;
-//        }
-//        for(int i = 0 ; i < RedisModule_CallReplyLength(keysReply) ; ++i){
-//            RedisModuleCallReply *keyReply = RedisModule_CallReplyArrayElement(keysReply, i);
-//            RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
-//            RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
-//            Record* record = KeysReader_ReadKey(rctx, readerCtx, key);
-//            if(record == NULL){
-//                continue;
-//            }
-//            RedisModule_FreeString(rctx, key);
-//            readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
-//        }
-//        RedisModule_FreeCallReply(reply);
-//        LockHandler_Release(rctx);
-//        return array_pop(readerCtx->pendingRecords);
-//    }
-//    return NULL;
-//}
 
 static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
@@ -962,10 +963,6 @@ static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(Fl
     Gears_listReleaseIterator(iter);
 
     Gears_BufferFree(buf);
-}
-
-static bool KeysOnlyReader_ShouldContinue(FlatExecutionPlan* fep){
-    return strcmp(fep->reader->reader, "KeysOnlyReader") == 0;
 }
 
 static bool KeysReader_ShouldContinue(FlatExecutionPlan* fep){
