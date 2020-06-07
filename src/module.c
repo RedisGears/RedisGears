@@ -154,6 +154,10 @@ static int RG_SetDesc(FlatExecutionPlan* fep, const char* desc){
     return 1;
 }
 
+static void RG_SetExecutionThreadPool(FlatExecutionPlan* ctx, ExecutionThreadPool* pool){
+    FlatExecutionPlan_SetThreadPool(ctx, pool);
+}
+
 static void RG_SetMaxIdleTime(FlatExecutionPlan* fep, long long executionMaxIdleTime){
     fep->executionMaxIdleTime = executionMaxIdleTime;
 }
@@ -470,6 +474,10 @@ static ExecutionThreadPool* RG_ExecutionThreadPoolCreate(const char* name, size_
     return ExecutionPlan_CreateThreadPool(name, numOfThreads);
 }
 
+static ExecutionThreadPool* RG_ExecutionThreadPoolDefine(const char* name, void* poolCtx, ExecutionPoolAddJob addJob){
+    return ExecutionPlan_DefineThreadPool(name, poolCtx, addJob);
+}
+
 static WorkerData* RG_WorkerDataCreate(ExecutionThreadPool* pool){
     return ExecutionPlan_CreateWorker(pool);
 }
@@ -758,6 +766,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterReducer, ctx);
     REGISTER_API(CreateCtx, ctx);
     REGISTER_API(SetDesc, ctx);
+    REGISTER_API(SetExecutionThreadPool, ctx);
     REGISTER_API(SetMaxIdleTime, ctx);
     REGISTER_API(RegisterFlatExecutionPrivateDataType, ctx);
     REGISTER_API(SetFlatExecutionPrivateData, ctx);
@@ -852,6 +861,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(WorkerDataCreate, ctx);
     REGISTER_API(ExecutionThreadPoolCreate, ctx);
+    REGISTER_API(ExecutionThreadPoolDefine, ctx);
     REGISTER_API(WorkerDataFree, ctx);
     REGISTER_API(WorkerDataGetShallowCopy, ctx);
     REGISTER_API(GetCompiledOs, ctx);

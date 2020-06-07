@@ -3,6 +3,7 @@
 #include "redismodule.h"
 #include "redisgears.h"
 #include "version.h"
+#include "utils/adlist.h"
 
 #include <pthread.h>
 
@@ -34,7 +35,7 @@ static jobject JVM_TurnToGlobal(JNIEnv *env, jobject local);
 static char* JVM_GetException(JNIEnv *env);
 static JVM_ThreadLocalData* JVM_GetThreadLocalData();
 static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, size_t len, char** err);
-static jstring JVM_JNITestHelper(JNIEnv *env, jobject objectOrClass, jstring key);
+static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong ctx);
 
 static char* shardUniqueId = NULL;
 static char* workingDir = NULL;
@@ -145,7 +146,7 @@ JavaVM *jvm = NULL;       /* denotes a Java VM */
 jfieldID ptrFieldId = NULL;
 
 jclass gearsObjectCls = NULL;
-
+jclass gearsStringCls = NULL;
 jclass gearsClassCls = NULL;
 jmethodID gearsClassGetNameMethodId = NULL;
 
@@ -156,8 +157,7 @@ jclass gearsBuilderCls = NULL;
 jmethodID gearsBuilderSerializeObjectMethodId = NULL;
 jmethodID gearsBuilderDeserializeObjectMethodId = NULL;
 jmethodID gearsBuilderOnUnpausedMethodId = NULL;
-jmethodID gearsJNITestMethodId = NULL;
-jmethodID gearsJNITestMethodId1 = NULL;
+jmethodID gearsJNICallHelperMethodId = NULL;
 
 jclass gearsObjectInputStreamCls = NULL;
 jmethodID gearsObjectInputStreamGetMethodId = NULL;
@@ -230,6 +230,9 @@ jfieldID streamReaderDurationField = NULL;
 jfieldID streamReaderFailurePolicyField = NULL;
 jfieldID streamReaderRetryIntervalField = NULL;
 jfieldID streamReaderTrimStreamField = NULL;
+
+jclass gearsCommandReaderCls = NULL;
+jfieldID commandReaderTriggerField = NULL;
 
 jclass gearsStreamReaderFailedPolicyCls = NULL;
 jclass gearsStreamReaderFailedPolicyContinueCls = NULL;
@@ -335,8 +338,8 @@ JNINativeMethod nativeMethod[] = {
         },
         {
             .name = "jniTestHelper",
-            .signature = "()V",
-            .fnPtr = JVM_JNITestHelper,
+            .signature = "(J)V",
+            .fnPtr = JVM_ThreadPoolWorkerHelper,
         },
     };
 
@@ -632,6 +635,8 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             // register native functions
             JVM_TryFindClass(jvm_tld->env, "java/lang/Object", gearsObjectCls);
 
+            JVM_TryFindClass(jvm_tld->env, "java/lang/String", gearsStringCls);
+
             JVM_TryFindClass(jvm_tld->env, "java/lang/Class", gearsClassCls);
             JVM_TryFindMethod(jvm_tld->env, gearsClassCls, "getName", "()Ljava/lang/String;", gearsClassGetNameMethodId);
 
@@ -666,8 +671,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "serializeObject", "(Ljava/lang/Object;Lgears/GearsObjectOutputStream;)[B", gearsBuilderSerializeObjectMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "deserializeObject", "([BLgears/GearsObjectInputStream;)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "onUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniTest", "()V", gearsJNITestMethodId);
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniTest1", "()V", gearsJNITestMethodId1);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniCallHelper", "(J)V", gearsJNICallHelperMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/MapOperation", gearsMappCls);
             JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "map", "(Ljava/io/Serializable;)Ljava/io/Serializable;", gearsMapMethodId);
@@ -724,6 +728,9 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(){
             JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "failurePolicy", "Lgears/readers/StreamReader$FailurePolicy;", streamReaderFailurePolicyField);
             JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "failureRertyInterval", "I", streamReaderRetryIntervalField);
             JVM_TryFindField(jvm_tld->env, gearsStreamReaderCls, "trimStream", "Z", streamReaderTrimStreamField);
+
+            JVM_TryFindClass(jvm_tld->env, "gears/readers/CommandReader", gearsCommandReaderCls);
+            JVM_TryFindField(jvm_tld->env, gearsCommandReaderCls, "trigger", "Ljava/lang/String;", commandReaderTriggerField);
 
             JVM_TryFindClass(jvm_tld->env, "gears/readers/StreamReader$FailurePolicy", gearsStreamReaderFailedPolicyCls);
             jfieldID temp = (*jvm_tld->env)->GetStaticFieldID(jvm_tld->env, gearsStreamReaderFailedPolicyCls, "CONTINUE", "Lgears/readers/StreamReader$FailurePolicy;");
@@ -940,11 +947,73 @@ static jobject JVM_TurnToGlobal(JNIEnv *env, jobject local){
     return global;
 }
 
+typedef struct JVM_ThreadPoolJob{
+    void (*callback)(void*);
+    void* arg;
+}JVM_ThreadPoolJob;
+
+typedef struct JVM_ThreadPool{
+    pthread_cond_t cond;
+    pthread_mutex_t lock;
+    JVM_list* jobs;
+}JVM_ThreadPool;
+
+ExecutionThreadPool* jvmExecutionPool = NULL;
+
+static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong ctx){
+    // here we are inside the jvm, we never get back.
+    JVM_ThreadPool* pool = (void*)ctx;
+    while(true){
+        pthread_mutex_lock(&pool->lock);
+        while(JVM_listLength(pool->jobs) == 0){
+            pthread_cond_wait(&pool->cond, &pool->lock);
+        }
+        JVM_listNode* n = JVM_listFirst(pool->jobs);
+        JVM_ThreadPoolJob* job = JVM_listNodeValue(n);
+        JVM_listDelNode(pool->jobs, n);
+        pthread_mutex_unlock(&pool->lock);
+        job->callback(job->arg);
+    }
+}
+
+static void* JVM_ThreadPoolWorker(void* poolCtx){
+    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData();
+    JNIEnv *env = jvm_ltd->env;
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNICallHelperMethodId, (jlong)poolCtx);
+    RedisModule_Assert(false); // this one never returns
+    return NULL;
+}
+
+static JVM_ThreadPool* JVM_ThreadPoolCreate(size_t numOfThreads){
+    JVM_ThreadPool* ret = JVM_ALLOC(sizeof(*ret));
+    pthread_cond_init(&ret->cond, NULL);
+    pthread_mutex_init(&ret->lock, NULL);
+    ret->jobs = JVM_listCreate();
+    for(size_t i = 0 ; i < numOfThreads ; ++i){
+        pthread_t messagesThread;
+        pthread_create(&messagesThread, NULL, JVM_ThreadPoolWorker, ret);
+        pthread_detach(messagesThread);
+    }
+    return ret;
+}
+
+static void JVM_ThreadPoolAddJob(void* poolCtx, void (*callback)(void*), void* arg){
+    JVM_ThreadPool* pool = poolCtx;
+    JVM_ThreadPoolJob* job = JVM_ALLOC(sizeof(*job));
+    job->callback = callback;
+    job->arg = arg;
+    pthread_mutex_lock(&pool->lock);
+    JVM_listAddNodeTail(pool->jobs, job);
+    pthread_cond_signal(&pool->cond);
+    pthread_mutex_unlock(&pool->lock);
+}
+
 static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
     const char* reader = (*env)->GetStringUTFChars(env, strReader, JNI_FALSE);
     FlatExecutionPlan* fep = RedisGears_CreateCtx((char*)reader);
     RGM_SetFlatExecutionOnStartCallback(fep, JVM_OnStart, NULL);
     RGM_SetFlatExecutionOnUnpausedCallback(fep, JVM_OnUnpaused, NULL);
+    RedisGears_SetExecutionThreadPool(fep, jvmExecutionPool);
 
     JVM_ThreadLocalData* tld = JVM_GetThreadLocalData();
     RedisGears_SetFlatExecutionPrivateData(fep, JVM_SESSION_TYPE_NAME, JVM_SessionDup(tld->currSession));
@@ -1215,6 +1284,29 @@ static int JVM_RegisterStrKeyTypeToInt(const char* keyType){
     return -1;
 }
 
+void* JVM_CreateRegisterCommandReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
+    jclass readerCls = (*env)->GetObjectClass(env, reader);
+    if(!(*env)->IsSameObject(env, readerCls, gearsCommandReaderCls)){
+        (*env)->ThrowNew(env, exceptionCls, "Reader was changed!!!! Stop hacking!!!!");
+        return NULL;
+    }
+
+    jobject trigger = (*env)->GetObjectField(env, reader, commandReaderTriggerField);
+
+    if(!trigger){
+        (*env)->ThrowNew(env, exceptionCls, "command reader trigger must be set");
+        return NULL;
+    }
+
+    const char* triggerStr = (*env)->GetStringUTFChars(env, trigger, JNI_FALSE);
+
+    CommandReaderTriggerArgs* triggerArgs = RedisGears_CommandReaderTriggerArgsCreate(triggerStr);
+
+    (*env)->ReleaseStringUTFChars(env, trigger, triggerStr);
+
+    return triggerArgs;
+}
+
 void* JVM_CreateRegisterStreamReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject reader){
     jclass readerCls = (*env)->GetObjectClass(env, reader);
     if(!(*env)->IsSameObject(env, readerCls, gearsStreamReaderCls)){
@@ -1333,8 +1425,10 @@ void* JVM_CreateRegisterReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject 
         return JVM_CreateRegisterKeysReaderArgs(env, fep, reader);
     }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
         return JVM_CreateRegisterStreamReaderArgs(env, fep, reader);
+    }else if(strcmp(RedisGears_GetReader(fep), "CommandReader") == 0){
+        return JVM_CreateRegisterCommandReaderArgs(env, fep, reader);
     }
-    (*env)->ThrowNew(env, exceptionCls, "Given reader does not exists");
+    (*env)->ThrowNew(env, exceptionCls, "Given reader does not exists or does not support register");
     return NULL;
 }
 
@@ -1346,7 +1440,7 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
     if(!krCtx){
         return;
     }
-    ExecutionPlan* ep = RGM_Run(fep, ExecutionModeAsync, krCtx, NULL, NULL, &err);
+    ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, krCtx, NULL, NULL, NULL, &err);
     if(!ep){
         if(!err){
             err = JVM_STRDUP("Error occured when tried to create execution");
@@ -1527,25 +1621,6 @@ static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, j
     RGM_Register(fep, mode, triggerCtx, &err);
 }
 
-static jstring JVM_JNITestHelper(JNIEnv *env, jobject objectOrClass, jstring key){
-    for(long i = 0 ; i < 100000000 ; ++i){
-        (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNITestMethodId1);
-    }
-}
-
-int JVM_JNITest(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData();
-    JNIEnv *env = jvm_ltd->env;
-    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNITestMethodId);
-
-//    for(long i = 0 ; i < 100000000 ; ++i){
-//        (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNITestMethodId1);
-//    }
-
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
-    return REDISMODULE_OK;
-}
-
 int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc != 3){
         return RedisModule_WrongArity(ctx);
@@ -1655,6 +1730,13 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
     }else if(RedisGears_RecordGetType(data) == JVMRecordType){
         JVMRecord* jvmVal = (JVMRecord*)data;
         obj = jvmVal->obj;
+    }else if(RedisGears_RecordGetType(data) == RedisGears_GetListRecordType()){
+        obj = (*env)->NewObjectArray(env, RedisGears_ListRecordLen(data), gearsObjectCls, NULL);
+        for(size_t i = 0 ; i < RedisGears_ListRecordLen(data) ; ++i){
+            Record* temp = RedisGears_ListRecordGet(data, i);
+            jobject jvmTemp = JVM_ToJavaRecordMapperInternal(rctx, temp, arg);
+            (*env)->SetObjectArrayElement(env, obj, i, jvmTemp);
+        }
     }else{
         RedisModule_Assert(false);
     }
@@ -2210,6 +2292,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     RGM_RegisterFilter(JVM_Filter, jvmObjectType);
     RGM_RegisterAccumulator(JVM_Accumulate, jvmObjectType);
 
+#define NUM_OF_THREADS 3
+#define JVM_THREAD_POOL_NAME "JVMPool"
+    JVM_ThreadPool* pool = JVM_ThreadPoolCreate(NUM_OF_THREADS);
+    jvmExecutionPool = RedisGears_ExecutionThreadPoolDefine("JVMPool", pool, JVM_ThreadPoolAddJob);
+
     JVM_GetShardUniqueId();
     JVM_GetWorkingDir();
     JVM_asprintf(&jarsDir, "%s/%s-jars", workingDir, shardUniqueId);
@@ -2227,11 +2314,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
 
     if (RedisModule_CreateCommand(ctx, "rg.jexecute", JVM_Run, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.jexecute");
-        return REDISMODULE_ERR;
-    }
-
-    if (RedisModule_CreateCommand(ctx, "rg.jnitest", JVM_JNITest, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.jnitest");
         return REDISMODULE_ERR;
     }
 
