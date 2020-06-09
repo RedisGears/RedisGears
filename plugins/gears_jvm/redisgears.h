@@ -303,9 +303,9 @@ int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnRegisteredCallback)(char* 
  */
 FlatExecutionPlan* MODULE_API_FUNC(RedisGears_CreateCtx)(char* readerName, char** err);
 int MODULE_API_FUNC(RedisGears_SetDesc)(FlatExecutionPlan* ctx, const char* desc);
-int MODULE_API_FUNC(RedisGears_SetExecutionThreadPool)(FlatExecutionPlan* ctx, ExecutionThreadPool* pool);
+void MODULE_API_FUNC(RedisGears_SetExecutionThreadPool)(FlatExecutionPlan* ctx, ExecutionThreadPool* pool);
 void MODULE_API_FUNC(RedisGears_SetMaxIdleTime)(FlatExecutionPlan* fep, long long executionMaxIdleTime);
-#define RGM_CreateCtx(readerName) RedisGears_CreateCtx(#readerName)
+#define RGM_CreateCtx(readerName, err) RedisGears_CreateCtx(#readerName, err)
 
 /**
  * Private data will be available on the following location:
@@ -448,6 +448,7 @@ void MODULE_API_FUNC(RedisGears_ReturnResultsAndErrors)(ExecutionPlan* ep, Redis
 
 void MODULE_API_FUNC(RedisGears_GetShardUUID)(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 
+void MODULE_API_FUNC(RedisGears_LockHanlderRegister)();
 void MODULE_API_FUNC(RedisGears_LockHanlderAcquire)(RedisModuleCtx* ctx);
 void MODULE_API_FUNC(RedisGears_LockHanlderRelease)(RedisModuleCtx* ctx);
 int MODULE_API_FUNC(RedisGears_ExecuteCommand)(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, ...);
@@ -847,6 +848,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ReturnResultsAndErrors);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetShardUUID);
 
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, LockHanlderRegister);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, LockHanlderAcquire);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, LockHanlderRelease);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecuteCommand);
