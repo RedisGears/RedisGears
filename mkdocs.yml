@@ -36,6 +36,7 @@ nav:
     - 'Configuration': 'configuration.md'
   - 'Examples': 'examples.md'
   - 'Clients': 'clients.md'
+  - 'Downloads': 'downloads.md'
   - 'Design':
     - 'Isolation Technics': 'isolation_technics.md'
   - 'Glossary': 'glossary.md'
