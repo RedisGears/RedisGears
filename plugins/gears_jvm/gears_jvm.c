@@ -989,6 +989,10 @@ static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong
 }
 
 static void* JVM_ThreadPoolWorker(void* poolCtx){
+    // register the gears lock hanlder so gears can enforce
+    // api usage that can only be used when redis GIL is taken.
+    RedisGears_LockHanlderRegister();
+
     // we do not have session here and we just need the jvm env arg
     JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL);
     JNIEnv *env = jvm_ltd->env;
