@@ -1023,7 +1023,17 @@ static void JVM_ThreadPoolAddJob(void* poolCtx, void (*callback)(void*), void* a
 
 static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
     const char* reader = (*env)->GetStringUTFChars(env, strReader, JNI_FALSE);
-    FlatExecutionPlan* fep = RedisGears_CreateCtx((char*)reader);
+    char* err = NULL;
+    FlatExecutionPlan* fep = RedisGears_CreateCtx((char*)reader, &err);
+    (*env)->ReleaseStringUTFChars(env, strReader, reader);
+    if(!fep){
+        if(!err){
+            err = JVM_STRDUP("Failed create Gears Builder");
+        }
+        (*env)->ThrowNew(env, exceptionCls, err);
+        JVM_FREE(err);
+        return;
+    }
     RGM_SetFlatExecutionOnStartCallback(fep, JVM_OnStart, NULL);
     RGM_SetFlatExecutionOnUnpausedCallback(fep, JVM_OnUnpaused, NULL);
     RedisGears_SetExecutionThreadPool(fep, jvmExecutionPool);

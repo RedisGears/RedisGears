@@ -16,6 +16,7 @@
 pthread_key_t _lockKey;
 
 typedef struct LockHandlerCtx{
+    bool isMainThread;
     int lockCounter;
 }LockHandlerCtx;
 
@@ -26,8 +27,14 @@ int LockHandler_Initialize(){
     }
     LockHandlerCtx* lh = RG_ALLOC(sizeof(*lh));
     lh->lockCounter = 1; // init is called from the main thread, the lock is always acquired
+    lh->isMainThread = true;
     pthread_setspecific(_lockKey, lh);
     return REDISMODULE_OK;
+}
+
+bool LockHandler_IsMainThread(){
+    LockHandlerCtx* lh = pthread_getspecific(_lockKey);
+    return lh ? lh->isMainThread : false;
 }
 
 void LockHandler_Acquire(RedisModuleCtx* ctx){
@@ -35,6 +42,7 @@ void LockHandler_Acquire(RedisModuleCtx* ctx){
     if(!lh){
         lh = RG_ALLOC(sizeof(*lh));
         lh->lockCounter = 0;
+        lh->isMainThread = false;
         pthread_setspecific(_lockKey, lh);
     }
     if(lh->lockCounter == 0){
