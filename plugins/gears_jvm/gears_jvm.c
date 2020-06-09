@@ -8,6 +8,7 @@
 #include <pthread.h>
 
 #define JOBJECT_TYPE_VERSION 1
+#define JSESSION_TYPE_VERSION 1
 
 #define JVM_SESSION_TYPE_NAME "JVMSessionType"
 
@@ -411,6 +412,10 @@ static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferW
 }
 
 static void* JVM_SessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+    if(version > JSESSION_TYPE_VERSION){
+        *err = JVM_STRDUP("Missmatch jvm session version, update to newest JVM module");
+        return NULL;
+    }
     size_t idLen;
     const char* id = RedisGears_BRReadBuffer(br, &idLen);
     RedisModule_Assert(idLen == ID_LEN);
@@ -2305,7 +2310,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
                                                    JVM_ObjectToString);
 
     jvmSessionType = RedisGears_CreateType(JVM_SESSION_TYPE_NAME,
-                                           JOBJECT_TYPE_VERSION,
+                                           JSESSION_TYPE_VERSION,
                                            JVM_SessionFree,
                                            JVM_SessionDup,
                                            JVM_SessionSerialize,
