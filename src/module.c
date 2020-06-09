@@ -141,8 +141,8 @@ static int RG_SetFlatExecutionOnRegisteredCallback(FlatExecutionPlan* fep, const
 }
 
 static FlatExecutionPlan* RG_CreateCtx(char* readerName, char** err){
-    if(!LockHandler_IsMainThread()){
-        *err = RG_STRDUP("Can only create Gears Builder (Flat Execution Plan) on the main thread");
+    if(!LockHandler_IsLockTaken()){
+        *err = RG_STRDUP("Can only create Gears Builder when Redis GIL is taken");
         return NULL;
     }
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
@@ -231,16 +231,16 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
 }
 
 static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
-    if(!LockHandler_IsMainThread()){
-        *err = RG_STRDUP("Can only register execution on the main thread");
-        return REDISMODULE_ERR;
+    if(!LockHandler_IsLockTaken()){
+        *err = RG_STRDUP("Can only register execution when redis GIL is taken");
+        return 0;
     }
     return FlatExecutionPlan_Register(fep, mode, key, err);
 }
 
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
-    if(!LockHandler_IsMainThread()){
-        *err = RG_STRDUP("Can only run execution on the main thread");
+    if(!LockHandler_IsLockTaken()){
+        *err = RG_STRDUP("Can only run execution when redis GIL is taken");
         return NULL;
     }
     return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
@@ -507,6 +507,10 @@ static void RG_ReturnResultsAndErrors(ExecutionPlan* ep, RedisModuleCtx *ctx){
 
 static void RG_GetShardUUID(char* finalId, char* idBuf, char* idStrBuf, long long* lastID){
     SetId(finalId, idBuf, idStrBuf, lastID);
+}
+
+static void RG_LockHanlderRegister(){
+    LockHandler_Register();
 }
 
 static void RG_LockHanlderAcquire(RedisModuleCtx* ctx){
@@ -880,6 +884,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(ReturnResultsAndErrors, ctx);
 
     REGISTER_API(GetShardUUID, ctx);
+    REGISTER_API(LockHanlderRegister, ctx);
     REGISTER_API(LockHanlderAcquire, ctx);
     REGISTER_API(LockHanlderRelease, ctx);
     REGISTER_API(ExecuteCommand, ctx);
