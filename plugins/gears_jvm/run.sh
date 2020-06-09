@@ -13,6 +13,6 @@ JVM_OPTIONS+=" -Xmx2048m"
 
 echo $JVM_OPTIONS
 
-#LD_LIBRARY_PATH=../../deps/openj9-openjdk-jdk14/build/linux-x86_64-server-release/jdk/lib/server/ redis-server --loadmodule ../../redisgears.so PluginsDirectory ./ JvmOptions "$JVM_OPTIONS"
-LD_LIBRARY_PATH=/usr/lib/jvm/java-11-openjdk-amd64/lib/server/ redis-server --loadmodule ../../redisgears.so PluginsDirectory ./ JvmOptions "$JVM_OPTIONS"
+LD_LIBRARY_PATH=/home/meir/work/RedisGears/deps/openj9-openjdk-jdk14/build/linux-x86_64-server-release/jdk/lib/server/ redis-server --loadmodule ../../redisgears.so PluginsDirectory ./ JvmOptions "$JVM_OPTIONS"
+#LD_LIBRARY_PATH=/usr/lib/jvm/java-11-openjdk-amd64/lib/server/ redis-server --loadmodule ../../redisgears.so PluginsDirectory ./ JvmOptions "$JVM_OPTIONS"
 #LD_LIBRARY_PATH=../../deps/openj9-openjdk-jdk14/build/linux-x86_64-server-release/vm/ redis-server --loadmodule ../../redisgears.so PluginsDirectory ./ JvmOptions "$JVM_OPTIONS"
