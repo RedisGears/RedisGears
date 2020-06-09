@@ -84,7 +84,7 @@ static array_t array_new_sz(uint32_t elem_sz, uint32_t cap, uint32_t len) {
     char buf[(capacity) * sizeof(T)];               \
   } varName ## _struct;                             \
   varName ## _struct.on_stack = true;               \
-  varName ## _struct.len = 0;               \
+  varName ## _struct.len = 0;                       \
   varName ## _struct.cap = (capacity);              \
   varName ## _struct.elem_sz = sizeof(T);           \
   T* varName = varName ## _struct.buf;
@@ -94,11 +94,11 @@ static array_t array_new_sz(uint32_t elem_sz, uint32_t cap, uint32_t len) {
  *  */
 #define array_newlen(T, len) (array_new_sz(sizeof(T), len, len))
 
-static inline array_t persist(array_t arr){
+static inline array_t array_persist(array_t arr){
   array_hdr_t *hdr = array_hdr(arr);
   if(!hdr->on_stack) return arr;
-  array_t tmp = array_new_sz(hdr->elem_sz, hdr->cap, hdr->len);
-  memcpy(tmp, arr, hdr->cap);
+  array_t tmp = array_new_sz(hdr->elem_sz, hdr->len, hdr->len);
+  memcpy(tmp, arr, hdr->elem_sz * hdr->len);
   return tmp;
 }
 
@@ -110,7 +110,7 @@ static inline array_t array_ensure_cap(array_t arr, uint32_t cap) {
       if(cap <= hdr->cap) return (array_t)hdr->buf;
       // Move to heap.
       array_t tmp = array_new_sz(hdr->elem_sz, MAX(hdr->cap * 2, cap), hdr->len);
-      memcpy(tmp, arr, hdr->cap);
+      memcpy(tmp, arr, hdr->elem_sz * hdr->len);
       return tmp;
   }
   if (cap > hdr->cap) {
