@@ -231,11 +231,18 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
 }
 
 static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
-
+    if(!LockHandler_IsMainThread()){
+        *err = RG_STRDUP("Can only register execution on the main thread");
+        return REDISMODULE_ERR;
+    }
     return FlatExecutionPlan_Register(fep, mode, key, err);
 }
 
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
+    if(!LockHandler_IsMainThread()){
+        *err = RG_STRDUP("Can only run execution on the main thread");
+        return NULL;
+    }
     return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
 }
 
