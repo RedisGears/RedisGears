@@ -11,6 +11,7 @@
 #include "redismodule.h"
 
 int LockHandler_Initialize();
+bool LockHandler_IsMainThread();
 void LockHandler_Acquire(RedisModuleCtx* ctx);
 void LockHandler_Release(RedisModuleCtx* ctx);
 

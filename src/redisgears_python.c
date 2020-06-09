@@ -1567,10 +1567,15 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
         }
     }
     PyFlatExecution* pyfep = PyObject_New(PyFlatExecution, &PyFlatExecutionType);
-    pyfep->fep = RedisGears_CreateCtx((char*)readerStr);
+    char* err = NULL;
+    pyfep->fep = RedisGears_CreateCtx((char*)readerStr, &err);
     if(!pyfep->fep){
         Py_DecRef((PyObject*)pyfep);
-        PyErr_SetString(GearsError, "the given reader are not exists");
+        if(!err){
+            err = RG_STRDUP("the given reader are not exists");
+        }
+        PyErr_SetString(GearsError, err);
+        RG_FREE(err);
         return NULL;
     }
     if(descStr){
@@ -3108,7 +3113,10 @@ static void RedisGears_OnRequirementInstallationDone(ExecutionPlan* ep, void* pr
 }
 
 static ExecutionPlan* RedisGearsPy_DistributeRequirements(PythonRequirementCtx** requirements, RedisGears_OnExecutionDoneCallback doneCallback, void* pd, char** err){
-    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader);
+    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader, err);
+    if(!fep){
+        return NULL;
+    }
     RedisGears_SetMaxIdleTime(fep, GearsConfig_PythonInstallReqMaxIdleTime());
     RGM_Map(fep, RedisGearsPy_InstallRequirementsMapper, PythonSessionRequirements_Dup(requirements));
     RGM_Collect(fep);
@@ -3130,6 +3138,9 @@ static void RedisGearsPy_DownloadWheelsAndDistribute(void* ctx){
     char* err = NULL;
     ExecutionPlan* ep = RedisGearsPy_DistributeRequirements(bdiCtx->session->requirements, RedisGears_OnRequirementInstallationDone, bdiCtx, &err);
     if(!ep){
+        if(!err){
+            err = RG_STRDUP("Failed create distribute requirements execution or rg.pyexecute");
+        }
         RedisModule_ReplyWithError(ctx, err);
         RG_FREE(err);
         goto error;
@@ -4052,6 +4063,9 @@ static int RedisGearsPy_ImportRequirement(RedisModuleCtx *ctx, RedisModuleString
     if(!ep){
         // error here leave us in a state where we have the requirement but others
         // do not, user will see the error and will have to retry.
+        if(!err){
+            err = RG_STRDUP("Failed create distribute requirements execution on rg.importreq");
+        }
         RedisModule_AbortBlock(bc);
         RedisModule_ReplyWithError(ctx, err);
         RG_FREE(err);

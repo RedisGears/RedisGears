@@ -140,10 +140,15 @@ static int RG_SetFlatExecutionOnRegisteredCallback(FlatExecutionPlan* fep, const
     return REDISMODULE_OK;
 }
 
-static FlatExecutionPlan* RG_CreateCtx(char* readerName){
+static FlatExecutionPlan* RG_CreateCtx(char* readerName, char** err){
+    if(!LockHandler_IsMainThread()){
+        *err = RG_STRDUP("Can only create Gears Builder (Flat Execution Plan) on the main thread");
+        return NULL;
+    }
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
     if(!FlatExecutionPlan_SetReader(fep, readerName)){
         FlatExecutionPlan_Free(fep);
+        *err = RG_STRDUP("The given reader does not exists");
         return NULL;
     }
     return fep;
