@@ -2164,24 +2164,15 @@ static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
         return NULL;
     }
 
+    PyObject* obj = NULL;
     bool error = false;
-    bool heap_allocation = false;
     bool is_cluster = Cluster_IsClusterMode();
     size_t len = PyDict_Size(py_tensorDict);
     size_t stack_buffer_size = 1000;
-    RAI_Tensor* tensor_stack_buffer[stack_buffer_size];
-    const char* key_name_buffer[stack_buffer_size];
-    RAI_Tensor** tensorList;
-    const char** keyNameList;
-    if(len <= stack_buffer_size) {
-        tensorList = tensor_stack_buffer;
-        keyNameList = key_name_buffer;
-    }
-    else {
-        tensorList = RedisModule_Alloc(len * sizeof(RAI_Tensor*));
-        keyNameList = RedisModule_Alloc(len * sizeof(const char*));
-        heap_allocation = true;
-    }
+    array_new_on_stack(RedisModuleKey*, stack_buffer_size, keys);
+    array_new_on_stack(RAI_Tensor*, stack_buffer_size, tensorList);
+    array_new_on_stack(const char*, stack_buffer_size, keyNameList);
+
     Py_ssize_t i = 0;
     PyObject *key, *value;
     // Validate each key-value pair for <string, tensor> type.
@@ -2196,7 +2187,7 @@ static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
             error = true;
             break;          
         }
-        tensorList[i-1] = ((PyTensor*)value)->t;
+        tensorList = array_append(tensorList, ((PyTensor*)value)->t);
         size_t keylen;
         const char* keyNameCStr = PyUnicode_AsUTF8AndSize(key, &keylen);
         if(is_cluster){
@@ -2207,28 +2198,14 @@ static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
                 break;
             }
         }
-        keyNameList[i-1] = keyNameCStr;
+        keyNameList = array_append(keyNameList, keyNameCStr);
     }
-    if(error){
-        if(heap_allocation){
-            RedisModule_Free(tensorList);
-            RedisModule_Free(keyNameList);
-        }
-        return NULL;
-    }
-    PyObject* obj = NULL;
-    RedisModuleKey* keys_stack_buffer[stack_buffer_size];
-    RedisModuleKey** keys;
-    if(heap_allocation){
-        keys = keys_stack_buffer;
-    }
-    else {
-        keys = RedisModule_Alloc(len * sizeof(RedisModuleKey*));
-    }
+    if(error) goto clean_up;
+   
     RedisModuleType *ai_tensorType = RedisAI_TensorRedisType();
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
-    for(i = 0; i < len; i++) {
+    for(size_t i = 0; i < len; i++) {
         const char *keyNameCStr = keyNameList[i];
         RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, strlen(keyNameCStr));
         RedisModuleKey *key = RedisModule_OpenKey(rctx,keyNameStr, REDISMODULE_WRITE);
@@ -2240,10 +2217,10 @@ static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
             goto clean_up;
         }
         RedisModule_FreeString(rctx, keyNameStr);
-        keys[i] = key;
+        keys = array_append(keys, key);
     }
     // We are ok to modify keyspace.
-    for(i = 0; i < len; i++) {
+    for(size_t i = 0; i < len; i++) {
         RedisModule_ModuleTypeSetValue(keys[i], ai_tensorType, RedisAI_TensorGetShallowCopy(tensorList[i]));
     }
 
@@ -2251,17 +2228,12 @@ static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
     obj = Py_None;
 
 clean_up:
-    // In case of error, i is the index of the last open key. In case of success i is the total number of keys.
-    for(size_t j = 0; j < i; j++){
-        RedisModule_CloseKey(keys[j]);
-    }
+    array_free_ex(keys, RedisModule_CloseKey(*(RedisModuleKey**)ptr));
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
-    if(heap_allocation){
-        RedisModule_Free(tensorList);
-        RedisModule_Free(keyNameList);
-        RedisModule_Free(keys);
-    }
+    array_free(tensorList);
+    array_free(keyNameList);
+    array_free(keys);
     return obj;
 }
 
@@ -2331,10 +2303,13 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
         return NULL;
     }
 
+    PyObject* obj = NULL;
     bool error = false;
+    size_t stack_buffer_size = 1000;
+    array_new_on_stack(const char*, stack_buffer_size, keyNameList);
+    array_new_on_stack(RedisModuleKey*, stack_buffer_size, keys);
     bool is_cluster = Cluster_IsClusterMode();
     PyObject* keyName = NULL;
-    const char** keyNameList = array_new(const char*, 10);
     while((keyName = PyIter_Next(keys_iter)) != NULL) {
         // Check for string.
         if(!PyUnicode_Check(keyName)) {
@@ -2356,29 +2331,13 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
         keyNameList = array_append(keyNameList, keyNameCStr);
     }
     Py_DECREF(keys_iter);
-    if(error){
-        array_free(keyNameList);
-        return NULL;
-    }
+    if(error) goto clean_up;
 
-    size_t stack_buffer_size = 10000;
-    PyObject* obj = NULL;
-    RedisModuleType *ai_tensorType = RedisAI_TensorRedisType();
-    RedisModuleKey** keys;
-    bool heap_allocation = false;
-    RedisModuleKey* keys_stack_buffer[stack_buffer_size];
     size_t len = array_len(keyNameList);
-    if(len > stack_buffer_size) {
-        keys = keys_stack_buffer;
-    }
-    else {
-        keys = RedisModule_Calloc(len, sizeof(RedisModuleKey*));
-        heap_allocation = true;
-    }
+    RedisModuleType *ai_tensorType = RedisAI_TensorRedisType();
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
-    size_t i;
-    for(i = 0; i < len; i++) {
+    for(size_t i = 0; i < len; i++) {
         // Open key.
         const char *keyNameCStr = keyNameList[i];
         RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, strlen(keyNameCStr));
@@ -2396,13 +2355,13 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
             goto clean_up;
         }
         // Success. Set key and release string.
-        keys[i] = key;
+        keys = array_append(keys, key);
         RedisModule_FreeString(rctx, keyNameStr);
     }
     
     PyObject* tensorsList = PyList_New(0);
     // Read tensors.
-    for(i = 0; i < len; i++) {
+    for(size_t i = 0; i < len; i++) {
         RAI_Tensor *tensor = RedisModule_ModuleTypeGetValue(keys[i]);
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
         pyt->t = RedisAI_TensorGetShallowCopy(tensor);
@@ -2411,14 +2370,12 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
     obj = tensorsList;
 
 clean_up:
-    // In case of error, i is the index of the last open key. In case of success i is the total number of keys.
-    for (size_t j = 0; j < i; j++){
-        RedisModule_CloseKey(keys[j]);
-    }
+
+    array_free_ex(keys, RedisModule_CloseKey(*(RedisModuleKey**)ptr));
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
     array_free(keyNameList);
-    if(heap_allocation) RedisModule_Free(keys);
+    array_free(keys);
     return obj;
 }
 
@@ -2726,20 +2683,17 @@ static PyObject* scriptRunnerAddInputList(PyObject *cls, PyObject *args){
         return NULL;
     }
 
-    RAI_Tensor** tensorList = array_new(RAI_Tensor*, 1000);
+    PyObject* obj = NULL;
+    array_new_on_stack(RAI_Tensor*, 1000, tensorList);
     PyTensor* pyt;
     while((pyt=PyIter_Next(py_tensors_iter)) != NULL) {
         if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
             PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
-            array_free(tensorList);
-            Py_DECREF(py_tensors_iter);
-            return NULL;
+            goto clean_up;
         }
         tensorList = array_append(tensorList, pyt->t);
     }
-    Py_DECREF(py_tensors_iter);
 
-    PyObject* obj = NULL;
     RAI_Error* err;
     RedisAI_InitError(&err);
     RedisAI_ScriptRunCtxAddInputList(pys->s, tensorList, array_len(tensorList), err);
@@ -2750,6 +2704,7 @@ static PyObject* scriptRunnerAddInputList(PyObject *cls, PyObject *args){
     Py_INCREF(Py_None);
     obj = Py_None;
 clean_up:
+    Py_DECREF(py_tensors_iter);
     array_free(tensorList);
     RedisAI_FreeError(err);
     return obj;
