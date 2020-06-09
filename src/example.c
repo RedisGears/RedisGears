@@ -30,7 +30,8 @@ bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
 }
 
 int Example_CommandCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    FlatExecutionPlan* rsctx = RGM_CreateCtx(KeysReader);
+    char* err = NULL;
+    FlatExecutionPlan* rsctx = RGM_CreateCtx(KeysReader, &err);
     RGM_Filter(rsctx, Example_Filter, NULL);
     ExecutionPlan* ep = RGM_Run(rsctx, ExecutionModeAsync, RG_STRDUP("*"), NULL, NULL, NULL);
     RedisModule_ReplyWithStringBuffer(ctx, RedisGears_GetId(ep), strlen(RedisGears_GetId(ep)));
