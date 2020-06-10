@@ -87,7 +87,7 @@ static array_t array_new_sz(uint32_t elem_sz, uint32_t cap, uint32_t len) {
   varName ## _struct.len = 0;                       \
   varName ## _struct.cap = (capacity);              \
   varName ## _struct.elem_sz = sizeof(T);           \
-  T* varName = varName ## _struct.buf;
+  T* varName = (T*)varName ## _struct.buf;
 
 /* Initialize an array for a given type T with a given length. The capacity allocated is identical
  * to the length
