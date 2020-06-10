@@ -499,7 +499,7 @@ redis> RG.PYSTATS
 6) (integer) 5745816
 ```
 
-## RG.PYDUMPREQS
+## RG.PYDUMPREQS (available on v1.0.1 and above)
 The **RG.PYDUMPREQS** command returns a list of all the python requirements available (with information about each requirement).
 
 **Redis API**
