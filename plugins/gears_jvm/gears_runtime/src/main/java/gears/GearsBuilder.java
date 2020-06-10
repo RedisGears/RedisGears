@@ -78,7 +78,7 @@ public class GearsBuilder{
 	}
 	
 	public void register(ExecutionMode mode, OnRegisteredOperation onRegister) {
-		innerRegister(reader, ExecutionMode.ASYNC, onRegister);
+		innerRegister(reader, mode, onRegister);
 	}
 	
 	public GearsBuilder(BaseReader reader) {
