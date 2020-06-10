@@ -2205,6 +2205,7 @@ static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
         const char *keyNameCStr = keyNameList[i];
         RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, strlen(keyNameCStr));
         RedisModuleKey *key = RedisModule_OpenKey(rctx,keyNameStr, REDISMODULE_WRITE);
+        keys = array_append(keys, key);
         // Check if the key is empty or 
         bool empty = RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY;
         if(!empty && (RedisModule_ModuleTypeGetType(key) != ai_tensorType)) {
@@ -2213,7 +2214,6 @@ static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
             goto clean_up;
         }
         RedisModule_FreeString(rctx, keyNameStr);
-        keys = array_append(keys, key);
     }
     // We are ok to modify keyspace.
     for(size_t i = 0; i < len; i++) {
@@ -2330,6 +2330,7 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
         const char *keyNameCStr = keyNameList[i];
         RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, strlen(keyNameCStr));
         RedisModuleKey *key = RedisModule_OpenKey(rctx,keyNameStr, REDISMODULE_READ);
+        keys = array_append(keys, key);
         // Empty key.
         if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
             RedisModule_FreeString(rctx, keyNameStr);
@@ -2343,7 +2344,6 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
             goto clean_up;
         }
         // Success. Set key and release string.
-        keys = array_append(keys, key);
         RedisModule_FreeString(rctx, keyNameStr);
     }
     
