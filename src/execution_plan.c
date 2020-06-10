@@ -1849,6 +1849,24 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(rctx);
 
+    if(ep->onStartCallback){
+        ExecutionCtx ectx = {
+                .rctx = rctx,
+                .ep = ep,
+                .err = NULL,
+        };
+        ep->onStartCallback(&ectx, ep->fep->onExecutionStartStep.arg.stepArg);
+    }
+
+    if(ep->onUnpausedCallback){
+        ExecutionCtx ectx = {
+                .rctx = rctx,
+                .ep = ep,
+                .err = NULL,
+        };
+        ep->onUnpausedCallback(&ectx, ep->fep->onUnpausedStep.arg.stepArg);
+    }
+
     bool isDone = ExecutionPlan_Execute(ep, rctx);
     GETTIME(&_te);
 
