@@ -5,6 +5,7 @@ import gears.operations.AccumulateByOperation;
 import gears.operations.AccumulateOperation;
 import gears.operations.ExtractorOperation;
 import gears.operations.FilterOperation;
+import gears.operations.FlatMapOperation;
 import gears.operations.ForeachOperation;
 import gears.operations.MapOperation;
 import gears.operations.OnRegisteredOperation;
@@ -21,7 +22,7 @@ public class GearsBuilder{
 	
 	public native GearsBuilder map(MapOperation mapper);
 	
-	public native GearsBuilder flatMap(MapOperation mapper);
+	public native GearsBuilder flatMap(FlatMapOperation faltmapper);
 	
 	public native GearsBuilder foreach(ForeachOperation foreach);
 	

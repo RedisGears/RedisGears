@@ -174,6 +174,9 @@ jmethodID javaLoadClassNewMid = NULL;
 jclass gearsMappCls = NULL;
 jmethodID gearsMapMethodId = NULL;
 
+jclass gearsFlatMappCls = NULL;
+jmethodID gearsFlatMapMethodId = NULL;
+
 jclass gearsExtractorCls = NULL;
 jmethodID gearsExtractorMethodId = NULL;
 
@@ -271,7 +274,7 @@ JNINativeMethod nativeMethod[] = {
         },
         {
             .name = "flatMap",
-            .signature = "(Lgears/operations/MapOperation;)Lgears/GearsBuilder;",
+            .signature = "(Lgears/operations/FlatMapOperation;)Lgears/GearsBuilder;",
             .fnPtr = JVM_GBFlatMap,
         },
         {
@@ -687,6 +690,9 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/MapOperation", gearsMappCls);
             JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "map", "(Ljava/io/Serializable;)Ljava/io/Serializable;", gearsMapMethodId);
+
+            JVM_TryFindClass(jvm_tld->env, "gears/operations/FlatMapOperation", gearsFlatMappCls);
+            JVM_TryFindMethod(jvm_tld->env, gearsFlatMappCls, "flatmap", "(Ljava/io/Serializable;)Ljava/lang/Iterable;", gearsFlatMapMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/ExtractorOperation", gearsExtractorCls);
             JVM_TryFindMethod(jvm_tld->env, gearsExtractorCls, "extract", "(Ljava/io/Serializable;)Ljava/lang/String;", gearsExtractorMethodId);
@@ -1981,7 +1987,7 @@ static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
     jobject mapper = (arg);
     JNIEnv *env = jvm_tld->env;
 
-    jobject res = (*env)->CallObjectMethod(env, mapper, gearsMapMethodId, r->obj);
+    jobject res = (*env)->CallObjectMethod(env, mapper, gearsFlatMapMethodId, r->obj);
     if((err = JVM_GetException(env))){
         goto error;
     }
@@ -1992,21 +1998,12 @@ static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
     }
 
     jobject iterator = NULL;
-    if((*env)->IsInstanceOf(env, res, iterableCls)){
-        iterator = (*env)->CallObjectMethod(env, res, iteratorMethodId);
-        if((err = JVM_GetException(env))){
-            goto error;
-        }
-    } else if((*env)->IsInstanceOf(env, res, iteratorCls)){
-        iterator = res;
-    } else{
-        // lets just return the object
-        (*env)->DeleteGlobalRef(env, r->obj);
-        r->obj = res;
-        JVM_PopFrame(jvm_tld->env);
-        return &r->baseRecord;
+    RedisModule_Assert((*env)->IsInstanceOf(env, res, iterableCls));
+
+    iterator = (*env)->CallObjectMethod(env, res, iteratorMethodId);
+    if((err = JVM_GetException(env))){
+        goto error;
     }
-    // todo: handle array
 
     Record* listRecord = RedisGears_ListRecordCreate(20);
     while((*env)->CallBooleanMethod(env, iterator, iteratorHasNextMethodId)){
