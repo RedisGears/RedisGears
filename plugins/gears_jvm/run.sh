@@ -1,7 +1,7 @@
 #!/bin/bash
 
 JVM_OPTIONS="-Djava.class.path="
-JVM_OPTIONS+="./gears_runtime/target/gear_runtime-0.0.1-SNAPSHOT-jar-with-dependencies.jar"
+JVM_OPTIONS+="./gears_runtime/target/gear_runtime-0.0.2-SNAPSHOT-jar-with-dependencies.jar"
 #JVM_OPTIONS+=" -XX:+IdleTuningGcOnIdle";
 JVM_OPTIONS+=" -Xms10m";
 JVM_OPTIONS+=" -Xmx2048m";
