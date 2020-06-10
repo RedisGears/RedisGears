@@ -195,16 +195,18 @@ jmethodID gearsOnRegisteredMethodId = NULL;
 jclass baseRecordCls = NULL;
 jmethodID baseRecordToStr = NULL;
 
-jclass stringRecordCls = NULL;
-jmethodID stringRecordCtor = NULL;
-
 jclass hashRecordCls = NULL;
 jmethodID hashRecordCtor = NULL;
 jmethodID hashRecordSet = NULL;
 
-jclass listRecordCls = NULL;
-jmethodID listRecordGetMethodId = NULL;
-jmethodID listRecordLenMethodId = NULL;
+jclass iterableCls = NULL;
+jmethodID iteratorMethodId = NULL;
+
+jclass iteratorCls = NULL;
+jmethodID iteratorNextMethodId = NULL;
+jmethodID iteratorHasNextMethodId = NULL;
+
+jclass arrayCls = NULL;
 
 jclass gearsBaseReaderCls = NULL;
 
@@ -708,15 +710,20 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
 
             JVM_TryFindMethod(jvm_tld->env, baseRecordCls, "toString", "()Ljava/lang/String;", baseRecordToStr);
 
-            JVM_TryFindClass(jvm_tld->env, "gears/records/StringRecord", stringRecordCls);
+            JVM_TryFindClass(jvm_tld->env, "java/util/HashMap", hashRecordCls);
 
-            JVM_TryFindMethod(jvm_tld->env, stringRecordCls, "<init>", "(Ljava/lang/String;)V", stringRecordCtor);
+            JVM_TryFindClass(jvm_tld->env, "java/lang/Iterable", iterableCls);
+            JVM_TryFindMethod(jvm_tld->env, iterableCls, "iterator", "()Ljava/util/Iterator;", iteratorMethodId);
 
-            JVM_TryFindClass(jvm_tld->env, "gears/records/HashRecord", hashRecordCls);
+            JVM_TryFindClass(jvm_tld->env, "java/util/Iterator", iteratorCls);
+            JVM_TryFindMethod(jvm_tld->env, iteratorCls, "hasNext", "()Z", iteratorHasNextMethodId);
+            JVM_TryFindMethod(jvm_tld->env, iteratorCls, "next", "()Ljava/lang/Object;", iteratorNextMethodId);
+
+//            JVM_TryFindClass(jvm_tld->env, "java/lang/reglect/Array", arrayCls);
 
             JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "<init>", "()V", hashRecordCtor);
 
-            JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "set", "(Ljava/lang/String;Lgears/records/BaseRecord;)V", hashRecordSet);
+            JVM_TryFindMethod(jvm_tld->env, hashRecordCls, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", hashRecordSet);
 
             JVM_TryFindClass(jvm_tld->env, "gears/readers/BaseReader", gearsBaseReaderCls);
 
@@ -866,12 +873,6 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
             gearsLogLevelWarning = JVM_TurnToGlobal(jvm_tld->env, gearsLogLevelWarning);
 
             JVM_TryFindClass(jvm_tld->env, "java/lang/Exception", exceptionCls);
-
-
-            JVM_TryFindClass(jvm_tld->env, "gears/records/ListRecord", listRecordCls);
-            JVM_TryFindMethod(jvm_tld->env, listRecordCls, "get", "(I)Lgears/records/BaseRecord;", listRecordGetMethodId);
-            JVM_TryFindMethod(jvm_tld->env, listRecordCls, "len", "()I", listRecordLenMethodId);
-
 
         }else{
             JavaVMAttachArgs args;
@@ -1749,8 +1750,8 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
     }else if(RedisGears_RecordGetType(data) == RedisGears_GetStringRecordType()){
         size_t len;
         char* str = RedisGears_StringRecordGet(data, &len);
-        jstring javaStr = (*env)->NewStringUTF(env, str);
-        obj = (*env)->NewObject(env, stringRecordCls, stringRecordCtor, javaStr);
+        obj = (*env)->NewByteArray(env, len);
+        (*env)->SetByteArrayRegion(env, obj, 0, len, str);
     }else if(RedisGears_RecordGetType(data) == RedisGears_GetKeyRecordType()){
         obj = (*env)->NewObject(env, hashRecordCls, hashRecordCtor);
         size_t keyLen;
@@ -1990,21 +1991,26 @@ static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
         goto error;
     }
 
-    if(!(*env)->IsInstanceOf(env, res, listRecordCls)){
-        // normal mapping ..
-        res = JVM_TurnToGlobal(env, res);
+    jobject iterator = NULL;
+    if((*env)->IsInstanceOf(env, res, iterableCls)){
+        iterator = (*env)->CallObjectMethod(env, res, iteratorMethodId);
+        if((err = JVM_GetException(env))){
+            goto error;
+        }
+    } else if((*env)->IsInstanceOf(env, res, iteratorCls)){
+        iterator = res;
+    } else{
+        // lets just return the object
         (*env)->DeleteGlobalRef(env, r->obj);
         r->obj = res;
-
         JVM_PopFrame(jvm_tld->env);
-
         return &r->baseRecord;
     }
+    // todo: handle array
 
-    size_t len = (*env)->CallIntMethod(env, res, listRecordLenMethodId);
-    Record* listRecord = RedisGears_ListRecordCreate(len);
-    for(size_t i = 0 ; i < len ; ++i){
-        jobject obj = (*env)->CallObjectMethod(env, res, listRecordGetMethodId, i);
+    Record* listRecord = RedisGears_ListRecordCreate(20);
+    while((*env)->CallBooleanMethod(env, iterator, iteratorHasNextMethodId)){
+        jobject obj = (*env)->CallObjectMethod(env, iterator, iteratorNextMethodId);
         obj = JVM_TurnToGlobal(env, obj);
         JVMRecord* innerRecord = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
         innerRecord->obj = obj;
