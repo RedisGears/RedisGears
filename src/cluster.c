@@ -655,7 +655,7 @@ const char* Cluster_GetMyHashTag(){
 
 uint16_t Gears_crc16(const char *buf, int len);
 
-static unsigned int keyHashSlot(char *key, int keylen) {
+static unsigned int keyHashSlot(const char *key, int keylen) {
     int s, e; /* start-end indexes of { and } */
 
     for (s = 0; s < keylen; s++)
@@ -676,12 +676,12 @@ static unsigned int keyHashSlot(char *key, int keylen) {
     return Gears_crc16(key+s+1,e-s-1) & 0x3FFF;
 }
 
-const char* Cluster_GetNodeIdByKey(char* key){
+const char* Cluster_GetNodeIdByKey(const char* key){
     unsigned int slot = keyHashSlot(key, strlen(key));
     return CurrCluster->slots[slot]->id;
 }
 
-bool Cluster_IsMyId(char* id){
+bool Cluster_IsMyId(const char* id){
 	return memcmp(CurrCluster->myId, id, REDISMODULE_NODE_ID_LEN) == 0;
 }
 

@@ -2676,7 +2676,7 @@ static PyObject* scriptRunnerAddInputList(PyObject *cls, PyObject *args){
     RAI_Error* err;
     RedisAI_InitError(&err);
     PyTensor* pyt;
-    while((pyt=PyIter_Next(py_tensors_iter)) != NULL) {
+    while((pyt = (PyTensor*)PyIter_Next(py_tensors_iter)) != NULL) {
         if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
             PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
             goto clean_up;
