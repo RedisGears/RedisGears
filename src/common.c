@@ -131,15 +131,20 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...) {
 char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
     char* res = array_new(char, 100);
     res = array_append(res, '[');
+    if(len == 0){
+        res = array_append(res, ']');
+        res = array_append(res, '\0');
+        char* ret = RG_STRDUP(res);
+        array_free(res);
+        return ret;
+    }
     for(size_t i = 0 ; i < len ; ++i){
         char* elementStr = toStr(arr[i]);
         char* c = elementStr;
-        res = array_append(res, '\'');
         while(*c){
             res = array_append(res, *c);
             ++c;
         }
-        res = array_append(res, '\'');
         res = array_append(res, ',');
         RG_FREE(elementStr);
     }

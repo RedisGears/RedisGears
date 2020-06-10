@@ -20,6 +20,7 @@
 #include "utils/thpool.h"
 #include "utils/buffer.h"
 #include <pthread.h>
+#include "cluster.h"
 
 
 #define PY_OBJECT_TYPE_VERSION 1
@@ -32,6 +33,8 @@
 #define PY_SESSION_REQ_VERSION 1
 
 #define SUB_INTERPRETER_TYPE "subInterpreterType"
+
+#define STACK_BUFFER_SIZE 100
 
 static PyObject* pyGlobals;
 PyObject* GearsError;
@@ -249,7 +252,9 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
 }
 
 static char* PythonRequirementCtx_WheelToStr(void* wheel){
-    return RG_STRDUP(wheel);
+    char* str;
+    rg_asprintf(&str, "'%s'", (char*)wheel);
+    return str;
 }
 
 static char* PythonRequirementCtx_ToStr(void* val){
@@ -1727,19 +1732,36 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
 
-    RedisModuleString** argements = array_new(RedisModuleString*, 10);
+    // Declare and initialize variables for arguments processing.
+    size_t argLen;
+    const char* argumentCStr = NULL;
+    RedisModuleString* argumentRedisStr = NULL;
+    RedisModuleString** arguments = array_new(RedisModuleString*, 10);
     for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
         PyObject* argument = PyTuple_GetItem(args, i);
-        PyObject* argumentStr = PyObject_Str(argument);
-        size_t argLen;
-        const char* argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
-        RedisModuleString* argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
-        Py_DECREF(argumentStr);
-        argements = array_append(argements, argumentRedisStr);
+        if(PyByteArray_Check(argument)) {
+            // Argument is bytearray.
+            argLen = PyByteArray_Size(argument);
+            argumentCStr = PyByteArray_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
+        } else if(PyBytes_Check(argument)) {
+            // Argument is bytes.
+            argLen = PyBytes_Size(argument);
+            argumentCStr = PyBytes_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
+        } else {
+            // Argument is string.
+            PyObject* argumentStr = PyObject_Str(argument);
+            argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
+            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
+            // Decrease ref-count after done processing the argument.
+            Py_DECREF(argumentStr);
+        }
+        arguments = array_append(arguments, argumentRedisStr);
     }
 
     PyObject* res = NULL;
-    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", argements, array_len(argements));
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", arguments, array_len(arguments));
     if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
         size_t len;
         const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
@@ -1752,7 +1774,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
         RedisModule_FreeCallReply(reply);
     }
 
-    array_free_ex(argements, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
+    array_free_ex(arguments, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
 
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
@@ -1910,8 +1932,8 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         return NULL;
     }
     PyObject* pyBlob = PyTuple_GetItem(args, 2);
-    if(!PyByteArray_Check(pyBlob)){
-        PyErr_SetString(GearsError, "blob argument must be a byte array");
+    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob)){
+        PyErr_SetString(GearsError, "blob argument must be bytes or a byte array");
         return NULL;
     }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
@@ -1950,8 +1972,17 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         array_free(dims);
         return NULL;
     }
-    size_t size = PyByteArray_Size(pyBlob);
-    const char* blob = PyByteArray_AsString(pyBlob);
+    size_t size;
+    const char* blob;
+    if(PyByteArray_Check(pyBlob)) {
+        // Blob is byte array.
+        size = PyByteArray_Size(pyBlob);
+        blob = PyByteArray_AsString(pyBlob);
+    } else {
+        // Blob is bytes.
+        size = PyBytes_Size(pyBlob);
+        blob = PyBytes_AsString(pyBlob);
+    }
     RedisAI_TensorSetData(t, blob, size);
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
@@ -2034,6 +2065,277 @@ error:
     array_free(dims);
     if(t) RedisAI_TensorFree(t);
     return NULL;
+}
+
+static PyObject* setTensorInKey(PyObject *cls, PyObject *args) {
+    verifyRedisAILoaded();
+    // Input validation: 2 arguments. args[0]: string. args[1]: tensor
+    if(PyTuple_Size(args) != 2){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to setTensorInKey");
+        return NULL;
+    }
+    PyObject* keyName = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(keyName)){
+        PyErr_SetString(GearsError, "key name argument must be a string");
+        return NULL;
+    }
+
+    
+    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
+    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
+        return NULL;
+    }
+
+    RedisModuleType *ai_tensorType = RedisAI_TensorRedisType();
+    size_t len;
+    const char* keyNameCStr = PyUnicode_AsUTF8AndSize(keyName, &len);
+
+    if(Cluster_IsClusterMode()){
+        const char* keyNodeId = Cluster_GetNodeIdByKey(keyNameCStr);
+        if(!Cluster_IsMyId(keyNodeId)){
+            PyErr_SetString(GearsError, "Given key is not in the current shard");
+            return NULL;
+        }
+    }
+
+    PyObject* obj = NULL;
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, len);
+    LockHandler_Acquire(rctx);
+    RedisModuleKey *key = RedisModule_OpenKey(rctx,keyNameStr, REDISMODULE_WRITE);
+    // Check if the key is empty or 
+    bool empty = RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY;
+    if(!empty && (RedisModule_ModuleTypeGetType(key) != ai_tensorType)) {
+        PyErr_SetString(GearsError, "ERR Key is already set with non tensor values.");
+        goto clean_up;
+    }
+
+    // Set a shllow copy of the tensor.
+    RedisModule_ModuleTypeSetValue(key, ai_tensorType, RedisAI_TensorGetShallowCopy(pyt->t));
+    Py_INCREF(Py_None);
+    obj = Py_None;
+    
+clean_up:
+    RedisModule_CloseKey(key);
+    LockHandler_Release(rctx);
+    RedisModule_FreeString(rctx, keyNameStr);
+    RedisModule_FreeThreadSafeContext(rctx);
+    return obj;
+}
+
+static PyObject* msetTensorsInKeyspace(PyObject *cls, PyObject *args) {
+    verifyRedisAILoaded();
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to msetTensorInKeyspace");
+        return NULL;
+    }
+    // Input should be a Dictionary<string, tensor>.
+    PyObject* py_tensorDict = PyTuple_GetItem(args, 0);
+    if(!PyDict_Check(py_tensorDict)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyDict");
+        return NULL;
+    }
+
+    PyObject* obj = NULL;
+    bool is_cluster = Cluster_IsClusterMode();
+    size_t len = PyDict_Size(py_tensorDict);
+    array_new_on_stack(RedisModuleKey*, STACK_BUFFER_SIZE, keys);
+    array_new_on_stack(RAI_Tensor*, STACK_BUFFER_SIZE, tensorList);
+    array_new_on_stack(const char*, STACK_BUFFER_SIZE, keyNameList);
+
+    Py_ssize_t i = 0;
+    PyObject *key, *value;
+    // Validate each key-value pair for <string, tensor> type.
+    while (PyDict_Next(py_tensorDict, &i, &key, &value)) {
+        if(!PyUnicode_Check(key)){
+            PyErr_SetString(GearsError, "key name argument must be a string");
+            goto clean_up;
+        }
+        if(!PyObject_IsInstance(value, (PyObject*)&PyTensorType)){
+            PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
+            goto clean_up;         
+        }
+        tensorList = array_append(tensorList, ((PyTensor*)value)->t);
+        size_t keylen;
+        const char* keyNameCStr = PyUnicode_AsUTF8AndSize(key, &keylen);
+        if(is_cluster){
+            const char* keyNodeId = Cluster_GetNodeIdByKey(keyNameCStr);
+            if(!Cluster_IsMyId(keyNodeId)){
+                PyErr_SetString(GearsError, "Given key is not in the current shard");
+                goto clean_up;
+            }
+        }
+        keyNameList = array_append(keyNameList, keyNameCStr);
+    }
+   
+    RedisModuleType *ai_tensorType = RedisAI_TensorRedisType();
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(rctx);
+    for(size_t i = 0; i < len; i++) {
+        const char *keyNameCStr = keyNameList[i];
+        RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, strlen(keyNameCStr));
+        RedisModuleKey *key = RedisModule_OpenKey(rctx,keyNameStr, REDISMODULE_WRITE);
+        keys = array_append(keys, key);
+        // Check if the key is empty or 
+        bool empty = RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY;
+        if(!empty && (RedisModule_ModuleTypeGetType(key) != ai_tensorType)) {
+            RedisModule_FreeString(rctx, keyNameStr);
+            PyErr_SetString(GearsError, "ERR Key is already set with non tensor values.");
+            goto clean_up;
+        }
+        RedisModule_FreeString(rctx, keyNameStr);
+    }
+    // We are ok to modify keyspace.
+    for(size_t i = 0; i < len; i++) {
+        RedisModule_ModuleTypeSetValue(keys[i], ai_tensorType, RedisAI_TensorGetShallowCopy(tensorList[i]));
+    }
+
+    Py_INCREF(Py_None);
+    obj = Py_None;
+
+clean_up:
+    array_free_ex(keys, RedisModule_CloseKey(*(RedisModuleKey**)ptr));
+    LockHandler_Release(rctx);
+    RedisModule_FreeThreadSafeContext(rctx);
+    array_free(tensorList);
+    array_free(keyNameList);
+    return obj;
+}
+
+static PyObject* getTensorFromKey(PyObject *cls, PyObject *args) {
+     verifyRedisAILoaded();
+    // Input validation: 1 argument. args[0]: string.
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to getTensorFromKey");
+        return NULL;
+    }
+    PyObject* keyName = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(keyName)){
+        PyErr_SetString(GearsError, "key name argument must be a string");
+        return NULL;
+    }
+
+    size_t len;
+    const char* keyNameCStr = PyUnicode_AsUTF8AndSize(keyName, &len);
+    if(Cluster_IsClusterMode()){
+        const char* keyNodeId = Cluster_GetNodeIdByKey(keyNameCStr);
+        if(!Cluster_IsMyId(keyNodeId)){
+            PyErr_SetString(GearsError, "Given key is not in the current shard");
+        return NULL;
+        }
+    }
+    PyObject* obj = NULL;
+    RedisModuleType *ai_tensorType = RedisAI_TensorRedisType();
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, len);
+    LockHandler_Acquire(rctx);
+    RedisModuleKey *key = RedisModule_OpenKey(rctx,keyNameStr, REDISMODULE_READ);
+    // Empty key.
+    if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+        PyErr_SetString(GearsError, "ERR tensor key is empty");
+        goto clean_up;
+    }
+    // No tensor key.
+    if (RedisModule_ModuleTypeGetType(key) != ai_tensorType) {
+        PyErr_SetString(GearsError, "ERR key is not a tensor");
+        goto clean_up;
+    }
+    // Read tensor and clean up.
+    RAI_Tensor *tensor = RedisModule_ModuleTypeGetValue(key);
+    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+    pyt->t = RedisAI_TensorGetShallowCopy(tensor);
+    obj = (PyObject*)pyt;
+
+clean_up:
+    RedisModule_CloseKey(key);
+    LockHandler_Release(rctx);
+    RedisModule_FreeString(rctx, keyNameStr);
+    RedisModule_FreeThreadSafeContext(rctx);
+    return obj;
+}
+
+static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
+     verifyRedisAILoaded();
+    // Input validation: 1 argument. args[0]: List<String>.
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to getTensorsFromKeyspace");
+        return NULL;
+    }
+    PyObject* keys_iter = PyObject_GetIter(PyTuple_GetItem(args, 0));
+    if(!keys_iter){
+        PyErr_SetString(GearsError, "keys argument must be iterable");
+        return NULL;
+    }
+
+    PyObject* obj = NULL;
+    array_new_on_stack(const char*, STACK_BUFFER_SIZE, keyNameList);
+    array_new_on_stack(RedisModuleKey*, STACK_BUFFER_SIZE, keys);
+    bool is_cluster = Cluster_IsClusterMode();
+    PyObject* keyName = NULL;
+    while((keyName = PyIter_Next(keys_iter)) != NULL) {
+        // Check for string.
+        if(!PyUnicode_Check(keyName)) {
+            PyErr_SetString(GearsError, "key name argument must be a string");
+            goto clean_up;
+        }
+        size_t keylen;
+        const char* keyNameCStr = PyUnicode_AsUTF8AndSize(keyName, &keylen);
+        // In cluster, verify all keys are in the local shard.
+        if(is_cluster){
+            const char* keyNodeId = Cluster_GetNodeIdByKey(keyNameCStr);
+            if(!Cluster_IsMyId(keyNodeId)){
+                PyErr_SetString(GearsError, "Given key is not in the current shard");
+                goto clean_up;
+            }
+        }
+        keyNameList = array_append(keyNameList, keyNameCStr);
+    }
+
+    size_t len = array_len(keyNameList);
+    RedisModuleType *ai_tensorType = RedisAI_TensorRedisType();
+    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(NULL);
+    LockHandler_Acquire(rctx);
+    for(size_t i = 0; i < len; i++) {
+        // Open key.
+        const char *keyNameCStr = keyNameList[i];
+        RedisModuleString *keyNameStr = RedisModule_CreateString(rctx, keyNameCStr, strlen(keyNameCStr));
+        RedisModuleKey *key = RedisModule_OpenKey(rctx,keyNameStr, REDISMODULE_READ);
+        keys = array_append(keys, key);
+        // Empty key.
+        if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+            RedisModule_FreeString(rctx, keyNameStr);
+            PyErr_SetString(GearsError, "ERR tensor key is empty");
+            goto clean_up;
+        }
+        // No tensor key.
+        if (RedisModule_ModuleTypeGetType(key) != ai_tensorType) {
+            RedisModule_FreeString(rctx, keyNameStr);
+            PyErr_SetString(GearsError, "ERR key is not a tensor");
+            goto clean_up;
+        }
+        // Success. Set key and release string.
+        RedisModule_FreeString(rctx, keyNameStr);
+    }
+    
+    PyObject* tensorsList = PyList_New(0);
+    // Read tensors.
+    for(size_t i = 0; i < len; i++) {
+        RAI_Tensor *tensor = RedisModule_ModuleTypeGetValue(keys[i]);
+        PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+        pyt->t = RedisAI_TensorGetShallowCopy(tensor);
+        PyList_Append(tensorsList, (PyObject*)pyt);
+    }
+    obj = tensorsList;
+
+clean_up:
+
+    array_free_ex(keys, RedisModule_CloseKey(*(RedisModuleKey**)ptr));
+    LockHandler_Release(rctx);
+    RedisModule_FreeThreadSafeContext(rctx);
+    array_free(keyNameList);
+    Py_DECREF(keys_iter);
+    return obj;
 }
 
 typedef struct PyGraphRunner{
@@ -2178,7 +2480,7 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
-    PyThreadState *_save = PyEval_SaveThread();
+    PyThreadState* _save = PyEval_SaveThread();
     RedisAI_ModelRun(&pyg->g, 1, err);
     PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
@@ -2308,8 +2610,64 @@ static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
         return NULL;
     }
-    RedisAI_ScriptRunCtxAddInput(pys->s, pyt->t);
-    return PyLong_FromLong(1);
+    RAI_Error* err;
+    RedisAI_InitError(&err);
+    RedisAI_ScriptRunCtxAddInput(pys->s, pyt->t, err);
+    if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        RedisAI_FreeError(err);
+        return NULL;
+    }
+    RedisAI_FreeError(err);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+static PyObject* scriptRunnerAddInputList(PyObject *cls, PyObject *args){
+    verifyRedisAILoaded();
+
+    if(PyTuple_Size(args) != 2){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to scriptRunnerAddInput");
+        return NULL;
+    }
+    PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
+    if(!PyObject_IsInstance((PyObject*)pys, (PyObject*)&PyTorchScriptRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
+        return NULL;
+    }
+
+     PyObject* py_tensors_iter = PyObject_GetIter(PyTuple_GetItem(args, 1));
+    if(!py_tensors_iter){
+        PyErr_SetString(GearsError, "Tensors argument must be iterable");
+        return NULL;
+    }
+
+    PyObject* obj = NULL;
+    array_new_on_stack(RAI_Tensor*, STACK_BUFFER_SIZE, tensorList);
+    RAI_Error* err;
+    RedisAI_InitError(&err);
+    PyTensor* pyt;
+    while((pyt = (PyTensor*)PyIter_Next(py_tensors_iter)) != NULL) {
+        if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
+            PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
+            goto clean_up;
+        }
+        tensorList = array_append(tensorList, pyt->t);
+    }
+
+    RedisAI_ScriptRunCtxAddInputList(pys->s, tensorList, array_len(tensorList), err);
+    if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        goto clean_up;
+    }
+    Py_INCREF(Py_None);
+    obj = Py_None;
+clean_up:
+
+    Py_DECREF(py_tensors_iter);
+    array_free(tensorList);
+    RedisAI_FreeError(err);
+    return obj;
 }
 
 static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
@@ -2340,7 +2698,7 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
     }
     RAI_Error* err;
     RedisAI_InitError(&err);
-    PyThreadState *_save = PyEval_SaveThread();
+    PyThreadState* _save = PyEval_SaveThread();
     RedisAI_ScriptRun(pys->s, err);
     PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
@@ -2349,9 +2707,14 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
         return NULL;
     }
     RedisAI_FreeError(err);
-    PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-    pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, 0));
-    return (PyObject*)pyt;
+    PyObject* tensorList = PyList_New(0);
+    for(size_t i = 0 ; i < RedisAI_ScriptRunCtxNumOutputs(pys->s) ; ++i){
+        PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, i));
+        PyList_Append(tensorList, (PyObject*)pyt);
+        Py_DECREF(pyt);
+    }
+    return tensorList;
 }
 
 #define TIME_EVENT_ENCVER 2
@@ -2563,12 +2926,17 @@ PyMethodDef EmbRedisGearsMethods[] = {
 PyMethodDef EmbRedisAIMethods[] = {
     {"createTensorFromValues", createTensorFromValues, METH_VARARGS, "creating a tensor object from values"},
     {"createTensorFromBlob", createTensorFromBlob, METH_VARARGS, "creating a tensor object from blob"},
+    {"setTensorInKey", setTensorInKey, METH_VARARGS, "set a tensor in keyspace"},
+    {"msetTensorsInKeyspace", msetTensorsInKeyspace, METH_VARARGS, "set multiple tensors in keyspace"},
+    {"getTensorFromKey", getTensorFromKey, METH_VARARGS, "get a tensor from keyspace"},
+    {"mgetTensorsFromKeyspace", mgetTensorsFromKeyspace, METH_VARARGS, "get multiple tensors from keyspace"},
     {"createModelRunner", createModelRunner, METH_VARARGS, "open TF graph by key name"},
     {"modelRunnerAddInput", modelRunnerAddInput, METH_VARARGS, "add input to graph runner"},
     {"modelRunnerAddOutput", modelRunnerAddOutput, METH_VARARGS, "add output to graph runner"},
     {"modelRunnerRun", modelRunnerRun, METH_VARARGS, "run graph runner"},
     {"createScriptRunner", createScriptRunner, METH_VARARGS, "open a torch script by key name"},
     {"scriptRunnerAddInput", scriptRunnerAddInput, METH_VARARGS, "add input to torch script runner"},
+    {"scriptRunnerAddInputList", scriptRunnerAddInputList, METH_VARARGS, "add a list of tensor as input to torch script runner"},
     {"scriptRunnerAddOutput", scriptRunnerAddOutput, METH_VARARGS, "add output to torch script runner"},
     {"scriptRunnerRun", scriptRunnerRun, METH_VARARGS, "run torch script runner"},
     {"tensorToFlatList", tensorToFlatList, METH_VARARGS, "turning tensor into flat list"},
