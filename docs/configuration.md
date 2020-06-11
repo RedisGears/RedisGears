@@ -223,3 +223,33 @@ _Default Value_
 _Runtime Configurability_
 
 Supported
+
+## PythonInstallReqMaxIdleTime
+The **PythonInstallReqMaxIdleTime** configuration option controls the maximal amount of idle time (in milliseconds) before Python's requirements installation is aborted. Idle time means that the installation makes no progress. The main reason for idle time is the same as for **ExecutionMaxIdleTime**.
+
+_Expected Value_
+
+Any integer greater than 0
+
+_Default Value_
+
+30000
+
+_Runtime Configurability_
+
+Supported
+
+## SendMsgRetries
+The **SendMsgRetries** configuration option controls the maximum number of retries for sending a message between RedisGears' shards. When a message is sent and the shard disconnects before acknowledging it, or when it returns an error, the message will be resent until this threshold is met. Setting the value to 0 means unlimited retries.
+
+_Expected Value_
+
+Any integer greater or eqaul 0
+
+_Default Value_
+
+3
+
+_Runtime Configurability_
+
+Supported
