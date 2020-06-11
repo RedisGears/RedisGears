@@ -500,7 +500,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         if(!f){
             RG_FREE(filePath);
             rg_asprintf(err, "Could not open file %s", filePath);
-            RedisModule_Log(NULL, "warning", "%s", *err);
+            RedisModule_Log(NULL, "warning", *err);
             return REDISMODULE_ERR;
         }
         fseek(f, 0, SEEK_END);
@@ -513,7 +513,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
             RG_FREE(data);
             RG_FREE(filePath);
             rg_asprintf(err, "Could read data from file %s", filePath);
-            RedisModule_Log(NULL, "warning", "%s", *err);
+            RedisModule_Log(NULL, "warning", *err);
             return REDISMODULE_ERR;
         }
         fclose(f);
@@ -3791,7 +3791,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         char* error = getPyError();
         if(err){
             rg_asprintf(err, "Error occured when deserialized a python callback, error=%s",  error);
-            RedisModule_Log(NULL, "warning", "%s", *err);
+            RedisModule_Log(NULL, "warning", *err);
         }else{
             RedisModule_Log(NULL, "warning", "Error occured when deserialized a python callback, error=%s",  error);
         }
@@ -3962,7 +3962,7 @@ static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModu
         if(!err){
             err = RG_STRDUP("On RedisGearsPy_ImportRequirementInternal, failed deserialize requirements");
         }
-        RedisModule_Log(ctx, "warning", "%s", err);
+        RedisModule_Log(ctx, "warning", err);
         RedisModule_ReplyWithError(ctx, err);
         return REDISMODULE_OK;
     }
