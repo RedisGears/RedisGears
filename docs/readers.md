@@ -11,7 +11,7 @@ RedisGears supports several types of readers that operate on different types of 
 | [KeysOnlyReader](#keysonlyreader) | Redis keys | Yes | No |
 | [StreamReader](#streamreader) | Redis Stream messages | Yes | Yes |
 | [PythonReader](#pythonreader) | Arbitrary | Yes | No |
-| [ShardIDReader](#shardidreader) | Shard ID | Yes | No |
+| [ShardsIDReader](#shardsidreader) | Shard ID | Yes | No |
 | [CommandReader](#commandreader) | Command arguments | No | Yes |
 
 The following sections describe the different readers' operation.
