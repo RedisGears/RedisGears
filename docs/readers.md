@@ -11,7 +11,7 @@ RedisGears supports several types of readers that operate on different types of 
 | [KeysOnlyReader](#keysonlyreader) | Redis keys | Yes | No |
 | [StreamReader](#streamreader) | Redis Stream messages | Yes | Yes |
 | [PythonReader](#pythonreader) | Arbitrary | Yes | No |
-| [ShardsIDReader](#shardsidreader) | Shard ID | Yes | No |
+| [ShardIDReader](#shardidreader) | Shard ID | Yes | No |
 | [CommandReader](#commandreader) | Command arguments | No | Yes |
 
 The following sections describe the different readers' operation.
@@ -273,11 +273,11 @@ In cases where the generator needs additional input arguments, use a function ca
 {{ include('readers/pythonreader-run-002.py') }}
 ```
 
-## ShardsIDReader
+## ShardIDReader
 The reader returns a single record that is the shard's cluster identifier.
 
 !!! info "RedisGears Trivia"
-    The 'ShardsIDReader' is implemented using the 'PythonReader' reader and this generator callback:
+    The 'ShardIDReader' is implemented using the 'PythonReader' reader and this generator callback:
 
     ```python
     def ShardReaderCallback():
@@ -305,7 +305,7 @@ Not supported.
 **_Batch Mode_**
 
 ```python
-class GearsBuilder('ShardsIDReader').run()
+class GearsBuilder('ShardIDReader').run()
 ```
 
 _Arguments_
