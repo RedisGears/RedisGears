@@ -513,7 +513,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
             RG_FREE(data);
             RG_FREE(filePath);
             rg_asprintf(err, "Could read data from file %s", filePath);
-            RedisModule_Log(NULL, "warning", *err);
+            RedisModule_Log(NULL, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
         fclose(f);
