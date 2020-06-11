@@ -1961,8 +1961,8 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         return NULL;
     }
     PyObject* pyBlob = PyTuple_GetItem(args, 2);
-    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob)){
-        PyErr_SetString(GearsError, "blob argument must be bytes or a byte array");
+    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob) && !PyObject_CheckBuffer(pyBlob)){
+        PyErr_SetString(GearsError, "blob argument must be bytes, byte array or a buffer");
         return NULL;
     }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
@@ -2007,12 +2007,20 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         // Blob is byte array.
         size = PyByteArray_Size(pyBlob);
         blob = PyByteArray_AsString(pyBlob);
-    } else {
+        RedisAI_TensorSetData(t, blob, size);
+    } else if(PyBytes_Check(pyBlob)){
         // Blob is bytes.
         size = PyBytes_Size(pyBlob);
         blob = PyBytes_AsString(pyBlob);
+        RedisAI_TensorSetData(t, blob, size);
+    } else {
+        // Blob is buffer.
+        Py_buffer view;
+        PyObject_GetBuffer(pyBlob, &view, PyBUF_READ);
+        RedisAI_TensorSetData(t, view.buf, view.len);
+        PyBuffer_Release(&view);
     }
-    RedisAI_TensorSetData(t, blob, size);
+
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
     array_free(dims);
