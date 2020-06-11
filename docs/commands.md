@@ -504,6 +504,8 @@ The **RG.PYDUMPREQS** command returns a list of all the python requirements avai
 
 **Redis API**
 
+!!! note "The command is available as of version 1.0.1"
+
 ```
 RG.PYDUMPREQS
 ```
