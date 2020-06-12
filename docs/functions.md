@@ -187,7 +187,7 @@ class GearsBuilder.run(arg=None, convertToStr=True, collect=True)
 _Arguments_
 
 * _arg_: An optional argument that's passed to the reader as its _defaultArg_. It means the following:
-    * A glob-like pattern for the [KeysReader](readers.md#keysreader) and [KeysOnlyReader](readers.md#keysonlyreaders) readers
+    * A glob-like pattern for the [KeysReader](readers.md#keysreader) and [KeysOnlyReader](readers.md#keysonlyreader) readers
     * A key name for the [StreamReader](readers.md#streamreader) reader
     * A Python generator for the [PythonReader](readers.md#pythonreader) reader
 * _convertToStr_: when `True` adds a [map](operations.md#map) operation to the flow's end that stringifies records
