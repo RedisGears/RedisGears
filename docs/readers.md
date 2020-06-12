@@ -168,7 +168,7 @@ A record is output for each message in the input Stream. The record is a diction
 
   * **key**: the Stream key name as string
   * **id**: the message's id in the Stream
-  * **value**: a python dictionary contains the message
+  * **value**: a Python dictionary containing the message's data
 
 All field-value pairs in the message's data are included as key-value pairs in the record under the _value_ key.
 
