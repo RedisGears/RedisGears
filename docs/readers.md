@@ -212,7 +212,7 @@ _Arguments_
 **_Event Mode_**
 
 ```python
-class GearsBuilder('StreamReader').run(prefix='*', batch=1, durration=0, onFailedPolicy='continue', onFailedRetryInterval=1, trimStream=True)
+class GearsBuilder('StreamReader').run(prefix='*', batch=1, duration=0, onFailedPolicy='continue', onFailedRetryInterval=1, trimStream=True)
 ```
 
 _Arguments_
