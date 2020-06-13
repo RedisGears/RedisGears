@@ -72,6 +72,21 @@ Sets the time to live (TTL) for every updated key to one hour.
 
 **Author: [RedisLabs](https://redislabs.com/)**
 
+## Keyspace Notification Processing
+
+This example demonstrates a two-step process that:
+
+1. Synchronously captures distributed keyspace events
+1. Asynchronously processes the events' stream
+
+Specifically, the example shows how expired key names can be output to the log.
+
+**Author: [RedisLabs](https://redislabs.com/)**
+
+```python
+{{ include('examples/notification-processing.py') }}
+```
+
 ## Distributed Monte Carlo Estimation of Pi's Value
 
 Estimate Pi by throwing darts at a carefully-constructed dartboard.
