@@ -1,7 +1,10 @@
 #!/bin/bash
 
 JVM_OPTIONS="-Djava.class.path="
-JVM_OPTIONS+="./gears_runtime/target/gear_runtime-0.0.2-SNAPSHOT-jar-with-dependencies.jar"
+JVM_OPTIONS+="./gears_runtime/bin/:"
+JVM_OPTIONS+="./gears_runtime/lib/jackson-annotations-2.11.0.jar:"
+JVM_OPTIONS+="./gears_runtime/lib/jackson-core-2.11.0.jar:"
+JVM_OPTIONS+="./gears_runtime/lib/jackson-databind-2.11.0.jar"
 #JVM_OPTIONS+=" -XX:+IdleTuningGcOnIdle";
 JVM_OPTIONS+=" -Xms10m";
 JVM_OPTIONS+=" -Xmx2048m";

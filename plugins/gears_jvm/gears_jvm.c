@@ -642,7 +642,12 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
             vm_args.ignoreUnrecognized = false;
             /* load and initialize a Java VM, return a JNI interface
              * pointer in env */
-            JNI_CreateJavaVM(&jvm, (void**)&jvm_tld->env, &vm_args);
+            jint jvmInitRes = JNI_CreateJavaVM(&jvm, (void**)&jvm_tld->env, &vm_args);
+
+            if(jvmInitRes != 0){
+                RedisModule_Log(NULL, "warning", "Failed initializing the jvm");
+                return NULL;
+            }
 
             array_free(options);
             JVM_FREE(jvmOptionsString);

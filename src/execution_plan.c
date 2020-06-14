@@ -204,6 +204,7 @@ ExecutionThreadPool* ExecutionPlan_DefineThreadPool(const char* name, void* pool
     ret->name = RG_STRDUP(name);
     ret->poolCtx = poolCtx;
     ret->addJob = addJob;
+    Gears_dictAdd(poolDictionary, ret->name, ret);
     return ret;
 }
 

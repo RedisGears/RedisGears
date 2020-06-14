@@ -1,6 +1,9 @@
 package gears;
 
 import java.io.IOException;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import gears.operations.AccumulateByOperation;
 import gears.operations.AccumulateOperation;
 import gears.operations.ExtractorOperation;
@@ -12,7 +15,6 @@ import gears.operations.OnRegisteredOperation;
 import gears.readers.BaseReader;
 
 public class GearsBuilder{
-	
 	private BaseReader reader;
 	private long ptr;
 	
@@ -65,8 +67,21 @@ public class GearsBuilder{
 	
 	private native void innerRegister(BaseReader reader, ExecutionMode mode, OnRegisteredOperation onRegister);
 	
-	public void run() {
+	public void run(boolean jsonSerialize, boolean collect) {
+		if(jsonSerialize) {
+			this.map(r->{
+				ObjectMapper objectMapper = new ObjectMapper();
+				return objectMapper.writeValueAsString(r);
+			});
+		}
+		if(collect) {
+			this.collect();
+		}
 		innerRun(reader);
+	}
+	
+	public void run() {
+		run(true, true);
 	}
 	
 	public void register() {
