@@ -1961,8 +1961,8 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         return NULL;
     }
     PyObject* pyBlob = PyTuple_GetItem(args, 2);
-    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob)){
-        PyErr_SetString(GearsError, "blob argument must be bytes or a byte array");
+    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob) && !PyObject_CheckBuffer(pyBlob)){
+        PyErr_SetString(GearsError, "blob argument must be bytes, byte array or a buffer");
         return NULL;
     }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
@@ -1974,21 +1974,27 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "dims argument must be iterable");
         return NULL;
     }
+    
+    // Returned object.
+    PyObject* obj = NULL;
+    // Dimenstions array.
     long long* dims = array_new(long long, 10);
+    // Buffer input variables.
+    bool buffered = false;
+    Py_buffer view;
 
+    // Collect dims.
     while((currDim = PyIter_Next(dimsIter)) != NULL){
         if(!PyLong_Check(currDim)){
             PyErr_SetString(GearsError, "dims arguments must be long");
             Py_DECREF(currDim);
             Py_DECREF(dimsIter);
-            array_free(dims);
-            return NULL;
+            goto clean_up;
         }
         if(PyErr_Occurred()){
             Py_DECREF(currDim);
             Py_DECREF(dimsIter);
-            array_free(dims);
-            return NULL;
+            goto clean_up;
         }
         dims = array_append(dims, PyLong_AsLong(currDim));
         Py_DECREF(currDim);
@@ -1998,25 +2004,43 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
     if(!t){
         PyErr_SetString(GearsError, "Failed creating tensor, make sure you put the right data type.");
-        array_free(dims);
-        return NULL;
+        goto clean_up;
     }
+    // Check expected tensor size.
+    size_t expected_tensor_size = RedisAI_TensorByteSize(t);
     size_t size;
     const char* blob;
     if(PyByteArray_Check(pyBlob)) {
         // Blob is byte array.
         size = PyByteArray_Size(pyBlob);
         blob = PyByteArray_AsString(pyBlob);
-    } else {
+    } else if(PyBytes_Check(pyBlob)){
         // Blob is bytes.
         size = PyBytes_Size(pyBlob);
         blob = PyBytes_AsString(pyBlob);
+    } else {
+        // Blob is buffer.
+        PyObject_GetBuffer(pyBlob, &view, PyBUF_READ);
+        size = view.len;
+        blob = view.buf;
+        buffered = true;
     }
+    // Validate input.
+    if(size != expected_tensor_size) {
+        RedisAI_TensorFree(t);
+        PyErr_SetString(GearsError, "ERR data length does not match tensor shape and type");
+        goto clean_up;
+    }
+
     RedisAI_TensorSetData(t, blob, size);
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
+    obj = (PyObject*)pyt;
+
+clean_up:
+    if(buffered) PyBuffer_Release(&view);
     array_free(dims);
-    return (PyObject*)pyt;
+    return obj;
 }
 
 static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
