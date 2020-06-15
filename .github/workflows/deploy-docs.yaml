@@ -23,6 +23,8 @@ jobs:
       run: python -c "import sys; print(sys.version)"
     - name: Install docs dependencies
       run: pip install -r docs/requirements.txt
+    - name: Test code snippets
+      run: python -m pytest -s -v docs/snippets
     - name: Get entire project
       run: git fetch -t
     - name: Build docs
