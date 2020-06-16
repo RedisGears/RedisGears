@@ -124,12 +124,12 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lam
         env.assertTrue(False, message='Registrations/Executions dropping failed')
 
 
-def jvmTestDecorator(preExecute=None, postExecution=None):
+def jvmTestDecorator(preExecute=None, postExecution=None, envArgs={}):
     def jvmTest(testFunc):
         def jvmTestFunc():
             testName = 'gears_tests.%s' % testFunc.func_name 
             print(Colors.Cyan('\tRunning: %s' % testName))
-            env = Env(testName = testName)
+            env = Env(testName = testName, **envArgs)
             conn = getConnectionByEnv(env)
             executionError = None
             res = [[],[]]

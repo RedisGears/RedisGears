@@ -28,7 +28,7 @@ public class StreamReader extends BaseReader {
 		this.duration = 0;
 		this.failurePolicy = FailurePolicy.CONTINUE;
 		this.failureRertyInterval = 5000;
-		this.trimStream = false;
+		this.trimStream = true;
 	}
 
 	@Override
