@@ -1034,6 +1034,24 @@ static void* JVM_ThreadPoolWorker(void* poolCtx){
     JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL);
     JNIEnv *env = jvm_ltd->env;
     (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNICallHelperMethodId, (jlong)poolCtx);
+
+//    JVM_ThreadPool* pool = (void*)poolCtx;
+//    while(true){
+//        pthread_mutex_lock(&pool->lock);
+//        while(JVM_listLength(pool->jobs) == 0){
+//            pthread_cond_wait(&pool->cond, &pool->lock);
+//        }
+//        JVM_listNode* n = JVM_listFirst(pool->jobs);
+//        JVM_ThreadPoolJob* job = JVM_listNodeValue(n);
+//        JVM_listDelNode(pool->jobs, n);
+//        pthread_mutex_unlock(&pool->lock);
+//        job->callback(job->arg);
+//        char* err = NULL;
+//        if((err = JVM_GetException(env))){
+//            RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
+//        }
+//    }
+
     RedisModule_Assert(false); // this one never returns
     return NULL;
 }
@@ -1807,7 +1825,7 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
             if(*isError){
                 return NULL;
             }
-            (*env)->CallVoidMethod(env, obj, hashRecordSet, javaKeyStr, jvmVal);
+            (*env)->CallObjectMethod(env, obj, hashRecordSet, javaKeyStr, jvmVal);
             if((err = JVM_GetException(env))){
                 RedisGears_SetError(rctx, err);
                 *isError = true;
@@ -1830,7 +1848,7 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
         if(*isError){
             return NULL;
         }
-        (*env)->CallVoidMethod(env, obj, hashRecordSet, javaKeyStr, jvmVal);
+        (*env)->CallObjectMethod(env, obj, hashRecordSet, javaKeyStr, jvmVal);
         if((err = JVM_GetException(env))){
             RedisGears_SetError(rctx, err);
             *isError = true;
