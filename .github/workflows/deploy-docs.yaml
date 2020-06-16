@@ -24,7 +24,7 @@ jobs:
     - name: Install docs dependencies
       run: pip install -r docs/requirements.txt
     - name: Spin up RedisGears container
-      run: docker -d --rm --name redisgears -p 6379:6379 redislabs/redisgears:edge 
+      run: docker run -d --rm --name redisgears -p 6379:6379 redislabs/redisgears:edge 
     - name: Test code snippets
       run: python -m pytest -s -v docs/snippets
     - name: Get entire project
