@@ -19,6 +19,10 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 !!! info "Further reference"
     Refer to the [cluster's README file](https://github.com/RedisGears/RedisGears/blob/master/recipes/cluster/README.md) for information on configuring the Dockerized cluster container.
 
+## Download
+
+A pre-compiled version can be downloaded from [RedisLabs download center](https://redislabs.com/download-center/modules/).
+
 ## Building
 
 ### Prerequisites
