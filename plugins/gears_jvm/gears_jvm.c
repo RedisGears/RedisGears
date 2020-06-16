@@ -14,6 +14,7 @@
 
 typedef struct JVM_ThreadLocalData JVM_ThreadLocalData;
 typedef struct JVMRunSession JVMRunSession;
+typedef struct JVMFlatExecutionSession JVMFlatExecutionSession;
 
 static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader);
 static void JVM_GBDestroy(JNIEnv *env, jobject objectOrClass);
@@ -37,6 +38,7 @@ static char* JVM_GetException(JNIEnv *env);
 static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s);
 static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, size_t len, char** err);
 static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong ctx);
+static JVMFlatExecutionSession* JVM_FepSessionCreate(JNIEnv *env, JVMRunSession* s, char** err);
 
 static char* shardUniqueId = NULL;
 static char* workingDir = NULL;
@@ -121,14 +123,18 @@ typedef struct JVMExecutionSession{
 }JVMExecutionSession;
 
 typedef struct JVMRunSession{
-    size_t refCounf;
+    size_t refCount;
     char uuid[ID_LEN];
     char uuidStr[STR_ID_LEN];
     char* jarFilePath;
     jobject sessionClsLoader;
-    jobject sessionObjectInputStream;
-    jobject sessionObjectOutputStream;
 }JVMRunSession;
+
+typedef struct JVMFlatExecutionSession{
+    jobject flatExecutionInputStream;
+    jobject flatExecutionOutputStream;
+    JVMRunSession* session;
+}JVMFlatExecutionSession;
 
 typedef struct JVM_ThreadLocalData{
     JNIEnv *env;
@@ -349,39 +355,51 @@ JNINativeMethod nativeMethod[] = {
         },
     };
 
-static void JVM_SessionFree(void* arg){
-    JVMRunSession* s = arg;
-    if(--s->refCounf == 0){
-        RedisModule_DictDelC(JVMSessions, s->uuid, ID_LEN, NULL);
-        int ret = RedisGears_ExecuteCommand(NULL, "verbose", "rm -rf %s", s->jarFilePath);
-        if(ret != 0){
-            RedisModule_Log(NULL, "warning", "Failed deleting session jar %s", s->jarFilePath);
-        }
+static void JVM_SessionFree(JVMRunSession* s){
 
-        JVM_FREE(s->jarFilePath);
-        JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s);
-        JNIEnv *env = jvm_ltd->env;
-
-        if(s->sessionClsLoader){
-            (*env)->DeleteGlobalRef(env, s->sessionClsLoader);
-        }
-
-        if(s->sessionObjectInputStream){
-            (*env)->DeleteGlobalRef(env, s->sessionObjectInputStream);
-        }
-
-        if(s->sessionObjectOutputStream){
-            (*env)->DeleteGlobalRef(env, s->sessionObjectOutputStream);
-        }
-
-        JVM_FREE(s);
+    if(__atomic_sub_fetch(&s->refCount, 1, __ATOMIC_SEQ_CST) > 0){
+        return;
     }
+
+    RedisModule_DictDelC(JVMSessions, s->uuid, ID_LEN, NULL);
+    int ret = RedisGears_ExecuteCommand(NULL, "verbose", "rm -rf %s", s->jarFilePath);
+    if(ret != 0){
+        RedisModule_Log(NULL, "warning", "Failed deleting session jar %s", s->jarFilePath);
+    }
+
+    JVM_FREE(s->jarFilePath);
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s);
+    JNIEnv *env = jvm_ltd->env;
+
+    if(s->sessionClsLoader){
+        (*env)->DeleteGlobalRef(env, s->sessionClsLoader);
+    }
+
+    JVM_FREE(s);
+}
+
+static void JVM_FepSessionFree(void* arg){
+    JVMFlatExecutionSession* fepSession = arg;
+    JVM_SessionFree(fepSession->session);
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL);
+    JNIEnv *env = jvm_ltd->env;
+    if(fepSession->flatExecutionInputStream){
+        (*env)->DeleteGlobalRef(env, fepSession->flatExecutionInputStream);
+    }
+    if(fepSession->flatExecutionOutputStream){
+        (*env)->DeleteGlobalRef(env, fepSession->flatExecutionOutputStream);
+    }
+    JVM_FREE(fepSession);
 }
 
 static void* JVM_SessionDup(void* arg){
     JVMRunSession* s = arg;
-    ++s->refCounf;
+    __atomic_add_fetch(&s->refCount, 1, __ATOMIC_SEQ_CST);
     return s;
+}
+
+static void* JVM_FepSessionDup(void* arg){
+    return arg;
 }
 
 static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
@@ -416,6 +434,11 @@ static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferW
     return REDISMODULE_OK;
 }
 
+static int JVM_FepSessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
+    JVMFlatExecutionSession* fepSession = arg;
+    return JVM_SessionSerialize(fep, fepSession->session, bw, err);
+}
+
 static void* JVM_SessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
     if(version > JSESSION_TYPE_VERSION){
         *err = JVM_STRDUP("Missmatch jvm session version, update to newest JVM module");
@@ -437,8 +460,47 @@ static void* JVM_SessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* 
     return s;
 }
 
-static char* JVM_SessionToString(void* arg){
-    return JVM_STRDUP("java session");
+static void* JVM_FepSessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+    JVMRunSession* s = JVM_SessionDeserialize(fep, br, version, err);
+    if(!s){
+        return NULL;
+    }
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL);
+    JNIEnv *env = jvm_ltd->env;
+    return JVM_FepSessionCreate(env, s, err);
+}
+
+static char* JVM_FepSessionToString(void* arg){
+    return JVM_STRDUP("Fep java session");
+}
+
+static JVMFlatExecutionSession* JVM_FepSessionCreate(JNIEnv *env, JVMRunSession* s, char** err){
+    JVMFlatExecutionSession* fepSession = JVM_ALLOC(sizeof(*fepSession));
+    fepSession->session = s;
+    fepSession->flatExecutionInputStream = NULL;
+    fepSession->flatExecutionOutputStream = NULL;
+
+    jobject inputStream = (*env)->CallStaticObjectMethod(env, gearsObjectInputStreamCls, gearsObjectInputStreamGetMethodId, s->sessionClsLoader);
+
+    if((*err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Fatal error, failed creating inputStream for flat execution. error='%s'", *err);
+        JVM_FepSessionFree(fepSession);
+        return NULL;
+    }
+
+    fepSession->flatExecutionInputStream = JVM_TurnToGlobal(env, inputStream);
+
+    jobject outputStream = (*env)->CallStaticObjectMethod(env, gearsObjectOutputStreamCls, gearsObjectOutputStreamGetMethodId);
+
+    if((*err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Fatal error, failed creating outputStream for flat execution. error='%s'", *err);
+        JVM_FepSessionFree(fepSession);
+        return NULL;
+    }
+
+    fepSession->flatExecutionOutputStream = JVM_TurnToGlobal(env, outputStream);
+
+    return fepSession;
 }
 
 static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, size_t len, char** err){
@@ -451,11 +513,9 @@ static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, si
     JVMRunSession* s = JVM_ALLOC(sizeof(*s));
     RedisGears_GetShardUUID((char*)id, s->uuid, s->uuidStr, &sessionsId);
 
-    s->refCounf = 1;
+    s->refCount = 1;
 
     s->sessionClsLoader = NULL;
-    s->sessionObjectInputStream = NULL;
-    s->sessionObjectOutputStream = NULL;
 
     JVM_asprintf(&s->jarFilePath, "%s/%s-jars/%s.jar", workingDir, shardUniqueId, s->uuidStr);
 
@@ -491,24 +551,6 @@ static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, si
     }
 
     s->sessionClsLoader = JVM_TurnToGlobal(env, clsLoader);
-
-    s->sessionObjectInputStream = (*env)->CallStaticObjectMethod(env, gearsObjectInputStreamCls, gearsObjectInputStreamGetMethodId, s->sessionClsLoader);
-
-    if((*err = JVM_GetException(env))){
-        JVM_SessionFree(s);
-        return NULL;
-    }
-
-    s->sessionObjectInputStream = JVM_TurnToGlobal(env, s->sessionObjectInputStream);
-
-    s->sessionObjectOutputStream = (*env)->CallStaticObjectMethod(env, gearsObjectOutputStreamCls, gearsObjectOutputStreamGetMethodId);
-
-    if((*err = JVM_GetException(env))){
-        JVM_SessionFree(s);
-        return NULL;
-    }
-
-    s->sessionObjectOutputStream = JVM_TurnToGlobal(env, s->sessionObjectOutputStream);
 
     RedisModule_DictSetC(JVMSessions, s->uuid, ID_LEN, s);
 
@@ -624,6 +666,12 @@ static JavaVMOption* JVM_GetJVMOptions(char** jvmOptionsString){
     JavaVMOption option;
     option.optionString = "-Xrs";
     options = array_append(options, option);
+
+#ifdef VALGRIND
+    JavaVMOption jniCheckOption;
+    jniCheckOption.optionString = "-Xcheck:jni";
+    options = array_append(options, jniCheckOption);
+#endif
 
     return options;
 }
@@ -925,48 +973,16 @@ static char* JVM_GetException(JNIEnv *env){
     (*env)->ExceptionClear(env);
 
     jclass clazz = (*env)->GetObjectClass(env, e);
-    jmethodID getMessage = (*env)->GetMethodID(env, clazz,
-                                               "getMessage",
-                                               "()Ljava/lang/String;");
+    jmethodID getMessage = (*env)->GetMethodID(env, clazz, "toString", "()Ljava/lang/String;");
     jstring message = (jstring)(*env)->CallObjectMethod(env, e, getMessage);
+    jthrowable e1 = (*env)->ExceptionOccurred(env);
+    RedisModule_Assert(!e1);
+    RedisModule_Assert(message);
     char* err = NULL;
-    if(message){
-        const char *mstr = (*env)->GetStringUTFChars(env, message, JNI_FALSE);
-        err = JVM_STRDUP(mstr);
-        (*env)->ReleaseStringUTFChars(env, message, mstr);
-        (*env)->DeleteLocalRef(env, message);
-    }else{
-        // Call the getName() to get a jstring object back
-        jstring strObj = (jstring)(*env)->CallObjectMethod(env, clazz, gearsClassGetNameMethodId);
-
-        if(strObj){
-
-            // Now get the c string from the java jstring object
-            const char* str = (*env)->GetStringUTFChars(env, strObj, JNI_FALSE);
-
-            // Print the class name
-            err = JVM_STRDUP(str);
-
-            // Release the memory pinned char array
-            (*env)->ReleaseStringUTFChars(env, strObj, str);
-            (*env)->DeleteLocalRef(env, strObj);
-        }
-
-    }
-    if(!err){
-        err = JVM_STRDUP("Exception occured during execution");
-    }
-    (*env)->DeleteLocalRef(env, clazz);
-    (*env)->DeleteLocalRef(env, e);
-    RedisModule_Assert(err);
-
-    e = (*env)->ExceptionOccurred(env);
-    if(e){
-        (*env)->ExceptionDescribe(env);
-        (*env)->ExceptionClear(env);
-        (*env)->DeleteLocalRef(env, e);
-    }
-
+    const char *mstr = (*env)->GetStringUTFChars(env, message, NULL);
+    err = JVM_STRDUP(mstr);
+    (*env)->ReleaseStringUTFChars(env, message, mstr);
+    (*env)->DeleteLocalRef(env, message);
     return err;
 }
 
@@ -1002,6 +1018,10 @@ static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong
         JVM_listDelNode(pool->jobs, n);
         pthread_mutex_unlock(&pool->lock);
         job->callback(job->arg);
+        char* err = NULL;
+        if((err = JVM_GetException(env))){
+            RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
+        }
     }
 }
 
@@ -1043,7 +1063,7 @@ static void JVM_ThreadPoolAddJob(void* poolCtx, void (*callback)(void*), void* a
 }
 
 static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
-    const char* reader = (*env)->GetStringUTFChars(env, strReader, JNI_FALSE);
+    const char* reader = (*env)->GetStringUTFChars(env, strReader, NULL);
     char* err = NULL;
     FlatExecutionPlan* fep = RedisGears_CreateCtx((char*)reader, &err);
     (*env)->ReleaseStringUTFChars(env, strReader, reader);
@@ -1060,7 +1080,16 @@ static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
     RedisGears_SetExecutionThreadPool(fep, jvmExecutionPool);
 
     JVM_ThreadLocalData* tld = JVM_GetThreadLocalData(NULL);
-    RedisGears_SetFlatExecutionPrivateData(fep, JVM_SESSION_TYPE_NAME, JVM_SessionDup(tld->currSession));
+
+    JVMFlatExecutionSession* fepSession = JVM_FepSessionCreate(tld->env, JVM_SessionDup(tld->currSession), &err);
+    if(!fepSession){
+        (*env)->ThrowNew(env, exceptionCls, err);
+        JVM_FREE(err);
+        RedisGears_FreeFlatExecution(fep);
+        return;
+    }
+
+    RedisGears_SetFlatExecutionPrivateData(fep, JVM_SESSION_TYPE_NAME, fepSession);
 
     RGM_Map(fep, JVM_ToJavaRecordMapper, NULL);
 
@@ -1166,8 +1195,8 @@ void* JVM_CreateRunStreamReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject
         return NULL;
     }
 
-    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
-    const char* startIdStr = (*env)->GetStringUTFChars(env, startId, JNI_FALSE);
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, NULL);
+    const char* startIdStr = (*env)->GetStringUTFChars(env, startId, NULL);
 
     StreamReaderCtx* readerCtx = RedisGears_StreamReaderCtxCreate(patternStr, startIdStr);
 
@@ -1282,7 +1311,7 @@ static void* JVM_CreateRunKeyReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, job
         return NULL;
     }
 
-    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, NULL);
 
     jboolean readValues = (*env)->GetBooleanField(env, reader, keysReaderReadValuesField);
     jboolean noScan = (*env)->GetBooleanField(env, reader, keysReaderNoscanField);
@@ -1342,7 +1371,7 @@ void* JVM_CreateRegisterCommandReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, j
         return NULL;
     }
 
-    const char* triggerStr = (*env)->GetStringUTFChars(env, trigger, JNI_FALSE);
+    const char* triggerStr = (*env)->GetStringUTFChars(env, trigger, NULL);
 
     CommandReaderTriggerArgs* triggerArgs = RedisGears_CommandReaderTriggerArgsCreate(triggerStr);
 
@@ -1383,7 +1412,7 @@ void* JVM_CreateRegisterStreamReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jo
         RedisModule_Assert(false);
     }
 
-    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, NULL);
 
 
     StreamReaderTriggerArgs* triggerArgsCtx =
@@ -1413,7 +1442,7 @@ void* JVM_CreateRegisterKeysReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobj
         return NULL;
     }
 
-    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, JNI_FALSE);
+    const char* patternStr = (*env)->GetStringUTFChars(env, pattern, NULL);
 
     jboolean readValues = (*env)->GetBooleanField(env, reader, keysReaderReadValuesField);
 
@@ -1426,7 +1455,7 @@ void* JVM_CreateRegisterKeysReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobj
             keyTypes = array_new(int, jkeyTypesLen);
             for(size_t i = 0 ; i < jkeyTypesLen ; ++i){
                 jobject jkey = (*env)->GetObjectArrayElement(env, jkeyTypes, i);
-                const char* jkeyStr = (*env)->GetStringUTFChars(env, jkey, JNI_FALSE);
+                const char* jkeyStr = (*env)->GetStringUTFChars(env, jkey, NULL);
                 int jkeyInt = JVM_RegisterStrKeyTypeToInt(jkeyStr);
                 (*env)->ReleaseStringUTFChars(env, jkey, jkeyStr);
                 if(jkeyInt == -1){
@@ -1448,7 +1477,7 @@ void* JVM_CreateRegisterKeysReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobj
             eventTypes = array_new(char*, jeventTypesLen);
             for(size_t i = 0 ; i < jeventTypesLen ; ++i){
                 jobject jevent = (*env)->GetObjectArrayElement(env, jeventTypes, i);
-                const char* jeventStr = (*env)->GetStringUTFChars(env, jevent, JNI_FALSE);
+                const char* jeventStr = (*env)->GetStringUTFChars(env, jevent, NULL);
                 eventTypes = array_append(eventTypes, JVM_STRDUP(jeventStr));
                 (*env)->ReleaseStringUTFChars(env, jevent, jeventStr);
             }
@@ -1482,6 +1511,7 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
     char* err = NULL;
     void* krCtx = JVM_CreateRunReaderArgs(env, fep, reader);
     if(!krCtx){
+        (*env)->ThrowNew(env, exceptionCls, "Failed creating execution args");
         return;
     }
     ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, krCtx, NULL, NULL, NULL, &err);
@@ -1536,7 +1566,7 @@ static jstring JVM_GBConfigGet(JNIEnv *env, jobject objectOrClass, jstring key){
         return NULL;
     }
 
-    const char* keyStr = (*env)->GetStringUTFChars(env, key, JNI_FALSE);
+    const char* keyStr = (*env)->GetStringUTFChars(env, key, NULL);
 
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisGears_LockHanlderAcquire(ctx);
@@ -1565,7 +1595,7 @@ static void JVM_GBLog(JNIEnv *env, jobject objectOrClass, jstring msg, jobject l
         (*env)->ThrowNew(env, exceptionCls, "Got a NULL msg on log function");
         return;
     }
-    const char* msgStr = (*env)->GetStringUTFChars(env, msg, JNI_FALSE);
+    const char* msgStr = (*env)->GetStringUTFChars(env, msg, NULL);
     char* logLevelStr = NULL;
     if((*env)->IsSameObject(env, logLevel, gearsLogLevelNotice)){
         logLevelStr = "notice";
@@ -1590,12 +1620,12 @@ static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray co
         return NULL;
     }
     jstring c = (*env)->GetObjectArrayElement(env, command, 0);
-    const char* cStr = (*env)->GetStringUTFChars(env, c, JNI_FALSE);
+    const char* cStr = (*env)->GetStringUTFChars(env, c, NULL);
 
     RedisModuleString** args = array_new(RedisModuleString*, len);
     for(size_t i = 1 ; i < len ; ++i){
         jstring arg = (*env)->GetObjectArrayElement(env, command, i);
-        const char* argStr = (*env)->GetStringUTFChars(env, arg, JNI_FALSE);
+        const char* argStr = (*env)->GetStringUTFChars(env, arg, NULL);
         RedisModuleString* argRedisStr = RedisModule_CreateString(NULL, argStr, strlen(argStr));
         (*env)->ReleaseStringUTFChars(env, arg, argStr);
         args = array_append(args, argRedisStr);
@@ -1638,6 +1668,16 @@ static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray co
     return res;
 }
 
+void JVM_FreeRegisterReaderArgs(FlatExecutionPlan* fep, void* triggerCtx){
+    if(strcmp(RedisGears_GetReader(fep), "KeysReader") == 0){
+        RedisGears_KeysReaderTriggerArgsFree(triggerCtx);
+    }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
+        RedisGears_StreamReaderTriggerArgsFree(triggerCtx);
+    }else if(strcmp(RedisGears_GetReader(fep), "CommandReader") == 0){
+        RedisGears_CommandReaderTriggerArgsFree(triggerCtx);
+    }
+}
+
 static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered){
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
@@ -1660,9 +1700,16 @@ static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, j
 
     void* triggerCtx = JVM_CreateRegisterReaderArgs(env, fep, reader);
     if(!triggerCtx){
+        (*env)->ThrowNew(env, exceptionCls, "Failed creating registration args");
         return;
     }
-    RGM_Register(fep, mode, triggerCtx, &err);
+    if(!RGM_Register(fep, mode, triggerCtx, &err)){
+        if(!err){
+            err = JVM_STRDUP("Failed register execution");
+        }
+        (*env)->ThrowNew(env, exceptionCls, err);
+        JVM_FREE(err);
+    }
 }
 
 int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -1738,14 +1785,16 @@ error:
     return REDISMODULE_OK;
 }
 
-static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, void* arg){
+static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, void* arg, bool* isError){
     if(!data){
         return NULL;
     }
 
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    char* err = NULL;
 
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
     JNIEnv *env = jvm_tld->env;
     jobject obj = NULL;
     if(RedisGears_RecordGetType(data) == RedisGears_GetHashSetRecordType()){
@@ -1754,8 +1803,16 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
         for(size_t i = 0 ; i < array_len(keys) ; ++i){
             jstring javaKeyStr = (*env)->NewStringUTF(env, keys[i]);
             Record* val = RedisGears_HashSetRecordGet(data, keys[i]);
-            jobject jvmVal = JVM_ToJavaRecordMapperInternal(rctx, val, arg);
+            jobject jvmVal = JVM_ToJavaRecordMapperInternal(rctx, val, arg, isError);
+            if(*isError){
+                return NULL;
+            }
             (*env)->CallVoidMethod(env, obj, hashRecordSet, javaKeyStr, jvmVal);
+            if((err = JVM_GetException(env))){
+                RedisGears_SetError(rctx, err);
+                *isError = true;
+                return NULL;
+            }
         }
         array_free(keys);
     }else if(RedisGears_RecordGetType(data) == RedisGears_GetStringRecordType()){
@@ -1769,8 +1826,16 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
         const char* key = RedisGears_KeyRecordGetKey(data, &keyLen);
         Record* val = RedisGears_KeyRecordGetVal(data);
         jstring javaKeyStr = (*env)->NewStringUTF(env, key);
-        jobject jvmVal = JVM_ToJavaRecordMapperInternal(rctx, val, arg);
+        jobject jvmVal = JVM_ToJavaRecordMapperInternal(rctx, val, arg, isError);
+        if(*isError){
+            return NULL;
+        }
         (*env)->CallVoidMethod(env, obj, hashRecordSet, javaKeyStr, jvmVal);
+        if((err = JVM_GetException(env))){
+            RedisGears_SetError(rctx, err);
+            *isError = true;
+            return NULL;
+        }
     }else if(RedisGears_RecordGetType(data) == JVMRecordType){
         JVMRecord* jvmVal = (JVMRecord*)data;
         obj = jvmVal->obj;
@@ -1778,7 +1843,10 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
         obj = (*env)->NewObjectArray(env, RedisGears_ListRecordLen(data), gearsObjectCls, NULL);
         for(size_t i = 0 ; i < RedisGears_ListRecordLen(data) ; ++i){
             Record* temp = RedisGears_ListRecordGet(data, i);
-            jobject jvmTemp = JVM_ToJavaRecordMapperInternal(rctx, temp, arg);
+            jobject jvmTemp = JVM_ToJavaRecordMapperInternal(rctx, temp, arg, isError);
+            if(*isError){
+                return NULL;
+            }
             (*env)->SetObjectArrayElement(env, obj, i, jvmTemp);
         }
     }else{
@@ -1792,13 +1860,19 @@ static Record* JVM_ToJavaRecordMapper(ExecutionCtx* rctx, Record *data, void* ar
         return data;
     }
 
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
 
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVM_PushFrame(jvm_tld->env);
 
-    jobject obj = JVM_ToJavaRecordMapperInternal(rctx, data, arg);
+    bool isError = false;
+    jobject obj = JVM_ToJavaRecordMapperInternal(rctx, data, arg, &isError);
+
+    if(isError){
+        return NULL;
+    }
+
     if(obj){
         obj = JVM_TurnToGlobal(jvm_tld->env, obj);
     }
@@ -1814,8 +1888,8 @@ static Record* JVM_ToJavaRecordMapper(ExecutionCtx* rctx, Record *data, void* ar
 }
 
 static Record* JVM_AccumulateByKey(ExecutionCtx* rctx, char* key, Record *accumulate, Record *data, void* arg){
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
 
     JVMRecord* r = (JVMRecord*)data;
@@ -1859,8 +1933,8 @@ error:
 }
 
 static Record* JVM_Accumulate(ExecutionCtx* rctx, Record *accumulate, Record *data, void* arg){
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVMRecord* r = (JVMRecord*)data;
     JVMRecord* a = (JVMRecord*)accumulate;
@@ -1903,8 +1977,8 @@ error:
 }
 
 static bool JVM_Filter(ExecutionCtx* rctx, Record *data, void* arg){
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVMRecord* r = (JVMRecord*)data;
     jobject filter = arg;
@@ -1925,8 +1999,8 @@ static bool JVM_Filter(ExecutionCtx* rctx, Record *data, void* arg){
 }
 
 static void JVM_Foreach(ExecutionCtx* rctx, Record *data, void* arg){
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVMRecord* r = (JVMRecord*)data;
     jobject foreach = arg;
@@ -1945,8 +2019,8 @@ static void JVM_Foreach(ExecutionCtx* rctx, Record *data, void* arg){
 }
 
 static char* JVM_Extractor(ExecutionCtx* rctx, Record *data, void* arg, size_t* len){
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVMRecord* r = (JVMRecord*)data;
     jobject extractor = (arg);
@@ -1966,7 +2040,7 @@ static char* JVM_Extractor(ExecutionCtx* rctx, Record *data, void* arg, size_t* 
         goto error;
     }
 
-    const char* resStr = (*env)->GetStringUTFChars(env, res, JNI_FALSE);;
+    const char* resStr = (*env)->GetStringUTFChars(env, res, NULL);
     char* extractedData = JVM_STRDUP(resStr);
 
     (*env)->ReleaseStringUTFChars(env, res, resStr);
@@ -1983,8 +2057,9 @@ error:
 
 static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
     char* err = NULL;
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    Record* listRecord = NULL;
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVM_PushFrame(jvm_tld->env);
 
@@ -2010,13 +2085,27 @@ static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
         goto error;
     }
 
-    Record* listRecord = RedisGears_ListRecordCreate(20);
+    listRecord = RedisGears_ListRecordCreate(20);
     while((*env)->CallBooleanMethod(env, iterator, iteratorHasNextMethodId)){
+
+        if((err = JVM_GetException(env))){
+            goto error;
+        }
+
         jobject obj = (*env)->CallObjectMethod(env, iterator, iteratorNextMethodId);
+
+        if((err = JVM_GetException(env))){
+            goto error;
+        }
+
         obj = JVM_TurnToGlobal(env, obj);
         JVMRecord* innerRecord = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
         innerRecord->obj = obj;
         RedisGears_ListRecordAdd(listRecord, (Record*)innerRecord);
+    }
+
+    if((err = JVM_GetException(env))){
+        goto error;
     }
 
     RedisGears_FreeRecord(data);
@@ -2027,14 +2116,17 @@ static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
 error:
     RedisGears_SetError(rctx, err);
     RedisGears_FreeRecord(data);
+    if(listRecord){
+        RedisGears_FreeRecord(listRecord);
+    }
     JVM_PopFrame(jvm_tld->env);
     return NULL;
 }
 
 static Record* JVM_Mapper(ExecutionCtx* rctx, Record *data, void* arg){
     char* err = NULL;
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVM_PushFrame(jvm_tld->env);
 
@@ -2072,10 +2164,16 @@ static int JVMRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
     JNIEnv *env = jvm_tld->env;
     jobject res = (*env)->CallObjectMethod(env, r->obj, baseRecordToStr);
-    const char* resStr = (*env)->GetStringUTFChars(env, res, JNI_FALSE);
-    RedisModule_ReplyWithCString(rctx, resStr);
-    (*jvm_tld->env)->ReleaseStringUTFChars(jvm_tld->env, res, resStr);
-    (*jvm_tld->env)->DeleteLocalRef(jvm_tld->env, res);
+    char* err = NULL;
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
+        RedisModule_ReplyWithCString(rctx, err);
+    }else{
+        const char* resStr = (*env)->GetStringUTFChars(env, res, NULL);
+        RedisModule_ReplyWithCString(rctx, resStr);
+        (*jvm_tld->env)->ReleaseStringUTFChars(jvm_tld->env, res, resStr);
+        (*jvm_tld->env)->DeleteLocalRef(jvm_tld->env, res);
+    }
     return REDISMODULE_OK;
 }
 
@@ -2155,9 +2253,9 @@ static void* JVM_ObjectDeserializeInternal(jobject inputStream, Gears_BufferRead
 
 static int JVM_ObjectSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
 
-    JVMRunSession* session = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+    JVMFlatExecutionSession* session = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
 
-    return JVM_ObjectSerializeInternal(session->sessionObjectOutputStream, arg, bw, err);
+    return JVM_ObjectSerializeInternal(session->flatExecutionOutputStream, arg, bw, err);
 }
 
 static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
@@ -2166,9 +2264,9 @@ static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* b
         return NULL;
     }
 
-    JVMRunSession* currSession = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+    JVMFlatExecutionSession* currSession = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
 
-    return JVM_ObjectDeserializeInternal(currSession->sessionObjectInputStream, br, err);
+    return JVM_ObjectDeserializeInternal(currSession->flatExecutionInputStream, br, err);
 }
 
 static int JVMRecord_Serialize(ExecutionCtx* ectx, Gears_BufferWriter* bw, Record* base, char** err){
@@ -2193,8 +2291,8 @@ static Record* JVMRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br)
 
 static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
     char* err = NULL;
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
 
     JVM_PushFrame(jvm_tld->env);
 
@@ -2235,12 +2333,12 @@ static void JVM_OnStart(ExecutionCtx* ctx, void* arg){
         return;
     }
 
-    JVMRunSession* s = RedisGears_GetFlatExecutionPrivateData(ctx);
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(ctx);
 
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
     JNIEnv *env = jvm_tld->env;
 
-    jobject inputStream = (*env)->CallStaticObjectMethod(env, gearsObjectInputStreamCls, gearsObjectInputStreamGetMethodId, s->sessionClsLoader);
+    jobject inputStream = (*env)->CallStaticObjectMethod(env, gearsObjectInputStreamCls, gearsObjectInputStreamGetMethodId, s->session->sessionClsLoader);
 
     if((err = JVM_GetException(env))){
         RedisModule_Log(NULL, "warning", "Fatal error, failed creating inputStream for execution. error='%s'", err);
@@ -2269,10 +2367,10 @@ static void JVM_OnStart(ExecutionCtx* ctx, void* arg){
 }
 
 static void JVM_OnUnpaused(ExecutionCtx* ctx, void* arg){
-    JVMRunSession* session = RedisGears_GetFlatExecutionPrivateData(ctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(session);
+    JVMFlatExecutionSession* session = RedisGears_GetFlatExecutionPrivateData(ctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(session->session);
     JNIEnv *env = jvm_tld->env;
-    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsBuilderOnUnpausedMethodId, session->sessionClsLoader);
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsBuilderOnUnpausedMethodId, session->session->sessionClsLoader);
 
     char* err = NULL;
     if((err = JVM_GetException(env))){
@@ -2319,11 +2417,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
 
     jvmSessionType = RedisGears_CreateType(JVM_SESSION_TYPE_NAME,
                                            JSESSION_TYPE_VERSION,
-                                           JVM_SessionFree,
-                                           JVM_SessionDup,
-                                           JVM_SessionSerialize,
-                                           JVM_SessionDeserialize,
-                                           JVM_SessionToString);
+                                           JVM_FepSessionFree,
+                                           JVM_FepSessionDup,
+                                           JVM_FepSessionSerialize,
+                                           JVM_FepSessionDeserialize,
+                                           JVM_FepSessionToString);
 
     RedisGears_RegisterFlatExecutionPrivateDataType(jvmSessionType);
 

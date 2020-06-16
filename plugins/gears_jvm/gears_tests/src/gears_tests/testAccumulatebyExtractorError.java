@@ -4,20 +4,19 @@ import gears.GearsBuilder;
 import gears.readers.KeysReader;
 import gears.records.KeysReaderRecord;
 
-public class testAccumulateby {
-	
+public class testAccumulatebyExtractorError {
 	public static void main() {
 		KeysReader reader = new KeysReader();
 		new GearsBuilder(reader).
 		accumulateBy(r->{
-			return ((KeysReaderRecord)r).getStringVal();
+			throw new Exception("AccumulatebyExtractor Error");
 		},(k,a,r)->{
 			if(a == null) {
 				a = Integer.valueOf(0);
 			}
 			return (Integer)a + 1;
 		}).
+		foreach(r->System.out.println(r.getClass())).
 		run();
 	}
-	
 }

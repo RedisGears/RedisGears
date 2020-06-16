@@ -4,13 +4,16 @@ import gears.GearsBuilder;
 import gears.readers.KeysReader;
 import gears.records.KeysReaderRecord;
 
-public class testForeach {
+public class testAccumulatebyError {
 	public static void main() {
 		KeysReader reader = new KeysReader();
 		new GearsBuilder(reader).
-		foreach(r->{ 
-			((KeysReaderRecord)r).getHashVal().put("test", "test");
+		accumulateBy(r->{
+			return ((KeysReaderRecord)r).getStringVal();
+		},(k,a,r)->{
+			throw new Exception("Accumulateby Error");
 		}).
+		foreach(r->System.out.println(r.getClass())).
 		run();
 	}
 }
