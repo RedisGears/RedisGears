@@ -1,6 +1,8 @@
 package gears;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -113,6 +115,12 @@ public class GearsBuilder{
 		in.addData(bytes);
 		Object o = in.readObject();
 		return o;
+	}
+	
+	private static String getStackTrace(Throwable e) {
+		StringWriter writer = new StringWriter();
+		e.printStackTrace(new PrintWriter(writer));
+		return writer.toString();
 	}
 	
 	private static void jniCallHelper(long ctx){

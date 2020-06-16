@@ -165,6 +165,7 @@ jmethodID gearsBuilderSerializeObjectMethodId = NULL;
 jmethodID gearsBuilderDeserializeObjectMethodId = NULL;
 jmethodID gearsBuilderOnUnpausedMethodId = NULL;
 jmethodID gearsJNICallHelperMethodId = NULL;
+jmethodID gearsGetStackTraceMethodId = NULL;
 
 jclass gearsObjectInputStreamCls = NULL;
 jmethodID gearsObjectInputStreamGetMethodId = NULL;
@@ -740,6 +741,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "deserializeObject", "([BLgears/GearsObjectInputStream;)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "onUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniCallHelper", "(J)V", gearsJNICallHelperMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "getStackTrace", "(Ljava/lang/Throwable;)Ljava/lang/String;", gearsGetStackTraceMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/MapOperation", gearsMappCls);
             JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "map", "(Ljava/io/Serializable;)Ljava/io/Serializable;", gearsMapMethodId);
@@ -969,20 +971,21 @@ static char* JVM_GetException(JNIEnv *env){
     if(!e){
         return NULL;
     }
-    (*env)->ExceptionDescribe(env);
+//    (*env)->ExceptionDescribe(env);
     (*env)->ExceptionClear(env);
 
-    jclass clazz = (*env)->GetObjectClass(env, e);
-    jmethodID getMessage = (*env)->GetMethodID(env, clazz, "toString", "()Ljava/lang/String;");
-    jstring message = (jstring)(*env)->CallObjectMethod(env, e, getMessage);
+    jstring message = (jstring)(*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsGetStackTraceMethodId, e);
     jthrowable e1 = (*env)->ExceptionOccurred(env);
-    RedisModule_Assert(!e1);
-    RedisModule_Assert(message);
     char* err = NULL;
-    const char *mstr = (*env)->GetStringUTFChars(env, message, NULL);
-    err = JVM_STRDUP(mstr);
-    (*env)->ReleaseStringUTFChars(env, message, mstr);
-    (*env)->DeleteLocalRef(env, message);
+    if(!e1){
+        RedisModule_Assert(message);
+        const char *mstr = (*env)->GetStringUTFChars(env, message, NULL);
+        err = JVM_STRDUP(mstr);
+        (*env)->ReleaseStringUTFChars(env, message, mstr);
+        (*env)->DeleteLocalRef(env, message);
+    }else{
+        err = JVM_STRDUP("Could not extract excpetion data");
+    }
     return err;
 }
 
