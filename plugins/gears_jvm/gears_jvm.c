@@ -737,8 +737,8 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
             JVM_TryFindClass(jvm_tld->env, "java/lang/ClassLoader", javaClassLoaderCls);
             JVM_TryFindMethod(jvm_tld->env, javaClassLoaderCls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", javaLoadClassNewMid);
 
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "serializeObject", "(Ljava/lang/Object;Lgears/GearsObjectOutputStream;)[B", gearsBuilderSerializeObjectMethodId);
-            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "deserializeObject", "([BLgears/GearsObjectInputStream;)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "serializeObject", "(Ljava/lang/Object;Lgears/GearsObjectOutputStream;Z)[B", gearsBuilderSerializeObjectMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "deserializeObject", "([BLgears/GearsObjectInputStream;Z)Ljava/lang/Object;", gearsBuilderDeserializeObjectMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "onUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniCallHelper", "(J)V", gearsJNICallHelperMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "getStackTrace", "(Ljava/lang/Throwable;)Ljava/lang/String;", gearsGetStackTraceMethodId);
@@ -2222,13 +2222,13 @@ static char* JVM_ObjectToString(void* arg){
     return JVM_STRDUP("java object");
 }
 
-static int JVM_ObjectSerializeInternal(jobject outputStream, void* arg, Gears_BufferWriter* bw, char** err){
+static int JVM_ObjectSerializeInternal(jobject outputStream, void* arg, Gears_BufferWriter* bw, char** err, bool reset){
     JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
 
     jobject obj = arg;
     JNIEnv *env = jvm_tld->env;
 
-    jbyteArray bytes = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderSerializeObjectMethodId, obj, outputStream);
+    jbyteArray bytes = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderSerializeObjectMethodId, obj, outputStream, reset);
 
     if((*err = JVM_GetException(env))){
         return REDISMODULE_ERR;
@@ -2247,7 +2247,7 @@ static int JVM_ObjectSerializeInternal(jobject outputStream, void* arg, Gears_Bu
     return REDISMODULE_OK;
 }
 
-static void* JVM_ObjectDeserializeInternal(jobject inputStream, Gears_BufferReader* br, char** err){
+static void* JVM_ObjectDeserializeInternal(jobject inputStream, Gears_BufferReader* br, char** err, bool reset){
     size_t len;
     const char* buf = RedisGears_BRReadBuffer(br, &len);
 
@@ -2258,7 +2258,7 @@ static void* JVM_ObjectDeserializeInternal(jobject inputStream, Gears_BufferRead
 
     (*env)->SetByteArrayRegion(env, bytes, 0, len, buf);
 
-    jobject obj = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderDeserializeObjectMethodId, bytes, inputStream);
+    jobject obj = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, gearsBuilderDeserializeObjectMethodId, bytes, inputStream, reset);
 
     (*env)->DeleteLocalRef(env, bytes);
 
@@ -2276,7 +2276,7 @@ static int JVM_ObjectSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWr
 
     JVMFlatExecutionSession* session = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
 
-    return JVM_ObjectSerializeInternal(session->flatExecutionOutputStream, arg, bw, err);
+    return JVM_ObjectSerializeInternal(session->flatExecutionOutputStream, arg, bw, err, false);
 }
 
 static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
@@ -2287,24 +2287,28 @@ static void* JVM_ObjectDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* b
 
     JVMFlatExecutionSession* currSession = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
 
-    return JVM_ObjectDeserializeInternal(currSession->flatExecutionInputStream, br, err);
+    return JVM_ObjectDeserializeInternal(currSession->flatExecutionInputStream, br, err, false);
 }
 
 static int JVMRecord_Serialize(ExecutionCtx* ectx, Gears_BufferWriter* bw, Record* base, char** err){
     JVMRecord* r = (JVMRecord*)base;
     JVMExecutionSession* es = RedisGears_GetPrivateData(ectx);
     RedisModule_Assert(es);
-    return JVM_ObjectSerializeInternal(es->executionOutputStream, r->obj, bw, err);
+    return JVM_ObjectSerializeInternal(es->executionOutputStream, r->obj, bw, err, true);
 }
 
 static Record* JVMRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br){
     char* err;
     JVMExecutionSession* es = RedisGears_GetPrivateData(ectx);
     RedisModule_Assert(es);
-    jobject obj = JVM_ObjectDeserializeInternal(es->executionInputStream, br, &err);
+    jobject obj = JVM_ObjectDeserializeInternal(es->executionInputStream, br, &err, true);
 
     // record deserialization can not failed
-    RedisModule_Assert(obj);
+    if(!obj){
+        RedisModule_Log(NULL, "warning", "Failed deserializing jvm object, error='%s'", err);
+        RedisModule_Assert(false);
+    }
+
     JVMRecord* r = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
     r->obj = obj;
     return &r->baseRecord;

@@ -18,6 +18,11 @@ class GearsObjectInputStream
 			this.loader = loader;
 		}
 		
+		@Override
+		protected void readStreamHeader() {
+			
+		}
+		
 		/**
 	     * Use the given ClassLoader rather than using the system class
 	     * @throws ClassNotFoundException 
@@ -54,6 +59,10 @@ class GearsObjectInputStream
         }
         this.loader = loader;
         this.objectIn = null;
+    }
+    
+    public ClassLoader getLoader() {
+    	return loader;
     }
      
     public Object readObject() throws ClassNotFoundException, IOException, SecurityException {

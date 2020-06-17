@@ -21,6 +21,11 @@ public class GearsObjectOutputStream extends ObjectOutputStream {
 		return bytes;
 	}
 	
+	@Override
+	protected void writeStreamHeader() {
+		
+	}
+	
 	public static GearsObjectOutputStream getGearsObjectOutputStream() throws SecurityException, IOException {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		return new GearsObjectOutputStream(out);

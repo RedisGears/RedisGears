@@ -107,11 +107,16 @@ public class GearsBuilder{
 		Thread.currentThread().setContextClassLoader(cl);
 	}
 	
-	private static byte[] serializeObject(Object o, GearsObjectOutputStream out) throws IOException {
-		return out.serializeObject(o);
+	private static byte[] serializeObject(Object o, GearsObjectOutputStream out, boolean reset) throws IOException {
+		if(reset) {
+			out.reset();
+		}
+		
+		byte[] b = out.serializeObject(o);
+		return b;
 	}
 	
-	private static Object deserializeObject(byte[] bytes, GearsObjectInputStream in) throws IOException, ClassNotFoundException {
+	private static Object deserializeObject(byte[] bytes, GearsObjectInputStream in, boolean reset) throws IOException, ClassNotFoundException {
 		in.addData(bytes);
 		Object o = in.readObject();
 		return o;
