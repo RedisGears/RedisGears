@@ -391,7 +391,7 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
             goto done;
         }
         if(strcmp(os, RedisGears_GetCompiledOs()) != 0){
-            *err = RG_STRDUP("Requirement was compiled on different os (compiled_os = %s, current_os = %s)");
+            rg_asprintf(err, "Requirement was compiled on different os (compiled_os = %s, current_os = %s)", os, RedisGears_GetCompiledOs());
             goto done;
         }
     }
@@ -4301,7 +4301,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
     const char *no_deps = getenv("GEARS_NO_DEPS");
     bool skip_deps_install = (no_deps && !strcmp(no_deps, "1")) || !GearsConfig_DownloadDeps();
     if(!skip_deps_install && IsEnterprise()){
-        skip_deps_install = GearsConfig_ForceDownloadDepsOnEnterprise();
+        skip_deps_install = !GearsConfig_ForceDownloadDepsOnEnterprise();
     }
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){
