@@ -82,7 +82,7 @@ def putKeys(data):
 
 def verifyRegistrationIntegrity(env):
     try:
-        with TimeLimit(1):
+        with TimeLimit(20):
             while True:
                 script = '''
 GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect().distinct().count().run()
@@ -90,23 +90,30 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect
                 res = env.cmd('RG.PYEXECUTE', script)
                 if int(res[0][0]) == 1:
                     break
-                time.sleep(0.1)
+                time.sleep(0.5)
     except Exception as e:
         print(Colors.Bred(str(e)))
         env.assertTrue(False, message='Registrations Integrity failed')
 
+    env.assertTrue(env.isUp())
+
 def dropRegistrationsAndExecutions(env):
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for e in executions:
-        env.cmd('RG.DROPEXECUTION', e[1])
-
-    registrations = env.cmd('RG.DUMPREGISTRATIONS')
-    for r in registrations:
-        env.expect('RG.UNREGISTER', r[1]).equal('OK')
-
     try:
-        with TimeLimit(1):
+        with TimeLimit(20):
             while True:
+
+                try:
+                    executions = env.cmd('RG.DUMPEXECUTIONS')
+                    for e in executions:
+                        env.cmd('RG.DROPEXECUTION', e[1])
+
+                    registrations = env.cmd('RG.DUMPREGISTRATIONS')
+                    for r in registrations:
+                        env.expect('RG.UNREGISTER', r[1]).equal('OK')
+                except Exception as e:
+                    print(Colors.Gray(str(e)))
+                    continue
+
                 script1 = '''
 GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).filter(lambda x: x > 0).run()
 '''
@@ -118,7 +125,7 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lam
 
                 if len(res1[0]) == 0 and len(res2[0]):
                     break
-                time.sleep(0.1)
+                time.sleep(0.5)
     except Exception as e:
         print(Colors.Bred(str(e)))
         env.assertTrue(False, message='Registrations/Executions dropping failed')
@@ -131,6 +138,10 @@ def jvmTestDecorator(preExecute=None, postExecution=None, envArgs={}):
             print(Colors.Cyan('\tRunning: %s' % testName))
             env = Env(testName = testName, **envArgs)
             conn = getConnectionByEnv(env)
+            if env.debugger is not None:
+                # set ExecutionMaxIdleTime to 200 seconds
+                print(Colors.Gray('\tRunning with debugger (valgrind), set ExecutionMaxIdleTime to 200 seconds'))
+                res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').map(lambda x: execute('RG.CONFIGSET', 'ExecutionMaxIdleTime', '200000')).run()")
             executionError = None
             res = [[],[]]
             if preExecute is not None:
@@ -147,10 +158,14 @@ def jvmTestDecorator(preExecute=None, postExecution=None, envArgs={}):
                 except Exception as e:
                     executionError = str(e)
             if res == 'OK':
-                results = 'OK'    
+                results = 'OK'
+                errs = []
             else:
                 results = [json.loads(r) for r in res[0]]
-            errs = res[1]
+                errs = res[1]
+            if len(errs) > 0:
+                for e in errs:
+                    print(Colors.Gray('\tError (not test failure): %s' % str(e)))
             kargs = {
                 'env': env,
                 'results': results,

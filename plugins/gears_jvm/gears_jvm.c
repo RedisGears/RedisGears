@@ -985,7 +985,10 @@ static char* JVM_GetException(JNIEnv *env){
         (*env)->DeleteLocalRef(env, message);
     }else{
         err = JVM_STRDUP("Could not extract excpetion data");
+        (*env)->DeleteLocalRef(env, e1);
     }
+    (*env)->DeleteLocalRef(env, e);
+    RedisModule_Log(NULL, "verbose", "Error : %s", err);
     return err;
 }
 
@@ -1025,6 +1028,7 @@ static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong
         if((err = JVM_GetException(env))){
             RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
         }
+        JVM_FREE(job);
     }
 }
 
