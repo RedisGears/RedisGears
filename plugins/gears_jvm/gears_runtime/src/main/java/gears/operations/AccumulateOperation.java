@@ -4,8 +4,8 @@ import java.io.Serializable;
 
 import gears.records.BaseRecord;
 
-public interface AccumulateOperation extends Serializable {
+public interface AccumulateOperation<I extends Serializable, R extends Serializable> extends Serializable {
 
-	public Serializable accumulate(Serializable accumulator, Serializable record) throws Exception;
+	public R accumulate(R accumulator, I record) throws Exception;
 	
 }

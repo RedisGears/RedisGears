@@ -1,8 +1,8 @@
 package gears.readers;
 
-import gears.operations.OnRegisteredOperation;
+import gears.records.KeysReaderRecord;
 
-public class KeysReader extends BaseReader {
+public class KeysReader extends BaseReader<KeysReaderRecord> {
 	/**
 	 * 
 	 */

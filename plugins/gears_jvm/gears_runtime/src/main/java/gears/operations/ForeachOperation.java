@@ -4,8 +4,8 @@ import java.io.Serializable;
 
 import gears.records.BaseRecord;
 
-public interface ForeachOperation extends Serializable {
+public interface ForeachOperation<I extends Serializable> extends Serializable {
 
-	public void foreach(Serializable record) throws Exception;
+	public void foreach(I record) throws Exception;
 	
 }

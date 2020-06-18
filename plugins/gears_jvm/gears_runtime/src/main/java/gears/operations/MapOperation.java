@@ -4,8 +4,8 @@ import java.io.Serializable;
 
 import gears.records.BaseRecord;
 
-public interface MapOperation extends Serializable {
+public interface MapOperation<I extends Serializable, R extends Serializable> extends Serializable {
 	
-	public Serializable map(Serializable record) throws Exception;
+	public R map(I record) throws Exception;
 	
 }

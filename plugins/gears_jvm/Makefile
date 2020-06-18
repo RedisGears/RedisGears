@@ -9,6 +9,7 @@ endif
 
 all:
 	gcc $(GCC_FLAGS) gears_jvm.c utils/adlist.c -shared -fpic -DREDISMODULE_EXPERIMENTAL_API \
+	-Wl,--disable-new-dtags -Wl,-rpath=/var/opt/redislabs/modules/rg/999999/deps/jdk-14.0.1+7-jre/lib/server/ \
 	-I$(OPEN_J9_BUILD_DIR)/jdk/include \
 	-I$(OPEN_J9_BUILD_DIR)/jdk/include/linux \
 	-L$(OPEN_J9_BUILD_DIR)/jdk/lib/server \

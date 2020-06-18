@@ -4,8 +4,8 @@ import java.io.Serializable;
 
 import gears.records.BaseRecord;
 
-public interface FilterOperation extends Serializable {
+public interface FilterOperation<I extends Serializable> extends Serializable {
 
-	public boolean filter(Serializable record) throws Exception;
+	public boolean filter(I record) throws Exception;
 	
 }

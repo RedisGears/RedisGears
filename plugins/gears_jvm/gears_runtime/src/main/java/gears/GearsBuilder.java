@@ -2,6 +2,7 @@ package gears;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.Serializable;
 import java.io.StringWriter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,29 +17,29 @@ import gears.operations.MapOperation;
 import gears.operations.OnRegisteredOperation;
 import gears.readers.BaseReader;
 
-public class GearsBuilder{
-	private BaseReader reader;
+public class GearsBuilder<T extends Serializable>{
+	private BaseReader<T> reader;
 	private long ptr;
 	
 	private native void init(String reader);
 	
 	private native void destroy();
 	
-	public native GearsBuilder map(MapOperation mapper);
+	public native <I extends Serializable> GearsBuilder<I> map(MapOperation<T, I> mapper);
 	
-	public native GearsBuilder flatMap(FlatMapOperation faltmapper);
+	public native <I extends Serializable> GearsBuilder<I> flatMap(FlatMapOperation<T, I> faltmapper);
 	
-	public native GearsBuilder foreach(ForeachOperation foreach);
+	public native GearsBuilder<T> foreach(ForeachOperation<T> foreach);
 	
-	public native GearsBuilder filter(FilterOperation foreach);
+	public native GearsBuilder<T> filter(FilterOperation<T> foreach);
 	
-	public native GearsBuilder accumulateBy(ExtractorOperation extractor, AccumulateByOperation accumulator);
+	public native <I extends Serializable> GearsBuilder<I> accumulateBy(ExtractorOperation<T> extractor, AccumulateByOperation<T, I> accumulator);
 	
-	public native GearsBuilder localAccumulateBy(ExtractorOperation extractor, AccumulateByOperation accumulator);
+	public native <I extends Serializable> GearsBuilder<I> localAccumulateBy(ExtractorOperation<T> extractor, AccumulateByOperation<T, I> accumulator);
 	
-	public native GearsBuilder accumulate(AccumulateOperation accumulator);
+	public native <I extends Serializable> GearsBuilder<I> accumulate(AccumulateOperation<T, I> accumulator);
 	
-	public native GearsBuilder collect();
+	public native GearsBuilder<T> collect();
 	
 	public static native String hashtag();
 	
@@ -63,11 +64,11 @@ public class GearsBuilder{
 		return (t) executeArray(command);
 	}
 	
-	public native GearsBuilder repartition(ExtractorOperation extractor);
+	public native GearsBuilder<T> repartition(ExtractorOperation<T> extractor);
 	
-	private native void innerRun(BaseReader reader);
+	private native void innerRun(BaseReader<T> reader);
 	
-	private native void innerRegister(BaseReader reader, ExecutionMode mode, OnRegisteredOperation onRegister);
+	private native void innerRegister(BaseReader<T> reader, ExecutionMode mode, OnRegisteredOperation onRegister);
 	
 	public void run(boolean jsonSerialize, boolean collect) {
 		if(jsonSerialize) {
@@ -98,9 +99,13 @@ public class GearsBuilder{
 		innerRegister(reader, mode, onRegister);
 	}
 	
-	public GearsBuilder(BaseReader reader) {
+	public GearsBuilder(BaseReader<T> reader) {
 		this.reader = reader;
 		init(reader.getName());
+	}
+	
+	public static <I extends Serializable> GearsBuilder<I> CreateGearsBuilder(BaseReader<I> reader) {
+		return new GearsBuilder<I>(reader);
 	}
 	
 	private static void onUnpaused(ClassLoader cl) throws IOException {
@@ -130,6 +135,10 @@ public class GearsBuilder{
 	
 	private static void jniCallHelper(long ctx){
 		jniTestHelper(ctx);
+	}
+	
+	private static String recordToString(Serializable record){
+		return record.toString();
 	}
 		
 	@Override

@@ -2,9 +2,7 @@ package gears.readers;
 
 import java.io.Serializable;
 
-import gears.operations.OnRegisteredOperation;
-
-public abstract class BaseReader implements Serializable{
+public abstract class BaseReader<T extends Serializable>{
 	/**
 	 * 
 	 */

@@ -203,7 +203,7 @@ jclass gearsOnRegisteredCls = NULL;
 jmethodID gearsOnRegisteredMethodId = NULL;
 
 jclass baseRecordCls = NULL;
-jmethodID baseRecordToStr = NULL;
+jmethodID recordToStr = NULL;
 
 jclass hashRecordCls = NULL;
 jmethodID hashRecordCtor = NULL;
@@ -769,7 +769,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
 
             JVM_TryFindClass(jvm_tld->env, "gears/records/BaseRecord", baseRecordCls);
 
-            JVM_TryFindMethod(jvm_tld->env, baseRecordCls, "toString", "()Ljava/lang/String;", baseRecordToStr);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "recordToString", "(Ljava/io/Serializable;)Ljava/lang/String;", recordToStr);
 
             JVM_TryFindClass(jvm_tld->env, "java/util/HashMap", hashRecordCls);
 
@@ -1040,24 +1040,24 @@ static void* JVM_ThreadPoolWorker(void* poolCtx){
     // we do not have session here and we just need the jvm env arg
     JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL);
     JNIEnv *env = jvm_ltd->env;
-    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNICallHelperMethodId, (jlong)poolCtx);
+//    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNICallHelperMethodId, (jlong)poolCtx);
 
-//    JVM_ThreadPool* pool = (void*)poolCtx;
-//    while(true){
-//        pthread_mutex_lock(&pool->lock);
-//        while(JVM_listLength(pool->jobs) == 0){
-//            pthread_cond_wait(&pool->cond, &pool->lock);
-//        }
-//        JVM_listNode* n = JVM_listFirst(pool->jobs);
-//        JVM_ThreadPoolJob* job = JVM_listNodeValue(n);
-//        JVM_listDelNode(pool->jobs, n);
-//        pthread_mutex_unlock(&pool->lock);
-//        job->callback(job->arg);
-//        char* err = NULL;
-//        if((err = JVM_GetException(env))){
-//            RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
-//        }
-//    }
+    JVM_ThreadPool* pool = (void*)poolCtx;
+    while(true){
+        pthread_mutex_lock(&pool->lock);
+        while(JVM_listLength(pool->jobs) == 0){
+            pthread_cond_wait(&pool->cond, &pool->lock);
+        }
+        JVM_listNode* n = JVM_listFirst(pool->jobs);
+        JVM_ThreadPoolJob* job = JVM_listNodeValue(n);
+        JVM_listDelNode(pool->jobs, n);
+        pthread_mutex_unlock(&pool->lock);
+        job->callback(job->arg);
+        char* err = NULL;
+        if((err = JVM_GetException(env))){
+            RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
+        }
+    }
 
     RedisModule_Assert(false); // this one never returns
     return NULL;
@@ -1356,7 +1356,7 @@ static void* JVM_CreateRunReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobjec
     }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
         return JVM_CreateRunStreamReaderArgs(env, fep, reader);
     }
-    (*env)->ThrowNew(env, exceptionCls, "Given reader does not exists");
+    (*env)->ThrowNew(env, exceptionCls, "Given reader does not exists or does not support run");
     return NULL;
 }
 
@@ -1536,7 +1536,6 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
     char* err = NULL;
     void* krCtx = JVM_CreateRunReaderArgs(env, fep, reader);
     if(!krCtx){
-        (*env)->ThrowNew(env, exceptionCls, "Failed creating execution args");
         return;
     }
     ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, krCtx, NULL, NULL, NULL, &err);
@@ -2188,7 +2187,7 @@ static int JVMRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     JVMRecord* r = (JVMRecord*)base;
     JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
     JNIEnv *env = jvm_tld->env;
-    jobject res = (*env)->CallObjectMethod(env, r->obj, baseRecordToStr);
+    jobject res = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, recordToStr, r->obj);
     char* err = NULL;
     if((err = JVM_GetException(env))){
         RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);

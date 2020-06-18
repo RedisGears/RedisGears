@@ -1,6 +1,6 @@
 package gears.readers;
 
-public class CommandReader extends BaseReader {
+public class CommandReader extends BaseReader<Object[]> {
 
 	/**
 	 * 

@@ -1,7 +1,8 @@
 package gears.readers;
 
+import java.util.HashMap;
 
-public class StreamReader extends BaseReader {
+public class StreamReader extends BaseReader<HashMap<String, Object>> {
 	
 	/**
 	 * 
