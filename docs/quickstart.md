@@ -23,7 +23,7 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 A pre-compiled version can be downloaded from [RedisLabs download center](https://redislabs.com/download-center/modules/).
 
-**Notice** in order to support running Python based recipies you should also download the relevant`Redisgears Dependencies`.
+**Notice** in order to support running Python based recipies on enviorment without internet connection you should also download the relevant `Redisgears Dependencies`.
 
 ## Building
 
