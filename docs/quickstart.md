@@ -23,6 +23,8 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 A pre-compiled version can be downloaded from [RedisLabs download center](https://redislabs.com/download-center/modules/).
 
+**Notice** in order to support running Python based recipies you should also download the relevant`Redisgears Dependencies`.
+
 ## Building
 
 ### Prerequisites
@@ -92,7 +94,7 @@ For example to load the module to local Redis after you followed [Building](#bui
 redis-server --loadmodule ./redisgears.io
 ```
 
-If you compiled the module on a different server than the one loading it, copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>` should not be changed.
+If you compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>` should not be changed.
 
 ## Testing
 Tests are written in Python and the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
