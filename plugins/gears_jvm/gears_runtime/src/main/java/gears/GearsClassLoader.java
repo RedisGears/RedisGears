@@ -6,7 +6,16 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 
-public class GearsClassLoader {
+public class GearsClassLoader extends URLClassLoader {
+	public GearsClassLoader(String name, URL[] urls, ClassLoader parent) {
+		super(name, urls, parent);
+	}
+	
+	@Override
+	protected void finalize() throws Throwable {
+		System.out.println("Unloading class loader");
+	}
+
 	public static URLClassLoader getNew(String jarFilePath) throws MalformedURLException, FileNotFoundException {
 		File f = new File(jarFilePath);
 		if(!f.exists()) {

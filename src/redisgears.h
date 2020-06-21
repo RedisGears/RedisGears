@@ -134,6 +134,7 @@ typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* pri
 typedef void (*RedisGears_ExecutionOnStartCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_ExecutionOnUnpausedCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_FlatExecutionOnRegisteredCallback)(FlatExecutionPlan* fep, void* arg);
+typedef void (*RedisGears_FlatExecutionOnUnregisteredCallback)(FlatExecutionPlan* fep, void* arg);
 
 /**
  * Reader callbacks definition.
@@ -284,6 +285,7 @@ int MODULE_API_FUNC(RedisGears_RegisterReducer)(char* name, RedisGears_ReducerCa
 int MODULE_API_FUNC(RedisGears_RegisterExecutionOnStartCallback)(char* name, RedisGears_ExecutionOnStartCallback callback, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterExecutionOnUnpausedCallback)(char* name, RedisGears_ExecutionOnUnpausedCallback callback, ArgType* type);
 int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnRegisteredCallback)(char* name, RedisGears_FlatExecutionOnRegisteredCallback callback, ArgType* type);
+int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnUnregisteredCallback)(char* name, RedisGears_FlatExecutionOnUnregisteredCallback callback, ArgType* type);
 
 #define RGM_RegisterReader(name) RedisGears_RegisterReader(#name, &name);
 #define RGM_RegisterMap(name, type) RedisGears_RegisterMap(#name, name, type);
@@ -296,6 +298,7 @@ int MODULE_API_FUNC(RedisGears_RegisterFlatExecutionOnRegisteredCallback)(char* 
 #define RGM_RegisterExecutionOnStartCallback(name, type) RedisGears_RegisterExecutionOnStartCallback(#name, name, type);
 #define RGM_RegisterExecutionOnUnpausedCallback(name, type) RedisGears_RegisterExecutionOnUnpausedCallback(#name, name, type);
 #define RGM_RegisterFlatExecutionOnRegisteredCallback(name, type) RedisGears_RegisterFlatExecutionOnRegisteredCallback(#name, name, type);
+#define RGM_RegisterFlatExecutionOnUnregisteredCallback(name, type) RedisGears_RegisterFlatExecutionOnUnregisteredCallback(#name, name, type);
 
 /**
  * Create flat execution plan with the given reader.
@@ -342,6 +345,12 @@ int MODULE_API_FUNC(RedisGears_SetFlatExecutionOnUnpausedCallback)(FlatExecution
  */
 int MODULE_API_FUNC(RedisGears_SetFlatExecutionOnRegisteredCallback)(FlatExecutionPlan* fep, const char* callback, void* arg);
 #define RGM_SetFlatExecutionOnRegisteredCallback(ctx, name, arg) RedisGears_SetFlatExecutionOnRegisteredCallback(ctx, #name, arg)
+
+/**
+ * Will be fire on each shard right before unregister
+ */
+int MODULE_API_FUNC(RedisGears_SetFlatExecutionOnUnregisteredCallback)(FlatExecutionPlan* fep, const char* callback, void* arg);
+#define RGM_SetFlatExecutionOnUnregisteredCallback(ctx, name, arg) RedisGears_SetFlatExecutionOnUnregisteredCallback(ctx, #name, arg)
 
 /******************************* Flat Execution plan operations *******************************/
 
@@ -833,9 +842,11 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecutionFromCtx);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnStartCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnRegisteredCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnUnregisteredCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionOnStartCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionOnUnpausedCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFlatExecutionOnRegisteredCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFlatExecutionOnUnregisteredCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropLocalyOnDone);
 

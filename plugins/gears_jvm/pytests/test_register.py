@@ -154,7 +154,7 @@ def testSyncRegister(env, conn, **kargs):
     env.assertEqual(conn.get('NumOfKeys'), '100')
     
 @jvmTestDecorator()
-def testOnRegisteredCallback(env, **kargs):
+def testOnRegisteredCallback(env, results, errs, executionError, **kargs):
     env.expect('rg.pyexecute', "GB().map(lambda x: x['value']).collect().distinct().run('registered*')").equal([['1'], []])
 
 @jvmTestDecorator()
@@ -235,3 +235,11 @@ def testCommandReaderBasic(env, **kargs):
     env.expect('RG.TRIGGER', 'test1', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test1', 'this'])
     env.expect('RG.TRIGGER', 'test2', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test2', 'this'])
     env.expect('RG.TRIGGER', 'test3', 'this', 'is', 'a', 'test').equal(['a', 'is', 'test', 'test3', 'this'])
+
+@jvmTestDecorator(preExecute=putKeys({'x':'foo', 'y':'bar', 'z':'foo'}))
+def testUnregisterCallback(env, conn, **kargs):
+    registrationId = env.cmd('RG.DUMPREGISTRATIONS')[0][1]
+    env.cmd('RG.UNREGISTER', registrationId)
+    env.expect('RG.PYEXECUTE', 'GB().count().run()').equal([[], []])
+    
+

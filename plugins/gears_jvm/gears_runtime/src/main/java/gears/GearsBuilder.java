@@ -15,6 +15,7 @@ import gears.operations.FlatMapOperation;
 import gears.operations.ForeachOperation;
 import gears.operations.MapOperation;
 import gears.operations.OnRegisteredOperation;
+import gears.operations.OnUnregisteredOperation;
 import gears.readers.BaseReader;
 
 public class GearsBuilder<T extends Serializable>{
@@ -68,7 +69,7 @@ public class GearsBuilder<T extends Serializable>{
 	
 	private native void innerRun(BaseReader<T> reader);
 	
-	private native void innerRegister(BaseReader<T> reader, ExecutionMode mode, OnRegisteredOperation onRegister);
+	private native void innerRegister(BaseReader<T> reader, ExecutionMode mode, OnRegisteredOperation onRegister, OnUnregisteredOperation onUnregistered);
 	
 	public void run(boolean jsonSerialize, boolean collect) {
 		if(jsonSerialize) {
@@ -88,15 +89,15 @@ public class GearsBuilder<T extends Serializable>{
 	}
 	
 	public void register() {
-		register(ExecutionMode.ASYNC, null);
+		register(ExecutionMode.ASYNC, null, null);
 	}
 	
 	public void register(ExecutionMode mode) {
-		register(mode, null);
+		register(mode, null, null);
 	}
 	
-	public void register(ExecutionMode mode, OnRegisteredOperation onRegister) {
-		innerRegister(reader, mode, onRegister);
+	public void register(ExecutionMode mode, OnRegisteredOperation onRegister, OnUnregisteredOperation onUnregistered) {
+		innerRegister(reader, mode, onRegister, onUnregistered);
 	}
 	
 	public GearsBuilder(BaseReader<T> reader) {

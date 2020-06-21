@@ -24,7 +24,7 @@ static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray co
 static void JVM_GBLog(JNIEnv *env, jobject objectOrClass, jstring msg, jobject logLevel);
 static jstring JVM_GBHashtag(JNIEnv *env, jobject objectOrClass);
 static jstring JVM_GBConfigGet(JNIEnv *env, jobject objectOrClass, jstring key);
-static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered);
+static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered, jobject onUnregistered);
 static jobject JVM_GBAccumulateby(JNIEnv *env, jobject objectOrClass, jobject extractor, jobject accumulator);
 static jobject JVM_GBRepartition(JNIEnv *env, jobject objectOrClass, jobject extractor);
 static jobject JVM_GBLocalAccumulateby(JNIEnv *env, jobject objectOrClass, jobject extractor, jobject accumulator);
@@ -200,7 +200,9 @@ jclass gearsAccumulateByCls = NULL;
 jmethodID gearsAccumulateByMethodId = NULL;
 
 jclass gearsOnRegisteredCls = NULL;
+jclass gearsOnUnregisteredCls = NULL;
 jmethodID gearsOnRegisteredMethodId = NULL;
+jmethodID gearsOnUnregisteredMethodId = NULL;
 
 jclass baseRecordCls = NULL;
 jmethodID recordToStr = NULL;
@@ -326,7 +328,7 @@ JNINativeMethod nativeMethod[] = {
         },
         {
             .name = "innerRegister",
-            .signature = "(Lgears/readers/BaseReader;Lgears/ExecutionMode;Lgears/operations/OnRegisteredOperation;)V",
+            .signature = "(Lgears/readers/BaseReader;Lgears/ExecutionMode;Lgears/operations/OnRegisteredOperation;Lgears/operations/OnUnregisteredOperation;)V",
             .fnPtr = JVM_GBRegister,
         },
         {
@@ -765,7 +767,9 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
             JVM_TryFindMethod(jvm_tld->env, gearsAccumulateByCls, "accumulateby", "(Ljava/lang/String;Ljava/io/Serializable;Ljava/io/Serializable;)Ljava/io/Serializable;", gearsAccumulateByMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/OnRegisteredOperation", gearsOnRegisteredCls);
+            JVM_TryFindClass(jvm_tld->env, "gears/operations/OnUnregisteredOperation", gearsOnUnregisteredCls);
             JVM_TryFindMethod(jvm_tld->env, gearsOnRegisteredCls, "onRegistered", "()V", gearsOnRegisteredMethodId);
+            JVM_TryFindMethod(jvm_tld->env, gearsOnUnregisteredCls, "onUnregistered", "()V", gearsOnUnregisteredMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/records/BaseRecord", baseRecordCls);
 
@@ -1718,7 +1722,7 @@ void JVM_FreeRegisterReaderArgs(FlatExecutionPlan* fep, void* triggerCtx){
     }
 }
 
-static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered){
+static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered, jobject onUnregistered){
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
 
@@ -1736,6 +1740,11 @@ static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, j
     if(onRegistered){
         onRegistered = JVM_TurnToGlobal(env, onRegistered);
         RGM_SetFlatExecutionOnRegisteredCallback(fep, JVM_OnRegistered, onRegistered);
+    }
+
+    if(onUnregistered){
+        onUnregistered = JVM_TurnToGlobal(env, onUnregistered);
+        RGM_SetFlatExecutionOnUnregisteredCallback(fep, JVM_OnUnregistered, onUnregistered);
     }
 
     void* triggerCtx = JVM_CreateRegisterReaderArgs(env, fep, reader);
@@ -2333,6 +2342,25 @@ static Record* JVMRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br)
     return &r->baseRecord;
 }
 
+static void JVM_OnUnregistered(FlatExecutionPlan* fep, void* arg){
+    char* err = NULL;
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+
+    JVM_PushFrame(jvm_tld->env);
+
+    jobject onUnregister = arg;
+    JNIEnv *env = jvm_tld->env;
+
+    (*env)->CallVoidMethod(env, onUnregister, gearsOnUnregisteredMethodId);
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Exception occured while running OnUnregister callback: %s", err);
+        JVM_FREE(err);
+    }
+
+    JVM_PopFrame(env);
+}
+
 static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
     char* err = NULL;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
@@ -2472,6 +2500,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     RGM_KeysReaderRegisterReadRecordCallback(JVM_KeyReaderReadRecord);
 
     RGM_RegisterFlatExecutionOnRegisteredCallback(JVM_OnRegistered, jvmObjectType);
+    RGM_RegisterFlatExecutionOnUnregisteredCallback(JVM_OnUnregistered, jvmObjectType);
     RGM_RegisterExecutionOnUnpausedCallback(JVM_OnUnpaused, jvmObjectType);
     RGM_RegisterExecutionOnStartCallback(JVM_OnStart, jvmObjectType);
 

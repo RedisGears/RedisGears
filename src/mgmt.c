@@ -43,6 +43,7 @@ GENERATE(FepPrivateData)
 GENERATE(ExecutionOnStart)
 GENERATE(ExecutionOnUnpaused)
 GENERATE(FlatExecutionOnRegistered)
+GENERATE(FlatExecutionOnUnregistered)
 GENERATE(KeysReaderReadRecord)
 
 void Mgmt_Init(){
@@ -58,5 +59,6 @@ void Mgmt_Init(){
     ExecutionOnStartsMgmt_Init();
     ExecutionOnUnpausedsMgmt_Init();
     FlatExecutionOnRegisteredsMgmt_Init();
+    FlatExecutionOnUnregisteredsMgmt_Init();
     KeysReaderReadRecordsMgmt_Init();
 }

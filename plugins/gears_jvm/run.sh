@@ -8,8 +8,11 @@ JVM_OPTIONS+="./gears_runtime/lib/jackson-databind-2.11.0.jar"
 #JVM_OPTIONS+=" -XX:+IdleTuningGcOnIdle";
 JVM_OPTIONS+=" -Xms10m";
 JVM_OPTIONS+=" -Xmx2048m";
-JVM_OPTIONS+=" -Xrs";
+#JVM_OPTIONS+=" -Xrs";
 #JVM_OPTIONS+=" -Xcheck:jni";
+JVM_OPTIONS+=" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=8379";
+#JVM_OPTIONS+=" -Djava.rmi.server.hostname=myserver";
+JVM_OPTIONS+=" -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=11391 -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false";
 
 echo $JVM_OPTIONS
 

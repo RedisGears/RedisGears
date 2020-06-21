@@ -6,12 +6,12 @@ import gears.ExecutionMode;
 import gears.GearsBuilder;
 import gears.readers.KeysReader;
 
-public class testOnRegisteredCallback {
+public class testUnregisterCallback {
 	public static void main() throws IOException {
 		KeysReader reader = new KeysReader();
-		new GearsBuilder(reader).
-		register(ExecutionMode.ASYNC_LOCAL, ()->{
-			GearsBuilder.execute("set", String.format("registered{%s}", GearsBuilder.hashtag()), "1");
-		}, null);
+		GearsBuilder.CreateGearsBuilder(reader).
+		register(ExecutionMode.ASYNC, null, ()->{
+			GearsBuilder.execute("FLUSHALL");
+		});
 	}
 }
