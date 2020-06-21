@@ -1534,9 +1534,13 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
     JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL);
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
-    void* krCtx = JVM_CreateRunReaderArgs(env, fep, reader);
-    if(!krCtx){
-        return;
+    void* krCtx = NULL;
+    // ShardsIDReader needs no arguments
+    if(strcmp(RedisGears_GetReader(fep), "ShardIDReader") != 0){
+        krCtx = JVM_CreateRunReaderArgs(env, fep, reader);
+        if(!krCtx){
+            return;
+        }
     }
     ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, krCtx, NULL, NULL, NULL, &err);
     if(!ep){
@@ -1545,6 +1549,18 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
         }
         (*env)->ThrowNew(env, exceptionCls, err);
         JVM_FREE(err);
+
+        if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
+            RedisGears_StreamReaderCtxFree(krCtx);
+        }else if(strcmp(RedisGears_GetReader(fep), "KeysReader") == 0){
+            RedisGears_KeysReaderCtxFree(krCtx);
+        }else if(strcmp(RedisGears_GetReader(fep), "ShardIDReader") == 0){
+            // nothing to free on ShardIDReader
+        }else{
+            RedisModule_Log(NULL, "warning", "unknown reader when try to free reader args on jvm");
+            RedisModule_Assert(false);
+        }
+
         return;
     }
     if(jvm_ltd->allowBlock){
