@@ -112,6 +112,7 @@ def dropRegistrationsAndExecutions(env):
                         env.expect('RG.UNREGISTER', r[1]).equal('OK')
                 except Exception as e:
                     print(Colors.Gray(str(e)))
+                    time.sleep(0.5)
                     continue
 
                 script1 = '''

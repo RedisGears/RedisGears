@@ -13,3 +13,11 @@ def testKeyReaderNoValues(env, results, errs, **kargs):
 @jvmTestDecorator(preExecute=putKeys({'pref1:1':'1', 'pref2:1':'1', 'pref3:1':'1'}))
 def testKeyReaderNoScan(env, results, errs, **kargs):
 	env.assertEqual(len(results), 0)
+
+@jvmTestDecorator(preExecute=putKeys({'pref1:1':'1', 'pref2:1':'1', 'pref3:1':'1'}))
+def testKeysOnlyReader(env, results, errs, **kargs):
+	env.assertEqual(len(results), 3)
+
+@jvmTestDecorator(preExecute=putKeys({'pref1:1':'1', 'pref2:1':'1', 'pref3:1':'1'}))
+def testKeysOnlyReaderPattern(env, results, errs, **kargs):
+	env.assertEqual(len(results), 1)	

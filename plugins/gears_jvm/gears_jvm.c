@@ -1359,6 +1359,8 @@ static void* JVM_CreateRunReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobjec
         return JVM_CreateRunKeyReaderArgs(env, fep, reader);
     }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
         return JVM_CreateRunStreamReaderArgs(env, fep, reader);
+    }else if(strcmp(RedisGears_GetReader(fep), "JavaReader") == 0){
+        return JVM_TurnToGlobal(env, reader);
     }
     (*env)->ThrowNew(env, exceptionCls, "Given reader does not exists or does not support run");
     return NULL;
@@ -1560,6 +1562,8 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
             RedisGears_KeysReaderCtxFree(krCtx);
         }else if(strcmp(RedisGears_GetReader(fep), "ShardIDReader") == 0){
             // nothing to free on ShardIDReader
+        }else if(strcmp(RedisGears_GetReader(fep), "JavaReader") == 0){
+            (*env)->DeleteGlobalRef(env, krCtx);
         }else{
             RedisModule_Log(NULL, "warning", "unknown reader when try to free reader args on jvm");
             RedisModule_Assert(false);
@@ -2451,6 +2455,115 @@ static void JVM_OnUnpaused(ExecutionCtx* ctx, void* arg){
     }
 }
 
+typedef struct JVMReaderCtx{
+    jobject reader;
+    jobject iterator;
+}JVMReaderCtx;
+
+static Record* JVM_ReaderNext(ExecutionCtx* rctx, void* ctx){
+    char* err = NULL;
+    JVMReaderCtx* readerCtx = ctx;
+    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JNIEnv *env = jvm_tld->env;
+
+    JVM_PushFrame(env);
+
+    if(!readerCtx->iterator){
+        readerCtx->iterator = (*env)->CallObjectMethod(env, readerCtx->reader, iteratorMethodId);
+        if((err = JVM_GetException(env))){
+            goto error;
+        }
+        readerCtx->iterator = JVM_TurnToGlobal(env, readerCtx->iterator);
+    }
+
+    jobject obj = NULL;
+
+    bool hasNext = (*env)->CallBooleanMethod(env, readerCtx->iterator, iteratorHasNextMethodId);
+
+    if((err = JVM_GetException(env))){
+        goto error;
+    }
+
+    if(!hasNext){
+        return NULL;
+    }
+
+    obj = (*env)->CallObjectMethod(env, readerCtx->iterator, iteratorNextMethodId);
+
+    if((err = JVM_GetException(env))){
+        goto error;
+    }
+
+    if(!obj){
+        err = JVM_STRDUP("Got NULL object on reader");
+        goto error;
+    }
+
+    obj = JVM_TurnToGlobal(env, obj);
+    JVMRecord* record = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
+    record->obj = obj;
+
+    return &record->baseRecord;
+
+error:
+    RedisGears_SetError(rctx, err);
+    return NULL;
+}
+
+static void JVM_ReaderFree(void* ctx){
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JNIEnv *env = jvm_tld->env;
+    JVMReaderCtx* readerCtx = ctx;
+    if(readerCtx->reader){
+        (*env)->DeleteGlobalRef(env, readerCtx->reader);
+    }
+    if(readerCtx->iterator){
+        (*env)->DeleteGlobalRef(env, readerCtx->iterator);
+    }
+
+    JVM_FREE(readerCtx);
+
+}
+
+static int JVM_ReaderSerialize(ExecutionPlan* ep, void* ctx, Gears_BufferWriter* bw, char** err){
+    JVMReaderCtx* readerCtx = ctx;
+    return JVM_ObjectSerialize(RedisGears_GetFep(ep), readerCtx->reader, bw, err);
+}
+
+static int JVM_ReaderDeserialize(ExecutionPlan* ep, void* ctx, Gears_BufferReader* br, char** err){
+    JVMReaderCtx* readerCtx = ctx;
+    readerCtx->reader = JVM_ObjectDeserialize(RedisGears_GetFep(ep), br, JOBJECT_TYPE_VERSION, err);
+    if(!readerCtx->reader){
+        return REDISMODULE_ERR;
+    }
+    return REDISMODULE_OK;
+}
+
+
+
+static Reader* JVM_CreateReader(void* arg){
+    JVMReaderCtx* readerCtx = JVM_ALLOC(sizeof(*readerCtx));
+    readerCtx->iterator = NULL;
+    if(arg){
+        readerCtx->reader = arg;
+    }
+    Reader* reader = JVM_ALLOC(sizeof(*reader));
+    *reader = (Reader){
+        .ctx = readerCtx,
+        .next = JVM_ReaderNext,
+        .free = JVM_ReaderFree,
+//        .reset = JVM_ReaderReset,
+        .serialize = JVM_ReaderSerialize,
+        .deserialize = JVM_ReaderDeserialize,
+    };
+    return reader;
+}
+
+RedisGears_ReaderCallbacks JavaReader = {
+        .create = JVM_CreateReader,
+};
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     if(RedisGears_InitAsGearPlugin(ctx, REDISGEARSJVM_PLUGIN_NAME, REDISGEARSJVM_PLUGIN_VERSION) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
@@ -2512,6 +2625,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     RGM_RegisterForEach(JVM_Foreach, jvmObjectType);
     RGM_RegisterFilter(JVM_Filter, jvmObjectType);
     RGM_RegisterAccumulator(JVM_Accumulate, jvmObjectType);
+
+    RGM_RegisterReader(JavaReader);
 
 #define NUM_OF_THREADS 3
 #define JVM_THREAD_POOL_NAME "JVMPool"
