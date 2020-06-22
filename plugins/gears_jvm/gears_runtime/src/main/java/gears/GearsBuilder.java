@@ -16,6 +16,7 @@ import gears.operations.ForeachOperation;
 import gears.operations.MapOperation;
 import gears.operations.OnRegisteredOperation;
 import gears.operations.OnUnregisteredOperation;
+import gears.operations.ValueInitializerOperation;
 import gears.readers.BaseReader;
 
 public class GearsBuilder<T extends Serializable>{
@@ -36,11 +37,46 @@ public class GearsBuilder<T extends Serializable>{
 	
 	public native <I extends Serializable> GearsBuilder<I> accumulateBy(ExtractorOperation<T> extractor, AccumulateByOperation<T, I> accumulator);
 	
+	public <I extends Serializable> GearsBuilder<I> accumulateBy(ValueInitializerOperation<I> valueInitializer, ExtractorOperation<T> extractor, AccumulateByOperation<T, I> accumulator){
+		return this.accumulateBy(extractor, new AccumulateByOperation<T, I>() {
+			
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public I accumulateby(String k, I a, T r) throws Exception {
+				if(a == null) {
+					a = valueInitializer.getInitialValue();
+				}
+				return accumulator.accumulateby(k, a, r);
+			}
+			
+		});
+	}
+	
 	public native <I extends Serializable> GearsBuilder<I> localAccumulateBy(ExtractorOperation<T> extractor, AccumulateByOperation<T, I> accumulator);
 	
 	public native <I extends Serializable> GearsBuilder<I> accumulate(AccumulateOperation<T, I> accumulator);
 	
+	public <I extends Serializable> GearsBuilder<I> accumulate(I initialValue, AccumulateOperation<T, I> accumulator){
+		return this.accumulate(new AccumulateOperation<T, I>() {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			public I accumulate(I a, T r) throws Exception {
+				if(a == null) {
+					a = initialValue;
+				}
+				return accumulator.accumulate(a, r);
+			}
+			
+		});
+	}
+	
 	public native GearsBuilder<T> collect();
+	
+	public GearsBuilder<Integer> count(){
+		return this.accumulate(0, (a, r)-> 1 + a);
+	}
 	
 	public static native String hashtag();
 	
