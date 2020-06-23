@@ -1044,24 +1044,24 @@ static void* JVM_ThreadPoolWorker(void* poolCtx){
     // we do not have session here and we just need the jvm env arg
     JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL);
     JNIEnv *env = jvm_ltd->env;
-//    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNICallHelperMethodId, (jlong)poolCtx);
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNICallHelperMethodId, (jlong)poolCtx);
 
-    JVM_ThreadPool* pool = (void*)poolCtx;
-    while(true){
-        pthread_mutex_lock(&pool->lock);
-        while(JVM_listLength(pool->jobs) == 0){
-            pthread_cond_wait(&pool->cond, &pool->lock);
-        }
-        JVM_listNode* n = JVM_listFirst(pool->jobs);
-        JVM_ThreadPoolJob* job = JVM_listNodeValue(n);
-        JVM_listDelNode(pool->jobs, n);
-        pthread_mutex_unlock(&pool->lock);
-        job->callback(job->arg);
-        char* err = NULL;
-        if((err = JVM_GetException(env))){
-            RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
-        }
-    }
+//    JVM_ThreadPool* pool = (void*)poolCtx;
+//    while(true){
+//        pthread_mutex_lock(&pool->lock);
+//        while(JVM_listLength(pool->jobs) == 0){
+//            pthread_cond_wait(&pool->cond, &pool->lock);
+//        }
+//        JVM_listNode* n = JVM_listFirst(pool->jobs);
+//        JVM_ThreadPoolJob* job = JVM_listNodeValue(n);
+//        JVM_listDelNode(pool->jobs, n);
+//        pthread_mutex_unlock(&pool->lock);
+//        job->callback(job->arg);
+//        char* err = NULL;
+//        if((err = JVM_GetException(env))){
+//            RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
+//        }
+//    }
 
     RedisModule_Assert(false); // this one never returns
     return NULL;
@@ -1092,6 +1092,10 @@ static void JVM_ThreadPoolAddJob(void* poolCtx, void (*callback)(void*), void* a
 }
 
 static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
+    if(!strReader){
+        (*env)->ThrowNew(env, exceptionCls, "Null reader given");
+        return;
+    }
     const char* reader = (*env)->GetStringUTFChars(env, strReader, NULL);
     char* err = NULL;
     FlatExecutionPlan* fep = RedisGears_CreateCtx((char*)reader, &err);
@@ -1131,6 +1135,11 @@ static void JVM_GBDestroy(JNIEnv *env, jobject objectOrClass){
 }
 
 static jobject JVM_GBFilter(JNIEnv *env, jobject objectOrClass, jobject filter){
+    if(!filter){
+        (*env)->ThrowNew(env, exceptionCls, "Null filter function given");
+        return NULL;
+    }
+
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     filter = JVM_TurnToGlobal(env, filter);
     RGM_Filter(fep, JVM_Filter, filter);
@@ -1144,6 +1153,11 @@ static jobject JVM_GBCollect(JNIEnv *env, jobject objectOrClass){
 }
 
 static jobject JVM_GBForeach(JNIEnv *env, jobject objectOrClass, jobject foreach){
+    if(!foreach){
+        (*env)->ThrowNew(env, exceptionCls, "Null foreach function given");
+        return NULL;
+    }
+
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     foreach = JVM_TurnToGlobal(env, foreach);
     RGM_ForEach(fep, JVM_Foreach, foreach);
@@ -1151,6 +1165,11 @@ static jobject JVM_GBForeach(JNIEnv *env, jobject objectOrClass, jobject foreach
 }
 
 static jobject JVM_GBAccumulate(JNIEnv *env, jobject objectOrClass, jobject accumulator){
+    if(!accumulator){
+        (*env)->ThrowNew(env, exceptionCls, "Null accumulator given");
+        return NULL;
+    }
+
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     accumulator = JVM_TurnToGlobal(env, accumulator);
     RGM_Accumulate(fep, JVM_Accumulate, accumulator);
@@ -1158,6 +1177,15 @@ static jobject JVM_GBAccumulate(JNIEnv *env, jobject objectOrClass, jobject accu
 }
 
 static jobject JVM_GBLocalAccumulateby(JNIEnv *env, jobject objectOrClass, jobject extractor, jobject accumulator){
+    if(!extractor){
+        (*env)->ThrowNew(env, exceptionCls, "Null extractor given");
+        return NULL;
+    }
+    if(!accumulator){
+        (*env)->ThrowNew(env, exceptionCls, "Null accumulator given");
+        return NULL;
+    }
+
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     extractor = JVM_TurnToGlobal(env, extractor);
     accumulator = JVM_TurnToGlobal(env, accumulator);
@@ -1167,6 +1195,10 @@ static jobject JVM_GBLocalAccumulateby(JNIEnv *env, jobject objectOrClass, jobje
 }
 
 static jobject JVM_GBRepartition(JNIEnv *env, jobject objectOrClass, jobject extractor){
+    if(!extractor){
+        (*env)->ThrowNew(env, exceptionCls, "Null extractor given");
+        return NULL;
+    }
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     extractor = JVM_TurnToGlobal(env, extractor);
     RGM_Repartition(fep, JVM_Extractor, extractor);
@@ -1174,6 +1206,15 @@ static jobject JVM_GBRepartition(JNIEnv *env, jobject objectOrClass, jobject ext
 }
 
 static jobject JVM_GBAccumulateby(JNIEnv *env, jobject objectOrClass, jobject extractor, jobject accumulator){
+    if(!extractor){
+        (*env)->ThrowNew(env, exceptionCls, "Null extractor given");
+        return NULL;
+    }
+    if(!accumulator){
+        (*env)->ThrowNew(env, exceptionCls, "Null accumulator given");
+        return NULL;
+    }
+
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     extractor = JVM_TurnToGlobal(env, extractor);
     accumulator = JVM_TurnToGlobal(env, accumulator);
@@ -1183,6 +1224,10 @@ static jobject JVM_GBAccumulateby(JNIEnv *env, jobject objectOrClass, jobject ex
 }
 
 static jobject JVM_GBFlatMap(JNIEnv *env, jobject objectOrClass, jobject mapper){
+    if(!mapper){
+        (*env)->ThrowNew(env, exceptionCls, "Null mapper given");
+        return NULL;
+    }
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     mapper = JVM_TurnToGlobal(env, mapper);
     RGM_FlatMap(fep, JVM_FlatMapper, mapper);
@@ -1190,6 +1235,10 @@ static jobject JVM_GBFlatMap(JNIEnv *env, jobject objectOrClass, jobject mapper)
 }
 
 static jobject JVM_GBMap(JNIEnv *env, jobject objectOrClass, jobject mapper){
+    if(!mapper){
+        (*env)->ThrowNew(env, exceptionCls, "Null mapper given");
+        return NULL;
+    }
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     mapper = JVM_TurnToGlobal(env, mapper);
     RGM_Map(fep, JVM_Mapper, mapper);
@@ -1537,6 +1586,10 @@ void* JVM_CreateRegisterReaderArgs(JNIEnv *env, FlatExecutionPlan* fep, jobject 
 }
 
 static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
+    if(!reader){
+        (*env)->ThrowNew(env, exceptionCls, "Null reader give to run function");
+        return;
+    }
     JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL);
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
@@ -1662,17 +1715,31 @@ static void JVM_GBLog(JNIEnv *env, jobject objectOrClass, jstring msg, jobject l
 }
 
 static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray command){
+    if(!command){
+        (*env)->ThrowNew(env, exceptionCls, "Got a NULL command");
+        return NULL;
+    }
     size_t len = (*env)->GetArrayLength(env, command);
     if(len == 0){
         (*env)->ThrowNew(env, exceptionCls, "No command given to execute");
         return NULL;
     }
     jstring c = (*env)->GetObjectArrayElement(env, command, 0);
+    if(!c){
+        (*env)->ThrowNew(env, exceptionCls, "Null command given to execute");
+        return NULL;
+    }
     const char* cStr = (*env)->GetStringUTFChars(env, c, NULL);
 
     RedisModuleString** args = array_new(RedisModuleString*, len);
     for(size_t i = 1 ; i < len ; ++i){
         jstring arg = (*env)->GetObjectArrayElement(env, command, i);
+        if(!arg){
+            array_free_ex(args, RedisModule_FreeString(NULL, *(RedisModuleString**)ptr));
+            (*env)->ReleaseStringUTFChars(env, c, cStr);
+            (*env)->ThrowNew(env, exceptionCls, "Got a null argument on command");
+            return NULL;
+        }
         const char* argStr = (*env)->GetStringUTFChars(env, arg, NULL);
         RedisModuleString* argRedisStr = RedisModule_CreateString(NULL, argStr, strlen(argStr));
         (*env)->ReleaseStringUTFChars(env, arg, argStr);
@@ -1700,6 +1767,7 @@ static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray co
         }else{
             err = JVM_STRDUP("Got a NULL reply from redis");
         }
+        (*env)->ReleaseStringUTFChars(env, c, cStr);
         (*env)->ThrowNew(env, exceptionCls, err);
         JVM_FREE(err);
         return NULL;
@@ -1727,6 +1795,15 @@ void JVM_FreeRegisterReaderArgs(FlatExecutionPlan* fep, void* triggerCtx){
 }
 
 static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, jobject jmode, jobject onRegistered, jobject onUnregistered){
+    if(!reader){
+        (*env)->ThrowNew(env, exceptionCls, "Null reader give to register function");
+        return;
+    }
+    if(!jmode){
+        (*env)->ThrowNew(env, exceptionCls, "Null execution mode give to register function");
+        return;
+    }
+
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
 

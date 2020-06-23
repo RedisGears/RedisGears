@@ -68,3 +68,63 @@ def testNoSerializableExecutionError(env, executionError, **kargs):
 	if env.shardsCount == 1:
 		env.skip()
 	env.assertIn('java.net.ServerSocket', executionError)
+
+@jvmTestDecorator()
+def testNullCommandArgument(env, executionError, **kargs):
+	env.assertIn('Got a NULL command', executionError)
+
+@jvmTestDecorator()
+def testNullArgumentInCommand(env, executionError, **kargs):
+	env.assertIn('Got a null argument on command', executionError)
+
+@jvmTestDecorator()
+def testNullCommandArgumentInCommand(env, executionError, **kargs):
+	env.assertIn('Null command given to execute', executionError)
+
+@jvmTestDecorator()
+def testNullMsgToLog(env, executionError, **kargs):
+	env.assertIn('Got a NULL msg on log function', executionError)
+
+@jvmTestDecorator()
+def testNullKeyToConfigGet(env, executionError, **kargs):
+	env.assertIn('Got a NULL key on configGet', executionError)
+
+@jvmTestDecorator()
+def testNullMapper(env, executionError, **kargs):
+	env.assertIn('Null mapper given', executionError)
+
+@jvmTestDecorator()
+def testNullFilterer(env, executionError, **kargs):
+	env.assertIn('Null filter function given', executionError)
+
+@jvmTestDecorator()
+def testNullFlatMapper(env, executionError, **kargs):
+	env.assertIn('Null mapper given', executionError)
+
+@jvmTestDecorator()
+def testNullRepartitionExtractor(env, executionError, **kargs):
+	env.assertIn('Null extractor given', executionError)
+
+@jvmTestDecorator()
+def testNullForeacher(env, executionError, **kargs):
+	env.assertIn('Null foreach function given', executionError)
+
+@jvmTestDecorator()
+def testNullAccumulator(env, executionError, **kargs):
+	env.assertIn('Null accumulator given', executionError)
+
+@jvmTestDecorator()
+def testNullExtractorToAccumulateby(env, executionError, **kargs):
+	env.assertIn('Null extractor given', executionError)
+
+@jvmTestDecorator()
+def testNullAccumulatorToAccumulateby(env, executionError, **kargs):
+	env.assertIn('Null accumulator given', executionError)
+
+@jvmTestDecorator()
+def testNullExtractorToLocalAccumulateby(env, executionError, **kargs):
+	env.assertIn('Null extractor given', executionError)
+
+@jvmTestDecorator()
+def testNullAccumulatorToLocalAccumulateby(env, executionError, **kargs):
+	env.assertIn('Null accumulator given', executionError)

@@ -137,6 +137,9 @@ public class GearsBuilder<T extends Serializable>{
 	}
 	
 	public GearsBuilder(BaseReader<T> reader) {
+		if(reader == null) {
+			throw new NullPointerException("Reader can not be null");
+		}
 		this.reader = reader;
 		init(reader.getName());
 	}
