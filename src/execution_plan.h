@@ -258,8 +258,10 @@ typedef struct FlatExecutionPlan{
     Gears_Buffer* serializedFep;
     FlatBasicStep onExecutionStartStep;
     FlatBasicStep onRegisteredStep;
+    FlatBasicStep onUnregisteredStep;
     FlatBasicStep onUnpausedStep;
     long long executionMaxIdleTime;
+    ExecutionThreadPool* executionThreadPool;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -287,6 +289,7 @@ void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, voi
 void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
 void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onSUnpausedCallback, void* onUnpausedArg);
 void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
+void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -306,6 +309,7 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode,
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
+void FlatExecutionPlan_SetThreadPool(FlatExecutionPlan* fep, ExecutionThreadPool* tp);
 
 void ExecutionPlan_Initialize();
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
@@ -323,6 +327,7 @@ Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
 
 ExecutionThreadPool* ExectuionPlan_GetThreadPool(const char* name);
 ExecutionThreadPool* ExecutionPlan_CreateThreadPool(const char* name, size_t numOfThreads);
+ExecutionThreadPool* ExecutionPlan_DefineThreadPool(const char* name, void* poolCtx, ExecutionPoolAddJob addJob);
 
 WorkerData* ExecutionPlan_CreateWorker(ExecutionThreadPool* pool);
 WorkerData* ExecutionPlan_WorkerGetShallowCopy(WorkerData* wd);

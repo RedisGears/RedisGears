@@ -14,6 +14,14 @@
 #include <Python.h>
 #endif
 
+extern RecordType* listRecordType;
+extern RecordType* stringRecordType;
+extern RecordType* errorRecordType;
+extern RecordType* longRecordType;
+extern RecordType* doubleRecordType;
+extern RecordType* keyRecordType;
+extern RecordType* keysHandlerRecordType;
+extern RecordType* hashSetRecordType;
 extern Record StopRecord;
 
 void RG_FreeRecord(Record* record);
@@ -59,8 +67,8 @@ void RG_HashSetRecordFreeKeysArray(char** keyArr);
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RG_KeyHandlerRecordGet(Record* r);
 
-int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err);
-Record* RG_DeserializeRecord(Gears_BufferReader* br);
+int RG_SerializeRecord(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* r);
+Record* RG_DeserializeRecord(ExecutionCtx* ctx, Gears_BufferReader* br);
 int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx);
 
 Record* RG_ErrorRecordCreate(char* val, size_t len);

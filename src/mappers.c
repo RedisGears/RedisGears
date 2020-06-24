@@ -4,6 +4,7 @@
 #include <string.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "record.h"
 
 
 Record* GetValueMapper(ExecutionCtx* rctx, Record *record, void* arg){

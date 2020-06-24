@@ -47,7 +47,7 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numAborted = 0,
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
-            .wd = RedisGears_WorkerDataCreate(NULL),
+            .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
     };
     return ret;
 }
@@ -124,17 +124,17 @@ static void CommandReader_Reset(void* ctx, void * arg){
     readerCtx->args = arg;
 }
 
-static void CommandReader_Serialize(void* ctx, Gears_BufferWriter* bw){
+static int CommandReader_Serialize(ExecutionCtx* ectx, void* ctx, Gears_BufferWriter* bw){
     CommandReaderCtx* readerCtx = ctx;
-    char* err = NULL;
-    int res = RG_SerializeRecord(bw, readerCtx->args->argv, &err);
-    RedisModule_Assert(res == REDISMODULE_OK);
+    RG_SerializeRecord(ectx, bw, readerCtx->args->argv);
+    return REDISMODULE_OK;
 }
 
-static void CommandReader_Deserialize(FlatExecutionPlan* fep, void* ctx, Gears_BufferReader* br){
+static int CommandReader_Deserialize(ExecutionCtx* ectx, void* ctx, Gears_BufferReader* br){
     CommandReaderCtx* readerCtx = ctx;
-    Record* argv = RG_DeserializeRecord(br);
+    Record* argv = RG_DeserializeRecord(ectx, br);
     readerCtx->args = CommandReaderArgs_CreateFromRecord(argv);
+    return REDISMODULE_OK;
 }
 
 static Reader* CommandReader_Create(void* arg){
@@ -230,7 +230,7 @@ static void CommandReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
     RedisGears_BWWriteString(bw, crtArgs->trigger);
 }
 
-static void* CommandReader_DeserializeArgs(Gears_BufferReader* br){
+static void* CommandReader_DeserializeArgs(Gears_BufferReader* br, int encver){
     const char* command = RedisGears_BRReadString(br);
     return CommandReaderTriggerArgs_Create(command);
 }
@@ -297,7 +297,7 @@ static void CommandReader_RdbSave(RedisModuleIO *rdb){
     Gears_BufferFree(buff);
 }
 
-static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
+static int CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
     long numRegistrations = RedisModule_LoadSigned(rdb);
     for(size_t i = 0 ; i < numRegistrations ; ++i){
         ExecutionMode mode = RedisModule_LoadSigned(rdb);
@@ -317,20 +317,30 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, encver);
         if(!fep){
             RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
-            RedisModule_Assert(false);
+            RedisModule_Free(data);
+            return REDISMODULE_ERR;
         }
 
-        CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br);
+        CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br, encver);
         RedisModule_Free(data);
+        if(!crtArgs){
+            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
+            FlatExecutionPlan_Free(fep);
+            return REDISMODULE_ERR;
+        }
+
 
         int ret = CommandReader_RegisrterTrigger(fep, mode, crtArgs, &err);
         if(ret != REDISMODULE_OK){
             RedisModule_Log(NULL, "warning", "Could not register on rdbload execution, error='%s'", err);
-            RedisModule_Assert(false);
+            CommandReaderTriggerArgs_Free(crtArgs);
+            FlatExecutionPlan_Free(fep);
+            return REDISMODULE_ERR;
         }
 
         FlatExecutionPlan_AddToRegisterDict(fep);
     }
+    return REDISMODULE_OK;
 }
 
 static void CommandReader_Clear(){

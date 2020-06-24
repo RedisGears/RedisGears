@@ -187,7 +187,15 @@ int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     const char* id = RedisModule_StringPtrLen(argv[1], NULL);
 
     char* err = NULL;
-    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader);
+    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader, &err);
+    if(!fep){
+        if(!err){
+            err = RG_STRDUP("Failed creating abort Flat Execution Plan");
+        }
+        RedisModule_ReplyWithError(ctx, err);
+        RG_FREE(err);
+        return REDISMODULE_OK;
+    }
     RGM_Map(fep, Command_AbortExecutionMap, RG_STRDUP(id));
     RGM_Collect(fep);
     ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, NULL, Command_AbortDone, bc, mgmtWorker, &err);
@@ -210,7 +218,7 @@ static void* Command_StringDup(void* arg){
     return RG_STRDUP(arg);
 }
 
-static int Command_StringSerialize(void* arg, Gears_BufferWriter* bw, char** err){
+static int Command_StringSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     RedisGears_BWWriteString(bw, arg);
     return REDISMODULE_OK;
 }
