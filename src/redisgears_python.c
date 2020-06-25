@@ -2030,7 +2030,7 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         size = view.len;
         if(!PyBuffer_IsContiguous(&view, 'A')){
             // Buffer is not contiguous - we need to copy it as a contiguous array.
-            blob = RedisModule_Alloc(view.len);
+            blob = RG_ALLOC(view.len);
             free_blob = true;
             if(PyBuffer_ToContiguous(blob, &view, view.len, 'A') != 0){
                 RedisAI_TensorFree(t);
@@ -2057,7 +2057,7 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
 
 clean_up:
     if(buffered) PyBuffer_Release(&view);
-    if(free_blob) RedisModule_Free(blob);
+    if(free_blob) RG_FREE(blob);
     array_free(dims);
     return obj;
 }
