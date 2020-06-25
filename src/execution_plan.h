@@ -199,6 +199,7 @@ typedef struct OnDoneData{
 #define EFIsLocal 0x10
 #define EFIsLocalyFreedOnDoneCallback 0x20
 #define EFStarted 0x40
+#define EFRegistered 0x80
 
 #define EPTurnOnFlag(ep, f) ep->flags |= f
 #define EPTurnOffFlag(ep, f) ep->flags &= ~f
@@ -260,7 +261,7 @@ typedef struct FlatExecutionPlan{
     FlatBasicStep onRegisteredStep;
     FlatBasicStep onUnpausedStep;
     long long executionMaxIdleTime;
-    bool registered;
+    ExecutionFlags flags;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{
@@ -306,8 +307,6 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
-void FlatExecutionPlan_SetRegistered(FlatExecutionPlan* fep);
-bool FlatExecutionPlan_IsRegistered(const FlatExecutionPlan* fep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize();
