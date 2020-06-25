@@ -358,6 +358,10 @@ static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_Buffer
     return FlatExecutionPlan_SerializeStepArg(type, step->bStep.arg.stepArg, bw, err);
 }
 
+static inline void FlatExecutionPlan_SerializeID(FlatExecutionPlan* fep, Gears_BufferWriter* bw) {
+    RedisGears_BWWriteBuffer(&bw, fep->id, ID_LEN);
+}
+
 static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, size_t *len, char** err){
     if(fep->serializedFep){
         // notice that this is not only an optimization,
@@ -385,7 +389,7 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
     }
 
     // serialize FEP id
-    RedisGears_BWWriteBuffer(&bw, fep->id, ID_LEN);
+    FlatExecutionPlan_SerializeID(fep, &bw);
     if(fep->desc){
         RedisGears_BWWriteLong(&bw, 1); // has desc
         RedisGears_BWWriteString(&bw, fep->desc);
@@ -443,6 +447,16 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
 }
 
 int FlatExecutionPlan_Serialize(Gears_BufferWriter* bw, FlatExecutionPlan* fep, char** err){
+    
+    if(fep->registered){
+        // Registered execution plan - serialize id and return.
+        RedisGears_BWWriteLong(bw, 1);
+        FlatExecutionPlan_SerializeID(fep, bw);
+        return 1;
+    } else {
+        RedisGears_BWWriteLong(bw, 0); // Non Registered execution plan.
+    }
+    
     // we serialize the PD of a fep each time cause it might be very big (contains file
     // deps and we do not want to hold it in the memory all the time)
     // Als private data must serialize and deserialized first cause other
@@ -505,6 +519,12 @@ static int FlatExecutionPlan_DeserializeStep(FlatExecutionPlan* fep, FlatExecuti
     return REDISMODULE_OK;
 }
 
+static char* FlatExecutionPlan_DeserializeID(Gears_BufferReader *br) {
+    size_t len;
+    char* idBuff = RedisGears_BRReadBuffer(br, &len);
+    RedisModule_Assert(len == ID_LEN);
+}
+
 static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const char* data, size_t dataLen, char** err, int encver){
     Gears_Buffer buff = {
             .buff = (char*)data,
@@ -525,9 +545,7 @@ static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const c
     }
 
     // read FEP id
-    size_t len;
-    char* idBuff = RedisGears_BRReadBuffer(&br, &len);
-    RedisModule_Assert(len == ID_LEN);
+    char* idBuff =FlatExecutionPlan_DeserializeID(&br);
     FlatExecutionPlan_SetID(ret, idBuff);
 
     long long hasDesc = RedisGears_BRReadLong(&br);
@@ -598,8 +616,16 @@ error:
 }
 
 FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br, char** err, int encver){
-    FlatExecutionPlan* ret = FlatExecutionPlan_New();
+    bool registered = RedisGears_BRReadLong(br);
+    if(registered) {
+            char *id = FlatExecutionPlan_DeserializeID(br);
+            FlatExecutionPlan* fep =  Gears_dictFetchValue(epData.registeredFepDict, id);
+            assert(fep);
+            RG_FREE(id);
+            return fep;
+    }
 
+    FlatExecutionPlan* ret = FlatExecutionPlan_New();
     bool PDExists = RedisGears_BRReadLong(br);
     if(PDExists){
         ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
@@ -2341,6 +2367,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", buff->buff, buff->size);
     RedisModule_FreeThreadSafeContext(ctx);
     Gears_BufferFree(buff);
+    fep->registered = true;
     return 1;
 }
 
@@ -2644,6 +2671,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     };
 
     FlatExecutionPlan_SetID(res, NULL);
+    res->registered = false;
 
     return res;
 }
@@ -2652,6 +2680,14 @@ void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
     if (step->bStep.arg.type && step->bStep.arg.type->free){
         step->bStep.arg.type->free(step->bStep.arg.stepArg);
     }
+}
+
+void FlatExecutionPlan_SetRegistered(FlatExecutionPlan* fep) {
+    fep->registered = true;
+}
+
+bool FlatExecutionPlan_IsRegistered(const FlatExecutionPlan* fep) {
+    return fep->registered;
 }
 
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
