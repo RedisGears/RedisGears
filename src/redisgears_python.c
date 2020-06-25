@@ -1982,6 +1982,9 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     // Buffer input variables.
     bool buffered = false;
     Py_buffer view;
+    size_t size;
+    const char* blob;
+    bool free_blob = false;
 
     // Collect dims.
     while((currDim = PyIter_Next(dimsIter)) != NULL){
@@ -2008,8 +2011,6 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     }
     // Check expected tensor size.
     size_t expected_tensor_size = RedisAI_TensorByteSize(t);
-    size_t size;
-    const char* blob;
     if(PyByteArray_Check(pyBlob)) {
         // Blob is byte array.
         size = PyByteArray_Size(pyBlob);
@@ -2020,9 +2021,26 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         blob = PyBytes_AsString(pyBlob);
     } else {
         // Blob is buffer.
-        PyObject_GetBuffer(pyBlob, &view, PyBUF_READ);
+        if(PyObject_GetBuffer(pyBlob, &view, PyBUF_STRIDED_RO) != 0){
+            RedisAI_TensorFree(t);
+            PyErr_SetString(GearsError, "Error getting buffer info.");
+            goto clean_up;
+        }
+
         size = view.len;
-        blob = view.buf;
+        if(!PyBuffer_IsContiguous(&view, 'A')){
+            // Buffer is not contiguous - we need to copy it as a contiguous array.
+            blob = RG_ALLOC(view.len);
+            free_blob = true;
+            if(PyBuffer_ToContiguous(blob, &view, view.len, 'A') != 0){
+                RedisAI_TensorFree(t);
+                PyErr_SetString(GearsError, "Error getting buffer info.");
+                goto clean_up;
+            }
+        }
+        else {
+            blob = view.buf;
+        }
         buffered = true;
     }
     // Validate input.
@@ -2039,6 +2057,7 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
 
 clean_up:
     if(buffered) PyBuffer_Release(&view);
+    if(free_blob) RG_FREE(blob);
     array_free(dims);
     return obj;
 }
