@@ -23,7 +23,7 @@ public class GearsBuilder<T extends Serializable>{
 	private BaseReader<T> reader;
 	private long ptr;
 	
-	private native void init(String reader);
+	private native void init(String reader, String desc);
 	
 	private native void destroy();
 	
@@ -136,12 +136,20 @@ public class GearsBuilder<T extends Serializable>{
 		innerRegister(reader, mode, onRegister, onUnregistered);
 	}
 	
-	public GearsBuilder(BaseReader<T> reader) {
+	public GearsBuilder(BaseReader<T> reader, String desc) {
 		if(reader == null) {
 			throw new NullPointerException("Reader can not be null");
 		}
 		this.reader = reader;
-		init(reader.getName());
+		init(reader.getName(), desc);
+	}
+	
+	public GearsBuilder(BaseReader<T> reader) {
+		this(reader, null);
+	}
+	
+	public static <I extends Serializable> GearsBuilder<I> CreateGearsBuilder(BaseReader<I> reader, String desc) {
+		return new GearsBuilder<I>(reader, desc);
 	}
 	
 	public static <I extends Serializable> GearsBuilder<I> CreateGearsBuilder(BaseReader<I> reader) {

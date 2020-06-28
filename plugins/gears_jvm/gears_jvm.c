@@ -16,7 +16,7 @@ typedef struct JVM_ThreadLocalData JVM_ThreadLocalData;
 typedef struct JVMRunSession JVMRunSession;
 typedef struct JVMFlatExecutionSession JVMFlatExecutionSession;
 
-static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader);
+static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader, jstring descStr);
 static void JVM_GBDestroy(JNIEnv *env, jobject objectOrClass);
 static jobject JVM_GBMap(JNIEnv *env, jobject objectOrClass, jobject mapper);
 static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader);
@@ -35,7 +35,8 @@ static jobject JVM_GBFilter(JNIEnv *env, jobject objectOrClass, jobject filter);
 static jobject JVM_GBFlatMap(JNIEnv *env, jobject objectOrClass, jobject mapper);
 static jobject JVM_TurnToGlobal(JNIEnv *env, jobject local);
 static char* JVM_GetException(JNIEnv *env);
-static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s);
+static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s, JVMRunSession** oldSession);
+#define JVM_ThreadLocalDataRestor(jvm_tld, s) jvm_tld->currSession = s
 static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, size_t len, char** err);
 static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong ctx);
 static JVMFlatExecutionSession* JVM_FepSessionCreate(JNIEnv *env, JVMRunSession* s, char** err);
@@ -268,7 +269,7 @@ ArgType* jvmSessionType = NULL;
 JNINativeMethod nativeMethod[] = {
         {
             .name = "init",
-            .signature = "(Ljava/lang/String;)V",
+            .signature = "(Ljava/lang/String;Ljava/lang/String;)V",
             .fnPtr = JVM_GBInit,
         },
         {
@@ -371,7 +372,8 @@ static void JVM_SessionFree(JVMRunSession* s){
     }
 
     JVM_FREE(s->jarFilePath);
-    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s);
+    JVMRunSession* oldSession;
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s, &oldSession);
     JNIEnv *env = jvm_ltd->env;
 
     if(s->sessionClsLoader){
@@ -379,12 +381,14 @@ static void JVM_SessionFree(JVMRunSession* s){
     }
 
     JVM_FREE(s);
+
+    JVM_ThreadLocalDataRestor(jvm_ltd, oldSession);
 }
 
 static void JVM_FepSessionFree(void* arg){
     JVMFlatExecutionSession* fepSession = arg;
     JVM_SessionFree(fepSession->session);
-    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_ltd->env;
     if(fepSession->flatExecutionInputStream){
         (*env)->DeleteGlobalRef(env, fepSession->flatExecutionInputStream);
@@ -468,7 +472,7 @@ static void* JVM_FepSessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReade
     if(!s){
         return NULL;
     }
-    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_ltd->env;
     return JVM_FepSessionCreate(env, s, err);
 }
@@ -539,7 +543,8 @@ static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, si
     fclose(f);
 
     // Creating proper class loader
-    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s);
+    JVMRunSession* oldSession;
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s, &oldSession);
     JNIEnv *env = jvm_ltd->env;
 
     jstring jarPath = (*env)->NewStringUTF(env, s->jarFilePath);
@@ -556,6 +561,8 @@ static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, si
     s->sessionClsLoader = JVM_TurnToGlobal(env, clsLoader);
 
     RedisModule_DictSetC(JVMSessions, s->uuid, ID_LEN, s);
+
+    JVM_ThreadLocalDataRestor(jvm_ltd, oldSession);
 
     return s;
 }
@@ -679,7 +686,7 @@ static JavaVMOption* JVM_GetJVMOptions(char** jvmOptionsString){
     return options;
 }
 
-static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
+static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s, JVMRunSession** oldSession){
     JVM_ThreadLocalData* jvm_tld = pthread_getspecific(threadLocalData);
     if(!jvm_tld){
         jvm_tld = JVM_CALLOC(1, sizeof(*jvm_tld));
@@ -951,6 +958,9 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s){
         pthread_setspecific(threadLocalData, jvm_tld);
     }
     // NULL means do not touch the values
+    if(oldSession){
+        *oldSession = jvm_tld->currSession;
+    }
     if(s){
         jvm_tld->currSession = s;
         jvm_tld->rctx = NULL;
@@ -1042,7 +1052,7 @@ static void* JVM_ThreadPoolWorker(void* poolCtx){
     RedisGears_LockHanlderRegister();
 
     // we do not have session here and we just need the jvm env arg
-    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_ltd->env;
     (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsJNICallHelperMethodId, (jlong)poolCtx);
 
@@ -1091,7 +1101,7 @@ static void JVM_ThreadPoolAddJob(void* poolCtx, void (*callback)(void*), void* a
     pthread_mutex_unlock(&pool->lock);
 }
 
-static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
+static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader, jstring desc){
     if(!strReader){
         (*env)->ThrowNew(env, exceptionCls, "Null reader given");
         return;
@@ -1112,7 +1122,14 @@ static void JVM_GBInit(JNIEnv *env, jobject objectOrClass, jstring strReader){
     RGM_SetFlatExecutionOnUnpausedCallback(fep, JVM_OnUnpaused, NULL);
     RedisGears_SetExecutionThreadPool(fep, jvmExecutionPool);
 
-    JVM_ThreadLocalData* tld = JVM_GetThreadLocalData(NULL);
+    if(desc){
+        const char* descStr = (*env)->GetStringUTFChars(env, desc, NULL);
+        RedisGears_SetDesc(fep, descStr);
+        (*env)->ReleaseStringUTFChars(env, desc, descStr);
+    }
+
+
+    JVM_ThreadLocalData* tld = JVM_GetThreadLocalData(NULL, NULL);
 
     JVMFlatExecutionSession* fepSession = JVM_FepSessionCreate(tld->env, JVM_SessionDup(tld->currSession), &err);
     if(!fepSession){
@@ -1335,7 +1352,7 @@ static jobject JVM_GetSerializedVal(JNIEnv *env, RedisModuleKey* keyPtr, Gears_B
 static Gears_Buffer* recordBuff = NULL;
 
 static Record* JVM_KeyReaderReadRecord(RedisModuleCtx* rctx, RedisModuleString* key, RedisModuleKey* keyPtr, bool readValue, const char* event){
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env  = jvm_tld->env;
 
     JVM_PushFrame(env);
@@ -1590,7 +1607,7 @@ static void JVM_GBRun(JNIEnv *env, jobject objectOrClass, jobject reader){
         (*env)->ThrowNew(env, exceptionCls, "Null reader give to run function");
         return;
     }
-    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(NULL, NULL);
     FlatExecutionPlan* fep = (FlatExecutionPlan*)(*env)->GetLongField(env, objectOrClass, ptrFieldId);
     char* err = NULL;
     void* krCtx = NULL;
@@ -1843,7 +1860,7 @@ static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, j
 }
 
 int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc != 3){
+    if(argc < 3){
         return RedisModule_WrongArity(ctx);
     }
     char* err = NULL;
@@ -1863,7 +1880,8 @@ int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     }
 
     // creating new class loader
-    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(s);
+    JVMRunSession* oldSession;
+    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(s, &oldSession);
 
     jvm_ltd->rctx = ctx;
     jvm_ltd->allowBlock = true;
@@ -1879,13 +1897,30 @@ int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         goto error;
     }
 
-    jmethodID mid = (*env)->GetStaticMethodID(env, cls, "main", "()V");
 
-    if((err = JVM_GetException(env))){
-        goto error;
+    jmethodID mid = (*env)->GetStaticMethodID(env, cls, "main", "([Ljava/lang/String;)V");
+
+    if(!(err = JVM_GetException(env))){
+        jobject javaArgs = (*env)->NewObjectArray(env, argc - 3, gearsStringCls, NULL);
+
+        for(size_t i = 3 ; i < argc ; ++i){
+            const char* argCStr = RedisModule_StringPtrLen(argv[i], NULL);
+            jstring javaStr = (*env)->NewStringUTF(env, argCStr);
+            (*env)->SetObjectArrayElement(env, javaArgs, i - 3, javaStr);
+        }
+
+        (*env)->CallStaticVoidMethod(env, cls, mid, javaArgs);
+    }else{
+        JVM_FREE(err);
+        err = NULL;
+        mid = (*env)->GetStaticMethodID(env, cls, "main", "()V");
+
+        if((err = JVM_GetException(env))){
+            goto error;
+        }
+
+        (*env)->CallStaticVoidMethod(env, cls, mid);
     }
-
-    (*env)->CallStaticVoidMethod(env, cls, mid);
 
     if((err = JVM_GetException(env))){
         goto error;
@@ -1900,7 +1935,8 @@ int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     JVM_SessionFree(jvm_ltd->currSession);
 
     jvm_ltd->rctx = NULL;
-    jvm_ltd->currSession = NULL;
+
+    JVM_ThreadLocalDataRestor(jvm_ltd, oldSession);
 
     return REDISMODULE_OK;
 
@@ -1909,23 +1945,21 @@ error:
     JVM_FREE(err);
     JVM_PopFrame(env);
 
+    JVM_SessionFree(jvm_ltd->currSession);
+
     jvm_ltd->rctx = NULL;
-    jvm_ltd->currSession = NULL;
+    JVM_ThreadLocalDataRestor(jvm_ltd, oldSession);
 
     return REDISMODULE_OK;
 }
 
-static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, void* arg, bool* isError){
+static jobject JVM_ToJavaRecordMapperInternal(JNIEnv *env, ExecutionCtx* rctx, Record *data, void* arg, bool* isError){
     if(!data){
         return NULL;
     }
 
     char* err = NULL;
 
-    JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
-    JNIEnv *env = jvm_tld->env;
     jobject obj = NULL;
     if(RedisGears_RecordGetType(data) == RedisGears_GetHashSetRecordType()){
         obj = (*env)->NewObject(env, hashRecordCls, hashRecordCtor);
@@ -1933,7 +1967,7 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
         for(size_t i = 0 ; i < array_len(keys) ; ++i){
             jstring javaKeyStr = (*env)->NewStringUTF(env, keys[i]);
             Record* val = RedisGears_HashSetRecordGet(data, keys[i]);
-            jobject jvmVal = JVM_ToJavaRecordMapperInternal(rctx, val, arg, isError);
+            jobject jvmVal = JVM_ToJavaRecordMapperInternal(env, rctx, val, arg, isError);
             if(*isError){
                 return NULL;
             }
@@ -1956,7 +1990,7 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
         const char* key = RedisGears_KeyRecordGetKey(data, &keyLen);
         Record* val = RedisGears_KeyRecordGetVal(data);
         jstring javaKeyStr = (*env)->NewStringUTF(env, key);
-        jobject jvmVal = JVM_ToJavaRecordMapperInternal(rctx, val, arg, isError);
+        jobject jvmVal = JVM_ToJavaRecordMapperInternal(env, rctx, val, arg, isError);
         if(*isError){
             return NULL;
         }
@@ -1973,7 +2007,7 @@ static jobject JVM_ToJavaRecordMapperInternal(ExecutionCtx* rctx, Record *data, 
         obj = (*env)->NewObjectArray(env, RedisGears_ListRecordLen(data), gearsObjectCls, NULL);
         for(size_t i = 0 ; i < RedisGears_ListRecordLen(data) ; ++i){
             Record* temp = RedisGears_ListRecordGet(data, i);
-            jobject jvmTemp = JVM_ToJavaRecordMapperInternal(rctx, temp, arg, isError);
+            jobject jvmTemp = JVM_ToJavaRecordMapperInternal(env, rctx, temp, arg, isError);
             if(*isError){
                 return NULL;
             }
@@ -1990,16 +2024,18 @@ static Record* JVM_ToJavaRecordMapper(ExecutionCtx* rctx, Record *data, void* ar
         return data;
     }
 
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
 
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVM_PushFrame(jvm_tld->env);
 
     bool isError = false;
-    jobject obj = JVM_ToJavaRecordMapperInternal(rctx, data, arg, &isError);
+    jobject obj = JVM_ToJavaRecordMapperInternal(jvm_tld->env, rctx, data, arg, &isError);
 
     if(isError){
+        JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
         return NULL;
     }
 
@@ -2014,12 +2050,14 @@ static Record* JVM_ToJavaRecordMapper(ExecutionCtx* rctx, Record *data, void* ar
     JVMRecord* r = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
     r->obj = obj;
 
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return &r->baseRecord;
 }
 
 static Record* JVM_AccumulateByKey(ExecutionCtx* rctx, char* key, Record *accumulate, Record *data, void* arg){
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
 
     JVMRecord* r = (JVMRecord*)data;
@@ -2052,6 +2090,7 @@ static Record* JVM_AccumulateByKey(ExecutionCtx* rctx, char* key, Record *accumu
 
     JVM_PopFrame(env);
 
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return &a->baseRecord;
 
 error:
@@ -2059,12 +2098,14 @@ error:
     RedisGears_FreeRecord(data);
     JVM_PopFrame(env);
     RedisGears_SetError(rctx, err);
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return NULL;
 }
 
 static Record* JVM_Accumulate(ExecutionCtx* rctx, Record *accumulate, Record *data, void* arg){
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVMRecord* r = (JVMRecord*)data;
     JVMRecord* a = (JVMRecord*)accumulate;
@@ -2096,6 +2137,7 @@ static Record* JVM_Accumulate(ExecutionCtx* rctx, Record *accumulate, Record *da
 
     JVM_PopFrame(env);
 
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return &a->baseRecord;
 
 error:
@@ -2103,12 +2145,14 @@ error:
     RedisGears_FreeRecord(data);
     RedisGears_SetError(rctx, err);
     JVM_PopFrame(env);
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return NULL;
 }
 
 static bool JVM_Filter(ExecutionCtx* rctx, Record *data, void* arg){
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVMRecord* r = (JVMRecord*)data;
     jobject filter = arg;
@@ -2125,12 +2169,15 @@ static bool JVM_Filter(ExecutionCtx* rctx, Record *data, void* arg){
 
     JVM_PopFrame(env);
 
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
+
     return res;
 }
 
 static void JVM_Foreach(ExecutionCtx* rctx, Record *data, void* arg){
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVMRecord* r = (JVMRecord*)data;
     jobject foreach = arg;
@@ -2146,11 +2193,14 @@ static void JVM_Foreach(ExecutionCtx* rctx, Record *data, void* arg){
     }
 
     JVM_PopFrame(env);
+
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
 }
 
 static char* JVM_Extractor(ExecutionCtx* rctx, Record *data, void* arg, size_t* len){
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVMRecord* r = (JVMRecord*)data;
     jobject extractor = (arg);
@@ -2177,19 +2227,22 @@ static char* JVM_Extractor(ExecutionCtx* rctx, Record *data, void* arg, size_t* 
 
     JVM_PopFrame(env);
 
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return extractedData;
 
 error:
     JVM_PopFrame(env);
     RedisGears_SetError(rctx, err);
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return NULL;
 }
 
 static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
     char* err = NULL;
     Record* listRecord = NULL;
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVM_PushFrame(jvm_tld->env);
 
@@ -2241,6 +2294,8 @@ static Record* JVM_FlatMapper(ExecutionCtx* rctx, Record *data, void* arg){
     RedisGears_FreeRecord(data);
 
     JVM_PopFrame(jvm_tld->env);
+
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return listRecord;
 
 error:
@@ -2250,13 +2305,15 @@ error:
         RedisGears_FreeRecord(listRecord);
     }
     JVM_PopFrame(jvm_tld->env);
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return NULL;
 }
 
 static Record* JVM_Mapper(ExecutionCtx* rctx, Record *data, void* arg){
     char* err = NULL;
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVM_PushFrame(jvm_tld->env);
 
@@ -2280,18 +2337,20 @@ static Record* JVM_Mapper(ExecutionCtx* rctx, Record *data, void* arg){
 
     JVM_PopFrame(jvm_tld->env);
 
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return &r->baseRecord;
 
 error:
     RedisGears_SetError(rctx, err);
     RedisGears_FreeRecord(data);
     JVM_PopFrame(jvm_tld->env);
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return NULL;
 }
 
 static int JVMRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     JVMRecord* r = (JVMRecord*)base;
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_tld->env;
     jobject res = (*env)->CallStaticObjectMethod(env, gearsBuilderCls, recordToStr, r->obj);
     char* err = NULL;
@@ -2312,18 +2371,18 @@ static void JVMRecord_Free(Record* base){
     if(!r->obj){
         return;
     }
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_tld->env;
     (*env)->DeleteGlobalRef(env, r->obj);
 }
 
 static void* JVM_ObjectDup(void* arg){
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     return (*jvm_tld->env)->NewGlobalRef(jvm_tld->env, (jobject)arg);
 }
 
 static void JVM_ObjectFree(void* arg){
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     (*jvm_tld->env)->DeleteGlobalRef(jvm_tld->env, (jobject)arg);
 }
 
@@ -2332,7 +2391,7 @@ static char* JVM_ObjectToString(void* arg){
 }
 
 static int JVM_ObjectSerializeInternal(jobject outputStream, void* arg, Gears_BufferWriter* bw, char** err, bool reset){
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
 
     jobject obj = arg;
     JNIEnv *env = jvm_tld->env;
@@ -2360,7 +2419,7 @@ static void* JVM_ObjectDeserializeInternal(jobject inputStream, Gears_BufferRead
     size_t len;
     const char* buf = RedisGears_BRReadBuffer(br, &len);
 
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_tld->env;
 
     jbyteArray bytes = (*env)->NewByteArray(env, len);
@@ -2425,8 +2484,9 @@ static Record* JVMRecord_Deserialize(ExecutionCtx* ectx, Gears_BufferReader* br)
 
 static void JVM_OnUnregistered(FlatExecutionPlan* fep, void* arg){
     char* err = NULL;
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVM_PushFrame(jvm_tld->env);
 
@@ -2440,12 +2500,15 @@ static void JVM_OnUnregistered(FlatExecutionPlan* fep, void* arg){
     }
 
     JVM_PopFrame(env);
+
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
 }
 
 static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
     char* err = NULL;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVMRunSession* oldSession;
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
 
     JVM_PushFrame(jvm_tld->env);
 
@@ -2459,11 +2522,13 @@ static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
     }
 
     JVM_PopFrame(env);
+
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
 }
 
 static void JVM_OnExecutionDone(ExecutionPlan* ctx, void* privateData){
     JVMExecutionSession* executionSession = privateData;
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_tld->env;
 
     (*env)->DeleteGlobalRef(env, executionSession->executionInputStream);
@@ -2486,9 +2551,10 @@ static void JVM_OnStart(ExecutionCtx* ctx, void* arg){
         return;
     }
 
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(ctx);
 
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
     JNIEnv *env = jvm_tld->env;
 
     jobject inputStream = (*env)->CallStaticObjectMethod(env, gearsObjectInputStreamCls, gearsObjectInputStreamGetMethodId, s->session->sessionClsLoader);
@@ -2517,11 +2583,14 @@ static void JVM_OnStart(ExecutionCtx* ctx, void* arg){
     RedisGears_SetPrivateData(ctx, executionSession);
 
     RedisGears_AddOnDoneCallback(ep, JVM_OnExecutionDone, executionSession);
+
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
 }
 
 static void JVM_OnUnpaused(ExecutionCtx* ctx, void* arg){
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* session = RedisGears_GetFlatExecutionPrivateData(ctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(session->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(session->session, &oldSession);
     JNIEnv *env = jvm_tld->env;
     (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsBuilderOnUnpausedMethodId, session->session->sessionClsLoader);
 
@@ -2530,6 +2599,8 @@ static void JVM_OnUnpaused(ExecutionCtx* ctx, void* arg){
         RedisModule_Log(NULL, "warning", "Exception occured while running OnRegister callback: %s", err);
         JVM_FREE(err);
     }
+
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
 }
 
 typedef struct JVMReaderCtx{
@@ -2540,8 +2611,9 @@ typedef struct JVMReaderCtx{
 static Record* JVM_ReaderNext(ExecutionCtx* rctx, void* ctx){
     char* err = NULL;
     JVMReaderCtx* readerCtx = ctx;
+    JVMRunSession* oldSession;
     JVMFlatExecutionSession* s = RedisGears_GetFlatExecutionPrivateData(rctx);
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(s->session, &oldSession);
     JNIEnv *env = jvm_tld->env;
 
     JVM_PushFrame(env);
@@ -2581,15 +2653,18 @@ static Record* JVM_ReaderNext(ExecutionCtx* rctx, void* ctx){
     JVMRecord* record = (JVMRecord*)RedisGears_RecordCreate(JVMRecordType);
     record->obj = obj;
 
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
+
     return &record->baseRecord;
 
 error:
     RedisGears_SetError(rctx, err);
+    JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
     return NULL;
 }
 
 static void JVM_ReaderFree(void* ctx){
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     JNIEnv *env = jvm_tld->env;
     JVMReaderCtx* readerCtx = ctx;
     if(readerCtx->reader){
@@ -2654,7 +2729,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     }
 
     // this will initialize the jvm
-    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL);
+    JVM_ThreadLocalData* jvm_tld = JVM_GetThreadLocalData(NULL, NULL);
     if(!jvm_tld){
         RedisModule_Log(ctx, "warning", "Failed initializing jvm.");
         return REDISMODULE_ERR;
