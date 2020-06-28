@@ -1817,20 +1817,29 @@ typedef struct PyTensor{
 
 static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
     int ndims = RedisAI_TensorNumDims(pyt->t);
-    PyObject* dims = PyList_New(0);
+    PyObject* flatList = PyList_New(0);
     long long len = 0;
     long long totalElements = 1;
     for(int i = 0 ; i < ndims ; ++i){
         totalElements *= RedisAI_TensorDim(pyt->t, i);
     }
-    PyObject* elements = PyList_New(0);
     for(long long j = 0 ; j < totalElements ; ++j){
-        double val;
-        RedisAI_TensorGetValueAsDouble(pyt->t, j, &val);
-        PyObject *pyVal = PyFloat_FromDouble(val);
-        PyList_Append(dims, pyVal);
+        PyObject *pyVal = NULL;
+        double doubleVal;
+        long long longVal;
+        if(RedisAI_TensorGetValueAsDouble(pyt->t, j, &doubleVal)){
+            pyVal = PyFloat_FromDouble(doubleVal);
+        }else if(RedisAI_TensorGetValueAsLongLong(pyt->t, j, &longVal)){
+            pyVal = PyLong_FromLongLong(longVal);
+        }else{
+            PyErr_SetString(GearsError, "Failed converting tensor to flat list");
+            Py_DECREF(flatList);
+            return NULL;
+        }
+
+        PyList_Append(flatList, pyVal);
     }
-    return dims;
+    return flatList;
 }
 
 static bool verifyOrLoadRedisAI(){
@@ -1845,7 +1854,11 @@ static bool verifyOrLoadRedisAI(){
 
 static PyObject *PyTensor_ToStr(PyObject * pyObj){
     PyTensor* pyt = (PyTensor*)pyObj;
-    return PyObject_Repr(PyTensor_ToFlatList(pyt));
+    PyObject* flatList = PyTensor_ToFlatList(pyt);
+    if(!flatList){
+        return NULL;
+    }
+    return PyObject_Repr(flatList);
 }
 
 static void PyTensor_Destruct(PyObject *pyObj){
