@@ -199,7 +199,9 @@ typedef struct OnDoneData{
 #define EFIsLocal 0x10
 #define EFIsLocalyFreedOnDoneCallback 0x20
 #define EFStarted 0x40
-#define EFRegistered 0x80
+
+#define FlatExecutionFlags int
+#define FEFRegistered 0x01
 
 #define EPTurnOnFlag(ep, f) ep->flags |= f
 #define EPTurnOffFlag(ep, f) ep->flags &= ~f
@@ -261,7 +263,7 @@ typedef struct FlatExecutionPlan{
     FlatBasicStep onRegisteredStep;
     FlatBasicStep onUnpausedStep;
     long long executionMaxIdleTime;
-    ExecutionFlags flags;
+    FlatExecutionFlags flags;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{

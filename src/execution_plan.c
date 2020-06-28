@@ -649,17 +649,16 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     size_t len;
-        if(EPIsFlagOn(ep->fep, EFRegistered)){
+    if(EPIsFlagOn(ep->fep, FEFRegistered)) {
         // Registered execution plan - serialize id and return.
         RedisGears_BWWriteLong(&bw, 1);
         FlatExecutionPlan_SerializeID(ep->fep, &bw);
-        return;
     } else {
         RedisGears_BWWriteLong(&bw, 0); // Non Registered execution plan.
+        int res = FlatExecutionPlan_Serialize(&bw, ep->fep, NULL);
+        RedisModule_Assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
     }
     
-    int res = FlatExecutionPlan_Serialize(&bw, ep->fep, NULL);
-    RedisModule_Assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
     RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
@@ -1929,16 +1928,20 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     if(registered) {
         char *id = FlatExecutionPlan_DeserializeID(&br); 
         fep = FlatExecutionPlan_FindId(id);
+        if(!fep) {
+            RedisModule_Log(ctx, "warning", "Execution plan with id=%s is marked as registered at shard : %s, but could not be found", id, sender_id);
+            return;
+        }
     }
     else {
         fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
-    }
-    if(!fep){
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
-        if(err){
-            RG_FREE(err);
+        if(!fep){
+            RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
+            if(err) {
+                RG_FREE(err);
+            }
+            return;
         }
-        return;
     }
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
