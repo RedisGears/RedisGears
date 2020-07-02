@@ -23,7 +23,6 @@ import gears.operations.OnRegisteredOperation;
 import gears.operations.OnUnregisteredOperation;
 import gears.operations.ValueInitializerOperation;
 import gears.readers.BaseReader;
-import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventorFactory;
 
 public class GearsBuilder<T extends Serializable>{
 	private BaseReader<T> reader;
