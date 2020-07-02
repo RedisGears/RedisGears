@@ -39,6 +39,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s, JVMRunSessi
 #define JVM_ThreadLocalDataRestor(jvm_tld, s) jvm_tld->currSession = s
 static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, size_t len, char** err);
 static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong ctx);
+static void JVM_ClassLoaderFinalized(JNIEnv *env, jobject objectOrClass, jlong ctx);
 static JVMFlatExecutionSession* JVM_FepSessionCreate(JNIEnv *env, JVMRunSession* s, char** err);
 
 static char* shardUniqueId = NULL;
@@ -145,6 +146,7 @@ typedef struct JVM_ThreadLocalData{
     JVMRunSession* currSession;
 }JVM_ThreadLocalData;
 
+pthread_mutex_t JVMSessionsLock;
 RedisModuleDict* JVMSessions = NULL;
 
 pthread_key_t threadLocalData;
@@ -152,6 +154,7 @@ pthread_key_t threadLocalData;
 JavaVM *jvm = NULL;       /* denotes a Java VM */
 
 jfieldID ptrFieldId = NULL;
+jfieldID classLoaderPrtField = NULL;
 
 jclass gearsObjectCls = NULL;
 jclass gearsStringCls = NULL;
@@ -167,6 +170,9 @@ jmethodID gearsBuilderDeserializeObjectMethodId = NULL;
 jmethodID gearsBuilderOnUnpausedMethodId = NULL;
 jmethodID gearsJNICallHelperMethodId = NULL;
 jmethodID gearsGetStackTraceMethodId = NULL;
+jmethodID gearsCleanCtxClassLoaderMethodId = NULL;
+jmethodID gearsDumpHeapMethodId = NULL;
+jmethodID gearsRunGCMethodId = NULL;
 
 jclass gearsObjectInputStreamCls = NULL;
 jmethodID gearsObjectInputStreamGetMethodId = NULL;
@@ -175,6 +181,7 @@ jmethodID gearsObjectOutputStreamGetMethodId = NULL;
 
 jclass gearsClassLoaderCls = NULL;
 jmethodID gearsClassLoaderNewMid = NULL;
+jmethodID gearsClassLoaderShutDown = NULL;
 
 jclass javaClassLoaderCls = NULL;
 jmethodID javaLoadClassNewMid = NULL;
@@ -357,7 +364,48 @@ JNINativeMethod nativeMethod[] = {
             .signature = "(J)V",
             .fnPtr = JVM_ThreadPoolWorkerHelper,
         },
+        {
+            .name = "classLoaderFinalized",
+            .signature = "(J)V",
+            .fnPtr = JVM_ClassLoaderFinalized,
+        },
     };
+
+static void JVM_SessionAdd(JVMRunSession* s){
+    pthread_mutex_lock(&JVMSessionsLock);
+    RedisModule_DictSetC(JVMSessions, s->uuid, ID_LEN, s);
+    pthread_mutex_unlock(&JVMSessionsLock);
+}
+
+static void JVM_SessionDel(const char* uuid){
+    pthread_mutex_lock(&JVMSessionsLock);
+    RedisModule_DictDelC(JVMSessions, (char*)uuid, ID_LEN, NULL);
+    pthread_mutex_unlock(&JVMSessionsLock);
+}
+
+static JVMRunSession* JVM_SessionGet(const char* uuid){
+    pthread_mutex_lock(&JVMSessionsLock);
+    JVMRunSession* ret = RedisModule_DictGetC(JVMSessions, (char*)uuid, ID_LEN, NULL);
+    if(ret && ret->refCount == 0){
+        // we do not return session with refcount 0;
+        ret = NULL;
+    }
+    pthread_mutex_unlock(&JVMSessionsLock);
+    return ret;
+}
+
+static void JVM_SessionFreeMemory(JVMRunSession* s){
+    RedisModule_Assert(!s->sessionClsLoader);
+    RedisModule_Assert(s->refCount == 0);
+    JVM_SessionDel(s->uuid);
+    int ret = RedisGears_ExecuteCommand(NULL, "verbose", "rm -rf %s", s->jarFilePath);
+    if(ret != 0){
+        RedisModule_Log(NULL, "warning", "Failed deleting session jar %s", s->jarFilePath);
+    }
+
+    JVM_FREE(s->jarFilePath);
+    JVM_FREE(s);
+}
 
 static void JVM_SessionFree(JVMRunSession* s){
 
@@ -365,24 +413,25 @@ static void JVM_SessionFree(JVMRunSession* s){
         return;
     }
 
-    RedisModule_DictDelC(JVMSessions, s->uuid, ID_LEN, NULL);
-    int ret = RedisGears_ExecuteCommand(NULL, "verbose", "rm -rf %s", s->jarFilePath);
-    if(ret != 0){
-        RedisModule_Log(NULL, "warning", "Failed deleting session jar %s", s->jarFilePath);
-    }
-
-    JVM_FREE(s->jarFilePath);
-    JVMRunSession* oldSession;
-    JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s, &oldSession);
-    JNIEnv *env = jvm_ltd->env;
-
     if(s->sessionClsLoader){
+        JVMRunSession* oldSession;
+        JVM_ThreadLocalData* jvm_ltd = JVM_GetThreadLocalData(s, &oldSession);
+        JNIEnv *env = jvm_ltd->env;
+
+        (*env)->CallVoidMethod(env, s->sessionClsLoader, gearsClassLoaderShutDown);
+        char* err = NULL;
+        if((err = JVM_GetException(env))){
+            RedisModule_Log(NULL, "warning", "Exception throw on closing class loader, error='%s'", err);
+            JVM_FREE(err);
+        }
         (*env)->DeleteGlobalRef(env, s->sessionClsLoader);
+
+        s->sessionClsLoader = NULL;
+
+        JVM_ThreadLocalDataRestor(jvm_ltd, oldSession);
+    }else{
+        JVM_SessionFreeMemory(s);
     }
-
-    JVM_FREE(s);
-
-    JVM_ThreadLocalDataRestor(jvm_ltd, oldSession);
 }
 
 static void JVM_FepSessionFree(void* arg){
@@ -458,7 +507,8 @@ static void* JVM_SessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* 
     size_t dataLen;
     const char* data = RedisGears_BRReadBuffer(br, &dataLen);
 
-    JVMRunSession* s = RedisModule_DictGetC(JVMSessions, (char*)id, idLen, NULL);
+    JVMRunSession* s = JVM_SessionGet(id);
+    // if sessionClsLoader is NULL the session is basically waiting to be free
     if(!s){
         s = JVM_SessionCreate(id, data, dataLen, err);
     }else{
@@ -560,7 +610,9 @@ static JVMRunSession* JVM_SessionCreate(const char* id, const char* jarBytes, si
 
     s->sessionClsLoader = JVM_TurnToGlobal(env, clsLoader);
 
-    RedisModule_DictSetC(JVMSessions, s->uuid, ID_LEN, s);
+    (*env)->SetLongField(env, s->sessionClsLoader, classLoaderPrtField, (jlong)s);
+
+    JVM_SessionAdd(s);
 
     JVM_ThreadLocalDataRestor(jvm_ltd, oldSession);
 
@@ -742,6 +794,8 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s, JVMRunSessi
 
             JVM_TryFindClass(jvm_tld->env, "gears/GearsClassLoader", gearsClassLoaderCls);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsClassLoaderCls, "getNew", "(Ljava/lang/String;)Ljava/net/URLClassLoader;", gearsClassLoaderNewMid);
+            JVM_TryFindMethod(jvm_tld->env, gearsClassLoaderCls, "shutDown", "()V", gearsClassLoaderShutDown);
+            JVM_TryFindField(jvm_tld->env, gearsClassLoaderCls, "ptr", "J", classLoaderPrtField);
 
             JVM_TryFindClass(jvm_tld->env, "java/lang/ClassLoader", javaClassLoaderCls);
             JVM_TryFindMethod(jvm_tld->env, javaClassLoaderCls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", javaLoadClassNewMid);
@@ -751,6 +805,9 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVMRunSession* s, JVMRunSessi
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "onUnpaused", "(Ljava/lang/ClassLoader;)V", gearsBuilderOnUnpausedMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "jniCallHelper", "(J)V", gearsJNICallHelperMethodId);
             JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "getStackTrace", "(Ljava/lang/Throwable;)Ljava/lang/String;", gearsGetStackTraceMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "cleanCtxClassLoader", "()V", gearsCleanCtxClassLoaderMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "dumpHeap", "(Ljava/lang/String;Ljava/lang/String;)V", gearsDumpHeapMethodId);
+            JVM_TryFindStaticMethod(jvm_tld->env, gearsBuilderCls, "runGC", "()V", gearsRunGCMethodId);
 
             JVM_TryFindClass(jvm_tld->env, "gears/operations/MapOperation", gearsMappCls);
             JVM_TryFindMethod(jvm_tld->env, gearsMappCls, "map", "(Ljava/io/Serializable;)Ljava/io/Serializable;", gearsMapMethodId);
@@ -1002,6 +1059,11 @@ static char* JVM_GetException(JNIEnv *env){
         (*env)->DeleteLocalRef(env, e1);
     }
     (*env)->DeleteLocalRef(env, e);
+    for(size_t i = 0 ; i < strlen(err) ; ++i){
+        if(err[i] == '\r' || err[i] == '\n'){
+            err[i] = '|';
+        }
+    }
     RedisModule_Log(NULL, "verbose", "Error : %s", err);
     return err;
 }
@@ -1025,6 +1087,11 @@ typedef struct JVM_ThreadPool{
 
 ExecutionThreadPool* jvmExecutionPool = NULL;
 
+static void JVM_ClassLoaderFinalized(JNIEnv *env, jobject objectOrClass, jlong ctx){
+    JVMRunSession* s = (JVMRunSession*)ctx;
+    JVM_SessionFreeMemory(s);
+}
+
 static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong ctx){
     // here we are inside the jvm, we never get back.
     JVM_ThreadPool* pool = (void*)ctx;
@@ -1043,6 +1110,12 @@ static void JVM_ThreadPoolWorkerHelper(JNIEnv *env, jobject objectOrClass, jlong
             RedisModule_Log(NULL, "warning", "Excpetion raised but not catched, exception='%s'", err);
         }
         JVM_FREE(job);
+
+        // clean the thread ctx class loader just in case
+        (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsCleanCtxClassLoaderMethodId);
+        if((err = JVM_GetException(env))){
+            RedisModule_Log(NULL, "warning", "Failed cleaning thread ctx class loader, error='%s'", err);
+        }
     }
 }
 
@@ -1859,6 +1932,87 @@ static void JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader, j
     }
 }
 
+int JVM_DumpHeap(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* fileName = RedisModule_StringPtrLen(argv[1], NULL);
+
+    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL, NULL);
+    JNIEnv *env = jvm_ltd->env;
+
+    JVM_PushFrame(env);
+
+    jstring workingDirJStr = (*env)->NewStringUTF(env, workingDir);
+    jstring fileNameJStr = (*env)->NewStringUTF(env, fileName);
+
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsDumpHeapMethodId, workingDirJStr, fileNameJStr);
+
+    char* err = NULL;
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Failed create memory dump, error='%s'", err);
+        RedisModule_ReplyWithError(ctx, err);
+    }else{
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
+
+    JVM_PopFrame(env);
+    return REDISMODULE_OK;
+}
+
+int JVM_RunGC(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 1){
+        return RedisModule_WrongArity(ctx);
+    }
+
+
+    JVM_ThreadLocalData* jvm_ltd= JVM_GetThreadLocalData(NULL, NULL);
+    JNIEnv *env = jvm_ltd->env;
+
+    JVM_PushFrame(env);
+
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsRunGCMethodId);
+
+    char* err = NULL;
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Failed running jvm gc, error='%s'", err);
+        RedisModule_ReplyWithError(ctx, err);
+    }else{
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
+
+    JVM_PopFrame(env);
+    return REDISMODULE_OK;
+}
+
+int JVM_DumpClsLoaders(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 1){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    pthread_mutex_lock(&JVMSessionsLock);
+
+    RedisModuleDictIter *iter = RedisModule_DictIteratorStartC(JVMSessions, "^", NULL, 0);
+    char* key;
+    size_t keyLen;
+    JVMRunSession* s;
+    RedisModule_ReplyWithArray(ctx, RedisModule_DictSize(JVMSessions));
+    while((key = RedisModule_DictNextC(iter, &keyLen, (void**)&s))){
+        RedisModule_ReplyWithArray(ctx, 6);
+        RedisModule_ReplyWithCString(ctx, "id");
+        RedisModule_ReplyWithCString(ctx, s->uuidStr);
+        RedisModule_ReplyWithCString(ctx, "jar");
+        RedisModule_ReplyWithCString(ctx, s->jarFilePath);
+        RedisModule_ReplyWithCString(ctx, "refCount");
+        RedisModule_ReplyWithLongLong(ctx, s->refCount);
+    }
+
+    pthread_mutex_unlock(&JVMSessionsLock);
+
+    return REDISMODULE_OK;
+}
+
 int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 3){
         return RedisModule_WrongArity(ctx);
@@ -1930,6 +2084,13 @@ int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         RedisModule_ReplyWithSimpleString(ctx, "OK");
     }
 
+    // clean the thread ctx class loader just in case
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsCleanCtxClassLoaderMethodId);
+
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Failed cleaning thread ctx class loader, error='%s'", err);
+    }
+
     JVM_PopFrame(env);
 
     JVM_SessionFree(jvm_ltd->currSession);
@@ -1941,6 +2102,9 @@ int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     return REDISMODULE_OK;
 
 error:
+    // clean the thread ctx class loader just in case
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsCleanCtxClassLoaderMethodId);
+
     RedisModule_ReplyWithError(ctx, err);
     JVM_FREE(err);
     JVM_PopFrame(env);
@@ -2499,6 +2663,13 @@ static void JVM_OnUnregistered(FlatExecutionPlan* fep, void* arg){
         JVM_FREE(err);
     }
 
+    // clean the thread ctx class loader just in case
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsCleanCtxClassLoaderMethodId);
+
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Failed cleaning thread ctx class loader, error='%s'", err);
+    }
+
     JVM_PopFrame(env);
 
     JVM_ThreadLocalDataRestor(jvm_tld, oldSession);
@@ -2519,6 +2690,13 @@ static void JVM_OnRegistered(FlatExecutionPlan* fep, void* arg){
     if((err = JVM_GetException(env))){
         RedisModule_Log(NULL, "warning", "Exception occured while running OnRegister callback: %s", err);
         JVM_FREE(err);
+    }
+
+    // clean the thread ctx class loader just in case
+    (*env)->CallStaticVoidMethod(env, gearsBuilderCls, gearsCleanCtxClassLoaderMethodId);
+
+    if((err = JVM_GetException(env))){
+        RedisModule_Log(NULL, "warning", "Failed cleaning thread ctx class loader, error='%s'", err);
     }
 
     JVM_PopFrame(env);
@@ -2735,6 +2913,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
     }
 
+    pthread_mutex_init(&JVMSessionsLock, NULL);
     JVMSessions = RedisModule_CreateDict(ctx);
 
     JVMRecordType = RedisGears_RecordTypeCreate("JVMRecord",
@@ -2802,6 +2981,21 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
 
     if (RedisModule_CreateCommand(ctx, "rg.jexecute", JVM_Run, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.jexecute");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.jdumpclsloaders", JVM_DumpClsLoaders, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.jdumpclsloaders");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.jrungc", JVM_RunGC, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.jrungc");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.jdumpheap", JVM_DumpHeap, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.jdumpheap");
         return REDISMODULE_ERR;
     }
 

@@ -1,11 +1,16 @@
 package gears;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Serializable;
 import java.io.StringWriter;
+import java.lang.management.ManagementFactory;
+
+import javax.management.MBeanServer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.management.HotSpotDiagnosticMXBean;
 
 import gears.operations.AccumulateByOperation;
 import gears.operations.AccumulateOperation;
@@ -18,10 +23,13 @@ import gears.operations.OnRegisteredOperation;
 import gears.operations.OnUnregisteredOperation;
 import gears.operations.ValueInitializerOperation;
 import gears.readers.BaseReader;
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventorFactory;
 
 public class GearsBuilder<T extends Serializable>{
 	private BaseReader<T> reader;
 	private long ptr;
+	
+	protected native static void classLoaderFinalized(long prt);
 	
 	private native void init(String reader, String desc);
 	
@@ -160,6 +168,10 @@ public class GearsBuilder<T extends Serializable>{
 		Thread.currentThread().setContextClassLoader(cl);
 	}
 	
+	private static void cleanCtxClassLoader() throws IOException {
+		Thread.currentThread().setContextClassLoader(null);
+	}
+	
 	private static byte[] serializeObject(Object o, GearsObjectOutputStream out, boolean reset) throws IOException {
 		if(reset) {
 			out.reset();
@@ -192,5 +204,17 @@ public class GearsBuilder<T extends Serializable>{
 	@Override
 	protected void finalize() throws Throwable {
 		destroy();
+	}
+	
+	private static void dumpHeap(String dir, String filePath) throws IOException {
+	    log("Dumping heap into: " + dir + '/' + filePath);
+		MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+	    HotSpotDiagnosticMXBean mxBean = ManagementFactory.newPlatformMXBeanProxy(
+	      server, "com.sun.management:type=HotSpotDiagnostic", HotSpotDiagnosticMXBean.class);
+	    mxBean.dumpHeap(dir + '/' + filePath, true);
+	}
+	
+	private static void runGC() throws IOException {
+		System.gc();		
 	}
 }
