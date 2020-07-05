@@ -5,6 +5,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedList;
 
+/**
+ * Internal use
+ *
+ */
 public class GearsByteInputStream extends InputStream {
 	
 	LinkedList<ByteArrayInputStream> dataList;

@@ -6,6 +6,10 @@ import java.io.ObjectInputStream;
 import java.io.ObjectStreamClass;
 import java.io.StreamCorruptedException;
 
+/**
+ * Internal use
+ *
+ */
 class GearsObjectInputStream
 {
 	private class LoaderObjectInputStream extends ObjectInputStream{

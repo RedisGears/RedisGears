@@ -8,6 +8,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * A record type that returns by the KeysReader.
+ * Currently supports or reader values of Hashes and Strings
+ *
+ */
 public class KeysReaderRecord extends BaseRecord {
 
 	/**
@@ -68,30 +73,67 @@ public class KeysReaderRecord extends BaseRecord {
 		this.key = key;
 	}
 	
+	/**
+	 * 
+	 * @return the key
+	 */
 	public String getKey() {
 		return key;
 	}
 
+	/**
+	 * If the execution was trigger by keys space event, this return the event name
+	 * (most of the time its the command that triggers the execution)
+	 * @return the event that trigger the execution
+	 */
 	public String getEvent() {
 		return event;
 	}
 
+	/**
+	 * Return the key type:
+	 * 		REDISMODULE_KEYTYPE_EMPTY = 0;
+     *      REDISMODULE_KEYTYPE_STRING = 1;
+	 *		REDISMODULE_KEYTYPE_LIST = 2;
+	 *		REDISMODULE_KEYTYPE_HASH = 3;
+	 *		REDISMODULE_KEYTYPE_SET = 4;
+	 *		REDISMODULE_KEYTYPE_ZSET = 5;
+	 *		REDISMODULE_KEYTYPE_MODULE = 6;
+	 *		REDISMODULE_KEYTYPE_STREAM = 7;
+	 * @return the key type
+	 */
 	public long getType() {
 		return type;
 	}
 
+	/**
+	 * Return String value of the record (null if the record is not String)
+	 * @return String value of the record
+	 */
 	public String getStringVal() {
 		return stringVal;
 	}
 
+	/**
+	 * Return hash value of the record (null if the record is not hash)
+	 * @return hash value of the record 
+	 */
 	public Map<String, String> getHashVal() {
 		return hashVal;
 	}
 
+	/**
+	 * Currently not support and return null
+	 * @return
+	 */
 	public List<String> getListVal() {
 		return listVal;
 	}
 
+	/**
+	 * Currently not support and return null
+	 * @return
+	 */
 	public Set<String> getSetVal() {
 		return setVal;
 	}

@@ -6,6 +6,10 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 
+/**
+ * Internal use
+ * 
+ */
 public class GearsClassLoader extends URLClassLoader{
 	long ptr;
 	

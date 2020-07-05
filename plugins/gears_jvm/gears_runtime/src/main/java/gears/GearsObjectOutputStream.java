@@ -4,6 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 
+/**
+ * Internal use
+ *
+ */
 public class GearsObjectOutputStream extends ObjectOutputStream {
 
 	private ByteArrayOutputStream out;

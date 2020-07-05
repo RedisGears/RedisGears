@@ -5,6 +5,10 @@ import java.io.Serializable;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+/**
+ * Base record implementation.
+ *
+ */
 public class BaseRecord implements Serializable{
 	
 	/**

@@ -4,6 +4,10 @@ import java.util.Iterator;
 
 import gears.GearsBuilder;
 
+/**
+ * A reader that reads only keys name from the key space
+ *
+ */
 public class KeysOnlyReader extends JavaReader<String> {
 
 	/**
@@ -14,11 +18,20 @@ public class KeysOnlyReader extends JavaReader<String> {
 	private String scanSize;
 	private String pattern;
 	
+	/**
+	 * Create a new KeysOnlyReade reader
+	 * @param scanSize - the size to use with the scan command
+	 * @param pattern - the patter of the keys to read
+	 */
 	public KeysOnlyReader(int scanSize, String pattern) {
 		this.scanSize = Integer.toString(scanSize);
 		this.pattern = pattern;
 	}
 	
+	/**
+	 * Create a new KeysOnlyReade reader with default pattern (*) and default
+	 * scan size (10000)
+	 */
 	public KeysOnlyReader() {
 		this(10000, "*");
 	}
