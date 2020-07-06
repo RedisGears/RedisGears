@@ -70,6 +70,6 @@ commit.txt
 /VARIANT
 /artifacts/
 
-/venv
+/venv*/
 Pipfile.lock
 /site
