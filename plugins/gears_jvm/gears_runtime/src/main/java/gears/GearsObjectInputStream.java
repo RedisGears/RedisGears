@@ -1,7 +1,6 @@
 package gears;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectStreamClass;
 import java.io.StreamCorruptedException;
@@ -16,7 +15,7 @@ class GearsObjectInputStream
 
 		private ClassLoader loader;
 		
-		public LoaderObjectInputStream(ClassLoader loader, GearsByteInputStream in) throws IOException, SecurityException {
+		public LoaderObjectInputStream(ClassLoader loader, GearsByteInputStream in) throws IOException {
 			super(in);
 			// TODO Auto-generated constructor stub
 			this.loader = loader;
@@ -33,6 +32,7 @@ class GearsObjectInputStream
 	     * @throws IOException 
 	     */
 	    @SuppressWarnings({ "rawtypes", "unchecked" })
+	    @Override
 	    protected Class resolveClass(ObjectStreamClass classDesc) throws ClassNotFoundException, IOException {
 	    	if (loader == null)
 	    		return super.resolveClass(classDesc);
@@ -55,8 +55,7 @@ class GearsObjectInputStream
      * Loader must be non-null;
      */
 
-    public GearsObjectInputStream(ClassLoader loader, GearsByteInputStream in)
-            throws IOException, StreamCorruptedException {
+    public GearsObjectInputStream(ClassLoader loader, GearsByteInputStream in) {
         this.in = in;
         if (loader == null) {
             throw new IllegalArgumentException("Illegal null argument to ObjectInputStreamWithLoader");
@@ -69,7 +68,7 @@ class GearsObjectInputStream
     	return loader;
     }
      
-    public Object readObject() throws ClassNotFoundException, IOException, SecurityException {
+    public Object readObject() throws ClassNotFoundException, IOException {
     	if(objectIn == null) {
     		objectIn = new LoaderObjectInputStream(loader, in);
     	}
@@ -80,7 +79,7 @@ class GearsObjectInputStream
     	in.addData(bytes);
     }
     
-    public static GearsObjectInputStream getGearsObjectInputStream(ClassLoader loader) throws StreamCorruptedException, IOException {
+    public static GearsObjectInputStream getGearsObjectInputStream(ClassLoader loader) throws IOException {
     	GearsByteInputStream in = new GearsByteInputStream();
     	return new GearsObjectInputStream(loader, in);
     }

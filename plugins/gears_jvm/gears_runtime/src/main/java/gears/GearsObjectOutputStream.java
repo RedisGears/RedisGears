@@ -12,7 +12,7 @@ public class GearsObjectOutputStream extends ObjectOutputStream {
 
 	private ByteArrayOutputStream out;
 	
-	public GearsObjectOutputStream(ByteArrayOutputStream out) throws IOException, SecurityException {
+	public GearsObjectOutputStream(ByteArrayOutputStream out) throws IOException {
 		super(out);
 		this.out = out;
 	}
@@ -30,7 +30,7 @@ public class GearsObjectOutputStream extends ObjectOutputStream {
 		
 	}
 	
-	public static GearsObjectOutputStream getGearsObjectOutputStream() throws SecurityException, IOException {
+	public static GearsObjectOutputStream getGearsObjectOutputStream() throws IOException {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		return new GearsObjectOutputStream(out);
 	}

@@ -1,6 +1,5 @@
 package gears;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Serializable;
@@ -48,7 +47,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * holding the class loader
 	 * @param prt - pointer to native data
 	 */
-	protected native static void classLoaderFinalized(long prt);
+	protected static native void classLoaderFinalized(long prt);
 	
 	/**
 	 * Internal use
@@ -71,11 +70,12 @@ public class GearsBuilder<T extends Serializable>{
 	/**
 	 * Add a map operation to the pipe.
 	 * Example (map each record to the record value):
-	 * 
+	 * <pre>{@code
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
 	 * 		map(r->{
      *    		return r.getStringVal();
 	 *   	})
+	 * }</pre>
 	 * 
 	 * @param <I> The template type of the returned builder
 	 * @param mapper - the map operation
@@ -88,11 +88,12 @@ public class GearsBuilder<T extends Serializable>{
 	 * object. RedisGears iterate over the element in the Iterable object and pass
 	 * them one by one in the pipe.
 	 * Example:
-	 * 		
+	 * <pre>{@code 		
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
 	 *   	flatMap(r->{
 	 *   		return r.getListVal();
 	 *   	}); 
+	 * }</pre>
 	 * 
 	 * @param <I> The template type of the returned builder
 	 * @param faltmapper - the faltmap operation
@@ -104,11 +105,12 @@ public class GearsBuilder<T extends Serializable>{
 	 * Add a foreach operation to the pipe.
 	 * 
 	 * Example:
-	 * 		
+	 * <pre>{@code 		
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
 	 *  	foreach(r->{
 	 *   		r.getSetVal("test");
 	 * 		});
+	 * }</pre>
 	 * 
 	 * @param foreach - the foreach operation
 	 * @return GearsBuilder with a new template type, notice that the return object might be the same as the previous.
@@ -121,11 +123,12 @@ public class GearsBuilder<T extends Serializable>{
 	 * and otherwise false
 	 * 
 	 * Example:
-	 * 
+	 * <pre>{@code 
 	 *  	GearsBuilder.CreateGearsBuilder(reader).
 	 *   	filter(r->{
 	 *   		return !r.getKey().equals("UnwantedKey");
 	 *   	});
+	 * }</pre>
 	 * 
 	 * @param foreach - the foreach operation
 	 * @return - GearsBuilder with the same template type as the input builder, notice that the return object might be the same as the previous.
@@ -140,6 +143,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * and returns a new accumulated data. The initial value of the accumulator is null.
 	 * 
 	 * Example (counting the number of unique values):
+	 * <pre>{@code
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
      *   	accumulateBy(r->{
 	 *   		return r.getStringVal();
@@ -152,6 +156,7 @@ public class GearsBuilder<T extends Serializable>{
 	 *   		}
 	 *   		return ret + 1;
 	 *   	});
+	 * }</pre>
 	 * 
 	 * @param <I> - The template type of the returned builder
 	 * @param extractor - the extractor operation
@@ -165,7 +170,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * so there is no need to check if the accumulator is null.
 	 * 
 	 * Example (same example of counting the number of unique values):
-	 * 		
+	 * <pre>{@code 		
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
      *    	accumulateBy(()->{
 	 *   		return 0;
@@ -174,7 +179,7 @@ public class GearsBuilder<T extends Serializable>{
 	 *   	},(k, a, r)->{
 	 *   		return a + 1;
 	 *   	});
-	 * 
+	 * }</pre>
 	 * 
 	 * @param <I> - The template type of the returned builder 
 	 * @param valueInitializer - an initiator operation, 
@@ -204,6 +209,8 @@ public class GearsBuilder<T extends Serializable>{
 	 * data between shards).
 	 * 
 	 * Example:
+	 * 
+	 * <pre>{@code
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
 	 *   	localAccumulateBy(r->{
 	 *   		return r.getStringVal();
@@ -216,6 +223,7 @@ public class GearsBuilder<T extends Serializable>{
 	 *   		}
 	 *   		return ret + 1;
 	 *   	});
+	 * }</pre>
 	 * 
 	 * @param <I> - The template type of the returned builder
 	 * @param extractor - the extractor operation
@@ -229,7 +237,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * The initial accumulator object is null (same as for accumulateBy)
 	 * 
 	 * Example (counting the number of records):
-	 * 		
+	 * <pre>{@code		
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
      *    	accumulate((a, r)->{
 	 *   		Integer ret = null;
@@ -240,7 +248,7 @@ public class GearsBuilder<T extends Serializable>{
 	 *   		}
 	 *   		return ret + 1;
 	 *   	});
-	 * 
+	 * }</pre>
 	 * 
 	 * @param <I> - The template type of the returned builder
 	 * @param accumulator - the accumulate operation
@@ -252,12 +260,13 @@ public class GearsBuilder<T extends Serializable>{
 	 * A sugar syntax for the previous accumulateBy that gets the initial value as parameter
 	 * so there is no need to check if the accumulated object is null.
 	 * 
-	 *  Example (counting the number of records):
-	 *  
+	 * Example (counting the number of records):
+	 * <pre>{@code
 	 *  	GearsBuilder.CreateGearsBuilder(reader).
 	 *   	accumulate(0, (a, r)->{
 	 *   		return a + 1;
 	 *   	});
+	 * }</pre>
 	 * 
 	 * @param <I> - The template type of the returned builder
 	 * @param initialValue - the initial value of the accumulated object
@@ -365,11 +374,12 @@ public class GearsBuilder<T extends Serializable>{
 	 * the extracted data.
 	 * 
 	 * Example (repartition by value):
-	 * 		
+	 * <pre>{@code 
 	 * 		GearsBuilder.CreateGearsBuilder(reader).
      *   	repartition(r->{
 	 *   		return r.getStringVal();
 	 *   	});
+	 * }</pre>
 	 * 
 	 * @param extractor - the extractor operation
 	 * @return GearsBuilder with a new template type, notice that the return object might be the same as the previous.
@@ -473,7 +483,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * @return a new GearsBuilder
 	 */
 	public static <I extends Serializable> GearsBuilder<I> CreateGearsBuilder(BaseReader<I> reader, String desc) {
-		return new GearsBuilder<I>(reader, desc);
+		return new GearsBuilder<>(reader, desc);
 	}
 	
 	/**
@@ -483,7 +493,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * @return a new GearsBuilder
 	 */
 	public static <I extends Serializable> GearsBuilder<I> CreateGearsBuilder(BaseReader<I> reader) {
-		return new GearsBuilder<I>(reader);
+		return new GearsBuilder<>(reader);
 	}
 	
 	/**
@@ -491,7 +501,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * @param cl - class loader
 	 * @throws IOException
 	 */
-	private static void onUnpaused(ClassLoader cl) throws IOException {
+	private static void onUnpaused(ClassLoader cl) {
 		Thread.currentThread().setContextClassLoader(cl);
 	}
 	
@@ -516,8 +526,7 @@ public class GearsBuilder<T extends Serializable>{
 			out.reset();
 		}
 		
-		byte[] b = out.serializeObject(o);
-		return b;
+		return out.serializeObject(o);
 	}
 	
 	/**
@@ -531,8 +540,7 @@ public class GearsBuilder<T extends Serializable>{
 	 */
 	private static Object deserializeObject(byte[] bytes, GearsObjectInputStream in, boolean reset) throws IOException, ClassNotFoundException {
 		in.addData(bytes);
-		Object o = in.readObject();
-		return o;
+		return in.readObject();
 	}
 	
 	/**
@@ -586,7 +594,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * Internal use, force runnint GC.
 	 * @throws IOException
 	 */
-	private static void runGC() throws IOException {
+	private static void runGC() {
 		System.gc();		
 	}
 }

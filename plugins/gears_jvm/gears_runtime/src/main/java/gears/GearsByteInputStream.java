@@ -14,7 +14,7 @@ public class GearsByteInputStream extends InputStream {
 	LinkedList<ByteArrayInputStream> dataList;
 	
 	public GearsByteInputStream() {
-		this.dataList = new LinkedList<ByteArrayInputStream>();
+		this.dataList = new LinkedList<>();
 	}
 	
 	public void addData(byte[] data) {
@@ -24,7 +24,7 @@ public class GearsByteInputStream extends InputStream {
 
 	@Override
 	public int read() throws IOException {
-		while(dataList.size() > 0) {
+		while(!dataList.isEmpty()) {
 			int res = dataList.getFirst().read();
 			if(res != -1) {
 				return res;

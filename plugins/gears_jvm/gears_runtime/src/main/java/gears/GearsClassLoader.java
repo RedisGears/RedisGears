@@ -30,7 +30,6 @@ public class GearsClassLoader extends URLClassLoader{
 		if(!f.exists()) {
 			throw new FileNotFoundException(jarFilePath + " not exists");
 		}
-		URLClassLoader l = new GearsClassLoader(new URL[] {f.toURI().toURL()}, GearsClassLoader.class.getClassLoader());
-		return l;
+		return new GearsClassLoader(new URL[] {f.toURI().toURL()}, GearsClassLoader.class.getClassLoader());
 	}
 }
