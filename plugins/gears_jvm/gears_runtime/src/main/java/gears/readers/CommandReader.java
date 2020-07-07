@@ -30,7 +30,7 @@ public class CommandReader extends BaseReader<Object[]> {
 
 	/**
 	 * Set the trigger name that will trigger the execution
-	 * @param the trigger name that will trigger the execution
+	 * @param trigger the trigger name that will trigger the execution
 	 * @return the reader
 	 */
 	public CommandReader setTrigger(String trigger) {

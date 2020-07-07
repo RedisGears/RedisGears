@@ -2,7 +2,6 @@ package gears.records;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +46,7 @@ public class KeysReaderRecord extends BaseRecord {
 				
 			}
 			if(type == REDISMODULE_KEYTYPE_HASH) {
-				this.hashVal = new HashMap<String, String>();
+				this.hashVal = new HashMap<>();
 				while(buff.position() < buff.capacity()) {
 					long fieldSize = buff.getLong();
 					byte[] dst = new byte[(int)fieldSize];

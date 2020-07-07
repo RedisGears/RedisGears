@@ -5,12 +5,12 @@ import java.util.HashMap;
 /**
  * A reader that reads Redis Stream data.
  * 
- * This Reader return a records of type HashMap<String, Object> that contains
+ * This Reader return a records of type {@code HashMap<String, Object>} that contains
  * the following keys:
  * 
  * 	1. key - the String key as String
  * 	2. id - the current element id as String
- * 	3. value - The current element value as HashMap<String, byte[]>, the reason
+ * 	3. value - The current element value as {@code HashMap<String, byte[]>}, the reason
  *             of using byte[] and not String is that there is not garentee that 
  *             those values will be String and they might be blobs (images for example).
  *
