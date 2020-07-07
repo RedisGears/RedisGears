@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <uuid/uuid.h>
 #include "utils/arr_rm_alloc.h"
 
 static char* shardUniqueId = NULL;
@@ -201,16 +202,29 @@ const char* GetShardUniqueId() {
         RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
         RedisModuleCallReply *uuidReply = RedisModule_CallReplyArrayElement(reply, 1);
         RedisModule_Assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
+        
         size_t len;
         const char* logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
-        const char* last = strrchr(logFileName, '/');
-        if(last){
-            len = len - (last - logFileName + 1);
-            logFileName = last + 1;
+        char uuid[64];
+        if (*logFileName == '\0' || *logFileName == '\n' || *logFileName == '\r' || *logFileName == ' ') {
+            RedisModule_Log(ctx, "notice", "No log file is available");
+            uuid_t binuuid;
+            uuid_generate_random(binuuid);
+            uuid_unparse_lower(binuuid, uuid);
+            logFileName = uuid;
+            len = strlen(uuid);
+        } else {
+            RedisModule_Log(ctx, "notice", "Log file: %s", logFileName);
+            const char* last = strrchr(logFileName, '/');
+            if(last){
+                len = len - (last - logFileName + 1);
+                logFileName = last + 1;
+            }
         }
         shardUniqueId = RG_ALLOC(len + 1);
         shardUniqueId[len] = '\0';
         memcpy(shardUniqueId, logFileName, len);
+        RedisModule_Log(ctx, "notice", "shardUniqueId=%s", shardUniqueId);
         RedisModule_FreeCallReply(reply);
         RedisModule_FreeThreadSafeContext(ctx);
     }
