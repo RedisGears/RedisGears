@@ -206,14 +206,30 @@ const char* GetShardUniqueId() {
         size_t len;
         const char* logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
         char uuid[64];
+        bool found = true;
         if (*logFileName == '\0' || *logFileName == '\n' || *logFileName == '\r' || *logFileName == ' ') {
+            //dbfilename
+            RedisModule_FreeCallReply(reply);
             RedisModule_Log(ctx, "notice", "No log file is available");
-            uuid_t binuuid;
-            uuid_generate_random(binuuid);
-            uuid_unparse_lower(binuuid, uuid);
-            logFileName = uuid;
-            len = strlen(uuid);
-        } else {
+
+            reply = RedisModule_Call(ctx, "CONFIG", "cc", "GET", "logfile");
+            RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+            uuidReply = RedisModule_CallReplyArrayElement(reply, 1);
+            RedisModule_Assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
+
+            logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
+
+            if (*logFileName == '\0' || *logFileName == '\n' || *logFileName == '\r' || *logFileName == ' ') {
+                found = false;
+
+                uuid_t binuuid;
+                uuid_generate_random(binuuid);
+                uuid_unparse_lower(binuuid, uuid);
+                logFileName = uuid;
+                len = strlen(uuid);
+            }
+        }
+        if (found) {
             RedisModule_Log(ctx, "notice", "Log file: %s", logFileName);
             const char* last = strrchr(logFileName, '/');
             if(last){
@@ -221,6 +237,7 @@ const char* GetShardUniqueId() {
                 logFileName = last + 1;
             }
         }
+        
         shardUniqueId = RG_ALLOC(len + 1);
         shardUniqueId[len] = '\0';
         memcpy(shardUniqueId, logFileName, len);
