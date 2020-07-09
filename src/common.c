@@ -215,7 +215,7 @@ const char* GetShardUniqueId() {
     if(!shardUniqueId){
         RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
 
-#if 0
+#if 1
         RedisModuleCallReply *reply;
         const char *filename;
         size_t len;
