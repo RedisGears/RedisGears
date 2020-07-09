@@ -57,9 +57,15 @@ commands:
           name: Build for platform
           command: |
             docker login -u redisfab -p $DOCKER_REDISFAB_PWD
-            cd build/docker
+            pushd build/docker
             make build publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
+            popd
+            logs_d=pytest/logs/<<parameters.platform>>
+            mkdir -p $logs_d
+            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
+      - store_artifacts:
+          path: pytest/logs
       - persist_to_workspace:
           root: artifacts
           paths:
