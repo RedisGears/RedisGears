@@ -213,13 +213,14 @@ static const char *readRedisConfig(RedisModuleCtx *ctx, const char *item, RedisM
 
 const char* GetShardUniqueId() {
     if(!shardUniqueId){
+        RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+
+#if 0
         RedisModuleCallReply *reply;
         const char *filename;
         size_t len;
         char uuid[64];
         bool filename_found = true;
-        
-        RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
         
         filename = readRedisConfig(ctx, "logfile", &reply, &len);
         if (!filename) {
@@ -246,7 +247,7 @@ const char* GetShardUniqueId() {
                 filename = last + 1;
             }
         }
-        
+    
         shardUniqueId = RG_ALLOC(len + 1);
         shardUniqueId[len] = '\0';
         memcpy(shardUniqueId, filename, len);
@@ -254,6 +255,24 @@ const char* GetShardUniqueId() {
         if (reply) {
             RedisModule_FreeCallReply(reply);
         }
+#else
+        RedisModuleCallReply *reply = RedisModule_Call(ctx, "CONFIG", "cc", "GET", "logfile");
+        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+        RedisModuleCallReply *uuidReply = RedisModule_CallReplyArrayElement(reply, 1);
+        RedisModule_Assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
+        size_t len;
+        const char* logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
+        RedisModule_Log(ctx, "notice", "log file is %s", logFileName);
+        const char* last = strrchr(logFileName, '/');
+        if(last){
+            len = len - (last - logFileName + 1);
+            logFileName = last + 1;
+        }
+        shardUniqueId = RG_ALLOC(len + 1);
+        shardUniqueId[len] = '\0';
+        memcpy(shardUniqueId, logFileName, len);
+        RedisModule_FreeCallReply(reply);
+#endif
         RedisModule_FreeThreadSafeContext(ctx);
     }
     return shardUniqueId;
