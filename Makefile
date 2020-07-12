@@ -415,16 +415,16 @@ ifeq ($(VGD),1)
 TEST_FLAGS += VALGRIND=1
 endif
 
+ifneq ($(SHARDS),)
+TEST_FLAGS += SHARDS=$(SHARDS)
+endif
+
 test: __sep
 	$(COVERAGE_RESET)
 ifneq ($(TEST),)
 	@set -e; cd pytest; BB=1 $(TEST_FLAGS) RLTest --test $(TEST) $(TEST_ARGS) $(RLTEST_GDB) -s --module $(abspath $(ROOT)/redisgears.so)
 else
-<<<<<<< HEAD
 	$(SHOW)set -e; cd pytest; $(TEST_FLAGS) ./run_tests.sh
-=======
-	$(SHOW)set -e; cd pytest; SHARDS=$(SHARDS) ./run_tests.sh
->>>>>>> fixes 6
 endif
 	$(COVERAGE_COLLECT_REPORT)
 
