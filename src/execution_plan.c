@@ -1528,7 +1528,7 @@ void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
         RedisModule_Assert(onRegistered);
         onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
     }
-    EPTurnOnFlag(fep, EFRegistered);
+    EPTurnOnFlag(fep, FEFRegistered);
 }
 
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
@@ -2376,7 +2376,6 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", buff->buff, buff->size);
     RedisModule_FreeThreadSafeContext(ctx);
     Gears_BufferFree(buff);
-    fep->registered = true;
     return 1;
 }
 
