@@ -607,6 +607,7 @@ error:
 
 FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br, char** err, int encver){
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
+    
     bool PDExists = RedisGears_BRReadLong(br);
     if(PDExists){
         ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
@@ -1534,6 +1535,7 @@ void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
     int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
     RedisModule_Assert(res == DICT_OK);
+    EPTurnOffFlag(fep, FEFRegistered);
 }
 
 static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg, char** err){
