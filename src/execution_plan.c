@@ -651,7 +651,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     size_t len;
-    if(EPIsFlagOn(ep->fep, FEFRegistered)) {
+    if(FEPIsFlagOn(ep->fep, FEFRegistered)) {
         // Registered execution plan - serialize id and return.
         RedisGears_BWWriteLong(&bw, 1);
         FlatExecutionPlan_SerializeID(ep->fep, &bw);
@@ -1524,13 +1524,19 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
     Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
-    EPTurnOnFlag(fep, FEFRegistered);
+    // call the on registered callback if set
+    if(fep->onRegisteredStep.stepName){
+        RedisGears_FlatExecutionOnRegisteredCallback onRegistered = FlatExecutionOnRegisteredsMgmt_Get(fep->onRegisteredStep.stepName);
+        RedisModule_Assert(onRegistered);
+        onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
+    }
+    FEPTurnOnFlag(fep, FEFRegistered);
 }
 
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
     int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
     RedisModule_Assert(res == DICT_OK);
-    EPTurnOffFlag(fep, FEFRegistered);
+    FEPTurnOffFlag(fep, FEFRegistered);
 }
 
 static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg, char** err){
@@ -1542,12 +1548,6 @@ static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears
     // the registeredFepDict holds a weak pointer to the fep struct. It does not increase
     // the refcount and will be remove when the fep will be unregistered
     FlatExecutionPlan_AddToRegisterDict(fep);
-    // call the on registered callback if set
-    if(fep->onRegisteredStep.stepName){
-        RedisGears_FlatExecutionOnRegisteredCallback onRegistered = FlatExecutionOnRegisteredsMgmt_Get(fep->onRegisteredStep.stepName);
-        RedisModule_Assert(onRegistered);
-        onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
-    }
     return REDISMODULE_OK;
 }
 
@@ -1683,6 +1683,8 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     ep->isPaused = true;
     ep->maxIdleTimerSet = false;
 
+    // Set if the execution plan is registered.
+    ep->registered = FEPIsFlagOn(fep, FEFRegistered)? true : false;
     return ep;
 }
 
@@ -2973,11 +2975,13 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(it))) {
         ExecutionPlan* ep = Gears_dictGetVal(entry);
-		RedisModule_ReplyWithArray(ctx, 4);
+		RedisModule_ReplyWithArray(ctx, 6);
 		RedisModule_ReplyWithStringBuffer(ctx, "executionId", strlen("executionId"));
 		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
 		RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
         RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
+        RedisModule_ReplyWithStringBuffer(ctx, "registered execution", strlen("registered execution"));
+        RedisModule_ReplyWithLongLong(ctx, ep->registered);
 		++numOfEntries;
     }
     Gears_dictReleaseIterator(it);

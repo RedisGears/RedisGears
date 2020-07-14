@@ -14,6 +14,36 @@ class testUnregister:
         self.env = Env()
         self.conn = getConnectionByEnv(self.env)
 
+    def cleanUp(self):
+        executions = self.env.cmd('RG.DUMPEXECUTIONS')
+        for e in executions:
+            self.env.cmd('RG.DROPEXECUTION', e[1])
+
+        # delete all registrations so valgrind check will pass
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        for r in registrations:
+            self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+    def testSimpleRegister(self):
+        script = '''
+GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').foreach(lambda r: execute('sadd', 'all_keys', r['key'])).register()
+        '''
+        self.env.expect('RG.PYEXECUTE', script).equal('OK')
+        time.sleep(1) # waiting for the execution to reach all shard, in the future we will use acks and return reply only
+                      # when it reach all shards
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        self.env.assertEqual(len(registrations), 1)
+        registrationID = registrations[0][1]
+        self.conn.execute_command('set', 'x', '1')
+        time.sleep(1)
+        res = self.conn.execute_command('smembers', 'all_keys')
+        self.env.assertEqual(res.pop(), 'x')
+        executions = self.env.cmd('RG.DUMPEXECUTIONS')
+        for e in executions:
+            self.env.assertEqual(1, e[5])
+
+        self.cleanUp()
+
     def testSimpleUnregister(self):
         script = '''
 GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').foreach(lambda r: execute('sadd', 'all_keys', r['key'])).register()
