@@ -513,6 +513,7 @@ static char* FlatExecutionPlan_DeserializeID(Gears_BufferReader *br) {
     size_t len;
     char* idBuff = RedisGears_BRReadBuffer(br, &len);
     RedisModule_Assert(len == ID_LEN);
+    return idBuff;
 }
 
 static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const char* data, size_t dataLen, char** err, int encver){
@@ -1523,12 +1524,6 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
     Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
-    // call the on registered callback if set
-    if(fep->onRegisteredStep.stepName){
-        RedisGears_FlatExecutionOnRegisteredCallback onRegistered = FlatExecutionOnRegisteredsMgmt_Get(fep->onRegisteredStep.stepName);
-        RedisModule_Assert(onRegistered);
-        onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
-    }
     EPTurnOnFlag(fep, FEFRegistered);
 }
 
@@ -1934,6 +1929,8 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
             RedisModule_Log(ctx, "warning", "Execution plan with id=%s is marked as registered at shard : %s, but could not be found", id, sender_id);
             return;
         }
+        // Increase ref count.
+        fep = FlatExecutionPlan_ShallowCopy(fep);
     }
     else {
         fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
