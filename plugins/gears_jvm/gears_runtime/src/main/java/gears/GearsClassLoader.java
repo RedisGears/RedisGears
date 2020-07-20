@@ -7,24 +7,23 @@ import java.net.URL;
 import java.net.URLClassLoader;
 
 /**
- * Internal use
- * 
+ * <em>Internal use</em>
  */
 public class GearsClassLoader extends URLClassLoader{
 	long ptr;
-	
+
 	public GearsClassLoader(URL[] urls, ClassLoader parent) {
 		super(urls, parent);
 	}
-	
+
 	public void shutDown() {
 	}
-	
+
 	@Override
 	protected void finalize() throws Throwable {
 		GearsBuilder.classLoaderFinalized(ptr);
 	}
-	
+
 	public static URLClassLoader getNew(String jarFilePath) throws MalformedURLException, FileNotFoundException {
 		File f = new File(jarFilePath);
 		if(!f.exists()) {

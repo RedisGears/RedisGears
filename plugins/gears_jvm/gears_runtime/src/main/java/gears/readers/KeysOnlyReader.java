@@ -5,21 +5,20 @@ import java.util.Iterator;
 import gears.GearsBuilder;
 
 /**
- * A reader that reads only keys name from the key space
+ * Implementation of a reader that only reads key names
  *
+ * @since 1.0
  */
 public class KeysOnlyReader extends JavaReader<String> {
 
-	/**
-	 * 
-	 */
 	private static final long serialVersionUID = 1L;
-	
+
 	private String scanSize;
 	private String pattern;
-	
+
 	/**
 	 * Create a new KeysOnlyReade reader
+	 *
 	 * @param scanSize - the size to use with the scan command
 	 * @param pattern - the patter of the keys to read
 	 */
@@ -27,7 +26,7 @@ public class KeysOnlyReader extends JavaReader<String> {
 		this.scanSize = Integer.toString(scanSize);
 		this.pattern = pattern;
 	}
-	
+
 	/**
 	 * Create a new KeysOnlyReade reader with default pattern (*) and default
 	 * scan size (10000)
@@ -45,11 +44,11 @@ public class KeysOnlyReader extends JavaReader<String> {
 			Object[] keys = null;
 			boolean isDone = false;
 			String nextKey = null;
-			
+
 			private String innerNext() {
 				while(!isDone) {
 					if(keys == null) {
-						Object[] res = (Object[]) GearsBuilder.execute("scan", 
+						Object[] res = (Object[]) GearsBuilder.execute("scan",
 										cursor == null ? "0" : cursor,
 										"MATCH", pattern, "COUNT", scanSize);
 						keys = (Object[])res[1];
@@ -59,7 +58,7 @@ public class KeysOnlyReader extends JavaReader<String> {
 					if(currIndex < keys.length) {
 						return (String) keys[currIndex++];
 					}
-					
+
 					keys = null;
 					if(cursor.charAt(0) == '0') {
 						isDone = true;
@@ -67,7 +66,7 @@ public class KeysOnlyReader extends JavaReader<String> {
 				}
 				return null;
 			}
-			
+
 			@Override
 			public boolean hasNext() {
 				if(nextKey == null) {
@@ -82,7 +81,7 @@ public class KeysOnlyReader extends JavaReader<String> {
 				nextKey = innerNext();
 				return temp;
 			}
-			
+
 		};
 	}
 

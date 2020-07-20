@@ -6,30 +6,29 @@ import java.io.ObjectStreamClass;
 import java.io.StreamCorruptedException;
 
 /**
- * Internal use
- *
+ * <em>Internal use</em>
  */
 class GearsObjectInputStream
 {
 	private class LoaderObjectInputStream extends ObjectInputStream{
 
 		private ClassLoader loader;
-		
+
 		public LoaderObjectInputStream(ClassLoader loader, GearsByteInputStream in) throws IOException {
 			super(in);
 			// TODO Auto-generated constructor stub
 			this.loader = loader;
 		}
-		
+
 		@Override
 		protected void readStreamHeader() {
-			
+
 		}
-		
+
 		/**
 	     * Use the given ClassLoader rather than using the system class
-	     * @throws ClassNotFoundException 
-	     * @throws IOException 
+	     * @throws ClassNotFoundException
+	     * @throws IOException
 	     */
 	    @SuppressWarnings({ "rawtypes", "unchecked" })
 	    @Override
@@ -46,15 +45,14 @@ class GearsObjectInputStream
 		    }
 	    }
 	}
-	
+
     private ClassLoader loader;
     private GearsByteInputStream in;
     private LoaderObjectInputStream objectIn;
 
     /**
-     * Loader must be non-null;
+     * Loader must be non-null
      */
-
     public GearsObjectInputStream(ClassLoader loader, GearsByteInputStream in) {
         this.in = in;
         if (loader == null) {
@@ -63,22 +61,22 @@ class GearsObjectInputStream
         this.loader = loader;
         this.objectIn = null;
     }
-    
+
     public ClassLoader getLoader() {
     	return loader;
     }
-     
+
     public Object readObject() throws ClassNotFoundException, IOException {
     	if(objectIn == null) {
     		objectIn = new LoaderObjectInputStream(loader, in);
     	}
     	return objectIn.readObject();
     }
-    
+
     public void addData(byte[] bytes) {
     	in.addData(bytes);
     }
-    
+
     public static GearsObjectInputStream getGearsObjectInputStream(ClassLoader loader) throws IOException {
     	GearsByteInputStream in = new GearsByteInputStream();
     	return new GearsObjectInputStream(loader, in);

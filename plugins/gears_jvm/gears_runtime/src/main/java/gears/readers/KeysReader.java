@@ -3,16 +3,14 @@ package gears.readers;
 import gears.records.KeysReaderRecord;
 
 /**
- * A reader that reads keys and value from the Redis.
- * currently only String and Hashes values are supported.
- * 
- * If the key type is not Hash nor String, only the key name will be given.
+ * Implementation of a reader that reads keys and their values
+ * <p>
+ * Only Redis String and Hashes values are currently supported. For other value
+ * types, only the key's name will be returned.
  *
+ * @since 1.0
  */
 public class KeysReader extends BaseReader<KeysReaderRecord> {
-	/**
-	 * 
-	 */
 	private static final long serialVersionUID = 1L;
 	private String pattern;
 	private boolean noScan;
@@ -31,15 +29,15 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 		this.eventTypes = null;
 		this.keyTypes = null;
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
-	 * @param pattern - the keys pattern to read
-	 * @param noScan - whether or not to scan the key space or just read the patter as is.
-	 * @param readValues - whether or not to read keys values
-	 * @param eventTypes - if used with register, the event types to register on (most of the time its the command name)
-	 * @param keyTypes - if used with register, the key types to register on
+	 *
+	 * @param pattern the keys pattern to read
+	 * @param noScan whether to scan the key space or just read the patter as is
+	 * @param readValues whether to read keys values
+	 * @param eventTypes if used with register, the event types to register on (most of the time its the command name)
+	 * @param keyTypes if used with register, the key types to register on
 	 */
 	public KeysReader(String pattern, boolean noScan, boolean readValues, String[] eventTypes, String[] keyTypes) {
 		super();
@@ -49,44 +47,44 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 		this.eventTypes = eventTypes;
 		this.keyTypes = keyTypes;
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
-	 * @param pattern - the keys pattern to read
+	 *
+	 * @param pattern the keys pattern to read
 	 */
 	public KeysReader(String pattern) {
 		this(pattern, false, true, null, null);
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
-	 * @param pattern - the keys pattern to read
-	 * @param noScan - whether or not to scan the key space or just read the patter as is.
-	 * @param readValues - whether or not to read keys values
+	 *
+	 * @param pattern the keys pattern to read
+	 * @param noScan whether to scan the key space or just read the patter as is
+	 * @param readValues whether to read keys values
 	 */
 	public KeysReader(String pattern, boolean noScan, boolean readValues) {
 		this(pattern, noScan, readValues, null, null);
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
-	 * @param prefix - the keys prefix to read
-	 * @param readValues - whether or not to read keys values
-	 * @param eventTypes - if used with register, the event types to register on (most of the time its the command name)
-	 * @param keyTypes - if used with register, the key types to register on
+	 *
+	 * @param prefix the keys prefix to read
+	 * @param readValues whether to read keys values
+	 * @param eventTypes if used with register, the event types to register on (most of the time its the command name)
+	 * @param keyTypes if used with register, the key types to register on
 	 */
 	public KeysReader(String prefix, boolean readValues, String[] eventTypes, String[] keyTypes) {
 		this(prefix, false, readValues, eventTypes, keyTypes);
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
-	 * @param prefix - the keys prefix to read
-	 * @param readValues - whether or not to read keys values
+	 *
+	 * @param prefix the keys prefix to read
+	 * @param readValues whether to read keys values
 	 */
 	public KeysReader(String prefix, boolean readValues) {
 		this(prefix, false, readValues, null, null);
@@ -98,7 +96,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	}
 
 	/**
-	 * Returns the pattern of keys to read
+	 * Return the pattern of keys to read
 	 * @return the pattern of keys to read
 	 */
 	public String getPattern() {
@@ -107,7 +105,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 
 	/**
 	 * Set the pattern of keys to read
-	 * @param pattern - the pattern of keys to read
+	 * @param pattern the pattern of keys to read
 	 * @return the reader
 	 */
 	public KeysReader setPattern(String pattern) {
@@ -116,7 +114,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	}
 
 	/**
-	 * Indicate if scan is use
+	 * Indicate if scan is used
 	 * @return true if scan is not used otherwise false
 	 */
 	public boolean isNoScan() {
@@ -124,7 +122,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	}
 
 	/**
-	 * Set nScan value
+	 * Set noScan value
 	 * @param noScan true to indicate the reader to not use scan operation and just read the key as is.
 	 * @return the reader
 	 */
@@ -134,7 +132,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	}
 
 	/**
-	 * Indicate whether or not to read the keys values
+	 * Indicate whether to read the keys values
 	 * @return true if reading the keys values otherwise false
 	 */
 	public boolean isReadValues() {
@@ -143,7 +141,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 
 	/**
 	 * Set reade values parameter
-	 * @param readValues - true if the reader is required to read values otherwise false
+	 * @param readValues true if the reader is required to read values otherwise false
 	 * @return the reader
 	 */
 	public KeysReader setReadValues(boolean readValues) {
@@ -152,7 +150,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	}
 
 	/**
-	 * On register, returns the event type this reader register on.
+	 * On register, returns the event type this reader register on
 	 * @return the event type this reader register on
 	 */
 	public String[] getEventTypes() {
@@ -160,8 +158,8 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	}
 
 	/**
-	 * On register, set the event type this reader register on.
-	 * @param eventTypes - the event type this reader register on.
+	 * On register, set the event type this reader register on
+	 * @param eventTypes the event type this reader register on.
 	 * @return the reader
 	 */
 	public KeysReader setEventTypes(String[] eventTypes) {
@@ -170,16 +168,16 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	}
 
 	/**
-	 * On register, return the key types this reader register on.
-	 * @return the key types this reader register on.
+	 * On register, return the key types this reader register on
+	 * @return the key types this reader register on
 	 */
 	public String[] getKeyTypes() {
 		return keyTypes;
 	}
 
 	/**
-	 * On register, set the key types this reader register on.
-	 * @param keyTypes - the key types this reader register on.
+	 * On register, set the key types this reader register on
+	 * @param keyTypes - the key types this reader register on
 	 * @return the reader
 	 */
 	public KeysReader setKeyTypes(String[] keyTypes) {

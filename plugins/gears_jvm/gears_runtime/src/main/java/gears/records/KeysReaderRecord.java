@@ -15,7 +15,7 @@ import java.util.Set;
 public class KeysReaderRecord extends BaseRecord {
 
 	/**
-	 * 
+	 *
 	 */
 	private static final long serialVersionUID = 1L;
 
@@ -27,7 +27,7 @@ public class KeysReaderRecord extends BaseRecord {
 	public static final int REDISMODULE_KEYTYPE_ZSET = 5;
 	public static final int REDISMODULE_KEYTYPE_MODULE = 6;
 	public static final int REDISMODULE_KEYTYPE_STREAM = 7;
-	
+
 	private String key;
 	private String event;
 	private long type;
@@ -35,7 +35,7 @@ public class KeysReaderRecord extends BaseRecord {
 	private Map<String,String> hashVal;
 	private List<String> listVal;
 	private Set<String> setVal;
-	
+
 	public KeysReaderRecord(String key, String event, boolean readVal, ByteBuffer buff) {
 		this.key = key;
 		this.event = event;
@@ -43,7 +43,7 @@ public class KeysReaderRecord extends BaseRecord {
 			buff.order(ByteOrder.LITTLE_ENDIAN);
 			this.type = buff.getLong();
 			if(this.type == -1) {
-				
+
 			}
 			if(type == REDISMODULE_KEYTYPE_HASH) {
 				this.hashVal = new HashMap<>();
@@ -63,7 +63,7 @@ public class KeysReaderRecord extends BaseRecord {
 				long dataLen = buff.getLong();
 				byte[] data = new byte[(int)dataLen];
 				buff.get(data);
-				this.stringVal = new String(data);					
+				this.stringVal = new String(data);
 			}
 		}
 	}
@@ -71,9 +71,9 @@ public class KeysReaderRecord extends BaseRecord {
 	public void setKey(String key) {
 		this.key = key;
 	}
-	
+
 	/**
-	 * 
+	 *
 	 * @return the key
 	 */
 	public String getKey() {
@@ -114,16 +114,16 @@ public class KeysReaderRecord extends BaseRecord {
 	}
 
 	/**
-	 * Return hash value of the record (null if the record is not hash)
-	 * @return hash value of the record 
+	 * Returns the hash value of the record (null if the record is not a hash)
+	 * @return hash value of the record
 	 */
 	public Map<String, String> getHashVal() {
 		return hashVal;
 	}
 
 	/**
-	 * Currently not support and return null
-	 * @return
+	 * Currently not supported and returns null
+	 * @return null
 	 */
 	public List<String> getListVal() {
 		return listVal;
@@ -131,10 +131,10 @@ public class KeysReaderRecord extends BaseRecord {
 
 	/**
 	 * Currently not support and return null
-	 * @return
+	 * @return null
 	 */
 	public Set<String> getSetVal() {
 		return setVal;
 	}
-	
+
 }

@@ -6,17 +6,16 @@ import java.io.InputStream;
 import java.util.LinkedList;
 
 /**
- * Internal use
- *
+ * <em>Internal use</em>
  */
 public class GearsByteInputStream extends InputStream {
-	
+
 	LinkedList<ByteArrayInputStream> dataList;
-	
+
 	public GearsByteInputStream() {
 		this.dataList = new LinkedList<>();
 	}
-	
+
 	public void addData(byte[] data) {
 		ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
 		this.dataList.addLast(inputStream);
