@@ -152,6 +152,7 @@ An array with an entry per execution. Each entry is made of alternating key name
 
 * **executionId**: the [execution ID](functions.md#execution-id)
 * **status**: the [status](functions.md#execution-status)
+* **registered execution**: Indication that the given execution is a registered execution plan.
 
 **Examples**
 
@@ -161,10 +162,14 @@ redis> RG.DUMPEXECUTIONS
    2) "0000000000000000000000000000000000000000-0"
    3) "status"
    4) "done"
+   5) "registered execution"
+   6) (integer) 1
 2) 1) "executionId"
    2) "0000000000000000000000000000000000000000-1"
    3) "status"
    4) "running"
+   5) "registered execution"
+   6) (integer) 1
 ```
 
 ## RG.DUMPREGISTRATIONS
