@@ -2980,7 +2980,7 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
 		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
 		RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
         RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
-        RedisModule_ReplyWithStringBuffer(ctx, "registered execution", strlen("registered execution"));
+        RedisModule_ReplyWithStringBuffer(ctx, "registered", strlen("registered"));
         RedisModule_ReplyWithLongLong(ctx, ep->registered);
 		++numOfEntries;
     }
