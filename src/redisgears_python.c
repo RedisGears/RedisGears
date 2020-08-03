@@ -1996,7 +1996,7 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     bool buffered = false;
     Py_buffer view;
     size_t size;
-    const char* blob;
+    char* blob;
     bool free_blob = false;
 
     // Collect dims.
