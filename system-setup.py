@@ -58,7 +58,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("libatomic file")
 
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
-        self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
+        self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm --replacepkgs ")
 
         self.run("""
             dir=$(mktemp -d /tmp/tar.XXXXXX)
