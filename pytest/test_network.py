@@ -66,6 +66,10 @@ class Connection(object):
         self.sockf.write('+%s\r\n' % data)
         self.sockf.flush()
 
+    def send_error(self, data):
+        self.sockf.write('-%s\r\n' % data)
+        self.sockf.flush()
+
     def send_integer(self, data):
         self.sockf.write(':%u\r\n' % data)
         self.sockf.flush()
@@ -218,6 +222,9 @@ class ShardMock():
         conn.flush()
         return conn
 
+    def GetCleanConnection(self):
+        return self.new_conns.get(block=True, timeout=None)
+
     def StopListening(self):
         self.stream_server.stop()
 
@@ -241,6 +248,25 @@ def testMessageIdCorrectness(env):
 
         env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
         conn.send_status('OK')
+
+def testErrorHelloResponse(env):
+    env.skipOnCluster()
+
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetCleanConnection()
+        env.assertEqual(conn.read_request(), ['AUTH', 'password'])
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+        conn.send_status('OK')  # auth response
+        conn.send_error('err')  # sending error for the RG.HELLO request
+
+        # expect the rg.hello to be sent again
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+
+        # closing the connection befor reply
+        conn.close()
+
+        # expect a new connection to arrive
+        conn = shardMock.GetConnection()
 
 
 def testMessageResentAfterDisconnect(env):
