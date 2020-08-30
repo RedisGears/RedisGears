@@ -448,14 +448,14 @@ The **RG.PYEXECUTE** command executes a Python [function](functions.md#function)
 **Redis API**
 
 ```
-RG.PYEXECUTE "<function>" [REQUIREMENTS "<dep> ..."] [UNBLOCKING]
+RG.PYEXECUTE "<function>" [UNBLOCKING] [REQUIREMENTS "<dep> ..."]
 ```
 
 _Arguments_
 
 * _function_: the Python function
-* _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 * _UNBLOCKING_: doesn't block the client during execution
+* _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 
 _Return_
 
