@@ -105,6 +105,8 @@ static long long CurrSessionId = 0;
 
 Gears_dict* SessionsDict = NULL;
 
+Gears_dict* CommandCallbacks = NULL;
+
 static char* venvDir = NULL;
 
 typedef struct PythonRequirementCtx{
@@ -2939,6 +2941,56 @@ static int TimeEvent_RegisterType(RedisModuleCtx* ctx){
     return REDISMODULE_OK;
 }
 
+typedef struct CommandCallbackCtx{
+    PyObject* func;
+    PythonSessionCtx* currSession;
+}CommandCallbackCtx;
+
+static void RedisGearsPy_PyRegisterCommandCallback(ExecutionCtx* rctx, Record *record, void* arg){
+    PyFunctionObject* func = arg;
+    PyObject* funcName = func->func_name;
+    const char* funcNameCStr = PyUnicode_AsUTF8AndSize(funcName, NULL);
+    PythonSessionCtx* currSession = RedisGears_GetFlatExecutionPrivateData(rctx);
+    CommandCallbackCtx* ccCtx = RG_ALLOC(sizeof(*ccCtx));
+    ccCtx->func = (PyObject*)func;
+    Py_INCREF(ccCtx->func);
+    ccCtx->currSession = PythonSessionCtx_ShellowCopy(currSession);
+    RedisModuleCtx* ctx = RedisGears_GetRedisModuleCtx(rctx);
+    RedisModule_ThreadSafeContextLock(ctx);
+    Gears_dictAdd(CommandCallbacks, (char*)funcNameCStr, ccCtx);
+    RedisModule_ThreadSafeContextUnlock(ctx);
+}
+
+static PyObject* gearsCommandCallbackEvent(PyObject *cls, PyObject *args){
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "not enough arguments for CommandCallback event");
+        return NULL;
+    }
+    PyObject* callback = PyTuple_GetItem(args, 0);
+    if(!PyFunction_Check(callback)){
+        PyErr_SetString(GearsError, "callback must be a function");
+        return NULL;
+    }
+
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader);
+    RedisGears_SetFlatExecutionPrivateData(fep, "PySessionType", PythonSessionCtx_ShellowCopy(ptctx->currSession));
+    RGM_ForEach(fep, RedisGearsPy_PyRegisterCommandCallback, callback);
+    char* err = NULL;
+    ExecutionPlan* ep = RGM_Run(fep, ExecutionModeAsync, NULL, NULL, NULL, &err);
+    if(!ep){
+        PyErr_SetString(GearsError, err);
+        RG_FREE(err);
+        return NULL;
+    }
+
+    RedisGears_AddOnDoneCallback(ep, dropExecutionOnDone, NULL);
+
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     if(PyTuple_Size(args) < 2 || PyTuple_Size(args) > 3){
         PyErr_SetString(GearsError, "not enough arguments for time event");
@@ -3005,6 +3057,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"config_get", RedisConfigGet, METH_VARARGS, "write a message into the redis log file"},
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
+    {"registerCommandCallbackEvent", gearsCommandCallbackEvent, METH_VARARGS, "register a function to be called on each time period"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3203,6 +3256,79 @@ static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
     };
 
     Gears_thpool_add_work(installDepsPool, RedisGearsPy_DownloadWheelsAndDistribute, bdiCtx);
+}
+
+int RedisGearsPy_ExecuteFunc(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc < 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* func = RedisModule_StringPtrLen(argv[1], NULL);
+
+    CommandCallbackCtx* ccCtx = Gears_dictFetchValue(CommandCallbacks, func);
+    if(!ccCtx){
+        RedisModule_ReplyWithError(ctx, "Given callback does not exists");
+        return REDISMODULE_OK;
+    }
+
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    ptctx->currentCtx = ctx;
+    ptctx->createdExecution = NULL;
+
+    void* old = RedisGearsPy_Lock(ccCtx->currSession);
+
+    int extraArgc = argc - 2;
+    if(extraArgc < 0){
+        extraArgc = 0;
+    }
+
+    PyObject* pArgs = PyTuple_New(extraArgc);
+    for(size_t i = 2 ; i < argc ; ++i){
+        const char* v = RedisModule_StringPtrLen(argv[i], NULL);
+        PyObject * pyV = PyUnicode_FromString(v);
+        PyTuple_SetItem(pArgs, i - 2, pyV);
+    }
+//    PyObject* callback = arg;
+//    PyObject* obj = PyObjRecordGet(record);
+//    Py_INCREF(obj);
+//    PyTuple_SetItem(pArgs, 0, obj);
+    PyObject* ret = PyObject_CallObject(ccCtx->func, pArgs);
+    Py_DECREF(pArgs);
+    if(!ret){
+        char* err = getPyError();
+        if(!err){
+            RedisModule_ReplyWithError(ctx, "failed running the given script");
+        }else{
+            RedisModule_ReplyWithError(ctx, err);
+            RG_FREE(err);
+        }
+
+        if(ptctx->createdExecution){
+            // error occured, we need to abort the created execution.
+            int res = RedisGears_AbortExecution(ptctx->createdExecution);
+            RedisModule_Assert(res == REDISMODULE_OK);
+            RedisGears_DropExecution(ptctx->createdExecution);
+        }
+
+        RedisGearsPy_Unlock(old);
+
+        ptctx->createdExecution = NULL;
+        ptctx->currentCtx = NULL;
+        return REDISMODULE_OK;
+    }
+
+    if(ptctx->createdExecution){
+        RedisModuleBlockedClient* bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 0);
+        RedisGears_AddOnDoneCallback(ptctx->createdExecution, onDone, bc);
+    }else{
+        RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
+    }
+    RedisGearsPy_Unlock(old);
+
+    ptctx->createdExecution = NULL;
+    ptctx->currentCtx = NULL;
+
+    return REDISMODULE_OK;
 }
 
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -4647,6 +4773,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     }
 
     SessionsDict = Gears_dictCreate(dictTypeHeapIdsPtr, NULL);
+    CommandCallbacks = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     RequirementsDict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
     PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
@@ -4796,6 +4923,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RGM_RegisterMap(RedisGearsPy_InstallRequirementsMapper, pySessionRequirementsType);
 
     RGM_RegisterReader(PythonReader);
+    RGM_RegisterForEach(RedisGearsPy_PyRegisterCommandCallback, pyCallbackType);
     RGM_RegisterForEach(RedisGearsPy_PyCallbackForEach, pyCallbackType);
     RGM_RegisterFilter(RedisGearsPy_PyCallbackFilter, pyCallbackType);
     RGM_RegisterMap(RedisGearsPy_ToPyRecordMapper, NULL);
@@ -4815,6 +4943,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.pyexecutefunc", RedisGearsPy_ExecuteFunc, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command rg.pyexecutefunc");
         return REDISMODULE_ERR;
     }
 
