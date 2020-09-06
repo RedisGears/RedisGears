@@ -708,6 +708,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_Buffer* buff = Gears_BufferCreate();
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
+    int res;
     size_t len;
     if(FEPIsFlagOn(ep->fep, FEFRegistered)) {
         // Registered execution plan - serialize id and return.
@@ -715,7 +716,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
         FlatExecutionPlan_SerializeID(ep->fep, &bw);
     } else {
         RedisGears_BWWriteLong(&bw, 0); // Non Registered execution plan.
-        int res = FlatExecutionPlan_Serialize(&bw, ep->fep, &ectx.err);
+        res = FlatExecutionPlan_Serialize(&bw, ep->fep, &ectx.err);
         if(res != REDISMODULE_OK){
             if(!ectx.err){
                 ectx.err = RG_STRDUP("unknow");
