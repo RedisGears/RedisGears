@@ -205,6 +205,14 @@ typedef struct OnDoneData{
 #define EPIsFlagOn(ep, f) (ep->flags & f)
 #define EPIsFlagOff(ep, f) (!(ep->flags & f))
 
+#define FlatExecutionFlags int
+#define FEFRegistered 0x01
+
+#define FEPTurnOnFlag(fep, f) fep->flags |= f
+#define FEPTurnOffFlag(fep, f) fep->flags &= ~f
+#define FEPIsFlagOn(fep, f) (fep->flags & f)
+#define FEPIsFlagOff(fep, f) (!(fep->flags & f))
+
 typedef struct ExecutionPlan{
     char id[ID_LEN];
     char idStr[STR_ID_LEN];
@@ -227,6 +235,7 @@ typedef struct ExecutionPlan{
     volatile bool isPaused;
     RedisModuleTimerID maxIdleTimer;
     bool maxIdleTimerSet;
+    bool registered;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -262,6 +271,7 @@ typedef struct FlatExecutionPlan{
     FlatBasicStep onUnpausedStep;
     long long executionMaxIdleTime;
     ExecutionThreadPool* executionThreadPool;
+    FlatExecutionFlags flags;
 }FlatExecutionPlan;
 
 typedef struct ExecutionCtx{

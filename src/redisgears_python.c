@@ -1788,20 +1788,29 @@ typedef struct PyTensor{
 
 static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
     int ndims = RedisAI_TensorNumDims(pyt->t);
-    PyObject* dims = PyList_New(0);
+    PyObject* flatList = PyList_New(0);
     long long len = 0;
     long long totalElements = 1;
     for(int i = 0 ; i < ndims ; ++i){
         totalElements *= RedisAI_TensorDim(pyt->t, i);
     }
-    PyObject* elements = PyList_New(0);
     for(long long j = 0 ; j < totalElements ; ++j){
-        double val;
-        RedisAI_TensorGetValueAsDouble(pyt->t, j, &val);
-        PyObject *pyVal = PyFloat_FromDouble(val);
-        PyList_Append(dims, pyVal);
+        PyObject *pyVal = NULL;
+        double doubleVal;
+        long long longVal;
+        if(RedisAI_TensorGetValueAsDouble(pyt->t, j, &doubleVal)){
+            pyVal = PyFloat_FromDouble(doubleVal);
+        }else if(RedisAI_TensorGetValueAsLongLong(pyt->t, j, &longVal)){
+            pyVal = PyLong_FromLongLong(longVal);
+        }else{
+            PyErr_SetString(GearsError, "Failed converting tensor to flat list");
+            Py_DECREF(flatList);
+            return NULL;
+        }
+
+        PyList_Append(flatList, pyVal);
     }
-    return dims;
+    return flatList;
 }
 
 static bool verifyOrLoadRedisAI(){
@@ -1816,7 +1825,11 @@ static bool verifyOrLoadRedisAI(){
 
 static PyObject *PyTensor_ToStr(PyObject * pyObj){
     PyTensor* pyt = (PyTensor*)pyObj;
-    return PyObject_Repr(PyTensor_ToFlatList(pyt));
+    PyObject* flatList = PyTensor_ToFlatList(pyt);
+    if(!flatList){
+        return NULL;
+    }
+    return PyObject_Repr(flatList);
 }
 
 static void PyTensor_Destruct(PyObject *pyObj){
@@ -1953,6 +1966,9 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     // Buffer input variables.
     bool buffered = false;
     Py_buffer view;
+    size_t size;
+    char* blob;
+    bool free_blob = false;
 
     // Collect dims.
     while((currDim = PyIter_Next(dimsIter)) != NULL){
@@ -1979,8 +1995,6 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     }
     // Check expected tensor size.
     size_t expected_tensor_size = RedisAI_TensorByteSize(t);
-    size_t size;
-    const char* blob;
     if(PyByteArray_Check(pyBlob)) {
         // Blob is byte array.
         size = PyByteArray_Size(pyBlob);
@@ -1991,9 +2005,26 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         blob = PyBytes_AsString(pyBlob);
     } else {
         // Blob is buffer.
-        PyObject_GetBuffer(pyBlob, &view, PyBUF_READ);
+        if(PyObject_GetBuffer(pyBlob, &view, PyBUF_STRIDED_RO) != 0){
+            RedisAI_TensorFree(t);
+            PyErr_SetString(GearsError, "Error getting buffer info.");
+            goto clean_up;
+        }
+
         size = view.len;
-        blob = view.buf;
+        if(!PyBuffer_IsContiguous(&view, 'A')){
+            // Buffer is not contiguous - we need to copy it as a contiguous array.
+            blob = RG_ALLOC(view.len);
+            free_blob = true;
+            if(PyBuffer_ToContiguous(blob, &view, view.len, 'A') != 0){
+                RedisAI_TensorFree(t);
+                PyErr_SetString(GearsError, "Error getting buffer info.");
+                goto clean_up;
+            }
+        }
+        else {
+            blob = view.buf;
+        }
         buffered = true;
     }
     // Validate input.
@@ -2010,6 +2041,7 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
 
 clean_up:
     if(buffered) PyBuffer_Release(&view);
+    if(free_blob) RG_FREE(blob);
     array_free(dims);
     return obj;
 }
