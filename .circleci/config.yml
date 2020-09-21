@@ -19,6 +19,9 @@ commands:
       build_params:
         type: string
         default: ""
+      redis_build_params:
+        type: string
+        default: ""
       test_params:
         type: string
         default: ""
@@ -30,6 +33,10 @@ commands:
       - run:
           name: System setup
           command: BREW_NO_UPDATE=1 python system-setup.py
+      - run:
+          name: Build redis
+          command: |
+            ./deps/readies/bin/getredis --force -v 6 <<parameters.redis_build_params>>
       - run:
           name: Build
           command: |
@@ -77,21 +84,19 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
       - build-steps:
           platform: debian
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
-      - run:
-          name: Build Redis for Valgrind
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd redis; git checkout 6.0.1; make valgrind; make install
       - build-steps:
           platform: debian
           build_params: DEBUG=1
+          redis_build_params: --valgrind
           test_params: DEBUG=1
 
   platform-build:
@@ -139,7 +144,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
@@ -152,7 +157,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
