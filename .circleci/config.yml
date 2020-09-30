@@ -112,15 +112,15 @@ jobs:
 
   macos:
     macos:
-      xcode: 11.3.0
+      xcode: 12.0.0
     steps:
-      - run:
-          name: Fix macOS setup
-          command: |
-            # brew update || true
-            # workaround for ramp pack failure
-            sudo mkdir -p /var/opt/redislabs
-            sudo chmod 777 /var/opt/redislabs
+#      - run:
+#          name: Fix macOS setup
+#          command: |
+#            # brew update || true
+#            # workaround for ramp pack failure
+#            sudo mkdir -p /var/opt/redislabs
+#            sudo chmod 777 /var/opt/redislabs
       - build-steps:
           platform: macosx
 
@@ -237,10 +237,10 @@ workflows:
           platform: xenial
           <<: *platform-build-defs
       - valgrind:
-          <<: *on-version-tags
-          # <<: *on-any-branch
+          #@@ <<: *on-version-tags
+          <<: *on-any-branch
       - macos:
-          # <<: *on-version-tags
+          #@@ <<: *on-version-tags
           <<: *on-any-branch
       - build-multiarch-docker:
           <<: *never

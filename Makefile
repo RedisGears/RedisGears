@@ -128,7 +128,7 @@ else
 CC_FLAGS += -O2 -Wno-unused-result
 endif
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 LD_FLAGS += \
 	-framework CoreFoundation \
 	-undefined dynamic_lookup
@@ -158,7 +158,7 @@ ifeq ($(wildcard $(LIBPYTHON)),)
 MISSING_DEPS += $(LIBPYTHON)
 endif
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 LD_FLAGS += \
 	$(GETTEXT_PREFIX)/lib/libintl.a \
 	-liconv
@@ -174,7 +174,7 @@ ifeq ($(SHOW_LD_LIBS),1)
 LD_FLAGS += -Wl,-t
 endif
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 EMBEDDED_LIBS += $(LIBEVENT) $(HIREDIS)
 endif
 
@@ -247,7 +247,7 @@ $(eval $(call build_deps_args,snapshot))
 
 #----------------------------------------------------------------------------------------------
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
 EMBEDDED_LIBS_FLAGS=\
@@ -263,7 +263,7 @@ $(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o $(BINDIR)/snapsho
 	$(SHOW)mkdir -p $(dir $@)/snapshot
 	$(SHOW)$(CC) -shared -o $(dir $@)/snapshot/$(notdir $@) $(OBJECTS) $(BINDIR)/snapshot-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 ifneq ($(DEBUG),1)
-ifneq ($(OS),macosx)
+ifneq ($(OS),macos)
 	$(SHOW)$(STRIP) $@
 	$(SHOW)$(STRIP) $(dir $@)/snapshot/$(notdir $@)
 endif
