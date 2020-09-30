@@ -32,10 +32,12 @@ commands:
           command: git submodule update --init --recursive
       - run:
           name: System setup
-          command: BREW_NO_UPDATE=1 python system-setup.py
+          command: |
+            ./deps/readies/bin/getpy2
+            BREW_NO_UPDATE=1 python2 system-setup.py
       - run:
           name: Install Redis
-          command: ./deps/readies/bin/getredis  -v 6 --force <<parameters.getredis_params>>
+          command: python2 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
