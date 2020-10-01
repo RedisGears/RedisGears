@@ -35,6 +35,7 @@ commands:
           command: |
             ./deps/readies/bin/getpy2
             BREW_NO_UPDATE=1 python2 system-setup.py
+          no_output_timeout: 20m
       - run:
           name: Install Redis
           command: python2 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
