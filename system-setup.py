@@ -111,9 +111,8 @@ class RedisGearsSetup(paella.Setup):
             make install
             cd $base
             rm -rf $dir
-            """)
+            """, output_on_error=True)
 
-        # self.install("llvm")
         self.install("zlib openssl readline coreutils libiconv")
         if not self.has_command("redis-server"):
             self.install("redis")
