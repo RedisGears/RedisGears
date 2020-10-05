@@ -1,10 +1,12 @@
 [![GitHub issues](https://img.shields.io/github/release/RedisGears/RedisGears.svg?sort=semver)](https://github.com/RedisGears/RedisGears/releases)
 [![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
 [![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/redislabs/redisgears.svg)](https://hub.docker.com/r/redislabs/redisgears/builds/)
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/RedisGears/RedisGears.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/RedisGears/RedisGears/alerts/)
+
+# RedisGears
 [![Forum](https://img.shields.io/badge/Forum-RedisGears-blue)](https://forum.redislabs.com/c/modules/redisgears)
 [![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
-
-# <img src="docs/images/RedisGears.png" alt="logo" style="width: 2em; vertical-align: middle;"/> RedisGears
+<img src="docs/images/RedisGears.png" alt="logo" style="width: 2em; vertical-align: middle;"/> 
 
 RedisGears is a serverless engine for transaction, batch and event-driven data processing in Redis. It is a dynamic framework for the execution of functions that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C APIs.
 
