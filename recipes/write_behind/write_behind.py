@@ -3,7 +3,6 @@
 VERSION = '99.99.99'
 NAME = 'WriteBehind'
 
-import time
 import json
 
 DEFAULT_ON_FAILED_RETRY_INTERVAL = 5
