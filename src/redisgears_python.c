@@ -2152,12 +2152,18 @@ error:
     return NULL;
 }
 
-==== BASE ====
-typedef struct PyGraphRunner{
-   PyObject_HEAD
-   RAI_ModelRunCtx* g;
-} PyGraphRunner;
-==== BASE ====
+static PyObject* setTensorInKey(PyObject *cls, PyObject *args) {
+    verifyRedisAILoaded();
+    // Input validation: 2 arguments. args[0]: string. args[1]: tensor
+    if(PyTuple_Size(args) != 2){
+        PyErr_SetString(GearsError, "Wrong number of arguments given to setTensorInKey");
+        return NULL;
+    }
+    PyObject* keyName = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(keyName)){
+        PyErr_SetString(GearsError, "key name argument must be a string");
+        return NULL;
+    }
 
     
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
