@@ -26,7 +26,7 @@ make cpython    # build cpython
 make all        # build all libraries and packages
 
 make test          # run tests
-  DEBUG=1          # run tests with Valgrind
+  VGD=1            # run tests with Valgrind
   TEST=test        # run specific `test` with Python debugger
   TEST_ARGS=args   # additional RLTest arguments
   GDB=1            # (with TEST=...) run with GDB
@@ -163,7 +163,7 @@ LD_FLAGS += \
 	$(GETTEXT_PREFIX)/lib/libintl.a \
 	-liconv
 else
-EMBEDDED_LIBS += -lutil
+EMBEDDED_LIBS += -lutil -luuid
 endif
 
 endif # WITHPYTHON
@@ -394,13 +394,15 @@ ifeq ($(GDB),1)
 RLTEST_GDB=-i
 endif
 
+ifeq ($(VGD),1)
+TEST_FLAGS += VALGRIND=1
+endif
+
 test: __sep
-ifeq ($(DEBUG),1)
-	$(SHOW)set -e; cd pytest; VALGRIND=1 ./run_tests.sh
-else ifneq ($(TEST),)
-	@set -e; cd pytest; PYDEBUG=1 RLTest --test $(TEST) $(TEST_ARGS) $(RLTEST_GDB) -s --module $(abspath $(TARGET))
+ifneq ($(TEST),)
+	@set -e; cd pytest; BB=1 $(TEST_FLAGS) RLTest --test $(TEST) $(TEST_ARGS) $(RLTEST_GDB) -s --module $(abspath $(ROOT)/redisgears.so)
 else
-	$(SHOW)set -e; cd pytest; ./run_tests.sh
+	$(SHOW)set -e; cd pytest; $(TEST_FLAGS) ./run_tests.sh
 endif
 
 #----------------------------------------------------------------------------------------------

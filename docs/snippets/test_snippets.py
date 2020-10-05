@@ -43,6 +43,7 @@ def standalone(image):
         ('docs/snippets/examples/automatic-expire.py', b'OK'),
         ('docs/snippets/examples/del-by-prefix.py', [[], []]),
         ('docs/snippets/examples/monte-carlo-pi.py', [[b'foo'], []]),
+        ('docs/snippets/examples/notification-processing.py', b'OK'),
         ('docs/snippets/examples/stream-logger.py', b'OK'),
         ('docs/snippets/examples/word-count.py', [[], []]),
         ('docs/snippets/functions/register.py', b'OK'),

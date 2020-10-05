@@ -84,7 +84,7 @@ make fetch
 make all
 ```
 
-You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbol link to it on the main directory (called `redisgears.os`).
+You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbol link to it on the main directory (called `redisgears.so`).
 
 ## Loading
 To load the module on the same server it was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.

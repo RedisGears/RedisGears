@@ -391,7 +391,7 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
             goto done;
         }
         if(strcmp(os, RedisGears_GetCompiledOs()) != 0){
-            *err = RG_STRDUP("Requirement was compiled on different os (compiled_os = %s, current_os = %s)");
+            rg_asprintf(err, "Requirement was compiled on different os (compiled_os = %s, current_os = %s)", os, RedisGears_GetCompiledOs());
             goto done;
         }
     }
@@ -500,7 +500,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         if(!f){
             RG_FREE(filePath);
             rg_asprintf(err, "Could not open file %s", filePath);
-            RedisModule_Log(NULL, "warning", *err);
+            RedisModule_Log(NULL, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
         fseek(f, 0, SEEK_END);
@@ -513,7 +513,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
             RG_FREE(data);
             RG_FREE(filePath);
             rg_asprintf(err, "Could read data from file %s", filePath);
-            RedisModule_Log(NULL, "warning", *err);
+            RedisModule_Log(NULL, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
         fclose(f);
@@ -1817,20 +1817,29 @@ typedef struct PyTensor{
 
 static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
     int ndims = RedisAI_TensorNumDims(pyt->t);
-    PyObject* dims = PyList_New(0);
+    PyObject* flatList = PyList_New(0);
     long long len = 0;
     long long totalElements = 1;
     for(int i = 0 ; i < ndims ; ++i){
         totalElements *= RedisAI_TensorDim(pyt->t, i);
     }
-    PyObject* elements = PyList_New(0);
     for(long long j = 0 ; j < totalElements ; ++j){
-        double val;
-        RedisAI_TensorGetValueAsDouble(pyt->t, j, &val);
-        PyObject *pyVal = PyFloat_FromDouble(val);
-        PyList_Append(dims, pyVal);
+        PyObject *pyVal = NULL;
+        double doubleVal;
+        long long longVal;
+        if(RedisAI_TensorGetValueAsDouble(pyt->t, j, &doubleVal)){
+            pyVal = PyFloat_FromDouble(doubleVal);
+        }else if(RedisAI_TensorGetValueAsLongLong(pyt->t, j, &longVal)){
+            pyVal = PyLong_FromLongLong(longVal);
+        }else{
+            PyErr_SetString(GearsError, "Failed converting tensor to flat list");
+            Py_DECREF(flatList);
+            return NULL;
+        }
+
+        PyList_Append(flatList, pyVal);
     }
-    return dims;
+    return flatList;
 }
 
 static bool verifyOrLoadRedisAI(){
@@ -1845,7 +1854,11 @@ static bool verifyOrLoadRedisAI(){
 
 static PyObject *PyTensor_ToStr(PyObject * pyObj){
     PyTensor* pyt = (PyTensor*)pyObj;
-    return PyObject_Repr(PyTensor_ToFlatList(pyt));
+    PyObject* flatList = PyTensor_ToFlatList(pyt);
+    if(!flatList){
+        return NULL;
+    }
+    return PyObject_Repr(flatList);
 }
 
 static void PyTensor_Destruct(PyObject *pyObj){
@@ -1961,8 +1974,8 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         return NULL;
     }
     PyObject* pyBlob = PyTuple_GetItem(args, 2);
-    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob)){
-        PyErr_SetString(GearsError, "blob argument must be bytes or a byte array");
+    if(!PyByteArray_Check(pyBlob) && !PyBytes_Check(pyBlob) && !PyObject_CheckBuffer(pyBlob)){
+        PyErr_SetString(GearsError, "blob argument must be bytes, byte array or a buffer");
         return NULL;
     }
     const char* typeNameStr = PyUnicode_AsUTF8AndSize(typeName, NULL);
@@ -1974,21 +1987,30 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "dims argument must be iterable");
         return NULL;
     }
+    
+    // Returned object.
+    PyObject* obj = NULL;
+    // Dimenstions array.
     long long* dims = array_new(long long, 10);
+    // Buffer input variables.
+    bool buffered = false;
+    Py_buffer view;
+    size_t size;
+    char* blob;
+    bool free_blob = false;
 
+    // Collect dims.
     while((currDim = PyIter_Next(dimsIter)) != NULL){
         if(!PyLong_Check(currDim)){
             PyErr_SetString(GearsError, "dims arguments must be long");
             Py_DECREF(currDim);
             Py_DECREF(dimsIter);
-            array_free(dims);
-            return NULL;
+            goto clean_up;
         }
         if(PyErr_Occurred()){
             Py_DECREF(currDim);
             Py_DECREF(dimsIter);
-            array_free(dims);
-            return NULL;
+            goto clean_up;
         }
         dims = array_append(dims, PyLong_AsLong(currDim));
         Py_DECREF(currDim);
@@ -1998,25 +2020,59 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
     if(!t){
         PyErr_SetString(GearsError, "Failed creating tensor, make sure you put the right data type.");
-        array_free(dims);
-        return NULL;
+        goto clean_up;
     }
-    size_t size;
-    const char* blob;
+    // Check expected tensor size.
+    size_t expected_tensor_size = RedisAI_TensorByteSize(t);
     if(PyByteArray_Check(pyBlob)) {
         // Blob is byte array.
         size = PyByteArray_Size(pyBlob);
         blob = PyByteArray_AsString(pyBlob);
-    } else {
+    } else if(PyBytes_Check(pyBlob)){
         // Blob is bytes.
         size = PyBytes_Size(pyBlob);
         blob = PyBytes_AsString(pyBlob);
+    } else {
+        // Blob is buffer.
+        if(PyObject_GetBuffer(pyBlob, &view, PyBUF_STRIDED_RO) != 0){
+            RedisAI_TensorFree(t);
+            PyErr_SetString(GearsError, "Error getting buffer info.");
+            goto clean_up;
+        }
+
+        size = view.len;
+        if(!PyBuffer_IsContiguous(&view, 'A')){
+            // Buffer is not contiguous - we need to copy it as a contiguous array.
+            blob = RG_ALLOC(view.len);
+            free_blob = true;
+            if(PyBuffer_ToContiguous(blob, &view, view.len, 'A') != 0){
+                RedisAI_TensorFree(t);
+                PyErr_SetString(GearsError, "Error getting buffer info.");
+                goto clean_up;
+            }
+        }
+        else {
+            blob = view.buf;
+        }
+        buffered = true;
     }
+    // Validate input.
+    if(size != expected_tensor_size) {
+        RedisAI_TensorFree(t);
+        PyErr_SetString(GearsError, "ERR data length does not match tensor shape and type");
+        goto clean_up;
+    }
+
     RedisAI_TensorSetData(t, blob, size);
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
+    obj = (PyObject*)pyt;
+
+clean_up:
+    if(buffered) PyBuffer_Release(&view);
+    if(free_blob) RG_FREE(blob);
     array_free(dims);
-    return (PyObject*)pyt;
+    return obj;
 }
 
 static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
@@ -2096,18 +2152,12 @@ error:
     return NULL;
 }
 
-static PyObject* setTensorInKey(PyObject *cls, PyObject *args) {
-    verifyRedisAILoaded();
-    // Input validation: 2 arguments. args[0]: string. args[1]: tensor
-    if(PyTuple_Size(args) != 2){
-        PyErr_SetString(GearsError, "Wrong number of arguments given to setTensorInKey");
-        return NULL;
-    }
-    PyObject* keyName = PyTuple_GetItem(args, 0);
-    if(!PyUnicode_Check(keyName)){
-        PyErr_SetString(GearsError, "key name argument must be a string");
-        return NULL;
-    }
+==== BASE ====
+typedef struct PyGraphRunner{
+   PyObject_HEAD
+   RAI_ModelRunCtx* g;
+} PyGraphRunner;
+==== BASE ====
 
     
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
@@ -3791,7 +3841,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         char* error = getPyError();
         if(err){
             rg_asprintf(err, "Error occured when deserialized a python callback, error=%s",  error);
-            RedisModule_Log(NULL, "warning", *err);
+            RedisModule_Log(NULL, "warning", "%s", *err);
         }else{
             RedisModule_Log(NULL, "warning", "Error occured when deserialized a python callback, error=%s",  error);
         }
@@ -3962,7 +4012,7 @@ static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModu
         if(!err){
             err = RG_STRDUP("On RedisGearsPy_ImportRequirementInternal, failed deserialize requirements");
         }
-        RedisModule_Log(ctx, "warning", err);
+        RedisModule_Log(ctx, "warning", "%s", err);
         RedisModule_ReplyWithError(ctx, err);
         return REDISMODULE_OK;
     }
@@ -4277,7 +4327,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
     const char *no_deps = getenv("GEARS_NO_DEPS");
     bool skip_deps_install = (no_deps && !strcmp(no_deps, "1")) || !GearsConfig_DownloadDeps();
     if(!skip_deps_install && IsEnterprise()){
-        skip_deps_install = GearsConfig_ForceDownloadDepsOnEnterprise();
+        skip_deps_install = !GearsConfig_ForceDownloadDepsOnEnterprise();
     }
     const char* shardUid = GetShardUniqueId();
     if (!PyEnvExist()){

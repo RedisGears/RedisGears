@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <uuid/uuid.h>
 #include "utils/arr_rm_alloc.h"
 
 static char* shardUniqueId = NULL;
@@ -194,15 +195,74 @@ void GearsGetRedisVersion() {
     RedisModule_FreeThreadSafeContext(ctx);
 }
 
+static const char *readRedisConfig(RedisModuleCtx *ctx, const char *item, RedisModuleCallReply **reply_p, size_t *len) {
+    *reply_p = RedisModule_Call(ctx, "CONFIG", "cc", "GET", item);
+    RedisModule_Assert(RedisModule_CallReplyType(*reply_p) == REDISMODULE_REPLY_ARRAY);
+    RedisModuleCallReply *itemReply = RedisModule_CallReplyArrayElement(*reply_p, 1);
+    RedisModule_Assert(RedisModule_CallReplyType(itemReply) == REDISMODULE_REPLY_STRING);
+    
+    const char *p = RedisModule_CallReplyStringPtr(itemReply, len);
+    if (p && *p != '\0' && *p != '\n' && *p == '\r' && *p == ' ') {
+        return p;
+    }
+    
+    RedisModule_FreeCallReply(*reply_p);
+    *reply_p = NULL;
+    return NULL;    
+}
+
 const char* GetShardUniqueId() {
     if(!shardUniqueId){
         RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+
+#if 0
+        RedisModuleCallReply *reply;
+        const char *filename;
+        size_t len;
+        char uuid[64];
+        bool filename_found = true;
+        
+        filename = readRedisConfig(ctx, "logfile", &reply, &len);
+        if (!filename) {
+            RedisModule_Log(ctx, "notice", "log file is not available");
+
+            filename = readRedisConfig(ctx, "dbfilename", &reply, &len);
+            if (!filename) {
+                RedisModule_Log(ctx, "notice", "db file is not available");
+                
+                filename_found = false;
+
+                uuid_t binuuid;
+                uuid_generate_random(binuuid);
+                uuid_unparse_lower(binuuid, uuid);
+                filename = uuid;
+                len = strlen(uuid);
+            }
+        }
+        if (filename_found) {
+            RedisModule_Log(ctx, "notice", "Shard unique filename: %s", filename);
+            const char* last = strrchr(filename, '/');
+            if(last){
+                len = len - (last - filename + 1);
+                filename = last + 1;
+            }
+        }
+    
+        shardUniqueId = RG_ALLOC(len + 1);
+        shardUniqueId[len] = '\0';
+        memcpy(shardUniqueId, filename, len);
+        RedisModule_Log(ctx, "notice", "shardUniqueId=%s", shardUniqueId);
+        if (reply) {
+            RedisModule_FreeCallReply(reply);
+        }
+#else
         RedisModuleCallReply *reply = RedisModule_Call(ctx, "CONFIG", "cc", "GET", "logfile");
         RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
         RedisModuleCallReply *uuidReply = RedisModule_CallReplyArrayElement(reply, 1);
         RedisModule_Assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
         size_t len;
         const char* logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
+        RedisModule_Log(ctx, "notice", "log file is %s", logFileName);
         const char* last = strrchr(logFileName, '/');
         if(last){
             len = len - (last - logFileName + 1);
@@ -212,6 +272,7 @@ const char* GetShardUniqueId() {
         shardUniqueId[len] = '\0';
         memcpy(shardUniqueId, logFileName, len);
         RedisModule_FreeCallReply(reply);
+#endif
         RedisModule_FreeThreadSafeContext(ctx);
     }
     return shardUniqueId;

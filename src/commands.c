@@ -83,7 +83,7 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
 
 	if(!gearsCtx){
-		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
+		RedisModule_ReplyWithError(ctx, "execution plan does not exist");
 		return REDISMODULE_OK;
 	}
 
@@ -146,7 +146,7 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
 
 	if(!gearsCtx){
-		RedisModule_ReplyWithError(ctx, "execution plan does not exits");
+		RedisModule_ReplyWithError(ctx, "execution plan does not exist");
 		return REDISMODULE_OK;
 	}
 

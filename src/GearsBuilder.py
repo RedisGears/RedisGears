@@ -1,4 +1,5 @@
 import redisgears
+import copy
 import redisgears as rg
 from redisgears import executeCommand as execute
 from redisgears import atomicCtx as atomic
@@ -66,7 +67,7 @@ class GearsBuilder():
         self.defaultArg = defaultArg
 
     def __localAggregateby__(self, extractor, zero, aggregator):
-        self.gearsCtx.localgroupby(lambda x: extractor(x), lambda k, a, r: aggregator(k, a if a else zero, r))
+        self.gearsCtx.localgroupby(lambda x: extractor(x), lambda k, a, r: aggregator(k, a if a else copy.deepcopy(zero), r))
         return self
 
     def aggregate(self, zero, seqOp, combOp):
@@ -76,9 +77,9 @@ class GearsBuilder():
         seqOp - the local aggregate function (will be performed on each shard)
         combOp - the global aggregate function (will be performed on the results of seqOp from each shard)
         '''
-        self.gearsCtx.accumulate(lambda a, r: seqOp(a if a else zero, r))
+        self.gearsCtx.accumulate(lambda a, r: seqOp(a if a else copy.deepcopy(zero), r))
         self.gearsCtx.collect()
-        self.gearsCtx.accumulate(lambda a, r: combOp(a if a else zero, r))
+        self.gearsCtx.accumulate(lambda a, r: combOp(a if a else copy.deepcopy(zero), r))
         return self
 
     def aggregateby(self, extractor, zero, seqOp, combOp):
@@ -90,7 +91,7 @@ class GearsBuilder():
         combOp - the global aggregate function (will be performed on the results of seqOp from each shard)
         '''
         self.__localAggregateby__(extractor, zero, seqOp)
-        self.gearsCtx.groupby(lambda r: r['key'], lambda k, a, r: combOp(k, a if a else zero, r['value']))
+        self.gearsCtx.groupby(lambda r: r['key'], lambda k, a, r: combOp(k, a if a else copy.deepcopy(zero), r['value']))
         return self
 
     def count(self):

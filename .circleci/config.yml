@@ -57,9 +57,15 @@ commands:
           name: Build for platform
           command: |
             docker login -u redisfab -p $DOCKER_REDISFAB_PWD
-            cd build/docker
+            pushd build/docker
             make build publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
+            popd
+            logs_d=pytest/logs/<<parameters.platform>>
+            mkdir -p $logs_d
+            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
+      - store_artifacts:
+          path: pytest/logs
       - persist_to_workspace:
           root: artifacts
           paths:
@@ -108,7 +114,7 @@ jobs:
             brew update || true
             # workaround for ramp pack failure
             sudo mkdir -p /var/opt/redislabs
-            sudo chmod 777 /var/opt/redislabs           
+            sudo chmod 777 /var/opt/redislabs
       - build-steps:
           platform: macosx
 
@@ -157,16 +163,21 @@ jobs:
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
 
+==== BASE ====
   deploy_docs:
     docker:
-      - image: python:buster
+      - image: 'python:buster'
       - image: redislabs/redisgears:edge
     steps:
-      - setup-executor
       - run:
-          name: Setup
-          command: apt-get install -y awscli
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip wget
+            bash <(curl -fsSL https://get.docker.com)
+            cd ..; curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"; unzip awscliv2.zip;./aws/install
       - checkout
+      - setup_remote_docker
       - run:
           name: Instal dependencies
           command: pip install -r docs/requirements.txt
@@ -180,7 +191,7 @@ jobs:
           name: Deploy Docs to S3
           command: |
             aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl public-read --recursive
-
+==== BASE ====
 
 on-any-branch: &on-any-branch
   filters:
@@ -189,26 +200,19 @@ on-any-branch: &on-any-branch
     tags:
       only: /.*/
 
-never: &never
-  filters:
-    branches:
-      ignore: /.*/
-    tags:
-      ignore: /.*/
+==== BASE ====
+platform-builds-requires: &platform-builds-requires
+  requires:
+    - build-centos7
+    - build-bionic
+    - build-xenial
+==== BASE ====
 
-on-master: &on-master
-  filters:
-    branches:
-      only: master
-
-on-version-tags: &on-version-tags
-  filters:
-    branches:
-      ignore: /.*/
-    tags:
-      only: /^v[0-9].*/
-
-on-master-and-version-tags: &on-master-and-version-tags
+==== BASE ====
+platform-builds-flow-defs: &platform-builds-flow-defs
+  requires:
+    - linux-debian
+==== BASE ====
   filters:
     branches:
       only:
@@ -249,8 +253,13 @@ workflows:
           platform: xenial
           <<: *platform-build-defs
       - valgrind:
-          <<: *on-version-tags
-          # <<: *on-any-branch
+==== BASE ====
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9].*/
+==== BASE ====
       - macos:
           <<: *on-version-tags
           # <<: *on-any-branch
@@ -262,8 +271,13 @@ workflows:
           <<: *on-master
           # <<: *on-any-branch
       - deploy_releases:
-          <<: *after-platform-builds
-          <<: *on-version-tags
+==== BASE ====
+          <<: *platform-builds-requires
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v[0-9].*/
 # TODO: deploy_docs should run only when 'docs/' or 'mkdocs.yml' change
       - deploy_docs:
           filters:
@@ -271,6 +285,7 @@ workflows:
               only:
                 - master
                 - /^[0-9]+\.[0-9]+$/
+==== BASE ====
 
   nightly:
     triggers:
