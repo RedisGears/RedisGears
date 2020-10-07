@@ -1461,6 +1461,34 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
     return Py_None;
 }
 
+typedef struct PyFuture{
+   PyObject_HEAD
+   Record* asyncRecord;
+} PyFuture;
+
+static PyObject* futureContinue(PyObject *self, PyObject *args){
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Continue function expect an object");
+        return NULL;
+    }
+
+    PyFuture* pyFuture = (PyFuture*)self;
+    if(!pyFuture->asyncRecord){
+        PyErr_SetString(GearsError, "Can not continue with the same future twice");
+        return NULL;
+    }
+    PyObject* obj = PyTuple_GetItem(args, 0);
+    Py_INCREF(obj);
+
+    Record* record = PyObjRecordCreate();
+    PyObjRecordSet(record, obj);
+    RedisGears_AsyncRecordContinue(pyFuture->asyncRecord, record);
+    pyFuture->asyncRecord = NULL;
+
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 typedef struct PyAtomic{
    PyObject_HEAD
    RedisModuleCtx* ctx;
@@ -1488,9 +1516,22 @@ static void PyAtomic_Destruct(PyObject *pyObj){
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
+static void PyFuture_Destruct(PyObject *pyObj){
+    PyFuture* pyFuture = (PyFuture*)pyObj;
+    if(pyFuture->asyncRecord){
+       RedisGears_FreeRecord(pyFuture->asyncRecord);
+    }
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
 PyMethodDef PyAtomicMethods[] = {
     {"__enter__", atomicEnter, METH_VARARGS, "acquire the GIL"},
     {"__exit__", atomicExit, METH_VARARGS, "release the GIL"},
+    {NULL, NULL, 0, NULL}
+};
+
+PyMethodDef PyFutureMethods[] = {
+    {"continueRun", futureContinue, METH_VARARGS, "Continue the execution after blocked"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -1548,6 +1589,30 @@ static PyTypeObject PyAtomicType = {
     "PyAtomic",                /* tp_doc */
 };
 
+static PyTypeObject PyFutureType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "redisgears.Future",       /* tp_name */
+    sizeof(PyAtomic),          /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    PyFuture_Destruct,         /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_compare */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash */
+    0,                         /* tp_call */
+    0,                         /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+    "PyFuture",                /* tp_doc */
+};
+
 static PyTypeObject PyFlatExecutionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "redisgears.PyFlatExecution",       /* tp_name */
@@ -1576,6 +1641,16 @@ static PyObject* atomicCtx(PyObject *cls, PyObject *args){
     PyAtomic* pyAtomic = PyObject_New(PyAtomic, &PyAtomicType);
     pyAtomic->ctx = RedisModule_GetThreadSafeContext(NULL);
     return (PyObject*)pyAtomic;
+}
+
+static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
+    if(PyTuple_Size(args) != 0){
+        PyErr_SetString(GearsError, "Future gets no arguments");
+        return NULL;
+    }
+
+    PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
+    return (PyObject*)pyfuture;
 }
 
 static PyObject* gearsCtx(PyObject *cls, PyObject *args){
@@ -2998,6 +3073,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
 
 PyMethodDef EmbRedisGearsMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
+    {"gearsFutureCtx", gearsFutureCtx, METH_VARARGS, "creating future object to block the execution"},
     {"atomicCtx", atomicCtx, METH_VARARGS, "creating a atomic ctx for atomic block"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
@@ -3451,6 +3527,7 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
     PyObject* oldObj = PyObjRecordGet(record);
+    PyObjRecordSet(record, NULL); // pass ownership of oldObj to NULL
     PyTuple_SetItem(pArgs, 0, oldObj);
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
@@ -3461,6 +3538,25 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
         RedisGears_FreeRecord(record);
         return NULL;
     }
+
+    if(PyObject_TypeCheck(newObj, &PyFutureType)){
+        char* err = NULL;
+        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
+        if(!async){
+            if(!err){
+                err = RG_STRDUP("Failed creating async record");
+            }
+            RedisGears_SetError(rctx, err);
+            return NULL;
+        }
+        PyFuture* future = (PyFuture*)newObj;
+        future->asyncRecord = async;
+        RedisGears_FreeRecord(record);
+        Py_DECREF(newObj);
+        RedisGearsPy_Unlock(old);
+        return async;
+    }
+
     PyObjRecordSet(record, newObj);
 
     RedisGearsPy_Unlock(old);
@@ -4682,6 +4778,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
     PyAtomicType.tp_methods = PyAtomicMethods;
+    PyFutureType.tp_methods = PyFutureMethods;
 
     if (PyType_Ready(&PyTensorType) < 0){
         RedisModule_Log(ctx, "warning", "PyTensorType not ready");
@@ -4708,6 +4805,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
+    if (PyType_Ready(&PyFutureType) < 0){
+        RedisModule_Log(ctx, "warning", "PyFutureType not ready");
+        return REDISMODULE_ERR;
+    }
+
     PyObject *pName = PyUnicode_FromString("redisgears");
     PyObject* redisGearsModule = PyImport_Import(pName);
     Py_DECREF(pName);
@@ -4721,12 +4823,14 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     Py_INCREF(&PyTorchScriptRunnerType);
     Py_INCREF(&PyFlatExecutionType);
     Py_INCREF(&PyAtomicType);
+    Py_INCREF(&PyFutureType);
 
     PyModule_AddObject(redisAIModule, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(redisAIModule, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(redisAIModule, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
     PyModule_AddObject(redisGearsModule, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
     PyModule_AddObject(redisGearsModule, "PyAtomic", (PyObject *)&PyAtomicType);
+    PyModule_AddObject(redisGearsModule, "PyFuture", (PyObject *)&PyFutureType);
     GearsError = PyErr_NewException("spam.error", NULL, NULL);
     Py_INCREF(GearsError);
     PyModule_AddObject(redisGearsModule, "GearsError", GearsError);

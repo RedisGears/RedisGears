@@ -6,6 +6,7 @@ from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
+from redisgears import gearsFutureCtx as gearsFuture
 from redisgears import log
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
