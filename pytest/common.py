@@ -28,3 +28,21 @@ class TimeLimit(object):
 
     def handler(self, signum, frame):
         raise Exception('timeout')
+
+def verifyRegistrationIntegrity(env):
+    scripts = ['''
+GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect().distinct().count().run()    
+''']
+    for script in scripts:
+        try:
+            with TimeLimit(40):
+                while True:
+                    res = env.cmd('RG.PYEXECUTE', script)
+                    if int(res[0][0]) == 1:
+                        break
+                    time.sleep(0.5)
+        except Exception as e:
+            print(str(e))
+            env.assertTrue(False, message='Registrations Integrity failed')
+
+        env.assertTrue(env.isUp())

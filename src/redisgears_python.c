@@ -585,7 +585,7 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** re
             .globalsDict = globalDict,
             .isInstallationNeeded = false,
     };
-    SetId(NULL, session->sessionId, session->sessionIdStr, &CurrSessionId);
+    SetId(id, session->sessionId, session->sessionIdStr, &CurrSessionId);
 
     session->requirements = array_new(PythonRequirementCtx*, 10);
 

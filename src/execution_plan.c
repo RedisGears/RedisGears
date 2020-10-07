@@ -1904,6 +1904,7 @@ static void ExecutionStep_Reset(ExecutionStep* es){
     if(es->pendingCtx){
         // the step is the only owner of the pending ctx, safe to free the internals
         ExecutionPlan_PendingCtxFreeInternals(es->pendingCtx);
+        es->pendingCtx = NULL;
     }
     es->executionDuration = 0;
     if(es->prev){
