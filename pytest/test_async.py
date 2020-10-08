@@ -75,5 +75,60 @@ GB().foreach(ForEach).register(mode='sync')
                 while bk.isAlive:
                     conn.execute_command('set', 'x', '1')
                     time.sleep(0.1)
+    except Exception as e:  
+        env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
+
+def testSimpleAsyncOnSyncExecution(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+fdata = []
+
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+def bc(r):
+    global fdata
+    f = BlockHolder(gearsFuture())
+    fdata.insert(0, (f, r))
+    return f.bc
+
+def unbc_internal(r):
+    global fdata
+    [a[0].continueRun(a[1]) for a in fdata]
+    return r
+
+def unbc(r):
+    f = BlockHolder(gearsFuture())
+    GB('ShardsIDReader').foreach(unbc_internal).count().foreach(lambda r: f.continueRun(r)).run()
+    return f.bc
+
+GB('CommandReader').map(bc).register(trigger='block', mode='sync')
+GB('CommandReader').map(unbc).register(trigger='unblock', mode='sync')
+    '''
+
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    def Block():
+        env.expect('RG.TRIGGER', 'block', 'arg').equal(["['block', 'arg']"])
+
+    try:
+        with Background(Block) as bk:
+            with TimeLimit(1):
+                while bk.isAlive:
+                    conn.execute_command('RG.TRIGGER', 'unblock')
+                    time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')

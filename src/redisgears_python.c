@@ -1650,6 +1650,7 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
     }
 
     PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
+    pyfuture->asyncRecord = NULL;
     return (PyObject*)pyfuture;
 }
 

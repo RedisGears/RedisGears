@@ -2027,9 +2027,12 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     int isDone = ExecutionPlan_Execute(ep, rctx);
     GETTIME(&_te);
 
-    // Sync execution can not stop in the middle
-    RedisModule_Assert(isDone == Execute_DONE);
     ep->executionDuration += DURATION;
+
+    if(isDone != Execute_DONE){
+        // Exectuion hold, lets return, the caller will have to deal with it.
+        return;
+    }
 
     ep->status = DONE;
     EPTurnOnFlag(ep, EFDone);
@@ -2044,12 +2047,15 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
 
 static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker){
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, mode, arg, callback, privateData);
+    if(worker){
+        ep->assignWorker = ExecutionPlan_WorkerGetShallowCopy(worker);
+    }else{
+        ep->assignWorker = RedisGears_WorkerDataCreate(NULL);
+    }
     if(mode == ExecutionModeSync){
         ExecutionPlan_RunSync(ep);
     } else{
-        if(worker){
-            ep->assignWorker = ExecutionPlan_WorkerGetShallowCopy(worker);
-        }
+
         ExecutionPlan_Run(ep);
     }
     return ep;
