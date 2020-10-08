@@ -152,6 +152,7 @@ An array with an entry per execution. Each entry is made of alternating key name
 
 * **executionId**: the [execution ID](functions.md#execution-id)
 * **status**: the [status](functions.md#execution-status)
+* **registered**: indicates whether this is a [registered execution](functions.html#registration)
 
 **Examples**
 
@@ -161,10 +162,14 @@ redis> RG.DUMPEXECUTIONS
    2) "0000000000000000000000000000000000000000-0"
    3) "status"
    4) "done"
+   5) "registered execution"
+   6) (integer) 1
 2) 1) "executionId"
    2) "0000000000000000000000000000000000000000-1"
    3) "status"
    4) "running"
+   5) "registered execution"
+   6) (integer) 1
 ```
 
 ## RG.DUMPREGISTRATIONS
@@ -443,14 +448,14 @@ The **RG.PYEXECUTE** command executes a Python [function](functions.md#function)
 **Redis API**
 
 ```
-RG.PYEXECUTE "<function>" [REQUIREMENTS "<dep> ..."] [UNBLOCKING]
+RG.PYEXECUTE "<function>" [UNBLOCKING] [REQUIREMENTS "<dep> ..."]
 ```
 
 _Arguments_
 
 * _function_: the Python function
-* _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 * _UNBLOCKING_: doesn't block the client during execution
+* _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 
 _Return_
 

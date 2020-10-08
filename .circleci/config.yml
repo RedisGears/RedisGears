@@ -57,9 +57,15 @@ commands:
           name: Build for platform
           command: |
             docker login -u redisfab -p $DOCKER_REDISFAB_PWD
-            cd build/docker
+            pushd build/docker
             make build publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
+            popd
+            logs_d=pytest/logs/<<parameters.platform>>
+            mkdir -p $logs_d
+            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
+      - store_artifacts:
+          path: pytest/logs
       - persist_to_workspace:
           root: artifacts
           paths:
@@ -108,7 +114,7 @@ jobs:
             brew update || true
             # workaround for ramp pack failure
             sudo mkdir -p /var/opt/redislabs
-            sudo chmod 777 /var/opt/redislabs           
+            sudo chmod 777 /var/opt/redislabs
       - build-steps:
           platform: macosx
 
@@ -156,30 +162,6 @@ jobs:
             for f in artifacts/release/*.zip artifacts/release/*.tgz; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
-
-  deploy_docs:
-    docker:
-      - image: python:buster
-      - image: redislabs/redisgears:edge
-    steps:
-      - setup-executor
-      - run:
-          name: Setup
-          command: apt-get install -y awscli
-      - checkout
-      - run:
-          name: Instal dependencies
-          command: pip install -r docs/requirements.txt
-      - run:
-          name: Verify code snippets
-          command: python -m pytest -s -v docs/snippets
-      - run:
-          name: Build docs
-          command: mkdocs build
-      - run:
-          name: Deploy Docs to S3
-          command: |
-            aws s3 cp site s3://oss.redislabs.com/redisgears/ --acl public-read --recursive
 
 
 on-any-branch: &on-any-branch
@@ -250,7 +232,7 @@ workflows:
           <<: *platform-build-defs
       - valgrind:
           <<: *on-version-tags
-          # <<: *on-any-branch
+        #   <<: *on-any-branch
       - macos:
           <<: *on-version-tags
           # <<: *on-any-branch
@@ -264,13 +246,6 @@ workflows:
       - deploy_releases:
           <<: *after-platform-builds
           <<: *on-version-tags
-# TODO: deploy_docs should run only when 'docs/' or 'mkdocs.yml' change
-      - deploy_docs:
-          filters:
-            branches:
-              only:
-                - master
-                - /^[0-9]+\.[0-9]+$/
 
   nightly:
     triggers:

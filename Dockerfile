@@ -40,7 +40,10 @@ ARG PACK
 ARG TEST
 
 RUN if [ "$PACK" = "1" ]; then make pack; fi
-RUN if [ "$TEST" = "1" ]; then TEST= make test; fi
+RUN if [ "$TEST" = "1" ]; then \
+		TEST= make test TEST_ARGS="--verbose" ;\
+		tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-${ARCH}-${OSNICK}.tgz . ;\
+	fi
 
 #----------------------------------------------------------------------------------------------
 FROM redisfab/redis:${REDIS_VER}-${ARCH}-${OSNICK}
