@@ -370,33 +370,6 @@ typedef enum RctxType{
     RctxType_BlockedClient, RctxType_Context
 }RctxType;
 
-typedef struct CommandPD{
-    union{
-        RedisModuleCtx* ctx;
-        RedisModuleBlockedClient* bc;
-    }rctx;
-    RctxType rctxType;
-    CommandReaderTriggerCtx* crtCtx;
-}CommandPD;
-
-static CommandPD* CommandPD_Create(RedisModuleCtx* ctx, CommandReaderTriggerCtx* crtCtx){
-    CommandPD* pd = RG_ALLOC(sizeof(*pd));
-    pd->crtCtx = CommandReaderTriggerCtx_GetShallowCopy(crtCtx);
-    if(pd->crtCtx->mode == ExecutionModeSync){
-        pd->rctx.ctx = ctx;
-        pd->rctxType = RctxType_Context;
-    }else{
-        pd->rctx.bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
-        pd->rctxType = RctxType_BlockedClient;
-    }
-    return pd;
-}
-
-static void CommandPD_Free(CommandPD* pd){
-    CommandReaderTriggerCtx_Free(pd->crtCtx);
-    RG_FREE(pd);
-}
-
 static void CommandReader_Reply(ExecutionPlan* ep, RedisModuleCtx* ctx){
     long long errorsLen = RedisGears_GetErrorsLen(ep);
     if(errorsLen > 0){
@@ -459,8 +432,6 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         return REDISMODULE_OK;
     }
 
-    CommandPD* pd = CommandPD_Create(ctx, crtCtx);
-
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1);
     ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
@@ -471,9 +442,6 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
     if(!ep){
         // error accurred
         ++crtCtx->numAborted;
-        if(pd->rctxType == RctxType_BlockedClient){
-            RedisModule_AbortBlock(pd->rctx.bc);
-        }
         char* msg;
         rg_asprintf(&msg, "ERR Could not trigger execution, %s", err);
         if(err){
@@ -482,7 +450,6 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         RedisModule_ReplyWithError(ctx, msg);
         RG_FREE(msg);
         CommandReaderArgs_Free(args);
-        CommandPD_Free(pd);
         return REDISMODULE_OK;
     }else if(EPIsFlagOn(ep, EFDone)){
         CommandReader_Reply(ep, ctx);

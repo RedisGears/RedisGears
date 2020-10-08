@@ -65,12 +65,18 @@ static void KeysHandlerRecord_Free(Record* base){
     RedisModule_CloseKey(record->keyHandler);
 }
 
+void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
+    *(async->rptx) = r;
+    ExecutionPlan_PendingCtxFree(async->pctx);
+    async->pctx = NULL;
+}
+
 static void AsyncRecord_Free(Record* base){
     AsyncRecord* async = (AsyncRecord*)base;
     if(async->pctx){
 #define ERROR_MSG "Async record did not called continue"
-        Record* error = RG_ErrorRecordCreate(ERROR_MSG, strlen(ERROR_MSG));
-        RG_AsyncRecordContinue(base, error);
+        Record* error = RG_ErrorRecordCreate(RG_STRDUP(ERROR_MSG), strlen(ERROR_MSG));
+        RG_AsyncRecordContinueInternal(async, error);
     }
 }
 
@@ -576,7 +582,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     AsyncRecord* ret = (AsyncRecord*)RG_RecordCreate(asyncRecordType);
     if(!ectx->ep->pendingCtxs[ectx->step->stepId]){
         // todo: change max to match the step type
-        ectx->ep->pendingCtxs[ectx->step->stepId] = ExecutionPlan_PendingCtxCreate(ectx->ep, ectx->step, 10000);
+        ectx->ep->pendingCtxs[ectx->step->stepId] = ExecutionPlan_PendingCtxCreate(ectx->ep, ectx->step, 1000);
     }
     ret->pctx = ExecutionPlan_PendingCtxGetShallowCopy(ectx->ep->pendingCtxs[ectx->step->stepId]);
 
@@ -590,9 +596,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
 
 void RG_AsyncRecordContinue(Record* asyncRecord, Record* r){
     AsyncRecord* async = (AsyncRecord*)asyncRecord;
-    *(async->rptx) = r;
-    ExecutionPlan_PendingCtxFree(async->pctx);
-    async->pctx = NULL;
+    RG_AsyncRecordContinueInternal(async, r);
     RG_FreeRecord(asyncRecord);
 }
 

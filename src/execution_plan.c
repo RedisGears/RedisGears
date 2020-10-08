@@ -758,8 +758,6 @@ void ExecutionPlan_PendingCtxFree(StepPendingCtx* pctx){
 
     RedisModule_Assert(pctx->refCount == 0);
 
-    RedisModule_Assert(Gears_listLength(pctx->records) > 0);
-
     if(pctx->epctx){
         // we have execution pending ctx lets free it, we are owned by it now.
         ExecutionPlan_ExecutionPendingCtxFree(pctx->epctx);
@@ -786,9 +784,15 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
                 goto end;
             }
         }else{
-            // we have no more records to consume which means we are a lonly owner
-            // its safe to just free the internals
-            ExecutionPlan_PendingCtxFreeInternals(*pendingCtx);
+            if(step->pendingCtx){
+                // we have no more records to consume which means we are a lonly owner
+                // its safe to just free the internals
+                ExecutionPlan_PendingCtxFreeInternals(*pendingCtx);
+            }else{
+                // we are not the owner, to prevent race condition with other threads we
+                // need to call free
+                ExecutionPlan_PendingCtxFree(*pendingCtx);
+            }
             *pendingCtx = NULL;
 
             // point to the potential next pending ctx
@@ -1521,16 +1525,12 @@ end:
         }
         if(epctx){
             memcpy(epctx->pendingCtxs, pendingCtxs, sizeof(*epctx->pendingCtxs) * array_len(ep->steps));
-            for(size_t i = 0 ; i <  epctx->len ; ++i){
-                if(epctx->pendingCtxs[i]){
-                    ExecutionPlan_PendingCtxFree(epctx->pendingCtxs[i]);
-                }
-            }
         }
     }
-    if(ret == Execute_STOPED){
-        for(size_t i = 0 ; i < array_len(ep->steps) ; ++i){
-            RedisModule_Assert(!pendingCtxs[i]);
+    for(size_t i = 0 ; i < array_len(ep->steps) ; ++i){
+        RedisModule_Assert(ret != Execute_STOPED || !pendingCtxs[i]);
+        if(pendingCtxs[i]){
+            ExecutionPlan_PendingCtxFree(pendingCtxs[i]);
         }
     }
     return ret;
@@ -1688,6 +1688,11 @@ static void ExecutionPlan_OnMaxIdleReacher(RedisModuleCtx *ctx, void *data){
 
 static void ExecutionPlan_Pause(RedisModuleCtx* ctx, ExecutionPlan* ep){
     LockHandler_Acquire(ctx);
+    if(EPIsFlagOn(ep, EFWaiting)){
+        ep->isPaused = true;
+        LockHandler_Release(ctx);
+        return;
+    }
     ep->isPaused = true;
     ep->maxIdleTimer = RedisModule_CreateTimer(ctx, ep->fep->executionMaxIdleTime, ExecutionPlan_OnMaxIdleReacher, ep);
     ep->maxIdleTimerSet = true;
@@ -1706,7 +1711,10 @@ static void ExecutionPlan_Main(RedisModuleCtx* ctx, ExecutionPlan* ep){
             ExecutionPlan_Pause(ctx, ep);
             return;
         case STOP_WITHOUT_TIMEOUT:
-            ep->isPaused = true;
+            LockHandler_Acquire(ctx);
+            EPTurnOnFlag(ep, EFWaiting);
+            ExecutionPlan_Pause(ctx, ep);
+            LockHandler_Release(ctx);
             return;
         case COMPLETED:
             return;
@@ -2012,6 +2020,7 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
     EPTurnOffFlag(ep, EFIsFreedOnDoneCallback);
     EPTurnOffFlag(ep, EFIsLocalyFreedOnDoneCallback);
     EPTurnOffFlag(ep, EFStarted);
+    EPTurnOffFlag(ep, EFWaiting);
 
     ExecutionStep_Reset(ep->steps[0]);
 }
@@ -2031,6 +2040,9 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
 
     if(isDone != Execute_DONE){
         // Exectuion hold, lets return, the caller will have to deal with it.
+        EPTurnOnFlag(ep, EFWaiting);
+        LockHandler_Release(rctx);
+        RedisModule_FreeThreadSafeContext(rctx);
         return;
     }
 
@@ -2336,7 +2348,7 @@ static void ExecutionPlan_ExecutionTerminate(RedisModuleCtx* ctx, ExecutionPlan*
 
 static void ExecutionPlan_ExecutionDone(RedisModuleCtx* ctx, ExecutionPlan* ep){
     ep->totalShardsCompleted++;
-    if((Cluster_GetSize() - 1) == ep->totalShardsCompleted){ // no need to wait to myself
+    if((Cluster_GetSize() - 1) == ep->totalShardsCompleted && EPIsFlagOff(ep, EFWaiting)){ // no need to wait to myself
         ExecutionPlan_Main(ctx, ep);
     }else{
         ExecutionPlan_Pause(ctx, ep);
@@ -2359,7 +2371,7 @@ static void ExecutionPlan_StepDone(RedisModuleCtx* ctx, ExecutionPlan* ep, size_
 	}
 
 	RedisModule_Assert(Cluster_GetSize() - 1 >= totalShardsCompleted);
-	if((Cluster_GetSize() - 1) == totalShardsCompleted){ // no need to wait to myself
+	if((Cluster_GetSize() - 1) == totalShardsCompleted && EPIsFlagOff(ep, EFWaiting)){ // no need to wait to myself
 	    ExecutionPlan_Main(ctx, ep);
 	}else{
 	    ExecutionPlan_Pause(ctx, ep);
@@ -2382,7 +2394,7 @@ static void ExecutionPlan_AddStepRecord(RedisModuleCtx* ctx, ExecutionPlan* ep, 
 	    RedisModule_Assert(false);
 	}
 	*pendings = array_append(*pendings, r);
-	if(array_len(*pendings) >= MAX_PENDING_TO_START_RUNNING){
+	if(array_len(*pendings) >= MAX_PENDING_TO_START_RUNNING && EPIsFlagOff(ep, EFWaiting)){
 	    ExecutionPlan_Main(ctx, ep);
 	}else{
 	    ExecutionPlan_Pause(ctx, ep);
@@ -2427,8 +2439,10 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
         }
     }else{
         // here we need to cancle an existing maxIdleTimer
-        RedisModule_StopTimer(ctx, ep->maxIdleTimer, NULL);
-        ep->maxIdleTimerSet = false;
+        if(ep->maxIdleTimerSet){
+            RedisModule_StopTimer(ctx, ep->maxIdleTimer, NULL);
+            ep->maxIdleTimerSet = false;
+        }
     }
     if(ep->onUnpausedCallback){
         ExecutionCtx ectx = {
@@ -2442,12 +2456,16 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     LockHandler_Release(ctx);
 	switch(msg->type){
 	case RUN_MSG:
+	    RedisModule_Assert(EPIsFlagOff(ep, EFWaiting));
         ExecutionPlan_Main(ctx, ep);
 		break;
 	case CONTINUE_PENDING_MSG:
+	    RedisModule_Assert(EPIsFlagOn(ep, EFWaiting));
+	    EPTurnOffFlag(ep, EFWaiting);
 	    for(size_t i = 0 ; i < pctx->len ; ++i){
 	        if(pctx->pendingCtxs[i]){
 	            StepPendingCtx* spctx = pctx->pendingCtxs[i];
+	            spctx->epctx = NULL;
 	            ep->steps[spctx->stepId]->pendingCtx = spctx;
 	            pctx->pendingCtxs[i] = NULL; // drop the ownership of the step pending ctx
 	        }
@@ -2467,6 +2485,7 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
 	    ExecutionPlan_ExecutionDone(ctx, ep);
 	    break;
 	case EXECUTION_TERMINATE:
+	    RedisModule_Assert(EPIsFlagOff(ep, EFWaiting));
         ExecutionPlan_ExecutionTerminate(ctx, ep);
         break;
 	default:
@@ -2757,6 +2776,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     EPTurnOffFlag(ret, EFIsLocalyFreedOnDoneCallback);
     EPTurnOffFlag(ret, EFIsOnDoneCallback);
     EPTurnOffFlag(ret, EFStarted);
+    EPTurnOffFlag(ret, EFWaiting);
     return ret;
 }
 

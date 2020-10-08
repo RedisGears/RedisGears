@@ -218,9 +218,10 @@ typedef struct OnDoneData{
 #define EFIsLocal 0x10
 #define EFIsLocalyFreedOnDoneCallback 0x20
 #define EFStarted 0x40
+#define EFWaiting 0x80
 
-#define EPTurnOnFlag(ep, f) ep->flags |= f
-#define EPTurnOffFlag(ep, f) ep->flags &= ~f
+#define EPTurnOnFlag(ep, f) (ep->flags |= f)
+#define EPTurnOffFlag(ep, f) (ep->flags &= ~f)
 #define EPIsFlagOn(ep, f) (ep->flags & f)
 #define EPIsFlagOff(ep, f) (!(ep->flags & f))
 
