@@ -38,7 +38,7 @@ commands:
           no_output_timeout: 20m
       - run:
           name: Install Redis
-          command: python2 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
+          command: python2 ./deps/readies/bin/getredis -v 6.0.7 --force <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
