@@ -238,8 +238,8 @@ workflows:
           platform: xenial
           <<: *platform-build-defs
       - valgrind:
-          <<: *on-version-tags
-          # <<: *on-any-branch
+          #@@ <<: *on-version-tags
+          <<: *on-any-branch
       - macos:
           <<: *on-version-tags
           # <<: *on-any-branch
