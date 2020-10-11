@@ -223,8 +223,8 @@ workflows:
   version: 2
   default_flow:
     jobs:
-#      - linux-debian:
-#          <<: *on-any-branch
+      - linux-debian:
+          <<: *on-any-branch
 #      - platform-build:
 #          name: build-centos7
 #          platform: centos7
@@ -241,8 +241,8 @@ workflows:
           <<: *on-version-tags
           # <<: *on-any-branch
       - macos:
-          <<: *on-version-tags
-          # <<: *on-any-branch
+          #@@ <<: *on-version-tags
+          <<: *on-any-branch
 #      - build-multiarch-docker:
 #          <<: *never
 #          # <<: *on-version-tags
