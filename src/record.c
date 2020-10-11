@@ -590,6 +590,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     switch(ectx->step->type){
     case MAP:
     case FILTER:
+    case FOREACH:
         maxSize = 1000;
         break;
     default:

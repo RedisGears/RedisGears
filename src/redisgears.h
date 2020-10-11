@@ -156,7 +156,7 @@ typedef struct RedisGears_ReaderCallbacks{
 #define RedisGears_FilterSuccess 1
 #define RedisGears_FilterHold 2
 
-typedef void (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
+typedef int (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef Record* (*RedisGears_MapCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef int (*RedisGears_FilterCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef char* (*RedisGears_ExtractorCallback)(ExecutionCtx* rctx, Record *data, void* arg, size_t* len);

@@ -1464,6 +1464,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
 #define ContinueType_Default 1
 #define ContinueType_Filter 2
 #define ContinueType_Flat 3
+#define ContinueType_Foreach 4
 
 typedef struct PyFuture{
    PyObject_HEAD
@@ -1508,13 +1509,15 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
                 PyObjRecordSet(pyRecord, temp);
                 RedisGears_ListRecordAdd(record, pyRecord);
             }
-            Py_DECREF(obj);
         }else{
             // just a normal pyobject
             Py_INCREF(obj);
             record = PyObjRecordCreate();
             PyObjRecordSet(record, obj);
         }
+        break;
+    case ContinueType_Foreach:
+        record = &DummyRecord; // continue with the old record
         break;
     default:
         RedisModule_Assert(false);
@@ -3450,7 +3453,7 @@ void fetchPyError(ExecutionCtx* rctx) {
     RedisGears_SetError(rctx, getPyError());
 }
 
-void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg){
+int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg){
     // Call Python/C API functions...
     RedisModule_Assert(RedisGears_RecordGetType(record) == pythonRecordType);
 
@@ -3470,14 +3473,37 @@ void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* ar
         fetchPyError(rctx);
 
         RedisGearsPy_Unlock(old);
-        return;
+        return RedisGears_FilterSuccess;
     }
+
+    if(PyObject_TypeCheck(ret, &PyFutureType)){
+        char* err = NULL;
+        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
+        if(!async){
+            if(!err){
+                err = RG_STRDUP("Failed creating async record");
+            }
+            RedisGears_SetError(rctx, err);
+            return RedisGears_FilterSuccess;
+        }
+        PyFuture* future = (PyFuture*)ret;
+        future->asyncRecord = async;
+        future->continueType = ContinueType_Foreach;
+        // no need to free the original record because the async record took the ownership on it
+
+        // we need to free the future as we do not return it
+        Py_DECREF(ret);
+        RedisGearsPy_Unlock(old);
+        return RedisGears_FilterHold;
+    }
+
     if(ret != Py_None){
         Py_INCREF(Py_None);
     	Py_DECREF(ret);
-    }
+    }else
 
     RedisGearsPy_Unlock(old);
+    return RedisGears_FilterSuccess;
 }
 
 static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg){

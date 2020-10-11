@@ -1240,10 +1240,14 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
         goto end;
     }
     ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
-    step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
+    ectx.originRecord = record;
+    int res = step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
     if(ectx.err){
         RedisGears_FreeRecord(record);
         record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+    }else if(res == RedisGears_FilterHold){
+        // the async record to ownership on the record itself so no need to hold it
+        record = &WaitRecord;
     }
 end:
 	ADD_DURATION(step->executionDuration);
