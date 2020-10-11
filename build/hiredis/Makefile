@@ -47,7 +47,7 @@ else
 CC_FLAGS += -O2 -Wno-unused-result
 endif
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 LD_FLAGS += -undefined dynamic_lookup
 endif
 

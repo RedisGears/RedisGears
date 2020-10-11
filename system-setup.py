@@ -64,7 +64,7 @@ class RedisGearsSetup(paella.Setup):
             dir=$(mktemp -d /tmp/tar.XXXXXX)
             (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
             rm -rf $dir
-            """)
+            """, output_on_error=True)
 
         # pip cannot build gevent on ARM
         self.install("python-gevent python-ujson")
@@ -111,9 +111,8 @@ class RedisGearsSetup(paella.Setup):
             make install
             cd $base
             rm -rf $dir
-            """)
+            """, output_on_error=True)
 
-        # self.install("llvm")
         self.install("zlib openssl readline coreutils libiconv")
         if not self.has_command("redis-server"):
             self.install("redis")
@@ -128,7 +127,7 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
-        
+
         self.pip_install("-r %s/deps/readies/paella/requirements.txt" % ROOT)
         self.pip_install("distro")
 
