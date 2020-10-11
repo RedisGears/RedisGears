@@ -300,6 +300,7 @@ typedef struct ExecutionCtx{
     ExecutionStep* step;
     char* err;
     Record* originRecord;
+    Record** actualPlaceHolder;
 }ExecutionCtx;
 
 #define ExecutionCtx_Initialize(c, e, s) (ExecutionCtx){ \
@@ -308,6 +309,7 @@ typedef struct ExecutionCtx{
         .step = s,\
         .err = NULL,\
         .originRecord = NULL, \
+        .actualPlaceHolder = NULL, \
     }
 
 FlatExecutionPlan* FlatExecutionPlan_New();

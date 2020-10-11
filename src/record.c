@@ -77,7 +77,12 @@ void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
             r = &DummyRecord;
         }
     }
-    *(async->rptx) = r;
+    if(async->overidePlaceHolder){
+        *async->overidePlaceHolder = r;
+        *(async->rptx) = &DummyRecord;
+    }else{
+        *(async->rptx) = r;
+    }
     ExecutionPlan_PendingCtxFree(async->pctx);
     async->pctx = NULL;
 }
@@ -593,6 +598,9 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     case FOREACH:
         maxSize = 1000;
         break;
+    case ACCUMULATE:
+        maxSize = 1;
+        break;
     default:
         *err = RG_STRDUP("Step does not support async");
         return NULL;
@@ -601,7 +609,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     AsyncRecord* ret = (AsyncRecord*)RG_RecordCreate(asyncRecordType);
     if(!ectx->ep->pendingCtxs[ectx->step->stepId]){
         // todo: change max to match the step type
-        ectx->ep->pendingCtxs[ectx->step->stepId] = ExecutionPlan_PendingCtxCreate(ectx->ep, ectx->step, 1000);
+        ectx->ep->pendingCtxs[ectx->step->stepId] = ExecutionPlan_PendingCtxCreate(ectx->ep, ectx->step, maxSize);
     }
     ret->pctx = ExecutionPlan_PendingCtxGetShallowCopy(ectx->ep->pendingCtxs[ectx->step->stepId]);
 
@@ -610,6 +618,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
 
     // save pointer to set the real value
     ret->rptx = (Record**)(&(Gears_listFirst(ret->pctx->records)->value));
+    ret->overidePlaceHolder = ectx->actualPlaceHolder;
     ret->originRecord = ectx->originRecord;
     return &ret->base;
 }

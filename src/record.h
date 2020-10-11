@@ -67,6 +67,7 @@ typedef struct AsyncRecord{
     Record base;
     StepPendingCtx* pctx;
     Record** rptx; // pointer to put the record once ready
+    Record** overidePlaceHolder; // pointer to put the actual record for accumulate, in this case we will put DummyRecord to rptx
     Record* originRecord;
 }AsyncRecord;
 

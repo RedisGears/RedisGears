@@ -1297,7 +1297,9 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
     if(step->accumulate.isDone){
     	return NULL;
     }
-    while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
+
+    record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
+    if(record){
         START_TIMER;
         if(record == &StopRecord || record == &WaitRecord){
             goto end;
@@ -1306,6 +1308,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
             goto end;
         }
         ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
+        ectx.actualPlaceHolder = &step->accumulate.accumulator;
         step->accumulate.accumulator = step->accumulate.accumulate(&ectx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg);
         if(ectx.err){
             if(step->accumulate.accumulator){
@@ -1315,7 +1318,8 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
             record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
         }
-    	ADD_DURATION(step->executionDuration);
+        record = &DummyRecord; // call ourself again to get the next record
+        goto end;
     }
     START_TIMER;
     record = step->accumulate.accumulator;
@@ -2038,6 +2042,7 @@ static void ExecutionStep_Reset(ExecutionStep* es){
     case ACCUMULATE:
         if(es->accumulate.accumulator){
             RedisGears_FreeRecord(es->accumulate.accumulator);
+            es->accumulate.accumulator = NULL;
         }
         es->accumulate.isDone = false;
         break;
@@ -2907,6 +2912,7 @@ static void ExecutionStep_Free(ExecutionStep* es){
     case ACCUMULATE:
     	if(es->accumulate.accumulator){
     		RedisGears_FreeRecord(es->accumulate.accumulator);
+    		es->accumulate.accumulator = NULL;
     	}
     	break;
     case ACCUMULATE_BY_KEY:
