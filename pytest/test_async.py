@@ -133,6 +133,66 @@ GB('CommandReader').map(unbc).register(trigger='unblock', mode='sync')
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+def testStreamReaderAsync(env):
+    env.skipOnCluster()
+    conn = getConnectionByEnv(env)
+    script = '''
+fdata = []
+
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+def bc(r):
+    global fdata
+    f = BlockHolder(gearsFuture())
+    fd = (f, r)
+    fdata.insert(0, fd)
+    return f.bc
+
+GB('CommandReader').map(lambda a: fdata.pop()).foreach(lambda x: x[0].continueRun(x[1])).register(trigger='unblock')
+GB('StreamReader').map(bc).foreach(lambda x: execute('set', x['value']['key'], x['value']['val'])).register(mode='sync', prefix='s')
+
+    '''
+
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    env.cmd('xadd', 's' , '*', 'key', 'x', 'val', '1')
+    env.cmd('xadd', 's' , '*', 'key', 'y', 'val', '2')
+    env.cmd('xadd', 's' , '*', 'key', 'z', 'val', '3')
+
+    try:
+        with TimeLimit(50):
+            env.cmd('RG.TRIGGER', 'unblock')
+            x = None
+            while x != '1':
+                x = env.cmd('get', 'x')
+                time.sleep(0.1)
+            env.cmd('RG.TRIGGER', 'unblock')
+            y = None
+            while y != '2':
+                y = env.cmd('get', 'y')
+                time.sleep(0.1)
+            env.cmd('RG.TRIGGER', 'unblock')
+            z = None
+            while z != '3':
+                z = env.cmd('get', 'z')
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting to reach unblock')
+
 def testKeysReaderAsync(env):
     env.skipOnCluster()
     conn = getConnectionByEnv(env)
