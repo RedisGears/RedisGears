@@ -1464,6 +1464,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
 typedef struct PyFuture{
    PyObject_HEAD
    Record* asyncRecord;
+   bool continueWithBoolean;
 } PyFuture;
 
 static PyObject* futureContinue(PyObject *self, PyObject *args){
@@ -1477,11 +1478,19 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
         PyErr_SetString(GearsError, "Can not continue with the same future twice");
         return NULL;
     }
-    PyObject* obj = PyTuple_GetItem(args, 0);
-    Py_INCREF(obj);
 
-    Record* record = PyObjRecordCreate();
-    PyObjRecordSet(record, obj);
+    Record* record = NULL;
+
+    PyObject* obj = PyTuple_GetItem(args, 0);
+    if (pyFuture->continueWithBoolean){
+        if(PyObject_IsTrue(obj)){
+            record = &DummyRecord; // everithing other then NULL will be true;
+        }
+    }else{
+        Py_INCREF(obj);
+        record = PyObjRecordCreate();
+        PyObjRecordSet(record, obj);
+    }
     RedisGears_AsyncRecordContinue(pyFuture->asyncRecord, record);
     pyFuture->asyncRecord = NULL;
 
@@ -1592,7 +1601,7 @@ static PyTypeObject PyAtomicType = {
 static PyTypeObject PyFutureType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "redisgears.Future",       /* tp_name */
-    sizeof(PyAtomic),          /* tp_basicsize */
+    sizeof(PyFuture),          /* tp_basicsize */
     0,                         /* tp_itemsize */
     PyFuture_Destruct,         /* tp_dealloc */
     0,                         /* tp_print */
@@ -1651,6 +1660,7 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
 
     PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
     pyfuture->asyncRecord = NULL;
+    pyfuture->continueWithBoolean = false;
     return (PyObject*)pyfuture;
 }
 
@@ -3552,10 +3562,11 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
         }
         PyFuture* future = (PyFuture*)newObj;
         future->asyncRecord = async;
+        future->continueWithBoolean = false;
         RedisGears_FreeRecord(record);
         Py_DECREF(newObj);
         RedisGearsPy_Unlock(old);
-        return async;
+        return &DummyRecord;
     }
 
     PyObjRecordSet(record, newObj);
@@ -3607,7 +3618,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     return record;
 }
 
-static bool RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, void* arg){
+static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, void* arg){
     RedisModule_Assert(RedisGears_RecordGetType(record) == pythonRecordType);
 
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
@@ -3626,12 +3637,36 @@ static bool RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, vo
         fetchPyError(rctx);
 
         RedisGearsPy_Unlock(old);
-        return false;
+        return RedisGears_FilterFailed;
     }
+
+    if(PyObject_TypeCheck(ret, &PyFutureType)){
+        char* err = NULL;
+        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
+        if(!async){
+            if(!err){
+                err = RG_STRDUP("Failed creating async record");
+            }
+            RedisGears_SetError(rctx, err);
+            return RedisGears_FilterFailed;
+        }
+        PyFuture* future = (PyFuture*)ret;
+        future->asyncRecord = async;
+        future->continueWithBoolean = true;
+        // no need to free the original record because the async record took the ownership on it
+
+        // we need to free the future as we do not return it
+        Py_DECREF(ret);
+        RedisGearsPy_Unlock(old);
+        return RedisGears_FilterHold;
+    }
+
     bool ret1 = PyObject_IsTrue(ret);
 
+    Py_DECREF(ret);
+
     RedisGearsPy_Unlock(old);
-    return ret1;
+    return ret1? RedisGears_FilterSuccess : RedisGears_FilterFailed;
 }
 
 static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record, void* arg, size_t* len){

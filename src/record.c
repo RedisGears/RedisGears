@@ -14,6 +14,7 @@ RecordType StopRecordType;
 
 Record StopRecord;
 Record WaitRecord;
+Record DummyRecord;
 
 RecordType* listRecordType;
 RecordType* stringRecordType;
@@ -66,6 +67,16 @@ static void KeysHandlerRecord_Free(Record* base){
 }
 
 void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
+    if(async->originRecord){
+        // if we have an original record and r is not NULL, i.e, true
+        // we need to continue with the original record.
+        if(r){
+            RG_FreeRecord(r);
+            r = async->originRecord;
+        }else{
+            r = &DummyRecord;
+        }
+    }
     *(async->rptx) = r;
     ExecutionPlan_PendingCtxFree(async->pctx);
     async->pctx = NULL;
@@ -402,7 +413,7 @@ void RG_FreeRecord(Record* record){
     if(!record){
         return;
     }
-    if(record == &StopRecord || record == &WaitRecord){
+    if(record == &StopRecord || record == &WaitRecord || record == &DummyRecord){
         return;
     }
     record->type->free(record);
@@ -575,10 +586,17 @@ char** RG_HashSetRecordGetAllKeys(Record* base){
 }
 
 Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
-    if(ectx->step->type != MAP){
+    size_t maxSize;
+    switch(ectx->step->type){
+    case MAP:
+    case FILTER:
+        maxSize = 1000;
+        break;
+    default:
         *err = RG_STRDUP("Step does not support async");
         return NULL;
     }
+
     AsyncRecord* ret = (AsyncRecord*)RG_RecordCreate(asyncRecordType);
     if(!ectx->ep->pendingCtxs[ectx->step->stepId]){
         // todo: change max to match the step type
@@ -591,6 +609,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
 
     // save pointer to set the real value
     ret->rptx = (Record**)(&(Gears_listFirst(ret->pctx->records)->value));
+    ret->originRecord = ectx->originRecord;
     return &ret->base;
 }
 

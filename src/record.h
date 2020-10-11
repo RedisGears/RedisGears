@@ -67,10 +67,12 @@ typedef struct AsyncRecord{
     Record base;
     StepPendingCtx* pctx;
     Record** rptx; // pointer to put the record once ready
+    Record* originRecord;
 }AsyncRecord;
 
 extern Record StopRecord;
 extern Record WaitRecord;
+extern Record DummyRecord;
 
 void RG_FreeRecord(Record* record);
 RecordType* RG_RecordGetType(Record* r);

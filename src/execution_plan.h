@@ -161,6 +161,7 @@ typedef struct ExecutionStep{
     enum StepType type;
     unsigned long long executionDuration;
     StepPendingCtx* pendingCtx;
+    bool isDone;
 }ExecutionStep;
 
 typedef enum ActionResult{
@@ -298,6 +299,7 @@ typedef struct ExecutionCtx{
     ExecutionPlan* ep;
     ExecutionStep* step;
     char* err;
+    Record* originRecord;
 }ExecutionCtx;
 
 #define ExecutionCtx_Initialize(c, e, s) (ExecutionCtx){ \
@@ -305,6 +307,7 @@ typedef struct ExecutionCtx{
         .ep = e,\
         .step = s,\
         .err = NULL,\
+        .originRecord = NULL, \
     }
 
 FlatExecutionPlan* FlatExecutionPlan_New();

@@ -767,116 +767,110 @@ void ExecutionPlan_PendingCtxFree(StepPendingCtx* pctx){
 
 }
 
+static Record* ExecutionPlan_GetRecordFromPending(StepPendingCtx* pendingCtx, bool* isEmpty){
+    Record* r;
+    bool isEmptyInternal;
+    if(!isEmpty){
+        isEmpty = &isEmptyInternal;
+    }
+
+    if(!pendingCtx){
+        *isEmpty = true;
+        return NULL;
+    }
+
+
+    *isEmpty = false;
+
+    while(Gears_listLength(pendingCtx->records) > 0){
+        Gears_listNode* last = Gears_listLast(pendingCtx->records);
+        r = Gears_listNodeValue(last);
+        if(!r){
+            return NULL;
+        }
+        Gears_listDelNode(pendingCtx->records, last);
+        if(r != &DummyRecord){
+            return r;
+        }
+    }
+
+    *isEmpty = true;
+    return NULL;
+}
+
 static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* record = NULL;
     INIT_TIMER;
 
-    StepPendingCtx** pendingCtx = ep->pendingCtxs + step->stepId;
-    if(!*pendingCtx){
-        if(step->pendingCtx){
-            pendingCtx = &step->pendingCtx;
+    record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
+
+    START_TIMER;
+
+    if(record == NULL){
+        goto end;
+    }
+
+    if(record == &StopRecord || record == &WaitRecord){
+        goto end;
+    }
+
+    if(RedisGears_RecordGetType(record) != errorRecordType){
+        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
+        record = step->map.map(&ectx, record, step->map.stepArg.stepArg);
+        if(ectx.err){
+            if(record){
+                RedisGears_FreeRecord(record);
+            }
+            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
         }
     }
 
-    if(*pendingCtx){
-        if(Gears_listLength((*pendingCtx)->records) > 0){
-            if(Gears_listLast((*pendingCtx)->records)->value){
-                goto end;
-            }
-        }else{
-            if(step->pendingCtx){
-                // we have no more records to consume which means we are a lonly owner
-                // its safe to just free the internals
-                ExecutionPlan_PendingCtxFreeInternals(*pendingCtx);
-            }else{
-                // we are not the owner, to prevent race condition with other threads we
-                // need to call free
-                ExecutionPlan_PendingCtxFree(*pendingCtx);
-            }
-            *pendingCtx = NULL;
-
-            // point to the potential next pending ctx
-            pendingCtx = ep->pendingCtxs + step->stepId;
-        }
-    }
-
-    while(!(*pendingCtx) ||
-          Gears_listLength((*pendingCtx)->records) < (*pendingCtx)->maxSize){
-
-        record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
-
-        START_TIMER;
-
-        if(record == NULL){
-            goto end;
-        }
-
-        if(record == &StopRecord || record == &WaitRecord){
-            goto end;
-        }
-
-        if(RedisGears_RecordGetType(record) != errorRecordType){
-            ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
-            record = step->map.map(&ectx, record, step->map.stepArg.stepArg);
-            if(ectx.err){
-                if(record){
-                    RedisGears_FreeRecord(record);
-                }
-                record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
-            }
-        }
-
-        if(RedisGears_RecordGetType(record) != asyncRecordType){
-            if(*pendingCtx){
-                Gears_listAddNodeHead((*pendingCtx)->records, record);
-                record = NULL;
-            }else{
-                break;
-            }
-        }
-
-    }
+    // asyncRecor should never be returned to us
+    RedisModule_Assert(RedisGears_RecordGetType(record) != asyncRecordType);
 
 end:
 	ADD_DURATION(step->executionDuration);
-	if(*pendingCtx){
-	    Gears_listNode* last = Gears_listLast((*pendingCtx)->records);
-	    record = Gears_listNodeValue(last);
-	    if(record){
-	        Gears_listDelNode((*pendingCtx)->records, last);
-	    } else {
-	        // lets wait for records to arrive
-	        record = &WaitRecord;
-	    }
-	}
     return record;
 }
 
 static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* record = NULL;
     INIT_TIMER;
-    while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
-        if(record == &StopRecord || record == &WaitRecord){
-            return record;
-        }
-        if(RedisGears_RecordGetType(record) == errorRecordType){
-            return record;
-        }
-        START_TIMER;
-        ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
-        bool filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
-        if(ectx.err){
-            RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
-            goto end;
-        }
-        if(filterRes){
-            goto end;
-        }else{
-            RedisGears_FreeRecord(record);
-        }
+
+    record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
+
+    START_TIMER;
+
+    if(record == NULL){
+        goto end;
     }
-    record = NULL;
+
+    if(record == &StopRecord || record == &WaitRecord){
+        goto end;
+    }
+
+    if(RedisGears_RecordGetType(record) == errorRecordType){
+        goto end;
+    }
+
+    ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
+    ectx.originRecord = record;
+    int filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
+    if(ectx.err){
+        RedisGears_FreeRecord(record);
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);\
+        filterRes = RedisGears_FilterSuccess; // its not really success but we want to error to continue.
+    }
+
+    if(filterRes == RedisGears_FilterFailed){
+        RedisGears_FreeRecord(record);
+        record = &DummyRecord; // we let the general loop continue of hold;
+        goto end;
+    }
+
+    if(filterRes == RedisGears_FilterHold){
+        record = &DummyRecord; // we let the general loop continue of hold;
+    }
 end:
     ADD_DURATION(step->executionDuration);
     return record;
@@ -1402,59 +1396,128 @@ end:
 static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, RedisModuleCtx* rctx){
     Record* r = NULL;
 
-    INIT_TIMER;
-    switch(step->type){
-    case READER:
-    	if(array_len(ep->errors) == 0){
-            GETTIME(&_ts);
-            ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
-    	    r = step->reader.r->next(&ectx, step->reader.r->ctx);
-            GETTIME(&_te);
-    	    step->executionDuration += DURATION;
-    	    if(!r && ectx.err){
-    	        r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
-    	    }
-    	}
-        break;
-    case MAP:
-    	r = ExecutionPlan_MapNextRecord(ep, step, rctx);
-    	break;
-    case FLAT_MAP:
-    	r = ExecutionPlan_FlatMapNextRecord(ep, step, rctx);
-    	break;
-    case FILTER:
-    	r = ExecutionPlan_FilterNextRecord(ep, step, rctx);
-    	break;
-    case EXTRACTKEY:
-    	r = ExecutionPlan_ExtractKeyNextRecord(ep, step, rctx);
-    	break;
-    case GROUP:
-    	r = ExecutionPlan_GroupNextRecord(ep, step, rctx);
-    	break;
-    case REDUCE:
-    	r = ExecutionPlan_ReduceNextRecord(ep, step, rctx);
-    	break;
-    case REPARTITION:
-    	r = ExecutionPlan_RepartitionNextRecord(ep, step, rctx);
-    	break;
-    case COLLECT:
-    	r = ExecutionPlan_CollectNextRecord(ep, step, rctx);
-    	break;
-    case FOREACH:
-    	r = ExecutionPlan_ForEachNextRecord(ep, step, rctx);
-    	break;
-    case LIMIT:
-    	r = ExecutionPlan_LimitNextRecord(ep, step, rctx);
-    	break;
-    case ACCUMULATE:
-    	r = ExecutionPlan_AccumulateNextRecord(ep, step, rctx);
-    	break;
-    case ACCUMULATE_BY_KEY:
-    	r = ExecutionPlan_AccumulateByKeyNextRecord(ep, step, rctx);
-		break;
-    default:
-        RedisModule_Assert(false);
+    if(step->isDone){
         return NULL;
+    }
+
+    INIT_TIMER;
+
+    bool isEmpty;
+
+    if(step->pendingCtx){
+        r = ExecutionPlan_GetRecordFromPending(step->pendingCtx, &isEmpty);
+        if(r){
+            return r;
+        }
+        RedisModule_Assert(isEmpty);
+        ExecutionPlan_PendingCtxFreeInternals(step->pendingCtx);
+        step->pendingCtx = NULL;
+    }
+
+    StepPendingCtx** pendingCtxs = ep->pendingCtxs + step->stepId;
+
+    if(*pendingCtxs){
+        r = ExecutionPlan_GetRecordFromPending(*pendingCtxs, &isEmpty);
+        if(r){
+            return r;
+        }
+    }
+
+    r = &DummyRecord;
+    while(r == &DummyRecord &&
+            (!(*pendingCtxs) || Gears_listLength((*pendingCtxs)->records) < (*pendingCtxs)->maxSize)){
+
+        switch(step->type){
+        case READER:
+            if(array_len(ep->errors) == 0){
+                GETTIME(&_ts);
+                ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
+                r = step->reader.r->next(&ectx, step->reader.r->ctx);
+                GETTIME(&_te);
+                step->executionDuration += DURATION;
+                if(!r && ectx.err){
+                    r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+                }
+            }else{
+                r = NULL;
+            }
+            break;
+        case MAP:
+            r = ExecutionPlan_MapNextRecord(ep, step, rctx);
+            break;
+        case FLAT_MAP:
+            r = ExecutionPlan_FlatMapNextRecord(ep, step, rctx);
+            break;
+        case FILTER:
+            r = ExecutionPlan_FilterNextRecord(ep, step, rctx);
+            break;
+        case EXTRACTKEY:
+            r = ExecutionPlan_ExtractKeyNextRecord(ep, step, rctx);
+            break;
+        case GROUP:
+            r = ExecutionPlan_GroupNextRecord(ep, step, rctx);
+            break;
+        case REDUCE:
+            r = ExecutionPlan_ReduceNextRecord(ep, step, rctx);
+            break;
+        case REPARTITION:
+            r = ExecutionPlan_RepartitionNextRecord(ep, step, rctx);
+            break;
+        case COLLECT:
+            r = ExecutionPlan_CollectNextRecord(ep, step, rctx);
+            break;
+        case FOREACH:
+            r = ExecutionPlan_ForEachNextRecord(ep, step, rctx);
+            break;
+        case LIMIT:
+            r = ExecutionPlan_LimitNextRecord(ep, step, rctx);
+            break;
+        case ACCUMULATE:
+            r = ExecutionPlan_AccumulateNextRecord(ep, step, rctx);
+            break;
+        case ACCUMULATE_BY_KEY:
+            r = ExecutionPlan_AccumulateByKeyNextRecord(ep, step, rctx);
+            break;
+        default:
+            RedisModule_Assert(false);
+            return NULL;
+        }
+
+        if(r == NULL || r == &StopRecord || r == &WaitRecord){
+            break; // stop the loop no point to try to get another record
+        }
+
+        if(*pendingCtxs){
+            if(r != &DummyRecord){
+                RedisModule_Assert(RedisGears_RecordGetType(r) != asyncRecordType);
+                Gears_listAddNodeHead((*pendingCtxs)->records, r);
+            }
+            r = ExecutionPlan_GetRecordFromPending(*pendingCtxs, &isEmpty);
+            if(!r){
+                r = &DummyRecord; // lets try to get another record
+            }
+        }
+
+    }
+
+    if(r == NULL || r == &StopRecord || r == &WaitRecord){
+        // before we decide lets see if we have pending to return
+        Record* rFromPending = ExecutionPlan_GetRecordFromPending(*pendingCtxs, &isEmpty);
+        if(rFromPending){
+            r = rFromPending;
+        }else if(!isEmpty){
+            // we are not yet empty we need to wait
+            r = &WaitRecord;
+        }
+    }
+
+    if(r == &DummyRecord){
+        r = &WaitRecord; // dummy record here means we got whatever we can and we need to hold
+    }
+
+    if(!r){
+        // we are going to return NULL, mark the step as done
+        step->isDone = true;
     }
     return r;
 }
@@ -1909,6 +1972,7 @@ static void ExecutionPlan_Run(ExecutionPlan* ep){
 static void ExecutionStep_Reset(ExecutionStep* es){
     Gears_dictIterator * iter = NULL;
     Gears_dictEntry *entry = NULL;
+    es->isDone = false;
     if(es->pendingCtx){
         // the step is the only owner of the pending ctx, safe to free the internals
         ExecutionPlan_PendingCtxFreeInternals(es->pendingCtx);
@@ -2653,6 +2717,7 @@ static ExecutionStep* ExecutionPlan_NewExecutionStep(FlatExecutionStep* step){
     ExecutionStep* es = RG_ALLOC(sizeof(*es));
     es->type = step->type;
     es->pendingCtx = NULL;
+    es->isDone = false;
     switch(step->type){
     case MAP:
         es->map.map = MapsMgmt_Get(step->bStep.stepName);
@@ -2725,6 +2790,7 @@ static ExecutionStep* ExecutionPlan_NewReaderExecutionStep(ReaderStep reader){
     es->prev = NULL;
     es->executionDuration = 0;
     es->pendingCtx = NULL;
+    es->isDone = false;
     return es;
 }
 
@@ -2756,6 +2822,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
         ret->steps[array_len(ret->steps) - 1]->prev = readerStep;
     }
     ret->steps = array_append(ret->steps, readerStep);
+    readerStep->stepId = array_len(fep->steps) - 1;
     ret->totalShardsRecieved = 0;
     ret->totalShardsCompleted = 0;
     ret->results = array_new(Record*, 100);

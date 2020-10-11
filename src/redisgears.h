@@ -152,9 +152,13 @@ typedef struct RedisGears_ReaderCallbacks{
 /**
  * Operations/Steps callbacks definition
  */
+#define RedisGears_FilterFailed 0
+#define RedisGears_FilterSuccess 1
+#define RedisGears_FilterHold 2
+
 typedef void (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef Record* (*RedisGears_MapCallback)(ExecutionCtx* rctx, Record *data, void* arg);
-typedef bool (*RedisGears_FilterCallback)(ExecutionCtx* rctx, Record *data, void* arg);
+typedef int (*RedisGears_FilterCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef char* (*RedisGears_ExtractorCallback)(ExecutionCtx* rctx, Record *data, void* arg, size_t* len);
 typedef Record* (*RedisGears_ReducerCallback)(ExecutionCtx* rctx, char* key, size_t keyLen, Record *records, void* arg);
 typedef Record* (*RedisGears_AccumulateCallback)(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg);
