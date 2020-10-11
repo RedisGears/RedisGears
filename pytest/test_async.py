@@ -436,3 +436,56 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
                     time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
+
+def testSimpleAsyncOnFlatMap(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+fdata = None
+
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+def bc(r):
+    global fdata
+    fdata = BlockHolder(gearsFuture())
+    return fdata.bc
+
+def unbc(r):
+    global fdata
+    if fdata:
+        fdata.continueRun(r)
+        fdata = None
+        return 1
+    return 0
+
+GB('CommandReader').flatmap(bc).distinct().count().register(trigger='block')
+GB('CommandReader').map(unbc).register(trigger='unblock')
+    '''
+
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    def Block():
+        env.expect('RG.TRIGGER', 'block').equal(['6'])
+
+    try:
+        with Background(Block) as bk:
+            with TimeLimit(50):
+                while bk.isAlive:
+                    conn.execute_command('RG.TRIGGER', 'unblock', '1', '2', '3', '4', '5')
+                    time.sleep(0.1)
+    except Exception as e:
+        print(e)
+        env.assertTrue(False, message='Failed waiting to reach unblock')

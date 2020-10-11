@@ -1461,10 +1461,14 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
     return Py_None;
 }
 
+#define ContinueType_Default 1
+#define ContinueType_Filter 2
+#define ContinueType_Flat 3
+
 typedef struct PyFuture{
    PyObject_HEAD
    Record* asyncRecord;
-   bool continueWithBoolean;
+   int continueType;
 } PyFuture;
 
 static PyObject* futureContinue(PyObject *self, PyObject *args){
@@ -1482,15 +1486,41 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
     Record* record = NULL;
 
     PyObject* obj = PyTuple_GetItem(args, 0);
-    if (pyFuture->continueWithBoolean){
-        if(PyObject_IsTrue(obj)){
-            record = &DummyRecord; // everithing other then NULL will be true;
-        }
-    }else{
+    switch(pyFuture->continueType){
+    case ContinueType_Default:
         Py_INCREF(obj);
         record = PyObjRecordCreate();
         PyObjRecordSet(record, obj);
+        break;
+    case ContinueType_Filter:
+        if(PyObject_IsTrue(obj)){
+            record = &DummyRecord; // everithing other then NULL will be true;
+        }
+        break;
+    case ContinueType_Flat:
+        if(PyList_Check(obj)){
+            size_t len = PyList_Size(obj);
+            record = RedisGears_ListRecordCreate(len);
+            for(size_t i = 0 ; i < len ; ++i){
+                PyObject* temp = PyList_GetItem(obj, i);
+                Record* pyRecord = PyObjRecordCreate();
+                Py_INCREF(temp);
+                PyObjRecordSet(pyRecord, temp);
+                RedisGears_ListRecordAdd(record, pyRecord);
+            }
+            Py_DECREF(obj);
+        }else{
+            // just a normal pyobject
+            Py_INCREF(obj);
+            record = PyObjRecordCreate();
+            PyObjRecordSet(record, obj);
+        }
+        break;
+    default:
+        RedisModule_Assert(false);
+        break;
     }
+
     RedisGears_AsyncRecordContinue(pyFuture->asyncRecord, record);
     pyFuture->asyncRecord = NULL;
 
@@ -1660,7 +1690,7 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
 
     PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
     pyfuture->asyncRecord = NULL;
-    pyfuture->continueWithBoolean = false;
+    pyfuture->continueType = false;
     return (PyObject*)pyfuture;
 }
 
@@ -3562,7 +3592,7 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
         }
         PyFuture* future = (PyFuture*)newObj;
         future->asyncRecord = async;
-        future->continueWithBoolean = false;
+        future->continueType = ContinueType_Default;
         RedisGears_FreeRecord(record);
         Py_DECREF(newObj);
         RedisGearsPy_Unlock(old);
@@ -3597,8 +3627,24 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
         RedisGearsPy_Unlock(old);
         RedisGears_FreeRecord(record);
         return NULL;
-    }
-    if(PyList_Check(newObj)){
+    }if(PyObject_TypeCheck(newObj, &PyFutureType)){
+        char* err = NULL;
+        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
+        if(!async){
+            if(!err){
+                err = RG_STRDUP("Failed creating async record");
+            }
+            RedisGears_SetError(rctx, err);
+            return NULL;
+        }
+        PyFuture* future = (PyFuture*)newObj;
+        future->asyncRecord = async;
+        future->continueType = ContinueType_Flat;
+        RedisGears_FreeRecord(record);
+        Py_DECREF(newObj);
+        RedisGearsPy_Unlock(old);
+        return &DummyRecord;
+    }else if(PyList_Check(newObj)){
         RedisGears_FreeRecord(record);
         size_t len = PyList_Size(newObj);
         record = RedisGears_ListRecordCreate(len);
@@ -3652,7 +3698,7 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
         }
         PyFuture* future = (PyFuture*)ret;
         future->asyncRecord = async;
-        future->continueWithBoolean = true;
+        future->continueType = ContinueType_Filter;
         // no need to free the original record because the async record took the ownership on it
 
         // we need to free the future as we do not return it

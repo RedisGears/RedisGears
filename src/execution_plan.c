@@ -894,7 +894,7 @@ static Record* ExecutionPlan_FlatMapNextRecord(ExecutionPlan* ep, ExecutionStep*
             // if we reach here r is an empty list record
             RedisGears_FreeRecord(r);
         }
-        r = ExecutionPlan_MapNextRecord(ep, step, rctx);
+        r = ExecutionPlan_NextRecord(ep, step->prev, rctx);
         START_TIMER;
         if(r == NULL){
             goto end;
@@ -3130,7 +3130,8 @@ void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackNa
 }
 
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){
-    FlatExecutionPlan_AddBasicStep(fep, callbackName, arg, FLAT_MAP);
+    FlatExecutionPlan_AddBasicStep(fep, callbackName, arg, MAP);
+    FlatExecutionPlan_AddBasicStep(fep, stepsNames[FLAT_MAP], NULL, FLAT_MAP);
 }
 
 void FlatExecutionPlan_AddFilterStep(FlatExecutionPlan* fep, const char* callbackName, void* arg){
