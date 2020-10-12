@@ -47,7 +47,7 @@ commands:
       - run:
           name: Test
           command: make test <<parameters.test_params>>
-          no_output_timeout: 20m
+          no_output_timeout: 30m
       - store_artifacts:
           path: pytest/logs
 
