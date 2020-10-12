@@ -97,8 +97,8 @@ jobs:
     steps:
       - build-steps:
           platform: debian
-          build_params: DEBUG=1
-          test_params: DEBUG=1
+          build_params: VALGRIND=1
+          test_params: VALGRIND=1
           getredis_params: --valgrind
 
   platform-build:
