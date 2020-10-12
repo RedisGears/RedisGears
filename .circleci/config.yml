@@ -226,34 +226,34 @@ workflows:
     jobs:
       - linux-debian:
           <<: *on-any-branch
-#      - platform-build:
-#          name: build-centos7
-#          platform: centos7
-#          <<: *platform-build-defs
-#      - platform-build:
-#          name: build-bionic
-#          platform: bionic
-#          <<: *platform-build-defs
-#      - platform-build:
-#          name: build-xenial
-#          platform: xenial
-#          <<: *platform-build-defs
+      - platform-build:
+          name: build-centos7
+          platform: centos7
+          <<: *platform-build-defs
+      - platform-build:
+          name: build-bionic
+          platform: bionic
+          <<: *platform-build-defs
+      - platform-build:
+          name: build-xenial
+          platform: xenial
+          <<: *platform-build-defs
       - valgrind:
           <<: *on-version-tags
           # <<: *on-any-branch
       - macos:
-          #@@ <<: *on-version-tags
-          <<: *on-any-branch
-#      - build-multiarch-docker:
-#          <<: *never
-#          # <<: *on-version-tags
-#      - deploy_snapshots:
-#          <<: *after-platform-builds
-#          <<: *on-master
-#          # <<: *on-any-branch
-#      - deploy_releases:
-#          <<: *after-platform-builds
-#          <<: *on-version-tags
+          <<: *on-version-tags
+          # <<: *on-any-branch
+      - build-multiarch-docker:
+          <<: *never
+          # <<: *on-version-tags
+      - deploy_snapshots:
+          <<: *after-platform-builds
+          <<: *on-master
+          # <<: *on-any-branch
+      - deploy_releases:
+          <<: *after-platform-builds
+          <<: *on-version-tags
 
   nightly:
     triggers:
