@@ -98,8 +98,8 @@ jobs:
     steps:
       - build-steps:
           platform: debian
-          build_params: DEBUG=1
-          test_params: DEBUG=1
+          build_params: VALGRIND=1
+          test_params: VALGRIND=1
           getredis_params: --valgrind
 
   platform-build:
@@ -239,8 +239,8 @@ workflows:
           platform: xenial
           <<: *platform-build-defs
       - valgrind:
-          <<: *on-version-tags
-          # <<: *on-any-branch
+          #@@ <<: *on-version-tags
+          <<: *on-any-branch
       - macos:
           <<: *on-version-tags
           # <<: *on-any-branch
