@@ -1,4 +1,12 @@
 
+ifeq ($(VG),1)
+override VALGRIND:=1
+endif
+
+ifeq ($(VALGRIND),1)
+override DEBUG:=1
+endif
+
 ROOT=.
 include deps/readies/mk/main
 
@@ -11,22 +19,23 @@ make setup      # install packages required for build
 make fetch      # download and prepare dependant modules (i.e., python, libevent)
 
 make build
-  DEBUG=1       # build debug variant
-  VARIANT=name
-  WITHPYTHON=0  # build without embedded Python interpreter
-  DEPS=1        # also build dependant modules
-make clean      # remove binary files
-  ALL=1         # remove binary directories
-  DEPS=1        # also clean dependant modules
+  DEBUG=1         # build debug variant
+  VG|VALGRIND=1   # build with VALGRIND (implies DEBUG=1)
+  VARIANT=name    # build as variant `name`
+  WITHPYTHON=0    # build without embedded Python interpreter
+  DEPS=1          # also build dependant modules
+make clean        # remove binary files
+  ALL=1           # remove binary directories
+  DEPS=1          # also clean dependant modules
 
-make deps       # build dependant modules
-make libevent   # build libevent
-make hiredis    # build hiredis
-make cpython    # build cpython
-make all        # build all libraries and packages
+make deps         # build dependant modules
+make libevent     # build libevent
+make hiredis      # build hiredis
+make cpython      # build cpython
+make all          # build all libraries and packages
 
 make test          # run tests
-  VGD=1            # run tests with Valgrind
+  VG|VALGRIND=1    # run tests with Valgrind
   TEST=test        # run specific `test` with Python debugger
   TEST_ARGS=args   # additional RLTest arguments
   GDB=1            # (with TEST=...) run with GDB
@@ -121,14 +130,18 @@ CC_FLAGS += \
 TARGET=$(BINROOT)/redisgears.so
 TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
 
+ifeq ($(VALGRIND),1)
+CC_FLAGS += -DVALGRIND
+endif
+
 ifeq ($(DEBUG),1)
-CC_FLAGS += -g -O0 -DVALGRIND
+CC_FLAGS += -g -O0
 LD_FLAGS += -g
 else
 CC_FLAGS += -O2 -Wno-unused-result
 endif
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 LD_FLAGS += \
 	-framework CoreFoundation \
 	-undefined dynamic_lookup
@@ -158,7 +171,7 @@ ifeq ($(wildcard $(LIBPYTHON)),)
 MISSING_DEPS += $(LIBPYTHON)
 endif
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 LD_FLAGS += \
 	$(GETTEXT_PREFIX)/lib/libintl.a \
 	-liconv
@@ -174,7 +187,7 @@ ifeq ($(SHOW_LD_LIBS),1)
 LD_FLAGS += -Wl,-t
 endif
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 EMBEDDED_LIBS += $(LIBEVENT) $(HIREDIS)
 endif
 
@@ -247,7 +260,7 @@ $(eval $(call build_deps_args,snapshot))
 
 #----------------------------------------------------------------------------------------------
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
 EMBEDDED_LIBS_FLAGS=\
@@ -263,7 +276,7 @@ $(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o $(BINDIR)/snapsho
 	$(SHOW)mkdir -p $(dir $@)/snapshot
 	$(SHOW)$(CC) -shared -o $(dir $@)/snapshot/$(notdir $@) $(OBJECTS) $(BINDIR)/snapshot-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 ifneq ($(DEBUG),1)
-ifneq ($(OS),macosx)
+ifneq ($(OS),macos)
 	$(SHOW)$(STRIP) $@
 	$(SHOW)$(STRIP) $(dir $@)/snapshot/$(notdir $@)
 endif
@@ -394,7 +407,7 @@ ifeq ($(GDB),1)
 RLTEST_GDB=-i
 endif
 
-ifeq ($(VGD),1)
+ifeq ($(VALGRIND),1)
 TEST_FLAGS += VALGRIND=1
 endif
 
