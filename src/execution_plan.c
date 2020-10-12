@@ -1309,7 +1309,11 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         }
         ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
         ectx.actualPlaceHolder = &step->accumulate.accumulator;
-        step->accumulate.accumulator = step->accumulate.accumulate(&ectx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg);
+        Record* accumulator = step->accumulate.accumulate(&ectx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg);
+        if(accumulator != &DummyRecord){
+            // no async we can set the accumulator
+            step->accumulate.accumulator = accumulator;
+        }
         if(ectx.err){
             if(step->accumulate.accumulator){
                 RedisGears_FreeRecord(step->accumulate.accumulator);
@@ -1337,7 +1341,8 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 	if(!step->accumulateByKey.accumulators){
 	    return NULL;
 	}
-	while((record = ExecutionPlan_NextRecord(ep, step->prev, rctx))){
+	record = ExecutionPlan_NextRecord(ep, step->prev, rctx);
+	if(record){
         START_TIMER;
 		if(record == &StopRecord || record == &WaitRecord){
 			goto end;
@@ -1352,11 +1357,18 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		Record* accumulator = NULL;
 		Gears_dictEntry *entry = Gears_dictFind(step->accumulateByKey.accumulators, key);
 		Record* keyRecord = NULL;
+		bool addKeyRecordToDict;
 		if(entry){
 			keyRecord = Gears_dictGetVal(entry);
 			accumulator = RedisGears_KeyRecordGetVal(keyRecord);
+			addKeyRecordToDict = false;
+		}else{
+            keyRecord = RedisGears_KeyRecordCreate();
+            RedisGears_KeyRecordSetKey(keyRecord, RG_STRDUP(key), strlen(key));
+            addKeyRecordToDict = true;
 		}
 		ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
+		ectx.actualPlaceHolder = &(((KeyRecord*)keyRecord)->record);
 		accumulator = step->accumulateByKey.accumulate(&ectx, key, accumulator, val, step->accumulate.stepArg.stepArg);
 		if(ectx.err){
 		    if(accumulator){
@@ -1371,15 +1383,16 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
             record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
             goto end;
 		}
-		if(!keyRecord){
-			keyRecord = RedisGears_KeyRecordCreate();
-			RedisGears_KeyRecordSetKey(keyRecord, RG_STRDUP(key), strlen(key));
+		if(addKeyRecordToDict){
 			RedisModule_Assert(Gears_dictFetchValue(step->accumulateByKey.accumulators, key) == NULL);
 			Gears_dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
 		}
-		RedisGears_KeyRecordSetVal(keyRecord, accumulator);
+		if(accumulator != &DummyRecord){
+		    RedisGears_KeyRecordSetVal(keyRecord, accumulator);
+		}
 		RedisGears_FreeRecord(record);
-    	ADD_DURATION(step->executionDuration);
+		record = &DummyRecord; // we will get the next record or hold
+    	goto end;
 	}
 	START_TIMER;
     if(!step->accumulateByKey.iter){

@@ -599,6 +599,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
         maxSize = 1000;
         break;
     case ACCUMULATE:
+    case ACCUMULATE_BY_KEY:
         maxSize = 1;
         break;
     default:

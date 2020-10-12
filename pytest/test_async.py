@@ -595,3 +595,68 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     except Exception as e:
         print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
+
+def testSimpleAsyncOnAggregateBy(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+fdata = None
+
+def unbc(r):
+    global fdata
+    if fdata:
+        fdata[1].continueRun(fdata[0] + 1)
+        fdata = None
+        return 1
+    return 0
+
+def doGroupBy(k, a, r):
+    global fdata
+    fdata = (a if a else 0, BlockHolder(gearsFuture()))
+    return fdata[1].bc
+
+def toDict(a, r):
+    if a == None:
+        a = {}
+    currVal = a.get(r['key'], 0)
+    a[r['key']] = currVal + r['value']
+    return a
+
+GB('CommandReader').flatmap(lambda x: [int(a) for a in x[1:]]).groupby(lambda x: x, doGroupBy).collect().accumulate(toDict).register(trigger='block')
+GB('CommandReader').map(unbc).register(trigger='unblock')
+        '''
+
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    def Block():
+        res = env.cmd('RG.TRIGGER', 'block', '1', '1', '1', '2', '2', '3', '3', '3', '3')
+        res = res[0]
+        d = eval(res)
+        env.assertEqual(d['3'], 4 * env.shardsCount)
+        env.assertEqual(d['1'], 3 * env.shardsCount)
+        env.assertEqual(d['2'], 2 * env.shardsCount)
+
+    try:
+        with Background(Block) as bk:
+            with TimeLimit(50):
+                while bk.isAlive:
+                    conn.execute_command('RG.TRIGGER', 'unblock')
+                    time.sleep(0.1)
+    except Exception as e:
+        print(e)
+        env.assertTrue(False, message='Failed waiting to reach unblock')

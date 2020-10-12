@@ -88,6 +88,7 @@ typedef struct PythonThreadCtx{
     ExecutionPlan* createdExecution;
     DoneCallbackFunction doneFunction;
     PythonSessionCtx* currSession;
+    ExecutionCtx* currEctx;
 }PythonThreadCtx;
 
 /* default onDone function */
@@ -759,6 +760,18 @@ static PythonThreadCtx* GetPythonThreadCtx(){
 bool RedisGearsPy_IsLockAcquired(){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     return ptctx->lockCounter > 0;
+}
+
+ExecutionCtx* RedisGearsPy_SetCurrExecutionCtx(ExecutionCtx* currEctx){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    ExecutionCtx* ret = ptctx->currEctx;
+    ptctx->currEctx = currEctx;
+    return ret;
+}
+
+void RedisGearsPy_UnSetCurrExecutionCtx(ExecutionCtx* oldEctx){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    ptctx->currEctx = oldEctx;
 }
 
 PythonSessionCtx* RedisGearsPy_Lock(PythonSessionCtx* currSession){
@@ -1691,9 +1704,25 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
         return NULL;
     }
 
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(!ptctx->currEctx){
+        PyErr_SetString(GearsError, "Future object can only be created inside certion execution steps");
+        return NULL;
+    }
+
+    char* err = NULL;
+    Record *async = RedisGears_AsyncRecordCreate(ptctx->currEctx, &err);
+    if(!async){
+        if(!err){
+            err = RG_STRDUP("Failed creating async record");
+        }
+        PyErr_SetString(GearsError, err);
+        RG_FREE(err);
+        return NULL;
+    }
+
     PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
-    pyfuture->asyncRecord = NULL;
-    pyfuture->continueType = false;
+    pyfuture->asyncRecord = async;
     return (PyObject*)pyfuture;
 }
 
@@ -3461,6 +3490,7 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
     RedisModule_Assert(sctx);
 
     void* old = RedisGearsPy_Lock(sctx);
+    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3472,29 +3502,19 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
     if(!ret){
         fetchPyError(rctx);
 
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         return RedisGears_FilterSuccess;
     }
 
     if(PyObject_TypeCheck(ret, &PyFutureType)){
-        char* err = NULL;
-        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
-        if(!async){
-            if(!err){
-                err = RG_STRDUP("Failed creating async record");
-            }
-            RedisGears_SetError(rctx, err);
-            Py_DECREF(ret);
-            RedisGearsPy_Unlock(old);
-            return RedisGears_FilterSuccess;
-        }
         PyFuture* future = (PyFuture*)ret;
-        future->asyncRecord = async;
         future->continueType = ContinueType_Foreach;
         // no need to free the original record because the async record took the ownership on it
 
         // we need to free the future as we do not return it
         Py_DECREF(ret);
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         return RedisGears_FilterHold;
     }
@@ -3504,6 +3524,7 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
     	Py_DECREF(ret);
     }
 
+    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
     RedisGearsPy_Unlock(old);
     return RedisGears_FilterSuccess;
 }
@@ -3514,6 +3535,7 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
     RedisModule_Assert(sctx);
 
     void* old = RedisGearsPy_Lock(sctx);
+    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
 
 	PyObject* pArgs = PyTuple_New(3);
 	PyObject* callback = arg;
@@ -3521,9 +3543,9 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	PyObject* keyPyStr = PyUnicode_FromString(key);
 	PyObjRecordSet(r, NULL);
 	PyObject* oldAccumulateObj = Py_None;
-	Py_INCREF(oldAccumulateObj);
 	if(!accumulate){
 		accumulate = PyObjRecordCreate();
+		Py_INCREF(oldAccumulateObj);
 	}else{
 		oldAccumulateObj = PyObjRecordGet(accumulate);
 	}
@@ -3535,13 +3557,27 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	if(!newAccumulateObj){
 	    fetchPyError(rctx);
 
+	    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
 	    RedisGearsPy_Unlock(old);
 		RedisGears_FreeRecord(accumulate);
         RedisGears_FreeRecord(r);
 		return NULL;
 	}
+
+	if(PyObject_TypeCheck(newAccumulateObj, &PyFutureType)){
+        PyFuture* future = (PyFuture*)newAccumulateObj;
+        future->continueType = ContinueType_Default;
+        Py_DECREF(newAccumulateObj);
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
+        RedisGearsPy_Unlock(old);
+        RedisGears_FreeRecord(accumulate);
+        RedisGears_FreeRecord(r);
+        return &DummyRecord;
+    }
+
 	PyObjRecordSet(accumulate, newAccumulateObj);
 
+	RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
 	RedisGearsPy_Unlock(old);
     RedisGears_FreeRecord(r);
 	return accumulate;
@@ -3553,6 +3589,7 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     RedisModule_Assert(sctx);
 
     void* old = RedisGearsPy_Lock(sctx);
+    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
 
     PyObject* pArgs = PyTuple_New(2);
     PyObject* callback = arg;
@@ -3574,34 +3611,25 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     if(!newAccumulateObj){
         fetchPyError(rctx);
 
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         RedisGears_FreeRecord(accumulate);
         return NULL;
     }
 
     if(PyObject_TypeCheck(newAccumulateObj, &PyFutureType)){
-        char* err = NULL;
-        RedisGears_FreeRecord(accumulate);
-        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
-        if(!async){
-            if(!err){
-                err = RG_STRDUP("Failed creating async record");
-            }
-            RedisGears_SetError(rctx, err);
-            Py_DECREF(newAccumulateObj);
-            RedisGearsPy_Unlock(old);
-            return NULL;
-        }
         PyFuture* future = (PyFuture*)newAccumulateObj;
-        future->asyncRecord = async;
         future->continueType = ContinueType_Default;
         Py_DECREF(newAccumulateObj);
+        RedisGears_FreeRecord(accumulate);
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         return &DummyRecord;
     }
 
     PyObjRecordSet(accumulate, newAccumulateObj);
 
+    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
     RedisGearsPy_Unlock(old);
     return accumulate;
 }
@@ -3613,6 +3641,7 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     RedisModule_Assert(sctx);
 
     void* old = RedisGearsPy_Lock(sctx);
+    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3624,34 +3653,25 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     if(!newObj){
         fetchPyError(rctx);
 
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         RedisGears_FreeRecord(record);
         return NULL;
     }
 
     if(PyObject_TypeCheck(newObj, &PyFutureType)){
-        char* err = NULL;
-        RedisGears_FreeRecord(record);
-        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
-        if(!async){
-            if(!err){
-                err = RG_STRDUP("Failed creating async record");
-            }
-            RedisGears_SetError(rctx, err);
-            Py_DECREF(newObj);
-            RedisGearsPy_Unlock(old);
-            return NULL;
-        }
         PyFuture* future = (PyFuture*)newObj;
-        future->asyncRecord = async;
         future->continueType = ContinueType_Default;
         Py_DECREF(newObj);
+        RedisGears_FreeRecord(record);
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         return &DummyRecord;
     }
 
     PyObjRecordSet(record, newObj);
 
+    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
     RedisGearsPy_Unlock(old);
     return record;
 }
@@ -3664,6 +3684,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     RedisModule_Assert(sctx);
 
     void* old = RedisGearsPy_Lock(sctx);
+    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3675,28 +3696,17 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     if(!newObj){
         fetchPyError(rctx);
 
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         RedisGears_FreeRecord(record);
         return NULL;
     }if(PyObject_TypeCheck(newObj, &PyFutureType)){
-        char* err = NULL;
-        RedisGears_FreeRecord(record);
-        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
-        if(!async){
-            if(!err){
-                err = RG_STRDUP("Failed creating async record");
-            }
-            RedisGears_SetError(rctx, err);
-
-            Py_DECREF(newObj);
-            RedisGearsPy_Unlock(old);
-            return NULL;
-        }
         PyFuture* future = (PyFuture*)newObj;
-        future->asyncRecord = async;
         future->continueType = ContinueType_Flat;
 
+        RedisGears_FreeRecord(record);
         Py_DECREF(newObj);
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         return &DummyRecord;
     }else if(PyList_Check(newObj)){
@@ -3715,6 +3725,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
         PyObjRecordSet(record, newObj);
     }
 
+    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
     RedisGearsPy_Unlock(old);
     return record;
 }
@@ -3726,6 +3737,7 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
     RedisModule_Assert(sctx);
 
     void* old = RedisGearsPy_Lock(sctx);
+    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3737,29 +3749,19 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
     if(!ret){
         fetchPyError(rctx);
 
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         return RedisGears_FilterFailed;
     }
 
     if(PyObject_TypeCheck(ret, &PyFutureType)){
-        char* err = NULL;
-        Record *async = RedisGears_AsyncRecordCreate(rctx, &err);
-        if(!async){
-            if(!err){
-                err = RG_STRDUP("Failed creating async record");
-            }
-            RedisGears_SetError(rctx, err);
-            Py_DECREF(ret);
-            RedisGearsPy_Unlock(old);
-            return RedisGears_FilterFailed;
-        }
         PyFuture* future = (PyFuture*)ret;
-        future->asyncRecord = async;
         future->continueType = ContinueType_Filter;
         // no need to free the original record because the async record took the ownership on it
 
         // we need to free the future as we do not return it
         Py_DECREF(ret);
+        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
         return RedisGears_FilterHold;
     }
@@ -3768,6 +3770,7 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
 
     Py_DECREF(ret);
 
+    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
     RedisGearsPy_Unlock(old);
     return ret1? RedisGears_FilterSuccess : RedisGears_FilterFailed;
 }
