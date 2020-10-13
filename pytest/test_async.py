@@ -663,45 +663,6 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
 
 def testAsyncError(env):
     conn = getConnectionByEnv(env)
-    script = '''
-class BlockHolder:
-    def __init__(self, bc):
-        self.bc = bc
-
-    def __getstate__(self):
-        state = dict(self.__dict__)
-        state['bc'] = None
-        return state
-
-    def continueRun(self, r):
-        if self.bc:
-            self.bc.continueRun(r)
-
-fdata = None
-
-def unbc(r):
-    global fdata
-    if fdata:
-        fdata[1].continueRun(fdata[0] + 1)
-        fdata = None
-        return 1
-    return 0
-
-def doGroupBy(k, a, r):
-    global fdata
-    fdata = (a if a else 0, BlockHolder(gearsFuture()))
-    return fdata[1].bc
-
-def toDict(a, r):
-    if a == None:
-        a = {}
-    currVal = a.get(r['key'], 0)
-    a[r['key']] = currVal + r['value']
-    return a
-
-GB('CommandReader').flatmap(lambda x: [int(a) for a in x[1:]]).groupby(lambda x: x, doGroupBy).collect().accumulate(toDict).register(trigger='block')
-GB('CommandReader').map(unbc).register(trigger='unblock')
-        '''
 
     env.expect('RG.PYEXECUTE', 'gearsFuture()').error().contains('Future object can only be created inside certion execution steps')
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').repartition(lambda x: gearsFuture()).run()")[1][0]
@@ -709,3 +670,67 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
 
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').batchgroupby(lambda x: x, lambda k, l: gearsFuture()).run()")[1][0]
     env.assertContains('Future object can only be created inside certion execution steps', res)
+
+def testAsyncAwait(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import asyncio
+
+async def c(r):
+    await asyncio.sleep(0.1)
+    return r
+
+GB('ShardsIDReader').map(c).flatmap(c).foreach(c).filter(c).count().run()
+        '''
+
+    env.expect('RG.PYEXECUTE', script).equal([[str(env.shardsCount)], []])
+
+def testAsyncAwaitOnUnallowRepartitionStep(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import asyncio
+
+async def c(r):
+    await asyncio.sleep(0.1)
+    return r
+
+GB('ShardsIDReader').map(c).flatmap(c).foreach(c).filter(c).repartition(c).run()
+        '''
+
+    res = env.cmd('RG.PYEXECUTE', script)[1][0]
+    env.assertContains('coroutine are not allow on', res)
+
+def testAsyncAwaitOnUnallowReduceStep(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import asyncio
+
+async def c(r):
+    await asyncio.sleep(0.1)
+    return r
+
+async def reduce(k, l):
+    await asyncio.sleep(0.1)
+    return l
+
+GB('ShardsIDReader').map(c).flatmap(c).foreach(c).filter(c).batchgroupby(lambda x: x, reduce).run()
+        '''
+
+    res = env.cmd('RG.PYEXECUTE', script)[1][0]
+    env.assertContains('coroutine are not allow on', res)
+
+def testAsyncAwaitThatRaiseException(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import asyncio
+
+async def c(r):
+    await asyncio.sleep(0.1)
+    raise Exception('failed')
+    return r
+
+GB('ShardsIDReader').map(c).run()
+        '''
+
+    res = env.cmd('RG.PYEXECUTE', script)[1][0]
+    env.assertContains('failed', res)

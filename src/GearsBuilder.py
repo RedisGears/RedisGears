@@ -10,11 +10,22 @@ from redisgears import gearsFutureCtx as gearsFuture
 from redisgears import log
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
-
+import asyncio
+from threading import Thread
 
 globals()['str'] = str
 
 redisgears._saveGlobals()
+
+# starting event loop in another thread for async await support
+loop = asyncio.new_event_loop()
+
+def f(loop):
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+t = Thread(target=f, args=(loop,))
+t.start()
 
 def createKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator=None):
     '''
@@ -190,6 +201,19 @@ def genDeprecated(deprecatedName, name, target):
         log('%s is deprecated, use %s instead' % (str(deprecatedName), str(name)), level='warning')
         return target(*argc, **nargs)
     globals()[deprecatedName] = method
+    
+def runCoroutine(cr, f):
+    async def runInternal():
+        try:
+            res = await cr
+        except Exception as e:
+            try:
+                f.continueFailed(e)
+            except Exception as e1:
+                log(str(e1))
+            return
+        f.continueRun(res)
+    asyncio.run_coroutine_threadsafe(runInternal(), loop)
 
 genDeprecated('Log', 'log', log)
 genDeprecated('ConfigGet', 'configGet', configGet)
