@@ -22,6 +22,9 @@ commands:
       test_params:
         type: string
         default: ""
+      getredis_params:
+        type: string
+        default: ""
     steps:
       - checkout
       - run:
@@ -29,7 +32,13 @@ commands:
           command: git submodule update --init --recursive
       - run:
           name: System setup
-          command: BREW_NO_UPDATE=1 python system-setup.py
+          command: |
+            ./deps/readies/bin/getpy2
+            BREW_NO_UPDATE=1 python2 system-setup.py
+          no_output_timeout: 20m
+      - run:
+          name: Install Redis
+          command: python2 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
@@ -38,6 +47,7 @@ commands:
       - run:
           name: Test
           command: make test <<parameters.test_params>>
+          no_output_timeout: 30m
       - store_artifacts:
           path: pytest/logs
 
@@ -77,22 +87,20 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
       - build-steps:
           platform: debian
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
-      - run:
-          name: Build Redis for Valgrind
-          command: cd ..; git clone https://github.com/antirez/redis.git; cd redis; git checkout 6.0.1; make valgrind; make install
       - build-steps:
           platform: debian
-          build_params: DEBUG=1
-          test_params: DEBUG=1
+          build_params: VALGRIND=1
+          test_params: VALGRIND=1
+          getredis_params: --valgrind
 
   platform-build:
     parameters:
@@ -111,7 +119,7 @@ jobs:
       - run:
           name: Fix macOS setup
           command: |
-            brew update || true
+            # brew update || true
             # workaround for ramp pack failure
             sudo mkdir -p /var/opt/redislabs
             sudo chmod 777 /var/opt/redislabs
@@ -139,7 +147,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
@@ -152,7 +160,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: redisfab/rmbuilder:6.0.1-x64-buster
+      - image: redisfab/rmbuilder:6.0.7-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
@@ -232,7 +240,7 @@ workflows:
           <<: *platform-build-defs
       - valgrind:
           <<: *on-version-tags
-        #   <<: *on-any-branch
+          # <<: *on-any-branch
       - macos:
           <<: *on-version-tags
           # <<: *on-any-branch

@@ -11,6 +11,7 @@
 #include "utils/dict.h"
 #include "redismodule.h"
 #include <stdio.h>
+#include <stdbool.h>
 
 #if defined(DEBUG) || !defined(NDEBUG)
 #include "readies/cetara/diag/gdb.h"
