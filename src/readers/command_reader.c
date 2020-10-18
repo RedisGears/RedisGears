@@ -380,48 +380,33 @@ typedef enum RctxType{
     RctxType_BlockedClient, RctxType_Context
 }RctxType;
 
-typedef struct CommandPD{
-    union{
-        RedisModuleCtx* ctx;
-        RedisModuleBlockedClient* bc;
-    }rctx;
-    RctxType rctxType;
-    CommandReaderTriggerCtx* crtCtx;
-}CommandPD;
-
-static CommandPD* CommandPD_Create(RedisModuleCtx* ctx, CommandReaderTriggerCtx* crtCtx){
-    CommandPD* pd = RG_ALLOC(sizeof(*pd));
-    pd->crtCtx = CommandReaderTriggerCtx_GetShallowCopy(crtCtx);
-    if(pd->crtCtx->mode == ExecutionModeSync){
-        pd->rctx.ctx = ctx;
-        pd->rctxType = RctxType_Context;
+static void CommandReader_Reply(ExecutionPlan* ep, RedisModuleCtx* ctx){
+    long long errorsLen = RedisGears_GetErrorsLen(ep);
+    if(errorsLen > 0){
+        Record* r = RedisGears_GetError(ep, 0);
+        RedisModule_Assert(RedisGears_RecordGetType(r) == errorRecordType);
+        const char* lastError = RedisGears_StringRecordGet(r, NULL);
+        RedisModule_ReplyWithError(ctx, lastError);
     }else{
-        pd->rctx.bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
-        pd->rctxType = RctxType_BlockedClient;
+        Command_ReturnResults(ep, ctx);
     }
-    return pd;
 }
 
-static void CommandPD_Free(CommandPD* pd){
-    CommandReaderTriggerCtx_Free(pd->crtCtx);
-    RG_FREE(pd);
+static void CommandReader_OnDoneReply(ExecutionPlan* ep, void* privateData){
+    RedisModuleBlockedClient* bc = privateData;
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(bc);
+    CommandReader_Reply(ep, ctx);
+    RedisModule_UnblockClient(bc, NULL);
+    RedisModule_FreeThreadSafeContext(ctx);
+    RedisGears_DropExecution(ep);
 }
 
 static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
-    RedisModuleCtx* rctx;
-    CommandPD* pd = privateData;
-    CommandReaderTriggerCtx* crtCtx = pd->crtCtx;
-    if(pd->rctxType == RctxType_BlockedClient){
-        rctx = RedisModule_GetThreadSafeContext(pd->rctx.bc);
-    }else{
-        rctx = pd->rctx.ctx;
-    }
+    CommandReaderTriggerCtx* crtCtx = privateData;
 
     long long errorsLen = RedisGears_GetErrorsLen(ep);
 
-    if(EPIsFlagOn(ep, EFIsLocal) && crtCtx->mode != ExecutionModeSync){
-        Gears_dictDelete(crtCtx->pendingExections, ep->idStr);
-    }
+    Gears_dictDelete(crtCtx->pendingExections, ep->idStr);
 
     if(errorsLen > 0){
         ++crtCtx->numFailures;
@@ -431,23 +416,13 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
             RG_FREE(crtCtx->lastError);
         }
         crtCtx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
-        RedisModule_ReplyWithError(rctx, crtCtx->lastError);
     } else if(ep->status == ABORTED){
         ++crtCtx->numAborted;
-        Command_ReturnResults(ep, rctx);
     } else {
         ++crtCtx->numSuccess;
-        Command_ReturnResults(ep, rctx);
     }
 
-    if(pd->rctxType == RctxType_BlockedClient){
-        RedisModule_UnblockClient(pd->rctx.bc, NULL);
-        RedisModule_FreeThreadSafeContext(rctx);
-    }
-
-    RedisGears_DropExecution(ep);
-
-    CommandPD_Free(pd);
+    CommandReaderTriggerCtx_Free(crtCtx);
 }
 
 static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -467,17 +442,16 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         return REDISMODULE_OK;
     }
 
-    CommandPD* pd = CommandPD_Create(ctx, crtCtx);
-
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1);
-    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone, pd, crtCtx->wd, &err);
+    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
+                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), crtCtx->wd, &err);
+
+    ++crtCtx->numTriggered;
+
     if(!ep){
         // error accurred
         ++crtCtx->numAborted;
-        if(pd->rctxType == RctxType_BlockedClient){
-            RedisModule_AbortBlock(pd->rctx.bc);
-        }
         char* msg;
         rg_asprintf(&msg, "ERR Could not trigger execution, %s", err);
         if(err){
@@ -486,13 +460,18 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         RedisModule_ReplyWithError(ctx, msg);
         RG_FREE(msg);
         CommandReaderArgs_Free(args);
-        CommandPD_Free(pd);
-    }else{
-        ++crtCtx->numTriggered;
-        if(EPIsFlagOn(ep, EFIsLocal) && crtCtx->mode != ExecutionModeSync){
+        return REDISMODULE_OK;
+    }else if(EPIsFlagOn(ep, EFDone)){
+        CommandReader_Reply(ep, ctx);
+        RedisGears_DropExecution(ep);
+    } else {
+        if(EPIsFlagOn(ep, EFIsLocal)){
             Gears_dictAdd(crtCtx->pendingExections, ep->idStr, NULL);
         }
+        RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
+        RedisGears_AddOnDoneCallback(ep, CommandReader_OnDoneReply, bc);
     }
+
     return REDISMODULE_OK;
 }
 

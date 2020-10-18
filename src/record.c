@@ -1,64 +1,20 @@
 #include "utils/arr_rm_alloc.h"
 #include "utils/dict.h"
 #include "record.h"
+#include "common.h"
 
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "execution_plan.h"
 #ifdef WITHPYTHON
 #include "redisgears_python.h"
 #endif
 
-typedef struct RecordType{
-    size_t id;
-    char* name;
-    size_t size;
-    int (*sendReply)(Record* record, RedisModuleCtx* rctx);
-    int (*serialize)(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base);
-    Record* (*deserialize)(ExecutionCtx* ctx, Gears_BufferReader* br);
-    void (*free)(Record* base);
-}RecordType;
-
-typedef struct KeysHandlerRecord{
-    Record base;
-    RedisModuleKey *keyHandler;
-}KeysHandlerRecord;
-
-typedef struct LongRecord{
-    Record base;
-    long num;
-}LongRecord;
-
-typedef struct DoubleRecord{
-    Record base;
-    double num;
-}DoubleRecord;
-
-typedef struct StringRecord{
-    Record base;
-    size_t len;
-    char* str;
-}StringRecord;
-
-typedef struct ListRecord{
-    Record base;
-    Record** records;
-}ListRecord;
-
-typedef struct KeyRecord{
-    Record base;
-    char* key;
-    size_t len;
-    Record* record;
-}KeyRecord;
-
-typedef struct HashSetRecord{
-    Record base;
-    Gears_dict* d;
-}HashSetRecord;
-
 RecordType StopRecordType;
 
 Record StopRecord;
+Record WaitRecord;
+Record DummyRecord;
 
 RecordType* listRecordType;
 RecordType* stringRecordType;
@@ -68,6 +24,7 @@ RecordType* doubleRecordType;
 RecordType* keyRecordType;
 RecordType* keysHandlerRecordType;
 RecordType* hashSetRecordType;
+RecordType* asyncRecordType;
 
 static RecordType** recordsTypes;
 
@@ -107,6 +64,36 @@ static void KeyRecord_Free(Record* base){
 static void KeysHandlerRecord_Free(Record* base){
     KeysHandlerRecord* record = (KeysHandlerRecord*)base;
     RedisModule_CloseKey(record->keyHandler);
+}
+
+void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
+    if(async->originRecord){
+        // if we have an original record and r is not NULL, i.e, true
+        // we need to continue with the original record.
+        if(r){
+            RG_FreeRecord(r);
+            r = async->originRecord;
+        }else{
+            r = &DummyRecord;
+        }
+    }
+    if(async->overidePlaceHolder){
+        *async->overidePlaceHolder = r;
+        *(async->rptx) = &DummyRecord;
+    }else{
+        *(async->rptx) = r;
+    }
+    ExecutionPlan_PendingCtxFree(async->pctx);
+    async->pctx = NULL;
+}
+
+static void AsyncRecord_Free(Record* base){
+    AsyncRecord* async = (AsyncRecord*)base;
+    if(async->pctx){
+#define ERROR_MSG "Async record did not called continue"
+        Record* error = RG_ErrorRecordCreate(RG_STRDUP(ERROR_MSG), strlen(ERROR_MSG));
+        RG_AsyncRecordContinueInternal(async, error);
+    }
 }
 
 static void HashSetRecord_Free(Record* base){
@@ -169,6 +156,11 @@ static int KeyRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record
 static int KeysHandlerRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     // todo: what we can do here is to read the key and create a serializable record
     RedisModule_Assert(false && "can not serialize key handler record");
+    return REDISMODULE_OK;
+}
+
+static int AsyncRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
+    RedisModule_Assert(false && "can not serialize async record");
     return REDISMODULE_OK;
 }
 
@@ -243,6 +235,11 @@ static Record* KeysHandlerRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferRead
     return NULL;
 }
 
+static Record* AsyncRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
+    RedisModule_Assert(false && "can not deserialize async record");
+    return NULL;
+}
+
 static Record* HashSetRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     Record* record = RedisGears_HashSetRecordCreate();
     size_t len = RedisGears_BRReadLong(br);
@@ -291,6 +288,11 @@ static int KeyRecord_SendReply(Record* r, RedisModuleCtx* rctx){
 
 static int KeysHandlerRecord_SendReply(Record* r, RedisModuleCtx* rctx){
     RedisModule_ReplyWithStringBuffer(rctx, "KEY HANDLER RECORD", strlen("KEY HANDLER RECORD"));
+    return REDISMODULE_OK;
+}
+
+static int AsyncRecord_SendReply(Record* base, RedisModuleCtx* rctx){
+    RedisModule_Assert(false); // can not reach here;
     return REDISMODULE_OK;
 }
 
@@ -404,10 +406,19 @@ void Record_Initialize(){
                                             HashSetRecord_Serialize,
                                             HashSetRecord_Deserialize,
                                             HashSetRecord_Free);
+
+    asyncRecordType = RG_RecordTypeCreate("AsyncRecord", sizeof(AsyncRecord),
+                                            AsyncRecord_SendReply,
+                                            AsyncRecord_Serialize,
+                                            AsyncRecord_Deserialize,
+                                            AsyncRecord_Free);
 }
 
 void RG_FreeRecord(Record* record){
     if(!record){
+        return;
+    }
+    if(record == &StopRecord || record == &WaitRecord || record == &DummyRecord){
         return;
     }
     record->type->free(record);
@@ -577,6 +588,50 @@ char** RG_HashSetRecordGetAllKeys(Record* base){
     }
     Gears_dictReleaseIterator(iter);
     return ret;
+}
+
+Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
+    if(!ectx->step){
+        *err = RG_STRDUP("Can not create gearsFuture outside of step");
+        return NULL;
+    }
+    size_t maxSize;
+    switch(ectx->step->type){
+    case MAP:
+    case FILTER:
+    case FOREACH:
+        maxSize = 1000;
+        break;
+    case ACCUMULATE:
+    case ACCUMULATE_BY_KEY:
+        maxSize = 1;
+        break;
+    default:
+        *err = RG_STRDUP("Step does not support async");
+        return NULL;
+    }
+
+    AsyncRecord* ret = (AsyncRecord*)RG_RecordCreate(asyncRecordType);
+    if(!ectx->ep->pendingCtxs[ectx->step->stepId]){
+        // todo: change max to match the step type
+        ectx->ep->pendingCtxs[ectx->step->stepId] = ExecutionPlan_PendingCtxCreate(ectx->ep, ectx->step, maxSize);
+    }
+    ret->pctx = ExecutionPlan_PendingCtxGetShallowCopy(ectx->ep->pendingCtxs[ectx->step->stepId]);
+
+    // place holder for the real value
+    Gears_listAddNodeHead(ret->pctx->records, NULL);
+
+    // save pointer to set the real value
+    ret->rptx = (Record**)(&(Gears_listFirst(ret->pctx->records)->value));
+    ret->overidePlaceHolder = ectx->actualPlaceHolder;
+    ret->originRecord = ectx->originRecord;
+    return &ret->base;
+}
+
+void RG_AsyncRecordContinue(Record* asyncRecord, Record* r){
+    AsyncRecord* async = (AsyncRecord*)asyncRecord;
+    RG_AsyncRecordContinueInternal(async, r);
+    RG_FreeRecord(asyncRecord);
 }
 
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler){
