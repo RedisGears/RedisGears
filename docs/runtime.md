@@ -166,12 +166,12 @@ This function returns a `gearsFuture` object, which allows another thread/proces
 The `gearsFuture` object provides two control methods: `continueRun()` and `continueFailed()`. Both methods are thread-safe and can be called at any time to signal that the background processing has finished. `continueRun` signals success and its argument is a record for the main process. `continueFailed` reports a failure to the main process and its argument is a string describing the failure.
 
 Calling `gearsFuture()` is supported only from the context of the following operations:
-* map
-* flatmap
-* filter
-* foreach
-* aggregate
-* aggregateby
+* `map`
+* `flatmap`
+* `filter`
+* `foreach`
+* `aggregate`
+* `aggregateby`
 
 Any attempt to create a `gearsFuture` outside of those steps will results in exception.
 
