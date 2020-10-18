@@ -182,7 +182,7 @@ An attempt to create a `gearsFuture` object outside of the supported contexts wi
 ```
 
 ### gearsFuture with Python Async Await
-`gearsFuture` is also supported seamlessly with python async await, so it possible to do the following:
+`gearsFuture` is also integrated seamlessly with Python's async/await syntax, so it possible to do the following:
 
 ```python
 {{ include('runtime/async.py') }}
