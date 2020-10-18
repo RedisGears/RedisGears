@@ -173,7 +173,7 @@ Calling `gearsFuture()` is supported only from the context of the following oper
 * `aggregate`
 * `aggregateby`
 
-Any attempt to create a `gearsFuture` outside of those steps will results in exception.
+An attempt to create a `gearsFuture` object outside of the supported contexts will result in an exception.
 
 **Examples**
 
