@@ -161,7 +161,9 @@ _Arguments_
 ## gearsFuture
 The `gearsFuture()` function is imported to the runtime's environment by default.
 
-This function returns a `gearsFuture` object which indicates that the record was taken to be processed on another thread/process. By returning this object from the step operation, RedisGears knows that the execution needs to hold until the background processing will be finished/failed. The `gearsFuture` expose two functions, `continueRun` and `continueFailed`, to continue/failed the processing (those 2 are thread-safe and can be called immediately when the processing has done). `continueRun` gets the record to continue the processing with, while `continueFailed` get a string representation of the failure description.
+This function returns a `gearsFuture` object, which allows another thread/process to process the record. Returning this object from a step's operation tells RedisGears to suspend execution until background processing had finished/failed.
+
+The `gearsFuture` object provides two control methods: `continueRun()` and `continueFailed()`. Both methods are thread-safe and can be called at any time to signal that the background processing has finished. `continueRun` signals success and its argument is a record for the main process. `continueFailed` reports a failure to the main process and its argument is a string describing the failure.
 
 The following steps support `gearsFuture()`:
 * map
