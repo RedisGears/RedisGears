@@ -1,8 +1,0 @@
-#!/bin/bash
-
-[[ -e /opt/view/rlec/ORACLE.db_exist ]] && exit 0
-
-TIMEOUT=120 /opt/recipe/oracle/rs/wait-for-oracle || exit 1
-
-/opt/recipe/oracle/rs/create-db
-touch /opt/view/rlec/ORACLE.db_exist
