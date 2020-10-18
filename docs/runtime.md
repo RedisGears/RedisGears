@@ -157,3 +157,21 @@ _Arguments_
 ```python
 {{ include('runtime/log.py') }}
 ```
+
+## gearsFuture
+The `gearsFuture()` function is imported to the runtime's environment by default.
+
+This function returns a `gearsFuture` object which indicates that the record was taken to be processed on another thread/process. By returning this object from the step operation, RedisGears knows that the execution needs to hold until the background processing will be finished/failed. The `gearsFuture` expose to functions, `continueRun` and `continueFailed`, to continue/failed the processing (those 2 are thread-safe and can be called immediately when the processing has done). `continueRun` gets the record to continue the processing with, while `continueFailed` get a string representation of the failure description.
+
+**Examples**
+
+```python
+{{ include('runtime/gearsFuture.py') }}
+```
+
+### gearsFuture with Python Async Await
+`gearsFuture` is also supported seamlessly with python async await, so it possible to do the following:
+
+```python
+{{ include('runtime/async.py') }}
+```
