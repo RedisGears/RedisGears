@@ -1,6 +1,0 @@
-#!/bin/bash
-
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-
-export PYTHONPATH=${PYTHONPATH}:/opt/redislabs/lib/cnm:/opt/redislabs/lib/cnm/python
-/opt/redislabs/bin/python2.7 -O $HERE/redis-conn.py "${@}"

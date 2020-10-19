@@ -1,7 +1,0 @@
-#!/bin/bash
-
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-cd $HERE/../rs
-./install-oracle-docker
-cp /tmp/oracle.ip $RLEC/rlec/ORACLE.ip
-cp /tmp/oracle.cid $RLEC/rlec/ORACLE.cid
