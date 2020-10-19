@@ -88,7 +88,7 @@ Specifically, the example shows how expired key names can be output to the log.
 {{ include('examples/notification-processing.py') }}
 ```
 
-## Distributed Monte Carlo Estimation of Pi's Value
+## Distributed Monte Carlo to Estimate _pi_
 
 Estimate _pi_ by throwing darts at a carefully-constructed dartboard.
 
