@@ -19,6 +19,12 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 !!! info "Further reference"
     Refer to the [cluster's README file](https://github.com/RedisGears/RedisGears/blob/master/recipes/cluster/README.md) for information on configuring the Dockerized cluster container.
 
+## Download
+
+A pre-compiled version can be downloaded from [RedisLabs download center](https://redislabs.com/download-center/modules/).
+
+**Notice** in order to support running Python based recipies on enviorment without internet connection you should also download the relevant `Redisgears Dependencies`.
+
 ## Building
 
 ### Prerequisites
@@ -78,7 +84,7 @@ make fetch
 make all
 ```
 
-You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbolic link to it in the main directory (called `redisgears.os`).
+You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbolic link to it in the main directory (called `redisgears.so`).
 
 ## Loading
 To load the module on the same server it was compiled on, use the `--loadmodule` command line switch, the `loadmodule` configuration directive, or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
@@ -88,7 +94,11 @@ For example, to load the module into a local Redis server after you've [built](#
 redis-server --loadmodule ./redisgears.io
 ```
 
+<<<<<<< HEAD
 If you've compiled the module on a different server than the one loading it, copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>`, should not be changed.
+=======
+If you compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>` should not be changed.
+>>>>>>> master
 
 ## Testing
 Tests are written in Python and use the [RLTest](https://github.com/RedisLabsModules/RLTest) library.

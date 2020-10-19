@@ -1,3 +1,0 @@
-#!/bin/bash
-
-/opt/view/RedisGears/recipes/write_behind/oracle/rlec-docker/setup

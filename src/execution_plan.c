@@ -358,6 +358,10 @@ static int FlatExecutionPlan_SerializeStep(FlatExecutionStep* step, Gears_Buffer
     return FlatExecutionPlan_SerializeStepArg(type, step->bStep.arg.stepArg, bw, err);
 }
 
+static inline void FlatExecutionPlan_SerializeID(FlatExecutionPlan* fep, Gears_BufferWriter* bw) {
+    RedisGears_BWWriteBuffer(bw, fep->id, ID_LEN);
+}
+
 static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, size_t *len, char** err){
     if(fep->serializedFep){
         // notice that this is not only an optimization,
@@ -385,7 +389,7 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
     }
 
     // serialize FEP id
-    RedisGears_BWWriteBuffer(&bw, fep->id, ID_LEN);
+    FlatExecutionPlan_SerializeID(fep, &bw);
     if(fep->desc){
         RedisGears_BWWriteLong(&bw, 1); // has desc
         RedisGears_BWWriteString(&bw, fep->desc);
@@ -505,6 +509,13 @@ static int FlatExecutionPlan_DeserializeStep(FlatExecutionPlan* fep, FlatExecuti
     return REDISMODULE_OK;
 }
 
+static char* FlatExecutionPlan_DeserializeID(Gears_BufferReader *br) {
+    size_t len;
+    char* idBuff = RedisGears_BRReadBuffer(br, &len);
+    RedisModule_Assert(len == ID_LEN);
+    return idBuff;
+}
+
 static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const char* data, size_t dataLen, char** err, int encver){
     Gears_Buffer buff = {
             .buff = (char*)data,
@@ -525,9 +536,7 @@ static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const c
     }
 
     // read FEP id
-    size_t len;
-    char* idBuff = RedisGears_BRReadBuffer(&br, &len);
-    RedisModule_Assert(len == ID_LEN);
+    char* idBuff =FlatExecutionPlan_DeserializeID(&br);
     FlatExecutionPlan_SetID(ret, idBuff);
 
     long long hasDesc = RedisGears_BRReadLong(&br);
@@ -599,7 +608,7 @@ error:
 
 FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br, char** err, int encver){
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
-
+    
     bool PDExists = RedisGears_BRReadLong(br);
     if(PDExists){
         ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
@@ -642,8 +651,16 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     size_t len;
-    int res = FlatExecutionPlan_Serialize(&bw, ep->fep, NULL);
-    RedisModule_Assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
+    if(FEPIsFlagOn(ep->fep, FEFRegistered)) {
+        // Registered execution plan - serialize id and return.
+        RedisGears_BWWriteLong(&bw, 1);
+        FlatExecutionPlan_SerializeID(ep->fep, &bw);
+    } else {
+        RedisGears_BWWriteLong(&bw, 0); // Non Registered execution plan.
+        int res = FlatExecutionPlan_Serialize(&bw, ep->fep, NULL);
+        RedisModule_Assert(res == REDISMODULE_OK); // if we reached here execution must be serialized
+    }
+    
     RedisGears_BWWriteBuffer(&bw, ep->id, ID_LEN); // serialize execution id
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     readerStep->reader.r->serialize(readerStep->reader.r->ctx, &bw);
@@ -1507,11 +1524,19 @@ static void ExecutionPlan_RegisterForRun(ExecutionPlan* ep){
 
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep){
     Gears_dictAdd(epData.registeredFepDict, fep->id, fep);
+    // call the on registered callback if set
+    if(fep->onRegisteredStep.stepName){
+        RedisGears_FlatExecutionOnRegisteredCallback onRegistered = FlatExecutionOnRegisteredsMgmt_Get(fep->onRegisteredStep.stepName);
+        RedisModule_Assert(onRegistered);
+        onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
+    }
+    FEPTurnOnFlag(fep, FEFRegistered);
 }
 
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep){
     int res = Gears_dictDelete(epData.registeredFepDict, fep->id);
     RedisModule_Assert(res == DICT_OK);
+    FEPTurnOffFlag(fep, FEFRegistered);
 }
 
 static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears_ReaderCallbacks* callbacks, ExecutionMode mode, void* arg, char** err){
@@ -1523,13 +1548,6 @@ static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears
     // the registeredFepDict holds a weak pointer to the fep struct. It does not increase
     // the refcount and will be remove when the fep will be unregistered
     FlatExecutionPlan_AddToRegisterDict(fep);
-
-    // call the on registered callback if set
-    if(fep->onRegisteredStep.stepName){
-        RedisGears_FlatExecutionOnRegisteredCallback onRegistered = FlatExecutionOnRegisteredsMgmt_Get(fep->onRegisteredStep.stepName);
-        RedisModule_Assert(onRegistered);
-        onRegistered(fep, fep->onRegisteredStep.arg.stepArg);
-    }
     return REDISMODULE_OK;
 }
 
@@ -1665,6 +1683,8 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     ep->isPaused = true;
     ep->maxIdleTimerSet = false;
 
+    // Set if the execution plan is registered.
+    ep->registered = FEPIsFlagOn(fep, FEFRegistered)? true : false;
     return ep;
 }
 
@@ -1892,22 +1912,37 @@ static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const
     ExecutionPlan_UnregisterExecutionInternal(ctx, fep, abortPendind);
 }
 
+
 static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     Gears_Buffer buff = (Gears_Buffer){
         .buff = (char*)payload,
         .size = len,
         .cap = len,
     };
+    char* err = NULL;
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    char* err = NULL;
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
-    if(!fep){
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
-        if(err){
-            RG_FREE(err);
+    bool registered = RedisGears_BRReadLong(&br);
+    FlatExecutionPlan* fep;
+    if(registered) {
+        char *id = FlatExecutionPlan_DeserializeID(&br); 
+        fep = FlatExecutionPlan_FindId(id);
+        if(!fep) {
+            RedisModule_Log(ctx, "warning", "Execution plan with id=%s is marked as registered at shard : %s, but could not be found", id, sender_id);
+            return;
         }
-        return;
+        // Increase ref count.
+        fep = FlatExecutionPlan_ShallowCopy(fep);
+    }
+    else {
+        fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
+        if(!fep){
+            RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
+            if(err) {
+                RG_FREE(err);
+            }
+            return;
+        }
     }
     size_t idLen;
     char* eid = RedisGears_BRReadBuffer(&br, &idLen);
@@ -2619,6 +2654,7 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     res->desc = NULL;
     res->executionPoolSize = 0;
     res->serializedFep = NULL;
+    res->flags = 0;
     res->executionMaxIdleTime = GearsConfig_ExecutionMaxIdleTime();
     res->onExecutionStartStep = (FlatBasicStep){
             .stepName = NULL,
@@ -2939,11 +2975,13 @@ int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, 
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(it))) {
         ExecutionPlan* ep = Gears_dictGetVal(entry);
-		RedisModule_ReplyWithArray(ctx, 4);
+		RedisModule_ReplyWithArray(ctx, 6);
 		RedisModule_ReplyWithStringBuffer(ctx, "executionId", strlen("executionId"));
 		RedisModule_ReplyWithStringBuffer(ctx, ep->idStr, strlen(ep->idStr));
 		RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
         RedisModule_ReplyWithStringBuffer(ctx, statusesNames[ep->status], strlen(statusesNames[ep->status]));
+        RedisModule_ReplyWithStringBuffer(ctx, "registered", strlen("registered"));
+        RedisModule_ReplyWithLongLong(ctx, ep->registered);
 		++numOfEntries;
     }
     Gears_dictReleaseIterator(it);

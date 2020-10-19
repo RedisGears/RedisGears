@@ -4,7 +4,8 @@ import sys
 import os
 import argparse
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "deps/readies"))
+ROOT = HERE = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(ROOT, "deps/readies"))
 import paella
 
 #----------------------------------------------------------------------------------------------
@@ -57,13 +58,13 @@ class RedisGearsSetup(paella.Setup):
         self.install("libatomic file")
 
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
-        self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm ")
+        self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm --replacepkgs ")
 
         self.run("""
             dir=$(mktemp -d /tmp/tar.XXXXXX)
             (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
             rm -rf $dir
-            """)
+            """, output_on_error=True)
 
         # pip cannot build gevent on ARM
         self.install("python-gevent python-ujson")
@@ -110,9 +111,8 @@ class RedisGearsSetup(paella.Setup):
             make install
             cd $base
             rm -rf $dir
-            """)
+            """, output_on_error=True)
 
-        # self.install("llvm")
         self.install("zlib openssl readline coreutils libiconv")
         if not self.has_command("redis-server"):
             self.install("redis")
@@ -122,12 +122,13 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("pipenv gevent")
 
     def common_last(self):
+        self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest || true")
         # redis-py-cluster should be installed from git due to redis-py dependency
-        self.run("python -m pip uninstall -y ramp-packer RLTest")
-        self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
+        # self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
-        self.pip_install("jinja2")
+
+        self.pip_install("-r %s/deps/readies/paella/requirements.txt" % ROOT)
         self.pip_install("distro")
 
 #----------------------------------------------------------------------------------------------

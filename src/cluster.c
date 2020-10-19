@@ -14,8 +14,11 @@
 #include "config.h"
 #include <libevent.h>
 
+// forward declaration
+static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* b);
+
 typedef enum NodeStatus{
-    NodeStatus_Connected, NodeStatus_Disconnected, NodeStatus_Free
+    NodeStatus_Connected, NodeStatus_Disconnected, NodeStatus_HelloSent, NodeStatus_Free
 }NodeStatus;
 
 typedef struct Node{
@@ -33,6 +36,7 @@ typedef struct Node{
     bool isMe;
     NodeStatus status;
     struct event *reconnectEvent;
+    struct event *resendHelloMessage;
 }Node;
 
 Gears_dict* nodesMsgIds;
@@ -149,6 +153,20 @@ static void Cluster_ConnectToShard(Node* n){
     redisAsyncSetDisconnectCallback(c, Cluster_DisconnectCallback);
 }
 
+static void Cluster_ResendHelloMessage(evutil_socket_t s, short what, void *arg){
+    Node* n = arg;
+    if(n->status == NodeStatus_Disconnected){
+        // we will resent the hello request when reconnect
+        return;
+    }
+    if(n->status == NodeStatus_Free){
+        FreeNodeInternals(n);
+        return;
+    }
+    RedisModule_Log(NULL, "notice", "%s", "Resending hello request");
+    redisAsyncCommand(n->c, RG_HelloResponseArrived, n, "RG.HELLO");
+}
+
 static void Cluster_Reconnect(evutil_socket_t s, short what, void *arg){
     Node* n = arg;
     if(n->status == NodeStatus_Free){
@@ -176,6 +194,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .status = NodeStatus_Disconnected,
     };
     n->reconnectEvent = event_new(main_base, -1, 0, Cluster_Reconnect, n);
+    n->resendHelloMessage = event_new(main_base, -1, 0, Cluster_ResendHelloMessage, n);
     Gears_listSetFreeMethod(n->pendingMessages, SentMessages_Free);
     Gears_dictAdd(CurrCluster->nodes, n->id, n);
     if(strcmp(id, CurrCluster->myId) == 0){
@@ -228,13 +247,25 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
     if(!reply){
         return;
     }
-    RedisModule_Assert(reply->type == REDIS_REPLY_STRING);
+    Node* n = (Node*)b;
     if(!c->data){
         return;
     }
-    Node* n = (Node*)b;
+
     if(n->status == NodeStatus_Free){
         FreeNodeInternals(n);
+        return;
+    }
+
+    if(reply->type != REDIS_REPLY_STRING){
+        // we did not got a string reply
+        // the shard is probably not yet up.
+        // we will try again in one second.
+        RedisModule_Log(NULL, "warning", "%s", "Got bad hello response, will try again in 1 second");
+        struct timeval tv = {
+                .tv_sec = 1,
+        };
+        event_add(n->resendHelloMessage, &tv);
         return;
     }
 
@@ -296,6 +327,7 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
             redisAsyncCommand((redisAsyncContext*)c, NULL, NULL, "AUTH %s", n->password);
         }
         redisAsyncCommand((redisAsyncContext*)c, RG_HelloResponseArrived, n, "RG.HELLO");
+        n->status = NodeStatus_HelloSent;
     }
 }
 
@@ -655,7 +687,7 @@ const char* Cluster_GetMyHashTag(){
 
 uint16_t Gears_crc16(const char *buf, int len);
 
-static unsigned int keyHashSlot(char *key, int keylen) {
+static unsigned int keyHashSlot(const char *key, int keylen) {
     int s, e; /* start-end indexes of { and } */
 
     for (s = 0; s < keylen; s++)
@@ -676,12 +708,12 @@ static unsigned int keyHashSlot(char *key, int keylen) {
     return Gears_crc16(key+s+1,e-s-1) & 0x3FFF;
 }
 
-const char* Cluster_GetNodeIdByKey(char* key){
+const char* Cluster_GetNodeIdByKey(const char* key){
     unsigned int slot = keyHashSlot(key, strlen(key));
     return CurrCluster->slots[slot]->id;
 }
 
-bool Cluster_IsMyId(char* id){
+bool Cluster_IsMyId(const char* id){
 	return memcmp(CurrCluster->myId, id, REDISMODULE_NODE_ID_LEN) == 0;
 }
 

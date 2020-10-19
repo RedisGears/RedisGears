@@ -11,7 +11,7 @@ RedisGears supports several types of readers that operate on different types of 
 | [KeysOnlyReader](#keysonlyreader) | Redis keys | Yes | No |
 | [StreamReader](#streamreader) | Redis Stream messages | Yes | Yes |
 | [PythonReader](#pythonreader) | Arbitrary | Yes | No |
-| [ShardIDReader](#shardidreader) | Shard ID | Yes | No |
+| [ShardsIDReader](#shardsidreader) | Shard ID | Yes | No |
 | [CommandReader](#commandreader) | Command arguments | No | Yes |
 
 The following sections describe each reader.
@@ -168,7 +168,7 @@ A record is output for each message in the input Stream. The record is a diction
 
   * **key**: the Stream key name as string
   * **id**: the message's id in the Stream
-  * **value**: a python dictionary contains the message
+  * **value**: a Python dictionary containing the message's data
 
 All field-value pairs in the message's data are included as key-value pairs in the record under the _value_ key.
 
@@ -212,7 +212,7 @@ _Arguments_
 **_Event Mode_**
 
 ```python
-class GearsBuilder('StreamReader').run(prefix='*', batch=1, durration=0, onFailedPolicy='continue', onFailedRetryInterval=1, trimStream=True)
+class GearsBuilder('StreamReader').run(prefix='*', batch=1, duration=0, onFailedPolicy='continue', onFailedRetryInterval=1, trimStream=True)
 ```
 
 _Arguments_
