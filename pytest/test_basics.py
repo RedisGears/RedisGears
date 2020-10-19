@@ -695,3 +695,49 @@ def testWithMultiExec(env):
         env.assertTrue(True, message='Did not get error when running gear in multi exec')
     except Exception:
         env.assertTrue(True, message='Got error when running gear in multi exec')
+
+def testAggregateWithSameZeroValue(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'y', '2')
+    conn.execute_command('set', 'z', '3')
+
+    script = '''
+def SumMulLocal(a, r):
+    a['sum'] = a['sum'] + r
+    a['mul'] = a['mul'] * r
+    return a
+
+def SumMulGlobal(a, r):
+    a['sum'] = a['sum'] + r['sum']
+    a['mul'] = a['mul'] * r['mul']
+    return a
+
+GB().map(lambda x: int(x['value'])).aggregate({'sum':0, 'mul':1}, SumMulLocal, SumMulGlobal).flatmap(lambda r: [a for a in r.items()]).sort().run()
+    '''
+    res = env.expect('RG.PYEXECUTE', script).equal([["('mul', 6)", "('sum', 6)"], []])
+
+
+def testAggregateByWithSameZeroValue(env):
+    conn = getConnectionByEnv(env)
+    conn.execute_command('set', 'x1', '1')
+    conn.execute_command('set', 'x2', '2')
+    conn.execute_command('set', 'x3', '3')
+    conn.execute_command('set', 'y1', '1')
+    conn.execute_command('set', 'y2', '2')
+    conn.execute_command('set', 'y3', '3')
+
+    script = '''
+def SumMulLocal(k, a, r):
+    a['sum'] = a['sum'] + int(r['value'])
+    a['mul'] = a['mul'] * int(r['value'])
+    return a
+
+def SumMulGlobal(k, a, r):
+    a['sum'] = a['sum'] + r['sum']
+    a['mul'] = a['mul'] * r['mul']
+    return a
+
+GB().aggregateby(lambda r: r['key'][0], {'sum':0, 'mul':1}, SumMulLocal, SumMulGlobal).map(lambda x: str(x)).sort().run()
+    '''
+    env.expect('RG.PYEXECUTE', script).equal([["{'key': 'x', 'value': {'sum': 6, 'mul': 6}}", "{'key': 'y', 'value': {'sum': 6, 'mul': 6}}"], []])

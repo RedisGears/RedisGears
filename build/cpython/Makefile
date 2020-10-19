@@ -37,7 +37,7 @@ export CFLAGS=\
 	-Wno-nullability-completeness \
 	-Wno-expansion-to-defined
 
-ifeq ($(OS),macosx)
+ifeq ($(OS),macos)
 BINUTILS_PREFIX:=$(shell brew --prefix binutils)
 OBJCOPY:=$(BINUTILS_PREFIX)/bin/objcopy
 else
@@ -56,7 +56,7 @@ include $(MK)/rules
 $(TARGET): $(CONFIGURE_TARGET)
 	@echo Fixing $@ ...
 	$(SHOW)cp $< $@
-# ifeq ($(OS),macosx)
+# ifeq ($(OS),macos)
 # 	$(SHOW)cp $(BINDIR)/Python/pystate.o $(BINDIR)/
 # 	$(SHOW)$(OBJCOPY) --localize-symbol _PyGILState_Ensure --localize-symbol _PyGILState_Release $(BINDIR)/pystate.o
 # 	$(SHOW)ar rs $@ $(BINDIR)/pystate.o
