@@ -8,7 +8,7 @@
 [![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 <img src="docs/images/RedisGears.png" alt="logo" style="width: 2em; vertical-align: middle;"/> 
 
-RedisGears is a dynamic framework for data processing in Redis. RedisGears supports transaction, [batch](docs/glossary.md#batch-processing) and [event-driven](docs/glossary.md#event-processing) processing of Redis data. To use RedisGears, you write [functions](docs/functions.md) that describe how your data should be processed. You then submit this code to your Redis deployment for remote execution.
+RedisGears is a dynamic framework for data processing in Redis. RedisGears supports transaction, [batch](docs/glossary.md#batch-processing), and [event-driven](docs/glossary.md#event-processing) processing of Redis data. To use RedisGears, you write [functions](docs/functions.md) that describe how your data should be processed. You then submit this code to your Redis deployment for remote execution.
 
 As of v1.0.0, code for RedisGears must be written in Python. However, an internal C [APIs](glossary.md#api) exists and can be used by other Redis modules. Support for other languages is being planned.
 
