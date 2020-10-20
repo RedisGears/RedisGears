@@ -1744,7 +1744,7 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     if(!ptctx->currEctx){
-        PyErr_SetString(GearsError, "Future object can only be created inside certion execution steps");
+        PyErr_SetString(GearsError, "Future object can only be created inside certain execution steps");
         return NULL;
     }
 
@@ -3576,7 +3576,7 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
 
         RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
-        return RedisGears_FilterSuccess;
+        return RedisGears_StepSuccess;
     }
 
     if(PyObject_TypeCheck(ret, &PyFutureType)){
@@ -3588,7 +3588,7 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
         Py_DECREF(ret);
         RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
-        return RedisGears_FilterHold;
+        return RedisGears_StepHold;
     }
 
     if(ret != Py_None){
@@ -3598,7 +3598,7 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
 
     RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
     RedisGearsPy_Unlock(old);
-    return RedisGears_FilterSuccess;
+    return RedisGears_StepSuccess;
 }
 
 static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* key, Record *accumulate, Record *r, void* arg){
@@ -3850,7 +3850,7 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
 
         RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
-        return RedisGears_FilterFailed;
+        return RedisGears_StepFailed;
     }
 
     if(ret && PyCoro_CheckExact(ret)){
@@ -3867,7 +3867,7 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
         Py_DECREF(ret);
         RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
-        return RedisGears_FilterHold;
+        return RedisGears_StepHold;
     }
 
     bool ret1 = PyObject_IsTrue(ret);
@@ -3876,7 +3876,7 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
 
     RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
     RedisGearsPy_Unlock(old);
-    return ret1? RedisGears_FilterSuccess : RedisGears_FilterFailed;
+    return ret1? RedisGears_StepSuccess : RedisGears_StepFailed;
 }
 
 static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record, void* arg, size_t* len){

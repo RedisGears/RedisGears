@@ -715,7 +715,7 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
 int AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     const char* keyName = RedisGears_KeyRecordGetKey(data, NULL);
     if(strcmp(keyName, "ChangedStream") == 0){
-        return RedisGears_FilterSuccess;
+        return RedisGears_StepSuccess;
     }
     Record* valRecord = RedisGears_KeyRecordGetVal(data);
     const char* val = RedisGears_StringRecordGet(valRecord, NULL);
@@ -723,7 +723,7 @@ int AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     LockHandler_Acquire(ctx);
     RedisModule_Call(ctx, "xadd", "cccccc", "ChangedStream", "*", "key", keyName, "value", val);
     LockHandler_Release(ctx);
-    return RedisGears_FilterSuccess;
+    return RedisGears_StepSuccess;
 }
 
 static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){

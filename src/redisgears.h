@@ -152,9 +152,9 @@ typedef struct RedisGears_ReaderCallbacks{
 /**
  * Operations/Steps callbacks definition
  */
-#define RedisGears_FilterFailed 0
-#define RedisGears_FilterSuccess 1
-#define RedisGears_FilterHold 2
+#define RedisGears_StepFailed 0
+#define RedisGears_StepSuccess 1
+#define RedisGears_StepHold 2
 
 typedef int (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef Record* (*RedisGears_MapCallback)(ExecutionCtx* rctx, Record *data, void* arg);
