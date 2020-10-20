@@ -464,6 +464,7 @@ static ExecutionThreadPool* RG_ExecutionThreadPoolCreate(const char* name, size_
 static WorkerData* RG_WorkerDataCreate(ExecutionThreadPool* pool){
     return ExecutionPlan_CreateWorker(pool);
 }
+
 static void RG_WorkerDataFree(WorkerData* worker){
     ExecutionPlan_FreeWorker(worker);
 }
@@ -627,6 +628,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RecordTypeCreate, ctx);
     REGISTER_API(FreeRecord, ctx);
     REGISTER_API(RecordGetType, ctx);
+    REGISTER_API(AsyncRecordCreate, ctx);
+    REGISTER_API(AsyncRecordContinue, ctx);
     REGISTER_API(KeyRecordCreate, ctx);
     REGISTER_API(KeyRecordSetKey, ctx);
     REGISTER_API(KeyRecordSetVal, ctx);
@@ -709,10 +712,10 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
-void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
+int AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     const char* keyName = RedisGears_KeyRecordGetKey(data, NULL);
     if(strcmp(keyName, "ChangedStream") == 0){
-        return;
+        return RedisGears_StepSuccess;
     }
     Record* valRecord = RedisGears_KeyRecordGetVal(data);
     const char* val = RedisGears_StringRecordGet(valRecord, NULL);
@@ -720,6 +723,7 @@ void AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
     LockHandler_Acquire(ctx);
     RedisModule_Call(ctx, "xadd", "cccccc", "ChangedStream", "*", "key", keyName, "value", val);
     LockHandler_Release(ctx);
+    return RedisGears_StepSuccess;
 }
 
 static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){

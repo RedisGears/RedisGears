@@ -6,9 +6,9 @@
 #include "redisgears.h"
 #include "redisgears_memory.h"
 
-bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
+int Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
     if(RedisGears_RecordGetType(r) != hashSetRecordType){
-        return false;
+        return RedisGears_StepFailed;
     }
     size_t len;
     Arr(char*) keys = RedisGears_HashSetRecordGetAllKeys(r);
@@ -20,12 +20,12 @@ bool Example_Filter(ExecutionCtx* rctx, Record *r, void* arg){
             int valInt = atol(valStr);
             if(valInt > 9999990){
                 array_free(keys);
-                return true;
+                return RedisGears_StepSuccess;
             }
         }
     }
     array_free(keys);
-    return false;
+    return RedisGears_StepFailed;
 }
 
 int Example_CommandCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){

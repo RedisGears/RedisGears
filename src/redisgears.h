@@ -152,9 +152,13 @@ typedef struct RedisGears_ReaderCallbacks{
 /**
  * Operations/Steps callbacks definition
  */
-typedef void (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
+#define RedisGears_StepFailed 0
+#define RedisGears_StepSuccess 1
+#define RedisGears_StepHold 2
+
+typedef int (*RedisGears_ForEachCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef Record* (*RedisGears_MapCallback)(ExecutionCtx* rctx, Record *data, void* arg);
-typedef bool (*RedisGears_FilterCallback)(ExecutionCtx* rctx, Record *data, void* arg);
+typedef int (*RedisGears_FilterCallback)(ExecutionCtx* rctx, Record *data, void* arg);
 typedef char* (*RedisGears_ExtractorCallback)(ExecutionCtx* rctx, Record *data, void* arg, size_t* len);
 typedef Record* (*RedisGears_ReducerCallback)(ExecutionCtx* rctx, char* key, size_t keyLen, Record *records, void* arg);
 typedef Record* (*RedisGears_AccumulateCallback)(ExecutionCtx* rctx, Record *accumulate, Record *r, void* arg);
@@ -202,6 +206,7 @@ extern RecordType* doubleRecordType;
 extern RecordType* keyRecordType;
 extern RecordType* keysHandlerRecordType;
 extern RecordType* hashSetRecordType;
+extern RecordType* asyncRecordType;
 
 typedef int (*RecordSendReply)(Record* record, RedisModuleCtx* rctx);
 typedef int (*RecordSerialize)(Gears_BufferWriter* bw, Record* base, char** err);
@@ -218,6 +223,8 @@ Record*  MODULE_API_FUNC(RedisGears_RecordCreate)(RecordType* type);
 void MODULE_API_FUNC(RedisGears_FreeRecord)(Record* record);
 RecordType* MODULE_API_FUNC(RedisGears_RecordGetType)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordCreate)();
+Record* MODULE_API_FUNC(RedisGears_AsyncRecordCreate)(ExecutionCtx* ectx, char** err);
+void MODULE_API_FUNC(RedisGears_AsyncRecordContinue)(Record* asyncRecord, Record* r);
 void MODULE_API_FUNC(RedisGears_KeyRecordSetKey)(Record* r, char* key, size_t len);
 void MODULE_API_FUNC(RedisGears_KeyRecordSetVal)(Record* r, Record* val);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordGetVal)(Record* r);
@@ -492,6 +499,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, FreeRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordGetType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeyRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AsyncRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AsyncRecordContinue);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeyRecordSetKey);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeyRecordSetVal);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeyRecordGetVal);

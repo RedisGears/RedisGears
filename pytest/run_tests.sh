@@ -33,7 +33,7 @@ run_tests() {
 		local shards_arg="--shards-count $shards"
 		local env="${ENV_PREFIX}-cluster"
 	fi
-	python -m RLTest --clear-logs --module $mod --env $env $shards_arg $MORE_ARGS "$@"
+	python2.7 -m RLTest --clear-logs --module $mod --env $env $shards_arg $MORE_ARGS "$@"
 }
 
 cd $HERE

@@ -122,6 +122,24 @@ typedef struct AccumulateByKeyExecutionStep{
     Gears_dictIterator *iter;
 }AccumulateByKeyExecutionStep;
 
+typedef struct ExecutionPendingCtx ExecutionPendingCtx;
+
+typedef struct StepPendingCtx{
+    int refCount;
+    size_t maxSize;
+    Gears_list* records;
+    size_t stepId;
+    ExecutionPendingCtx* epctx;
+}StepPendingCtx;
+
+typedef struct ExecutionPendingCtx{
+    int refCount;
+    char id[ID_LEN];
+    size_t len;
+    StepPendingCtx** pendingCtxs;
+    WorkerData* assignWorker;
+}ExecutionPendingCtx;
+
 typedef struct ExecutionStep{
     struct ExecutionStep* prev;
     size_t stepId;
@@ -142,10 +160,12 @@ typedef struct ExecutionStep{
     };
     enum StepType type;
     unsigned long long executionDuration;
+    StepPendingCtx* pendingCtx;
+    bool isDone;
 }ExecutionStep;
 
 typedef enum ActionResult{
-    CONTINUE, STOP, COMPLETED
+    CONTINUE, STOP, STOP_WITHOUT_TIMEOUT, COMPLETED
 }ActionResult;
 
 ActionResult EPStatus_CreatedAction(ExecutionPlan*);
@@ -199,9 +219,10 @@ typedef struct OnDoneData{
 #define EFIsLocal 0x10
 #define EFIsLocalyFreedOnDoneCallback 0x20
 #define EFStarted 0x40
+#define EFWaiting 0x80
 
-#define EPTurnOnFlag(ep, f) ep->flags |= f
-#define EPTurnOffFlag(ep, f) ep->flags &= ~f
+#define EPTurnOnFlag(ep, f) (ep->flags |= f)
+#define EPTurnOffFlag(ep, f) (ep->flags &= ~f)
 #define EPIsFlagOn(ep, f) (ep->flags & f)
 #define EPIsFlagOff(ep, f) (!(ep->flags & f))
 
@@ -236,6 +257,7 @@ typedef struct ExecutionPlan{
     RedisModuleTimerID maxIdleTimer;
     bool maxIdleTimerSet;
     bool registered;
+    StepPendingCtx** pendingCtxs;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -275,13 +297,19 @@ typedef struct FlatExecutionPlan{
 typedef struct ExecutionCtx{
     RedisModuleCtx* rctx;
     ExecutionPlan* ep;
+    ExecutionStep* step;
     char* err;
+    Record* originRecord;
+    Record** actualPlaceHolder;
 }ExecutionCtx;
 
-#define ExecutionCtx_Initialize(c, e) (ExecutionCtx){ \
+#define ExecutionCtx_Initialize(c, e, s) (ExecutionCtx){ \
         .rctx = c,\
         .ep = e,\
+        .step = s,\
         .err = NULL,\
+        .originRecord = NULL, \
+        .actualPlaceHolder = NULL, \
     }
 
 FlatExecutionPlan* FlatExecutionPlan_New();
@@ -339,5 +367,9 @@ WorkerData* ExecutionPlan_WorkerGetShallowCopy(WorkerData* wd);
 void ExecutionPlan_FreeWorker(WorkerData* wd);
 
 void ExecutionPlan_Clean();
+
+StepPendingCtx* ExecutionPlan_PendingCtxGetShallowCopy(StepPendingCtx* pctx);
+void ExecutionPlan_PendingCtxFree(StepPendingCtx* pctx);
+StepPendingCtx* ExecutionPlan_PendingCtxCreate(ExecutionPlan* ep, ExecutionStep* step, size_t maxSize);
 
 #endif /* SRC_EXECUTION_PLAN_H_ */
