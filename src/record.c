@@ -418,7 +418,7 @@ void RG_FreeRecord(Record* record){
     if(!record){
         return;
     }
-    if(record == &StopRecord || record == &WaitRecord || record == &DummyRecord){
+    if(IS_SPECIAL_RECORD(record)){
         return;
     }
     record->type->free(record);
