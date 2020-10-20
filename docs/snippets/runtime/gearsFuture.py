@@ -3,15 +3,22 @@ blocked = {}
 
 # Example of blocking a client until a key has expired
 
-def bc(r):
+def block(r):
 	f = gearsFuture()
-	blocked[r[1]] = f
+	key = r[1]
+	if key not in blocked.keys():
+		blocked[key] = []	
+	blocked[key].append(f)
 	return f
 
-def unbc(r):
-	f = blocked.pop(r['key'], None)
-	if f:
-		f.continueRun('%s expired' % r['key'])
+def unblock(r):
+	res = 0
+	key = r['key']
+	futures = blocked.pop(key, None)
+	if futures:
+		res = len([f.continueRun('%s expired' % key) for f in futures])
+		blocked[key]
+	return res
 
-GB('CommandReader').map(bc).register(trigger='WaitForKeyExpiration')
-GB().foreach(unbc).register(eventTypes=['expired'])
+GB('CommandReader').map(block).register(trigger='WaitForKeyExpiration', mode='sync')
+GB().map(unblock).register(eventTypes=['expired'], mode='sync')
