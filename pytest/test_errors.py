@@ -24,7 +24,7 @@ class testGenericErrors:
 
 
     def testBuilderCreationWithUnexistingReader(self):
-        self.env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader are not exists')
+        self.env.expect('rg.pyexecute', 'GB("unexists").accumulate(lambda a, x: 1 + (a if a else 0)).run()').error().contains('reader does not exists')
 
     def testTwoExecutionsInOneScript(self):
         script = '''

@@ -20,8 +20,8 @@ typedef struct RecordType{
     char* name;
     size_t size;
     int (*sendReply)(Record* record, RedisModuleCtx* rctx);
-    int (*serialize)(Gears_BufferWriter* bw, Record* base, char** err);
-    Record* (*deserialize)(Gears_BufferReader* br);
+    int (*serialize)(ExecutionCtx* ectx, Gears_BufferWriter* bw, Record* base);
+    Record* (*deserialize)(ExecutionCtx* ectx, Gears_BufferReader* br);
     void (*free)(Record* base);
 }RecordType;
 
@@ -71,6 +71,15 @@ typedef struct AsyncRecord{
     Record* originRecord;
 }AsyncRecord;
 
+extern RecordType* listRecordType;
+extern RecordType* stringRecordType;
+extern RecordType* errorRecordType;
+extern RecordType* longRecordType;
+extern RecordType* doubleRecordType;
+extern RecordType* keyRecordType;
+extern RecordType* keysHandlerRecordType;
+extern RecordType* hashSetRecordType;
+extern RecordType* asyncRecordType;
 extern Record StopRecord;
 extern Record WaitRecord;
 extern Record DummyRecord;
@@ -124,8 +133,8 @@ void RG_AsyncRecordContinue(Record* asyncRecord, Record* r);
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler);
 RedisModuleKey* RG_KeyHandlerRecordGet(Record* r);
 
-int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err);
-Record* RG_DeserializeRecord(Gears_BufferReader* br);
+int RG_SerializeRecord(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* r);
+Record* RG_DeserializeRecord(ExecutionCtx* ctx, Gears_BufferReader* br);
 int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx);
 
 Record* RG_ErrorRecordCreate(char* val, size_t len);

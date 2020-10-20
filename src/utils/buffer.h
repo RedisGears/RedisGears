@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include "redismodule.h"
+#include "redisgears.h"
 
 #define DEFAULT_INITIAL_CAP 50
 
@@ -26,19 +27,10 @@ void Gears_BufferFree(Gears_Buffer* buff);
 void Gears_BufferAdd(Gears_Buffer* buff, const char* data, size_t len);
 void Gears_BufferClear(Gears_Buffer* buff);
 
-typedef struct Gears_BufferWriter{
-    Gears_Buffer* buff;
-}Gears_BufferWriter;
-
 void Gears_BufferWriterInit(Gears_BufferWriter* bw, Gears_Buffer* buff);
 void Gears_BufferWriterWriteLong(Gears_BufferWriter* bw, long val);
 void Gears_BufferWriterWriteString(Gears_BufferWriter* bw, const char* str);
 void Gears_BufferWriterWriteBuff(Gears_BufferWriter* bw, const char* buff, size_t len);
-
-typedef struct Gears_BufferReader{
-    Gears_Buffer* buff;
-    size_t location;
-}Gears_BufferReader;
 
 void Gears_BufferReaderInit(Gears_BufferReader* br, Gears_Buffer* buff);
 long Gears_BufferReaderReadLong(Gears_BufferReader* br);
