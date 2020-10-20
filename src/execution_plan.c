@@ -937,17 +937,17 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
     int filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
     if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));\
-        filterRes = RedisGears_FilterSuccess; // its not really success but we want to error to continue.
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);\
+        filterRes = RedisGears_StepSuccess; // its not really success but we want to error to continue.
     }
 
-    if(filterRes == RedisGears_FilterFailed){
+    if(filterRes == RedisGears_StepFailed){
         RedisGears_FreeRecord(record);
         record = &DummyRecord; // we let the general loop continue of hold;
         goto end;
     }
 
-    if(filterRes == RedisGears_FilterHold){
+    if(filterRes == RedisGears_StepHold){
         record = &DummyRecord; // we let the general loop continue of hold;
     }
 end:
@@ -1332,7 +1332,7 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     if(ectx.err){
         RedisGears_FreeRecord(record);
         record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
-    }else if(res == RedisGears_FilterHold){
+    }else if(res == RedisGears_StepHold){
         // the async record to ownership on the record itself so no need to hold it
         record = &WaitRecord;
     }

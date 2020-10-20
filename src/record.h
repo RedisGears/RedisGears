@@ -67,7 +67,7 @@ typedef struct AsyncRecord{
     Record base;
     StepPendingCtx* pctx;
     Record** rptx; // pointer to put the record once ready
-    Record** overidePlaceHolder; // pointer to put the actual record for accumulate, in this case we will put DummyRecord to rptx
+    Record** overridePlaceHolder; // pointer to put the actual record for accumulate, in this case we will put DummyRecord to rptx
     Record* originRecord;
 }AsyncRecord;
 
@@ -83,6 +83,8 @@ extern RecordType* asyncRecordType;
 extern Record StopRecord;
 extern Record WaitRecord;
 extern Record DummyRecord;
+
+#define IS_SPECIAL_RECORD(r) (r == &StopRecord || r == &WaitRecord || r == &DummyRecord)
 
 void RG_FreeRecord(Record* record);
 RecordType* RG_RecordGetType(Record* r);

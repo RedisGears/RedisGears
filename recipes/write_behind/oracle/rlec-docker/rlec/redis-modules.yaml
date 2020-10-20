@@ -1,7 +1,0 @@
-# note that the following should be built for ubuntu:bionic to work with rlec-docker
-redisgears:
-    path: /opt/view/RedisGears/artifacts/release/redisgears.Linux-generic-x86_64.99.99.99.zip
-redisgears-deps:
-    path: /opt/view/RedisGears/artifacts/release/redisgears-dependencies.Linux-generic-x86_64.99.99.99.tgz
-    dest: /
-    unzip: yes

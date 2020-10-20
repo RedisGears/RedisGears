@@ -1,5 +1,0 @@
-#!/bin/bash
-
-# install this as user 'redislabs'
-
-bash -c ". /var/opt/redislabs/lib/modules/python3/.venv/bin/activate; python -m pip install SQLAlchemy cx-oracle"

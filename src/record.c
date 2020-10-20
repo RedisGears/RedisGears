@@ -77,8 +77,8 @@ void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
             r = &DummyRecord;
         }
     }
-    if(async->overidePlaceHolder){
-        *async->overidePlaceHolder = r;
+    if(async->overridePlaceHolder){
+        *async->overridePlaceHolder = r;
         *(async->rptx) = &DummyRecord;
     }else{
         *(async->rptx) = r;
@@ -418,7 +418,7 @@ void RG_FreeRecord(Record* record){
     if(!record){
         return;
     }
-    if(record == &StopRecord || record == &WaitRecord || record == &DummyRecord){
+    if(IS_SPECIAL_RECORD(record)){
         return;
     }
     record->type->free(record);
@@ -623,7 +623,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
 
     // save pointer to set the real value
     ret->rptx = (Record**)(&(Gears_listFirst(ret->pctx->records)->value));
-    ret->overidePlaceHolder = ectx->actualPlaceHolder;
+    ret->overridePlaceHolder = ectx->actualPlaceHolder;
     ret->originRecord = ectx->originRecord;
     return &ret->base;
 }
