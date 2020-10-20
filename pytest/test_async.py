@@ -664,12 +664,12 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
 def testAsyncError(env):
     conn = getConnectionByEnv(env)
 
-    env.expect('RG.PYEXECUTE', 'gearsFuture()').error().contains('Future object can only be created inside certion execution steps')
+    env.expect('RG.PYEXECUTE', 'gearsFuture()').error().contains('Future object can only be created inside certain execution steps')
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').repartition(lambda x: gearsFuture()).run()")[1][0]
-    env.assertContains('Future object can only be created inside certion execution steps', res)
+    env.assertContains('Future object can only be created inside certain execution steps', res)
 
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').batchgroupby(lambda x: x, lambda k, l: gearsFuture()).run()")[1][0]
-    env.assertContains('Future object can only be created inside certion execution steps', res)
+    env.assertContains('Future object can only be created inside certain execution steps', res)
 
 def testAsyncAwait(env):
     conn = getConnectionByEnv(env)
