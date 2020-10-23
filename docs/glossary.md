@@ -84,7 +84,7 @@ A **node** is a physical (or virtualized) server in a cluster. Each node can be 
 A **shard** is Redis server process that is a part of a cluster. A shard runs on one of the cluster's nodes and manages an exclusive subset of slots of the Redis keyspace. Every slot is managed by a single master shard. Master shards accepts writes and can optionally be configured with replicas for scaling read throughput and availability purposes.
 
 ## API
-RedisGears functions can be programmed via applicative interfaces. The APIs are available for the Python and C programming languages
+RedisGears functions can be programmed via applicative interfaces. The APIs are available for the Python and C programming languages.
 
 ## Function
 A RedisGears **function** is a formal description of the processing steps in the data flow.
