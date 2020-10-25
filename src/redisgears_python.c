@@ -1073,8 +1073,9 @@ static void continueFutureOnDone(ExecutionPlan* ep, void* privateData){
     for(size_t i = 0 ; i < RedisGears_GetErrorsLen(ep) ; ++i){
         Record* err = RedisGears_GetError(ep, i);
         RedisModule_Assert(RedisGears_RecordGetType(err) == errorRecordType);
-        const char* errStr = RedisGears_StringRecordGet(err, NULL);
-        PyObject* pyErr = PyUnicode_FromString(errStr);
+        size_t len;
+        const char* errStr = RedisGears_StringRecordGet(err, &len);
+        PyObject* pyErr = PyUnicode_FromStringAndSize(errStr, len);
         PyList_Append(errs, pyErr);
     }
 

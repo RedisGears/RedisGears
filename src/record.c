@@ -198,8 +198,9 @@ static Record* LongRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br)
 static Record* ErrorRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
-    char* temp1 = RG_ALLOC(size);
+    char* temp1 = RG_ALLOC(size + 1);
     memcpy(temp1, temp, size);
+    temp1[size] = '\0';
     return RG_ErrorRecordCreate(temp1, size);
 }
 

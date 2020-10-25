@@ -937,7 +937,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
     int filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
     if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);\
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));\
         filterRes = RedisGears_StepSuccess; // its not really success but we want to error to continue.
     }
 
@@ -1544,7 +1544,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
                 GETTIME(&_te);
                 step->executionDuration += DURATION;
                 if(!r && ectx.err){
-                    r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+                    r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
                 }
             }else{
                 r = NULL;

@@ -50,6 +50,7 @@ CommandReaderTriggerInfo* CommandReaderTriggerArgs_CreateInfo(const char* trigge
 
     RedisModuleCallReply *flagsReply = RedisModule_CallReplyArrayElement(cReply, 2);
     RedisModule_Assert(RedisModule_CallReplyType(flagsReply) == REDISMODULE_REPLY_ARRAY);
+    res->commandFlags = 0;
     for(size_t i = 0 ; i < RedisModule_CallReplyLength(flagsReply) ; ++i){
         RedisModuleCallReply *flagReply = RedisModule_CallReplyArrayElement(flagsReply, i);
         RedisModule_Assert(RedisModule_CallReplyType(flagReply) == REDISMODULE_REPLY_STRING);
@@ -94,6 +95,12 @@ CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* trigger, c
 
 void CommandReaderTriggerArgs_Free(CommandReaderTriggerArgs* crtArgs){
     RG_FREE(crtArgs->trigger);
+    if(crtArgs->info){
+        RG_FREE(crtArgs->info);
+    }
+    if(crtArgs->keyPrefix){
+        RG_FREE(crtArgs->keyPrefix);
+    }
     RG_FREE(crtArgs);
 }
 
