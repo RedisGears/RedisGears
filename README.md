@@ -7,6 +7,8 @@
 [![Forum](https://img.shields.io/badge/Forum-RedisGears-blue)](https://forum.redislabs.com/c/modules/redisgears)
 [![Discord](https://img.shields.io/discord/697882427875393627?style=flat-square)](https://discord.gg/6yaVTtp)
 
+<img src="docs/images/RedisGears.png" alt="logo" style="width: 2em; vertical-align: middle;"/> 
+
 RedisGears is a serverless engine for transaction, batch and event-driven data processing in Redis. It is a dynamic framework for the execution of functions that, in turn, implement data flows in Redis, while (almost) entirely abstracting the data's distribution and choice of deployment  (i.e. stand-alone vs. cluster, OSS vs. Enterprise). Functions can be implemented in different languages, including Python and C APIs.
 
 * The RedisGears Homepage: https://oss.redislabs.com/redisgears
