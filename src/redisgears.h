@@ -212,7 +212,7 @@ int MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetReadRecordCallback)(KeysR
 #define RGM_KeysReaderTriggerArgsSetReadRecordCallback(krta, name) RedisGears_KeysReaderTriggerArgsSetReadRecordCallback(krta, #name)
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
-CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
+CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger, const char* keyPrefix);
 void MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsFree)(CommandReaderTriggerArgs* args);
 
 /**

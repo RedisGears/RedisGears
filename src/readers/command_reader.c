@@ -2,14 +2,93 @@
 #include "redisgears_memory.h"
 #include "execution_plan.h"
 #include "record.h"
+#include "lock_handler.h"
+#include "version.h"
+#include <string.h>
+
+#define COMMAND_FLAG_MOVEABLEKEYS (1 << 0)
+#define COMMAND_FLAG_NOSCRIPT (1 << 1)
+
+typedef struct CommandReaderTriggerInfo{
+    int arity;
+    int firstKey;
+    int lastKey;
+    int jump;
+    int commandFlags;
+}CommandReaderTriggerInfo;
 
 typedef struct CommandReaderTriggerArgs{
     char* trigger;
+    CommandReaderTriggerInfo* info;
+    char* keyPrefix; // if not NULL, fire if any of the keys start with this prefix.
 }CommandReaderTriggerArgs;
 
-CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* trigger){
+CommandReaderTriggerInfo* CommandReaderTriggerArgs_CreateInfo(const char* trigger){
+    CommandReaderTriggerInfo* res = NULL;
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+
+    LockHandler_Acquire(ctx);
+    RedisModuleCallReply *reply = RedisModule_Call(ctx, "COMMAND", "cc", "INFO", trigger);
+    LockHandler_Release(ctx);
+
+    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_UNKNOWN){
+        // command was blocked ... someone must have override the 'COMMAND' command :)
+        goto done;
+    }
+
+    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
+    RedisModuleCallReply *cReply = RedisModule_CallReplyArrayElement(reply, 0);
+    if(RedisModule_CallReplyType(cReply) == REDISMODULE_REPLY_NULL){
+        goto done;
+    }
+
+    res = RG_ALLOC(sizeof(*res));
+
+    RedisModuleCallReply *arityReply = RedisModule_CallReplyArrayElement(cReply, 1);
+    RedisModule_Assert(RedisModule_CallReplyType(arityReply) == REDISMODULE_REPLY_INTEGER);
+    res->arity = RedisModule_CallReplyInteger(arityReply);
+
+    RedisModuleCallReply *flagsReply = RedisModule_CallReplyArrayElement(cReply, 2);
+    RedisModule_Assert(RedisModule_CallReplyType(flagsReply) == REDISMODULE_REPLY_ARRAY);
+    for(size_t i = 0 ; i < RedisModule_CallReplyLength(flagsReply) ; ++i){
+        RedisModuleCallReply *flagReply = RedisModule_CallReplyArrayElement(flagsReply, i);
+        RedisModule_Assert(RedisModule_CallReplyType(flagReply) == REDISMODULE_REPLY_STRING);
+        size_t flagReplyLen;
+        const char* flagStr = RedisModule_CallReplyStringPtr(flagReply, &flagReplyLen);
+        char flagCStr[flagReplyLen + 1];
+        memcpy(flagCStr, flagStr, flagReplyLen);
+        flagCStr[flagReplyLen] = '\0';
+        if(strcasecmp(flagCStr, "movablekeys") == 0){
+            res->commandFlags |= COMMAND_FLAG_MOVEABLEKEYS;
+        }
+        if(strcasecmp(flagCStr, "noscript") == 0){
+            res->commandFlags |= COMMAND_FLAG_NOSCRIPT;
+        }
+    }
+
+    RedisModuleCallReply *firstKeyReply = RedisModule_CallReplyArrayElement(cReply, 3);
+    RedisModule_Assert(RedisModule_CallReplyType(firstKeyReply) == REDISMODULE_REPLY_INTEGER);
+    res->firstKey = RedisModule_CallReplyInteger(firstKeyReply);
+
+    RedisModuleCallReply *lastKeyReply = RedisModule_CallReplyArrayElement(cReply, 4);
+    RedisModule_Assert(RedisModule_CallReplyType(lastKeyReply) == REDISMODULE_REPLY_INTEGER);
+    res->lastKey = RedisModule_CallReplyInteger(lastKeyReply);
+
+    RedisModuleCallReply *jumpReply = RedisModule_CallReplyArrayElement(cReply, 5);
+    RedisModule_Assert(RedisModule_CallReplyType(jumpReply) == REDISMODULE_REPLY_INTEGER);
+    res->jump = RedisModule_CallReplyInteger(jumpReply);
+
+done:
+    RedisModule_FreeCallReply(reply);
+    RedisModule_FreeThreadSafeContext(ctx);
+    return res;
+}
+
+CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* trigger, const char* keyPrefix){
     CommandReaderTriggerArgs* ret = RG_ALLOC(sizeof(*ret));
     ret->trigger = RG_STRDUP(trigger);
+    ret->keyPrefix = keyPrefix ? RG_STRDUP(keyPrefix) : NULL;
+    ret->info = CommandReaderTriggerArgs_CreateInfo(trigger);
     return ret;
 }
 
@@ -30,6 +109,8 @@ typedef struct CommandReaderTriggerCtx{
     char* lastError;
     Gears_dict* pendingExections;
     WorkerData* wd;
+    Gears_listNode* listNode;
+    bool currentlyRunning;
 }CommandReaderTriggerCtx;
 
 Gears_dict* CommandRegistrations = NULL;
@@ -48,6 +129,8 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
             .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
+            .listNode = NULL,
+            .currentlyRunning = false,
     };
     return ret;
 }
@@ -153,19 +236,51 @@ static Reader* CommandReader_Create(void* arg){
 }
 
 static void CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mode, CommandReaderTriggerArgs* crtArgs){
+    Gears_dictEntry *existing;
+    Gears_dictEntry *entry = Gears_dictAddRaw(CommandRegistrations, crtArgs->trigger, &existing);
+    if(entry){
+        Gears_dictGetVal(entry) = Gears_listCreate();
+    }else{
+        entry = existing;
+    }
     CommandReaderTriggerCtx* crtCtx = CommandReaderTriggerCtx_Create(fep, mode, crtArgs);
-    Gears_dictAdd(CommandRegistrations, crtArgs->trigger, crtCtx);
+    Gears_listAddNodeHead(Gears_dictGetVal(entry), crtCtx);
+    crtCtx->listNode = Gears_listLast(((Gears_list*)Gears_dictGetVal(entry)));
 }
 
 static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     if(!CommandRegistrations){
-        CommandRegistrations = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
+        CommandRegistrations = Gears_dictCreate(&Gears_dictTypeHeapStringsCaseInsensitive, NULL);
     }
     CommandReaderTriggerArgs* crtArgs = args;
-    CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger);
-    if(crtCtx){
-        *err = RG_STRDUP("trigger already registered");
+
+    if((crtArgs->info) && (crtArgs->info->commandFlags & COMMAND_FLAG_NOSCRIPT)){
+        *err = RG_STRDUP("Can not override a command which are not allowed inside a script");
         return REDISMODULE_ERR;
+    }
+
+    if((crtArgs->info) && (crtArgs->info->commandFlags & COMMAND_FLAG_MOVEABLEKEYS) && (crtArgs->keyPrefix)){
+        // we can not override a command by key prefix and moveable keys
+        *err = RG_STRDUP("Can not override a command with moveable keys by key prefix");
+        return REDISMODULE_ERR;
+    }
+
+    if(crtArgs->keyPrefix){
+        if(!crtArgs->info){
+            *err = RG_STRDUP("Can not override a new command by key prefix");
+            return REDISMODULE_ERR;
+        }
+        if(crtArgs->info->firstKey <= 0){
+            // should not really happened
+            *err = RG_STRDUP("Can not override a command by key prefix with none positive first key");
+            return REDISMODULE_ERR;
+        }
+
+        if(crtArgs->info->jump <= 0){
+            // should not really happened
+            *err = RG_STRDUP("Can not override a command by key prefix with none positive jump");
+            return REDISMODULE_ERR;
+        }
     }
 
     CommandReader_InnerRegister(fep, mode, crtArgs);
@@ -177,9 +292,18 @@ static CommandReaderTriggerCtx* CommandReader_FindByFep(FlatExecutionPlan* fep){
     Gears_dictEntry *entry = NULL;
     CommandReaderTriggerCtx* crtCtx = NULL;
     while((entry = Gears_dictNext(iter))){
-        CommandReaderTriggerCtx* tempCrtCtx = Gears_dictGetVal(entry);
-        if(tempCrtCtx->fep == fep){
-            crtCtx = tempCrtCtx;
+        Gears_list* tempCrtCtxs = Gears_dictGetVal(entry);
+        Gears_listIter* iter = Gears_listGetIterator(tempCrtCtxs, AL_START_HEAD);
+        Gears_listNode* node = NULL;
+        while((node = Gears_listNext(iter))){
+            CommandReaderTriggerCtx* tempCrtCtx = Gears_listNodeValue(node);
+            if(tempCrtCtx->fep == fep){
+                crtCtx = tempCrtCtx;
+                break;
+            }
+        }
+        Gears_listReleaseIterator(iter);
+        if(crtCtx){
             break;
         }
     }
@@ -220,7 +344,14 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
 
             array_free(abortEpArray);
         }
-        Gears_dictDelete(CommandRegistrations, crtCtx->args->trigger);
+        RedisModule_Assert(crtCtx->listNode);
+        Gears_list* l = Gears_dictFetchValue(CommandRegistrations, crtCtx->args->trigger);
+        Gears_listDelNode(l, crtCtx->listNode);
+        crtCtx->listNode = NULL;
+        if(Gears_listLength(l) == 0){
+            Gears_listRelease(l);
+            Gears_dictDelete(CommandRegistrations, crtCtx->args->trigger);
+        }
         CommandReaderTriggerCtx_Free(crtCtx);
     }
 }
@@ -228,11 +359,21 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
 static void CommandReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
     CommandReaderTriggerArgs* crtArgs = var;
     RedisGears_BWWriteString(bw, crtArgs->trigger);
+    if(crtArgs->keyPrefix){
+        RedisGears_BWWriteLong(bw, 1);
+        RedisGears_BWWriteString(bw, crtArgs->keyPrefix);
+    }else{
+        RedisGears_BWWriteLong(bw, 0);
+    }
 }
 
 static void* CommandReader_DeserializeArgs(Gears_BufferReader* br, int encver){
     const char* command = RedisGears_BRReadString(br);
-    return CommandReaderTriggerArgs_Create(command);
+    const char* keyPrefix = NULL;
+    if(RedisGears_BRReadLong(br)){
+        keyPrefix = RedisGears_BRReadString(br);
+    }
+    return CommandReaderTriggerArgs_Create(command, keyPrefix);
 }
 
 static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
@@ -281,64 +422,76 @@ static void CommandReader_RdbSave(RedisModuleIO *rdb){
     Gears_BufferWriter bw;
     Gears_BufferWriterInit(&bw, buff);
     while((entry = Gears_dictNext(iter))){
-        CommandReaderTriggerCtx* crtCtx = Gears_dictGetVal(entry);
-        RedisModule_SaveSigned(rdb, crtCtx->mode);
+        Gears_list* l = Gears_dictGetVal(entry);
+        RedisModule_SaveSigned(rdb, Gears_listLength(l));
+        Gears_listIter* listIter = Gears_listGetIterator(l, AL_START_HEAD);
+        Gears_listNode* node = NULL;
+        while((node = Gears_listNext(listIter))){
+            CommandReaderTriggerCtx* crtCtx = Gears_listNodeValue(node);
+            RedisModule_SaveSigned(rdb, crtCtx->mode);
 
-        int res = FlatExecutionPlan_Serialize(&bw, crtCtx->fep, NULL);
-        RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+            int res = FlatExecutionPlan_Serialize(&bw, crtCtx->fep, NULL);
+            RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
 
-        CommandReader_SerializeArgs(crtCtx->args, &bw);
+            CommandReader_SerializeArgs(crtCtx->args, &bw);
 
-        RedisModule_SaveStringBuffer(rdb, buff->buff, buff->size);
+            RedisModule_SaveStringBuffer(rdb, buff->buff, buff->size);
 
-        Gears_BufferClear(buff);
+            Gears_BufferClear(buff);
+        }
     }
     Gears_dictReleaseIterator(iter);
     Gears_BufferFree(buff);
 }
 
 static int CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
-    long numRegistrations = RedisModule_LoadSigned(rdb);
-    for(size_t i = 0 ; i < numRegistrations ; ++i){
-        ExecutionMode mode = RedisModule_LoadSigned(rdb);
+    long numTriggerts = RedisModule_LoadSigned(rdb);
+    for(size_t i = 0 ; i < numTriggerts ; ++i){
+        long numRegistrations = 1;
+        if(encver >= VERSION_WITH_MULTI_REGISTRATION_PER_TRIGGER){
+            numRegistrations = RedisModule_LoadSigned(rdb);
+        }
+        for(size_t j = 0 ; j < numRegistrations ; ++j){
+            ExecutionMode mode = RedisModule_LoadSigned(rdb);
 
-        size_t len;
-        char* data = RedisModule_LoadStringBuffer(rdb, &len);
+            size_t len;
+            char* data = RedisModule_LoadStringBuffer(rdb, &len);
 
-        Gears_Buffer buff = {
-                .buff = data,
-                .size = len,
-                .cap = len,
-        };
-        Gears_BufferReader br;
-        Gears_BufferReaderInit(&br, &buff);
+            Gears_Buffer buff = {
+                    .buff = data,
+                    .size = len,
+                    .cap = len,
+            };
+            Gears_BufferReader br;
+            Gears_BufferReaderInit(&br, &buff);
 
-        char* err = NULL;
-        FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, encver);
-        if(!fep){
-            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
+            char* err = NULL;
+            FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, encver);
+            if(!fep){
+                RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
+                RedisModule_Free(data);
+                return REDISMODULE_ERR;
+            }
+
+            CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br, encver);
             RedisModule_Free(data);
-            return REDISMODULE_ERR;
+            if(!crtArgs){
+                RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
+                FlatExecutionPlan_Free(fep);
+                return REDISMODULE_ERR;
+            }
+
+
+            int ret = CommandReader_RegisrterTrigger(fep, mode, crtArgs, &err);
+            if(ret != REDISMODULE_OK){
+                RedisModule_Log(NULL, "warning", "Could not register on rdbload execution, error='%s'", err);
+                CommandReaderTriggerArgs_Free(crtArgs);
+                FlatExecutionPlan_Free(fep);
+                return REDISMODULE_ERR;
+            }
+
+            FlatExecutionPlan_AddToRegisterDict(fep);
         }
-
-        CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br, encver);
-        RedisModule_Free(data);
-        if(!crtArgs){
-            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
-            FlatExecutionPlan_Free(fep);
-            return REDISMODULE_ERR;
-        }
-
-
-        int ret = CommandReader_RegisrterTrigger(fep, mode, crtArgs, &err);
-        if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "warning", "Could not register on rdbload execution, error='%s'", err);
-            CommandReaderTriggerArgs_Free(crtArgs);
-            FlatExecutionPlan_Free(fep);
-            return REDISMODULE_ERR;
-        }
-
-        FlatExecutionPlan_AddToRegisterDict(fep);
     }
     return REDISMODULE_OK;
 }
@@ -350,9 +503,16 @@ static void CommandReader_Clear(){
     Gears_dictIterator *iter = Gears_dictGetIterator(CommandRegistrations);
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(iter))){
-        CommandReaderTriggerCtx* crtCtx = Gears_dictGetVal(entry);
-        FlatExecutionPlan_RemoveFromRegisterDict(crtCtx->fep);
-        CommandReaderTriggerCtx_Free(crtCtx);
+        Gears_list* l = Gears_dictGetVal(entry);
+        Gears_listIter* listIter = Gears_listGetIterator(l, AL_START_HEAD);
+        Gears_listNode* node = NULL;
+        while((node = Gears_listNext(listIter))){
+            CommandReaderTriggerCtx* crtCtx = Gears_listNodeValue(node);
+            FlatExecutionPlan_RemoveFromRegisterDict(crtCtx->fep);
+            CommandReaderTriggerCtx_Free(crtCtx);
+        }
+        Gears_listReleaseIterator(listIter);
+        Gears_listRelease(l);
     }
     Gears_dictReleaseIterator(iter);
 
@@ -380,6 +540,21 @@ typedef enum RctxType{
     RctxType_BlockedClient, RctxType_Context
 }RctxType;
 
+static void CommandReader_ReturnResults(ExecutionPlan* gearsCtx, RedisModuleCtx *ctx){
+    long long len = RedisGears_GetRecordsLen(gearsCtx);
+    if(len == 0){
+        RedisModule_ReplyWithArray(ctx, 0);
+        return;
+    }
+    if(len > 1){
+        RedisModule_ReplyWithArray(ctx, len);
+    }
+    for(long long i = 0 ; i < len ; ++i){
+        Record* r = RedisGears_GetRecord(gearsCtx, i);
+        Command_ReturnResult(ctx, r);
+    }
+}
+
 static void CommandReader_Reply(ExecutionPlan* ep, RedisModuleCtx* ctx){
     long long errorsLen = RedisGears_GetErrorsLen(ep);
     if(errorsLen > 0){
@@ -388,7 +563,7 @@ static void CommandReader_Reply(ExecutionPlan* ep, RedisModuleCtx* ctx){
         const char* lastError = RedisGears_StringRecordGet(r, NULL);
         RedisModule_ReplyWithError(ctx, lastError);
     }else{
-        Command_ReturnResults(ep, ctx);
+        CommandReader_ReturnResults(ep, ctx);
     }
 }
 
@@ -425,6 +600,8 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
     CommandReaderTriggerCtx_Free(crtCtx);
 }
 
+CommandReaderTriggerCtx* currTCtx = NULL;
+
 static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
@@ -434,13 +611,36 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         return REDISMODULE_OK;
     }
 
-    const char* subCommand = RedisModule_StringPtrLen(argv[1], NULL);
-    CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, subCommand);
+    CommandReaderTriggerCtx* crtCtx = currTCtx;
 
     if(!crtCtx){
-        RedisModule_ReplyWithError(ctx, "ERR subcommand not found");
-        return REDISMODULE_OK;
+        const char* subCommand = RedisModule_StringPtrLen(argv[1], NULL);
+        Gears_list* l = Gears_dictFetchValue(CommandRegistrations, subCommand);
+        if(!l){
+            RedisModule_ReplyWithError(ctx, "ERR subcommand not found");
+            return REDISMODULE_OK;
+        }
+
+        Gears_listIter* iter = Gears_listGetIterator(l, AL_START_HEAD);
+        Gears_listNode* node = NULL;
+        for(node = Gears_listNext(iter) ; node ; node = Gears_listNext(iter), crtCtx = NULL){
+            crtCtx = Gears_listNodeValue(node);
+            if(crtCtx->currentlyRunning){
+                continue;
+            }
+            if(!crtCtx->args->info){
+                // found the first command lets break
+                break;
+            }
+        }
+        Gears_listReleaseIterator(iter);
+        if(!crtCtx){
+            RedisModule_ReplyWithError(ctx, "ERR subcommand not found, notice that for command override you should not use RG.TRIGGER (just send the command as is).");
+            return REDISMODULE_OK;
+        }
     }
+
+    crtCtx->currentlyRunning = true;
 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1);
@@ -472,14 +672,100 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         RedisGears_AddOnDoneCallback(ep, CommandReader_OnDoneReply, bc);
     }
 
+    crtCtx->currentlyRunning = false;
+
+    crtCtx = NULL;
+
     return REDISMODULE_OK;
 }
 
+#define GEARS_OVERRIDE_COMMAND "rg.trigger"
+RedisModuleString* GearsOverrideCommand = NULL;
+
+void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
+    if(!CommandRegistrations){
+        return;
+    }
+
+    const RedisModuleString* cmd = RedisModule_CommandFilterArgGet(filter, 0);
+    const char* cmdCStr = RedisModule_StringPtrLen(cmd, NULL);
+    Gears_list* l = Gears_dictFetchValue(CommandRegistrations, cmdCStr);
+    if(!l){
+        // command not found
+        return;
+    }
+
+    currTCtx = NULL;
+    Gears_listIter* iter = Gears_listGetIterator(l, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    for(node = Gears_listNext(iter); node ; node = Gears_listNext(iter), currTCtx = NULL){
+
+        currTCtx = Gears_listNodeValue(node);
+
+        if(currTCtx->currentlyRunning){
+            continue;
+        }
+
+        CommandReaderTriggerArgs* triggerArgs = currTCtx->args;
+
+        const char* keyPrefix = triggerArgs->keyPrefix;
+        if(!keyPrefix){
+            break;
+        }
+
+        CommandReaderTriggerInfo* info = triggerArgs->info;
+        RedisModule_Assert(info);
+        RedisModule_Assert(!(info->commandFlags & COMMAND_FLAG_MOVEABLEKEYS));
+
+        size_t nArgs = RedisModule_CommandFilterArgsCount(filter);
+        int first = info->firstKey;
+        int last = info->lastKey;
+        int jump = info->jump;
+
+        RedisModule_Assert(first > 0);
+        RedisModule_Assert(jump > 0);
+
+        if(last < 0){
+            last = nArgs + last;
+        }
+
+        if(first > last){
+            // Could not find any key, must be a command arity error, we will let Redis handle it.
+            continue;
+        }
+
+        // check command information to decide if we need to override it
+        bool keyFound = false;
+        for(size_t i = first ; i <= last ; i+=jump){
+            const RedisModuleString* key = RedisModule_CommandFilterArgGet(filter, i);
+            const char* keyCStr = RedisModule_StringPtrLen(key, NULL);
+            if(strncmp(keyPrefix, keyCStr, strlen(triggerArgs->keyPrefix)) == 0){
+                keyFound = true;
+                break;
+            }
+        }
+
+        if(keyFound){
+            break;
+        }
+    }
+
+    Gears_listReleaseIterator(iter);
+
+    if(currTCtx){
+        RedisModule_RetainString(NULL, GearsOverrideCommand);
+        RedisModule_CommandFilterArgInsert(filter, 0, GearsOverrideCommand);
+    }
+}
+
 int CommandReader_Initialize(RedisModuleCtx* ctx){
-    // this command is considered readonly but it might actaully right data to redis
+    GearsOverrideCommand = RedisModule_CreateString(NULL, GEARS_OVERRIDE_COMMAND, strlen(GEARS_OVERRIDE_COMMAND));
+    RedisModuleCommandFilter *cmdFilter = RedisModule_RegisterCommandFilter(ctx, CommandReader_CommandFilter, REDISMODULE_CMDFILTER_NOSELF);
+
+    // this command is considered readonly but it might actaully write data to redis
     // using rm_call. In this case the effect of the execution is replicated
     // and not the execution itself.
-    if (RedisModule_CreateCommand(ctx, "rg.trigger", CommandReader_Trigger, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, GEARS_OVERRIDE_COMMAND, CommandReader_Trigger, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.command");
         return REDISMODULE_ERR;
     }

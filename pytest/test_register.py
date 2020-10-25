@@ -947,15 +947,15 @@ def testCommandReaderBasic(env):
 def testCommandReaderCluster(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='GetNumShard')").ok()
-    env.expect('RG.TRIGGER', 'GetNumShard').equal([str(env.shardsCount)])
+    env.expect('RG.TRIGGER', 'GetNumShard').equal(str(env.shardsCount))
 
 def testCommandReaderWithCountBy(env):
     env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x[1:]).countby(lambda x: x).register(trigger='test1')").ok()
-    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
+    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal("{'key': 'a', 'value': 3}")
 
     # we need to check twice to make sure the execution reset are not causing issues
-    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
+    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal("{'key': 'a', 'value': 3}")
 
 def testKeyReaderRegisterDontReadValues(env):
     conn = getConnectionByEnv(env)
@@ -977,3 +977,123 @@ def testKeyReaderRegisterDontReadValues(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for list to popultae')
+
+def testCommandReaderRegisterSameCommand(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").map(lambda x: "test1").register(trigger="test")').ok()
+    env.expect('rg.pyexecute', 'GB("CommandReader").map(lambda x: "test2").register(trigger="test")').ok()
+    env.expect('rg.trigger', 'test').equal('test2')
+
+def testCommandOverrideHset(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import time
+def doHset(x):
+    x += ['__time', time.time()]
+    return execute(*x)
+GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    conn.execute_command('hset', 'h1', 'foo', 'bar')
+    conn.execute_command('hset', 'h2', 'foo', 'bar')
+    conn.execute_command('hset', 'h3', 'foo', 'bar')
+
+    res = conn.execute_command('hget', 'h1', '__time')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time')
+    env.assertNotEqual(res, None)
+
+def testCommandOverrideHsetMultipleTimes(env):
+    conn = getConnectionByEnv(env)
+    script1 = '''
+import time
+def doHset(x):
+    x += ['__time1', time.time()]
+    return execute(*x)
+GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
+    '''
+    env.expect('rg.pyexecute', script1).ok()
+
+    script2 = '''
+import time
+def doHset(x):
+    x += ['__time2', time.time()]
+    return execute(*x)
+GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
+    '''
+    env.expect('rg.pyexecute', script2).ok()
+
+    conn.execute_command('hset', 'h1', 'foo', 'bar')
+    conn.execute_command('hset', 'h2', 'foo', 'bar')
+    conn.execute_command('hset', 'h3', 'foo', 'bar')
+
+    res = conn.execute_command('hget', 'h1', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h1', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time2')
+    env.assertNotEqual(res, None)
+
+def testCommandOverrideHsetByKeyPrefix(env):
+    conn = getConnectionByEnv(env)
+    script1 = '''
+import time
+def doHset(x):
+    x += ['__time1', time.time()]
+    return execute(*x)
+GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix='h')
+    '''
+    env.expect('rg.pyexecute', script1).ok()
+
+    script2 = '''
+import time
+def doHset(x):
+    x += ['__time2', time.time()]
+    return execute(*x)
+GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix='h')
+    '''
+    env.expect('rg.pyexecute', script2).ok()
+
+    conn.execute_command('hset', 'h1', 'foo', 'bar')
+    conn.execute_command('hset', 'h2', 'foo', 'bar')
+    conn.execute_command('hset', 'h3', 'foo', 'bar')
+    conn.execute_command('hset', 'b1', 'foo', 'bar')
+
+    res = conn.execute_command('hget', 'h1', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h1', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'b1', '__time1')
+    env.assertEqual(res, None)
+
+    res = conn.execute_command('hget', 'b1', '__time2')
+    env.assertEqual(res, None)

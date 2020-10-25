@@ -14,7 +14,7 @@ static WorkerData* mgmtWorker;
 
 #define STRING_TYPE_VERSION 1
 
-static void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
+void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     RG_RecordSendReply(record, rctx);
 }
 

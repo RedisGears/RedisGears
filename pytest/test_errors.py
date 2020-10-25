@@ -148,13 +148,9 @@ def testCommandReaderWithBadArgs(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register("test")').error().contains('trigger argument was not given')
     env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger=1)').error().contains('trigger argument is not string')
 
-def testCommandReaderRegisterSameCommand(env):
-    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').ok()
-    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').error().contains('trigger already registered')
-
 def testCommandReaderRegisterWithExcpetionCommand(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(trigger="command")').ok()
-    env.expect('rg.trigger', 'command').error().contains("'noexists' is not defined")
+    env.expect('command').error().contains("'noexists' is not defined")
 
 def testNoSerializableRegistrationWithAllReaders(env):
     script = '''
@@ -335,3 +331,18 @@ class testGetExecutionErrorReporting:
             self.env.assertContains("name 'notexists' is not defined", error)
         self.env.cmd('RG.DROPEXECUTION', id)
         self.env.cmd('RG.CONFIGSET', 'PythonAttemptTraceback', 1)
+
+def testCommandReaderWithPrefixRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="test", keyprefix="foo")').error().contains('Can not override a new command by key prefix')
+
+def testCommandReaderOverrideCommandWithMovableKeysRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="xread", keyprefix="foo")').error().contains('Can not override a command with moveable keys by key prefix')
+
+def testCommandReaderOverrideMultiRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="multi")').error().contains('Can not override a command which are not allowed inside a script')
+    
+def testCommandReaderOverrideExecRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="exec")').error().contains('Can not override a command which are not allowed inside a script')
+
+def testCommandReaderOverrideBlpopRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="blpop")').error().contains('Can not override a command which are not allowed inside a script')

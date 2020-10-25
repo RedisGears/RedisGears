@@ -67,7 +67,7 @@ GB().foreach(ForEach).register(mode='sync')
     verifyRegistrationIntegrity(env)
 
     def WaitForKey():
-        env.expect('RG.TRIGGER', 'WaitForKeyChange').equal(['x'])
+        env.expect('RG.TRIGGER', 'WaitForKeyChange').equal('x')
 
     try:
         with Background(WaitForKey) as bk:
@@ -122,7 +122,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock', mode='sync')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block', 'arg').equal(["['block', 'arg']"])
+        env.expect('RG.TRIGGER', 'block', 'arg').equal("['block', 'arg']")
 
     try:
         with Background(Block) as bk:
@@ -307,7 +307,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'blockcountshards', 'arg').equal([str(env.shardsCount)])
+        env.expect('RG.TRIGGER', 'blockcountshards', 'arg').equal(str(env.shardsCount))
 
     try:
         with Background(Block) as bk:
@@ -365,7 +365,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         conn.execute_command('set', i, i)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block').equal(['10000'])
+        env.expect('RG.TRIGGER', 'block').equal('10000')
 
     try:
         with Background(Block) as bk1:
@@ -426,7 +426,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     conn.execute_command('set', 'z' , '3')
 
     def Block():
-        env.expect('RG.TRIGGER', 'block').equal(['3'])
+        env.expect('RG.TRIGGER', 'block').equal('3')
 
     try:
         with Background(Block) as bk:
@@ -478,7 +478,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block').equal(['6'])
+        env.expect('RG.TRIGGER', 'block').equal('6')
 
     try:
         with Background(Block) as bk:
@@ -531,7 +531,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block', '1').equal(['2'])
+        env.expect('RG.TRIGGER', 'block', '1').equal('2')
 
     try:
         with Background(Block) as bk:
@@ -584,7 +584,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block', '1', '2', '4').equal([str(28 * env.shardsCount)])
+        env.expect('RG.TRIGGER', 'block', '1', '2', '4').equal(str(28 * env.shardsCount))
 
     try:
         with Background(Block) as bk:
@@ -645,7 +645,6 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
 
     def Block():
         res = env.cmd('RG.TRIGGER', 'block', '1', '1', '1', '2', '2', '3', '3', '3', '3')
-        res = res[0]
         d = eval(res)
         env.assertEqual(d['3'], 4 * env.shardsCount)
         env.assertEqual(d['1'], 3 * env.shardsCount)
