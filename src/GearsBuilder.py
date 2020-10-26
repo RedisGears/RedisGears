@@ -11,12 +11,14 @@ from redisgears import log
 from redisgears import setGearsSession
 from redisgears import getGearsSession
 from redisgears import registerGearsThread
+from redisgears import isInAtomicBlock
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 import asyncio
 from asyncio.futures import Future
 from asyncio.base_events import BaseEventLoop
 from threading import Thread
+from logging import raiseExceptions
 
 globals()['str'] = str
 
@@ -217,9 +219,21 @@ class GearsFuture(Future):
         
     def add_done_callback(self, fn, *, context=None):
         def BeforeFn(*args, **kargs):
-            with GearsSession(self.gearsSession):
-                fn(*args, **kargs)
+            try:
+                with GearsSession(self.gearsSession):
+                    fn(*args, **kargs)
+            except Exception as e:
+                log(e)
         Future.add_done_callback(self, BeforeFn, context=context)
+        
+    def __await__(self):
+        res = None
+        if isInAtomicBlock():
+            raise Exception("await is not allow inside atomic block")
+        else:
+            res = yield from Future.__await__(self)
+        return res
+        
 
 loop = asyncio.new_event_loop()
 

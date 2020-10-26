@@ -346,3 +346,18 @@ def testCommandReaderOverrideExecRaiseError(env):
 
 def testCommandReaderOverrideBlpopRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="blpop")').error().contains('Can not override a command which are not allowed inside a script')
+
+def testAwaitIsNotAllowedInsideAtomicBlock(env):
+    script = '''
+import asyncio
+
+async def doTest(x):
+    with atomic():
+        return await asyncio.sleep(1)
+
+GB("ShardsIDReader").map(doTest).run()
+    '''
+
+    res = env.cmd('rg.pyexecute', script)
+    err = res[1][0]
+    env.assertContains(err, 'await is not allow inside atomic block')

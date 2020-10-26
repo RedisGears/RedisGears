@@ -6,6 +6,8 @@ import time
 from common import getConnectionByEnv
 from common import TimeLimit
 
+from common import verifyRegistrationIntegrity
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
 import paella
 
@@ -994,6 +996,8 @@ GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
     '''
     env.expect('rg.pyexecute', script).ok()
 
+    verifyRegistrationIntegrity(env)
+
     conn.execute_command('hset', 'h1', 'foo', 'bar')
     conn.execute_command('hset', 'h2', 'foo', 'bar')
     conn.execute_command('hset', 'h3', 'foo', 'bar')
@@ -1026,6 +1030,8 @@ def doHset(x):
 GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
     '''
     env.expect('rg.pyexecute', script2).ok()
+
+    verifyRegistrationIntegrity(env)
 
     conn.execute_command('hset', 'h1', 'foo', 'bar')
     conn.execute_command('hset', 'h2', 'foo', 'bar')
@@ -1069,6 +1075,8 @@ GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix=
     '''
     env.expect('rg.pyexecute', script2).ok()
 
+    verifyRegistrationIntegrity(env)
+
     conn.execute_command('hset', 'h1', 'foo', 'bar')
     conn.execute_command('hset', 'h2', 'foo', 'bar')
     conn.execute_command('hset', 'h3', 'foo', 'bar')
@@ -1097,3 +1105,26 @@ GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix=
 
     res = conn.execute_command('hget', 'b1', '__time2')
     env.assertEqual(res, None)
+
+def testAwaitOnAnotherExcecution(env):
+    script = '''
+async def doTest(x):
+    with atomic():
+        f = GB().map(lambda x: x['key']).run()
+    res = await f
+    if len(res[1]) > 0:
+        raise Exception(res[1][0])
+    return res[0]
+
+GB("CommandReader").map(doTest).flatmap(lambda x: x).sort().register(trigger="test", mode="sync")
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'y', '2')
+    conn.execute_command('set', 'z', '3')
+
+    env.expect('test').equal(['x', 'y', 'z'])

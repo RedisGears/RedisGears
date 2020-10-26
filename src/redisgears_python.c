@@ -82,6 +82,8 @@ static void PyObjRecordSet(Record* base, PyObject* obj){
  */
 pthread_key_t pythonThreadCtxKey;
 
+#define PythonThreadCtxFlag_InsideAtomic (1 << 0)
+
 /*
  * Thread spacific data
  */
@@ -92,6 +94,7 @@ typedef struct PythonThreadCtx{
     DoneCallbackFunction doneFunction;
     PythonSessionCtx* currSession;
     ExecutionCtx* currEctx;
+    int flags;
 }PythonThreadCtx;
 
 /* default onDone function */
@@ -763,6 +766,7 @@ static PythonThreadCtx* GetPythonThreadCtx(){
                 .currentCtx = NULL,
                 .createdExecution = NULL,
                 .doneFunction = onDone,
+                .flags = 0,
         };
         pthread_setspecific(pythonThreadCtxKey, ptctx);
     }
@@ -1625,6 +1629,12 @@ typedef struct PyAtomic{
 } PyAtomic;
 
 static PyObject* atomicEnter(PyObject *self, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(ptctx->flags & PythonThreadCtxFlag_InsideAtomic){
+        PyErr_SetString(GearsError, "Already inside an atomic block");
+        return NULL;
+    }
+    ptctx->flags |= PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
     LockHandler_Acquire(pyAtomic->ctx);
     RedisModule_Replicate(pyAtomic->ctx, "multi", "");
@@ -1633,11 +1643,17 @@ static PyObject* atomicEnter(PyObject *self, PyObject *args){
 }
 
 static PyObject* atomicExit(PyObject *self, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(!(ptctx->flags & PythonThreadCtxFlag_InsideAtomic)){
+        PyErr_SetString(GearsError, "Not inside an atomic block");
+        return NULL;
+    }
+    ptctx->flags &= ~PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
-    LockHandler_Release(pyAtomic->ctx);
     RedisModule_Replicate(pyAtomic->ctx, "exec", "");
-    Py_INCREF(self);
-    return self;
+    LockHandler_Release(pyAtomic->ctx);
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 static void PyAtomic_Destruct(PyObject *pyObj){
@@ -1841,6 +1857,11 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
 static PyObject* registerGearsThread(PyObject *cls, PyObject *args){
     RedisGears_LockHanlderRegister();
     Py_INCREF(Py_None);
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    // called from a python thread which means that the lock counter must be 1.
+    ptctx->lockCounter = 1;
+
     return Py_None;
 }
 
@@ -1855,6 +1876,13 @@ static PyObject* getGearsSession(PyObject *cls, PyObject *args){
         pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
         res = (PyObject*)pyExSes;
     }
+    return res;
+}
+
+static PyObject* isInAtomicBlock(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyObject* res = (ptctx->flags & PythonThreadCtxFlag_InsideAtomic) ? Py_True : Py_False;
+    Py_INCREF(res);
     return res;
 }
 
@@ -3319,6 +3347,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"registerGearsThread", registerGearsThread, METH_VARARGS, "Register a thread to be a RedisGears thread"},
     {"getGearsSession", getGearsSession, METH_VARARGS, "get the current gears session"},
     {"setGearsSession", setGearsSession, METH_VARARGS, "set the current gears session"},
+    {"isInAtomicBlock", isInAtomicBlock, METH_VARARGS, "return true if currently inside atomic block"},
     {"gearsFutureCtx", gearsFutureCtx, METH_VARARGS, "creating future object to block the execution"},
     {"atomicCtx", atomicCtx, METH_VARARGS, "creating a atomic ctx for atomic block"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
@@ -5277,7 +5306,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyModule_AddObject(redisGearsModule, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
     PyModule_AddObject(redisGearsModule, "PyAtomic", (PyObject *)&PyAtomicType);
     PyModule_AddObject(redisGearsModule, "PyFuture", (PyObject *)&PyFutureType);
-    GearsError = PyErr_NewException("spam.error", NULL, NULL);
+    GearsError = PyErr_NewException("gears.error", NULL, NULL);
     Py_INCREF(GearsError);
     PyModule_AddObject(redisGearsModule, "GearsError", GearsError);
 
