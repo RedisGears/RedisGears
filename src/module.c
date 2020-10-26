@@ -13,7 +13,6 @@
 #include "version.h"
 #include "mgmt.h"
 #include "execution_plan.h"
-#include "example.h"
 #include "cluster.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
@@ -28,7 +27,6 @@
 #include "readers/streams_reader.h"
 #include "readers/command_reader.h"
 #include "readers/shardid_reader.h"
-#include "mappers.h"
 #include <stdbool.h>
 #include <unistd.h>
 #include "lock_handler.h"
@@ -956,20 +954,6 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
-int AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
-    const char* keyName = RedisGears_KeyRecordGetKey(data, NULL);
-    if(strcmp(keyName, "ChangedStream") == 0){
-        return RedisGears_StepSuccess;
-    }
-    Record* valRecord = RedisGears_KeyRecordGetVal(data);
-    const char* val = RedisGears_StringRecordGet(valRecord, NULL);
-    RedisModuleCtx* ctx = RedisGears_GetRedisModuleCtx(rctx);
-    LockHandler_Acquire(ctx);
-    RedisModule_Call(ctx, "xadd", "cccccc", "ChangedStream", "*", "key", keyName, "value", val);
-    LockHandler_Release(ctx);
-    return RedisGears_StepSuccess;
-}
-
 static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
     if(subevent == REDISMODULE_SUBEVENT_MODULE_LOADED){
         RedisModule_Log(ctx, "notice", "Got module load event, trying to reinitialize RedisAI api");
@@ -1113,9 +1097,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(StreamReader);
     RGM_RegisterReader(CommandReader);
     RGM_RegisterReader(ShardIDReader);
-    RGM_RegisterFilter(Example_Filter, NULL);
-    RGM_RegisterMap(GetValueMapper, NULL);
-    RGM_RegisterForEach(AddToStream, NULL);
 
     ExecutionPlan_Initialize();
 
@@ -1135,11 +1116,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if(Command_Init() != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not initialize commands.");
-        return REDISMODULE_ERR;
-    }
-
-    if (RedisModule_CreateCommand(ctx, "rg.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.example");
         return REDISMODULE_ERR;
     }
 
