@@ -27,6 +27,7 @@
 #include "readers/streams_reader.h"
 #include "readers/command_reader.h"
 #include "readers/shardid_reader.h"
+#include "mappers.h"
 #include <stdbool.h>
 #include <unistd.h>
 #include "lock_handler.h"
@@ -1097,7 +1098,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(StreamReader);
     RGM_RegisterReader(CommandReader);
     RGM_RegisterReader(ShardIDReader);
-
+    RGM_RegisterMap(GetValueMapper, NULL);
     ExecutionPlan_Initialize();
 
     Cluster_RegisterMsgReceiverM(RG_OnDropExecutionMsgReceived);
