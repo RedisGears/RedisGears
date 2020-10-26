@@ -97,7 +97,7 @@ Capture each keyspace event and store to a Stream
 **Author: [RedisLabs](https://redislabs.com/)**
 
 ```python
-{{ include('examples/reliable-Keyspace.py') }}
+{{ include('examples/reliable-keyspace-notification.py') }}
 ```
 
 ## Distributed Monte Carlo Estimation of Pi's Value
