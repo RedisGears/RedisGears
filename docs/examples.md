@@ -88,6 +88,18 @@ Specifically, the example shows how expired key names can be output to the log.
 {{ include('examples/notification-processing.py') }}
 ```
 
+**Author: [RedisLabs](https://redislabs.com/)**
+
+## Reliable Keyspace Notification
+
+Capture each keyspace event and store to a Stream
+
+**Author: [RedisLabs](https://redislabs.com/)**
+
+```python
+{{ include('examples/reliable-keyspace-notification.py') }}
+```
+
 ## Distributed Monte Carlo Estimation of Pi's Value
 
 Estimate Pi by throwing darts at a carefully-constructed dartboard.
