@@ -53,7 +53,7 @@ scl enable devtoolset-7 bash
 * Install [Redis 6.0.1 or higher](https://redis.io/) on your machine.
 
 ```
-git clone https://github.com/antirez/redis.git
+git clone https://github.com/redis/redis.git
 cd redis
 git checkout 6.0.1 
 make
@@ -91,7 +91,7 @@ To load the module on the same server it was compiled on simply use the `--loadm
 
 For example to load the module to local Redis after you followed [Building](#building) steps run:
 ```
-redis-server --loadmodule ./redisgears.io
+redis-server --loadmodule ./redisgears.so
 ```
 
 If you compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>` should not be changed.

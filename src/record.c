@@ -1,64 +1,20 @@
 #include "utils/arr_rm_alloc.h"
 #include "utils/dict.h"
 #include "record.h"
+#include "common.h"
 
 #include "redisgears.h"
 #include "redisgears_memory.h"
+#include "execution_plan.h"
 #ifdef WITHPYTHON
 #include "redisgears_python.h"
 #endif
 
-typedef struct RecordType{
-    size_t id;
-    char* name;
-    size_t size;
-    int (*sendReply)(Record* record, RedisModuleCtx* rctx);
-    int (*serialize)(Gears_BufferWriter* bw, Record* base, char** err);
-    Record* (*deserialize)(Gears_BufferReader* br);
-    void (*free)(Record* base);
-}RecordType;
-
-typedef struct KeysHandlerRecord{
-    Record base;
-    RedisModuleKey *keyHandler;
-}KeysHandlerRecord;
-
-typedef struct LongRecord{
-    Record base;
-    long num;
-}LongRecord;
-
-typedef struct DoubleRecord{
-    Record base;
-    double num;
-}DoubleRecord;
-
-typedef struct StringRecord{
-    Record base;
-    size_t len;
-    char* str;
-}StringRecord;
-
-typedef struct ListRecord{
-    Record base;
-    Record** records;
-}ListRecord;
-
-typedef struct KeyRecord{
-    Record base;
-    char* key;
-    size_t len;
-    Record* record;
-}KeyRecord;
-
-typedef struct HashSetRecord{
-    Record base;
-    Gears_dict* d;
-}HashSetRecord;
-
 RecordType StopRecordType;
 
 Record StopRecord;
+Record WaitRecord;
+Record DummyRecord;
 
 RecordType* listRecordType;
 RecordType* stringRecordType;
@@ -68,6 +24,7 @@ RecordType* doubleRecordType;
 RecordType* keyRecordType;
 RecordType* keysHandlerRecordType;
 RecordType* hashSetRecordType;
+RecordType* asyncRecordType;
 
 static RecordType** recordsTypes;
 
@@ -109,6 +66,36 @@ static void KeysHandlerRecord_Free(Record* base){
     RedisModule_CloseKey(record->keyHandler);
 }
 
+void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
+    if(async->originRecord){
+        // if we have an original record and r is not NULL, i.e, true
+        // we need to continue with the original record.
+        if(r){
+            RG_FreeRecord(r);
+            r = async->originRecord;
+        }else{
+            r = &DummyRecord;
+        }
+    }
+    if(async->overridePlaceHolder){
+        *async->overridePlaceHolder = r;
+        *(async->rptx) = &DummyRecord;
+    }else{
+        *(async->rptx) = r;
+    }
+    ExecutionPlan_PendingCtxFree(async->pctx);
+    async->pctx = NULL;
+}
+
+static void AsyncRecord_Free(Record* base){
+    AsyncRecord* async = (AsyncRecord*)base;
+    if(async->pctx){
+#define ERROR_MSG "Async record did not called continue"
+        Record* error = RG_ErrorRecordCreate(RG_STRDUP(ERROR_MSG), strlen(ERROR_MSG));
+        RG_AsyncRecordContinueInternal(async, error);
+    }
+}
+
 static void HashSetRecord_Free(Record* base){
     HashSetRecord* record = (HashSetRecord*)base;
     Gears_dictIterator *iter;
@@ -123,41 +110,41 @@ static void HashSetRecord_Free(Record* base){
     Gears_dictRelease(record->d);
 }
 
-static int StringRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int StringRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     StringRecord* r = (StringRecord*)base;
     RedisGears_BWWriteBuffer(bw, r->str, r->len);
     return REDISMODULE_OK;
 }
 
-static int LongRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int LongRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     LongRecord* r = (LongRecord*)base;
     RedisGears_BWWriteLong(bw, r->num);
     return REDISMODULE_OK;
 }
 
-static int DoubleRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int DoubleRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     DoubleRecord* r = (DoubleRecord*)base;
     RedisGears_BWWriteLong(bw, (long)r->num);
     return REDISMODULE_OK;
 }
 
-static int ListRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int ListRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     ListRecord* r = (ListRecord*)base;
     RedisGears_BWWriteLong(bw, RedisGears_ListRecordLen(base));
     for(size_t i = 0 ; i < RedisGears_ListRecordLen(base) ; ++i){
-        if(RG_SerializeRecord(bw, r->records[i], err) != REDISMODULE_OK){
+        if(RG_SerializeRecord(ctx, bw, r->records[i]) != REDISMODULE_OK){
             return REDISMODULE_ERR;
         }
     }
     return REDISMODULE_OK;
 }
 
-static int KeyRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int KeyRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     KeyRecord* r = (KeyRecord*)base;
     RedisGears_BWWriteString(bw, r->key);
     if(r->record){
         RedisGears_BWWriteLong(bw, 1); // value exists
-        if(RG_SerializeRecord(bw, r->record, err) != REDISMODULE_OK){
+        if(RG_SerializeRecord(ctx, bw, r->record) != REDISMODULE_OK){
             return REDISMODULE_ERR;
         }
     }else{
@@ -166,13 +153,18 @@ static int KeyRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err)
     return REDISMODULE_OK;
 }
 
-static int KeysHandlerRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int KeysHandlerRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     // todo: what we can do here is to read the key and create a serializable record
     RedisModule_Assert(false && "can not serialize key handler record");
     return REDISMODULE_OK;
 }
 
-static int HashSetRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** err){
+static int AsyncRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
+    RedisModule_Assert(false && "can not serialize async record");
+    return REDISMODULE_OK;
+}
+
+static int HashSetRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     HashSetRecord* record = (HashSetRecord*)base;
     Gears_dictIterator *iter;
     Gears_dictEntry *entry;
@@ -183,7 +175,7 @@ static int HashSetRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** 
         const char* k = Gears_dictGetKey(entry);
         Record* temp = Gears_dictGetVal(entry);
         RedisGears_BWWriteString(bw, k);
-        if(RG_SerializeRecord(bw, temp, err) != REDISMODULE_OK){
+        if(RG_SerializeRecord(ctx, bw, temp) != REDISMODULE_OK){
             return REDISMODULE_ERR;
         }
     }
@@ -191,7 +183,7 @@ static int HashSetRecord_Serialize(Gears_BufferWriter* bw, Record* base, char** 
     return REDISMODULE_OK;
 }
 
-static Record* StringRecord_Deserialize(Gears_BufferReader* br){
+static Record* StringRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
     char* temp1 = RG_ALLOC(size);
@@ -199,11 +191,11 @@ static Record* StringRecord_Deserialize(Gears_BufferReader* br){
     return RG_StringRecordCreate(temp1, size);
 }
 
-static Record* LongRecord_Deserialize(Gears_BufferReader* br){
+static Record* LongRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     return RG_LongRecordCreate(RedisGears_BRReadLong(br));
 }
 
-static Record* ErrorRecord_Deserialize(Gears_BufferReader* br){
+static Record* ErrorRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
     char* temp1 = RG_ALLOC(size);
@@ -211,44 +203,49 @@ static Record* ErrorRecord_Deserialize(Gears_BufferReader* br){
     return RG_ErrorRecordCreate(temp1, size);
 }
 
-static Record* DoubleRecord_Deserialize(Gears_BufferReader* br){
+static Record* DoubleRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     return RG_DoubleRecordCreate((double)RedisGears_BRReadLong(br));
 }
 
-static Record* ListRecord_Deserialize(Gears_BufferReader* br){
+static Record* ListRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size = (size_t)RedisGears_BRReadLong(br);
     Record* r = RG_ListRecordCreate(size);
     for(size_t i = 0 ; i < size ; ++i){
-        RG_ListRecordAdd(r, RG_DeserializeRecord(br));
+        RG_ListRecordAdd(r, RG_DeserializeRecord(ctx, br));
     }
     return r;
 }
 
-static Record* KeyRecord_Deserialize(Gears_BufferReader* br){
+static Record* KeyRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     Record* r = RedisGears_KeyRecordCreate();
     char* key = RG_STRDUP(RedisGears_BRReadString(br));
     RG_KeyRecordSetKey(r, key, strlen(key));
     bool isValExists = (bool)RedisGears_BRReadLong(br);
     if(isValExists){
-        RedisGears_KeyRecordSetVal(r, RG_DeserializeRecord(br));
+        RedisGears_KeyRecordSetVal(r, RG_DeserializeRecord(ctx, br));
     }else{
         RedisGears_KeyRecordSetVal(r, NULL);
     }
     return r;
 }
 
-static Record* KeysHandlerRecord_Deserialize(Gears_BufferReader* br){
+static Record* KeysHandlerRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     // todo: what we can do here is to read the key and create a serializable record
     RedisModule_Assert(false && "can not deserialize key handler record");
     return NULL;
 }
 
-static Record* HashSetRecord_Deserialize(Gears_BufferReader* br){
+static Record* AsyncRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
+    RedisModule_Assert(false && "can not deserialize async record");
+    return NULL;
+}
+
+static Record* HashSetRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     Record* record = RedisGears_HashSetRecordCreate();
     size_t len = RedisGears_BRReadLong(br);
     for(size_t i = 0 ; i < len ; ++i){
         char* k = RedisGears_BRReadString(br);
-        Record* r = RG_DeserializeRecord(br);
+        Record* r = RG_DeserializeRecord(ctx, br);
         RedisGears_HashSetRecordSet(record, k, r);
     }
     return record;
@@ -294,6 +291,11 @@ static int KeysHandlerRecord_SendReply(Record* r, RedisModuleCtx* rctx){
     return REDISMODULE_OK;
 }
 
+static int AsyncRecord_SendReply(Record* base, RedisModuleCtx* rctx){
+    RedisModule_Assert(false); // can not reach here;
+    return REDISMODULE_OK;
+}
+
 static int HashSetRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     HashSetRecord* record = (HashSetRecord*)base;
     Gears_dictIterator *iter;
@@ -312,16 +314,16 @@ static int HashSetRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     return REDISMODULE_OK;
 }
 
-int RG_SerializeRecord(Gears_BufferWriter* bw, Record* r, char** err){
+int RG_SerializeRecord(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* r){
     RedisGears_BWWriteLong(bw, r->type->id);
-    return r->type->serialize(bw, r, err);
+    return r->type->serialize(ctx, bw, r);
 }
 
-Record* RG_DeserializeRecord(Gears_BufferReader* br){
+Record* RG_DeserializeRecord(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t typeId = RedisGears_BRReadLong(br);
     RedisModule_Assert(typeId >= 0 && typeId < array_len(recordsTypes));
     RecordType* type = recordsTypes[typeId];
-    return type->deserialize(br);
+    return type->deserialize(ctx, br);
 }
 
 int RG_RecordSendReply(Record* record, RedisModuleCtx* rctx){
@@ -404,10 +406,19 @@ void Record_Initialize(){
                                             HashSetRecord_Serialize,
                                             HashSetRecord_Deserialize,
                                             HashSetRecord_Free);
+
+    asyncRecordType = RG_RecordTypeCreate("AsyncRecord", sizeof(AsyncRecord),
+                                            AsyncRecord_SendReply,
+                                            AsyncRecord_Serialize,
+                                            AsyncRecord_Deserialize,
+                                            AsyncRecord_Free);
 }
 
 void RG_FreeRecord(Record* record){
     if(!record){
+        return;
+    }
+    if(IS_SPECIAL_RECORD(record)){
         return;
     }
     record->type->free(record);
@@ -577,6 +588,50 @@ char** RG_HashSetRecordGetAllKeys(Record* base){
     }
     Gears_dictReleaseIterator(iter);
     return ret;
+}
+
+Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
+    if(!ectx->step){
+        *err = RG_STRDUP("Can not create gearsFuture outside of step");
+        return NULL;
+    }
+    size_t maxSize;
+    switch(ectx->step->type){
+    case MAP:
+    case FILTER:
+    case FOREACH:
+        maxSize = 1000;
+        break;
+    case ACCUMULATE:
+    case ACCUMULATE_BY_KEY:
+        maxSize = 1;
+        break;
+    default:
+        *err = RG_STRDUP("Step does not support async");
+        return NULL;
+    }
+
+    AsyncRecord* ret = (AsyncRecord*)RG_RecordCreate(asyncRecordType);
+    if(!ectx->ep->pendingCtxs[ectx->step->stepId]){
+        // todo: change max to match the step type
+        ectx->ep->pendingCtxs[ectx->step->stepId] = ExecutionPlan_PendingCtxCreate(ectx->ep, ectx->step, maxSize);
+    }
+    ret->pctx = ExecutionPlan_PendingCtxGetShallowCopy(ectx->ep->pendingCtxs[ectx->step->stepId]);
+
+    // place holder for the real value
+    Gears_listAddNodeHead(ret->pctx->records, NULL);
+
+    // save pointer to set the real value
+    ret->rptx = (Record**)(&(Gears_listFirst(ret->pctx->records)->value));
+    ret->overridePlaceHolder = ectx->actualPlaceHolder;
+    ret->originRecord = ectx->originRecord;
+    return &ret->base;
+}
+
+void RG_AsyncRecordContinue(Record* asyncRecord, Record* r){
+    AsyncRecord* async = (AsyncRecord*)asyncRecord;
+    RG_AsyncRecordContinueInternal(async, r);
+    RG_FreeRecord(asyncRecord);
 }
 
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler){

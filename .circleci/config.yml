@@ -47,6 +47,7 @@ commands:
       - run:
           name: Test
           command: make test <<parameters.test_params>>
+          no_output_timeout: 30m
       - store_artifacts:
           path: pytest/logs
 
@@ -113,7 +114,7 @@ jobs:
 
   macos:
     macos:
-      xcode: 12.0.0
+      xcode: 11.3.0
     steps:
       - run:
           name: Fix macOS setup
@@ -238,8 +239,8 @@ workflows:
           platform: xenial
           <<: *platform-build-defs
       - valgrind:
-          #@@ <<: *on-version-tags
-          <<: *on-any-branch
+          <<: *on-version-tags
+          # <<: *on-any-branch
       - macos:
           <<: *on-version-tags
           # <<: *on-any-branch

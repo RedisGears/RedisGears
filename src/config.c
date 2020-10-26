@@ -55,6 +55,7 @@ typedef struct RedisGears_Config{
     ConfigVal downloadDeps;
     ConfigVal foreceDownloadDepsOnEnterprise;
     ConfigVal sendMsgRetries;
+    ConfigVal pluginsDirectory;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -162,6 +163,21 @@ static bool ConfigVal_PythonInstallationDirSet(ArgsIterator* iter){
     RG_FREE(DefaultGearsConfig.pythonInstallationDir.val.str);
     const char* valStr = RedisModule_StringPtrLen(val, NULL);
     DefaultGearsConfig.pythonInstallationDir.val.str = RG_STRDUP(valStr);
+    return true;
+}
+
+static const ConfigVal* ConfigVal_PluginsDirectoryGet(){
+    return &DefaultGearsConfig.pluginsDirectory;
+}
+
+static bool ConfigVal_PluginsDirectorySet(ArgsIterator* iter){
+    RedisModuleString* val = ArgsIterator_Next(iter);
+    if(!val){
+        return false;
+    }
+    RG_FREE(DefaultGearsConfig.pluginsDirectory.val.str);
+    const char* valStr = RedisModule_StringPtrLen(val, NULL);
+    DefaultGearsConfig.pluginsDirectory.val.str = RG_STRDUP(valStr);
     return true;
 }
 
@@ -400,6 +416,13 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .setter = ConfigVal_SendMsgRetriesSet,
         .configurableAtRunTime = true,
     },
+
+    {
+        .name = "PluginsDirectory",
+        .getter = ConfigVal_PluginsDirectoryGet,
+        .setter = ConfigVal_PluginsDirectorySet,
+        .configurableAtRunTime = false,
+    },
     {
         NULL,
     },
@@ -565,6 +588,11 @@ const char* GearsConfig_GetPythonInstallationDir(){
     return DefaultGearsConfig.pythonInstallationDir.val.str;
 }
 
+const char* GearsConfig_GetPluginsDirectory(){
+    return DefaultGearsConfig.pluginsDirectory.val.str;
+}
+
+
 const char* GearsConfig_GetDependenciesUrl(){
     return DefaultGearsConfig.dependenciesUrl.val.str;
 }
@@ -694,6 +722,10 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
         .sendMsgRetries = {
             .val.longVal = 3,
             .type = LONG,
+        },
+        .pluginsDirectory = {
+            .val.str = RG_STRDUP("/var/opt/redislabs/modules/rg/plugins"),
+            .type = STR,
         },
     };
 
