@@ -50,6 +50,8 @@ typedef struct Plugin{
 
 Gears_dict* plugins = NULL;
 
+RedisModuleCtx* redisDummyCtx = NULL;
+
 #define REGISTER_API(name, ctx) \
     do{\
         RedisGears_ ## name = RG_ ## name;\
@@ -154,16 +156,19 @@ static int RG_SetFlatExecutionOnUnregisteredCallback(FlatExecutionPlan* fep, con
 }
 
 static FlatExecutionPlan* RG_CreateCtx(char* readerName, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only create Gears Builder when Redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only create a gearsCtx on registered gears thread");
         return NULL;
     }
+    LockHandler_Acquire(redisDummyCtx);
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
     if(!FlatExecutionPlan_SetReader(fep, readerName)){
         FlatExecutionPlan_Free(fep);
         *err = RG_STRDUP("The given reader does not exists");
+        LockHandler_Release(redisDummyCtx);
         return NULL;
     }
+    LockHandler_Release(redisDummyCtx);
     return fep;
 }
 
@@ -244,19 +249,25 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
 }
 
 static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only register execution when redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only register execution on registered gears thread");
         return 0;
     }
-    return FlatExecutionPlan_Register(fep, mode, key, err);
+    LockHandler_Acquire(redisDummyCtx);
+    int res = FlatExecutionPlan_Register(fep, mode, key, err);
+    LockHandler_Release(redisDummyCtx);
+    return res;
 }
 
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only run execution when redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only run execution on registered gears thread");
         return NULL;
     }
-    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
+    LockHandler_Acquire(redisDummyCtx);
+    ExecutionPlan* res = FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
+    LockHandler_Release(redisDummyCtx);
+    return res;
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
@@ -1054,6 +1065,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA,
 			REDISGEARS_OS_VERSION);
+
+	redisDummyCtx = RedisModule_GetThreadSafeContext(NULL);
 
     GearsGetRedisVersion();
     RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",

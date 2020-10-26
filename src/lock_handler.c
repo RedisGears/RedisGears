@@ -30,11 +30,11 @@ int LockHandler_Initialize(){
     return REDISMODULE_OK;
 }
 
-bool LockHandler_IsLockTaken(){
+bool LockHandler_IsRedisGearsThread(){
     LockHandlerCtx* lh = pthread_getspecific(_lockKey);
     // if we do not have the lock handler this thread was not created by us,
     // we will trust the user here.
-    return lh ? lh->lockCounter > 0 : true;
+    return lh ? true : false;
 }
 
 void LockHandler_Register(){

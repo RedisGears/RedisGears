@@ -860,14 +860,15 @@ static bool StreamReader_IsStream(RedisModuleKey *kp){
 }
 
 static void* StreamReader_ScanForStreams(void* pd){
+    RedisGears_LockHanlderRegister();
     StreamReaderTriggerCtx* srctx = pd;
     long long cursor = 0;
     do{
         // we do not use the lockhandler cause this thread is temporary
         // and we do not want to allocate any unneeded extra data.
-        RedisModule_ThreadSafeContextLock(staticCtx);
+        LockHandler_Acquire(staticCtx);
         RedisModuleCallReply *reply = RedisModule_Call(staticCtx, "SCAN", "lcccc", cursor, "COUNT", "10000", "MATCH", srctx->args->streamPrefix);
-        RedisModule_ThreadSafeContextUnlock(staticCtx);
+        LockHandler_Release(staticCtx);
 
         bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed scanning keys on background", "warning");
         RedisModule_Assert(ret);
@@ -895,10 +896,10 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
 
-            RedisModule_ThreadSafeContextLock(staticCtx);
+            LockHandler_Acquire(staticCtx);
             RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
             if(kp == NULL){
-                RedisModule_ThreadSafeContextUnlock(staticCtx);
+                LockHandler_Release(staticCtx);
                 continue;
             }
 
@@ -916,15 +917,15 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModule_FreeString(staticCtx, key);
             RedisModule_CloseKey(kp);
 
-            RedisModule_ThreadSafeContextUnlock(staticCtx);
+            LockHandler_Release(staticCtx);
         }
 
         RedisModule_FreeCallReply(reply);
     }while(cursor != 0);
 
-    RedisModule_ThreadSafeContextLock(staticCtx);
+    LockHandler_Acquire(staticCtx);
     StreamReaderTriggerCtx_Free(srctx);
-    RedisModule_ThreadSafeContextUnlock(staticCtx);
+    LockHandler_Release(staticCtx);
 
     return NULL;
 }

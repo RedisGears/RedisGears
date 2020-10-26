@@ -1109,9 +1109,7 @@ GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix=
 def testAwaitOnAnotherExcecution(env):
     script = '''
 async def doTest(x):
-    with atomic():
-        f = GB().map(lambda x: x['key']).run()
-    res = await f
+    res = await GB().map(lambda x: x['key']).run()
     if len(res[1]) > 0:
         raise Exception(res[1][0])
     return res[0]
