@@ -53,7 +53,7 @@ scl enable devtoolset-7 bash
 * Install [Redis 6.0.1 or higher](https://redis.io/) on your machine.
 
 ```
-git clone https://github.com/antirez/redis.git
+git clone https://github.com/redis/redis.git
 cd redis
 git checkout 6.0
 make
@@ -95,7 +95,7 @@ To load the module on the same server it was compiled on, use the `--loadmodule`
 
 For example, to load the module into a local Redis server after you've [built](#building) it, run:
 ```
-redis-server --loadmodule ./redisgears.io
+redis-server --loadmodule ./redisgears.so
 ```
 
 <<<<<<< HEAD

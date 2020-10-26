@@ -1,6 +1,6 @@
 # <img src="images/RedisGears.png" alt="logo" style="width: 2em; vertical-align: middle;"/> RedisGears
 [![Forum](https://img.shields.io/badge/Forum-RedisGears-blue)](https://forum.redislabs.com/c/modules/redisgears)
-[![Gitter](https://badges.gitter.im/RedisLabs/RedisGears.svg)](https://gitter.im/RedisLabs/RedisGears?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+[![Discord](https://img.shields.io/discord/697882427875393627?style=flat-square)](https://discord.gg/6yaVTtp)
 
 ## What is RedisGears?
 RedisGears is an engine for data processing in Redis. RedisGears supports transaction, [batch](glossary.md#batch-processing), and [event-driven](glossary.md#event-processing) processing of Redis data. To use RedisGears, you write [functions](functions.md) that describe how your data should be processed. You then submit this code to your Redis deployment for remote execution.

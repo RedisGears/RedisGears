@@ -30,6 +30,22 @@ int LockHandler_Initialize(){
     return REDISMODULE_OK;
 }
 
+bool LockHandler_IsLockTaken(){
+    LockHandlerCtx* lh = pthread_getspecific(_lockKey);
+    // if we do not have the lock handler this thread was not created by us,
+    // we will trust the user here.
+    return lh ? lh->lockCounter > 0 : true;
+}
+
+void LockHandler_Register(){
+    LockHandlerCtx* lh = pthread_getspecific(_lockKey);
+    if(!lh){
+        lh = RG_ALLOC(sizeof(*lh));
+        lh->lockCounter = 0;
+        pthread_setspecific(_lockKey, lh);
+    }
+}
+
 void LockHandler_Acquire(RedisModuleCtx* ctx){
     LockHandlerCtx* lh = pthread_getspecific(_lockKey);
     if(!lh){
