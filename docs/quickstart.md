@@ -1,5 +1,5 @@
 # RedisGears Quickstart
-RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module). To run it you'll need a Redis server (v5 or greater) and the module's shared library.
+RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module). To run it, you'll need a Redis server (v5 or greater) and the module's shared library.
 
 The following sections describe how to get started with RedisGears.
 
@@ -10,7 +10,7 @@ The quickest way to try RedisGears is by launching its official Docker container
 docker run -p 6379:6379 redislabs/redisgears:latest
 ```
 
-A Redis Cluster with RedisGears variant is also available:
+A Redis Cluster with RedisGears is also available:
 
 ```sh
 docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:latest
@@ -55,7 +55,7 @@ scl enable devtoolset-7 bash
 ```
 git clone https://github.com/redis/redis.git
 cd redis
-git checkout 6.0.1 
+git checkout 6.0
 make
 make install
 ```
@@ -67,7 +67,7 @@ xcode-select --install
 ```
 
 ### Clone
-To get the code and its submodules do the following:
+To get the code and its submodules, do the following:
 ```
 git clone https://github.com/RedisGears/RedisGears.git
 cd RedisGears
@@ -84,22 +84,34 @@ make fetch
 make all
 ```
 
-You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbol link to it on the main directory (called `redisgears.so`).
+<<<<<<< HEAD
+You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbolic link to it in the main directory (called `redisgears.so`).
+=======
+You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbolic link to it in the main directory (called `redisgears.os`).
+>>>>>>> 67be9d8220d973b89131afbcb96283cc917ebc49
 
 ## Loading
-To load the module on the same server it was compiled on simply use the `--loadmodule` command line switch, the `loadmodule` configuration directive or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
+To load the module on the same server it was compiled on, use the `--loadmodule` command line switch, the `loadmodule` configuration directive, or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
-For example to load the module to local Redis after you followed [Building](#building) steps run:
+For example, to load the module into a local Redis server after you've [built](#building) it, run:
 ```
 redis-server --loadmodule ./redisgears.so
 ```
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+If you've compiled the module on a different server than the one loading it, copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>`, should not be changed.
+=======
 If you compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>` should not be changed.
+>>>>>>> master
+=======
+If you've compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>`, should not be changed.
+>>>>>>> 67be9d8220d973b89131afbcb96283cc917ebc49
 
 ## Testing
-Tests are written in Python and the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
+Tests are written in Python and use the [RLTest](https://github.com/RedisLabsModules/RLTest) library.
 
-To run the tests after installing the dependencies use:
+To run the tests after installing the dependencies, run:
 
 ```
 make test

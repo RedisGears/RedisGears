@@ -5,7 +5,7 @@
 **Redis** is an ...
 
 !!! quote
-    ... open source (BSD licensed), in-memory data structure store, used as a database, cache and message broker. It supports data structures such as strings, hashes, lists, sets, sorted sets with range queries, bitmaps, hyperloglogs, geospatial indexes with radius queries and streams. Redis has built-in replication, Lua scripting, LRU eviction, transactions and different levels of on-disk persistence, and provides high availability via Redis Sentinel and automatic partitioning with Redis Cluster.
+    ... open source (BSD licensed), in-memory data structure store, used as a database, cache and message broker. It supports data structures such as strings, hashes, lists, sets, sorted sets with range queries, bitmaps, hyperloglogs, geospatial indexes with radius queries, and streams. Redis has built-in replication, Lua scripting, LRU eviction, transactions, and different levels of on-disk persistence, and provides high availability via Redis Sentinel and automatic partitioning with Redis Cluster.
 
 !!! tip "Redis is also..."
     An acronym for **RE**mote **DI**ctionary **S**erver that's pronounced "red" like the color, then "iss".
@@ -19,7 +19,7 @@
 
 
 ## Module
-A Redis **module** is a shared library that can be loaded by the Redis server during runtime. Useful for extending Redis with new data types and commands.
+A Redis **module** is a shared library that can be loaded by the Redis server during runtime. Redis modules extend Redis with new data types and commands.
 
 ??? info "Further reference"
     You can learn more about Redis modules at:
@@ -28,16 +28,16 @@ A Redis **module** is a shared library that can be loaded by the Redis server du
       * [Modules published at redis.io](https://redis.io/modules)
 
 ## Client
-A Redis **client** is a piece of software that can write and read the [Redis Protocol](https://redis.io/topics/protocol).
+A Redis **client** is a piece of software you use to interact with Redis. All Redis clients speak the [Redis Protocol](https://redis.io/topics/protocol).
 
 ??? info "Further reference"
-    For a wide choice of clients refer to:
+    For a complete list of clients, refer to:
 
       * [Redis clients by programming language](https://redis.io/clients)
       * [redis-cli](https://redis.io/topics/rediscli)
 
 ## Command
-An instruction sent to the Redis server by a client. Commands are either provided by the core Redis engine or modules.
+An instruction sent to the Redis server by a client. Both Redis and Redis modules implement commands.
 
 ??? info "Further reference"
     Refer to these pages for more information about:
@@ -64,13 +64,13 @@ Redis stores data in structures that implement different types and the API to ma
 An **event** is a signal that the RedisGears engine can intercept and react to by triggering the execution of an event-driven processing function.
 
 ## Engine
-A RedisGears component that is in charge of the execution of functions. The engine executes locally on each of the cluster's shards.
+A RedisGears component in charge of the execution of functions. The engine executes locally on each of the cluster's shards.
 
 ## Coordinator
 A RedisGears component that handles cluster communication and data shuffling.
 
 ## Cluster
-A **cluster** is a deployment option for Redis, in which the database is partitioned across multiple shards in a _shared-nothing_ fashion. Partitioning is done by hashing key names to slots.
+A **cluster** is a deployment option for Redis in which the database is partitioned across multiple shards in a _shared-nothing_ fashion. Partitioning is done by hashing key names to slots.
 
 ??? info "Further reference"
     More about the Redis cluster:
@@ -81,13 +81,13 @@ A **cluster** is a deployment option for Redis, in which the database is partiti
 A **node** is a physical (or virtualized) server in a cluster. Each node can be used for hosting one or more shards.
 
 ## Shard
-A **shard** is Redis server process that is a part of a cluster. A shard runs on one of the cluster's nodes and manages an exclusive subset of slots of the Redis keyspace. Every slot is managed by a single master shard. Master shards accepts writes and can optionally be configured with replicas for scaling read throughput and availability purposes.
+A **shard** is a Redis server process that runs on one of the cluster's nodes and manages an exclusive subset of slots in the Redis keyspace. Every slot is managed by a single master shard. Master shards accepts writes and can optionally be configured with replicas for scaling read throughput and increasing availability.
 
 ## API
-RedisGears functions can be programmed via applicative interfaces. The APIs are available for the Python and C programming languages
+RedisGears functions can be programmed via applicative interfaces. RedisGears provides a public Python API. RedisGears also provides a C API, which can be used internally by other Redis modules.
 
 ## Function
-A RedisGears **function** is a formal description of the processing steps in the data flow.
+A RedisGears **function** is a an implementation of the processing steps in a data flow.
 
 A function always:
 
@@ -101,10 +101,10 @@ A function always:
     Refer to the [Functions page](functions.md) for a complete reference about functions.
 
 ## Reader
-A RedisGears **reader** is the mandatory first step of any function, and every function has exactly one reader. A reader reads data and generates input records from it. The input records are consumed by the function.
+A RedisGears **reader** is the mandatory first step of any function. Every function has exactly one reader. A reader reads data and generates input records from it. The input records are consumed by the function.
 
 ??? info "Further reference"
-    Refer to the [Readers page](readers.md) for a complete reference about the different readers' types and their operation.
+    Refer to the [Readers page](readers.md) for a complete reference about the various reader types and their operation.
 
 ## Record
 A RedisGears **record** is the basic abstraction that represents data in the function's flow. Input data records are passed from one step to the next and are finally returned as the result.
@@ -128,33 +128,33 @@ An **action** is special type of operation that is always the function's final s
     Actions are described at the [Functions page](functions.md#action).
 
 ## Result
-The **result** of a function is the output records its execution.
+The **result** of a function is the set of output records it produces after executing.
 
 ??? info "Further reference"
     Results are described at the [Functions page](functions.md#result).
 
 ## Execution
-Every time that a RedisGears function is executed it generates data that is referred to as its **execution**. Every execution is uniquely identified by an ID, and consists of the results, errors and more information from the function's execution.
+An **execution** is a single run of a RedisGears function. Every execution is uniquely identified by an ID, and every execution consists of the results, errors, and other information generated while executing.
 
 ??? info "Further reference"
     Executions are described at the [Functions page](functions.md#execution).
 
 ## Registration
-A RedisGears **registration** represents a function that was sent to the engine and will be triggered by events.
+A RedisGears **registration** is a stored function that is triggered by events.
 
 ??? info "Further reference"
     Registrations are described at the [Functions page](functions.md#registration).
 
 ## Initiator
-In the context of a clustered environment the **initiator** is the shard's engine in which a function is originally executed.
+In the context of a clustered environment, the **initiator** is the shard's engine in which a function is originally executed.
 
 ## Worker
-In the context of a clustered environment a **worker** is any shard that isn't the initiator.
+In the context of a clustered environment, a **worker** is any shard that isn't the initiator.
 
 ## Batch Processing
 A RedisGears function is executed as a batch when it is [run](functions.md#run) immediately on existing data.
 
-Batch execution is always asynchronous. By default, the client executing the function is blocked until execution is finished. Once finished, the client is unblocked and is returned with any results or errors from the function.
+Batch execution is always asynchronous. By default, the client executing the function is blocked until execution is finished. Once finished, RedisGears unblocks the client and returns any results or errors.
 
 ## Event Processing
 A RedisGears function is executed as an event when it is [registered](functions.md#register) to be triggered by events.
@@ -163,4 +163,4 @@ A RedisGears function is executed as an event when it is [registered](functions.
 A framework for performing distributed data processing.
 
 ## Recipe
-A RedisGears **recipe** is a collection of functions any dependencies they may have, which implements a high-level functional purpose. It can be mentally substituted with "project".
+A RedisGears **recipe** is a collection of functions and their dependencies. A recipe typically implements a complex procedure, such as write-behind. You can think of a recipe as a "project".
