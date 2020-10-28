@@ -94,6 +94,7 @@ typedef struct PythonThreadCtx{
     DoneCallbackFunction doneFunction;
     PythonSessionCtx* currSession;
     ExecutionCtx* currEctx;
+    PyObject** createdFutures;
     int flags;
 }PythonThreadCtx;
 
@@ -107,6 +108,8 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
 static void TimeEvent_Free(void *value);
 static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err);
 static PythonThreadCtx* GetPythonThreadCtx();
+static void continueFutureOnDone(ExecutionPlan* ep, void* privateData);
+static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData);
 
 static long long CurrSessionId = 0;
 
@@ -749,6 +752,25 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
 
 }
 
+static void RedisGearsPy_OnExecutionCreatedCallback(ExecutionPlan* ep, void* arg){
+    // called before the execution started when GIL is help so its safe to add OnDone callbacks here.
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    if(ptctx->createdFutures){
+        FlatExecutionPlan* fep = RedisGears_GetFep(ep);
+        PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+        void* old = RedisGearsPy_Lock(sctx);
+        PyObject* pArgs = PyTuple_New(0);
+        PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
+        Py_DECREF(pArgs);
+
+        RedisGears_AddOnDoneCallback(ep, continueFutureOnDone, future);
+        Py_INCREF(future);
+        ptctx->createdFutures = array_append(ptctx->createdFutures, future);
+        RedisGearsPy_Unlock(old);
+    }
+}
+
 static void RedisGearsPy_OnExecutionUnpausedCallback(ExecutionCtx* ctx, void* arg){
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(ctx);
     void* old = RedisGearsPy_Lock(sctx);
@@ -767,6 +789,7 @@ static PythonThreadCtx* GetPythonThreadCtx(){
                 .createdExecution = NULL,
                 .doneFunction = onDone,
                 .flags = 0,
+                .createdFutures = NULL,
         };
         pthread_setspecific(pythonThreadCtxKey, ptctx);
     }
@@ -1143,14 +1166,20 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
 
-    if(ptctx->createdExecution){
-        // it is not possible to run 2 executions in single script currently
+    if(ptctx->currentCtx && ptctx->createdExecution){
+        // we have currentCtx, which means we run inside rg.pyexecute command.
+        // it is not possible to run 2 executions in single rg.pyexecute command.
         PyErr_SetString(GearsError, "Can not run more then 1 executions in a single script");
         return NULL;
     }
 
     if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
         PyErr_SetString(GearsError, "Failed setting on start callback");
+        return NULL;
+    }
+
+    if(RGM_SetFlatExecutionOnCreatedCallback(pfep->fep, RedisGearsPy_OnExecutionCreatedCallback, NULL) != REDISMODULE_OK){
+        PyErr_SetString(GearsError, "Failed setting on created callback");
         return NULL;
     }
 
@@ -1192,6 +1221,14 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
     }
 
     char* err = NULL;
+    PyObject* res = NULL;
+
+    // in case we are inside another context that also wants to get futures
+    PyObject** oldFutures = ptctx->createdFutures;
+    ptctx->createdFutures = array_new(PyObject*, 1);
+
+    RedisGears_OnExecutionDoneCallback onDoneCallback = !ptctx->currentCtx ? dropExecutionOnDone : NULL;
+
     ExecutionPlan* ep = RGM_Run(pfep->fep, ExecutionModeAsync, arg, NULL, NULL, &err);
     if(!ep){
         if(err){
@@ -1210,22 +1247,20 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
             RedisModule_Log(NULL, "warning", "unknown reader when try to free reader args");
             RedisModule_Assert(false);
         }
-        return NULL;
+        goto end;
     }
-    if(!ptctx->currentCtx){
-        RedisGears_AddOnDoneCallback(ep, dropExecutionOnDone, NULL);
-    }else{
+
+    if(ptctx->currentCtx){
         ptctx->createdExecution = ep;
     }
 
-    PyObject* pArgs = PyTuple_New(0);
-    PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
-    Py_DECREF(pArgs);
+    RedisModule_Assert(array_len(ptctx->createdFutures) == 1);
+    res = ptctx->createdFutures[0];
 
-    RedisGears_AddOnDoneCallback(ep, continueFutureOnDone, future);
-    Py_INCREF(future);
-
-    return future;
+end:
+    array_free(ptctx->createdFutures);
+    ptctx->createdFutures = oldFutures;
+    return res;
 }
 
 static int registerStrKeyTypeToInt(const char* keyType){
@@ -1467,6 +1502,11 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
 
     if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
         PyErr_SetString(GearsError, "Failed setting on start callback");
+        return NULL;
+    }
+
+    if(RGM_SetFlatExecutionOnCreatedCallback(pfep->fep, RedisGearsPy_OnExecutionCreatedCallback, NULL) != REDISMODULE_OK){
+        PyErr_SetString(GearsError, "Failed setting on created callback");
         return NULL;
     }
 
@@ -5390,6 +5430,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     RGM_RegisterGroupByExtractor(RedisGearsPy_PyCallbackExtractor, pyCallbackType);
     RGM_RegisterReducer(RedisGearsPy_PyCallbackReducer, pyCallbackType);
     RGM_RegisterExecutionOnUnpausedCallback(RedisGearsPy_OnExecutionUnpausedCallback, pyCallbackType);
+    RGM_RegisterFlatExecutionOnCreatedCallback(RedisGearsPy_OnExecutionCreatedCallback, pyCallbackType);
     RGM_RegisterFlatExecutionOnRegisteredCallback(RedisGearsPy_OnRegistered, pyCallbackType);
 
     if(TimeEvent_RegisterType(ctx) != REDISMODULE_OK){

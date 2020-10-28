@@ -498,6 +498,20 @@ static const char* FlatExecutionPlan_SerializeInternal(FlatExecutionPlan* fep, s
         RedisGears_BWWriteLong(&bw, 0); // no onExecutionStartStep
     }
 
+    if(fep->onExecutionCreated.stepName){
+        RedisGears_BWWriteLong(&bw, 1); // has onExecutionStartStep
+        RedisGears_BWWriteString(&bw, fep->onExecutionCreated.stepName);
+        ArgType* type = fep->onExecutionCreated.arg.type;
+        int res = FlatExecutionPlan_SerializeStepArg(fep, type, fep->onExecutionCreated.arg.stepArg, &bw, err);
+        if(res != REDISMODULE_OK){
+            Gears_BufferFree(fep->serializedFep);
+            fep->serializedFep = NULL;
+            return NULL;
+        }
+    }else{
+        RedisGears_BWWriteLong(&bw, 0); // no onExecutionStartStep
+    }
+
     if(len){
         *len = fep->serializedFep->size;
     }
@@ -665,6 +679,25 @@ static int FlatExecutionPlan_DeserializeInternal(FlatExecutionPlan* ret, const c
             }
             ret->onUnregisteredStep = (FlatBasicStep){
                     .stepName = RG_STRDUP(onUnregisteredCallbackName),
+                    .arg = {
+                            .stepArg = arg,
+                            .type = type,
+                    },
+            };
+        }
+    }
+
+    if(encver >= VERSION_WITH_CREATED_CALLBACK){
+        long long hasOnCreatedCallback = RedisGears_BRReadLong(&br);
+        if(hasOnCreatedCallback){
+            const char* onCreatedCallbackName = RedisGears_BRReadString(&br);
+            ArgType* type = FlatExecutionOnCreatedsMgmt_GetArgType(onCreatedCallbackName);
+            void* arg = FlatExecutionPlan_DeserializeArg(ret, type, &br, encver, err);
+            if(*err){
+                goto error;
+            }
+            ret->onExecutionCreated = (FlatBasicStep){
+                    .stepName = RG_STRDUP(onCreatedCallbackName),
                     .arg = {
                             .stepArg = arg,
                             .type = type,
@@ -2260,6 +2293,13 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
 
 static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker){
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, mode, arg, callback, privateData);
+
+    // before start the run lets call the on created callback
+    if(fep->onExecutionCreated.stepName){
+        RedisGears_FlatExecutionOnCreatedCallback callback = FlatExecutionOnCreatedsMgmt_Get(fep->onExecutionCreated.stepName);
+        callback(ep, fep->onExecutionCreated.arg.stepArg);
+    }
+
     if(worker){
         ep->assignWorker = ExecutionPlan_WorkerGetShallowCopy(worker);
     }else{
@@ -3171,6 +3211,14 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
             },
     };
 
+    res->onExecutionCreated = (FlatBasicStep){
+            .stepName = NULL,
+            .arg = {
+                    .stepArg = NULL,
+                    .type = NULL,
+            },
+    };
+
     FlatExecutionPlan_SetID(res, NULL);
 
     return res;
@@ -3245,6 +3293,14 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         }
     }
 
+    if(fep->onExecutionCreated.stepName){
+        RG_FREE(fep->onExecutionCreated.stepName);
+        if(fep->onExecutionCreated.arg.stepArg){
+            RedisModule_Assert(fep->onExecutionCreated.arg.type);
+            fep->onExecutionCreated.arg.type->free(fep->onExecutionCreated.arg.stepArg);
+        }
+    }
+
     if(fep->onUnpausedStep.stepName){
         RG_FREE(fep->onUnpausedStep.stepName);
         if(fep->onUnpausedStep.arg.stepArg){
@@ -3308,6 +3364,13 @@ void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, char* onUnr
     fep->onUnregisteredStep.arg.stepArg = onUnregisteredCallbackArg;
     fep->onUnregisteredStep.arg.type = FlatExecutionOnUnregisteredsMgmt_GetArgType(onUnregisteredCallback);
     RedisModule_Assert(fep->onUnregisteredStep.arg.type);
+}
+
+void FlatExecutionPlan_SetOnCreatedStep(FlatExecutionPlan* fep, char* onCreatedCallback, void* onCreatedCallbackArg){
+    fep->onExecutionCreated.stepName = onCreatedCallback;
+    fep->onExecutionCreated.arg.stepArg = onCreatedCallbackArg;
+    fep->onExecutionCreated.arg.type = FlatExecutionOnCreatedsMgmt_GetArgType(onCreatedCallback);
+    RedisModule_Assert(fep->onExecutionCreated.arg.type);
 }
 
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg){

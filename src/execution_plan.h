@@ -287,10 +287,29 @@ typedef struct FlatExecutionPlan{
     ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
     size_t executionPoolSize;
     Gears_Buffer* serializedFep;
+
+    /* Call on each shard when execution created from this FEP start to run for the first time */
     FlatBasicStep onExecutionStartStep;
+
+    /* Call on each shard when execution is registered, also when it registered when loaded from rdb or aof */
     FlatBasicStep onRegisteredStep;
+
+    /* Call on each shard when execution unregistered */
     FlatBasicStep onUnregisteredStep;
+
+    /* Call on each shard when execution is unpaused, pause could happened because
+     * the execution is waiting for results from other shards or because the execution
+     * is waiting for records that are async processed by the user (maybe on another thread
+     * or process)
+     */
     FlatBasicStep onUnpausedStep;
+
+    /*
+     * Called right after an execution was created from this FEP, the callback is
+     * invoked only on the shard that created the execution.
+     */
+    FlatBasicStep onExecutionCreated;
+
     long long executionMaxIdleTime;
     ExecutionThreadPool* executionThreadPool;
     FlatExecutionFlags flags;
@@ -328,6 +347,7 @@ void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallb
 void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onSUnpausedCallback, void* onUnpausedArg);
 void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
+void FlatExecutionPlan_SetOnCreatedStep(FlatExecutionPlan* fep, char* onCreatedCallback, void* onCreatedCallbackArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);

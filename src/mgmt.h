@@ -83,6 +83,10 @@ bool FlatExecutionOnUnregisteredsMgmt_Add(const char* name, RedisGears_FlatExecu
 RedisGears_FlatExecutionOnUnregisteredCallback FlatExecutionOnUnregisteredsMgmt_Get(const char* name);
 ArgType* FlatExecutionOnUnregisteredsMgmt_GetArgType(const char* name);
 
+bool FlatExecutionOnCreatedsMgmt_Add(const char* name, RedisGears_FlatExecutionOnCreatedCallback callback, ArgType* type);
+RedisGears_FlatExecutionOnCreatedCallback FlatExecutionOnCreatedsMgmt_Get(const char* name);
+ArgType* FlatExecutionOnCreatedsMgmt_GetArgType(const char* name);
+
 bool KeysReaderReadRecordsMgmt_Add(const char* name, RedisGears_KeysReaderReadRecordCallback callback, ArgType* type);
 RedisGears_KeysReaderReadRecordCallback KeysReaderReadRecordsMgmt_Get(const char* name);
 ArgType* KeysReaderReadRecordsMgmt_GetArgType(const char* name);
