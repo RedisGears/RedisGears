@@ -2,6 +2,7 @@ import redisgears
 import copy
 import redisgears as rg
 from redisgears import executeCommand as execute
+from redisgears import executeAsyncCommand as execute_async
 from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
@@ -43,8 +44,11 @@ def createKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator
         if patternGenerator is not None:
             pattern, noScan = patternGenerator()
         if noScan:
-            if execute('exists', pattern) == 1:
-                yield pattern
+            try:
+                if execute('exists', pattern) == 1:
+                    yield pattern
+            except Exception:
+                return
         else:
             count = str(count)
             cursor, keys = execute('scan', '0', 'MATCH', str(pattern), 'COUNT', count)

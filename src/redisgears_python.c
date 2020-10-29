@@ -1113,10 +1113,13 @@ static void continueFutureOnDone(ExecutionPlan* ep, void* privateData){
     PyTuple_SetItem(pArgs, 0, future);
     PyTuple_SetItem(pArgs, 1, l);
     PyObject* r = PyObject_CallObject(setFutureResultsFunction, pArgs);
+    Py_DECREF(pArgs);
     if(!r){
         char* err = getPyError();
         RedisModule_Log(NULL, "warning", "Error happened when releasing execution future, error='%s'", err);
         RG_FREE(err);
+    }else{
+        Py_DECREF(r);
     }
 
     RedisGearsPy_Unlock(old);
@@ -2173,7 +2176,15 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
 
     PyObject* res = NULL;
     RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", arguments, array_len(arguments));
-    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+    if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_UNKNOWN){
+        if(errno){
+            PyErr_SetString(GearsError, strerror(errno));
+        }else{
+            PyErr_SetString(GearsError, "Failed executing command");
+        }
+        res = NULL;
+    }
+    else if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
         size_t len;
         const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
         PyErr_SetString(GearsError, replyStr);
@@ -2190,6 +2201,53 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
     return res;
+}
+
+static PyObject* executeAsyncCommand(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    // in case we are inside another context that also wants to get futures
+    PyObject** oldFutures = ptctx->createdFutures;
+    ptctx->createdFutures = array_new(PyObject*, 1);
+
+    PyObject* res = executeCommand(cls, args);
+    PyObject* future = NULL;
+    if(array_len(ptctx->createdFutures) > 0){
+        RedisModule_Assert(array_len(ptctx->createdFutures) == 1);
+        future = ptctx->createdFutures[0];
+    }
+    if(res){
+        if(future){
+            Py_DECREF(future);
+        }
+        // create a new future and set the result in it, Async execute always returns future.
+        PyObject* pArgs = PyTuple_New(0);
+        future = PyObject_CallObject(createFutureFunction, pArgs);
+        Py_DECREF(pArgs);
+
+        Py_INCREF(future);
+
+        pArgs = PyTuple_New(2);
+        PyTuple_SetItem(pArgs, 0, future);
+        PyTuple_SetItem(pArgs, 1, res);
+        PyObject* r = PyObject_CallObject(setFutureResultsFunction, pArgs);
+        Py_DECREF(pArgs);
+        if(!r){
+            char* err = getPyError();
+            RedisModule_Log(NULL, "warning", "Error happened when releasing execution future, error='%s'", err);
+            RG_FREE(err);
+        }else{
+            Py_DECREF(r);
+        }
+    }
+
+    if(future){
+        PyErr_Clear();
+    }
+
+    array_free(ptctx->createdFutures);
+    ptctx->createdFutures = oldFutures;
+    return future;
 }
 
 typedef struct PyTensor{
@@ -3392,6 +3450,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"atomicCtx", atomicCtx, METH_VARARGS, "creating a atomic ctx for atomic block"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
     {"executeCommand", executeCommand, METH_VARARGS, "execute a redis command and return the result"},
+    {"executeAsyncCommand", executeAsyncCommand, METH_VARARGS, "execute a redis command async, return a future to await on."},
     {"log", (PyCFunction)RedisLog, METH_VARARGS|METH_KEYWORDS, "write a message into the redis log file"},
     {"config_get", RedisConfigGet, METH_VARARGS, "write a message into the redis log file"},
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
