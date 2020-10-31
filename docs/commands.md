@@ -18,9 +18,7 @@ The following sections describe the supported commands.
 | [`RG.INFOCLUSTER`](#rginfocluster) | Returns cluster information |
 | [`RG.PYEXECUTE`](#rgpyexecute) | Executes Python functions and registers functions for event-driven processing |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
-<<<<<<< HEAD
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes a node's view of the cluster |
-=======
 | [`RG.PYDUMPREQS`](#rgpystats) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
 >>>>>>> master
