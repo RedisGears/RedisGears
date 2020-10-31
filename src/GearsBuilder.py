@@ -17,9 +17,7 @@ from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 import asyncio
 from asyncio.futures import Future
-from asyncio.base_events import BaseEventLoop
 from threading import Thread
-from logging import raiseExceptions
 
 globals()['str'] = str
 
