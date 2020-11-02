@@ -1135,7 +1135,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     }
 
     if (RedisModule_CreateCommand(ctx, RG_CLUSTER_SET_FROM_SHARD_COMMAND, Cluster_ClusterSetFromShard, "readonly", 0, 0, -1) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.clustersetfromshard");
+        RedisModule_Log(ctx, "warning", "could not register command "RG_CLUSTER_SET_FROM_SHARD_COMMAND);
         return REDISMODULE_ERR;
     }
 
