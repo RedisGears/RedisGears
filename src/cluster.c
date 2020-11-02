@@ -293,7 +293,7 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
             if(GearsConfig_SendMsgRetries() == 0 || sentMsg->retries < GearsConfig_SendMsgRetries()){
                 redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
             }else{
-                RedisModule_Log(NULL, "warning", "Gave up of message because failed to send it for more then %lld time", GearsConfig_SendMsgRetries());
+                RedisModule_Log(NULL, "warning", "Gave up of message because failed to send it for more than %lld time", GearsConfig_SendMsgRetries());
                 Gears_listDelNode(n->pendingMessages, node);
             }
         }
