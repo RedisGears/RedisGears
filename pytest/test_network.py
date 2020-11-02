@@ -216,9 +216,9 @@ class ShardMock():
     def GetConnection(self, runid='1', sendHelloResponse=True):
         conn = self.new_conns.get(block=True, timeout=None)
         self.env.assertEqual(conn.read_request(), ['AUTH', 'password'])
-        self.env.assertEqual(conn.read_request(), ['RG.HELLO'])
         conn.send_status('OK')  # auth response
-        if sendHelloResponse:
+        if(sendHelloResponse):
+            self.env.assertEqual(conn.read_request(), ['RG.HELLO'])
             conn.send_bulk(runid)  # hello response, sending runid
         conn.flush()
         return conn
@@ -381,6 +381,25 @@ def testSendRetriesMechanizm(env):
         except Exception:
             pass
 
+def testSendTopology(env):
+    env.skipOnCluster()
+
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection()
+        
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+
+        conn.send_error('ERRCLUSTER')
+
+        env.assertTrue(conn.is_close())
+
+        # should reconnect
+        conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # should recieve the topology
+        env.assertEqual(conn.read_request(), ['rg.clustersetfromshard', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', '0000000000000000000000000000000000000002', 'NO-USED', '2', 'NO-USED', '1', 'NO-USED', '0', '8192', 'NO-USED', 'password@localhost:6379', 'NO-USED', 'NO-USED', '2', 'NO-USED', '8193', '16383', 'NO-USED', 'password@localhost:10000'])
 
 
 
@@ -426,6 +445,9 @@ def testMessagesResentAfterHelloResponse(env):
 
     with ShardMock(env) as shardMock:
         conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # read RG.HELLO request
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])
 
         # this will send 'test' msg to the shard before he replied the RG.HELLO message
         env.expect('RG.NETWORKTEST').equal('OK')
