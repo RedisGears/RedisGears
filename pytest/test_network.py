@@ -213,12 +213,13 @@ class ShardMock():
     def __exit__(self, type, value, traceback):
         self.stream_server.stop()
 
-    def GetConnection(self, runid='1'):
+    def GetConnection(self, runid='1', sendHelloResponse=True):
         conn = self.new_conns.get(block=True, timeout=None)
         self.env.assertEqual(conn.read_request(), ['AUTH', 'password'])
         self.env.assertEqual(conn.read_request(), ['RG.HELLO'])
         conn.send_status('OK')  # auth response
-        conn.send_bulk(runid)  # hello response, sending runid
+        if sendHelloResponse:
+            conn.send_bulk(runid)  # hello response, sending runid
         conn.flush()
         return conn
 
@@ -418,3 +419,23 @@ def testDuplicateMessagesAreIgnored(env):
         shardMock.GetConnection()
         env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('OK')
         env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
+
+
+def testMessagesResentAfterHelloResponse(env):
+    env.skipOnCluster()
+
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # this will send 'test' msg to the shard before he replied the RG.HELLO message
+        env.expect('RG.NETWORKTEST').equal('OK')
+
+        # send RG.HELLO reply
+        conn.send_bulk('1')  # hello response, sending runid
+
+        # make sure we get the 'test' msg
+        try:
+            with TimeLimit(2):
+                env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        except Exception:
+            env.assertTrue(False, message='did not get the "test" message')

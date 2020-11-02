@@ -269,29 +269,35 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
         return;
     }
 
+    bool resendPendingMessages = true;;
+
     if(n->runId){
         if(strcmp(n->runId, reply->str) != 0){
-            // here we know that the shard has crashed
-            // todo: notify all running executions to abort
+            /* here we know that the shard has crashed
+             * There is no need to send pending messages
+             */
+            resendPendingMessages = false;
             n->msgId = 0;
             Gears_listEmpty(n->pendingMessages);
-        }else{
-            // shard is alive, tcp disconnected
-            Gears_listIter* iter = Gears_listGetIterator(n->pendingMessages, AL_START_HEAD);
-            Gears_listNode *node = NULL;
-            while((node = Gears_listNext(iter)) != NULL){
-                SentMessages* sentMsg = Gears_listNodeValue(node);
-                ++sentMsg->retries;
-                if(GearsConfig_SendMsgRetries() == 0 || sentMsg->retries < GearsConfig_SendMsgRetries()){
-                    redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
-                }else{
-                    RedisModule_Log(NULL, "warning", "Gave up of message because failed to send it for more then %lld time", GearsConfig_SendMsgRetries());
-                    Gears_listDelNode(n->pendingMessages, node);
-                }
-            }
-            Gears_listReleaseIterator(iter);
         }
         RG_FREE(n->runId);
+    }
+
+    if(resendPendingMessages){
+        // we need to send pending messages to the shard
+        Gears_listIter* iter = Gears_listGetIterator(n->pendingMessages, AL_START_HEAD);
+        Gears_listNode *node = NULL;
+        while((node = Gears_listNext(iter)) != NULL){
+            SentMessages* sentMsg = Gears_listNodeValue(node);
+            ++sentMsg->retries;
+            if(GearsConfig_SendMsgRetries() == 0 || sentMsg->retries < GearsConfig_SendMsgRetries()){
+                redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
+            }else{
+                RedisModule_Log(NULL, "warning", "Gave up of message because failed to send it for more than %lld time", GearsConfig_SendMsgRetries());
+                Gears_listDelNode(n->pendingMessages, node);
+            }
+        }
+        Gears_listReleaseIterator(iter);
     }
     n->runId = RG_STRDUP(reply->str);
     n->status = NodeStatus_Connected;
