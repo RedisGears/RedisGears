@@ -457,6 +457,10 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         return REDISMODULE_OK;
     }
 
+    if(crtCtx->mode == ExecutionModeAsync){
+        VERIFY_CLUSTER_INITIALIZE(ctx);
+    }
+
     CommandPD* pd = CommandPD_Create(ctx, crtCtx);
 
     char* err = NULL;

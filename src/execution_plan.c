@@ -17,6 +17,7 @@
 #include "lock_handler.h"
 #include "utils/thpool.h"
 #include "version.h"
+#include "common.h"
 
 #define INIT_TIMER  struct timespec _ts = {0}, _te = {0}; \
                     bool timerInitialized = false;
@@ -2955,6 +2956,7 @@ int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleStrin
 }
 
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    VERIFY_CLUSTER_INITIALIZE(ctx);
     return ExecutionPlan_UnregisterCommon(ctx, argv, argc, true);
 }
 

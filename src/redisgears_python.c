@@ -3217,6 +3217,8 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         return RedisModule_WrongArity(ctx);
     }
 
+    VERIFY_CLUSTER_INITIALIZE(ctx);
+
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
     bool isBlocking = true;
     size_t requirementsArg = 3;
@@ -4054,6 +4056,8 @@ static int RedisGearsPy_DumpRequirements(RedisModuleCtx *ctx, RedisModuleString 
 }
 
 static int RedisGearsPy_ImportRequirement(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    VERIFY_CLUSTER_INITIALIZE(ctx);
+
     Gears_Buffer* buff = Gears_BufferCreate();
 
     for(size_t i = 1 ; i < argc ; i++){
