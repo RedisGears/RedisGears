@@ -10,6 +10,7 @@
 
 #include "utils/dict.h"
 #include "redismodule.h"
+#include "cluster.h"
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -44,6 +45,8 @@ extern bool gearsIsCrdt;
 static inline int IsEnterprise() {
   return gearsRlecMajorVersion != -1;
 }
+
+#define VERIFY_CLUSTER_INITIALIZE(c) if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state")
 
 int GearsCheckSupportedVestion();
 void GearsGetRedisVersion();
