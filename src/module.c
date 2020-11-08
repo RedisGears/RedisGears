@@ -255,6 +255,10 @@ static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* a
         *err = RG_STRDUP("Can only run execution when redis GIL is taken");
         return NULL;
     }
+    if(mode == ExecutionModeAsync && !Cluster_IsInitialized()){
+        *err = RG_STRDUP("Cluster is not initialized, can not start executions.");
+        return NULL;
+    }
     return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
 }
 
@@ -1127,6 +1131,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if (RedisModule_CreateCommand(ctx, "rg.clusterset", Cluster_ClusterSet, "readonly", 0, 0, -1) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.refreshcluster");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, RG_CLUSTER_SET_FROM_SHARD_COMMAND, Cluster_ClusterSetFromShard, "readonly", 0, 0, -1) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command "RG_CLUSTER_SET_FROM_SHARD_COMMAND);
         return REDISMODULE_ERR;
     }
 
