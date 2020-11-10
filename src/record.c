@@ -596,6 +596,11 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
         *err = RG_STRDUP("Can not create gearsFuture outside of step");
         return NULL;
     }
+    ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ectx);
+    if(ep->mode == ExecutionModeSync){
+        *err = RG_STRDUP("Can not create gearsFuture on sync execution");
+        return NULL;
+    }
     size_t maxSize;
     switch(ectx->step->type){
     case MAP:

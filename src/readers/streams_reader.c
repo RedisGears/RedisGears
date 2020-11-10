@@ -13,8 +13,6 @@
 #define STREAM_REGISTRATION_INIT_SIZE 10
 Gears_list* streamsRegistration = NULL;
 
-RedisModuleCtx *staticCtx = NULL;
-
 typedef struct StreamId{
         long first;
         long second;
@@ -723,6 +721,7 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         }
         return;
     }
+    RedisModule_Assert(srtctx->mode != ExecutionModeSync || EPIsFlagOn(ep, EFDone));
     if(EPIsFlagOn(ep, EFIsLocal) && EPIsFlagOff(ep, EFDone)){
         // execution is local
         // If execution is SYNC it will be added to localDoneExecutions on done
@@ -933,7 +932,6 @@ static void* StreamReader_ScanForStreams(void* pd){
 static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
-        staticCtx = RedisModule_GetThreadSafeContext(NULL);
         if(RedisModule_SubscribeToKeyspaceEvents(staticCtx, REDISMODULE_NOTIFY_STREAM, StreamReader_OnKeyTouched) != REDISMODULE_OK){
             RedisModule_Log(staticCtx, "warning", "could not register key space even.");
         }

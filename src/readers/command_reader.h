@@ -6,7 +6,13 @@
 extern RedisGears_ReaderCallbacks CommandReader;
 
 int CommandReader_Initialize(RedisModuleCtx* ctx);
-CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* trigger, const char* keyPrefix);
+CommandReaderTriggerArgs* CommandReaderTriggerArgs_CreateTrigger(const char* trigger);
+CommandReaderTriggerArgs* CommandReaderTriggerArgs_CreateHook(const char* hook, const char* keyPrefix);
 void CommandReaderTriggerArgs_Free(CommandReaderTriggerArgs* crtArgs);
+
+CommandReaderTriggerCtx* CommandReaderTriggerCtx_Get(ExecutionCtx* eCtx);
+CommandReaderTriggerCtx* CommandReaderTriggerCtx_GetShallowCopy(CommandReaderTriggerCtx* crtCtx);
+void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx);
+RedisModuleCallReply* CommandReaderTriggerCtx_CallNext(CommandReaderTriggerCtx* crtCtx, RedisModuleString** argv, size_t argc);
 
 #endif /* SRC_READERS_COMMAND_READER_H_ */

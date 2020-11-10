@@ -2,6 +2,7 @@ import redisgears
 import copy
 import redisgears as rg
 from redisgears import executeCommand as execute
+from redisgears import callNext as call_next
 from redisgears import executeAsyncCommand as execute_async
 from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
@@ -257,8 +258,7 @@ def f(loop):
 t = Thread(target=f, args=(loop,))
 t.start()
 
-def runCoroutine(cr, f):
-    s = getGearsSession()
+def runCoroutine(cr, f, s):
     async def runInternal():
         try:
             with GearsSession(s):

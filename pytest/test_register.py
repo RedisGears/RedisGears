@@ -219,8 +219,16 @@ GB().map(InfinitLoop).register('*', mode='async_local')
         with TimeLimit(2):
             done = False
             while not done:
-                registrations = len(env.cmd('RG.DUMPEXECUTIONS'))
-                if registrations == 1:
+                exeutions = env.cmd('RG.DUMPEXECUTIONS')
+                for e in exeutions:
+                    # we need to abort the running execution, it was not aborted
+                    # on RG.UNREGISTER
+                    if e[3] == 'running':
+                        try:
+                            env.cmd('RG.ABORTEXECUTION', e[1])
+                        except Exception:
+                            pass
+                if len(exeutions) == 1:
                     done = True
                 time.sleep(0.1)
     except Exception as e:
@@ -302,8 +310,16 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     try:
         with TimeLimit(2):
             while True:
-                l = len(env.cmd('RG.DUMPEXECUTIONS'))
-                if l == 1:
+                exeutions = env.cmd('RG.DUMPEXECUTIONS')
+                for e in exeutions:
+                    # we need to abort the running execution, it was not aborted
+                    # on RG.UNREGISTER
+                    if e[3] == 'running':
+                        try:
+                            env.cmd('RG.ABORTEXECUTION', e[1])
+                        except Exception:
+                            pass
+                if len(exeutions) == 1:
                     break
                 time.sleep(0.1)
     except Exception as e:
@@ -949,15 +965,15 @@ def testCommandReaderBasic(env):
 def testCommandReaderCluster(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='GetNumShard')").ok()
-    env.expect('RG.TRIGGER', 'GetNumShard').equal(str(env.shardsCount))
+    env.expect('RG.TRIGGER', 'GetNumShard').equal([str(env.shardsCount)])
 
 def testCommandReaderWithCountBy(env):
     env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x[1:]).countby(lambda x: x).register(trigger='test1')").ok()
-    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal("{'key': 'a', 'value': 3}")
+    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
 
     # we need to check twice to make sure the execution reset are not causing issues
-    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal("{'key': 'a', 'value': 3}")
+    env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
 
 def testKeyReaderRegisterDontReadValues(env):
     conn = getConnectionByEnv(env)
@@ -980,19 +996,14 @@ def testKeyReaderRegisterDontReadValues(env):
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for list to popultae')
 
-def testCommandReaderRegisterSameCommand(env):
-    env.expect('rg.pyexecute', 'GB("CommandReader").map(lambda x: "test1").register(trigger="test")').ok()
-    env.expect('rg.pyexecute', 'GB("CommandReader").map(lambda x: "test2").register(trigger="test")').ok()
-    env.expect('rg.trigger', 'test').equal('test2')
-
 def testCommandOverrideHset(env):
     conn = getConnectionByEnv(env)
     script = '''
 import time
 def doHset(x):
     x += ['__time', time.time()]
-    return execute(*x)
-GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync")
     '''
     env.expect('rg.pyexecute', script).ok()
 
@@ -1017,8 +1028,8 @@ def testCommandOverrideHsetMultipleTimes(env):
 import time
 def doHset(x):
     x += ['__time1', time.time()]
-    return execute(*x)
-GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync")
     '''
     env.expect('rg.pyexecute', script1).ok()
 
@@ -1026,8 +1037,8 @@ GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
 import time
 def doHset(x):
     x += ['__time2', time.time()]
-    return execute(*x)
-GB("CommandReader").map(doHset).register(trigger="hset", mode="sync")
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync")
     '''
     env.expect('rg.pyexecute', script2).ok()
 
@@ -1061,8 +1072,8 @@ def testCommandOverrideHsetByKeyPrefix(env):
 import time
 def doHset(x):
     x += ['__time1', time.time()]
-    return execute(*x)
-GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix='h')
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync", keyprefix='h')
     '''
     env.expect('rg.pyexecute', script1).ok()
 
@@ -1070,8 +1081,8 @@ GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix=
 import time
 def doHset(x):
     x += ['__time2', time.time()]
-    return execute(*x)
-GB("CommandReader").map(doHset).register(trigger="hset", mode="sync", keyprefix='h')
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync", keyprefix='h', convertToStr=False)
     '''
     env.expect('rg.pyexecute', script2).ok()
 
@@ -1114,7 +1125,7 @@ async def doTest(x):
         raise Exception(res[1][0])
     return res[0]
 
-GB("CommandReader").map(doTest).flatmap(lambda x: x).sort().register(trigger="test", mode="sync")
+GB("CommandReader").map(doTest).flatmap(lambda x: x).sort().register(trigger="test", mode="async_local")
     '''
     conn = getConnectionByEnv(env)
     env.expect('rg.pyexecute', script).ok()
@@ -1125,4 +1136,34 @@ GB("CommandReader").map(doTest).flatmap(lambda x: x).sort().register(trigger="te
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')
 
-    env.expect('test').equal(['x', 'y', 'z'])
+    env.expect('rg.trigger', 'test').equal(['x', 'y', 'z'])
+
+
+def testHookNotTriggerOnReplicationLink(env):
+    env = Env(useSlaves=True, env='oss')
+    if env.envRunner.debugger is not None:
+        env.skip() # valgrind is not working correctly with replication
+    script = '''
+def doHset(x):
+    execute('hincrby', x[1], '__updated', '1')
+    return call_next(*x[1:])
+
+GB("CommandReader").map(doHset).register(hook="hset", convertToStr=False)
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.expect('hset', 'h', 'foo', 'bar').equal(1)
+
+    env.expect('hget', 'h', '__updated').equal('1')
+
+    slaveConn = env.getSlaveConnection()
+
+    try:
+        with TimeLimit(4):
+            while True:
+                res = slaveConn.execute_command('hget', 'h', '__updated')
+                if res == '1':
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for data to sync to slave')

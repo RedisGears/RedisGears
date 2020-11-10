@@ -42,6 +42,8 @@ static inline int IsEnterprise() {
   return gearsRlecMajorVersion != -1;
 }
 
+extern RedisModuleCtx *staticCtx;
+
 int GearsCheckSupportedVestion();
 void GearsGetRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);

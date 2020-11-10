@@ -314,11 +314,32 @@ static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* prefix,
     return KeysReaderTriggerArgs_Create(prefix, eventTypes, keyTypes, readValue);
 }
 
-static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger, const char* keyPrefix){
-    return CommandReaderTriggerArgs_Create(trigger, keyPrefix);
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
+    return CommandReaderTriggerArgs_CreateTrigger(trigger);
 }
+
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreateHook(const char* hook, const char* prefix){
+    return CommandReaderTriggerArgs_CreateHook(hook, prefix);
+}
+
 static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){
     CommandReaderTriggerArgs_Free(args);
+}
+
+static CommandReaderTriggerCtx* RG_GetCommandReaderTriggerCtx(ExecutionCtx* ectx){
+    return CommandReaderTriggerCtx_Get(ectx);
+}
+
+static CommandReaderTriggerCtx* RG_CommandReaderTriggerCtxGetShallowCopy(CommandReaderTriggerCtx* crtCtx){
+    return CommandReaderTriggerCtx_GetShallowCopy(crtCtx);
+}
+
+static RedisModuleCallReply* RG_CommandReaderTriggerCtxNext(CommandReaderTriggerCtx* crtCtx, RedisModuleString** argv, size_t argc){
+    return CommandReaderTriggerCtx_CallNext(crtCtx, argv, argc);
+}
+
+static void RG_CommandReaderTriggerCtxFree(CommandReaderTriggerCtx* crtCtx){
+    CommandReaderTriggerCtx_Free(crtCtx);
 }
 
 static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
@@ -399,28 +420,12 @@ static int RG_AbortExecution(ExecutionPlan* ep){
         return REDISMODULE_OK;
     }
 
-    // execution is not local and already started, we can not abort it now.
-    if(EPIsFlagOff(ep, EFIsLocal)){
-        return REDISMODULE_ERR;
-    }
-
     // execution is done, no need to abort
     if(RedisGears_IsDone(ep)){
         return REDISMODULE_OK;
     }
 
-    while(ep->status != DONE){
-        // we are checking for DONE status cause this one is set without getting the lock.
-        // Once status changed to DONE we know that no more python code will be executed and
-        // we can finish sending cancel signal
-#ifdef WITHPYTHON
-        unsigned long threadID = (unsigned long)ep->executionPD;
-        RedisGearsPy_ForceStop(threadID);
-#endif
-        usleep(1000);
-    }
-
-    return REDISMODULE_OK;
+    return REDISMODULE_ERR;
 }
 
 /**
@@ -848,7 +853,12 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
     REGISTER_API(CommandReaderTriggerArgsCreate, ctx);
+    REGISTER_API(CommandReaderTriggerArgsCreateHook, ctx);
     REGISTER_API(CommandReaderTriggerArgsFree, ctx);
+    REGISTER_API(GetCommandReaderTriggerCtx, ctx);
+    REGISTER_API(CommandReaderTriggerCtxGetShallowCopy, ctx);
+    REGISTER_API(CommandReaderTriggerCtxNext, ctx);
+    REGISTER_API(CommandReaderTriggerCtxFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(GetFep, ctx);
@@ -1061,6 +1071,8 @@ static int Command_DumpPlugins(RedisModuleCtx *ctx, RedisModuleString **argv, in
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    staticCtx = RedisModule_GetThreadSafeContext(NULL);
+
 	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s, compiled_os=%s",
 	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA,

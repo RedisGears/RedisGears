@@ -631,6 +631,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
                 RedisGears_KeysReaderCtxFree(arg);
                 continue;
             }
+            RedisModule_Assert(rData->mode != ExecutionModeSync || EPIsFlagOn(ep, EFDone));
             if(EPIsFlagOn(ep, EFIsLocal) && EPIsFlagOff(ep, EFDone)){
                 // execution is local
                 // If execution is SYNC it will be added to localDoneExecutions on done

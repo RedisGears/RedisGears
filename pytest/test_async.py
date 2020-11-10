@@ -59,7 +59,7 @@ def ForEach(r):
         except Exception as e:
             print(e)
     GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
-GB().foreach(ForEach).register(mode='sync')
+GB().foreach(ForEach).register(mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()
 
@@ -67,7 +67,7 @@ GB().foreach(ForEach).register(mode='sync')
     verifyRegistrationIntegrity(env)
 
     def WaitForKey():
-        env.expect('RG.TRIGGER', 'WaitForKeyChange').equal('x')
+        env.expect('RG.TRIGGER', 'WaitForKeyChange').equal(['x'])
 
     try:
         with Background(WaitForKey) as bk:
@@ -112,8 +112,8 @@ def unbc(r):
     GB('ShardsIDReader').foreach(unbc_internal).count().foreach(lambda r: f.continueRun(r)).run()
     return f.bc
 
-GB('CommandReader').map(bc).register(trigger='block', mode='sync')
-GB('CommandReader').map(unbc).register(trigger='unblock', mode='sync')
+GB('CommandReader').map(bc).register(trigger='block', mode='async_local')
+GB('CommandReader').map(unbc).register(trigger='unblock', mode='async_local')
     '''
 
     env.expect('RG.PYEXECUTE', script).ok()
@@ -122,7 +122,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock', mode='sync')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block', 'arg').equal("['block', 'arg']")
+        env.expect('RG.TRIGGER', 'block', 'arg').equal(["['block', 'arg']"])
 
     try:
         with Background(Block) as bk:
@@ -160,7 +160,7 @@ def bc(r):
     return f.bc
 
 GB('CommandReader').map(lambda a: fdata.pop()).foreach(lambda x: x[0].continueRun(x[1])).register(trigger='unblock')
-GB('StreamReader').map(bc).foreach(lambda x: execute('set', x['value']['key'], x['value']['val'])).register(mode='sync', prefix='s')
+GB('StreamReader').map(bc).foreach(lambda x: execute('set', x['value']['key'], x['value']['val'])).register(mode='async_local', prefix='s')
 
     '''
 
@@ -220,7 +220,7 @@ def bc(r):
     fdata = (f, r['key'])
     return f.bc
 
-GB().map(bc).foreach(lambda x: execute('del', x)).register(mode='sync', readValue=False, eventTypes=['set'])
+GB().map(bc).foreach(lambda x: execute('del', x)).register(mode='async_local', readValue=False, eventTypes=['set'])
 
     '''
 
@@ -307,7 +307,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'blockcountshards', 'arg').equal(str(env.shardsCount))
+        env.expect('RG.TRIGGER', 'blockcountshards', 'arg').equal([str(env.shardsCount)])
 
     try:
         with Background(Block) as bk:
@@ -365,7 +365,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         conn.execute_command('set', i, i)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block').equal('10000')
+        env.expect('RG.TRIGGER', 'block').equal(['10000'])
 
     try:
         with Background(Block) as bk1:
@@ -426,7 +426,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     conn.execute_command('set', 'z' , '3')
 
     def Block():
-        env.expect('RG.TRIGGER', 'block').equal('3')
+        env.expect('RG.TRIGGER', 'block').equal(['3'])
 
     try:
         with Background(Block) as bk:
@@ -478,7 +478,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block').equal('6')
+        env.expect('RG.TRIGGER', 'block').equal(['6'])
 
     try:
         with Background(Block) as bk:
@@ -531,7 +531,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block', '1').equal('2')
+        env.expect('RG.TRIGGER', 'block', '1').equal(['2'])
 
     try:
         with Background(Block) as bk:
@@ -584,7 +584,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     verifyRegistrationIntegrity(env)
 
     def Block():
-        env.expect('RG.TRIGGER', 'block', '1', '2', '4').equal(str(28 * env.shardsCount))
+        env.expect('RG.TRIGGER', 'block', '1', '2', '4').equal([str(28 * env.shardsCount)])
 
     try:
         with Background(Block) as bk:
@@ -645,7 +645,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
 
     def Block():
         res = env.cmd('RG.TRIGGER', 'block', '1', '1', '1', '2', '2', '3', '3', '3', '3')
-        d = eval(res)
+        d = eval(res[0])
         env.assertEqual(d['3'], 4 * env.shardsCount)
         env.assertEqual(d['1'], 3 * env.shardsCount)
         env.assertEqual(d['2'], 2 * env.shardsCount)
@@ -733,3 +733,62 @@ GB('ShardsIDReader').map(c).run()
 
     res = env.cmd('RG.PYEXECUTE', script)[1][0]
     env.assertContains('failed', res)
+
+def testUnregisterDuringAsyncExectuion(env):
+    script = '''
+import asyncio
+
+async def doTest(x):
+    # delete all registrations so valgrind check will pass
+    registrations = execute('RG.DUMPREGISTRATIONS')
+    for r in registrations:
+        execute('RG.UNREGISTER', r[1], 'abortpending')
+    return x
+
+GB("CommandReader").map(doTest).register(trigger='test')
+    '''
+
+    env.cmd('rg.pyexecute', script)
+    env.expect('rg.trigger', 'test').equal(["['test']"])
+
+    env.expect('RG.DUMPREGISTRATIONS').equal([])
+
+def testAbortDuringAsyncExectuion(env):
+    script = '''
+import asyncio
+
+async def doTest(x):
+    await asyncio.sleep(1)
+    print('after wait')  
+    return x
+
+GB("ShardsIDReader").map(doTest).run()
+    '''
+
+    env.cmd('rg.pyexecute', script, 'UNBLOCKING')
+    
+    executions = env.cmd('RG.DUMPEXECUTIONS')
+    for e in executions:
+        env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
+
+    # let wait for the coro to continue, make sure there is no issues.
+    time.sleep(2)
+
+def testAsyncExecutionOnMulti(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import asyncio
+
+async def c(r):
+    await asyncio.sleep(0.1)
+    return r
+
+GB('CommandReader').map(c).register(trigger='test')
+        '''
+
+    env.expect('RG.PYEXECUTE', script).equal('OK')
+    env.expect('MULTI').equal('OK')
+    env.expect('RG.TRIGGER', 'test').equal('QUEUED')
+    res = env.cmd('EXEC')
+    env.assertIn('can not run a none sync execution inside MULTI/LUA', str(res[0]))
+    
