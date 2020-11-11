@@ -792,3 +792,21 @@ GB('CommandReader').map(c).register(trigger='test')
     res = env.cmd('EXEC')
     env.assertIn('can not run a none sync execution inside MULTI/LUA', str(res[0]))
     
+
+def testAsyncWithoutWait(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import time
+
+def reader():
+    yield 1
+    time.sleep(1)
+    yield 2
+
+async def c(r):
+    return r
+
+GB('PythonReader').map(c).count().run(reader)
+        '''
+
+    env.expect('RG.PYEXECUTE', script).equal([[str(2 * env.shardsCount)], []])

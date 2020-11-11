@@ -1733,7 +1733,6 @@ end:
         }
     }
     for(size_t i = 0 ; i < array_len(ep->steps) ; ++i){
-        RedisModule_Assert(ret != Execute_STOPED || !pendingCtxs[i]);
         if(pendingCtxs[i]){
             ExecutionPlan_PendingCtxFree(pendingCtxs[i]);
         }
