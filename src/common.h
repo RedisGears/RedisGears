@@ -10,6 +10,7 @@
 
 #include "utils/dict.h"
 #include "redismodule.h"
+#include "cluster.h"
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -43,6 +44,8 @@ static inline int IsEnterprise() {
 }
 
 extern RedisModuleCtx *staticCtx;
+
+#define VERIFY_CLUSTER_INITIALIZE(c) if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state")
 
 int GearsCheckSupportedVestion();
 void GearsGetRedisVersion();

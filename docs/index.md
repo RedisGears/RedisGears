@@ -57,7 +57,7 @@ In broad strokes, the following diagram depicts RedisGears' components:
 If you have questions or feedback, or want to report an issue or [contribute some code](https://cla-assistant.io/RedisGears/RedisGears), here's where you can get in touch:
 
   * [Mailing list](https://forum.redislabs.com/c/modules/redisgears)
-  * [Gitter chatroom](https://badges.gitter.im/RedisLabs/RedisGears.svg)
+  * [Discord chat](https://discord.gg/6yaVTtp)
   * [Repository](https://github.com/RedisGears/RedisGears/issues)
 
 ## License

@@ -142,6 +142,8 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 		return RedisModule_WrongArity(ctx);
 	}
 
+	VERIFY_CLUSTER_INITIALIZE(ctx);
+
 	const char* id = RedisModule_StringPtrLen(argv[1], NULL);
 	ExecutionPlan* gearsCtx = RedisGears_GetExecution(id);
 
@@ -181,6 +183,8 @@ int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     if(argc != 2){
         return RedisModule_WrongArity(ctx);
     }
+
+    VERIFY_CLUSTER_INITIALIZE(ctx);
 
     RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
 

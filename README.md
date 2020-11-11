@@ -22,7 +22,7 @@ As of v1.0.0, code for RedisGears must be written in Python. However, an interna
 If you have questions or feedback, or want to report an issue or [contribute some code](https://cla-assistant.io/RedisGears/RedisGears), here's where you can get in touch:
 
   * [Forum](https://forum.redislabs.com/c/modules/redisgears)
-  * [Gitter chat room](https://badges.gitter.im/RedisLabs/RedisGears.svg)
+  * [Discord chat](https://discord.gg/6yaVTtp)
   * [Report an issue](https://github.com/RedisGears/RedisGears/issues)
 
 ## License
