@@ -7,25 +7,27 @@ The following sections describe the supported commands.
 | Command | Description |
 | --- | --- |
 | [`RG.ABORTEXECUTION`](#rgabortexecution) | Aborts execution |
-| [`RG.CONFIGGET`](#rgconfigget) | Returns configuration key |
-| [`RG.CONFIGSET`](#rgconfigset) | Sets configuration key |
+| [`RG.CONFIGGET`](#rgconfigget) | Returns a configuration key |
+| [`RG.CONFIGSET`](#rgconfigset) | Sets a configuration key |
 | [`RG.DROPEXECUTION`](#rgdropexecution) | Removes execution |
 | [`RG.DUMPEXECUTIONS`](#rgdumpexecutions) | Outputs executions |
 | [`RG.DUMPREGISTRATIONS`](#rgdumpregistrations) | Outputs registrations |
 | [`RG.GETEXECUTION`](#rggetexecution) | Returns the details of an execution |
 | [`RG.GETRESULTS`](#rggetresults) | Returns the results from an execution |
-| [`RG.GETRESULTSBLOCKING`](#rggetresultsblocking) | Blocks client until execution ends |
+| [`RG.GETRESULTSBLOCKING`](#rggetresultsblocking) | Blocks the client until execution ends |
 | [`RG.INFOCLUSTER`](#rginfocluster) | Returns cluster information |
-| [`RG.PYEXECUTE`](#rgpyexecute) | Executes a Python function |
+| [`RG.PYEXECUTE`](#rgpyexecute) | Executes Python functions and registers functions for event-driven processing |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
+| [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes a node's view of the cluster |
 | [`RG.PYDUMPREQS`](#rgpystats) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
+>>>>>>> master
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
 
 **Syntax Conventions**
 
-The following conventions are used for describing the RedisGears Redis API:
+We use the following conventions to describe the RedisGears Redis API:
 
 * `COMMAND`: a command
 * `<mandatory>`: a mandatory argument

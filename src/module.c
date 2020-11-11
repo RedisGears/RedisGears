@@ -13,7 +13,6 @@
 #include "version.h"
 #include "mgmt.h"
 #include "execution_plan.h"
-#include "example.h"
 #include "cluster.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
@@ -254,6 +253,10 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
     if(!LockHandler_IsLockTaken()){
         *err = RG_STRDUP("Can only run execution when redis GIL is taken");
+        return NULL;
+    }
+    if(mode == ExecutionModeAsync && !Cluster_IsInitialized()){
+        *err = RG_STRDUP("Cluster is not initialized, can not start executions.");
         return NULL;
     }
     return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
@@ -956,20 +959,6 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
-int AddToStream(ExecutionCtx* rctx, Record *data, void* arg){
-    const char* keyName = RedisGears_KeyRecordGetKey(data, NULL);
-    if(strcmp(keyName, "ChangedStream") == 0){
-        return RedisGears_StepSuccess;
-    }
-    Record* valRecord = RedisGears_KeyRecordGetVal(data);
-    const char* val = RedisGears_StringRecordGet(valRecord, NULL);
-    RedisModuleCtx* ctx = RedisGears_GetRedisModuleCtx(rctx);
-    LockHandler_Acquire(ctx);
-    RedisModule_Call(ctx, "xadd", "cccccc", "ChangedStream", "*", "key", keyName, "value", val);
-    LockHandler_Release(ctx);
-    return RedisGears_StepSuccess;
-}
-
 static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
     if(subevent == REDISMODULE_SUBEVENT_MODULE_LOADED){
         RedisModule_Log(ctx, "notice", "Got module load event, trying to reinitialize RedisAI api");
@@ -1113,10 +1102,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RGM_RegisterReader(StreamReader);
     RGM_RegisterReader(CommandReader);
     RGM_RegisterReader(ShardIDReader);
-    RGM_RegisterFilter(Example_Filter, NULL);
     RGM_RegisterMap(GetValueMapper, NULL);
-    RGM_RegisterForEach(AddToStream, NULL);
-
     ExecutionPlan_Initialize();
 
     Cluster_RegisterMsgReceiverM(RG_OnDropExecutionMsgReceived);
@@ -1138,11 +1124,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rg.example", Example_CommandCallback, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.example");
-        return REDISMODULE_ERR;
-    }
-
     if (RedisModule_CreateCommand(ctx, "rg.refreshcluster", Cluster_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.refreshcluster");
         return REDISMODULE_ERR;
@@ -1150,6 +1131,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if (RedisModule_CreateCommand(ctx, "rg.clusterset", Cluster_ClusterSet, "readonly", 0, 0, -1) != REDISMODULE_OK) {
         RedisModule_Log(ctx, "warning", "could not register command rg.refreshcluster");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, RG_CLUSTER_SET_FROM_SHARD_COMMAND, Cluster_ClusterSetFromShard, "readonly", 0, 0, -1) != REDISMODULE_OK) {
+        RedisModule_Log(ctx, "warning", "could not register command "RG_CLUSTER_SET_FROM_SHARD_COMMAND);
         return REDISMODULE_ERR;
     }
 
