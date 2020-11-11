@@ -231,6 +231,9 @@ static CommandReaderArgs* CommandReaderArgs_CreateFromRecord(Record* argv){
 }
 
 void  CommandReaderArgs_Free(CommandReaderArgs* crArgs){
+    if(crArgs->crtCtx){
+        CommandReaderTriggerCtx_Free(crArgs->crtCtx);
+    }
     if(crArgs->argv){
         RedisGears_FreeRecord(crArgs->argv);
     }
@@ -250,18 +253,14 @@ static Record* CommandReader_Next(ExecutionCtx* rctx, void* ctx){
 static void CommandReader_Free(void* ctx){
     CommandReaderCtx* readerCtx = ctx;
     CommandReaderArgs_Free(readerCtx->args);
-    if(readerCtx->args->crtCtx){
-        CommandReaderTriggerCtx_Free(readerCtx->args->crtCtx);
-    }
+
     RG_FREE(readerCtx);
 }
 
 static void CommandReader_Reset(void* ctx, void * arg){
     CommandReaderCtx* readerCtx = ctx;
     CommandReaderArgs_Free(readerCtx->args);
-    if(readerCtx->args->crtCtx){
-        CommandReaderTriggerCtx_Free(readerCtx->args->crtCtx);
-    }
+
     readerCtx->args = arg;
 }
 

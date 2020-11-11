@@ -1107,6 +1107,7 @@ static void continueFutureOnDone(ExecutionPlan* ep, void* privateData){
         const char* errStr = RedisGears_StringRecordGet(err, &len);
         PyObject* pyErr = PyUnicode_FromStringAndSize(errStr, len);
         PyList_Append(errs, pyErr);
+        Py_DECREF(pyErr);
     }
 
     Py_DECREF(results);
@@ -5396,6 +5397,10 @@ static int RedisGearsPy_CreateRequirementsDataType(RedisModuleCtx* ctx){
     return GearsPyRequirementDT ? REDISMODULE_OK : REDISMODULE_ERR;
 }
 
+static void PythonThreadCtx_Destructor(void *p) {
+    RG_FREE(p);
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
     installDepsPool = Gears_thpool_init(1);
     InitializeGlobalPaths();
@@ -5407,7 +5412,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     RedisGearsPy_CreateRequirementsDataType(ctx);
 
-    int err = pthread_key_create(&pythonThreadCtxKey, NULL);
+    int err = pthread_key_create(&pythonThreadCtxKey, PythonThreadCtx_Destructor);
     if(err){
         return REDISMODULE_ERR;
     }
