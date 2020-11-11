@@ -304,12 +304,6 @@ typedef struct FlatExecutionPlan{
      */
     FlatBasicStep onUnpausedStep;
 
-    /*
-     * Called right after an execution was created from this FEP, the callback is
-     * invoked only on the shard that created the execution.
-     */
-    FlatBasicStep onExecutionCreated;
-
     long long executionMaxIdleTime;
     ExecutionThreadPool* executionThreadPool;
     FlatExecutionFlags flags;
@@ -347,7 +341,6 @@ void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallb
 void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onSUnpausedCallback, void* onUnpausedArg);
 void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
-void FlatExecutionPlan_SetOnCreatedStep(FlatExecutionPlan* fep, char* onCreatedCallback, void* onCreatedCallbackArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
