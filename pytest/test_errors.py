@@ -429,3 +429,11 @@ GB("CommandReader").flatmap(lambda x: x).register(hook='hset', mode='sync')
 
     env.cmd('rg.pyexecute', script)
     env.expect('hset', 'h', 'foo', 'bar').error().contains('Command hook must return exactly one result')
+
+def testCannotOverrideNoneSyncRegisration(env):
+    script = '''
+GB("CommandReader").flatmap(lambda x: x).register(hook='hset')
+    '''
+
+    env.expect('rg.pyexecute', script).equal('OK')
+    env.expect('rg.pyexecute', script).error().contains('Can not override a none sync registration')

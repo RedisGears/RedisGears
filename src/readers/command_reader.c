@@ -298,13 +298,14 @@ static Reader* CommandReader_Create(void* arg){
     return reader;
 }
 
-static void CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mode, CommandReaderTriggerArgs* crtArgs){
-    CommandReaderTriggerCtx* crtCtx = CommandReaderTriggerCtx_Create(fep, mode, crtArgs);
+static int CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mode, CommandReaderTriggerArgs* crtArgs, char** err){
+    CommandReaderTriggerCtx* crtCtx = NULL;
     switch(crtArgs->triggerType){
     case TriggerType_Trigger:
         if(!CommandRegistrations){
             CommandRegistrations = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
         }
+        crtCtx = CommandReaderTriggerCtx_Create(fep, mode, crtArgs);
         Gears_dictAdd(CommandRegistrations, crtArgs->trigger, crtCtx);
         break;
     case TriggerType_Hook:
@@ -317,14 +318,21 @@ static void CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mo
             Gears_dictGetVal(entry) = Gears_listCreate();
         }else{
             entry = existing;
+            Gears_list* list = Gears_dictGetVal(entry);
+            CommandReaderTriggerCtx* next = Gears_listNodeValue(Gears_listFirst(list));
+            if(next->mode != ExecutionModeSync){
+                *err = RG_STRDUP("Can not override a none sync registration");
+                return REDISMODULE_ERR;
+            }
         }
+        crtCtx = CommandReaderTriggerCtx_Create(fep, mode, crtArgs);
         Gears_listAddNodeHead(Gears_dictGetVal(entry), crtCtx);
         crtCtx->listNode = Gears_listFirst(((Gears_list*)Gears_dictGetVal(entry)));
         break;
     default:
         RedisModule_Assert(false);
     }
-
+    return REDISMODULE_OK;
 }
 
 static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
@@ -373,8 +381,7 @@ static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode 
         RedisModule_Assert(false);
     }
 
-    CommandReader_InnerRegister(fep, mode, crtArgs);
-    return REDISMODULE_OK;
+    return CommandReader_InnerRegister(fep, mode, crtArgs, err);
 }
 
 static CommandReaderTriggerCtx* CommandReader_FindByFep(FlatExecutionPlan* fep){
