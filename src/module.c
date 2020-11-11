@@ -123,7 +123,7 @@ static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnStartStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnStartStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -132,7 +132,7 @@ static int RG_SetFlatExecutionOnUnpausedCallback(FlatExecutionPlan* fep, const c
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnUnPausedStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnUnPausedStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -141,7 +141,7 @@ static int RG_SetFlatExecutionOnRegisteredCallback(FlatExecutionPlan* fep, const
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnRegisteredStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnRegisteredStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -150,7 +150,7 @@ static int RG_SetFlatExecutionOnUnregisteredCallback(FlatExecutionPlan* fep, con
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnUnregisteredStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnUnregisteredStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -253,7 +253,19 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
         return 0;
     }
     LockHandler_Acquire(redisDummyCtx);
+
+    // we need a deep copy in case this fep will be registered again with different args
+    // this is a hack because a fep represent registration, we need create
+    // a registration object that will hold a shared reference of the fep for future.
+    // The plane is to reimplement this all API so its not worth inve
+    fep = FlatExecutionPlan_DeepCopy(fep);
+
     int res = FlatExecutionPlan_Register(fep, mode, key, err);
+
+    // we need to free it on success or failure, on success a shared copy
+    // of the fep will be taken by the reader.
+    FlatExecutionPlan_Free(fep);
+
     LockHandler_Release(redisDummyCtx);
     return res;
 }

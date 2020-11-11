@@ -337,10 +337,10 @@ void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, 
 void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
-void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
-void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onSUnpausedCallback, void* onUnpausedArg);
-void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
-void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
+void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, const char* onStartCallback, void* onStartArg);
+void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, const char* onSUnpausedCallback, void* onUnpausedArg);
+void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, const char* onRegisteredCallback, void* onRegisteredArg);
+void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, const char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -361,6 +361,7 @@ long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetThreadPool(FlatExecutionPlan* fep, ExecutionThreadPool* tp);
+FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize();
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);

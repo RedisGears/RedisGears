@@ -1167,3 +1167,53 @@ GB("CommandReader").map(doHset).register(hook="hset", convertToStr=False)
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for data to sync to slave')
+
+def testMultipleRegistrationsSameBuilderWithKeysReader(env):
+    script = '''
+gb = GB().foreach(lambda x: execute('del', x['key']))
+gb.register(prefix='foo', readValue=False, mode='sync')
+gb.register(prefix='bar', readValue=False, mode='sync')
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('set', 'foo', '1')
+    conn.execute_command('set', 'bar', '2')
+    env.assertEqual(conn.execute_command('get', 'foo'), None)
+    env.assertEqual(conn.execute_command('get', 'bar'), None)
+
+def testMultipleRegistrationsSameBuilderWithStreamReader(env):
+    script = '''
+gb = GB('StreamReader').foreach(lambda x: execute('hset', '{%s}_hash' % x['key'], *sum([[k,v] for k,v in x['value'].items()], [])))
+gb.register(prefix='foo', mode='sync')
+gb.register(prefix='bar', mode='sync')
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('xadd', 'foo', '*', 'x', '1')
+    conn.execute_command('xadd', 'bar', '*', 'x', '1')
+    env.assertEqual(conn.execute_command('hgetall', '{foo}_hash'), {'x': '1'})
+    env.assertEqual(conn.execute_command('hgetall', '{bar}_hash'), {'x': '1'})
+
+def testMultipleRegistrationsSameBuilderWithCommandReader(env):
+    script = '''
+import time
+
+gb = GB('CommandReader').foreach(lambda x: call_next(x[1], '_time', time.time(), *x[2:]))
+gb.register(hook='hset', mode='sync')
+gb.register(hook='hmset', mode='sync')
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('hset', 'h1', 'x', '1')
+    conn.execute_command('hmset', 'h2', 'x', '1')
+    env.assertNotEqual(conn.execute_command('hget', 'h1', '_time'), None)
+    env.assertNotEqual(conn.execute_command('hget', 'h2', '_time'), None)

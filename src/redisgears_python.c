@@ -1159,11 +1159,6 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         return NULL;
     }
 
-    if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
-        PyErr_SetString(GearsError, "Failed setting on start callback");
-        return NULL;
-    }
-
     const char* defaultRegexStr = "*";
     const char* patternStr = defaultRegexStr;
     void* arg;
@@ -1502,11 +1497,6 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
 static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
-
-    if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
-        PyErr_SetString(GearsError, "Failed setting on start callback");
-        return NULL;
-    }
 
     PyObject* pymode = GearsPyDict_GetItemString(kargs, "mode");
     ExecutionMode mode = ExecutionModeAsync;
@@ -2013,6 +2003,12 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     }
     RGM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     RedisGears_SetFlatExecutionPrivateData(pyfep->fep, "PySessionType", PythonSessionCtx_ShellowCopy(ptctx->currSession));
+
+    if(RGM_SetFlatExecutionOnUnpausedCallback(pyfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
+        Py_DECREF((PyObject*)pyfep);
+        PyErr_SetString(GearsError, "Failed setting on unpause callback");
+        return NULL;
+    }
     return (PyObject*)pyfep;
 }
 
