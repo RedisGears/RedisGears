@@ -1,4 +1,12 @@
 
+ifeq ($(VG),1)
+override VALGRIND:=1
+endif
+
+ifeq ($(VALGRIND),1)
+override DEBUG:=1
+endif
+
 ROOT=.
 include deps/readies/mk/main
 
@@ -11,22 +19,23 @@ make setup      # install packages required for build
 make fetch      # download and prepare dependant modules (i.e., python, libevent)
 
 make build
-  DEBUG=1       # build debug variant
-  VARIANT=name
-  WITHPYTHON=0  # build without embedded Python interpreter
-  DEPS=1        # also build dependant modules
-make clean      # remove binary files
-  ALL=1         # remove binary directories
-  DEPS=1        # also clean dependant modules
+  DEBUG=1         # build debug variant
+  VG|VALGRIND=1   # build with VALGRIND (implies DEBUG=1)
+  VARIANT=name    # build as variant `name`
+  WITHPYTHON=0    # build without embedded Python interpreter
+  DEPS=1          # also build dependant modules
+make clean        # remove binary files
+  ALL=1           # remove binary directories
+  DEPS=1          # also clean dependant modules
 
-make deps       # build dependant modules
-make libevent   # build libevent
-make hiredis    # build hiredis
-make cpython    # build cpython
-make all        # build all libraries and packages
+make deps         # build dependant modules
+make libevent     # build libevent
+make hiredis      # build hiredis
+make cpython      # build cpython
+make all          # build all libraries and packages
 
 make test          # run tests
-  VGD=1            # run tests with Valgrind
+  VG|VALGRIND=1    # run tests with Valgrind
   TEST=test        # run specific `test` with Python debugger
   TEST_ARGS=args   # additional RLTest arguments
   GDB=1            # (with TEST=...) run with GDB
@@ -121,8 +130,12 @@ CC_FLAGS += \
 TARGET=$(BINROOT)/redisgears.so
 TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
 
+ifeq ($(VALGRIND),1)
+CC_FLAGS += -DVALGRIND
+endif
+
 ifeq ($(DEBUG),1)
-CC_FLAGS += -g -O0 -DVALGRIND
+CC_FLAGS += -g -O0
 LD_FLAGS += -g
 else
 CC_FLAGS += -O2 -Wno-unused-result
@@ -394,7 +407,7 @@ ifeq ($(GDB),1)
 RLTEST_GDB=-i
 endif
 
-ifeq ($(VGD),1)
+ifeq ($(VALGRIND),1)
 TEST_FLAGS += VALGRIND=1
 endif
 
