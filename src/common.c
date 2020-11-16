@@ -32,24 +32,32 @@ int gearsRlecBuild;
 
 bool gearsIsCrdt;
 
+int GearsCompareVersions(RedisVersion v1, RedisVersion v2) {
+    if (v1.redisMajorVersion < v2.redisMajorVersion) {
+        return -1;
+    } else if (v1.redisMajorVersion > v2.redisMajorVersion) {
+        return 1;
+    }
+
+    if (v1.redisMinorVersion < v2.redisMinorVersion) {
+        return -1;
+    } else if (v1.redisMinorVersion > v2.redisMinorVersion) {
+        return 1;
+    }
+
+    if (v1.redisPatchVersion < v2.redisPatchVersion) {
+        return -1;
+    } else if (v1.redisPatchVersion > v2.redisPatchVersion) {
+        return 1;
+    }
+
+    return 0;
+}
 
 int GearsCheckSupportedVestion(){
-    if(currVesion.redisMajorVersion < supportedVersion.redisMajorVersion){
+    if (GearsCompareVersions(currVesion, supportedVersion) < 0) {
         return REDISMODULE_ERR;
     }
-
-    if(currVesion.redisMajorVersion == supportedVersion.redisMajorVersion){
-        if(currVesion.redisMinorVersion < supportedVersion.redisMinorVersion){
-            return REDISMODULE_ERR;
-        }
-
-        if(currVesion.redisMinorVersion == supportedVersion.redisMinorVersion){
-            if(currVesion.redisPatchVersion < supportedVersion.redisPatchVersion){
-                return REDISMODULE_ERR;
-            }
-        }
-    }
-
     return REDISMODULE_OK;
 }
 

@@ -45,6 +45,7 @@ static inline int IsEnterprise() {
 
 #define VERIFY_CLUSTER_INITIALIZE(c) if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state")
 
+int GearsCompareVersions();
 int GearsCheckSupportedVestion();
 void GearsGetRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
