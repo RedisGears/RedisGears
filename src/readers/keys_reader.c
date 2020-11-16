@@ -137,22 +137,6 @@ static KeysReaderRegisterData* KeysReaderRegisterData_GetShallowCopy(KeysReaderR
     return rData;
 }
 
-//static void KeysReaderCtx_Reset(void* ctx, void* arg){
-//    KeysReaderCtx* krctx = ctx;
-//    while(array_len(krctx->pendingRecords) > 0){
-//        RedisGears_FreeRecord(array_pop(krctx->pendingRecords));
-//    }
-//    if(krctx->match){
-//        RG_FREE(krctx->match);
-//    }
-//
-//    krctx->cursorIndex = 0;
-//    krctx->isDone = false;
-//
-//    krctx->isPattern = KeysReaderCtx_AnalizeArg(arg, &krctx->matchLen);
-//    krctx->match = arg;
-//}
-
 KeysReaderCtx* KeysReaderCtx_Create(const char* match, bool readValue, const char* event, bool noScan){
 #define PENDING_KEYS_INIT_CAP 10
     size_t matchLen = 0;
@@ -167,6 +151,7 @@ KeysReaderCtx* KeysReaderCtx_Create(const char* match, bool readValue, const cha
         .pendingRecords = array_new(Record*, PENDING_KEYS_INIT_CAP),
         .readRecordStr = NULL,
         .readRecord = NULL,
+        .cursorIndex = 0,
     };
     return krctx;
 }
