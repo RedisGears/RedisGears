@@ -19,6 +19,8 @@
 
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
 
+Record* (*KeysReader_ScanNextKeyFunc)(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx);
+
 typedef struct KeysReaderRegisterData{
     long long refCount;
     FlatExecutionPlan* fep;
@@ -399,31 +401,31 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     return record;
 }
 
-//static void KeysReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata){
-//    KeysReaderCtx* readerCtx = privdata;
-//    Record* record = KeysReader_ReadKey(ctx, readerCtx, keyname, key);
-//    readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
-//}
-//
-//static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
-//    if(array_len(readerCtx->pendingRecords) > 0){
-//        return array_pop(readerCtx->pendingRecords);
-//    }
-//    if(readerCtx->isDone){
-//        return NULL;
-//    }
-//
-//    while(!readerCtx->isDone){
-//        LockHandler_Acquire(rctx);
-//        readerCtx->isDone = !RedisModule_Scan(rctx, readerCtx->cursor, KeysReader_ScanCallback, readerCtx);
-//        LockHandler_Release(rctx);
-//
-//        if(array_len(readerCtx->pendingRecords) > 0){
-//            return array_pop(readerCtx->pendingRecords);
-//        }
-//    }
-//    return NULL;
-//}
+static void KeysReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata){
+    KeysReaderCtx* readerCtx = privdata;
+    Record* record = KeysReader_ReadKey(ctx, readerCtx, keyname, key);
+    readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
+}
+
+static Record* KeysReader_ScanAPINextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
+    if(array_len(readerCtx->pendingRecords) > 0){
+        return array_pop(readerCtx->pendingRecords);
+    }
+    if(readerCtx->isDone){
+        return NULL;
+    }
+
+    while(!readerCtx->isDone){
+        LockHandler_Acquire(rctx);
+        readerCtx->isDone = !RedisModule_Scan(rctx, readerCtx->cursor, KeysReader_ScanCallback, readerCtx);
+        LockHandler_Release(rctx);
+
+        if(array_len(readerCtx->pendingRecords) > 0){
+            return array_pop(readerCtx->pendingRecords);
+        }
+    }
+    return NULL;
+}
 
 static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
     if(array_len(readerCtx->pendingRecords) > 0){
@@ -489,7 +491,7 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
     Record* record = NULL;
     if(!readerCtx->noScan){
-        record = KeysReader_ScanNextKey(RedisGears_GetRedisModuleCtx(ectx), readerCtx);
+        record = KeysReader_ScanNextKeyFunc(RedisGears_GetRedisModuleCtx(ectx), readerCtx);
     }else{
         if(readerCtx->isDone){
             return NULL;
@@ -867,6 +869,17 @@ static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mod
 }
 
 int KeysReader_Initialize(RedisModuleCtx* ctx){
+    RedisVersion vertionWithScanAPI = {
+            .redisMajorVersion = 6,
+            .redisMinorVersion = 0,
+            .redisPatchVersion = 6,
+    };
+
+    if ((GearsCompareVersions(currVesion, vertionWithScanAPI)) >= 0 && (RedisModule_Scan != NULL)) {
+        KeysReader_ScanNextKeyFunc = KeysReader_ScanAPINextKey;
+    }else{
+        KeysReader_ScanNextKeyFunc = KeysReader_ScanNextKey;
+    }
 	return REDISMODULE_OK;
 }
 
