@@ -19,7 +19,7 @@
 
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
 
-Record* (*KeysReader_ScanNextKeyFunc)(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx);
+static Record* (*KeysReader_ScanNextKeyFunc)(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx);
 
 typedef struct KeysReaderRegisterData{
     long long refCount;
