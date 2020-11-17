@@ -19,6 +19,8 @@
 
 #define ALL_KEY_REGISTRATION_INIT_SIZE 10
 
+static Record* (*KeysReader_ScanNextKeyFunc)(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx);
+
 typedef struct KeysReaderRegisterData{
     long long refCount;
     FlatExecutionPlan* fep;
@@ -42,6 +44,7 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx);
 
 typedef struct KeysReaderCtx{
     char* match;
+    size_t matchLen;
     char* event;
     long long cursorIndex;
     RedisModuleScanCursor* cursor;
@@ -135,28 +138,13 @@ static KeysReaderRegisterData* KeysReaderRegisterData_GetShallowCopy(KeysReaderR
     return rData;
 }
 
-//static void KeysReaderCtx_Reset(void* ctx, void* arg){
-//    KeysReaderCtx* krctx = ctx;
-//    while(array_len(krctx->pendingRecords) > 0){
-//        RedisGears_FreeRecord(array_pop(krctx->pendingRecords));
-//    }
-//    if(krctx->match){
-//        RG_FREE(krctx->match);
-//    }
-//
-//    krctx->cursorIndex = 0;
-//    krctx->isDone = false;
-//
-//    krctx->isPattern = KeysReaderCtx_AnalizeArg(arg, &krctx->matchLen);
-//    krctx->match = arg;
-//}
-
 KeysReaderCtx* KeysReaderCtx_Create(const char* match, bool readValue, const char* event, bool noScan){
 #define PENDING_KEYS_INIT_CAP 10
-    size_t matchLen = 0;
+    size_t matchLen = match? strlen(match) : 0;
     KeysReaderCtx* krctx = RG_ALLOC(sizeof(*krctx));
     *krctx = (KeysReaderCtx){
         .match = match? RG_STRDUP(match) : NULL,
+        .matchLen = matchLen,
         .event = event ? RG_STRDUP(event) : NULL,
         .cursor = RedisModule_ScanCursorCreate(),
         .isDone = false,
@@ -165,6 +153,7 @@ KeysReaderCtx* KeysReaderCtx_Create(const char* match, bool readValue, const cha
         .pendingRecords = array_new(Record*, PENDING_KEYS_INIT_CAP),
         .readRecordStr = NULL,
         .readRecord = NULL,
+        .cursorIndex = 0,
     };
     return krctx;
 }
@@ -221,6 +210,7 @@ static int RG_KeysReaderCtxSerialize(ExecutionCtx* ectx, void* ctx, Gears_Buffer
 static int RG_KeysReaderCtxDeserialize(ExecutionCtx* ectx, void* ctx, Gears_BufferReader* br){
     KeysReaderCtx* krctx = (KeysReaderCtx*)ctx;
     krctx->match = RG_STRDUP(RedisGears_BRReadString(br));
+    krctx->matchLen = strlen(krctx->match);
     if(RedisGears_BRReadLong(br)){
         krctx->event = RG_STRDUP(RedisGears_BRReadString(br));
         // having an even means this execution was triggered by a registration and the fact
@@ -399,31 +389,160 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     return record;
 }
 
-//static void KeysReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata){
-//    KeysReaderCtx* readerCtx = privdata;
-//    Record* record = KeysReader_ReadKey(ctx, readerCtx, keyname, key);
-//    readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
-//}
-//
-//static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
-//    if(array_len(readerCtx->pendingRecords) > 0){
-//        return array_pop(readerCtx->pendingRecords);
-//    }
-//    if(readerCtx->isDone){
-//        return NULL;
-//    }
-//
-//    while(!readerCtx->isDone){
-//        LockHandler_Acquire(rctx);
-//        readerCtx->isDone = !RedisModule_Scan(rctx, readerCtx->cursor, KeysReader_ScanCallback, readerCtx);
-//        LockHandler_Release(rctx);
-//
-//        if(array_len(readerCtx->pendingRecords) > 0){
-//            return array_pop(readerCtx->pendingRecords);
-//        }
-//    }
-//    return NULL;
-//}
+/* Glob-style pattern matching. */
+static int GearsStringmatchlen(const char *pattern, int patternLen,
+        const char *string, int stringLen, int nocase)
+{
+    if(patternLen == 1 && pattern[0] == '*'){
+        return 1;
+    }
+
+    while(patternLen && stringLen) {
+        switch(pattern[0]) {
+        case '*':
+            while (patternLen && pattern[1] == '*') {
+                pattern++;
+                patternLen--;
+            }
+            if (patternLen == 1)
+                return 1; /* match */
+            while(stringLen) {
+                if (GearsStringmatchlen(pattern+1, patternLen-1,
+                            string, stringLen, nocase))
+                    return 1; /* match */
+                string++;
+                stringLen--;
+            }
+            return 0; /* no match */
+            break;
+        case '?':
+            string++;
+            stringLen--;
+            break;
+        case '[':
+        {
+            int not, match;
+
+            pattern++;
+            patternLen--;
+            not = pattern[0] == '^';
+            if (not) {
+                pattern++;
+                patternLen--;
+            }
+            match = 0;
+            while(1) {
+                if (pattern[0] == '\\' && patternLen >= 2) {
+                    pattern++;
+                    patternLen--;
+                    if (pattern[0] == string[0])
+                        match = 1;
+                } else if (pattern[0] == ']') {
+                    break;
+                } else if (patternLen == 0) {
+                    pattern--;
+                    patternLen++;
+                    break;
+                } else if (patternLen >= 3 && pattern[1] == '-') {
+                    int start = pattern[0];
+                    int end = pattern[2];
+                    int c = string[0];
+                    if (start > end) {
+                        int t = start;
+                        start = end;
+                        end = t;
+                    }
+                    if (nocase) {
+                        start = tolower(start);
+                        end = tolower(end);
+                        c = tolower(c);
+                    }
+                    pattern += 2;
+                    patternLen -= 2;
+                    if (c >= start && c <= end)
+                        match = 1;
+                } else {
+                    if (!nocase) {
+                        if (pattern[0] == string[0])
+                            match = 1;
+                    } else {
+                        if (tolower((int)pattern[0]) == tolower((int)string[0]))
+                            match = 1;
+                    }
+                }
+                pattern++;
+                patternLen--;
+            }
+            if (not)
+                match = !match;
+            if (!match)
+                return 0; /* no match */
+            string++;
+            stringLen--;
+            break;
+        }
+        case '\\':
+            if (patternLen >= 2) {
+                pattern++;
+                patternLen--;
+            }
+            /* fall through */
+        default:
+            if (!nocase) {
+                if (pattern[0] != string[0])
+                    return 0; /* no match */
+            } else {
+                if (tolower((int)pattern[0]) != tolower((int)string[0]))
+                    return 0; /* no match */
+            }
+            string++;
+            stringLen--;
+            break;
+        }
+        pattern++;
+        patternLen--;
+        if (stringLen == 0) {
+            while(*pattern == '*') {
+                pattern++;
+                patternLen--;
+            }
+            break;
+        }
+    }
+    if (patternLen == 0 && stringLen == 0)
+        return 1;
+    return 0;
+}
+
+static void KeysReader_ScanCallback(RedisModuleCtx *ctx, RedisModuleString *keyname, RedisModuleKey *key, void *privdata){
+    KeysReaderCtx* readerCtx = privdata;
+    size_t len;
+    const char* keyStr = RedisModule_StringPtrLen(keyname, &len);
+    if(GearsStringmatchlen(readerCtx->match, readerCtx->matchLen, keyStr, len, 0)){
+        Record* record = KeysReader_ReadKey(ctx, readerCtx, keyname, key);
+        readerCtx->pendingRecords = array_append(readerCtx->pendingRecords, record);
+    }
+}
+
+static Record* KeysReader_ScanAPINextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
+    if(array_len(readerCtx->pendingRecords) > 0){
+        return array_pop(readerCtx->pendingRecords);
+    }
+    if(readerCtx->isDone){
+        return NULL;
+    }
+
+    while(!readerCtx->isDone){
+        LockHandler_Acquire(rctx);
+        readerCtx->isDone = !RedisModule_Scan(rctx, readerCtx->cursor, KeysReader_ScanCallback, readerCtx);
+        LockHandler_Release(rctx);
+
+        if(array_len(readerCtx->pendingRecords) > 0){
+            return array_pop(readerCtx->pendingRecords);
+        }
+    }
+    return NULL;
+}
 
 static Record* KeysReader_ScanNextKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx){
     if(array_len(readerCtx->pendingRecords) > 0){
@@ -489,7 +608,7 @@ static Record* KeysReader_Next(ExecutionCtx* ectx, void* ctx){
     KeysReaderCtx* readerCtx = ctx;
     Record* record = NULL;
     if(!readerCtx->noScan){
-        record = KeysReader_ScanNextKey(RedisGears_GetRedisModuleCtx(ectx), readerCtx);
+        record = KeysReader_ScanNextKeyFunc(RedisGears_GetRedisModuleCtx(ectx), readerCtx);
     }else{
         if(readerCtx->isDone){
             return NULL;
@@ -868,6 +987,17 @@ static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mod
 }
 
 int KeysReader_Initialize(RedisModuleCtx* ctx){
+    RedisVersion vertionWithScanAPI = {
+            .redisMajorVersion = 6,
+            .redisMinorVersion = 0,
+            .redisPatchVersion = 6,
+    };
+
+    if ((GearsCompareVersions(currVesion, vertionWithScanAPI)) >= 0 && (RedisModule_Scan != NULL)) {
+        KeysReader_ScanNextKeyFunc = KeysReader_ScanAPINextKey;
+    }else{
+        KeysReader_ScanNextKeyFunc = KeysReader_ScanNextKey;
+    }
 	return REDISMODULE_OK;
 }
 
