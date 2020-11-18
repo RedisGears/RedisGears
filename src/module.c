@@ -1015,6 +1015,7 @@ static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
                 RG_FREE(soPath);
                 return REDISMODULE_ERR;
             }
+            RG_FREE(soPath);
         }
     }
     closedir(dr);

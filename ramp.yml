@@ -18,6 +18,7 @@ capabilities:
     - backup_restore
     - reshard_rebalance
     - eviction_expiry
+    - flash     
 exclude_commands:
     - rg.configset
     - RG.INNERUNREGISTER
