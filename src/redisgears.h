@@ -192,6 +192,8 @@ typedef struct StreamReaderCtx StreamReaderCtx;
 typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
 typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 typedef struct CommandReaderTriggerArgs CommandReaderTriggerArgs;
+typedef struct CommandReaderTriggerCtx CommandReaderTriggerCtx;
+
 typedef Record* (*RedisGears_KeysReaderReadRecordCallback)(RedisModuleCtx* rctx, RedisModuleString* key, RedisModuleKey* keyPtr, bool readValue, const char* event);
 
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
@@ -213,7 +215,15 @@ int MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetReadRecordCallback)(KeysR
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
 CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
+CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreateHook)(const char* hook, const char* prefix);
 void MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsFree)(CommandReaderTriggerArgs* args);
+
+/* will return trigger ctx that can be used to call the next command (the one that was overrided) */
+CommandReaderTriggerCtx* MODULE_API_FUNC(RedisGears_GetCommandReaderTriggerCtx)(ExecutionCtx* ectx);
+CommandReaderTriggerCtx* MODULE_API_FUNC(RedisGears_CommandReaderTriggerCtxGetShallowCopy)(CommandReaderTriggerCtx* crtCtx);
+void MODULE_API_FUNC(RedisGears_CommandReaderTriggerCtxFree)(CommandReaderTriggerCtx* crtCtx);
+/* This must be used when GIL is taken */
+RedisModuleCallReply* MODULE_API_FUNC(RedisGears_CommandReaderTriggerCtxNext)(CommandReaderTriggerCtx* crtCtx, RedisModuleString** argv, size_t argc);
 
 /**
  * Records handling
@@ -793,7 +803,12 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsSetReadRecordCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreateHook);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetCommandReaderTriggerCtx);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxGetShallowCopy);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxNext);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxFree);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);

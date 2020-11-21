@@ -49,6 +49,8 @@ typedef struct Plugin{
 
 Gears_dict* plugins = NULL;
 
+RedisModuleCtx* redisDummyCtx = NULL;
+
 #define REGISTER_API(name, ctx) \
     do{\
         RedisGears_ ## name = RG_ ## name;\
@@ -121,7 +123,7 @@ static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnStartStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnStartStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -130,7 +132,7 @@ static int RG_SetFlatExecutionOnUnpausedCallback(FlatExecutionPlan* fep, const c
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnUnPausedStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnUnPausedStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -139,7 +141,7 @@ static int RG_SetFlatExecutionOnRegisteredCallback(FlatExecutionPlan* fep, const
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnRegisteredStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnRegisteredStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -148,21 +150,24 @@ static int RG_SetFlatExecutionOnUnregisteredCallback(FlatExecutionPlan* fep, con
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnUnregisteredStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnUnregisteredStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
 static FlatExecutionPlan* RG_CreateCtx(char* readerName, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only create Gears Builder when Redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only create a gearsCtx on registered gears thread");
         return NULL;
     }
+    LockHandler_Acquire(redisDummyCtx);
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
     if(!FlatExecutionPlan_SetReader(fep, readerName)){
         FlatExecutionPlan_Free(fep);
         *err = RG_STRDUP("The given reader does not exists");
+        LockHandler_Release(redisDummyCtx);
         return NULL;
     }
+    LockHandler_Release(redisDummyCtx);
     return fep;
 }
 
@@ -243,23 +248,42 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
 }
 
 static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only register execution when redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only register execution on registered gears thread");
         return 0;
     }
-    return FlatExecutionPlan_Register(fep, mode, key, err);
+    LockHandler_Acquire(redisDummyCtx);
+
+    // we need a deep copy in case this fep will be registered again with different args
+    // this is a hack because a fep represent registration, we need create
+    // a registration object that will hold a shared reference of the fep for future.
+    // The plane is to reimplement this all API so its not worth inve
+    fep = FlatExecutionPlan_DeepCopy(fep);
+
+    int res = FlatExecutionPlan_Register(fep, mode, key, err);
+
+    // we need to free it on success or failure, on success a shared copy
+    // of the fep will be taken by the reader.
+    FlatExecutionPlan_Free(fep);
+
+    LockHandler_Release(redisDummyCtx);
+    return res;
 }
 
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only run execution when redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only run execution on registered gears thread");
         return NULL;
     }
+    LockHandler_Acquire(redisDummyCtx);
     if(mode == ExecutionModeAsync && !Cluster_IsInitialized()){
         *err = RG_STRDUP("Cluster is not initialized, can not start executions.");
+        LockHandler_Release(redisDummyCtx);
         return NULL;
     }
-    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
+    ExecutionPlan* res = FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
+    LockHandler_Release(redisDummyCtx);
+    return res;
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
@@ -295,10 +319,31 @@ static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* prefix,
 }
 
 static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
-    return CommandReaderTriggerArgs_Create(trigger);
+    return CommandReaderTriggerArgs_CreateTrigger(trigger);
 }
+
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreateHook(const char* hook, const char* prefix){
+    return CommandReaderTriggerArgs_CreateHook(hook, prefix);
+}
+
 static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){
     CommandReaderTriggerArgs_Free(args);
+}
+
+static CommandReaderTriggerCtx* RG_GetCommandReaderTriggerCtx(ExecutionCtx* ectx){
+    return CommandReaderTriggerCtx_Get(ectx);
+}
+
+static CommandReaderTriggerCtx* RG_CommandReaderTriggerCtxGetShallowCopy(CommandReaderTriggerCtx* crtCtx){
+    return CommandReaderTriggerCtx_GetShallowCopy(crtCtx);
+}
+
+static RedisModuleCallReply* RG_CommandReaderTriggerCtxNext(CommandReaderTriggerCtx* crtCtx, RedisModuleString** argv, size_t argc){
+    return CommandReaderTriggerCtx_CallNext(crtCtx, argv, argc);
+}
+
+static void RG_CommandReaderTriggerCtxFree(CommandReaderTriggerCtx* crtCtx){
+    CommandReaderTriggerCtx_Free(crtCtx);
 }
 
 static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
@@ -379,28 +424,12 @@ static int RG_AbortExecution(ExecutionPlan* ep){
         return REDISMODULE_OK;
     }
 
-    // execution is not local and already started, we can not abort it now.
-    if(EPIsFlagOff(ep, EFIsLocal)){
-        return REDISMODULE_ERR;
-    }
-
     // execution is done, no need to abort
     if(RedisGears_IsDone(ep)){
         return REDISMODULE_OK;
     }
 
-    while(ep->status != DONE){
-        // we are checking for DONE status cause this one is set without getting the lock.
-        // Once status changed to DONE we know that no more python code will be executed and
-        // we can finish sending cancel signal
-#ifdef WITHPYTHON
-        unsigned long threadID = (unsigned long)ep->executionPD;
-        RedisGearsPy_ForceStop(threadID);
-#endif
-        usleep(1000);
-    }
-
-    return REDISMODULE_OK;
+    return REDISMODULE_ERR;
 }
 
 /**
@@ -828,7 +857,12 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
     REGISTER_API(CommandReaderTriggerArgsCreate, ctx);
+    REGISTER_API(CommandReaderTriggerArgsCreateHook, ctx);
     REGISTER_API(CommandReaderTriggerArgsFree, ctx);
+    REGISTER_API(GetCommandReaderTriggerCtx, ctx);
+    REGISTER_API(CommandReaderTriggerCtxGetShallowCopy, ctx);
+    REGISTER_API(CommandReaderTriggerCtxNext, ctx);
+    REGISTER_API(CommandReaderTriggerCtxFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(GetFep, ctx);
@@ -1040,10 +1074,14 @@ static int Command_DumpPlugins(RedisModuleCtx *ctx, RedisModuleString **argv, in
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    staticCtx = RedisModule_GetThreadSafeContext(NULL);
+
 	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s, compiled_os=%s",
 	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA,
 			REDISGEARS_OS_VERSION);
+
+	redisDummyCtx = RedisModule_GetThreadSafeContext(NULL);
 
     GearsGetRedisVersion();
     RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",

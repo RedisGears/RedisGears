@@ -938,7 +938,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
     int filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
     if(ectx.err){
         RedisGears_FreeRecord(record);
-        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);\
+        record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));\
         filterRes = RedisGears_StepSuccess; // its not really success but we want to error to continue.
     }
 
@@ -1545,7 +1545,7 @@ static Record* ExecutionPlan_NextRecord(ExecutionPlan* ep, ExecutionStep* step, 
                 GETTIME(&_te);
                 step->executionDuration += DURATION;
                 if(!r && ectx.err){
-                    r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err) + 1);
+                    r = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
                 }
             }else{
                 r = NULL;
@@ -1700,7 +1700,6 @@ end:
         }
     }
     for(size_t i = 0 ; i < array_len(ep->steps) ; ++i){
-        RedisModule_Assert(ret != Execute_STOPED || !pendingCtxs[i]);
         if(pendingCtxs[i]){
             ExecutionPlan_PendingCtxFree(pendingCtxs[i]);
         }
@@ -2261,6 +2260,7 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
 
 static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker){
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, mode, arg, callback, privateData);
+
     if(worker){
         ep->assignWorker = ExecutionPlan_WorkerGetShallowCopy(worker);
     }else{
@@ -3187,6 +3187,80 @@ void FlatExecutionPlan_SetThreadPool(FlatExecutionPlan* fep, ExecutionThreadPool
     fep->executionThreadPool = tp;
 }
 
+FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep){
+    FlatExecutionPlan* ret = FlatExecutionPlan_New();
+    if(fep->desc){
+        ret->desc = RG_STRDUP(fep->desc);
+    }
+
+    if(!FlatExecutionPlan_SetReader(ret, fep->reader->reader)){
+        RedisModule_Assert(false);
+    }
+
+    for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
+        FlatExecutionStep* s = fep->steps + i;
+        ArgType* t = FlatExecutionPlan_GetArgTypeByStepType(s->type, s->bStep.stepName);
+        void* argDup = NULL;
+        if(s->bStep.arg.stepArg){
+            argDup = t->dup(s->bStep.arg.stepArg);
+        }
+        FlatExecutionPlan_AddBasicStep(ret, s->bStep.stepName, argDup, s->type);
+    }
+
+    if(fep->PDType){
+        ArgType* PDType = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+        void* PDDup = NULL;
+        if(fep->PD){
+            PDDup = PDType->dup(fep->PD);
+        }
+        FlatExecutionPlan_SetPrivateData(ret, fep->PDType, PDDup);
+    }
+
+    if(fep->onExecutionStartStep.stepName){
+        ArgType* onStartType = ExecutionOnStartsMgmt_GetArgType(fep->onExecutionStartStep.stepName);
+        void* onStartArgDup = NULL;
+        if(fep->onExecutionStartStep.arg.stepArg){
+            onStartArgDup = onStartType->dup(fep->onExecutionStartStep.arg.stepArg);
+        }
+        FlatExecutionPlan_SetOnStartStep(ret, fep->onExecutionStartStep.stepName, onStartArgDup);
+    }
+
+    if(fep->onUnpausedStep.stepName){
+        ArgType* onUnpauseType = ExecutionOnUnpausedsMgmt_GetArgType(fep->onUnpausedStep.stepName);
+        void* onUnpauseArgDup = NULL;
+        if(fep->onUnpausedStep.arg.stepArg){
+            onUnpauseArgDup = onUnpauseType->dup(fep->onUnpausedStep.arg.stepArg);
+        }
+        FlatExecutionPlan_SetOnUnPausedStep(ret, fep->onUnpausedStep.stepName, onUnpauseArgDup);
+    }
+
+    if(fep->onRegisteredStep.stepName){
+        ArgType* onRegisteredType = FlatExecutionOnRegisteredsMgmt_GetArgType(fep->onRegisteredStep.stepName);
+        void* onRegisteredArgDup = NULL;
+        if(fep->onRegisteredStep.arg.stepArg){
+            onRegisteredArgDup = onRegisteredType->dup(fep->onRegisteredStep.arg.stepArg);
+        }
+        FlatExecutionPlan_SetOnRegisteredStep(ret, fep->onRegisteredStep.stepName, onRegisteredArgDup);
+    }
+
+    if(fep->onUnregisteredStep.stepName){
+        ArgType* onUnregisteredType = FlatExecutionOnUnregisteredsMgmt_GetArgType(fep->onUnregisteredStep.stepName);
+        void* onUnregisteredArgDup = NULL;
+        if(fep->onUnregisteredStep.arg.stepArg){
+            onUnregisteredArgDup = onUnregisteredType->dup(fep->onUnregisteredStep.arg.stepArg);
+        }
+        FlatExecutionPlan_SetOnUnregisteredStep(ret, fep->onUnregisteredStep.stepName, onUnregisteredArgDup);
+    }
+
+    ret->executionMaxIdleTime = fep->executionMaxIdleTime;
+
+    ret->executionThreadPool = fep->executionThreadPool;
+
+    ret->flags = fep->flags;
+
+    return ret;
+}
+
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(__atomic_sub_fetch(&fep->refCount, 1, __ATOMIC_SEQ_CST) > 0){
         return;
@@ -3283,29 +3357,29 @@ void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, voi
     FlatExecutionPlan_AddBasicStep(fep, forEach, writerArg, FOREACH);
 }
 
-void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg){
-    fep->onExecutionStartStep.stepName = onStartCallback;
+void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, const char* onStartCallback, void* onStartArg){
+    fep->onExecutionStartStep.stepName = RG_STRDUP(onStartCallback);
     fep->onExecutionStartStep.arg.stepArg = onStartArg;
     fep->onExecutionStartStep.arg.type = ExecutionOnStartsMgmt_GetArgType(onStartCallback);
     RedisModule_Assert(fep->onExecutionStartStep.arg.type);
 }
 
-void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onUnpausedCallback, void* onUnpausedArg){
-    fep->onUnpausedStep.stepName = onUnpausedCallback;
+void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, const char* onUnpausedCallback, void* onUnpausedArg){
+    fep->onUnpausedStep.stepName = RG_STRDUP(onUnpausedCallback);
     fep->onUnpausedStep.arg.stepArg = onUnpausedArg;
     fep->onUnpausedStep.arg.type = ExecutionOnUnpausedsMgmt_GetArgType(onUnpausedCallback);
     RedisModule_Assert(fep->onUnpausedStep.arg.type);
 }
 
-void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg){
-    fep->onRegisteredStep.stepName = onRegisteredCallback;
+void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, const char* onRegisteredCallback, void* onRegisteredArg){
+    fep->onRegisteredStep.stepName = RG_STRDUP(onRegisteredCallback);
     fep->onRegisteredStep.arg.stepArg = onRegisteredArg;
     fep->onRegisteredStep.arg.type = FlatExecutionOnRegisteredsMgmt_GetArgType(onRegisteredCallback);
     RedisModule_Assert(fep->onRegisteredStep.arg.type);
 }
 
-void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, char* onUnregisteredCallback, void* onUnregisteredCallbackArg){
-    fep->onUnregisteredStep.stepName = onUnregisteredCallback;
+void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, const char* onUnregisteredCallback, void* onUnregisteredCallbackArg){
+    fep->onUnregisteredStep.stepName = RG_STRDUP(onUnregisteredCallback);
     fep->onUnregisteredStep.arg.stepArg = onUnregisteredCallbackArg;
     fep->onUnregisteredStep.arg.type = FlatExecutionOnUnregisteredsMgmt_GetArgType(onUnregisteredCallback);
     RedisModule_Assert(fep->onUnregisteredStep.arg.type);

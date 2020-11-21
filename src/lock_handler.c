@@ -19,8 +19,12 @@ typedef struct LockHandlerCtx{
     int lockCounter;
 }LockHandlerCtx;
 
+static void LockHandler_Destructor(void *p) {
+    RG_FREE(p);
+}
+
 int LockHandler_Initialize(){
-    int err = pthread_key_create(&_lockKey, NULL);
+    int err = pthread_key_create(&_lockKey, LockHandler_Destructor);
     if(err){
         return REDISMODULE_ERR;
     }
@@ -30,11 +34,9 @@ int LockHandler_Initialize(){
     return REDISMODULE_OK;
 }
 
-bool LockHandler_IsLockTaken(){
+bool LockHandler_IsRedisGearsThread(){
     LockHandlerCtx* lh = pthread_getspecific(_lockKey);
-    // if we do not have the lock handler this thread was not created by us,
-    // we will trust the user here.
-    return lh ? lh->lockCounter > 0 : true;
+    return lh ? true : false;
 }
 
 void LockHandler_Register(){

@@ -198,8 +198,9 @@ static Record* LongRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br)
 static Record* ErrorRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
-    char* temp1 = RG_ALLOC(size);
+    char* temp1 = RG_ALLOC(size + 1);
     memcpy(temp1, temp, size);
+    temp1[size] = '\0';
     return RG_ErrorRecordCreate(temp1, size);
 }
 
@@ -593,6 +594,11 @@ char** RG_HashSetRecordGetAllKeys(Record* base){
 Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     if(!ectx->step){
         *err = RG_STRDUP("Can not create gearsFuture outside of step");
+        return NULL;
+    }
+    ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ectx);
+    if(ep->mode == ExecutionModeSync){
+        *err = RG_STRDUP("Can not create gearsFuture on sync execution");
         return NULL;
     }
     size_t maxSize;

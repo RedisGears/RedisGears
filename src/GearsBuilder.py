@@ -2,30 +2,26 @@ import redisgears
 import copy
 import redisgears as rg
 from redisgears import executeCommand as execute
+from redisgears import callNext as call_next
 from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE
 from redisgears import gearsCtx
 from redisgears import gearsFutureCtx as gearsFuture
 from redisgears import log
+from redisgears import setGearsSession
+from redisgears import getGearsSession
+from redisgears import registerGearsThread
+from redisgears import isInAtomicBlock
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 import asyncio
+from asyncio.futures import Future
 from threading import Thread
 
 globals()['str'] = str
 
 redisgears._saveGlobals()
-
-# starting event loop in another thread for async await support
-loop = asyncio.new_event_loop()
-
-def f(loop):
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
-
-t = Thread(target=f, args=(loop,))
-t.start()
 
 def createKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator=None):
     '''
@@ -46,8 +42,11 @@ def createKeysOnlyReader(pattern='*', count=1000, noScan=False, patternGenerator
         if patternGenerator is not None:
             pattern, noScan = patternGenerator()
         if noScan:
-            if execute('exists', pattern) == 1:
-                yield pattern
+            try:
+                if execute('exists', pattern) == 1:
+                    yield pattern
+            except Exception:
+                return
         else:
             count = str(count)
             cursor, keys = execute('scan', '0', 'MATCH', str(pattern), 'COUNT', count)
@@ -163,7 +162,7 @@ class GearsBuilder():
             arg = shardReaderCallback
         if(self.realReader == 'KeysOnlyReader'):
             arg = createKeysOnlyReader(arg, **kargs)
-        self.gearsCtx.run(arg, **kargs)
+        return self.gearsCtx.run(arg, **kargs)
 
     def register(self, prefix='*', convertToStr=True, collect=True, **kargs):
         if(convertToStr):
@@ -201,11 +200,68 @@ def genDeprecated(deprecatedName, name, target):
         log('%s is deprecated, use %s instead' % (str(deprecatedName), str(name)), level='warning')
         return target(*argc, **nargs)
     globals()[deprecatedName] = method
-    
-def runCoroutine(cr, f):
+
+# Gears loop of async support
+
+class GearsSession():
+    def __init__(self, s):
+        self.s = s
+        
+    def __enter__(self):
+        setGearsSession(self.s)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        setGearsSession(None)
+
+class GearsFuture(Future):
+    def __init__(self, *, loop=None, gearsSession=None):
+        Future.__init__(self, loop=loop)
+        self.gearsSession = gearsSession
+        
+    def add_done_callback(self, fn, *, context=None):
+        def BeforeFn(*args, **kargs):
+            try:
+                with GearsSession(self.gearsSession):
+                    fn(*args, **kargs)
+            except Exception as e:
+                log(e)
+        Future.add_done_callback(self, BeforeFn, context=context)
+        
+    def __await__(self):
+        res = None
+        if isInAtomicBlock():
+            raise Exception("await is not allow inside atomic block")
+        else:
+            res = yield from Future.__await__(self)
+        return res
+        
+
+loop = asyncio.new_event_loop()
+
+loop.create_future = lambda: GearsFuture(loop=loop, gearsSession=getGearsSession())
+
+def createFuture():
+    return loop.create_future()
+
+def setFutureResults(f, res):
+    async def setFutureRes():
+        f.set_result(res)
+    asyncio.run_coroutine_threadsafe(setFutureRes(), loop)    
+
+def f(loop):
+    registerGearsThread()
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+t = Thread(target=f, args=(loop,))
+t.start()
+
+def runCoroutine(cr, f, s):
     async def runInternal():
         try:
-            res = await cr
+            with GearsSession(s):
+                res = await cr
         except Exception as e:
             try:
                 f.continueFailed(e)
