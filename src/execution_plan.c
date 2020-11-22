@@ -2147,7 +2147,10 @@ static void ExecutionStep_Reset(ExecutionStep* es){
         es->group.isGrouped = false;
         break;
     case READER:
-        // the reader will be reset with the new args or will be freed ...
+        // let call reset with NULL just to make sure needed resoueces are freed
+        if(es->reader.r->reset){
+            es->reader.r->reset(es->reader.r->ctx, NULL);
+        }
         break;
     case ACCUMULATE:
         if(es->accumulate.accumulator){

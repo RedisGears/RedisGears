@@ -253,14 +253,18 @@ static Record* CommandReader_Next(ExecutionCtx* rctx, void* ctx){
 
 static void CommandReader_Free(void* ctx){
     CommandReaderCtx* readerCtx = ctx;
-    CommandReaderArgs_Free(readerCtx->args);
+    if(readerCtx->args){
+        CommandReaderArgs_Free(readerCtx->args);
+    }
 
     RG_FREE(readerCtx);
 }
 
 static void CommandReader_Reset(void* ctx, void * arg){
     CommandReaderCtx* readerCtx = ctx;
-    CommandReaderArgs_Free(readerCtx->args);
+    if(readerCtx->args){
+        CommandReaderArgs_Free(readerCtx->args);
+    }
 
     readerCtx->args = arg;
 }
