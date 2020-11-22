@@ -209,6 +209,7 @@ void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
     CommandReaderTriggerArgs_Free(crtCtx->args);
     Gears_dictRelease(crtCtx->pendingExections);
     RedisGears_WorkerDataFree(crtCtx->wd);
+    FlatExecutionPlan_Free(crtCtx->fep);
     RG_FREE(crtCtx);
 }
 
@@ -484,12 +485,6 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
         default:
             RedisModule_Assert(false);
         }
-
-        // to avoid cycling reference we will free the fep here
-        // the other crtCtx internals will be free when the ref count will
-        // reach zero.
-        FlatExecutionPlan_Free(crtCtx->fep);
-        crtCtx->fep = NULL;
 
         CommandReaderTriggerCtx_Free(crtCtx);
     }
