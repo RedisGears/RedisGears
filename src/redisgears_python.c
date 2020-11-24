@@ -1581,7 +1581,7 @@ static PyObject* futureFailed(PyObject *self, PyObject *args){
     PyObject* argumentStr = PyObject_Str(obj);
     size_t len;
     const char* argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &len);
-    Record* error = RG_ErrorRecordCreate(RG_STRDUP(argumentCStr), len);
+    Record* error = RedisGears_ErrorRecordCreate(RG_STRDUP(argumentCStr), len);
 
     RedisGears_AsyncRecordContinue(pyFuture->asyncRecord, error);
     pyFuture->asyncRecord = NULL;

@@ -271,6 +271,7 @@ void MODULE_API_FUNC(RedisGears_ListRecordAdd)(Record* listRecord, Record* r);
 Record* MODULE_API_FUNC(RedisGears_ListRecordGet)(Record* listRecord, size_t index);
 Record* MODULE_API_FUNC(RedisGears_ListRecordPop)(Record* listRecord);
 Record* MODULE_API_FUNC(RedisGears_StringRecordCreate)(char* val, size_t len);
+Record* MODULE_API_FUNC(RedisGears_ErrorRecordCreate)(char* val, size_t len);
 char* MODULE_API_FUNC(RedisGears_StringRecordGet)(Record* r, size_t* len);
 void MODULE_API_FUNC(RedisGears_StringRecordSet)(Record* r, char* val, size_t len);
 Record* MODULE_API_FUNC(RedisGears_DoubleRecordCreate)(double val);
@@ -837,6 +838,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ListRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ListRecordPop);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StringRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ErrorRecordCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StringRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StringRecordSet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DoubleRecordCreate);
