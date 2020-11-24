@@ -893,6 +893,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(ListRecordGet, ctx);
     REGISTER_API(ListRecordPop, ctx);
     REGISTER_API(StringRecordCreate, ctx);
+    REGISTER_API(ErrorRecordCreate, ctx);
     REGISTER_API(StringRecordGet, ctx);
     REGISTER_API(StringRecordSet, ctx);
     REGISTER_API(DoubleRecordCreate, ctx);
