@@ -426,6 +426,10 @@ void RG_FreeRecord(Record* record){
     RG_FREE(record);
 }
 
+Record* RG_GetDummyRecord(){
+    return &DummyRecord;
+}
+
 RecordType* RG_RecordGetType(Record* r){
     return r->type;
 }
@@ -596,6 +600,12 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
         *err = RG_STRDUP("Can not create gearsFuture outside of step");
         return NULL;
     }
+
+    if(ectx->asyncRecordCreated){
+        *err = RG_STRDUP("Can not create async record twice on the same step");
+        return NULL;
+    }
+
     ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ectx);
     if(ep->mode == ExecutionModeSync){
         *err = RG_STRDUP("Can not create gearsFuture on sync execution");
@@ -631,6 +641,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     ret->rptx = (Record**)(&(Gears_listFirst(ret->pctx->records)->value));
     ret->overridePlaceHolder = ectx->actualPlaceHolder;
     ret->originRecord = ectx->originRecord;
+    ectx->asyncRecordCreated = &(ret->base);
     return &ret->base;
 }
 

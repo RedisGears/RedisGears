@@ -903,6 +903,9 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
             }
             record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
         }
+        if(ectx.asyncRecordCreated && record != &DummyRecord){
+            RedisModule_Log(NULL, "warning", "%s", "an api violation, map returned no DummyRecord while creating async record.");
+        }
     }
 
     // asyncRecor should never be returned to us
@@ -937,9 +940,16 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
     ectx.originRecord = record;
     int filterRes = step->filter.filter(&ectx, record, step->filter.stepArg.stepArg);
     if(ectx.err){
-        RedisGears_FreeRecord(record);
+        if(!ectx.asyncRecordCreated){
+            // we can free the record only if it was not taken by async record
+            RedisGears_FreeRecord(record);
+        }
         record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));\
         filterRes = RedisGears_StepSuccess; // its not really success but we want to error to continue.
+    }
+
+    if(ectx.asyncRecordCreated && filterRes != RedisGears_StepHold){
+        RedisModule_Log(NULL, "warning", "%s", "an api violation, filter did not return RedisGears_StepHold result while creating async record.");
     }
 
     if(filterRes == RedisGears_StepFailed){
@@ -1330,11 +1340,18 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     ExecutionCtx ectx = ExecutionCtx_Initialize(rctx, ep, step);
     ectx.originRecord = record;
     int res = step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
+    if(ectx.asyncRecordCreated && res != RedisGears_StepHold){
+        RedisModule_Log(NULL, "warning", "%s", "an api violation, foreach did not return RedisGears_StepHold result while creating async record.");
+    }
     if(ectx.err){
-        RedisGears_FreeRecord(record);
+        if(!ectx.asyncRecordCreated){
+            // we can only free the original record if an async record was not created,
+            // otherwise the async record holds it.
+            RedisGears_FreeRecord(record);
+        }
         record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
     }else if(res == RedisGears_StepHold){
-        // the async record to ownership on the record itself so no need to hold it
+        // the async record took ownership on the record itself so no need to hold it
         record = &WaitRecord;
     }
 end:
@@ -1400,15 +1417,31 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         Record* accumulator = step->accumulate.accumulate(&ectx, step->accumulate.accumulator, record, step->accumulate.stepArg.stepArg);
         if(accumulator != &DummyRecord){
             // no async we can set the accumulator
-            step->accumulate.accumulator = accumulator;
+            if(ectx.asyncRecordCreated){
+                RedisModule_Log(NULL, "warning", "%s", "an api violation, aggregate created an async record and returned accumulator,"
+                        " its unsafe to use this accumulate, the accumulator will be freed and we will"
+                        " wait for the async record.");
+                RedisGears_FreeRecord(accumulator);
+                RG_FREE(ectx.err);
+                ectx.err = NULL;
+            }else{
+                step->accumulate.accumulator = accumulator;
+            }
+
         }
         if(ectx.err){
-            if(step->accumulate.accumulator){
-                RedisGears_FreeRecord(step->accumulate.accumulator);
-                step->accumulate.accumulator = NULL;
+            if(ectx.asyncRecordCreated){
+                // this is a miss use so as long as we do not crash or leak we can do whatever we want
+                // we log the error and continue.
+                RedisModule_Log(NULL, "warning", "Error happened on accumulator that created async record, err='%s'", ectx.err);
+            }else{
+                if(step->accumulate.accumulator){
+                    RedisGears_FreeRecord(step->accumulate.accumulator);
+                    step->accumulate.accumulator = NULL;
+                }
+                record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
+                goto end;
             }
-            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
-            goto end;
         }
         record = &DummyRecord; // call ourself again to get the next record
         goto end;
@@ -1459,24 +1492,39 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		ectx.actualPlaceHolder = &(((KeyRecord*)keyRecord)->record);
 		accumulator = step->accumulateByKey.accumulate(&ectx, key, accumulator, val, step->accumulate.stepArg.stepArg);
 		if(ectx.err){
-		    if(accumulator){
-		        RedisGears_FreeRecord(accumulator);
-		    }
-		    if(keyRecord){
-                RedisGears_KeyRecordSetVal(keyRecord, NULL);
-                RedisGears_FreeRecord(keyRecord);
-		    }
-		    Gears_dictDelete(step->accumulateByKey.accumulators, key);
-			RedisGears_FreeRecord(record);
-            record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
-            goto end;
+		    if(ectx.asyncRecordCreated){
+                // this is a miss use so as long as we do not crash or leak we can do whatever we want
+                // we log the error and continue.
+                RedisModule_Log(NULL, "warning", "Error happened on accumulateby that created async record, err='%s'", ectx.err);
+                RG_FREE(ectx.err);
+                ectx.err = NULL;
+            }else{
+                if(accumulator){
+                    RedisGears_FreeRecord(accumulator);
+                }
+                if(keyRecord){
+                    RedisGears_KeyRecordSetVal(keyRecord, NULL);
+                    RedisGears_FreeRecord(keyRecord);
+                }
+                Gears_dictDelete(step->accumulateByKey.accumulators, key);
+                RedisGears_FreeRecord(record);
+                record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
+                goto end;
+            }
 		}
 		if(addKeyRecordToDict){
 			RedisModule_Assert(Gears_dictFetchValue(step->accumulateByKey.accumulators, key) == NULL);
 			Gears_dictAdd(step->accumulateByKey.accumulators, key, keyRecord);
 		}
 		if(accumulator != &DummyRecord){
-		    RedisGears_KeyRecordSetVal(keyRecord, accumulator);
+		    if(ectx.asyncRecordCreated){
+                RedisModule_Log(NULL, "warning", "%s", "an api violation, aggregateby created an async record and returned accumulator,"
+                        " its unsafe to use this accumulate, the accumulator will be freed and we will"
+                        " wait for the async record.");
+                RedisGears_FreeRecord(accumulator);
+            }else{
+                RedisGears_KeyRecordSetVal(keyRecord, accumulator);
+            }
 		}
 		RedisGears_FreeRecord(record);
 		record = &DummyRecord; // we will get the next record or hold

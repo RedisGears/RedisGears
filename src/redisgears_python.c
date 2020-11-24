@@ -1615,7 +1615,7 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
         break;
     case ContinueType_Filter:
         if(PyObject_IsTrue(obj)){
-            record = &DummyRecord; // everithing other then NULL will be true;
+            record = RedisGears_GetDummyRecord(); // everithing other then NULL will be true;
         }
         break;
     case ContinueType_Flat:
@@ -1637,10 +1637,13 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
         }
         break;
     case ContinueType_Foreach:
-        record = &DummyRecord; // continue with the old record
+        record = RedisGears_GetDummyRecord(); // continue with the old record
         break;
     default:
-        RedisModule_Assert(false);
+        RedisModule_Log(NULL, "warning", "%s", "Future continue with invalid type, continue as default");
+        Py_INCREF(obj);
+        record = PyObjRecordCreate();
+        PyObjRecordSet(record, obj);
         break;
     }
 
@@ -3942,7 +3945,7 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
         RedisGearsPy_Unlock(old);
         RedisGears_FreeRecord(accumulate);
         RedisGears_FreeRecord(r);
-        return &DummyRecord;
+        return RedisGears_GetDummyRecord();
     }
 
 	PyObjRecordSet(accumulate, newAccumulateObj);
@@ -4000,7 +4003,7 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
         RedisGears_FreeRecord(accumulate);
         RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
-        return &DummyRecord;
+        return RedisGears_GetDummyRecord();
     }
 
     PyObjRecordSet(accumulate, newAccumulateObj);
@@ -4049,7 +4052,7 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
         RedisGears_FreeRecord(record);
         RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
-        return &DummyRecord;
+        return RedisGears_GetDummyRecord();
     }
 
     PyObjRecordSet(record, newObj);
@@ -4099,7 +4102,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
         Py_DECREF(newObj);
         RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
         RedisGearsPy_Unlock(old);
-        return &DummyRecord;
+        return RedisGears_GetDummyRecord();
     }else if(PyList_Check(newObj)){
         RedisGears_FreeRecord(record);
         size_t len = PyList_Size(newObj);
