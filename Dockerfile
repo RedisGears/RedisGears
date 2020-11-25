@@ -60,7 +60,7 @@ RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
 RUN chown -R redis:redis /var/opt/redislabs
 
 COPY --from=builder --chown=redis:redis /build/redisgears.so $REDIS_MODULES/
-COPY --from=builder --chown=redis:redis /build/bin/linux-x64-release/python3_* /var/opt/redislabs/modules/rg/python3/
+COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/python3_* /var/opt/redislabs/modules/rg/python3/
 
 # This is needed in order to allow extraction of artifacts from platform-specific build
 # There is no use in removing this directory if $PACK !=1, because image side will only
