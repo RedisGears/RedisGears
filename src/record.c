@@ -78,6 +78,10 @@ void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
         }
     }
     if(async->overridePlaceHolder){
+        if(r == &DummyRecord){
+            // record was discarded
+            r = RG_StringRecordCreate(RG_STRDUP("Discarded"), strlen("Discarded"));
+        }
         *async->overridePlaceHolder = r;
         *(async->rptx) = &DummyRecord;
     }else{

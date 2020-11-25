@@ -13,6 +13,7 @@
 #include "redisgears.h"
 
 typedef struct PythonSessionCtx PythonSessionCtx;
+typedef struct PythonExecutionCtx PythonExecutionCtx;
 
 typedef void (*DoneCallbackFunction)(ExecutionPlan*, void*); 
 
@@ -22,8 +23,8 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, DoneCallbackFunction callback);
 int RedisGearsPy_Init(RedisModuleCtx *ctx);
 void RedisGearsPy_ForceStop(unsigned long threadID);
-PythonSessionCtx* RedisGearsPy_Lock(PythonSessionCtx* currSession);
-void RedisGearsPy_Unlock(PythonSessionCtx* prevSession);
+void RedisGearsPy_Lock(PythonExecutionCtx* pectx);
+void RedisGearsPy_Unlock(PythonExecutionCtx* oldectx);
 bool RedisGearsPy_IsLockAcquired();
 void RedisGearsPy_Clean();
 

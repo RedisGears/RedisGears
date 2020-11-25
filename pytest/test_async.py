@@ -132,7 +132,7 @@ GB().foreach(ForEach).register(mode='async_local')
     verifyRegistrationIntegrity(env)
 
     def WaitForKeyMap():
-        env.expect('RG.TRIGGER', 'WaitForKeyChangeMap').equal(['x', "['WaitForKeyChangeMap']"])
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeMap').equal(["['WaitForKeyChangeMap']"])
 
     def WaitForKeyChangeForeach():
         env.expect('RG.TRIGGER', 'WaitForKeyChangeForeach').error().contains('Exception: test')
@@ -141,13 +141,13 @@ GB().foreach(ForEach).register(mode='async_local')
         env.expect('RG.TRIGGER', 'WaitForKeyChangeFilter').error().contains('Exception: test')
 
     def WaitForKeyFlatmap():
-        env.expect('RG.TRIGGER', 'WaitForKeyChangeFlatmap').equal(['x', 'WaitForKeyChangeFlatmap'])
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeFlatmap').equal(['WaitForKeyChangeFlatmap'])
 
     def WaitForKeyAccumulate():
-        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulate').equal(['x'])
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulate').equal(['None'])
 
     def WaitForKeyAccumulateby():
-        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateby').equal(["{'key': 'key', 'value': 'x'}"])
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateby').equal(["{'key': 'key', 'value': None}"])
 
     def WaitForKeyMapError():
         env.expect('RG.TRIGGER', 'WaitForKeyChangeMapError').error().contains('Exception: test')
@@ -156,10 +156,10 @@ GB().foreach(ForEach).register(mode='async_local')
         env.expect('RG.TRIGGER', 'WaitForKeyChangeFlatmapError').error().contains('Exception: test')
 
     def WaitForKeyAccumulateError():
-        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateError').equal(['x'])
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateError').equal(['None'])
 
     def WaitForKeyAccumulatebyError():
-        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulatebyError').equal(["{'key': 'key', 'value': 'x'}"])
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulatebyError').equal(["{'key': 'key', 'value': None}"])
 
 
     for f in [WaitForKeyMap, WaitForKeyChangeForeach, WaitForKeyChangeFilter, 
@@ -232,7 +232,7 @@ def testCreateAsyncWithoutFree(env):
     script = '''
 def WaitForKeyChangeReturnSame(r, *args):
     f1 = gearsFuture()
-    return r
+    return f1
 GB('CommandReader').map(WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeMap', mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()
@@ -829,10 +829,10 @@ def testAsyncError(env):
 
     env.expect('RG.PYEXECUTE', 'gearsFuture()').error().contains('Future object can only be created inside certain execution steps')
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').repartition(lambda x: gearsFuture()).run()")[1][0]
-    env.assertContains('Future object can only be created inside certain execution steps', res)
+    env.assertContains('Step does not support async', res)
 
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').batchgroupby(lambda x: x, lambda k, l: gearsFuture()).run()")[1][0]
-    env.assertContains('Future object can only be created inside certain execution steps', res)
+    env.assertContains('Step does not support async', res)
 
 def testAsyncAwait(env):
     conn = getConnectionByEnv(env)
