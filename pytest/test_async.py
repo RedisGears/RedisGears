@@ -94,6 +94,10 @@ class BlockHolder:
         if self.bc:
             self.bc.continueRun(r)
 
+    def continueFailed(self, r):
+        if self.bc:
+            self.bc.continueFailed(r)
+
 blocked = []
 def WaitForKeyChangeReturnSame(r, *args):
     f = gearsFuture()
@@ -124,7 +128,18 @@ def ForEach(r):
         except Exception as e:
             print(e)
     GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
-GB().foreach(ForEach).register(mode='async_local')
+GB().foreach(ForEach).register('x', mode='async_local')
+
+def ForEachFailed(r):
+    def unblock(x):
+        global blocked
+        try:
+            [a.continueFailed(x['key']) for a in blocked]
+            blocked = []
+        except Exception as e:
+            print(e)
+    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+GB().foreach(ForEachFailed).register('y', mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()
 
@@ -162,14 +177,27 @@ GB().foreach(ForEach).register(mode='async_local')
         env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulatebyError').equal(["{'key': 'key', 'value': None}"])
 
 
-    for f in [WaitForKeyMap, WaitForKeyChangeForeach, WaitForKeyChangeFilter, 
-              WaitForKeyFlatmap, WaitForKeyAccumulate, WaitForKeyAccumulateby,
-              WaitForKeyMapError, WaitForKeyFlatmapError, WaitForKeyAccumulateError, WaitForKeyAccumulatebyError]:
+    tests = [WaitForKeyMap, WaitForKeyChangeForeach, WaitForKeyChangeFilter, 
+             WaitForKeyFlatmap, WaitForKeyAccumulate, WaitForKeyAccumulateby,
+             WaitForKeyMapError, WaitForKeyFlatmapError, WaitForKeyAccumulateError, WaitForKeyAccumulatebyError]
+
+
+    for f in tests:
         try:
             with Background(f) as bk:
                 with TimeLimit(50):
                     while bk.isAlive:
                         conn.execute_command('set', 'x', '1')
+                        time.sleep(0.1)
+        except Exception as e:  
+            env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
+
+    for f in tests:
+        try:
+            with Background(f) as bk:
+                with TimeLimit(50):
+                    while bk.isAlive:
+                        conn.execute_command('set', 'y', '1')
                         time.sleep(0.1)
         except Exception as e:  
             env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
@@ -257,6 +285,61 @@ GB('CommandReader').map(test).register(trigger='test', mode='async_local')
     verifyRegistrationIntegrity(env)
 
     env.expect('RG.TRIGGER', 'test').error().contains('Can not handle future untill it returned from the callback')
+
+def testSetFutureErrorOnAggregateByResultsBeforeReturnIt(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+    def continueFailed(self, r):
+        if self.bc:
+            self.bc.continueFailed(r)
+
+blocked = []
+def WaitForKeyChangeReturnSame(r, *args):
+    f = gearsFuture()
+    blocked.append(BlockHolder(f))
+    return f
+GB('CommandReader').groupby(lambda x: 'key', WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeAccumulateby', mode='async_local')
+
+def ForEachFailed(r):
+    def unblock(x):
+        global blocked
+        try:
+            [a.continueFailed('Failed') for a in blocked]
+            blocked = []
+        except Exception as e:
+            print(e)
+    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+GB().foreach(ForEachFailed).register('y', mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    def WaitForKeyAccumulateby():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateby').equal('Failed')
+
+    try:
+        with Background(WaitForKeyAccumulateby) as bk:
+            with TimeLimit(50):
+                while bk.isAlive:
+                    conn.execute_command('set', 'y', '1')
+                    time.sleep(0.1)
+    except Exception as e:  
+        env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
 def testSimpleAsyncOnSyncExecution(env):
     conn = getConnectionByEnv(env)

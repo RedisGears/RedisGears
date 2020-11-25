@@ -4366,7 +4366,7 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     return retRecord;
 }
 
-static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
+static Record* RedisGearsPy_ToPyRecordMapperInternal(ExecutionCtx* rctx, Record *record, void* arg){
     Record* res = PyObjRecordCreate();
     Record* tempRecord;
     PyObject* obj;
@@ -4404,7 +4404,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
         Py_DECREF(temp);
         tempRecord = RedisGears_KeyRecordGetVal(record);
         if(tempRecord){
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(rctx, tempRecord, arg);
             RedisModule_Assert(RedisGears_RecordGetType(tempRecord) == pythonRecordType);
             PyDict_SetItemString(obj, "value", PyObjRecordGet(tempRecord));
             RedisGears_FreeRecord(tempRecord);
@@ -4416,7 +4416,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
         len = RedisGears_ListRecordLen(record);
         obj = PyList_New(0);
         for(size_t i = 0 ; i < len ; ++i){
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_ListRecordGet(record, i), arg);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(rctx, RedisGears_ListRecordGet(record, i), arg);
             RedisModule_Assert(RedisGears_RecordGetType(tempRecord) == pythonRecordType);
             PyList_Append(obj, PyObjRecordGet(tempRecord));
             RedisGears_FreeRecord(tempRecord);
@@ -4428,7 +4428,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
             key = keys[i];
             temp = PyUnicode_FromString(key);
             tempRecord = RedisGears_HashSetRecordGet(record, key);
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(rctx, tempRecord, arg);
             RedisModule_Assert(RedisGears_RecordGetType(tempRecord) == pythonRecordType);
             PyDict_SetItem(obj, temp, PyObjRecordGet(tempRecord));
             Py_DECREF(temp);
@@ -4438,6 +4438,12 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     }else if(RedisGears_RecordGetType(record) == pythonRecordType){
         obj = PyObjRecordGet(record);
         Py_INCREF(obj);
+    }else if(RedisGears_RecordGetType(record) == errorRecordType){
+        str = RedisGears_StringRecordGet(record, &len);
+        RedisGears_SetError(rctx, RG_STRDUP(str));
+
+        Py_INCREF(Py_None);
+        obj = Py_None;
     }else{
         RedisModule_Assert(false);
     }
@@ -4492,7 +4498,7 @@ static Record* RedisGearsPy_ToPyRecordMapper(ExecutionCtx* rctx, Record *record,
     PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
     RedisGearsPy_Lock(&pectx);
 
-    Record* res = RedisGearsPy_ToPyRecordMapperInternal(record, arg);
+    Record* res = RedisGearsPy_ToPyRecordMapperInternal(rctx, record, arg);
     RedisGearsPy_Unlock(&pectx);
 
     RedisGears_FreeRecord(record);
