@@ -242,6 +242,22 @@ GB('CommandReader').map(WaitForKeyChangeReturnSame).register(trigger='WaitForKey
 
     env.expect('RG.TRIGGER', 'WaitForKeyChangeMap').error().contains('Async record did not called continue')
 
+def testSetFutureResultsBeforeReturnIt(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+def test(r, *args):
+    f1 = gearsFuture()
+    f1.continueRun(r)
+    return f1
+GB('CommandReader').map(test).register(trigger='test', mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    env.expect('RG.TRIGGER', 'test').error().contains('Can not handle future untill it returned from the callback')
+
 def testSimpleAsyncOnSyncExecution(env):
     conn = getConnectionByEnv(env)
     script = '''

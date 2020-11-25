@@ -1661,10 +1661,8 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
         record = RedisGears_GetDummyRecord(); // continue with the old record
         break;
     default:
-        RedisModule_Log(NULL, "warning", "%s", "Future continue with invalid type, continue as default");
-        Py_INCREF(obj);
-        record = PyObjRecordCreate();
-        PyObjRecordSet(record, obj);
+        PyErr_SetString(GearsError, "Can not handle future untill it returned from the callback");
+        return NULL;
         break;
     }
 
@@ -1911,6 +1909,7 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
 
     PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
     pyfuture->asyncRecord = async;
+    pyfuture->continueType = 0;
     ptctx->pyfutureCreated = (PyObject*)pyfuture;
     Py_INCREF(ptctx->pyfutureCreated);
     return (PyObject*)pyfuture;
