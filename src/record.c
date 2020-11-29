@@ -71,8 +71,12 @@ void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
         // if we have an original record and r is not NULL, i.e, true
         // we need to continue with the original record.
         if(r){
-            RG_FreeRecord(r);
-            r = async->originRecord;
+            if(RG_RecordGetType(r) == errorRecordType){
+                RG_FreeRecord(async->originRecord);
+            }else{
+                RG_FreeRecord(r);
+                r = async->originRecord;
+            }
         }else{
             r = &DummyRecord;
         }
