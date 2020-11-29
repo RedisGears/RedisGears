@@ -79,6 +79,7 @@ void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
             }
         }else{
             r = &DummyRecord;
+            RG_FreeRecord(async->originRecord);
         }
     }
     if(async->overridePlaceHolder){
