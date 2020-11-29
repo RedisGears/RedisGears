@@ -1352,7 +1352,7 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
         record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
     }else if(res == RedisGears_StepHold){
         // the async record took ownership on the record itself so no need to hold it
-        record = &WaitRecord;
+        record = &DummyRecord; // we let the general loop continue or hold;
     }
 end:
 	ADD_DURATION(step->executionDuration);
