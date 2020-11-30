@@ -868,7 +868,8 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
     }else{
         // command hooked, we will just call the original command if this is a replication connection.
         int ctxFlags = RedisModule_GetContextFlags(ctx);
-        if(ctxFlags & REDISMODULE_CTX_FLAGS_REPLICATED){
+        if((ctxFlags & REDISMODULE_CTX_FLAGS_REPLICATED) ||
+                (ctxFlags & REDISMODULE_CTX_FLAGS_LOADING)){
             const char* subCommand = RedisModule_StringPtrLen(argv[1], NULL);
             noOverride = true;
             RedisModuleCallReply* rep = RedisModule_Call(ctx, subCommand, "!v", argv + 2, argc - 2);
@@ -885,8 +886,7 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
     int ctxFlags = RedisModule_GetContextFlags(ctx);
     if(crtCtx->mode != ExecutionModeSync){
         if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
-                (ctxFlags & REDISMODULE_CTX_FLAGS_LUA) ||
-                (ctxFlags & REDISMODULE_CTX_FLAGS_LOADING)){
+                (ctxFlags & REDISMODULE_CTX_FLAGS_LUA)){
             RedisModule_ReplyWithError(ctx, "ERR can not run a none sync execution inside MULTI/LUA or on loading.");
             return REDISMODULE_OK;
         }
