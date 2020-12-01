@@ -256,6 +256,7 @@ RecordType* MODULE_API_FUNC(RedisGears_RecordTypeCreate)(const char* name, size_
                                                          RecordFree);
 Record*  MODULE_API_FUNC(RedisGears_RecordCreate)(RecordType* type);
 
+Record* MODULE_API_FUNC(RedisGears_GetDummyRecord)();
 void MODULE_API_FUNC(RedisGears_FreeRecord)(Record* record);
 RecordType* MODULE_API_FUNC(RedisGears_RecordGetType)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordCreate)();
@@ -821,6 +822,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
 
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetDummyRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordTypeCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, FreeRecord);

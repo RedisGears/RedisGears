@@ -78,6 +78,269 @@ GB().foreach(ForEach).register(mode='async_local')
     except Exception as e:  
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
+def testSimpleAsyncWithNoneAsyncResult(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+    def continueFailed(self, r):
+        if self.bc:
+            self.bc.continueFailed(r)
+
+blocked = []
+def WaitForKeyChangeReturnSame(r, *args):
+    f = gearsFuture()
+    blocked.append(BlockHolder(f))
+    return r
+GB('CommandReader').map(WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeMap', mode='async_local')
+GB('CommandReader').flatmap(WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeFlatmap', mode='async_local')
+GB('CommandReader').accumulate(WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeAccumulate', mode='async_local')
+GB('CommandReader').groupby(lambda x: 'key', WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeAccumulateby', mode='async_local')
+
+def WaitForKeyChangeRaisError(r, *args):
+    f = gearsFuture()
+    blocked.append(BlockHolder(f))
+    raise Exception('test')
+GB('CommandReader').foreach(WaitForKeyChangeRaisError).register(trigger='WaitForKeyChangeForeach', mode='async_local')
+GB('CommandReader').filter(WaitForKeyChangeRaisError).register(trigger='WaitForKeyChangeFilter', mode='async_local')
+GB('CommandReader').map(WaitForKeyChangeRaisError).register(trigger='WaitForKeyChangeMapError', mode='async_local')
+GB('CommandReader').flatmap(WaitForKeyChangeRaisError).register(trigger='WaitForKeyChangeFlatmapError', mode='async_local')
+GB('CommandReader').accumulate(WaitForKeyChangeRaisError).register(trigger='WaitForKeyChangeAccumulateError', mode='async_local')
+GB('CommandReader').groupby(lambda x: 'key', WaitForKeyChangeRaisError).register(trigger='WaitForKeyChangeAccumulatebyError', mode='async_local')
+
+def ForEach(r):
+    def unblock(x):
+        global blocked
+        try:
+            [a.continueRun(x['key']) for a in blocked]
+            blocked = []
+        except Exception as e:
+            print(e)
+    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+GB().foreach(ForEach).register('x', mode='async_local')
+
+def ForEachFailed(r):
+    def unblock(x):
+        global blocked
+        try:
+            [a.continueFailed(x['key']) for a in blocked]
+            blocked = []
+        except Exception as e:
+            print(e)
+    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+GB().foreach(ForEachFailed).register('y', mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    def WaitForKeyMap():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeMap').equal(["['WaitForKeyChangeMap']"])
+
+    def WaitForKeyChangeForeach():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeForeach').error().contains('Exception: test')
+
+    def WaitForKeyChangeFilter():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeFilter').error().contains('Exception: test')
+
+    def WaitForKeyFlatmap():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeFlatmap').equal(['WaitForKeyChangeFlatmap'])
+
+    def WaitForKeyAccumulate():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulate').equal(['None'])
+
+    def WaitForKeyAccumulateby():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateby').equal(["{'key': 'key', 'value': None}"])
+
+    def WaitForKeyMapError():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeMapError').error().contains('Exception: test')
+
+    def WaitForKeyFlatmapError():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeFlatmapError').error().contains('Exception: test')
+
+    def WaitForKeyAccumulateError():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateError').equal(['None'])
+
+    def WaitForKeyAccumulatebyError():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulatebyError').equal(["{'key': 'key', 'value': None}"])
+
+
+    tests = [WaitForKeyMap, WaitForKeyChangeForeach, WaitForKeyChangeFilter, 
+             WaitForKeyFlatmap, WaitForKeyAccumulate, WaitForKeyAccumulateby,
+             WaitForKeyMapError, WaitForKeyFlatmapError, WaitForKeyAccumulateError, WaitForKeyAccumulatebyError]
+
+
+    for f in tests:
+        try:
+            with Background(f) as bk:
+                with TimeLimit(50):
+                    while bk.isAlive:
+                        conn.execute_command('set', 'x', '1')
+                        time.sleep(0.1)
+        except Exception as e:  
+            env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
+
+    for f in tests:
+        try:
+            with Background(f) as bk:
+                with TimeLimit(50):
+                    while bk.isAlive:
+                        conn.execute_command('set', 'y', '1')
+                        time.sleep(0.1)
+        except Exception as e:  
+            env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
+
+def testCreateAsyncRecordMoreThenOnceRaiseError(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+blocked = []
+def WaitForKeyChangeReturnSame(r, *args):
+    f1 = gearsFuture()
+    blocked.append(BlockHolder(f1))
+    f2 = gearsFuture()
+    blocked.append(BlockHolder(f2))
+    return r
+GB('CommandReader').map(WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeMap', mode='async_local')
+
+def ForEach(r):
+    def unblock(x):
+        global blocked
+        try:
+            [a.continueRun(x['key']) for a in blocked]
+            blocked = []
+        except Exception as e:
+            print(e)
+    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+GB().foreach(ForEach).register(mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    def WaitForKeyMap():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeMap').error().contains('Can not create async record twice on the same step')
+
+    try:
+        with Background(WaitForKeyMap) as bk:
+            with TimeLimit(50):
+                while bk.isAlive:
+                    conn.execute_command('set', 'x', '1')
+                    time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
+
+def testCreateAsyncWithoutFree(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+def WaitForKeyChangeReturnSame(r, *args):
+    f1 = gearsFuture()
+    return f1
+GB('CommandReader').map(WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeMap', mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    env.expect('RG.TRIGGER', 'WaitForKeyChangeMap').error().contains('Async record did not called continue')
+
+def testSetFutureResultsBeforeReturnIt(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+def test(r, *args):
+    f1 = gearsFuture()
+    f1.continueRun(r)
+    return f1
+GB('CommandReader').map(test).register(trigger='test', mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    env.expect('RG.TRIGGER', 'test').error().contains('Can not handle future untill it returned from the callback')
+
+def testSetFutureErrorOnAggregateByResultsBeforeReturnIt(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+class BlockHolder:
+    def __init__(self, bc):
+        self.bc = bc
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['bc'] = None
+        return state
+
+    def continueRun(self, r):
+        if self.bc:
+            self.bc.continueRun(r)
+
+    def continueFailed(self, r):
+        if self.bc:
+            self.bc.continueFailed(r)
+
+blocked = []
+def WaitForKeyChangeReturnSame(r, *args):
+    f = gearsFuture()
+    blocked.append(BlockHolder(f))
+    return f
+GB('CommandReader').groupby(lambda x: 'key', WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeAccumulateby', mode='async_local')
+
+def ForEachFailed(r):
+    def unblock(x):
+        global blocked
+        try:
+            [a.continueFailed('Failed') for a in blocked]
+            blocked = []
+        except Exception as e:
+            print(e)
+    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+GB().foreach(ForEachFailed).register('y', mode='async_local')
+    '''
+    env.expect('RG.PYEXECUTE', script).ok()
+
+    # this will make sure registrations reached all the shards
+    verifyRegistrationIntegrity(env)
+
+    def WaitForKeyAccumulateby():
+        env.expect('RG.TRIGGER', 'WaitForKeyChangeAccumulateby').equal('Failed')
+
+    try:
+        with Background(WaitForKeyAccumulateby) as bk:
+            with TimeLimit(50):
+                while bk.isAlive:
+                    conn.execute_command('set', 'y', '1')
+                    time.sleep(0.1)
+    except Exception as e:  
+        env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
+
 def testSimpleAsyncOnSyncExecution(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -665,10 +928,10 @@ def testAsyncError(env):
 
     env.expect('RG.PYEXECUTE', 'gearsFuture()').error().contains('Future object can only be created inside certain execution steps')
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').repartition(lambda x: gearsFuture()).run()")[1][0]
-    env.assertContains('Future object can only be created inside certain execution steps', res)
+    env.assertContains('Step does not support async', res)
 
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').batchgroupby(lambda x: x, lambda k, l: gearsFuture()).run()")[1][0]
-    env.assertContains('Future object can only be created inside certain execution steps', res)
+    env.assertContains('Step does not support async', res)
 
 def testAsyncAwait(env):
     conn = getConnectionByEnv(env)

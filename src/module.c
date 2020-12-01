@@ -876,6 +876,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(AbortExecution, ctx);
     REGISTER_API(GetId, ctx);
 
+    REGISTER_API(GetDummyRecord, ctx);
     REGISTER_API(RecordCreate, ctx);
     REGISTER_API(RecordTypeCreate, ctx);
     REGISTER_API(FreeRecord, ctx);

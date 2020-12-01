@@ -316,6 +316,7 @@ typedef struct ExecutionCtx{
     char* err;
     Record* originRecord;
     Record** actualPlaceHolder;
+    Record* asyncRecordCreated;
 }ExecutionCtx;
 
 #define ExecutionCtx_Initialize(c, e, s) (ExecutionCtx){ \
@@ -325,6 +326,7 @@ typedef struct ExecutionCtx{
         .err = NULL,\
         .originRecord = NULL, \
         .actualPlaceHolder = NULL, \
+        .asyncRecordCreated = NULL, \
     }
 
 FlatExecutionPlan* FlatExecutionPlan_New();
