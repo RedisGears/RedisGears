@@ -623,6 +623,10 @@ static const int RG_ExecutionPlanIsLocal(ExecutionPlan* ep) {
     return EPIsFlagOn(ep, EFIsLocal);
 }
 
+static const int RG_GetVersion(ExecutionPlan* ep) {
+    return REDISGEARS_MODULE_VERSION;
+}
+
 static int RG_RegisterPlugin(const char* name, int version) {
     if(Gears_dictFetchValue(plugins, name)){
         RedisModule_Log(NULL, "warning", "Plugin %s already exists", name);
@@ -960,6 +964,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterPlugin, ctx);
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
+    REGISTER_API(GetVersion, ctx);
 
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
@@ -1009,7 +1014,16 @@ static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent
 
 static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
     // fills the wheels array
-    DIR *dr = opendir(GearsConfig_GetPluginsDirectory());
+    char* pluginDir = NULL;
+    const char* moduleDataDir = getenv("modulesdatadir");
+    if(moduleDataDir){
+        // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
+        rg_asprintf(&pluginDir, "%s/%s/%d/deps/plugins/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION);
+    }else{
+        pluginDir = RG_STRDUP(GearsConfig_GetPluginsDirectory());
+    }
+    DIR *dr = opendir(pluginDir);
+    RG_FREE(pluginDir);
     if(!dr){
         RedisModule_Log(ctx, "warning", "Plugins directory does not exists");
         return REDISMODULE_OK;
