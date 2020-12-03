@@ -28,7 +28,7 @@ RedisModuleString* ArgsIterator_Next(ArgsIterator* iter){
 }
 
 typedef enum ConfigValType{
-    STR, LONG, DOUBLE
+    STR, LONG, DOUBLE, ARRAY
 }ConfigValType;
 
 typedef struct ConfigVal{
@@ -36,6 +36,7 @@ typedef struct ConfigVal{
         char* str;
         long long longVal;
         double doubleVal;
+        char** vals;
     }val;
     ConfigValType type;
 }ConfigVal;
@@ -55,7 +56,7 @@ typedef struct RedisGears_Config{
     ConfigVal downloadDeps;
     ConfigVal foreceDownloadDepsOnEnterprise;
     ConfigVal sendMsgRetries;
-    ConfigVal pluginsDirectory;
+    ConfigVal plugins;
 }RedisGears_Config;
 
 typedef const ConfigVal* (*GetValueCallback)();
@@ -166,18 +167,17 @@ static bool ConfigVal_PythonInstallationDirSet(ArgsIterator* iter){
     return true;
 }
 
-static const ConfigVal* ConfigVal_PluginsDirectoryGet(){
-    return &DefaultGearsConfig.pluginsDirectory;
+static const ConfigVal* ConfigVal_PluginsGet(){
+    return &DefaultGearsConfig.plugins;
 }
 
-static bool ConfigVal_PluginsDirectorySet(ArgsIterator* iter){
+static bool ConfigVal_PluginsSet(ArgsIterator* iter){
     RedisModuleString* val = ArgsIterator_Next(iter);
     if(!val){
         return false;
     }
-    RG_FREE(DefaultGearsConfig.pluginsDirectory.val.str);
     const char* valStr = RedisModule_StringPtrLen(val, NULL);
-    DefaultGearsConfig.pluginsDirectory.val.str = RG_STRDUP(valStr);
+    array_append(DefaultGearsConfig.plugins.val.vals, RG_STRDUP(valStr));
     return true;
 }
 
@@ -416,11 +416,10 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .setter = ConfigVal_SendMsgRetriesSet,
         .configurableAtRunTime = true,
     },
-
     {
-        .name = "PluginsDirectory",
-        .getter = ConfigVal_PluginsDirectoryGet,
-        .setter = ConfigVal_PluginsDirectorySet,
+        .name = "Plugin",
+        .getter = ConfigVal_PluginsGet,
+        .setter = ConfigVal_PluginsSet,
         .configurableAtRunTime = false,
     },
     {
@@ -516,6 +515,12 @@ static void GearsConfig_ReplyWithConfVal(RedisModuleCtx *ctx, const ConfigVal* c
     case DOUBLE:
         RedisModule_ReplyWithDouble(ctx, confVal->val.doubleVal);
         break;
+    case ARRAY:
+        RedisModule_ReplyWithArray(ctx, array_len(confVal->val.vals));
+        for(size_t i = 0 ; i < array_len(confVal->val.vals) ; ++i){
+            RedisModule_ReplyWithStringBuffer(ctx, confVal->val.vals[i], strlen(confVal->val.vals[i]));
+        }
+        break;
     default:
         RedisModule_Assert(false);
     }
@@ -588,8 +593,8 @@ const char* GearsConfig_GetPythonInstallationDir(){
     return DefaultGearsConfig.pythonInstallationDir.val.str;
 }
 
-const char* GearsConfig_GetPluginsDirectory(){
-    return DefaultGearsConfig.pluginsDirectory.val.str;
+char** GearsConfig_GetPlugins(){
+    return DefaultGearsConfig.plugins.val.vals;
 }
 
 
@@ -628,8 +633,12 @@ long long GearsConfig_PythonInstallReqMaxIdleTime(){
     return DefaultGearsConfig.executionMaxIdleTime.val.longVal;
 }
 
+static char* GearsConfig_ArrayConfigValToStr(void* val){
+    return RG_STRDUP(val);
+}
 
 static void GearsConfig_Print(RedisModuleCtx* ctx){
+    char* arrayStr = NULL;
     for(Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++){
         const ConfigVal* v = val->getter();
         switch(v->type){
@@ -641,6 +650,11 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
             break;
         case DOUBLE:
             RedisModule_Log(ctx, "notice", "%s:%lf", val->name, v->val.doubleVal);
+            break;
+        case ARRAY:
+            arrayStr = ArrToStr((void**)v->val.vals, array_len(v->val.vals), GearsConfig_ArrayConfigValToStr);
+            RedisModule_Log(ctx, "notice", "%s:%s", val->name, arrayStr);
+            RG_FREE(arrayStr);
             break;
         default:
             RedisModule_Assert(0);
@@ -723,9 +737,9 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 3,
             .type = LONG,
         },
-        .pluginsDirectory = {
-            .val.str = RG_STRDUP("/var/opt/redislabs/modules/rg/plugins"),
-            .type = STR,
+        .plugins = {
+            .val.vals = array_new(char*, 10),
+            .type = ARRAY,
         },
     };
 
