@@ -247,7 +247,7 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
+static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId){
     if(!LockHandler_IsRedisGearsThread()){
         *err = RG_STRDUP("Can only register execution on registered gears thread");
         return 0;
@@ -261,6 +261,10 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
     fep = FlatExecutionPlan_DeepCopy(fep);
 
     int res = FlatExecutionPlan_Register(fep, mode, key, err);
+
+    if(registrationId){
+        *registrationId = RG_STRDUP(fep->idStr);
+    }
 
     // we need to free it on success or failure, on success a shared copy
     // of the fep will be taken by the reader.
@@ -1013,62 +1017,39 @@ static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent
 }
 
 static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
-    // fills the wheels array
-    char* pluginDir = NULL;
-    const char* moduleDataDir = getenv("modulesdatadir");
-    if(moduleDataDir){
-        // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
-        rg_asprintf(&pluginDir, "%s/%s/%d/deps/plugins/", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION);
-    }else{
-        pluginDir = RG_STRDUP(GearsConfig_GetPluginsDirectory());
-    }
-    DIR *dr = opendir(pluginDir);
-    RG_FREE(pluginDir);
-    if(!dr){
-        RedisModule_Log(ctx, "warning", "Plugins directory does not exists");
-        return REDISMODULE_OK;
-    }
-    struct dirent *de;
-    while ((de = readdir(dr))){
-        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0){
-            continue;
+    char** plugins = GearsConfig_GetPlugins();
+    for(size_t i = 0 ; i < array_len(plugins) ; ++i){
+        char* plugin = plugins[i];
+        char* pluginFile = NULL;
+        const char* moduleDataDir = getenv("modulesdatadir");
+        if(moduleDataDir){
+            // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
+            rg_asprintf(&pluginFile, "%s/%s/%d/deps/%s/plugin/%s.so", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION, plugin, plugin);
+        }else{
+            pluginFile = RG_STRDUP(plugin);
         }
-        char* c = de->d_name;
-        char* sufix = strstr(c, ".");
-        if(!sufix){
-            continue;
-        }
-        if(strcmp(sufix, ".so") == 0){
-            // found so file
-            char* soPath;
-            rg_asprintf(&soPath, "%s/%s", GearsConfig_GetPluginsDirectory(), c);
-            RedisModule_Log(ctx, "notice", "Loading plugin from file %s", soPath);
-            void* handler = dlopen(soPath, RTLD_NOW|RTLD_LOCAL);
 
-            if (handler == NULL) {
-                RedisModule_Log(ctx, "warning", "Failed loading gears plugin %s, error='%s'", soPath, dlerror());
-                RG_FREE(soPath);
-                continue;
-            }
-            int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
-            if (onload == NULL) {
-                dlclose(handler);
-                RedisModule_Log(ctx, "warning",
-                    "Gears plugin %s does not export RedisGears_OnLoad() symbol",soPath);
-                RG_FREE(soPath);
-                continue;
-            }
-            if (onload(ctx) == REDISMODULE_ERR) {
-                dlclose(handler);
-                RedisModule_Log(ctx, "warning",
-                    "Module %s initialization failed", soPath);
-                RG_FREE(soPath);
-                return REDISMODULE_ERR;
-            }
-            RG_FREE(soPath);
+        void* handler = dlopen(pluginFile, RTLD_NOW|RTLD_LOCAL);
+        RG_FREE(pluginFile);
+
+        if (handler == NULL) {
+            RedisModule_Log(ctx, "warning", "Failed loading gears plugin %s, error='%s'", plugin, dlerror());
+            return REDISMODULE_ERR;
+        }
+        int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
+        if (onload == NULL) {
+            dlclose(handler);
+            RedisModule_Log(ctx, "warning",
+                "Gears plugin %s does not export RedisGears_OnLoad() symbol", plugin);
+            return REDISMODULE_ERR;
+        }
+        if (onload(ctx) == REDISMODULE_ERR) {
+            dlclose(handler);
+            RedisModule_Log(ctx, "warning",
+                "Plugin %s initialization failed", plugin);
+            return REDISMODULE_ERR;
         }
     }
-    closedir(dr);
 
     return REDISMODULE_OK;
 }
