@@ -366,6 +366,10 @@ static const char* RG_GetId(ExecutionPlan* ep){
     return ep->idStr;
 }
 
+static const char* RG_FepGetId(FlatExecutionPlan* fep){
+    return fep->idStr;
+}
+
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
     // TODO: move results and errors to linked lists for partial parallelism w/o locking
     RedisModule_Assert(ep && RedisGears_IsDone(ep));
@@ -883,6 +887,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(DropExecution, ctx);
     REGISTER_API(AbortExecution, ctx);
     REGISTER_API(GetId, ctx);
+    REGISTER_API(FepGetId, ctx);
 
     REGISTER_API(GetDummyRecord, ctx);
     REGISTER_API(RecordCreate, ctx);
