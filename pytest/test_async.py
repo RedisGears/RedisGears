@@ -446,7 +446,7 @@ GB('StreamReader').map(bc).foreach(lambda x: execute('set', x['value']['key'], x
 
     try:
         with TimeLimit(50):
-           Unblock()
+            Unblock()
             x = None
             while x != '1':
                 x = env.cmd('get', 'x')
