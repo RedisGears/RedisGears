@@ -427,6 +427,7 @@ bool MODULE_API_FUNC(RedisGears_IsDone)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetRecordsLen)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetErrorsLen)(ExecutionPlan* ctx);
 const char* MODULE_API_FUNC(RedisGears_GetId)(ExecutionPlan* ctx);
+const char* MODULE_API_FUNC(RedisGears_FepGetId)(FlatExecutionPlan* ctx);
 Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
 Record* MODULE_API_FUNC(RedisGears_GetError)(ExecutionPlan* ctx, long long i);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
@@ -823,6 +824,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetError);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, FepGetId);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetDummyRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordCreate);
