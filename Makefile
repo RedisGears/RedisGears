@@ -237,10 +237,10 @@ $(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
 
 RAMP_VARIANT=$(subst release,,$(FLAVOR))$(_VARIANT.string)
 
-RAMP.release:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=1 SNAPSHOT=0 VARIANT=$(RAMP_VARIANT) ./pack.sh)
-RAMP.snapshot:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=0 SNAPSHOT=1 VARIANT=$(RAMP_VARIANT) ./pack.sh)
-DEPS_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
-DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+RAMP.release:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=1 SNAPSHOT=0 VARIANT=$(RAMP_VARIANT) OS_DESC=$(OS_VERSION_DESC) ./pack.sh)
+RAMP.snapshot:=$(shell JUST_PRINT=1 RAMP=1 DEPS=0 RELEASE=0 SNAPSHOT=1 VARIANT=$(RAMP_VARIANT) OS_DESC=$(OS_VERSION_DESC) ./pack.sh)
+DEPS_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=1 SNAPSHOT=0 OS_DESC=$(OS_VERSION_DESC) ./pack.sh)
+DEPS_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 DEPS=1 RELEASE=0 SNAPSHOT=1 OS_DESC=$(OS_VERSION_DESC) ./pack.sh)
 
 #----------------------------------------------------------------------------------------------
 
@@ -366,11 +366,11 @@ endif
 
 artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot): $(TARGET) ramp.yml
 	@echo Packing module...
-	$(SHOW)RAMP=1 DEPS=0 VARIANT=$(RAMP_VARIANT) ./pack.sh $(TARGET)
+	$(SHOW)RAMP=1 DEPS=0 VARIANT=$(RAMP_VARIANT) OS_DESC=$(OS_VERSION_DESC) ./pack.sh $(TARGET)
 
 artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
 	@echo Packing dependencies...
-	$(SHOW)RAMP=0 DEPS=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) ./pack.sh $(TARGET)
+	$(SHOW)RAMP=0 DEPS=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) OS_DESC=$(OS_VERSION_DESC) ./pack.sh $(TARGET)
 
 ramp_pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 

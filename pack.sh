@@ -68,6 +68,7 @@ pack() {
 		-d GEARS_PYTHON3_NAME=python3_$SEMVER \
 		-d GEARS_PYTHON3_FNAME=$URL_FNAME \
 		-d GEARS_PYTHON3_SHA256=$(cat $DEPS.sha256) \
+		-d OS_DESC=$OS_DESC \
 		ramp.yml > /tmp/ramp.yml
 	rm -f /tmp/ramp.fname
 	GEARS_NO_DEPS=1 python2 -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
