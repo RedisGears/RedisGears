@@ -247,7 +247,7 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
+static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId){
     if(!LockHandler_IsRedisGearsThread()){
         *err = RG_STRDUP("Can only register execution on registered gears thread");
         return 0;
@@ -261,6 +261,10 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
     fep = FlatExecutionPlan_DeepCopy(fep);
 
     int res = FlatExecutionPlan_Register(fep, mode, key, err);
+
+    if(registrationId){
+        *registrationId = RG_STRDUP(fep->idStr);
+    }
 
     // we need to free it on success or failure, on success a shared copy
     // of the fep will be taken by the reader.
