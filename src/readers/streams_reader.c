@@ -534,9 +534,13 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
         // nothing to ack on
         return;
     }
+
     RedisModuleCallReply* reply = RedisModule_Call(staticCtx, "XACK", "!ccv", readerCtx->streamKeyName, readerCtx->consumerGroup, readerCtx->batchIds, (size_t)array_len(readerCtx->batchIds));
     bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
-    RedisModule_Assert(ret);
+    if(!ret){
+        // we all not crash on failure, someone is messing up with the stream.
+        return;
+    }
 
     RedisModule_FreeCallReply(reply);
 
@@ -544,8 +548,15 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
 
         reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
         ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed XLEN messages", "warning");
-        RedisModule_Assert(ret);
-        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
+        if(!ret){
+            // we all not crash on failure, someone is messing up with the stream.
+            return;
+        }
+        if(RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_INTEGER){
+            RedisModule_Log(NULL, "warning", "bad reply on xlen, probably someone modified the stream while we are working on it.");
+            RedisModule_FreeCallReply(reply);
+            return;
+        }
 
         long long streamLen = RedisModule_CallReplyInteger(reply);
 
@@ -553,13 +564,16 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
 
         long long streamLenForTrim = streamLen - array_len(readerCtx->batchIds);
         if(streamLenForTrim < 0){
-            RedisModule_Log(NULL, "warning", "try to trim stream to negative len, fatal!!");
-            RedisModule_Assert(false);
+            RedisModule_Log(NULL, "warning", "try to trim stream to negative len, probably someone modified the stream while we are working on it.");
+            return;
         }
 
         reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", streamLenForTrim);
         ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed Trim messages", "warning");
-        RedisModule_Assert(ret);
+        if(!ret){
+            // we all not crash on failure, someone is messing up with the stream.
+            return;
+        }
 
         RedisModule_FreeCallReply(reply);
 
@@ -697,6 +711,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         //    processing.
         //
         // It might be possible to solve those issues but we decide not to handle with them currently.
+
         Reader* reader = ExecutionPlan_GetReader(ctx);
         StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimStream);
         StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
