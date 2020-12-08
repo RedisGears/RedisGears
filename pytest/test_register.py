@@ -987,8 +987,6 @@ GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
     '''
     env.expect('rg.pyexecute', script).ok()
 
-    verifyRegistrationIntegrity(env)
-
     env.cmd('xadd', 's', '*', 'foo', 'bar')
     time.sleep(1)
     env.cmd('flushall')
