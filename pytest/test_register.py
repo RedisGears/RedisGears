@@ -1217,3 +1217,24 @@ gb.register(hook='hmset', mode='sync')
     conn.execute_command('hmset', 'h2', 'x', '1')
     env.assertNotEqual(conn.execute_command('hget', 'h1', '_time'), None)
     env.assertNotEqual(conn.execute_command('hget', 'h2', '_time'), None)
+
+def testDeleteStreamDurringRun(env):
+    env.skipOnCluster()
+    script = '''
+import time
+
+GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    time.sleep(1)
+    env.cmd('flushall')
+
+    # make sure all executions are done without crashing
+    registration = env.cmd('RG.DUMPREGISTRATIONS')[0]
+    while registration[7][3] != registration[7][5]:
+        time.sleep(0.1)
+        registration = env.cmd('RG.DUMPREGISTRATIONS')[0]
