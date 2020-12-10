@@ -489,6 +489,17 @@ const int MODULE_API_FUNC(RedisGears_ExecutionPlanIsLocal)(ExecutionPlan* ep);
 
 const int MODULE_API_FUNC(RedisGears_GetVersion)();
 
+/* configuration store api
+ * Configuration saved in the configuration store will be persisted in rdb, oaf, and replication.
+ */
+typedef struct ConfigurationCtx ConfigurationCtx;
+
+ConfigurationCtx* MODULE_API_FUNC(RedisGears_ConfigurationStoreCtxCreate)(const char* val, size_t size);
+const char* MODULE_API_FUNC(RedisGears_ConfigurationStoreCtxGetVal)(ConfigurationCtx* ctx, size_t* size);
+void MODULE_API_FUNC(RedisGears_ConfigurationStoreCtxFree)(ConfigurationCtx* ctx);
+int MODULE_API_FUNC(RedisGears_ConfigurationStoreSet)(const char* key, ConfigurationCtx* ctx, char** err);
+ConfigurationCtx* MODULE_API_FUNC(RedisGears_ConfigurationStoreGet)(const char* key, char** err);
+
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
@@ -909,6 +920,12 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionPlanIsLocal);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetVersion);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ConfigurationStoreCtxCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ConfigurationStoreCtxGetVal);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ConfigurationStoreCtxFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ConfigurationStoreSet);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ConfigurationStoreGet);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

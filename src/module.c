@@ -33,6 +33,7 @@
 #include "lock_handler.h"
 #include <dlfcn.h>
 #include <dirent.h>
+#include "configuration_store.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -691,8 +692,39 @@ FlatExecutionPlan* RG_GetFep(ExecutionPlan* ep){
     return ep->fep;
 }
 
+ConfigurationCtx* RG_ConfigurationStoreCtxCreate(const char* val, size_t size){
+    return ConfigurationStore_CtxCreate(val, size);
+}
+
+const char* RG_ConfigurationStoreCtxGetVal(ConfigurationCtx* ctx, size_t* size){
+    return ConfigurationStore_CtxGetVal(ctx, size);
+}
+
+void RG_ConfigurationStoreCtxFree(ConfigurationCtx* ctx){
+    return ConfigurationStore_CtxFree(ctx);
+}
+
+int RG_ConfigurationStoreSet(const char* key, ConfigurationCtx* ctx, char** err){
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only touch configuration store on registered gears thread");
+        return REDISMODULE_ERR;
+    }
+    ConfigurationStore_Set(key, ctx);
+    return REDISMODULE_OK;
+}
+
+ConfigurationCtx* RG_ConfigurationStoreGet(const char* key, char** err){
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only touch configuration store on registered gears thread");
+        return NULL;
+    }
+    return ConfigurationStore_Get(key);
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
+        ConfigurationStore_Save(rdb, when);
+
         // save loaded plugins
         RedisModule_SaveUnsigned(rdb, Gears_dictSize(plugins));
         Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
@@ -705,6 +737,9 @@ static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
         Gears_dictReleaseIterator(iter);
         return;
     }
+
+    ConfigurationStore_Save(rdb, when);
+
     Gears_dictIterator* iter = Gears_dictGetIterator(Readerdict);
     Gears_dictEntry *curr = NULL;
     while((curr = Gears_dictNext(iter))){
@@ -727,6 +762,10 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         return REDISMODULE_ERR; // could not load rdb created with higher Gears version!
     }
     if(when == REDISMODULE_AUX_BEFORE_RDB){
+
+        if(ConfigurationStore_Load(rdb, encver, when) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
 
         if(encver >= VERSION_WITH_PLUGINS_NAMES){
             // verify loaded plugins
@@ -763,6 +802,10 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
         }
         Gears_dictReleaseIterator(iter);
     } else {
+        if(ConfigurationStore_Load(rdb, encver, when) != REDISMODULE_OK){
+            return REDISMODULE_ERR;
+        }
+
         // when loading keys phase finished, we load the registrations.
         char* readerName = NULL;
         for(readerName = RedisModule_LoadStringBuffer(rdb, NULL) ;
@@ -979,6 +1022,12 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderRegisterReadRecordCallback, ctx);
 
+    REGISTER_API(ConfigurationStoreCtxCreate, ctx);
+    REGISTER_API(ConfigurationStoreCtxGetVal, ctx);
+    REGISTER_API(ConfigurationStoreCtxFree, ctx);
+    REGISTER_API(ConfigurationStoreSet, ctx);
+    REGISTER_API(ConfigurationStoreGet, ctx);
+
     return REDISMODULE_OK;
 }
 
@@ -1159,6 +1208,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 #endif
+
+    if(ConfigurationStore_Initialize(ctx) != REDISMODULE_OK){
+        RedisModule_Log(ctx, "warning", "Failed initializing configuration store");
+        return REDISMODULE_ERR;
+    }
 
     if(Command_Init() != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not initialize commands.");
