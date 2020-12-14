@@ -188,7 +188,7 @@ GB().foreach(ForEachFailed).register('y', mode='async_local')
                 with TimeLimit(50):
                     while bk.isAlive:
                         conn.execute_command('set', 'x', '1')
-                        time.sleep(0.1)
+                        time.sleep(1)
         except Exception as e:  
             env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
@@ -436,19 +436,27 @@ GB('StreamReader').map(bc).foreach(lambda x: execute('set', x['value']['key'], x
     env.cmd('xadd', 's' , '*', 'key', 'y', 'val', '2')
     env.cmd('xadd', 's' , '*', 'key', 'z', 'val', '3')
 
+    def Unblock():
+        while True:
+            try:
+                env.cmd('RG.TRIGGER', 'unblock')
+                break
+            except Exception as e:
+                pass
+
     try:
         with TimeLimit(50):
-            env.cmd('RG.TRIGGER', 'unblock')
+            Unblock()
             x = None
             while x != '1':
                 x = env.cmd('get', 'x')
                 time.sleep(0.1)
-            env.cmd('RG.TRIGGER', 'unblock')
+            Unblock()
             y = None
             while y != '2':
                 y = env.cmd('get', 'y')
                 time.sleep(0.1)
-            env.cmd('RG.TRIGGER', 'unblock')
+            Unblock()
             z = None
             while z != '3':
                 z = env.cmd('get', 'z')
