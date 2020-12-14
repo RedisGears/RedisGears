@@ -977,3 +977,22 @@ def testKeyReaderRegisterDontReadValues(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for list to popultae')
+
+def testDeleteStreamDuringRun(env):
+    env.skipOnCluster()
+    script = '''
+import time
+
+GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    time.sleep(1)
+    env.cmd('flushall')
+
+    # make sure all executions are done without crashing
+    registration = env.cmd('RG.DUMPREGISTRATIONS')[0]
+    while registration[7][3] != registration[7][5]:
+        time.sleep(0.1)
+        registration = env.cmd('RG.DUMPREGISTRATIONS')[0]
