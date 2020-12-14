@@ -978,7 +978,7 @@ def testKeyReaderRegisterDontReadValues(env):
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for list to popultae')
 
-def testDeleteStreamDurringRun(env):
+def testDeleteStreamDuringRun(env):
     env.skipOnCluster()
     script = '''
 import time
