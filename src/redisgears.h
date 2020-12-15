@@ -489,6 +489,8 @@ const int MODULE_API_FUNC(RedisGears_ExecutionPlanIsLocal)(ExecutionPlan* ep);
 
 const int MODULE_API_FUNC(RedisGears_GetVersion)();
 
+int MODULE_API_FUNC(RedisGears_IsCrdt)();
+
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
@@ -884,6 +886,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetMyHashTag);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionThreadPoolCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionThreadPoolDefine);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataGetShallowCopy);
@@ -909,6 +912,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionPlanIsLocal);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetVersion);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsCrdt);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

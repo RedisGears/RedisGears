@@ -691,6 +691,10 @@ FlatExecutionPlan* RG_GetFep(ExecutionPlan* ep){
     return ep->fep;
 }
 
+int RG_IsCrdt(){
+    return gearsIsCrdt;
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
         // save loaded plugins
@@ -974,6 +978,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
     REGISTER_API(GetVersion, ctx);
+    REGISTER_API(IsCrdt, ctx);
 
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
