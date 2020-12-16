@@ -71,13 +71,22 @@ void RG_AsyncRecordContinueInternal(AsyncRecord* async, Record* r){
         // if we have an original record and r is not NULL, i.e, true
         // we need to continue with the original record.
         if(r){
-            RG_FreeRecord(r);
-            r = async->originRecord;
+            if(RG_RecordGetType(r) == errorRecordType){
+                RG_FreeRecord(async->originRecord);
+            }else{
+                RG_FreeRecord(r);
+                r = async->originRecord;
+            }
         }else{
             r = &DummyRecord;
+            RG_FreeRecord(async->originRecord);
         }
     }
     if(async->overridePlaceHolder){
+        if(r == &DummyRecord){
+            // record was discarded
+            r = RG_StringRecordCreate(RG_STRDUP("Discarded"), strlen("Discarded"));
+        }
         *async->overridePlaceHolder = r;
         *(async->rptx) = &DummyRecord;
     }else{
@@ -198,8 +207,9 @@ static Record* LongRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br)
 static Record* ErrorRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
-    char* temp1 = RG_ALLOC(size);
+    char* temp1 = RG_ALLOC(size + 1);
     memcpy(temp1, temp, size);
+    temp1[size] = '\0';
     return RG_ErrorRecordCreate(temp1, size);
 }
 
@@ -425,6 +435,10 @@ void RG_FreeRecord(Record* record){
     RG_FREE(record);
 }
 
+Record* RG_GetDummyRecord(){
+    return &DummyRecord;
+}
+
 RecordType* RG_RecordGetType(Record* r){
     return r->type;
 }
@@ -595,6 +609,17 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
         *err = RG_STRDUP("Can not create gearsFuture outside of step");
         return NULL;
     }
+
+    if(ectx->asyncRecordCreated){
+        *err = RG_STRDUP("Can not create async record twice on the same step");
+        return NULL;
+    }
+
+    ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ectx);
+    if(ep->mode == ExecutionModeSync){
+        *err = RG_STRDUP("Can not create gearsFuture on sync execution");
+        return NULL;
+    }
     size_t maxSize;
     switch(ectx->step->type){
     case MAP:
@@ -625,6 +650,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     ret->rptx = (Record**)(&(Gears_listFirst(ret->pctx->records)->value));
     ret->overridePlaceHolder = ectx->actualPlaceHolder;
     ret->originRecord = ectx->originRecord;
+    ectx->asyncRecordCreated = &(ret->base);
     return &ret->base;
 }
 

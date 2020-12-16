@@ -47,6 +47,10 @@
 
 #include "../redisgears_memory.h"
 
+static uint64_t stringsCaseHashFunction(const void *key){
+    return Gears_dictGenCaseHashFunction(key, strlen((char*)key));
+}
+
 static uint64_t stringsHashFunction(const void *key){
     return Gears_dictGenHashFunction(key, strlen((char*)key));
 }
@@ -55,7 +59,7 @@ static int stringsKeyCompare(void *privdata, const void *key1, const void *key2)
     const char* strKey1 = key1;
     const char* strKey2 = key2;
 
-    return strcmp(strKey1, strKey2) == 0;
+    return strcasecmp(strKey1, strKey2) == 0;
 }
 
 static void stringsKeyDestructor(void *privdata, void *key){
@@ -77,6 +81,15 @@ Gears_dictType Gears_dictTypeHeapStringsVals = {
 
 Gears_dictType Gears_dictTypeHeapStrings = {
         .hashFunction = stringsHashFunction,
+        .keyDup = stringsKeyDup,
+        .valDup = NULL,
+        .keyCompare = stringsKeyCompare,
+        .keyDestructor = stringsKeyDestructor,
+        .valDestructor = NULL,
+};
+
+Gears_dictType Gears_dictTypeHeapStringsCaseInsensitive = {
+        .hashFunction = stringsCaseHashFunction,
         .keyDup = stringsKeyDup,
         .valDup = NULL,
         .keyCompare = stringsKeyCompare,

@@ -38,6 +38,8 @@
 
 static PyObject* pyGlobals;
 static PyObject* runCoroutineFunction;
+static PyObject* createFutureFunction;
+static PyObject* setFutureResultsFunction;
 PyObject* GearsError;
 PyObject* ForceStoppedError;
 
@@ -80,6 +82,22 @@ static void PyObjRecordSet(Record* base, PyObject* obj){
  */
 pthread_key_t pythonThreadCtxKey;
 
+#define PythonThreadCtxFlag_InsideAtomic (1 << 0)
+
+typedef struct PythonExecutionCtx{
+    PythonSessionCtx* sCtx;
+    ExecutionCtx* eCtx;
+    PyObject* pyfutureCreated;
+}PythonExecutionCtx;
+
+#define PythonExecutionCtx_New(s, e) (PythonExecutionCtx){.sCtx = s, .eCtx = e, .pyfutureCreated = NULL}
+
+#define RedisGearsPy_LOCK \
+    PythonExecutionCtx oldpectx = {0}; \
+    RedisGearsPy_Lock(&oldpectx);
+
+#define RedisGearsPy_UNLOCK RedisGearsPy_Unlock(&oldpectx);
+
 /*
  * Thread spacific data
  */
@@ -90,6 +108,9 @@ typedef struct PythonThreadCtx{
     DoneCallbackFunction doneFunction;
     PythonSessionCtx* currSession;
     ExecutionCtx* currEctx;
+    int flags;
+    CommandReaderTriggerCtx* crtCtx;
+    PyObject* pyfutureCreated;
 }PythonThreadCtx;
 
 /* default onDone function */
@@ -102,6 +123,8 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
 static void TimeEvent_Free(void *value);
 static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err);
 static PythonThreadCtx* GetPythonThreadCtx();
+static void continueFutureOnDone(ExecutionPlan* ep, void* privateData);
+static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData);
 
 static long long CurrSessionId = 0;
 
@@ -553,10 +576,10 @@ static void PythonSessionCtx_Free(void* arg){
         // delete the session working dir
         Gears_dictDelete(SessionsDict, session->sessionId);
         PythonSessionCtx_FreeRequirementsList(session->requirements);
-        void* old = RedisGearsPy_Lock(NULL);
+        RedisGearsPy_LOCK
         PyDict_Clear(session->globalsDict);
         Py_DECREF(session->globalsDict);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_UNLOCK
         RG_FREE(session);
     }
 }
@@ -577,7 +600,7 @@ static int PythonSessionCtx_DownloadWheels(PythonSessionCtx* session){
 
 static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** requirementsList, size_t requirementsListLen){
     // creating a new global dict for this session
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
 
     PyObject* globalDict = PyDict_Copy(pyGlobals);
 
@@ -616,7 +639,7 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** re
         session->requirements = array_append(session->requirements , req);
     }
 
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
 
     return session;
 }
@@ -713,7 +736,8 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
 
     PyObject* callback = arg;
 
-    void* old = RedisGearsPy_Lock(sctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, NULL);
+    RedisGearsPy_Lock(&pectx);
 
     RedisModule_Assert(PyFunction_Check(callback));
 
@@ -725,14 +749,14 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
         char* error = getPyError();
         RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_OnRegistered, error='%s'", error);
         RG_FREE(error);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         return;
     }
 
     if(PyCoro_CheckExact(ret)){
         Py_DECREF(ret);
         RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_OnRegistered, error='Coroutines are not allow'");
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         return;
     }
 
@@ -740,16 +764,17 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
         Py_DECREF(ret);
     }
 
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
 
 }
 
 static void RedisGearsPy_OnExecutionUnpausedCallback(ExecutionCtx* ctx, void* arg){
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(ctx);
-    void* old = RedisGearsPy_Lock(sctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, NULL);
+    RedisGearsPy_Lock(&pectx);
     PyThreadState *state = PyGILState_GetThisThreadState();
     RedisGears_SetPrivateData(ctx, (void*)state->thread_id);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
 }
 
 static PythonThreadCtx* GetPythonThreadCtx(){
@@ -761,6 +786,9 @@ static PythonThreadCtx* GetPythonThreadCtx(){
                 .currentCtx = NULL,
                 .createdExecution = NULL,
                 .doneFunction = onDone,
+                .flags = 0,
+                .crtCtx = NULL,
+                .pyfutureCreated = NULL,
         };
         pthread_setspecific(pythonThreadCtxKey, ptctx);
     }
@@ -772,40 +800,49 @@ bool RedisGearsPy_IsLockAcquired(){
     return ptctx->lockCounter > 0;
 }
 
-ExecutionCtx* RedisGearsPy_SetCurrExecutionCtx(ExecutionCtx* currEctx){
+void RedisGearsPy_Lock(PythonExecutionCtx* pectx){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    ExecutionCtx* ret = ptctx->currEctx;
-    ptctx->currEctx = currEctx;
-    return ret;
-}
 
-void RedisGearsPy_UnSetCurrExecutionCtx(ExecutionCtx* oldEctx){
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
-    ptctx->currEctx = oldEctx;
-}
-
-PythonSessionCtx* RedisGearsPy_Lock(PythonSessionCtx* currSession){
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PythonSessionCtx* oldSession = ptctx->currSession;
-    ptctx->currSession = currSession;
+    ExecutionCtx* oldEctx = ptctx->currEctx;
+    pectx->pyfutureCreated = ptctx->pyfutureCreated;
+
+    ptctx->currSession = pectx->sCtx;
+    ptctx->currEctx = pectx->eCtx;
+    ptctx->pyfutureCreated = NULL;
+
+    pectx->sCtx = oldSession;
+    pectx->eCtx = oldEctx;
+
     if(ptctx->lockCounter == 0){
         PyGILState_STATE oldState = PyGILState_Ensure();
         RedisModule_Assert(oldState == PyGILState_UNLOCKED);
     }
     ++ptctx->lockCounter;
-    return oldSession;
 }
 
-void RedisGearsPy_Unlock(PythonSessionCtx* prevSession){
+void RedisGearsPy_Unlock(PythonExecutionCtx* oldectx){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     RedisModule_Assert(ptctx);
     RedisModule_Assert(ptctx->lockCounter > 0);
-    ptctx->currSession = prevSession;
+    ptctx->currSession = oldectx->sCtx;
+    ptctx->currEctx = oldectx->eCtx;
+    if(ptctx->pyfutureCreated){
+        Py_DECREF(ptctx->pyfutureCreated);
+    }
+    ptctx->pyfutureCreated = oldectx->pyfutureCreated;
     if(--ptctx->lockCounter == 0){
-        RedisModule_Assert(!prevSession);
+        RedisModule_Assert(!ptctx->currSession);
         PyGILState_Release(PyGILState_UNLOCKED);
     }
 }
+
+typedef struct PyExecutionSession{
+    PyObject_HEAD
+    PythonSessionCtx* s;
+    CommandReaderTriggerCtx* crtCtx;
+}PyExecutionSession;
+
 
 /*
  * Wrapper for a flat execution that allows it leave inside the python interpreter.
@@ -1039,6 +1076,59 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData){
     RedisGears_DropExecution(ep);
 }
 
+static void continueFutureOnDone(ExecutionPlan* ep, void* privateData){
+    // create the results lists
+    FlatExecutionPlan* fep = RedisGears_GetFep(ep);
+    PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+    RedisModule_Assert(sctx);
+
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, NULL);
+    RedisGearsPy_Lock(&pectx);
+
+    PyObject* future = privateData;
+    PyObject* l = PyList_New(0);
+    PyObject* results = PyList_New(0);
+    PyObject* errs = PyList_New(0);
+
+    PyList_Append(l, results);
+    PyList_Append(l, errs);
+
+    for(size_t i = 0 ; i < RedisGears_GetRecordsLen(ep) ; ++i){
+        Record* res = RedisGears_GetRecord(ep, i);
+        RedisModule_Assert(RedisGears_RecordGetType(res) == pythonRecordType);
+        PythonRecord* pyRec = (PythonRecord*)res;
+        PyList_Append(results, pyRec->obj);
+    }
+
+    for(size_t i = 0 ; i < RedisGears_GetErrorsLen(ep) ; ++i){
+        Record* err = RedisGears_GetError(ep, i);
+        RedisModule_Assert(RedisGears_RecordGetType(err) == errorRecordType);
+        size_t len;
+        const char* errStr = RedisGears_StringRecordGet(err, &len);
+        PyObject* pyErr = PyUnicode_FromStringAndSize(errStr, len);
+        PyList_Append(errs, pyErr);
+        Py_DECREF(pyErr);
+    }
+
+    Py_DECREF(results);
+    Py_DECREF(errs);
+
+    PyObject* pArgs = PyTuple_New(2);
+    PyTuple_SetItem(pArgs, 0, future);
+    PyTuple_SetItem(pArgs, 1, l);
+    PyObject* r = PyObject_CallObject(setFutureResultsFunction, pArgs);
+    Py_DECREF(pArgs);
+    if(!r){
+        char* err = getPyError();
+        RedisModule_Log(NULL, "warning", "Error happened when releasing execution future, error='%s'", err);
+        RG_FREE(err);
+    }else{
+        Py_DECREF(r);
+    }
+
+    RedisGearsPy_Unlock(&pectx);
+}
+
 static void* runCreateStreamReaderArgs(const char* pattern, PyObject *kargs){
     const char* defaultFromIdStr = "0-0";
     const char* fromIdStr = defaultFromIdStr;
@@ -1083,14 +1173,10 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
 
-    if(ptctx->createdExecution){
-        // it is not possible to run 2 executions in single script currently
+    if(ptctx->currentCtx && ptctx->createdExecution){
+        // we have currentCtx, which means we run inside rg.pyexecute command.
+        // it is not possible to run 2 executions in single rg.pyexecute command.
         PyErr_SetString(GearsError, "Can not run more then 1 executions in a single script");
-        return NULL;
-    }
-
-    if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
-        PyErr_SetString(GearsError, "Failed setting on start callback");
         return NULL;
     }
 
@@ -1132,7 +1218,11 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
     }
 
     char* err = NULL;
-    ExecutionPlan* ep = RGM_Run(pfep->fep, ExecutionModeAsync, arg, NULL, NULL, &err);
+    PyObject* res = NULL;
+
+    RedisGears_OnExecutionDoneCallback onDoneCallback = (!ptctx->currentCtx) ? dropExecutionOnDone : NULL;
+
+    ExecutionPlan* ep = RGM_Run(pfep->fep, ExecutionModeAsync, arg, onDoneCallback, NULL, &err);
     if(!ep){
         if(err){
             PyErr_SetString(GearsError, err);
@@ -1150,15 +1240,23 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
             RedisModule_Log(NULL, "warning", "unknown reader when try to free reader args");
             RedisModule_Assert(false);
         }
-        return NULL;
+        goto end;
     }
-    if(!ptctx->currentCtx){
-        RedisGears_AddOnDoneCallback(ep, dropExecutionOnDone, NULL);
-    }else{
+
+    if(ptctx->currentCtx){
         ptctx->createdExecution = ep;
     }
-    Py_INCREF(Py_None);
-    return Py_None;
+
+    PyObject* pArgs = PyTuple_New(0);
+    PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
+    Py_DECREF(pArgs);
+
+    RedisGears_AddOnDoneCallback(ep, continueFutureOnDone, future);
+    Py_INCREF(future);
+    res = future;
+
+end:
+    return res;
 }
 
 static int registerStrKeyTypeToInt(const char* keyType){
@@ -1345,17 +1443,49 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, Execu
 
 static void* registerCreateCommandArgs(PyObject *kargs){
     const char* trigger = NULL;
+    const char* keyPrefix = NULL;
+    const char* hook = NULL;
     PyObject* pyTrigger = GearsPyDict_GetItemString(kargs, "trigger");
-    if(!pyTrigger){
-        PyErr_SetString(GearsError, "trigger argument was not given");
-        return NULL;
+    if(pyTrigger){
+        if(!PyUnicode_Check(pyTrigger)){
+            PyErr_SetString(GearsError, "trigger argument is not string");
+            return NULL;
+        }
+        trigger = PyUnicode_AsUTF8AndSize(pyTrigger, NULL);
     }
-    if(!PyUnicode_Check(pyTrigger)){
-        PyErr_SetString(GearsError, "trigger argument is not string");
-        return NULL;
+
+    PyObject* PykeyPrefix = GearsPyDict_GetItemString(kargs, "keyprefix");
+    if(PykeyPrefix){
+        if(!PyUnicode_Check(PykeyPrefix)){
+            PyErr_SetString(GearsError, "keyprefix argument is not string");
+            return NULL;
+        }
+        keyPrefix = PyUnicode_AsUTF8AndSize(PykeyPrefix, NULL);
     }
-    trigger = PyUnicode_AsUTF8AndSize(pyTrigger, NULL);
-    return RedisGears_CommandReaderTriggerArgsCreate(trigger);
+
+    PyObject* PyHook = GearsPyDict_GetItemString(kargs, "hook");
+    if(PyHook){
+        if(!PyUnicode_Check(PyHook)){
+            PyErr_SetString(GearsError, "hook argument is not string");
+            return NULL;
+        }
+        hook = PyUnicode_AsUTF8AndSize(PyHook, NULL);
+    }
+
+    if(trigger){
+        if(keyPrefix || hook){
+            PyErr_SetString(GearsError, "trigger argument can not be given with keyprefix or hook");
+            return NULL;
+        }
+        return RedisGears_CommandReaderTriggerArgsCreate(trigger);
+    }else{
+        if(!hook){
+            PyErr_SetString(GearsError, "no trigger or hook argument was given");
+            return NULL;
+        }
+        return RedisGears_CommandReaderTriggerArgsCreateHook(hook, keyPrefix);
+    }
+
 }
 
 static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, ExecutionMode mode){
@@ -1388,11 +1518,6 @@ static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, Executi
 static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
-
-    if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
-        PyErr_SetString(GearsError, "Failed setting on start callback");
-        return NULL;
-    }
 
     PyObject* pymode = GearsPyDict_GetItemString(kargs, "mode");
     ExecutionMode mode = ExecutionModeAsync;
@@ -1477,7 +1602,7 @@ static PyObject* futureFailed(PyObject *self, PyObject *args){
     PyObject* argumentStr = PyObject_Str(obj);
     size_t len;
     const char* argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &len);
-    Record* error = RG_ErrorRecordCreate(RG_STRDUP(argumentCStr), len);
+    Record* error = RedisGears_ErrorRecordCreate(RG_STRDUP(argumentCStr), len);
 
     RedisGears_AsyncRecordContinue(pyFuture->asyncRecord, error);
     pyFuture->asyncRecord = NULL;
@@ -1511,7 +1636,7 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
         break;
     case ContinueType_Filter:
         if(PyObject_IsTrue(obj)){
-            record = &DummyRecord; // everithing other then NULL will be true;
+            record = RedisGears_GetDummyRecord(); // everithing other then NULL will be true;
         }
         break;
     case ContinueType_Flat:
@@ -1533,10 +1658,11 @@ static PyObject* futureContinue(PyObject *self, PyObject *args){
         }
         break;
     case ContinueType_Foreach:
-        record = &DummyRecord; // continue with the old record
+        record = RedisGears_GetDummyRecord(); // continue with the old record
         break;
     default:
-        RedisModule_Assert(false);
+        PyErr_SetString(GearsError, "Can not handle future untill it returned from the callback");
+        return NULL;
         break;
     }
 
@@ -1553,6 +1679,12 @@ typedef struct PyAtomic{
 } PyAtomic;
 
 static PyObject* atomicEnter(PyObject *self, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(ptctx->flags & PythonThreadCtxFlag_InsideAtomic){
+        PyErr_SetString(GearsError, "Already inside an atomic block");
+        return NULL;
+    }
+    ptctx->flags |= PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
     LockHandler_Acquire(pyAtomic->ctx);
     RedisModule_Replicate(pyAtomic->ctx, "multi", "");
@@ -1561,11 +1693,17 @@ static PyObject* atomicEnter(PyObject *self, PyObject *args){
 }
 
 static PyObject* atomicExit(PyObject *self, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(!(ptctx->flags & PythonThreadCtxFlag_InsideAtomic)){
+        PyErr_SetString(GearsError, "Not inside an atomic block");
+        return NULL;
+    }
+    ptctx->flags &= ~PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
-    LockHandler_Release(pyAtomic->ctx);
     RedisModule_Replicate(pyAtomic->ctx, "exec", "");
-    Py_INCREF(self);
-    return self;
+    LockHandler_Release(pyAtomic->ctx);
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 static void PyAtomic_Destruct(PyObject *pyObj){
@@ -1612,8 +1750,23 @@ PyMethodDef PyFlatExecutionMethods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+static PyObject *PyExecutionSession_ToStr(PyObject * pyObj){
+    return PyUnicode_FromString("PyExecutionSession");
+}
+
 static PyObject *PyFlatExecution_ToStr(PyObject * pyObj){
     return PyUnicode_FromString("PyFlatExecution");
+}
+
+static void PyExecutionSession_Destruct(PyObject *pyObj){
+    PyExecutionSession* pyExSes = (PyExecutionSession*)pyObj;
+    if(pyExSes->s){
+        PythonSessionCtx_Free(pyExSes->s);
+    }
+    if(pyExSes->crtCtx){
+        RedisGears_CommandReaderTriggerCtxFree(pyExSes->crtCtx);
+    }
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
 static void PyFlatExecution_Destruct(PyObject *pyObj){
@@ -1672,6 +1825,30 @@ static PyTypeObject PyFutureType = {
     "PyFuture",                /* tp_doc */
 };
 
+static PyTypeObject PyExecutionSessionType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "redisgears.PyExecutionSession",       /* tp_name */
+    sizeof(PyExecutionSession),          /* tp_basicsize */
+    0,                         /* tp_itemsize */
+    PyExecutionSession_Destruct,  /* tp_dealloc */
+    0,                         /* tp_print */
+    0,                         /* tp_getattr */
+    0,                         /* tp_setattr */
+    0,                         /* tp_compare */
+    0,                         /* tp_repr */
+    0,                         /* tp_as_number */
+    0,                         /* tp_as_sequence */
+    0,                         /* tp_as_mapping */
+    0,                         /* tp_hash */
+    0,                         /* tp_call */
+    PyExecutionSession_ToStr,     /* tp_str */
+    0,                         /* tp_getattro */
+    0,                         /* tp_setattro */
+    0,                         /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+    "PyExecutionSession",         /* tp_doc */
+};
+
 static PyTypeObject PyFlatExecutionType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     "redisgears.PyFlatExecution",       /* tp_name */
@@ -1714,6 +1891,11 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
         return NULL;
     }
 
+    if(ptctx->pyfutureCreated){
+        PyErr_SetString(GearsError, "Can not create async record twice on the same step");
+        return NULL;
+    }
+
     char* err = NULL;
     Record *async = RedisGears_AsyncRecordCreate(ptctx->currEctx, &err);
     if(!async){
@@ -1727,11 +1909,93 @@ static PyObject* gearsFutureCtx(PyObject *cls, PyObject *args){
 
     PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
     pyfuture->asyncRecord = async;
+    pyfuture->continueType = 0;
+    ptctx->pyfutureCreated = (PyObject*)pyfuture;
+    Py_INCREF(ptctx->pyfutureCreated);
     return (PyObject*)pyfuture;
+}
+
+static PyObject* registerGearsThread(PyObject *cls, PyObject *args){
+    RedisGears_LockHanlderRegister();
+    Py_INCREF(Py_None);
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    // called from a python thread which means that the lock counter must be 1.
+    ptctx->lockCounter = 1;
+
+    return Py_None;
+}
+
+static CommandReaderTriggerCtx* getCommandReaderTriggerCtx(PythonThreadCtx* ptctx){
+    CommandReaderTriggerCtx* crtCtx = NULL;
+    if(ptctx->currEctx){
+        crtCtx = RedisGears_GetCommandReaderTriggerCtx(ptctx->currEctx);
+    }else{
+        crtCtx = ptctx->crtCtx;
+    }
+
+    return crtCtx;
+}
+
+static PyObject* getGearsSession(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyObject* res;
+    if(!ptctx->currSession){
+        Py_INCREF(Py_None);
+        res = Py_None;
+    }else{
+        PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
+        pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+        pyExSes->crtCtx = getCommandReaderTriggerCtx(ptctx);
+
+        if(pyExSes->crtCtx){
+            pyExSes->crtCtx = RedisGears_CommandReaderTriggerCtxGetShallowCopy(pyExSes->crtCtx);
+        }
+
+        res = (PyObject*)pyExSes;
+    }
+    return res;
+}
+
+static PyObject* isInAtomicBlock(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyObject* res = (ptctx->flags & PythonThreadCtxFlag_InsideAtomic) ? Py_True : Py_False;
+    Py_INCREF(res);
+    return res;
+}
+
+static PyObject* setGearsSession(PyObject *cls, PyObject *args){
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of args given to setGearsSession");
+        return NULL;
+    }
+
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    PyObject* s = PyTuple_GetItem(args, 0);
+    if(s == Py_None){
+        ptctx->currSession = NULL;
+    }else{
+        if(!PyObject_IsInstance((PyObject*)s, (PyObject*)&PyExecutionSessionType)){
+            PyErr_SetString(GearsError, "Given object is not of type GearsSession");
+            return NULL;
+        }
+
+        PyExecutionSession* pyExSes = (PyExecutionSession*)s;
+        ptctx->currSession = pyExSes->s;
+        ptctx->crtCtx = pyExSes->crtCtx;
+    }
+
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(!ptctx->currSession){
+        PyErr_SetString(GearsError, "Can not create a gearsCtx on a python created thread");
+        return NULL;
+    }
     const char* readerStr = "KeysReader";
     const char* descStr = NULL;
     if(PyTuple_Size(args) > 0){
@@ -1769,6 +2033,12 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
     }
     RGM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
     RedisGears_SetFlatExecutionPrivateData(pyfep->fep, "PySessionType", PythonSessionCtx_ShellowCopy(ptctx->currSession));
+
+    if(RGM_SetFlatExecutionOnUnpausedCallback(pyfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
+        Py_DECREF((PyObject*)pyfep);
+        PyErr_SetString(GearsError, "Failed setting on unpause callback");
+        return NULL;
+    }
     return (PyObject*)pyfep;
 }
 
@@ -1902,6 +2172,64 @@ static PyObject* RedisLog(PyObject *cls, PyObject *args, PyObject *kargs){
     return Py_None;
 }
 
+static RedisModuleString** createArgs(PyObject *args){
+    // Declare and initialize variables for arguments processing.
+    size_t argLen;
+    const char* argumentCStr = NULL;
+    RedisModuleString* argumentRedisStr = NULL;
+    RedisModuleString** arguments = array_new(RedisModuleString*, 10);
+    for(int i = 0 ; i < PyTuple_Size(args) ; ++i){
+        PyObject* argument = PyTuple_GetItem(args, i);
+        if(PyByteArray_Check(argument)) {
+            // Argument is bytearray.
+            argLen = PyByteArray_Size(argument);
+            argumentCStr = PyByteArray_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(NULL, argumentCStr, argLen);
+        } else if(PyBytes_Check(argument)) {
+            // Argument is bytes.
+            argLen = PyBytes_Size(argument);
+            argumentCStr = PyBytes_AsString(argument);
+            argumentRedisStr = RedisModule_CreateString(NULL, argumentCStr, argLen);
+        } else {
+            // Argument is string.
+            PyObject* argumentStr = PyObject_Str(argument);
+            argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
+            argumentRedisStr = RedisModule_CreateString(NULL, argumentCStr, argLen);
+            // Decrease ref-count after done processing the argument.
+            Py_DECREF(argumentStr);
+        }
+        arguments = array_append(arguments, argumentRedisStr);
+    }
+
+    Py_DECREF(args);
+    return arguments;
+}
+
+static PyObject* createReply(RedisModuleCallReply *reply){
+    PyObject* res = NULL;
+    if(!reply || RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_UNKNOWN){
+        if(errno){
+            PyErr_SetString(GearsError, strerror(errno));
+        }else{
+            PyErr_SetString(GearsError, "Failed executing command");
+        }
+        res = NULL;
+    }
+    else if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
+        size_t len;
+        const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
+        PyErr_SetString(GearsError, replyStr);
+    }else{
+        res = replyToPyList(reply);
+    }
+
+    if(reply){
+        RedisModule_FreeCallReply(reply);
+    }
+
+    return res;
+}
+
 static PyObject* executeCommand(PyObject *cls, PyObject *args){
     if(PyTuple_Size(args) < 1){
         return PyList_New(0);
@@ -1918,47 +2246,12 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     }
     const char* commandStr = PyUnicode_AsUTF8AndSize(command, NULL);
 
-    // Declare and initialize variables for arguments processing.
-    size_t argLen;
-    const char* argumentCStr = NULL;
-    RedisModuleString* argumentRedisStr = NULL;
-    RedisModuleString** arguments = array_new(RedisModuleString*, 10);
-    for(int i = 1 ; i < PyTuple_Size(args) ; ++i){
-        PyObject* argument = PyTuple_GetItem(args, i);
-        if(PyByteArray_Check(argument)) {
-            // Argument is bytearray.
-            argLen = PyByteArray_Size(argument);
-            argumentCStr = PyByteArray_AsString(argument);
-            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
-        } else if(PyBytes_Check(argument)) {
-            // Argument is bytes.
-            argLen = PyBytes_Size(argument);
-            argumentCStr = PyBytes_AsString(argument);
-            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
-        } else {
-            // Argument is string.
-            PyObject* argumentStr = PyObject_Str(argument);
-            argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
-            argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
-            // Decrease ref-count after done processing the argument.
-            Py_DECREF(argumentStr);
-        }
-        arguments = array_append(arguments, argumentRedisStr);
-    }
+    RedisModuleString** arguments = createArgs(PyTuple_GetSlice(args, 1, PyTuple_Size(args)));
 
-    PyObject* res = NULL;
+
     RedisModuleCallReply *reply = RedisModule_Call(rctx, commandStr, "!v", arguments, array_len(arguments));
-    if(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
-        size_t len;
-        const char* replyStr = RedisModule_CallReplyStringPtr(reply, &len);
-        PyErr_SetString(GearsError, replyStr);
-    }else{
-        res = replyToPyList(reply);
-    }
 
-    if(reply){
-        RedisModule_FreeCallReply(reply);
-    }
+    PyObject* res = createReply(reply);
 
     array_free_ex(arguments, RedisModule_FreeString(rctx, *(RedisModuleString**)ptr));
 
@@ -2980,7 +3273,8 @@ RedisModuleType *TimeEventType;
 
 static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     TimerData* td = data;
-    void* old = RedisGearsPy_Lock(td->session);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(td->session, NULL);
+    RedisGearsPy_Lock(&pectx);
     PyObject* pArgs = PyTuple_New(0);
     PyObject_CallObject(td->callback, pArgs);
     if(PyErr_Occurred()){
@@ -2992,7 +3286,7 @@ static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
         td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
     }
     Py_DECREF(pArgs);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
 }
 
 static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
@@ -3039,13 +3333,14 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     RedisModule_Assert(td->callback);
 
     // change callback global
-    void* old = RedisGearsPy_Lock(td->session);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(td->session, NULL);
+    RedisGearsPy_Lock(&pectx);
     PyFunctionObject* callback_func = (PyFunctionObject*)td->callback;
     PyDict_Merge(td->session->globalsDict, callback_func->func_globals, 0);
     Py_DECREF(callback_func->func_globals);
     callback_func->func_globals = td->session->globalsDict;
     Py_INCREF(callback_func->func_globals);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
 
     RedisModule_Free(buff);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
@@ -3073,9 +3368,10 @@ static void TimeEvent_RDBSave(RedisModuleIO *rdb, void *value){
 
 static void TimeEvent_Free(void *value){
     TimerData* td = value;
-    void* old = RedisGearsPy_Lock(td->session);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(td->session, NULL);
+    RedisGearsPy_Lock(&pectx);
     Py_DECREF(td->callback);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_StopTimer(ctx, td->id, NULL);
     RedisModule_FreeThreadSafeContext(ctx);
@@ -3113,6 +3409,10 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     }
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    if(!ptctx->currSession){
+        PyErr_SetString(GearsError, "can not create time event on a python created thread");
+        return NULL;
+    }
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_AutoMemory(ctx);
     RedisModuleString* keyNameStr = NULL;
@@ -3153,8 +3453,36 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
+static PyObject* callNext(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    LockHandler_Acquire(staticCtx);
+
+    CommandReaderTriggerCtx* crtCtx = getCommandReaderTriggerCtx(ptctx);;
+
+    if(!crtCtx){
+        PyErr_SetString(GearsError, "Can not get CommandHook ctx");
+        LockHandler_Release(staticCtx);
+        return NULL;
+    }
+
+    RedisModuleString** arguments = createArgs(args);
+
+    RedisModuleCallReply* reply = RedisGears_CommandReaderTriggerCtxNext(crtCtx, arguments, array_len(arguments));
+
+    PyObject* res = createReply(reply);
+
+    array_free_ex(arguments, RedisModule_FreeString(NULL, *(RedisModuleString**)ptr));
+
+    LockHandler_Release(staticCtx);
+    return res;
+}
+
 PyMethodDef EmbRedisGearsMethods[] = {
     {"gearsCtx", gearsCtx, METH_VARARGS, "creating an empty gears context"},
+    {"registerGearsThread", registerGearsThread, METH_VARARGS, "Register a thread to be a RedisGears thread"},
+    {"getGearsSession", getGearsSession, METH_VARARGS, "get the current gears session"},
+    {"setGearsSession", setGearsSession, METH_VARARGS, "set the current gears session"},
+    {"isInAtomicBlock", isInAtomicBlock, METH_VARARGS, "return true if currently inside atomic block"},
     {"gearsFutureCtx", gearsFutureCtx, METH_VARARGS, "creating future object to block the execution"},
     {"atomicCtx", atomicCtx, METH_VARARGS, "creating a atomic ctx for atomic block"},
     {"_saveGlobals", saveGlobals, METH_VARARGS, "should not be use"},
@@ -3163,6 +3491,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"config_get", RedisConfigGet, METH_VARARGS, "write a message into the redis log file"},
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
+    {"callNext", callNext, METH_VARARGS, "call the next command registration or the original command (will raise error when used outside on CommandHook scope)"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3223,7 +3552,8 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
     ptctx->currentCtx = rctx;
     ptctx->createdExecution = NULL;
 
-    void* old = RedisGearsPy_Lock(bdiCtx->session);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(bdiCtx->session, NULL);
+    RedisGearsPy_Lock(&pectx);
     PyObject *v = PyRun_StringFlags(bdiCtx->script, Py_file_input, ptctx->currSession->globalsDict, ptctx->currSession->globalsDict, NULL);
 
     if(!v){
@@ -3242,7 +3572,7 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
             RedisGears_DropExecution(ptctx->createdExecution);
         }
 
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
 
         ptctx->createdExecution = NULL;
         ptctx->currentCtx = NULL;
@@ -3264,7 +3594,7 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
     }else{
         RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
     }
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
 
     ptctx->createdExecution = NULL;
     ptctx->currentCtx = NULL;
@@ -3499,19 +3829,40 @@ void fetchPyError(ExecutionCtx* rctx) {
     RedisGears_SetError(rctx, getPyError());
 }
 
-PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* coro){
+PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* coro, PythonThreadCtx* ptctx){
     // object is a coroutine, we need to hold and pass it to the event loop.
    char* err = NULL;
+   Record* asyncRecord = RedisGears_AsyncRecordCreate(rctx, &err);
+
+   if(!asyncRecord){
+       // failed creating async record, will return an error.
+       PyErr_SetString(GearsError, err);
+       RG_FREE(err);
+       return NULL;
+   }
+
    PyFuture* pyfuture = PyObject_New(PyFuture, &PyFutureType);
-   pyfuture->asyncRecord = RedisGears_AsyncRecordCreate(rctx, &err);
-   RedisModule_Assert(pyfuture->asyncRecord);
+   pyfuture->asyncRecord = asyncRecord;
    pyfuture->continueType = ContinueType_Default;
 
    Py_INCREF(pyfuture);
 
-   PyObject* pArgs = PyTuple_New(2);
+   ptctx->pyfutureCreated = (PyObject*)pyfuture;
+
+   Py_INCREF(ptctx->pyfutureCreated);
+
+   PyObject* pArgs = PyTuple_New(3);
    PyTuple_SetItem(pArgs, 0, coro);
    PyTuple_SetItem(pArgs, 1, (PyObject*)pyfuture);
+
+   /* Create session object */
+   PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
+   pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+   pyExSes->crtCtx = RedisGears_GetCommandReaderTriggerCtx(rctx);
+   if(pyExSes->crtCtx){
+       pyExSes->crtCtx = RedisGears_CommandReaderTriggerCtxGetShallowCopy(pyExSes->crtCtx);
+   }
+   PyTuple_SetItem(pArgs, 2, (PyObject*)pyExSes);
 
    PyObject* nn = PyObject_CallObject(runCoroutineFunction, pArgs);
    Py_DECREF(pArgs);
@@ -3533,8 +3884,8 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
-    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3544,30 +3895,38 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
 
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
     if(ret && PyCoro_CheckExact(ret)){
         // object is a coroutine, we need to hold and pass it to the event loop.
-        ret = RedisGearsPy_PyCallbackHandleCoroutine(rctx, ret);
+        ret = RedisGearsPy_PyCallbackHandleCoroutine(rctx, ret, ptctx);
     }
 
-    if(!ret){
-        fetchPyError(rctx);
-
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
-        return RedisGears_StepSuccess;
-    }
-
-    if(PyObject_TypeCheck(ret, &PyFutureType)){
+    if(ptctx->pyfutureCreated && ret == ptctx->pyfutureCreated){
         PyFuture* future = (PyFuture*)ret;
         future->continueType = ContinueType_Foreach;
         // no need to free the original record because the async record took the ownership on it
 
         // we need to free the future as we do not return it
         Py_DECREF(ret);
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         return RedisGears_StepHold;
+    }
+
+    if(ptctx->pyfutureCreated){
+        /**
+         * Async record created but not returned lets disscard it
+         */
+        PyFuture* f = (PyFuture*)ptctx->pyfutureCreated;
+        RedisGears_AsyncRecordContinue(f->asyncRecord, RedisGears_GetDummyRecord());
+        f->asyncRecord = NULL;
+    }
+
+    if(!ret){
+        fetchPyError(rctx);
+
+        RedisGearsPy_Unlock(&pectx);
+        return RedisGears_StepSuccess;
     }
 
     if(ret != Py_None){
@@ -3575,8 +3934,7 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
     	Py_DECREF(ret);
     }
 
-    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     return RedisGears_StepSuccess;
 }
 
@@ -3585,8 +3943,8 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
-    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
 	PyObject* pArgs = PyTuple_New(3);
 	PyObject* callback = arg;
@@ -3606,36 +3964,50 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
 	Py_DECREF(pArgs);
 
+	PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
 	if(newAccumulateObj && PyCoro_CheckExact(newAccumulateObj)){
         // object is a coroutine, we need to hold and pass it to the event loop.
-        newAccumulateObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newAccumulateObj);
+        newAccumulateObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newAccumulateObj, ptctx);
+    }
+
+    if(ptctx->pyfutureCreated && newAccumulateObj == ptctx->pyfutureCreated){
+        PyFuture* future = (PyFuture*)newAccumulateObj;
+        future->continueType = ContinueType_Default;
+        Py_DECREF(newAccumulateObj);
+        RedisGearsPy_Unlock(&pectx);
+        RedisGears_FreeRecord(accumulate);
+        RedisGears_FreeRecord(r);
+        return RedisGears_GetDummyRecord();
+    }
+
+    if(ptctx->pyfutureCreated){
+        /**
+         * Async record created but not returned lets disscard it
+         *
+         * Accumulateby can not be discarded with DummyRecord,
+         * We will discard it with python record pointing to None
+         */
+        Record* discardRecord = PyObjRecordCreate();
+        Py_INCREF(Py_None);
+        PyObjRecordSet(discardRecord, Py_None);
+        PyFuture* f = (PyFuture*)ptctx->pyfutureCreated;
+        RedisGears_AsyncRecordContinue(f->asyncRecord, discardRecord);
+        f->asyncRecord = NULL;
     }
 
 	if(!newAccumulateObj){
 	    fetchPyError(rctx);
 
-	    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-	    RedisGearsPy_Unlock(old);
+	    RedisGearsPy_Unlock(&pectx);
 		RedisGears_FreeRecord(accumulate);
         RedisGears_FreeRecord(r);
 		return NULL;
 	}
 
-	if(PyObject_TypeCheck(newAccumulateObj, &PyFutureType)){
-        PyFuture* future = (PyFuture*)newAccumulateObj;
-        future->continueType = ContinueType_Default;
-        Py_DECREF(newAccumulateObj);
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
-        RedisGears_FreeRecord(accumulate);
-        RedisGears_FreeRecord(r);
-        return &DummyRecord;
-    }
-
 	PyObjRecordSet(accumulate, newAccumulateObj);
 
-	RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-	RedisGearsPy_Unlock(old);
+	RedisGearsPy_Unlock(&pectx);
     RedisGears_FreeRecord(r);
 	return accumulate;
 }
@@ -3645,8 +4017,8 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
-    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* pArgs = PyTuple_New(2);
     PyObject* callback = arg;
@@ -3666,34 +4038,48 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
 
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
     if(newAccumulateObj && PyCoro_CheckExact(newAccumulateObj)){
         // object is a coroutine, we need to hold and pass it to the event loop.
-        newAccumulateObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newAccumulateObj);
+        newAccumulateObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newAccumulateObj, ptctx);
+    }
+
+    if(ptctx->pyfutureCreated && newAccumulateObj == ptctx->pyfutureCreated){
+        PyFuture* future = (PyFuture*)newAccumulateObj;
+        future->continueType = ContinueType_Default;
+        Py_DECREF(newAccumulateObj);
+        RedisGears_FreeRecord(accumulate);
+        RedisGearsPy_Unlock(&pectx);
+        return RedisGears_GetDummyRecord();
+    }
+
+    if(ptctx->pyfutureCreated){
+        /**
+         * Async record created but not returned lets disscard it
+         *
+         * Accumulate can not be discarded with DummyRecord,
+         * We will discard it with python record pointing to None
+         */
+        Record* discardRecord = PyObjRecordCreate();
+        Py_INCREF(Py_None);
+        PyObjRecordSet(discardRecord, Py_None);
+        PyFuture* f = (PyFuture*)ptctx->pyfutureCreated;
+        RedisGears_AsyncRecordContinue(f->asyncRecord, discardRecord);
+        f->asyncRecord = NULL;
     }
 
     if(!newAccumulateObj){
         fetchPyError(rctx);
 
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         RedisGears_FreeRecord(accumulate);
         return NULL;
     }
 
-    if(PyObject_TypeCheck(newAccumulateObj, &PyFutureType)){
-        PyFuture* future = (PyFuture*)newAccumulateObj;
-        future->continueType = ContinueType_Default;
-        Py_DECREF(newAccumulateObj);
-        RedisGears_FreeRecord(accumulate);
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
-        return &DummyRecord;
-    }
-
     PyObjRecordSet(accumulate, newAccumulateObj);
 
-    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     return accumulate;
 }
 
@@ -3703,8 +4089,8 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
-    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3714,35 +4100,42 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
 
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
     if(newObj && PyCoro_CheckExact(newObj)){
         // object is a coroutine, we need to hold and pass it to the event loop.
-        newObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newObj);
+        newObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newObj, ptctx);
+    }
+
+    if(ptctx->pyfutureCreated && newObj == ptctx->pyfutureCreated){
+        PyFuture* future = (PyFuture*)newObj;
+        future->continueType = ContinueType_Default;
+        Py_DECREF(newObj);
+        RedisGears_FreeRecord(record);
+        RedisGearsPy_Unlock(&pectx);
+        return RedisGears_GetDummyRecord();
+    }
+
+    if(ptctx->pyfutureCreated){
+        /**
+         * Async record created but not returned lets disscard it
+         */
+        PyFuture* f = (PyFuture*)ptctx->pyfutureCreated;
+        RedisGears_AsyncRecordContinue(f->asyncRecord, RedisGears_GetDummyRecord());
+        f->asyncRecord = NULL;
     }
 
     if(!newObj){
         fetchPyError(rctx);
 
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         RedisGears_FreeRecord(record);
         return NULL;
     }
 
-
-    if(PyObject_TypeCheck(newObj, &PyFutureType)){
-        PyFuture* future = (PyFuture*)newObj;
-        future->continueType = ContinueType_Default;
-        Py_DECREF(newObj);
-        RedisGears_FreeRecord(record);
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
-        return &DummyRecord;
-    }
-
     PyObjRecordSet(record, newObj);
 
-    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     return record;
 }
 
@@ -3753,8 +4146,8 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
-    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3764,30 +4157,41 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
 
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
     if(newObj && PyCoro_CheckExact(newObj)){
         // object is a coroutine, we need to hold and pass it to the event loop.
-        newObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newObj);
+        newObj = RedisGearsPy_PyCallbackHandleCoroutine(rctx, newObj, ptctx);
     }
 
-    if(!newObj){
-        fetchPyError(rctx);
-
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
-        RedisGears_FreeRecord(record);
-        return NULL;
-    }
-
-    if(PyObject_TypeCheck(newObj, &PyFutureType)){
+    if(ptctx->pyfutureCreated && newObj == ptctx->pyfutureCreated){
         PyFuture* future = (PyFuture*)newObj;
         future->continueType = ContinueType_Flat;
 
         RedisGears_FreeRecord(record);
         Py_DECREF(newObj);
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
-        return &DummyRecord;
-    }else if(PyList_Check(newObj)){
+        RedisGearsPy_Unlock(&pectx);
+        return RedisGears_GetDummyRecord();
+    }
+
+    if(ptctx->pyfutureCreated){
+        /**
+         * Async record created but not returned lets disscard it
+         */
+        PyFuture* f = (PyFuture*)ptctx->pyfutureCreated;
+        RedisGears_AsyncRecordContinue(f->asyncRecord, RedisGears_GetDummyRecord());
+        f->asyncRecord = NULL;
+    }
+
+    if(!newObj){
+        fetchPyError(rctx);
+
+        RedisGearsPy_Unlock(&pectx);
+        RedisGears_FreeRecord(record);
+        return NULL;
+    }
+
+    if(PyList_Check(newObj)){
         RedisGears_FreeRecord(record);
         size_t len = PyList_Size(newObj);
         record = RedisGears_ListRecordCreate(len);
@@ -3803,8 +4207,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
         PyObjRecordSet(record, newObj);
     }
 
-    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     return record;
 }
 
@@ -3814,8 +4217,8 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
-    ExecutionCtx* oldEctx = RedisGearsPy_SetCurrExecutionCtx(rctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
@@ -3824,37 +4227,46 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
     PyTuple_SetItem(pArgs, 0, obj);
     PyObject* ret = PyObject_CallObject(callback, pArgs);
     Py_DECREF(pArgs);
-    if(!ret){
-        fetchPyError(rctx);
 
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
-        return RedisGears_StepFailed;
-    }
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
     if(ret && PyCoro_CheckExact(ret)){
         // object is a coroutine, we need to hold and pass it to the event loop.
-        ret = RedisGearsPy_PyCallbackHandleCoroutine(rctx, ret);
+        ret = RedisGearsPy_PyCallbackHandleCoroutine(rctx, ret, ptctx);
     }
 
-    if(PyObject_TypeCheck(ret, &PyFutureType)){
+    if(ptctx->pyfutureCreated && ret == ptctx->pyfutureCreated){
         PyFuture* future = (PyFuture*)ret;
         future->continueType = ContinueType_Filter;
         // no need to free the original record because the async record took the ownership on it
 
         // we need to free the future as we do not return it
         Py_DECREF(ret);
-        RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         return RedisGears_StepHold;
+    }
+
+    if(ptctx->pyfutureCreated){
+        /**
+         * Async record created but not returned lets disscard it
+         */
+        PyFuture* f = (PyFuture*)ptctx->pyfutureCreated;
+        RedisGears_AsyncRecordContinue(f->asyncRecord, RedisGears_GetDummyRecord());
+        f->asyncRecord = NULL;
+    }
+
+    if(!ret){
+        fetchPyError(rctx);
+
+        RedisGearsPy_Unlock(&pectx);
+        return RedisGears_StepFailed;
     }
 
     bool ret1 = PyObject_IsTrue(ret);
 
     Py_DECREF(ret);
 
-    RedisGearsPy_UnSetCurrExecutionCtx(oldEctx);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     return ret1? RedisGears_StepSuccess : RedisGears_StepFailed;
 }
 
@@ -3864,7 +4276,8 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* extractor = arg;
     PyObject* pArgs = PyTuple_New(1);
@@ -3877,14 +4290,14 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     if(ret && PyCoro_CheckExact(ret)){
         Py_DECREF(ret);
         RedisGears_SetError(rctx, RG_STRDUP("coroutine are not allow on extractor"));
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         return "";
     }
 
     if(!ret){
         fetchPyError(rctx);
 
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         return "";
     }
     PyObject* retStr;
@@ -3902,7 +4315,7 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     //Py_DECREF(retStr); todo: we should uncomment it after we will pass bool
     //                         that will tell the extractor to free the memory!!
 
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     return retValue;
 }
 
@@ -3912,7 +4325,8 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* obj = PyList_New(0);
     for(size_t i = 0 ; i < RedisGears_ListRecordLen(records) ; ++i){
@@ -3932,7 +4346,7 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     if(ret && PyCoro_CheckExact(ret)){
         Py_DECREF(ret);
         RedisGears_SetError(rctx, RG_STRDUP("coroutine are not allow on reduce"));
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         RedisGears_FreeRecord(records);
         return NULL;
     }
@@ -3940,19 +4354,19 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     if(!ret){
         fetchPyError(rctx);
 
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         RedisGears_FreeRecord(records);
         return NULL;
     }
     Record* retRecord = PyObjRecordCreate();
     PyObjRecordSet(retRecord, ret);
 
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     RedisGears_FreeRecord(records);
     return retRecord;
 }
 
-static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
+static Record* RedisGearsPy_ToPyRecordMapperInternal(ExecutionCtx* rctx, Record *record, void* arg){
     Record* res = PyObjRecordCreate();
     Record* tempRecord;
     PyObject* obj;
@@ -3990,7 +4404,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
         Py_DECREF(temp);
         tempRecord = RedisGears_KeyRecordGetVal(record);
         if(tempRecord){
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(rctx, tempRecord, arg);
             RedisModule_Assert(RedisGears_RecordGetType(tempRecord) == pythonRecordType);
             PyDict_SetItemString(obj, "value", PyObjRecordGet(tempRecord));
             RedisGears_FreeRecord(tempRecord);
@@ -4002,7 +4416,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
         len = RedisGears_ListRecordLen(record);
         obj = PyList_New(0);
         for(size_t i = 0 ; i < len ; ++i){
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(RedisGears_ListRecordGet(record, i), arg);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(rctx, RedisGears_ListRecordGet(record, i), arg);
             RedisModule_Assert(RedisGears_RecordGetType(tempRecord) == pythonRecordType);
             PyList_Append(obj, PyObjRecordGet(tempRecord));
             RedisGears_FreeRecord(tempRecord);
@@ -4014,7 +4428,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
             key = keys[i];
             temp = PyUnicode_FromString(key);
             tempRecord = RedisGears_HashSetRecordGet(record, key);
-            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
+            tempRecord = RedisGearsPy_ToPyRecordMapperInternal(rctx, tempRecord, arg);
             RedisModule_Assert(RedisGears_RecordGetType(tempRecord) == pythonRecordType);
             PyDict_SetItem(obj, temp, PyObjRecordGet(tempRecord));
             Py_DECREF(temp);
@@ -4024,6 +4438,12 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
     }else if(RedisGears_RecordGetType(record) == pythonRecordType){
         obj = PyObjRecordGet(record);
         Py_INCREF(obj);
+    }else if(RedisGears_RecordGetType(record) == errorRecordType){
+        str = RedisGears_StringRecordGet(record, &len);
+        RedisGears_SetError(rctx, RG_STRDUP(str));
+
+        Py_INCREF(Py_None);
+        obj = Py_None;
     }else{
         RedisModule_Assert(false);
     }
@@ -4075,10 +4495,11 @@ static Record* RedisGearsPy_ToPyRecordMapper(ExecutionCtx* rctx, Record *record,
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
-    Record* res = RedisGearsPy_ToPyRecordMapperInternal(record, arg);
-    RedisGearsPy_Unlock(old);
+    Record* res = RedisGearsPy_ToPyRecordMapperInternal(rctx, record, arg);
+    RedisGearsPy_Unlock(&pectx);
 
     RedisGears_FreeRecord(record);
 
@@ -4086,40 +4507,40 @@ static Record* RedisGearsPy_ToPyRecordMapper(ExecutionCtx* rctx, Record *record,
 }
 
 static void* RedisGearsPy_PyObjectDup(void* arg){
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     PyObject* obj = arg;
     Py_INCREF(obj);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
     return arg;
 }
 
 static void RedisGearsPy_PyObjectFree(void* arg){
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     PyObject* obj = arg;
     Py_DECREF(obj);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
 }
 
 static char* RedisGearsPy_PyObjectToString(void* arg){
     char* objCstr = NULL;
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     PyObject* obj = arg;
     PyObject *objStr = PyObject_Str(obj);
     const char* objTempCstr = PyUnicode_AsUTF8AndSize(objStr, NULL);
     objCstr = RG_STRDUP(objTempCstr);
     Py_DECREF(objStr);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
     return objCstr;
 }
 
 int RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err){
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     PyObject* obj = arg;
     PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
     if(!objStr){
         *err = getPyError();
         RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_PyObjectSerialize, error=%s", *err);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_UNLOCK
         return REDISMODULE_ERR;
     }
     size_t len;
@@ -4127,21 +4548,21 @@ int RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err
     PyBytes_AsStringAndSize(objStr, &objStrCstr, &len);
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
     Py_DECREF(objStr);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
     return REDISMODULE_OK;
 }
 
 void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br){
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject* obj = PyMarshal_ReadObjectFromString(data, len);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
     return obj;
 }
 
 static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     PyObject* callback = arg;
     PyObject *pickleFunction = PyDict_GetItemString(pyGlobals, "dumps");
     PyObject *args = PyTuple_New(1);
@@ -4155,7 +4576,7 @@ static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, G
         const char* nameCStr = PyUnicode_AsUTF8AndSize(name, NULL);
         rg_asprintf(err, "Error occured when serialized a python callback, callback=%s error=%s", nameCStr, internalErr);
         RG_FREE(internalErr);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_UNLOCK
         return REDISMODULE_ERR;
     }
     Py_DECREF(args);
@@ -4164,7 +4585,7 @@ static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, G
     PyBytes_AsStringAndSize(serializedStr, &objStrCstr, &len);
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
     Py_DECREF(serializedStr);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
     return REDISMODULE_OK;
 }
 
@@ -4173,7 +4594,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         *err = RG_STRDUP("unsupported python callback version");
         return NULL;
     }
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject *dataStr = PyBytes_FromStringAndSize(data, len);
@@ -4191,7 +4612,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         }
         RG_FREE(error);
         Py_DECREF(args);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_UNLOCK
         return NULL;
     }
     Py_DECREF(args);
@@ -4206,7 +4627,7 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         Py_INCREF(callback_func->func_globals);
     }
 
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
     return callback;
 }
 
@@ -4532,7 +4953,8 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateData(rctx);
     RedisModule_Assert(sctx);
 
-    void* old = RedisGearsPy_Lock(sctx);
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(sctx, rctx);
+    RedisGearsPy_Lock(&pectx);
 
     PyObject* pyRecord = NULL;
     if(!pyCtx->generator){
@@ -4542,7 +4964,7 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
         Py_DECREF(pArgs);
         if(!pyRecord){
             fetchPyError(rctx);
-            RedisGearsPy_Unlock(old);
+            RedisGearsPy_Unlock(&pectx);
             pyCtx->isDone = true;
             return NULL;
         }
@@ -4556,11 +4978,11 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
     }
     if(!pyRecord){
         fetchPyError(rctx);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_Unlock(&pectx);
         pyCtx->isDone = true;
         return NULL;
     }
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_Unlock(&pectx);
     Record* record = PyObjRecordCreate();
     PyObjRecordSet(record, pyRecord);
     return record;
@@ -4569,12 +4991,12 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
 static void PythonReader_Free(void* ctx){
     PythonReaderCtx* pyCtx = ctx;
     PyObject* callback = pyCtx->callback;
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     Py_DECREF(callback);
     if(pyCtx->generator){
         Py_DECREF(pyCtx->generator);
     }
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
     RG_FREE(pyCtx);
 }
 
@@ -4605,9 +5027,9 @@ static int PythonReader_Deserialize(ExecutionCtx* ectx, void* ctx, Gears_BufferR
 static Reader* PythonReader_Create(void* arg){
     PyObject* callback = arg;
     if(callback){
-        void* old = RedisGearsPy_Lock(NULL);
+        RedisGearsPy_LOCK
         Py_INCREF(callback);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_UNLOCK
     }
     PythonReaderCtx* pyCtx = RG_ALLOC(sizeof(*pyCtx));
     pyCtx->callback = callback;
@@ -4808,9 +5230,9 @@ static PyObject* PyInit_RedisAI(void) {
 }
 
 void RedisGearsPy_ForceStop(unsigned long threadID){
-    void* old = RedisGearsPy_Lock(NULL);
+    RedisGearsPy_LOCK
     PyThreadState_SetAsyncExc(threadID, ForceStoppedError);
-    RedisGearsPy_Unlock(old);
+    RedisGearsPy_UNLOCK
 }
 
 static int PythonRecord_SendReply(Record* r, RedisModuleCtx* rctx){
@@ -4837,7 +5259,16 @@ static int PythonRecord_SendReply(Record* r, RedisModuleCtx* rctx){
     }else if(PyUnicode_Check(obj)) {
         size_t len;
         char* str = (char*)PyUnicode_AsUTF8AndSize(obj, &len);
-        RedisModule_ReplyWithStringBuffer(rctx, (char*)str, len);
+        if(len > 1){
+            if(str[0] == '+'){
+                RedisModule_ReplyWithSimpleString(rctx, str + 1);
+                return REDISMODULE_OK;
+            }else if(str[0] == '-'){
+                RedisModule_ReplyWithError(rctx, str + 1);
+                return REDISMODULE_OK;
+            }
+        }
+        RedisModule_ReplyWithStringBuffer(rctx, str, len);
     }else if(PyBytes_Check(obj)) {
         size_t len;
         char* str;
@@ -4862,9 +5293,9 @@ static int PythonRecord_Serialize(ExecutionCtx* ectx, Gears_BufferWriter* bw, Re
 static void PythonRecord_Free(Record* base){
     PythonRecord* record = (PythonRecord*)base;
     if(record->obj && record->obj != Py_None){
-        void* old = RedisGearsPy_Lock(NULL);
+        RedisGearsPy_LOCK
         Py_DECREF(record->obj);
-        RedisGearsPy_Unlock(old);
+        RedisGearsPy_UNLOCK
     }
 }
 
@@ -4995,6 +5426,10 @@ static int RedisGearsPy_CreateRequirementsDataType(RedisModuleCtx* ctx){
     return GearsPyRequirementDT ? REDISMODULE_OK : REDISMODULE_ERR;
 }
 
+static void PythonThreadCtx_Destructor(void *p) {
+    RG_FREE(p);
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
     installDepsPool = Gears_thpool_init(1);
     InitializeGlobalPaths();
@@ -5006,7 +5441,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     RedisGearsPy_CreateRequirementsDataType(ctx);
 
-    int err = pthread_key_create(&pythonThreadCtxKey, NULL);
+    int err = pthread_key_create(&pythonThreadCtxKey, PythonThreadCtx_Destructor);
     if(err){
         return REDISMODULE_ERR;
     }
@@ -5043,6 +5478,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyTensorType.tp_new = PyType_GenericNew;
     PyGraphRunnerType.tp_new = PyType_GenericNew;
     PyFlatExecutionType.tp_new = PyType_GenericNew;
+    PyExecutionSessionType.tp_new = PyType_GenericNew;
     PyAtomicType.tp_new = PyType_GenericNew;
 
     PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
@@ -5061,6 +5497,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     if (PyType_Ready(&PyTorchScriptRunnerType) < 0){
         RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
+        return REDISMODULE_ERR;
+    }
+
+    if (PyType_Ready(&PyExecutionSessionType) < 0){
+        RedisModule_Log(ctx, "warning", "PyExecutionSessionType not ready");
         return REDISMODULE_ERR;
     }
 
@@ -5090,6 +5531,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
     Py_INCREF(&PyTorchScriptRunnerType);
+    Py_INCREF(&PyExecutionSessionType);
     Py_INCREF(&PyFlatExecutionType);
     Py_INCREF(&PyAtomicType);
     Py_INCREF(&PyFutureType);
@@ -5097,10 +5539,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     PyModule_AddObject(redisAIModule, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(redisAIModule, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(redisAIModule, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
+    PyModule_AddObject(redisGearsModule, "PyExecutionSession", (PyObject *)&PyExecutionSessionType);
     PyModule_AddObject(redisGearsModule, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
     PyModule_AddObject(redisGearsModule, "PyAtomic", (PyObject *)&PyAtomicType);
     PyModule_AddObject(redisGearsModule, "PyFuture", (PyObject *)&PyFutureType);
-    GearsError = PyErr_NewException("spam.error", NULL, NULL);
+    GearsError = PyErr_NewException("gears.error", NULL, NULL);
     Py_INCREF(GearsError);
     PyModule_AddObject(redisGearsModule, "GearsError", GearsError);
 
@@ -5136,6 +5579,8 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     }
 
     runCoroutineFunction = PyDict_GetItemString(pyGlobals, "runCoroutine");
+    createFutureFunction = PyDict_GetItemString(pyGlobals, "createFuture");
+    setFutureResultsFunction = PyDict_GetItemString(pyGlobals, "setFutureResults");
 
     pythonRecordType = RedisGears_RecordTypeCreate("PythonRecord", sizeof(PythonRecord),
                                                    PythonRecord_SendReply,

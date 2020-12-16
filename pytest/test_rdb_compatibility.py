@@ -6,13 +6,14 @@ GEARS_CACHE_DIR = '/tmp/'
 BASE_RDBS_URL = 'https://s3.amazonaws.com/redismodules/redisgears/versions_rdbs_samples/'
 
 RDBS = [
-    'redisgears_1.0.0.rdb'
+    ('redisgears_1.0.0.rdb', 1),
+    ('redisgears_1.0.0_2.rdb', 3),
 ]
 
 def downloadFiles():
     if not os.path.exists(GEARS_CACHE_DIR):
         os.makedirs(GEARS_CACHE_DIR)
-    for f in RDBS:
+    for f, _ in RDBS:
         path = os.path.join(GEARS_CACHE_DIR, f)
         if not os.path.exists(path):
             subprocess.call(['wget', BASE_RDBS_URL + f, '-O', path])
@@ -32,7 +33,7 @@ def testRDBCompatibility(env):
             env.skip()
             return
 
-    for fileName in RDBS:
+    for fileName, nRegistrations in RDBS:
         env.stop()
         filePath = os.path.join(GEARS_CACHE_DIR, fileName)
         try:
@@ -42,7 +43,7 @@ def testRDBCompatibility(env):
         os.symlink(filePath, rdbFilePath)
         env.start()
         res = env.cmd('rg.dumpregistrations')
-        env.assertEqual(len(res), 1)
+        env.assertEqual(len(res), nRegistrations)
         res = env.cmd('rg.pydumpreqs')
         env.assertEqual(len(res), 1)
         env.assertTrue(env.checkExitCode())

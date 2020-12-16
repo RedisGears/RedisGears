@@ -6,6 +6,8 @@ import time
 from common import getConnectionByEnv
 from common import TimeLimit
 
+from common import verifyRegistrationIntegrity
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
 import paella
 
@@ -217,8 +219,16 @@ GB().map(InfinitLoop).register('*', mode='async_local')
         with TimeLimit(2):
             done = False
             while not done:
-                registrations = len(env.cmd('RG.DUMPEXECUTIONS'))
-                if registrations == 1:
+                exeutions = env.cmd('RG.DUMPEXECUTIONS')
+                for e in exeutions:
+                    # we need to abort the running execution, it was not aborted
+                    # on RG.UNREGISTER
+                    if e[3] == 'running':
+                        try:
+                            env.cmd('RG.ABORTEXECUTION', e[1])
+                        except Exception:
+                            pass
+                if len(exeutions) == 1:
                     done = True
                 time.sleep(0.1)
     except Exception as e:
@@ -300,8 +310,16 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     try:
         with TimeLimit(2):
             while True:
-                l = len(env.cmd('RG.DUMPEXECUTIONS'))
-                if l == 1:
+                exeutions = env.cmd('RG.DUMPEXECUTIONS')
+                for e in exeutions:
+                    # we need to abort the running execution, it was not aborted
+                    # on RG.UNREGISTER
+                    if e[3] == 'running':
+                        try:
+                            env.cmd('RG.ABORTEXECUTION', e[1])
+                        except Exception:
+                            pass
+                if len(exeutions) == 1:
                     break
                 time.sleep(0.1)
     except Exception as e:
@@ -977,3 +995,246 @@ def testKeyReaderRegisterDontReadValues(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for list to popultae')
+
+def testCommandOverrideHset(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import time
+def doHset(x):
+    x += ['__time', time.time()]
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync")
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('hset', 'h1', 'foo', 'bar')
+    conn.execute_command('hset', 'h2', 'foo', 'bar')
+    conn.execute_command('hset', 'h3', 'foo', 'bar')
+
+    res = conn.execute_command('hget', 'h1', '__time')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time')
+    env.assertNotEqual(res, None)
+
+def testCommandOverrideHsetMultipleTimes(env):
+    conn = getConnectionByEnv(env)
+    script1 = '''
+import time
+def doHset(x):
+    x += ['__time1', time.time()]
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync")
+    '''
+    env.expect('rg.pyexecute', script1).ok()
+
+    script2 = '''
+import time
+def doHset(x):
+    x += ['__time2', time.time()]
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync")
+    '''
+    env.expect('rg.pyexecute', script2).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('hset', 'h1', 'foo', 'bar')
+    conn.execute_command('hset', 'h2', 'foo', 'bar')
+    conn.execute_command('hset', 'h3', 'foo', 'bar')
+
+    res = conn.execute_command('hget', 'h1', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h1', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time2')
+    env.assertNotEqual(res, None)
+
+def testCommandOverrideHsetByKeyPrefix(env):
+    conn = getConnectionByEnv(env)
+    script1 = '''
+import time
+def doHset(x):
+    x += ['__time1', time.time()]
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync", keyprefix='h')
+    '''
+    env.expect('rg.pyexecute', script1).ok()
+
+    script2 = '''
+import time
+def doHset(x):
+    x += ['__time2', time.time()]
+    return call_next(*x[1:])
+GB("CommandReader").map(doHset).register(hook="hset", mode="sync", keyprefix='h', convertToStr=False)
+    '''
+    env.expect('rg.pyexecute', script2).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('hset', 'h1', 'foo', 'bar')
+    conn.execute_command('hset', 'h2', 'foo', 'bar')
+    conn.execute_command('hset', 'h3', 'foo', 'bar')
+    conn.execute_command('hset', 'b1', 'foo', 'bar')
+
+    res = conn.execute_command('hget', 'h1', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time1')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h1', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h2', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'h3', '__time2')
+    env.assertNotEqual(res, None)
+
+    res = conn.execute_command('hget', 'b1', '__time1')
+    env.assertEqual(res, None)
+
+    res = conn.execute_command('hget', 'b1', '__time2')
+    env.assertEqual(res, None)
+
+def testAwaitOnAnotherExcecution(env):
+    script = '''
+async def doTest(x):
+    res = await GB().map(lambda x: x['key']).run()
+    if len(res[1]) > 0:
+        raise Exception(res[1][0])
+    return res[0]
+
+GB("CommandReader").map(doTest).flatmap(lambda x: x).sort().register(trigger="test", mode="async_local")
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('set', 'y', '2')
+    conn.execute_command('set', 'z', '3')
+
+    env.expect('rg.trigger', 'test').equal(['x', 'y', 'z'])
+
+
+def testHookNotTriggerOnReplicationLink(env):
+    env = Env(useSlaves=True, env='oss')
+    if env.envRunner.debugger is not None:
+        env.skip() # valgrind is not working correctly with replication
+    script = '''
+def doHset(x):
+    execute('hincrby', x[1], '__updated', '1')
+    return call_next(*x[1:])
+
+GB("CommandReader").map(doHset).register(hook="hset", convertToStr=False)
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.expect('hset', 'h', 'foo', 'bar').equal(1)
+
+    env.expect('hget', 'h', '__updated').equal('1')
+
+    slaveConn = env.getSlaveConnection()
+
+    try:
+        with TimeLimit(4):
+            while True:
+                res = slaveConn.execute_command('hget', 'h', '__updated')
+                if res == '1':
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for data to sync to slave')
+
+def testMultipleRegistrationsSameBuilderWithKeysReader(env):
+    script = '''
+gb = GB().foreach(lambda x: execute('del', x['key']))
+gb.register(prefix='foo', readValue=False, mode='sync')
+gb.register(prefix='bar', readValue=False, mode='sync')
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('set', 'foo', '1')
+    conn.execute_command('set', 'bar', '2')
+    env.assertEqual(conn.execute_command('get', 'foo'), None)
+    env.assertEqual(conn.execute_command('get', 'bar'), None)
+
+def testMultipleRegistrationsSameBuilderWithStreamReader(env):
+    script = '''
+gb = GB('StreamReader').foreach(lambda x: execute('hset', '{%s}_hash' % x['key'], *sum([[k,v] for k,v in x['value'].items()], [])))
+gb.register(prefix='foo', mode='sync')
+gb.register(prefix='bar', mode='sync')
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('xadd', 'foo', '*', 'x', '1')
+    conn.execute_command('xadd', 'bar', '*', 'x', '1')
+    env.assertEqual(conn.execute_command('hgetall', '{foo}_hash'), {'x': '1'})
+    env.assertEqual(conn.execute_command('hgetall', '{bar}_hash'), {'x': '1'})
+
+def testMultipleRegistrationsSameBuilderWithCommandReader(env):
+    script = '''
+import time
+
+gb = GB('CommandReader').foreach(lambda x: call_next(x[1], '_time', time.time(), *x[2:]))
+gb.register(hook='hset', mode='sync')
+gb.register(hook='hmset', mode='sync')
+    '''
+    conn = getConnectionByEnv(env)
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    conn.execute_command('hset', 'h1', 'x', '1')
+    conn.execute_command('hmset', 'h2', 'x', '1')
+    env.assertNotEqual(conn.execute_command('hget', 'h1', '_time'), None)
+    env.assertNotEqual(conn.execute_command('hget', 'h2', '_time'), None)
+
+def testDeleteStreamDurringRun(env):
+    env.skipOnCluster()
+    script = '''
+import time
+
+GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    time.sleep(1)
+    env.cmd('flushall')
+
+    # make sure all executions are done without crashing
+    registration = env.cmd('RG.DUMPREGISTRATIONS')[0]
+    while registration[7][3] != registration[7][5]:
+        time.sleep(0.1)
+        registration = env.cmd('RG.DUMPREGISTRATIONS')[0]

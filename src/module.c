@@ -49,6 +49,8 @@ typedef struct Plugin{
 
 Gears_dict* plugins = NULL;
 
+RedisModuleCtx* redisDummyCtx = NULL;
+
 #define REGISTER_API(name, ctx) \
     do{\
         RedisGears_ ## name = RG_ ## name;\
@@ -121,7 +123,7 @@ static int RG_SetFlatExecutionOnStartCallback(FlatExecutionPlan* fep, const char
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnStartStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnStartStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -130,7 +132,7 @@ static int RG_SetFlatExecutionOnUnpausedCallback(FlatExecutionPlan* fep, const c
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnUnPausedStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnUnPausedStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -139,7 +141,7 @@ static int RG_SetFlatExecutionOnRegisteredCallback(FlatExecutionPlan* fep, const
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnRegisteredStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnRegisteredStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
@@ -148,21 +150,24 @@ static int RG_SetFlatExecutionOnUnregisteredCallback(FlatExecutionPlan* fep, con
     if(!c){
         return REDISMODULE_ERR;
     }
-    FlatExecutionPlan_SetOnUnregisteredStep(fep, RG_STRDUP(callback), arg);
+    FlatExecutionPlan_SetOnUnregisteredStep(fep, callback, arg);
     return REDISMODULE_OK;
 }
 
 static FlatExecutionPlan* RG_CreateCtx(char* readerName, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only create Gears Builder when Redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only create a gearsCtx on registered gears thread");
         return NULL;
     }
+    LockHandler_Acquire(redisDummyCtx);
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
     if(!FlatExecutionPlan_SetReader(fep, readerName)){
         FlatExecutionPlan_Free(fep);
         *err = RG_STRDUP("The given reader does not exists");
+        LockHandler_Release(redisDummyCtx);
         return NULL;
     }
+    LockHandler_Release(redisDummyCtx);
     return fep;
 }
 
@@ -242,24 +247,47 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only register execution when redis GIL is taken");
+static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId){
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only register execution on registered gears thread");
         return 0;
     }
-    return FlatExecutionPlan_Register(fep, mode, key, err);
+    LockHandler_Acquire(redisDummyCtx);
+
+    // we need a deep copy in case this fep will be registered again with different args
+    // this is a hack because a fep represent registration, we need create
+    // a registration object that will hold a shared reference of the fep for future.
+    // The plane is to reimplement this all API so its not worth inve
+    fep = FlatExecutionPlan_DeepCopy(fep);
+
+    int res = FlatExecutionPlan_Register(fep, mode, key, err);
+
+    if(registrationId){
+        *registrationId = RG_STRDUP(fep->idStr);
+    }
+
+    // we need to free it on success or failure, on success a shared copy
+    // of the fep will be taken by the reader.
+    FlatExecutionPlan_Free(fep);
+
+    LockHandler_Release(redisDummyCtx);
+    return res;
 }
 
 static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
-    if(!LockHandler_IsLockTaken()){
-        *err = RG_STRDUP("Can only run execution when redis GIL is taken");
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only run execution on registered gears thread");
         return NULL;
     }
+    LockHandler_Acquire(redisDummyCtx);
     if(mode == ExecutionModeAsync && !Cluster_IsInitialized()){
         *err = RG_STRDUP("Cluster is not initialized, can not start executions.");
+        LockHandler_Release(redisDummyCtx);
         return NULL;
     }
-    return FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
+    ExecutionPlan* res = FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
+    LockHandler_Release(redisDummyCtx);
+    return res;
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
@@ -295,10 +323,31 @@ static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* prefix,
 }
 
 static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
-    return CommandReaderTriggerArgs_Create(trigger);
+    return CommandReaderTriggerArgs_CreateTrigger(trigger);
 }
+
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreateHook(const char* hook, const char* prefix){
+    return CommandReaderTriggerArgs_CreateHook(hook, prefix);
+}
+
 static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){
     CommandReaderTriggerArgs_Free(args);
+}
+
+static CommandReaderTriggerCtx* RG_GetCommandReaderTriggerCtx(ExecutionCtx* ectx){
+    return CommandReaderTriggerCtx_Get(ectx);
+}
+
+static CommandReaderTriggerCtx* RG_CommandReaderTriggerCtxGetShallowCopy(CommandReaderTriggerCtx* crtCtx){
+    return CommandReaderTriggerCtx_GetShallowCopy(crtCtx);
+}
+
+static RedisModuleCallReply* RG_CommandReaderTriggerCtxNext(CommandReaderTriggerCtx* crtCtx, RedisModuleString** argv, size_t argc){
+    return CommandReaderTriggerCtx_CallNext(crtCtx, argv, argc);
+}
+
+static void RG_CommandReaderTriggerCtxFree(CommandReaderTriggerCtx* crtCtx){
+    CommandReaderTriggerCtx_Free(crtCtx);
 }
 
 static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
@@ -315,6 +364,10 @@ static bool RG_IsDone(ExecutionPlan* ep){
 
 static const char* RG_GetId(ExecutionPlan* ep){
     return ep->idStr;
+}
+
+static const char* RG_FepGetId(FlatExecutionPlan* fep){
+    return fep->idStr;
 }
 
 static long long RG_GetRecordsLen(ExecutionPlan* ep){
@@ -379,28 +432,12 @@ static int RG_AbortExecution(ExecutionPlan* ep){
         return REDISMODULE_OK;
     }
 
-    // execution is not local and already started, we can not abort it now.
-    if(EPIsFlagOff(ep, EFIsLocal)){
-        return REDISMODULE_ERR;
-    }
-
     // execution is done, no need to abort
     if(RedisGears_IsDone(ep)){
         return REDISMODULE_OK;
     }
 
-    while(ep->status != DONE){
-        // we are checking for DONE status cause this one is set without getting the lock.
-        // Once status changed to DONE we know that no more python code will be executed and
-        // we can finish sending cancel signal
-#ifdef WITHPYTHON
-        unsigned long threadID = (unsigned long)ep->executionPD;
-        RedisGearsPy_ForceStop(threadID);
-#endif
-        usleep(1000);
-    }
-
-    return REDISMODULE_OK;
+    return REDISMODULE_ERR;
 }
 
 /**
@@ -594,6 +631,10 @@ static const int RG_ExecutionPlanIsLocal(ExecutionPlan* ep) {
     return EPIsFlagOn(ep, EFIsLocal);
 }
 
+static const int RG_GetVersion(ExecutionPlan* ep) {
+    return REDISGEARS_MODULE_VERSION;
+}
+
 static int RG_RegisterPlugin(const char* name, int version) {
     if(Gears_dictFetchValue(plugins, name)){
         RedisModule_Log(NULL, "warning", "Plugin %s already exists", name);
@@ -648,6 +689,10 @@ static void RG_BufferWriterInit(Gears_BufferWriter* bw,Gears_Buffer* buff){
 
 FlatExecutionPlan* RG_GetFep(ExecutionPlan* ep){
     return ep->fep;
+}
+
+int RG_IsCrdt(){
+    return gearsIsCrdt;
 }
 
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
@@ -828,7 +873,12 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
     REGISTER_API(CommandReaderTriggerArgsCreate, ctx);
+    REGISTER_API(CommandReaderTriggerArgsCreateHook, ctx);
     REGISTER_API(CommandReaderTriggerArgsFree, ctx);
+    REGISTER_API(GetCommandReaderTriggerCtx, ctx);
+    REGISTER_API(CommandReaderTriggerCtxGetShallowCopy, ctx);
+    REGISTER_API(CommandReaderTriggerCtxNext, ctx);
+    REGISTER_API(CommandReaderTriggerCtxFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
     REGISTER_API(GetFep, ctx);
@@ -841,7 +891,9 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(DropExecution, ctx);
     REGISTER_API(AbortExecution, ctx);
     REGISTER_API(GetId, ctx);
+    REGISTER_API(FepGetId, ctx);
 
+    REGISTER_API(GetDummyRecord, ctx);
     REGISTER_API(RecordCreate, ctx);
     REGISTER_API(RecordTypeCreate, ctx);
     REGISTER_API(FreeRecord, ctx);
@@ -859,6 +911,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(ListRecordGet, ctx);
     REGISTER_API(ListRecordPop, ctx);
     REGISTER_API(StringRecordCreate, ctx);
+    REGISTER_API(ErrorRecordCreate, ctx);
     REGISTER_API(StringRecordGet, ctx);
     REGISTER_API(StringRecordSet, ctx);
     REGISTER_API(DoubleRecordCreate, ctx);
@@ -924,6 +977,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterPlugin, ctx);
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
+    REGISTER_API(GetVersion, ctx);
+    REGISTER_API(IsCrdt, ctx);
 
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
@@ -972,53 +1027,39 @@ static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent
 }
 
 static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
-    // fills the wheels array
-    DIR *dr = opendir(GearsConfig_GetPluginsDirectory());
-    if(!dr){
-        RedisModule_Log(ctx, "warning", "Plugins directory does not exists");
-        return REDISMODULE_OK;
-    }
-    struct dirent *de;
-    while ((de = readdir(dr))){
-        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0){
-            continue;
+    char** plugins = GearsConfig_GetPlugins();
+    for(size_t i = 0 ; i < array_len(plugins) ; ++i){
+        char* plugin = plugins[i];
+        char* pluginFile = NULL;
+        const char* moduleDataDir = getenv("modulesdatadir");
+        if(moduleDataDir){
+            // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
+            rg_asprintf(&pluginFile, "%s/%s/%d/deps/%s/plugin/%s.so", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION, plugin, plugin);
+        }else{
+            pluginFile = RG_STRDUP(plugin);
         }
-        char* c = de->d_name;
-        char* sufix = strstr(c, ".");
-        if(!sufix){
-            continue;
-        }
-        if(strcmp(sufix, ".so") == 0){
-            // found so file
-            char* soPath;
-            rg_asprintf(&soPath, "%s/%s", GearsConfig_GetPluginsDirectory(), c);
-            RedisModule_Log(ctx, "notice", "Loading plugin from file %s", soPath);
-            void* handler = dlopen(soPath, RTLD_NOW|RTLD_LOCAL);
 
-            if (handler == NULL) {
-                RedisModule_Log(ctx, "warning", "Failed loading gears plugin %s, error='%s'", soPath, dlerror());
-                RG_FREE(soPath);
-                continue;
-            }
-            int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
-            if (onload == NULL) {
-                dlclose(handler);
-                RedisModule_Log(ctx, "warning",
-                    "Gears plugin %s does not export RedisGears_OnLoad() symbol",soPath);
-                RG_FREE(soPath);
-                continue;
-            }
-            if (onload(ctx) == REDISMODULE_ERR) {
-                dlclose(handler);
-                RedisModule_Log(ctx, "warning",
-                    "Module %s initialization failed", soPath);
-                RG_FREE(soPath);
-                return REDISMODULE_ERR;
-            }
-            RG_FREE(soPath);
+        void* handler = dlopen(pluginFile, RTLD_NOW|RTLD_LOCAL);
+        RG_FREE(pluginFile);
+
+        if (handler == NULL) {
+            RedisModule_Log(ctx, "warning", "Failed loading gears plugin %s, error='%s'", plugin, dlerror());
+            return REDISMODULE_ERR;
+        }
+        int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
+        if (onload == NULL) {
+            dlclose(handler);
+            RedisModule_Log(ctx, "warning",
+                "Gears plugin %s does not export RedisGears_OnLoad() symbol", plugin);
+            return REDISMODULE_ERR;
+        }
+        if (onload(ctx) == REDISMODULE_ERR) {
+            dlclose(handler);
+            RedisModule_Log(ctx, "warning",
+                "Plugin %s initialization failed", plugin);
+            return REDISMODULE_ERR;
         }
     }
-    closedir(dr);
 
     return REDISMODULE_OK;
 }
@@ -1040,10 +1081,14 @@ static int Command_DumpPlugins(RedisModuleCtx *ctx, RedisModuleString **argv, in
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    staticCtx = RedisModule_GetThreadSafeContext(NULL);
+
 	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s, compiled_os=%s",
 	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA,
 			REDISGEARS_OS_VERSION);
+
+	redisDummyCtx = RedisModule_GetThreadSafeContext(NULL);
 
     GearsGetRedisVersion();
     RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",

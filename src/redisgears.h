@@ -192,6 +192,8 @@ typedef struct StreamReaderCtx StreamReaderCtx;
 typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
 typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 typedef struct CommandReaderTriggerArgs CommandReaderTriggerArgs;
+typedef struct CommandReaderTriggerCtx CommandReaderTriggerCtx;
+
 typedef Record* (*RedisGears_KeysReaderReadRecordCallback)(RedisModuleCtx* rctx, RedisModuleString* key, RedisModuleKey* keyPtr, bool readValue, const char* event);
 
 StreamReaderCtx* MODULE_API_FUNC(RedisGears_StreamReaderCtxCreate)(const char* streamName, const char* streamId);
@@ -213,7 +215,15 @@ int MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetReadRecordCallback)(KeysR
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
 
 CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
+CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreateHook)(const char* hook, const char* prefix);
 void MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsFree)(CommandReaderTriggerArgs* args);
+
+/* will return trigger ctx that can be used to call the next command (the one that was overrided) */
+CommandReaderTriggerCtx* MODULE_API_FUNC(RedisGears_GetCommandReaderTriggerCtx)(ExecutionCtx* ectx);
+CommandReaderTriggerCtx* MODULE_API_FUNC(RedisGears_CommandReaderTriggerCtxGetShallowCopy)(CommandReaderTriggerCtx* crtCtx);
+void MODULE_API_FUNC(RedisGears_CommandReaderTriggerCtxFree)(CommandReaderTriggerCtx* crtCtx);
+/* This must be used when GIL is taken */
+RedisModuleCallReply* MODULE_API_FUNC(RedisGears_CommandReaderTriggerCtxNext)(CommandReaderTriggerCtx* crtCtx, RedisModuleString** argv, size_t argc);
 
 /**
  * Records handling
@@ -246,6 +256,7 @@ RecordType* MODULE_API_FUNC(RedisGears_RecordTypeCreate)(const char* name, size_
                                                          RecordFree);
 Record*  MODULE_API_FUNC(RedisGears_RecordCreate)(RecordType* type);
 
+Record* MODULE_API_FUNC(RedisGears_GetDummyRecord)();
 void MODULE_API_FUNC(RedisGears_FreeRecord)(Record* record);
 RecordType* MODULE_API_FUNC(RedisGears_RecordGetType)(Record* r);
 Record* MODULE_API_FUNC(RedisGears_KeyRecordCreate)();
@@ -261,6 +272,7 @@ void MODULE_API_FUNC(RedisGears_ListRecordAdd)(Record* listRecord, Record* r);
 Record* MODULE_API_FUNC(RedisGears_ListRecordGet)(Record* listRecord, size_t index);
 Record* MODULE_API_FUNC(RedisGears_ListRecordPop)(Record* listRecord);
 Record* MODULE_API_FUNC(RedisGears_StringRecordCreate)(char* val, size_t len);
+Record* MODULE_API_FUNC(RedisGears_ErrorRecordCreate)(char* val, size_t len);
 char* MODULE_API_FUNC(RedisGears_StringRecordGet)(Record* r, size_t* len);
 void MODULE_API_FUNC(RedisGears_StringRecordSet)(Record* r, char* val, size_t len);
 Record* MODULE_API_FUNC(RedisGears_DoubleRecordCreate)(double val);
@@ -396,8 +408,8 @@ int MODULE_API_FUNC(RedisGears_Limit)(FlatExecutionPlan* ctx, size_t offset, siz
 ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
 #define RGM_Run(ctx, mode, arg, callback, privateData, err) RedisGears_Run(ctx, mode, arg, callback, privateData, NULL, err)
 
-int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err);
-#define RGM_Register(ctx, mode, arg, err) RedisGears_Register(ctx, mode, arg, err)
+int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err, char** registrationId);
+#define RGM_Register(ctx, mode, arg, err) RedisGears_Register(ctx, mode, arg, err, NULL);
 
 int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void* arg);
 #define RGM_ForEach(ctx, name, arg) RedisGears_ForEach(ctx, #name, arg)
@@ -415,6 +427,7 @@ bool MODULE_API_FUNC(RedisGears_IsDone)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetRecordsLen)(ExecutionPlan* ctx);
 long long MODULE_API_FUNC(RedisGears_GetErrorsLen)(ExecutionPlan* ctx);
 const char* MODULE_API_FUNC(RedisGears_GetId)(ExecutionPlan* ctx);
+const char* MODULE_API_FUNC(RedisGears_FepGetId)(FlatExecutionPlan* ctx);
 Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
 Record* MODULE_API_FUNC(RedisGears_GetError)(ExecutionPlan* ctx, long long i);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
@@ -473,6 +486,10 @@ int MODULE_API_FUNC(RedisGears_RegisterPlugin)(const char* name, int version);
 const char* MODULE_API_FUNC(RedisGears_GetConfig)(const char* name);
 
 const int MODULE_API_FUNC(RedisGears_ExecutionPlanIsLocal)(ExecutionPlan* ep);
+
+const int MODULE_API_FUNC(RedisGears_GetVersion)();
+
+int MODULE_API_FUNC(RedisGears_IsCrdt)();
 
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
@@ -793,7 +810,12 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsSetReadRecordCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreateHook);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetCommandReaderTriggerCtx);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxGetShallowCopy);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxNext);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxFree);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);
@@ -804,7 +826,9 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetError);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, FepGetId);
 
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetDummyRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordTypeCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, FreeRecord);
@@ -822,6 +846,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ListRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ListRecordPop);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StringRecordCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ErrorRecordCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StringRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StringRecordSet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DoubleRecordCreate);
@@ -861,6 +886,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetMyHashTag);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionThreadPoolCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionThreadPoolDefine);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataGetShallowCopy);
@@ -885,6 +911,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterPlugin);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionPlanIsLocal);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetVersion);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsCrdt);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

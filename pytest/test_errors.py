@@ -145,7 +145,7 @@ def testCommandReaderWithRun(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").run()').error().contains('reader do not support run')
 
 def testCommandReaderWithBadArgs(env):
-    env.expect('rg.pyexecute', 'GB("CommandReader").register("test")').error().contains('trigger argument was not given')
+    env.expect('rg.pyexecute', 'GB("CommandReader").register("test")').error().contains('no trigger or hook argument was given')
     env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger=1)').error().contains('trigger argument is not string')
 
 def testCommandReaderRegisterSameCommand(env):
@@ -335,3 +335,105 @@ class testGetExecutionErrorReporting:
             self.env.assertContains("name 'notexists' is not defined", error)
         self.env.cmd('RG.DROPEXECUTION', id)
         self.env.cmd('RG.CONFIGSET', 'PythonAttemptTraceback', 1)
+
+def testCommandReaderWithPrefixRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="test", keyprefix="foo")').error().contains('Can not override an unexisting command')
+
+def testCommandReaderOverrideCommandWithMovableKeysRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="xread", keyprefix="foo")').error().contains('Can not override a command with moveable keys by key prefix')
+
+def testCommandReaderOverrideMultiRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="multi")').error().contains('Can not override a command which are not allowed inside a script')
+    
+def testCommandReaderOverrideExecRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="exec")').error().contains('Can not override a command which are not allowed inside a script')
+
+def testCommandReaderOverrideBlpopRaiseError(env):
+    env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="blpop")').error().contains('Can not override a command which are not allowed inside a script')
+
+def testCallNextOnMapWrongScopes(env):
+    res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda r: call_next(r)).run()")
+    env.assertIn('Can not get CommandHook ctx', res[1][0])
+
+def testCallNextOnFilterWrongScopes(env):
+    res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').filter(lambda r: call_next(r)).run()")
+    env.assertIn('Can not get CommandHook ctx', res[1][0])
+
+def testCallNextOnForeachWrongScopes(env):
+    res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').foreach(lambda r: call_next(r)).run()")
+    env.assertIn('Can not get CommandHook ctx', res[1][0])
+
+def testCallNextOnFlatmapWrongScopes(env):
+    res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').flatmap(lambda r: call_next(r)).run()")
+    env.assertIn('Can not get CommandHook ctx', res[1][0])
+
+def testCallNextOnAccumulateWrongScopes(env):
+    res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').accumulate(lambda a,r: call_next(r)).run()")
+    env.assertIn('Can not get CommandHook ctx', res[1][0])
+
+def testCallNextOnAccumulatebyWrongScopes(env):
+    res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').groupby(lambda x: x, lambda k,a,r: call_next(r)).run()")
+    env.assertIn('Can not get CommandHook ctx', res[1][0])
+
+def testCallNextOnWrongScopes(env):
+    env.expect('rg.pyexecute', 'call_next()').error().contains('Can not get CommandHook ctx')
+
+def testCallNextOnCoroWrongScope(env):
+    script = '''
+import asyncio
+
+async def doTest(x):
+    return call_next()
+
+GB("ShardsIDReader").map(doTest).run()
+    '''
+
+    res = env.cmd('rg.pyexecute', script)
+    err = res[1][0]
+    env.assertContains(err, 'Can not get CommandHook ctx')
+
+
+def testAwaitIsNotAllowedInsideAtomicBlock(env):
+    script = '''
+import asyncio
+
+async def doTest(x):
+    with atomic():
+        return await asyncio.sleep(1)
+
+GB("ShardsIDReader").map(doTest).run()
+    '''
+
+    res = env.cmd('rg.pyexecute', script)
+    err = res[1][0]
+    env.assertContains(err, 'await is not allow inside atomic block')
+
+def testAwaitIsNotAllowedInsideSyncExecution(env):
+    script = '''
+import asyncio
+
+async def doTest(x):
+    await asyncio.sleep(1)
+    return x
+
+GB("CommandReader").map(doTest).register(trigger='test', mode='sync')
+    '''
+
+    env.cmd('rg.pyexecute', script)
+    env.expect('rg.trigger', 'test').error().contains('Can not create gearsFuture on sync execution')
+
+def testCommandOverrideWithMoreThenSingleResultReturnError(env):
+    script = '''
+GB("CommandReader").flatmap(lambda x: x).register(hook='hset', mode='sync')
+    '''
+
+    env.cmd('rg.pyexecute', script)
+    env.expect('hset', 'h', 'foo', 'bar').error().contains('Command hook must return exactly one result')
+
+def testCannotOverrideNoneSyncRegisration(env):
+    script = '''
+GB("CommandReader").flatmap(lambda x: x).register(hook='hset')
+    '''
+
+    env.expect('rg.pyexecute', script).equal('OK')
+    env.expect('rg.pyexecute', script).error().contains('Can not override a none sync registration')

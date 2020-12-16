@@ -287,10 +287,23 @@ typedef struct FlatExecutionPlan{
     ExecutionPlan* executionPool[EXECUTION_POOL_SIZE];
     size_t executionPoolSize;
     Gears_Buffer* serializedFep;
+
+    /* Call on each shard when execution created from this FEP start to run for the first time */
     FlatBasicStep onExecutionStartStep;
+
+    /* Call on each shard when execution is registered, also when it registered when loaded from rdb or aof */
     FlatBasicStep onRegisteredStep;
+
+    /* Call on each shard when execution unregistered */
     FlatBasicStep onUnregisteredStep;
+
+    /* Call on each shard when execution is unpaused, pause could happened because
+     * the execution is waiting for results from other shards or because the execution
+     * is waiting for records that are async processed by the user (maybe on another thread
+     * or process)
+     */
     FlatBasicStep onUnpausedStep;
+
     long long executionMaxIdleTime;
     ExecutionThreadPool* executionThreadPool;
     FlatExecutionFlags flags;
@@ -303,6 +316,7 @@ typedef struct ExecutionCtx{
     char* err;
     Record* originRecord;
     Record** actualPlaceHolder;
+    Record* asyncRecordCreated;
 }ExecutionCtx;
 
 #define ExecutionCtx_Initialize(c, e, s) (ExecutionCtx){ \
@@ -312,6 +326,7 @@ typedef struct ExecutionCtx{
         .err = NULL,\
         .originRecord = NULL, \
         .actualPlaceHolder = NULL, \
+        .asyncRecordCreated = NULL, \
     }
 
 FlatExecutionPlan* FlatExecutionPlan_New();
@@ -324,10 +339,10 @@ void FlatExecutionPlan_SetPrivateData(FlatExecutionPlan* fep, const char* type, 
 void* FlatExecutionPlan_GetPrivateData(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetDesc(FlatExecutionPlan* fep, const char* desc);
 void FlatExecutionPlan_AddForEachStep(FlatExecutionPlan* fep, char* forEach, void* writerArg);
-void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, char* onStartCallback, void* onStartArg);
-void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, char* onSUnpausedCallback, void* onUnpausedArg);
-void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
-void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, char* onRegisteredCallback, void* onRegisteredArg);
+void FlatExecutionPlan_SetOnStartStep(FlatExecutionPlan* fep, const char* onStartCallback, void* onStartArg);
+void FlatExecutionPlan_SetOnUnPausedStep(FlatExecutionPlan* fep, const char* onSUnpausedCallback, void* onUnpausedArg);
+void FlatExecutionPlan_SetOnRegisteredStep(FlatExecutionPlan* fep, const char* onRegisteredCallback, void* onRegisteredArg);
+void FlatExecutionPlan_SetOnUnregisteredStep(FlatExecutionPlan* fep, const char* onRegisteredCallback, void* onRegisteredArg);
 void FlatExecutionPlan_AddAccumulateStep(FlatExecutionPlan* fep, char* accumulator, void* arg);
 void FlatExecutionPlan_AddMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
 void FlatExecutionPlan_AddFlatMapStep(FlatExecutionPlan* fep, const char* callbackName, void* arg);
@@ -348,6 +363,7 @@ long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
 void FlatExecutionPlan_SetThreadPool(FlatExecutionPlan* fep, ExecutionThreadPool* tp);
+FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep);
 
 void ExecutionPlan_Initialize();
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);

@@ -15,6 +15,8 @@
 #include "utils/arr_rm_alloc.h"
 #include "redisgears.h"
 
+RedisModuleCtx *staticCtx = NULL;
+
 static char* shardUniqueId = NULL;
 
 RedisVersion currVesion;

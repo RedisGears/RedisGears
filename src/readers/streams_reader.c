@@ -13,8 +13,6 @@
 #define STREAM_REGISTRATION_INIT_SIZE 10
 Gears_list* streamsRegistration = NULL;
 
-RedisModuleCtx *staticCtx = NULL;
-
 typedef struct StreamId{
         long first;
         long second;
@@ -536,9 +534,13 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
         // nothing to ack on
         return;
     }
+
     RedisModuleCallReply* reply = RedisModule_Call(staticCtx, "XACK", "!ccv", readerCtx->streamKeyName, readerCtx->consumerGroup, readerCtx->batchIds, (size_t)array_len(readerCtx->batchIds));
     bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed acking messages", "warning");
-    RedisModule_Assert(ret);
+    if(!ret){
+        // we all not crash on failure, someone is messing up with the stream.
+        return;
+    }
 
     RedisModule_FreeCallReply(reply);
 
@@ -546,8 +548,15 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
 
         reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
         ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed XLEN messages", "warning");
-        RedisModule_Assert(ret);
-        RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
+        if(!ret){
+            // we all not crash on failure, someone is messing up with the stream.
+            return;
+        }
+        if(RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_INTEGER){
+            RedisModule_Log(NULL, "warning", "bad reply on xlen, probably someone modified the stream while we are working on it.");
+            RedisModule_FreeCallReply(reply);
+            return;
+        }
 
         long long streamLen = RedisModule_CallReplyInteger(reply);
 
@@ -555,13 +564,16 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
 
         long long streamLenForTrim = streamLen - array_len(readerCtx->batchIds);
         if(streamLenForTrim < 0){
-            RedisModule_Log(NULL, "warning", "try to trim stream to negative len, fatal!!");
-            RedisModule_Assert(false);
+            RedisModule_Log(NULL, "warning", "try to trim stream to negative len, probably someone modified the stream while we are working on it.");
+            return;
         }
 
         reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", streamLenForTrim);
         ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed Trim messages", "warning");
-        RedisModule_Assert(ret);
+        if(!ret){
+            // we all not crash on failure, someone is messing up with the stream.
+            return;
+        }
 
         RedisModule_FreeCallReply(reply);
 
@@ -699,6 +711,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         //    processing.
         //
         // It might be possible to solve those issues but we decide not to handle with them currently.
+
         Reader* reader = ExecutionPlan_GetReader(ctx);
         StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimStream);
         StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
@@ -723,6 +736,7 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         }
         return;
     }
+    RedisModule_Assert(srtctx->mode != ExecutionModeSync || EPIsFlagOn(ep, EFDone));
     if(EPIsFlagOn(ep, EFIsLocal) && EPIsFlagOff(ep, EFDone)){
         // execution is local
         // If execution is SYNC it will be added to localDoneExecutions on done
@@ -860,14 +874,15 @@ static bool StreamReader_IsStream(RedisModuleKey *kp){
 }
 
 static void* StreamReader_ScanForStreams(void* pd){
+    RedisGears_LockHanlderRegister();
     StreamReaderTriggerCtx* srctx = pd;
     long long cursor = 0;
     do{
         // we do not use the lockhandler cause this thread is temporary
         // and we do not want to allocate any unneeded extra data.
-        RedisModule_ThreadSafeContextLock(staticCtx);
+        LockHandler_Acquire(staticCtx);
         RedisModuleCallReply *reply = RedisModule_Call(staticCtx, "SCAN", "lcccc", cursor, "COUNT", "10000", "MATCH", srctx->args->streamPrefix);
-        RedisModule_ThreadSafeContextUnlock(staticCtx);
+        LockHandler_Release(staticCtx);
 
         bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed scanning keys on background", "warning");
         RedisModule_Assert(ret);
@@ -895,10 +910,10 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
 
-            RedisModule_ThreadSafeContextLock(staticCtx);
+            LockHandler_Acquire(staticCtx);
             RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
             if(kp == NULL){
-                RedisModule_ThreadSafeContextUnlock(staticCtx);
+                LockHandler_Release(staticCtx);
                 continue;
             }
 
@@ -916,15 +931,15 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModule_FreeString(staticCtx, key);
             RedisModule_CloseKey(kp);
 
-            RedisModule_ThreadSafeContextUnlock(staticCtx);
+            LockHandler_Release(staticCtx);
         }
 
         RedisModule_FreeCallReply(reply);
     }while(cursor != 0);
 
-    RedisModule_ThreadSafeContextLock(staticCtx);
+    LockHandler_Acquire(staticCtx);
     StreamReaderTriggerCtx_Free(srctx);
-    RedisModule_ThreadSafeContextUnlock(staticCtx);
+    LockHandler_Release(staticCtx);
 
     return NULL;
 }
@@ -932,7 +947,6 @@ static void* StreamReader_ScanForStreams(void* pd){
 static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err){
     if(!streamsRegistration){
         streamsRegistration = Gears_listCreate();
-        staticCtx = RedisModule_GetThreadSafeContext(NULL);
         if(RedisModule_SubscribeToKeyspaceEvents(staticCtx, REDISMODULE_NOTIFY_STREAM, StreamReader_OnKeyTouched) != REDISMODULE_OK){
             RedisModule_Log(staticCtx, "warning", "could not register key space even.");
         }
