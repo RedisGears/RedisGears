@@ -19,6 +19,7 @@ int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int Command_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
 int Command_Init();
 

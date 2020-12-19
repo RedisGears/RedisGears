@@ -11,9 +11,6 @@
 #include "redisgears.h"
 #include "utils/buffer.h"
 #include "execution_plan.h"
-#ifdef WITHPYTHON
-#include <Python.h>
-#endif
 
 typedef struct RecordType{
     size_t id;

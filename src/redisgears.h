@@ -287,6 +287,7 @@ Record* MODULE_API_FUNC(RedisGears_HashSetRecordCreate)();
 int MODULE_API_FUNC(RedisGears_HashSetRecordSet)(Record* r, char* key, Record* val);
 Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, char* key);
 Arr(char*) MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r);
+int MODULE_API_FUNC(RedisGears_RecordSendReply)(Record* record, RedisModuleCtx* rctx);
 
 /**
  * Register operations functions
@@ -458,6 +459,9 @@ void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionCtx* ectx);
 void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionCtx* ctx, void* PD);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecutionFromCtx)(ExecutionCtx* ectx);
 
+typedef void (*AbortCallback)(void* abortPD);
+void MODULE_API_FUNC(RedisGears_SetAbortCallback)(ExecutionCtx* ctx, AbortCallback abort, void* abortPD);
+
 bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
 
 const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
@@ -475,6 +479,7 @@ int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 void MODULE_API_FUNC(RedisGears_ReturnResultsAndErrors)(ExecutionPlan* ep, RedisModuleCtx *ctx);
 
 void MODULE_API_FUNC(RedisGears_GetShardUUID)(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
+const char* MODULE_API_FUNC(RedisGears_GetShardIdentifier)();
 
 void MODULE_API_FUNC(RedisGears_LockHanlderRegister)();
 void MODULE_API_FUNC(RedisGears_LockHanlderAcquire)(RedisModuleCtx* ctx);
@@ -488,8 +493,22 @@ const char* MODULE_API_FUNC(RedisGears_GetConfig)(const char* name);
 const int MODULE_API_FUNC(RedisGears_ExecutionPlanIsLocal)(ExecutionPlan* ep);
 
 const int MODULE_API_FUNC(RedisGears_GetVersion)();
+const char* MODULE_API_FUNC(RedisGears_GetVersionStr)();
 
 int MODULE_API_FUNC(RedisGears_IsCrdt)();
+int MODULE_API_FUNC(RedisGears_IsEnterprise)();
+
+int MODULE_API_FUNC(RedisGears_ASprintf)(char **__ptr, const char *__restrict __fmt, ...);
+char* MODULE_API_FUNC(RedisGears_ArrToStr)(void** arr, size_t len, char*(*toStr)(void*));
+
+int MODULE_API_FUNC(RedisGears_IsClusterMode)();
+const char* MODULE_API_FUNC(RedisGears_GetNodeIdByKey)(const char* key);
+int MODULE_API_FUNC(RedisGears_ClusterIsMyId)(const char* id);
+int MODULE_API_FUNC(RedisGears_ClusterIsInitialized)();
+
+typedef void* (*SaveState)();
+typedef void (*RestoreState)(void*);
+void MODULE_API_FUNC(RedisGears_AddLockStateHandler)(SaveState save, RestoreState restore);
 
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
@@ -861,6 +880,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordSet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGetAllKeys);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordSendReply);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetAbortCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
@@ -892,6 +913,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataGetShallowCopy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ReturnResultsAndErrors);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetShardUUID);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetShardIdentifier);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, LockHanlderRegister);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, LockHanlderAcquire);
@@ -912,7 +934,17 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionPlanIsLocal);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetVersion);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetVersionStr);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsCrdt);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsEnterprise);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ASprintf);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ArrToStr);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsClusterMode);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetNodeIdByKey);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ClusterIsMyId);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ClusterIsInitialized);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddLockStateHandler);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

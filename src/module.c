@@ -6,9 +6,6 @@
  */
 
 
-#ifdef WITHPYTHON
-#include "redisgears_python.h"
-#endif
 #include "redismodule.h"
 #include "version.h"
 #include "mgmt.h"
@@ -20,9 +17,7 @@
 #include "utils/buffer.h"
 #include "record.h"
 #include "commands.h"
-#include "redisai.h"
 #include "config.h"
-#include "globals.h"
 #include "readers/keys_reader.h"
 #include "readers/streams_reader.h"
 #include "readers/command_reader.h"
@@ -631,8 +626,12 @@ static const int RG_ExecutionPlanIsLocal(ExecutionPlan* ep) {
     return EPIsFlagOn(ep, EFIsLocal);
 }
 
-static const int RG_GetVersion(ExecutionPlan* ep) {
+static const int RG_GetVersion() {
     return REDISGEARS_MODULE_VERSION;
+}
+
+static const char* RG_GetVersionStr(){
+    return REDISGEARS_VERSION_STR;
 }
 
 static int RG_RegisterPlugin(const char* name, int version) {
@@ -693,6 +692,54 @@ FlatExecutionPlan* RG_GetFep(ExecutionPlan* ep){
 
 int RG_IsCrdt(){
     return gearsIsCrdt;
+}
+
+int RG_IsEnterprise(){
+    return IsEnterprise();
+}
+
+static const char* RG_GetShardIdentifier(){
+    return GetShardUniqueId();
+}
+
+static int RG_ASprintf(char **__ptr, const char *__restrict __fmt, ...){
+    va_list ap;
+    va_start(ap, __fmt);
+
+    int res = rg_vasprintf(__ptr, __fmt, ap);
+
+    va_end(ap);
+
+    return res;
+}
+
+static char* RG_ArrToStr(void** arr, size_t len, char*(*toStr)(void*)){
+    return ArrToStr(arr, len, toStr);
+}
+
+static int RG_IsClusterMode(){
+    return Cluster_IsClusterMode();
+}
+
+static const char* RG_GetNodeIdByKey(const char* key){
+    return Cluster_GetNodeIdByKey(key);
+}
+
+static int RG_ClusterIsMyId(const char* id){
+    return Cluster_IsMyId(id);
+}
+
+static int RG_ClusterIsInitialized(){
+    return Cluster_IsInitialized();
+}
+
+static void RG_AddLockStateHandler(SaveState save, RestoreState restore){
+    LockHandler_AddStateHanlder(save, restore);
+}
+
+static void RG_SetAbortCallback(ExecutionCtx *ctx, AbortCallback abort, void* abortPD){
+    ctx->ep->abort = abort;
+    ctx->ep->abortPD = abortPD;
 }
 
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
@@ -926,6 +973,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(HashSetRecordSet, ctx);
     REGISTER_API(HashSetRecordGet, ctx);
     REGISTER_API(HashSetRecordGetAllKeys, ctx);
+    REGISTER_API(RecordSendReply, ctx);
 
     REGISTER_API(GetTotalDuration, ctx);
     REGISTER_API(GetReadDuration, ctx);
@@ -978,7 +1026,19 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
     REGISTER_API(GetVersion, ctx);
+    REGISTER_API(GetVersionStr, ctx);
     REGISTER_API(IsCrdt, ctx);
+    REGISTER_API(IsEnterprise, ctx);
+    REGISTER_API(GetShardIdentifier, ctx);
+    REGISTER_API(ASprintf, ctx);
+    REGISTER_API(ArrToStr, ctx);
+
+    REGISTER_API(IsClusterMode, ctx);
+    REGISTER_API(GetNodeIdByKey, ctx);
+    REGISTER_API(ClusterIsMyId, ctx);
+    REGISTER_API(ClusterIsInitialized, ctx);
+    REGISTER_API(AddLockStateHandler, ctx);
+    REGISTER_API(SetAbortCallback, ctx);
 
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
@@ -1012,18 +1072,6 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
     Cluster_SendMsgM(NULL, RG_NetworkTest, TEST_MSG, strlen(TEST_MSG));
     RedisModule_ReplyWithSimpleString(ctx, "OK");
     return REDISMODULE_OK;
-}
-
-static void RedisGears_OnModuleLoad(struct RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
-    if(subevent == REDISMODULE_SUBEVENT_MODULE_LOADED){
-        RedisModule_Log(ctx, "notice", "Got module load event, trying to reinitialize RedisAI api");
-        if(RedisAI_Initialize(ctx) != REDISMODULE_OK){
-            RedisModule_Log(ctx, "warning", "could not initialize RediAI api, running without AI support.");
-        }else{
-            RedisModule_Log(ctx, "notice", "RedisAI api loaded successfully.");
-            globals.redisAILoaded = true;
-        }
-    }
 }
 
 static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
@@ -1121,13 +1169,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     	return REDISMODULE_ERR;
     }
 
-    if(RedisAI_Initialize(ctx) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "could not initialize RediAI api, running without AI support.");
-    }else{
-        RedisModule_Log(ctx, "notice", "RedisAI api loaded successfully.");
-        globals.redisAILoaded = true;
-    }
-
     Record_Initialize();
 
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
@@ -1158,12 +1199,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_Log(ctx, "warning", "failed create RedisGear DataType");
         return REDISMODULE_ERR;
     }
-
-#ifdef WITHPYTHON
-    if(RedisGearsPy_Init(ctx) != REDISMODULE_OK){
-        return REDISMODULE_ERR;
-    }
-#endif
 
     if(Command_Init() != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "could not initialize commands.");
@@ -1225,7 +1260,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rg.getexecution", ExecutionPlan_ExecutionGet, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rg.getexecution", Command_ExecutionGet, "readonly", 0, 0, 0) != REDISMODULE_OK) {
 		RedisModule_Log(ctx, "warning", "could not register command rg.getexecution");
 		return REDISMODULE_ERR;
 	}
@@ -1260,8 +1295,6 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
-    RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_ModuleChange, RedisGears_OnModuleLoad);
-
     plugins = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     if (RedisGears_InitializePlugins(ctx) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "RedisGears plugin initialization failed");
@@ -1281,7 +1314,7 @@ static void __attribute__((destructor)) RedisGears_Clean(void) {
     }
     RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
     LockHandler_Acquire(ctx);
-    RedisGearsPy_Clean();
+//    RedisGearsPy_Clean();
     ExecutionPlan_Clean();
     LockHandler_Release(ctx);
     RedisModule_FreeThreadSafeContext(ctx);

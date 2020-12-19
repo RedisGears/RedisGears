@@ -97,11 +97,8 @@ SRCDIR=src
 _SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
 	mgmt.c readers/keys_reader.c utils/thpool.c mappers.c \
 	record.c cluster.c commands.c readers/streams_reader.c \
-	globals.c config.c lock_handler.c module_init.c slots_table.c common.c readers/command_reader.c \
+	config.c lock_handler.c module_init.c slots_table.c common.c readers/command_reader.c \
 	readers/shardid_reader.c crc16.c
-ifeq ($(WITHPYTHON),1)
-_SOURCES += redisgears_python.c
-endif
 ifeq ($(DEBUG),1)
 _SOURCES += debug.c
 endif
@@ -150,6 +147,8 @@ endif
 #----------------------------------------------------------------------------------------------
 # cpython-related definitions
 #----------------------------------------------------------------------------------------------
+
+
 
 ifeq ($(WITHPYTHON), 1)
 
@@ -224,14 +223,6 @@ include $(MK)/rules
 $(BINDIR)/%.o: $(SRCDIR)/%.c
 	@echo Compiling $<...
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
-
-$(SRCDIR)/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h
-
-$(BINDIR)/GearsBuilder.auto.h: $(SRCDIR)/GearsBuilder.py
-	$(SHOW)xxd -i $< > $@
-
-$(BINDIR)/cloudpickle.auto.h: $(SRCDIR)/cloudpickle.py
-	$(SHOW)xxd -i $< > $@
 
 #----------------------------------------------------------------------------------------------
 
@@ -419,3 +410,9 @@ else
 endif
 
 #----------------------------------------------------------------------------------------------
+
+gears_python:
+	make -C ./plugins/python CPYTHON_PATH=$(abspath $(CPYTHON_BINROOT))/
+
+clean_gears_python:
+	make clean -C ./plugins/python

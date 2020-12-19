@@ -5,7 +5,6 @@
 #include "execution_plan.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
-#include "globals.h"
 #include "lock_handler.h"
 #include "record.h"
 #include "config.h"
@@ -13,6 +12,7 @@
 #include "version.h"
 
 #include <assert.h>
+#include <ctype.h>
 
 #define KEYS_NAME_FIELD "key_name"
 #define KEYS_SPEC_NAME "keys_spec"
