@@ -27,7 +27,7 @@ typedef struct PythonConfig{
 
 PythonConfig pythonConfig;
 
-RedisModuleCtx *staticCtx = NULL;
+static RedisModuleCtx *staticCtx = NULL;
 
 #define PY_OBJECT_TYPE_VERSION 1
 
@@ -5111,6 +5111,7 @@ static void InitializeGlobalPaths(){
     if(moduleDataDir){
         // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
         RedisGears_ASprintf(&PYINSTALL_DIR, "%s/%s/%d/deps/", moduleDataDir, "rg", RedisGears_GetVersion());
+        RedisGears_ASprintf(&PYENV_DIR, "%s/gears_python/python3_%s/", PYINSTALL_DIR, RedisGears_GetVersionStr());
     }else{
         // try build path first if its exists
 #ifdef CPYTHON_PATH
@@ -5129,8 +5130,8 @@ static void InitializeGlobalPaths(){
         RedisGears_ASprintf(&PYINSTALL_DIR, "%s/", pythonConfig.pythonInstallationDir);
 #endif
 
+        RedisGears_ASprintf(&PYENV_DIR, "%s/python3_%s/", PYINSTALL_DIR, RedisGears_GetVersionStr());
     }
-    RedisGears_ASprintf(&PYENV_DIR, "%s/python3_%s/", PYINSTALL_DIR, RedisGears_GetVersionStr());
     RedisGears_ASprintf(&PYENV_HOME_DIR, "%s/.venv/", PYENV_DIR);
     RedisGears_ASprintf(&PYENV_BIN_DIR, "%s/bin", PYENV_HOME_DIR);
     RedisGears_ASprintf(&PYENV_ACTIVATE, "%s/activate_this.py", PYENV_BIN_DIR);
@@ -5680,6 +5681,26 @@ static void Python_RestorThread(void* s){
     PyEval_RestoreThread(s);
 }
 
+static int Python_GetConfig(const char* key, RedisModuleCtx* ctx){
+    for(PythonConfigValDef* def = configDefs ; def->name ; ++def){
+        if(strcmp(def->name, key) == 0){
+            switch(def->type){
+            case PythonConfigType_Bool:
+            case PythonConfigType_Int:
+                RedisModule_ReplyWithLongLong(ctx, *(int*)def->ptr);
+                break;
+            case PythonConfigType_Str:
+                RedisModule_ReplyWithCString(ctx, *(char**)def->ptr);
+                break;
+            default:
+                RedisModule_Assert(false);
+            }
+            return REDISMODULE_OK;
+        }
+    }
+    return REDISMODULE_ERR;
+}
+
 static int Python_BeforeConfigChange(const char* key, const char* val, char** err){
     for(PythonConfigValDef* def = configDefs ; def->name ; ++def){
         if(strcmp(def->name, key) == 0){
@@ -5734,7 +5755,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     RedisModule_Log(staticCtx, "Notice", "Initializing " REDISGEARSPYTHON_PLUGIN_NAME " version %d.%d.%d", REDISGEARSPYTHON_VERSION_MAJOR, REDISGEARSPYTHON_VERSION_MINOR, REDISGEARSPYTHON_VERSION_PATCH);
 
     RedisGears_AddLockStateHandler(Python_SaveThread, Python_RestorThread);
-    RedisGears_AddConfigHooks(Python_BeforeConfigChange, NULL);
+    RedisGears_AddConfigHooks(Python_BeforeConfigChange, NULL, Python_GetConfig);
 
     if(PythonConfig_InitConfig(ctx) != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "Failed initialize python configuration");

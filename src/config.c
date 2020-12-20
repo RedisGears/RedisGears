@@ -14,6 +14,7 @@
 typedef struct ConfigHook{
     BeforeConfigSet before;
     AfterConfigSet after;
+    GetConfig getConfig;
 }ConfigHook;
 
 ConfigHook* configHooks;
@@ -381,7 +382,7 @@ static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
         const char* configName = RedisModule_StringPtrLen(arg, NULL);
         bool found = false;
         for (Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++) {
-            if (strcasecmp(configName, val->name) == 0) {
+            if (strcmp(configName, val->name) == 0) {
                 const ConfigVal* confVal = val->getter(configName);
                 GearsConfig_ReplyWithConfVal(ctx, confVal);
                 found = true;
@@ -390,14 +391,24 @@ static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
             }
         }
         if (!found) {
-            error = true;
+            bool foundInPlugin = false;
             ++n_values;
-            char* valCStr = Gears_dictFetchValue(Gears_ExtraConfig, configName);
-            if(valCStr){
-                RedisModule_ReplyWithStringBuffer(ctx, valCStr, strlen(valCStr));
-            }else{
-                config_error(ctx, "Unsupported config parameter: %s", configName, true);
+            for(size_t i = 0 ; i < array_len(configHooks) ; ++i){
+                if(configHooks[i].getConfig){
+                    char* err = NULL;
+                    if(configHooks[i].getConfig(configName, ctx) == REDISMODULE_OK){
+                        // pluging took responsibility of the config
+                        foundInPlugin = true;
+                        break;
+                    }
+                }
             }
+
+            if(!foundInPlugin){
+                config_error(ctx, "Unsupported config parameter: %s", configName, true);
+                error = true;
+            }
+
         }
     }
 
@@ -493,8 +504,8 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
         } \
     } while (false)
 
-void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after){
-    ConfigHook hook = {.before = before, .after = after,};
+void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig){
+    ConfigHook hook = {.before = before, .after = after, .getConfig = getConfig};
     configHooks = array_append(configHooks, hook);
 }
 

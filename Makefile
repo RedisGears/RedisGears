@@ -126,6 +126,7 @@ CC_FLAGS += \
 
 TARGET=$(BINROOT)/redisgears.so
 TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
+GEARS_PYTHON_PLUGINPATH=$(BINROOT)/plugins/python/gears_python.so
 
 ifeq ($(VALGRIND),1)
 CC_FLAGS += -DVALGRIND
@@ -341,7 +342,7 @@ $(info *** HIREDIS=$(HIREDIS))
 $(info *** MISSING_DEPS=$(MISSING_DEPS))
 endif
 
-clean:
+clean: clean_gears_python
 ifeq ($(ALL),1)
 	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(TARGET.snapshot) $(notdir $(TARGET)) $(BINROOT)/redislabs
 else
@@ -359,9 +360,9 @@ artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot): $(TARGET)
 	@echo Packing module...
 	$(SHOW)RAMP=1 DEPS=0 VARIANT=$(RAMP_VARIANT) OS_DESC=$(OS_VERSION_DESC) ./pack.sh $(TARGET)
 
-artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX)
+artifacts/release/$(DEPS_TAR.release) artifacts/snapshot/$(DEPS_TAR.snapshot): $(CPYTHON_PREFIX) gears_python
 	@echo Packing dependencies...
-	$(SHOW)RAMP=0 DEPS=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) OS_DESC=$(OS_VERSION_DESC) ./pack.sh $(TARGET)
+	$(SHOW)RAMP=0 DEPS=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) GEARS_PYTHON_PLUGIN=$(abspath $(GEARS_PYTHON_PLUGINPATH)) OS_DESC=$(OS_VERSION_DESC) ./pack.sh $(TARGET)
 
 ramp_pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 
@@ -370,7 +371,7 @@ pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
 
 verify-packs:
 	@set -e ;\
-	MOD=`./deps/readies/bin/redis-cmd --loadmodule $(TARGET) -- RG.CONFIGGET dependenciesSha256 2> /tmp/redisgears-sha.err` ;\
+	MOD=`./deps/readies/bin/redis-cmd --loadmodule $(TARGET) Plugin $(GEARS_PYTHON_PLUGINPATH) -- RG.CONFIGGET DependenciesSha256 2> /tmp/redisgears-sha.err` ;\
 	if [[ -z $MOD ]]; then \
 		>2& cat /tmp/redisgears-sha.err ;\
 		exit 1 ;\
@@ -412,7 +413,7 @@ endif
 #----------------------------------------------------------------------------------------------
 
 gears_python:
-	make -C ./plugins/python CPYTHON_PATH=$(abspath $(CPYTHON_BINROOT))/
+	make -C ./plugins/python CPYTHON_PATH=$(abspath $(CPYTHON_BINROOT))/ BINROOT=$(abspath $(BINROOT))
 
 clean_gears_python:
-	make clean -C ./plugins/python
+	make clean -C ./plugins/python BINROOT=$(abspath $(BINROOT))

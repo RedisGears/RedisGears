@@ -740,8 +740,8 @@ static void RG_SetAbortCallback(ExecutionCtx *ctx, AbortCallback abort, void* ab
     ctx->ep->abortPD = abortPD;
 }
 
-static void RG_AddConfigHooks(BeforeConfigSet before, AfterConfigSet after){
-    GearsConfig_AddHooks(before, after);
+static void RG_AddConfigHooks(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig){
+    GearsConfig_AddHooks(before, after, getConfig);
 }
 
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){

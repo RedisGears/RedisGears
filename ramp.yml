@@ -37,7 +37,7 @@ add_command:
     - {"command_arity": -1, "command_name": "rg.vec_sim", "first_key": 0, "flags": ["readonly"], "last_key": 0, "step": 0}
     - {"command_arity": -1, "command_name": "rg.vec_add", "first_key": 1, "flags": ["write", "deny-oom"], "last_key": 1, "step": 1}
 dependencies:
-    {{GEARS_PYTHON3_NAME}}:
+    gears_python:
         url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_PYTHON3_FNAME}}
         sha256: {{GEARS_PYTHON3_SHA256}}
     gears_jvm:

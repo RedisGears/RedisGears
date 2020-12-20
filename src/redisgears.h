@@ -512,7 +512,8 @@ void MODULE_API_FUNC(RedisGears_AddLockStateHandler)(SaveState save, RestoreStat
 
 typedef int (*BeforeConfigSet)(const char* key, const char* val, char** err);
 typedef void (*AfterConfigSet)(const char* key, const char* val);
-void MODULE_API_FUNC(RedisGears_AddConfigHooks)(BeforeConfigSet before, AfterConfigSet after);
+typedef int (*GetConfig)(const char* key, RedisModuleCtx* ctx);
+void MODULE_API_FUNC(RedisGears_AddConfigHooks)(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig);
 
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\

@@ -11,7 +11,7 @@
 #include "redismodule.h"
 #include "redisgears.h"
 
-void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after);
+void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig);
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc);
 long long GearsConfig_GetMaxExecutions();
 long long GearsConfig_GetMaxExecutionsPerRegistration();

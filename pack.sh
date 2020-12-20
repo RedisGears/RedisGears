@@ -31,6 +31,7 @@ if [[ $1 == --help || $1 == help ]]; then
 		BRANCH=name         Branch name for snapshot packages
 		GITSHA=1            Append Git SHA to shapshot package names
 		CPYTHON_PREFIX=dir  Python install dir
+		GEARS_PYTHON_PLUGIN=path path the gears_python.so
 
 	END
 	exit 0
@@ -93,6 +94,10 @@ pack_deps() {
 		>&2 echo "$0: $CPYTHON_PREFIX is not defined"
 		exit 1
 	fi
+	if [[ -z $GEARS_PYTHON_PLUGIN ]]; then
+		>&2 echo "$0: $GEARS_PYTHON_PLUGIN is not defined"
+		exit 1
+	fi
 	if [[ ! -d $CPYTHON_PREFIX ]]; then
 		>&2 echo "$0: $CPYTHON_PREFIX does not exist"
 		exit 1
@@ -103,7 +108,7 @@ pack_deps() {
 	cd $CPYTHON_PREFIX
 	# find . -name __pycache__ -type d -exec rm -rf {} \; 2>> /dev/null || true
 	export SEMVER
-	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,python3_$SEMVER/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
+	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,./python3_$SEMVER/," --transform "s,${GEARS_PYTHON_PLUGIN:1},./plugin/gears_python.so," ./ $GEARS_PYTHON_PLUGIN 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
 	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
