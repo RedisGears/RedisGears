@@ -58,6 +58,22 @@ typedef struct PythonRecord{
     PyObject* obj;
 }PythonRecord;
 
+static int PyInitializeRedisAI(){
+    if (globals.redisAILoaded){
+        return REDISMODULE_OK;
+    }
+
+    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisModule_ThreadSafeContextLock(ctx);
+    int ret = RedisAI_Initialize(ctx);
+    if(ret == REDISMODULE_OK){
+        globals.redisAILoaded = true;
+    }
+    RedisModule_ThreadSafeContextUnlock(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
+    return ret;
+}
+
 static Record* PyObjRecordCreate(){
     PythonRecord* ret = (PythonRecord*)RedisGears_RecordCreate(pythonRecordType);
     ret->obj = NULL;
@@ -269,7 +285,7 @@ static void PythonRequirementCtx_VerifyBasePath(PythonRequirementCtx* req){
         }
         c++;
     }
-    RedisModule_Log(NULL, "warning", "Fatal!!!, failed verifying basePath of requirment. name:'%s', basePath:'%s'", req->installName, req->basePath);
+    RedisModule_Log(staticCtx, "warning", "Fatal!!!, failed verifying basePath of requirment. name:'%s', basePath:'%s'", req->installName, req->basePath);
     RedisModule_Assert(false);
 }
 static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
@@ -540,7 +556,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         if(!f){
             RG_FREE(filePath);
             RedisGears_ASprintf(err, "Could not open file %s", filePath);
-            RedisModule_Log(NULL, "warning", "%s", *err);
+            RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
         fseek(f, 0, SEEK_END);
@@ -553,7 +569,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
             RG_FREE(data);
             RG_FREE(filePath);
             RedisGears_ASprintf(err, "Could read data from file %s", filePath);
-            RedisModule_Log(NULL, "warning", "%s", *err);
+            RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
         fclose(f);
@@ -712,7 +728,7 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
         }else{
             // we set the req version to 0, only at gears v1.0.0 we added the serialized
             // requirement to the session so we need to read it and install it here
-            RedisModule_Log(NULL, "notice", "Loading an old rdb registrations that comes with a requirement. the requirent will also be installed.");
+            RedisModule_Log(staticCtx, "notice", "Loading an old rdb registrations that comes with a requirement. the requirent will also be installed.");
             req = PythonRequirementCtx_Deserialize(br, 0, err);
             if(!req){
                 if(!*err){
@@ -762,7 +778,7 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
 
     if(!ret){
         char* error = getPyError();
-        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_OnRegistered, error='%s'", error);
+        RedisModule_Log(staticCtx, "warning", "Error occured on RedisGearsPy_OnRegistered, error='%s'", error);
         RG_FREE(error);
         RedisGearsPy_Unlock(&pectx);
         return;
@@ -770,7 +786,7 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
 
     if(PyCoro_CheckExact(ret)){
         Py_DECREF(ret);
-        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_OnRegistered, error='Coroutines are not allow'");
+        RedisModule_Log(staticCtx, "warning", "Error occured on RedisGearsPy_OnRegistered, error='Coroutines are not allow'");
         RedisGearsPy_Unlock(&pectx);
         return;
     }
@@ -1141,7 +1157,7 @@ static void continueFutureOnDone(ExecutionPlan* ep, void* privateData){
     Py_DECREF(pArgs);
     if(!r){
         char* err = getPyError();
-        RedisModule_Log(NULL, "warning", "Error happened when releasing execution future, error='%s'", err);
+        RedisModule_Log(staticCtx, "warning", "Error happened when releasing execution future, error='%s'", err);
         RG_FREE(err);
     }else{
         Py_DECREF(r);
@@ -1258,7 +1274,7 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         }else if(strcmp(RedisGears_GetReader(pfep->fep), "PythonReader") == 0){
             Py_DECREF((PyObject*)arg);
         }else{
-            RedisModule_Log(NULL, "warning", "unknown reader when try to free reader args");
+            RedisModule_Log(staticCtx, "warning", "unknown reader when try to free reader args");
             RedisModule_Assert(false);
         }
         goto end;
@@ -2158,7 +2174,7 @@ static PyObject* RedisLog(PyObject *cls, PyObject *args, PyObject *kargs){
         return NULL;
     }
     if(PyTuple_Size(args) == 2){
-        RedisModule_Log(NULL, "warning", "Specify log level as the first argument to log function is depricated, use key argument 'level' instead");
+        RedisModule_Log(staticCtx, "warning", "Specify log level as the first argument to log function is depricated, use key argument 'level' instead");
         logLevel = PyTuple_GetItem(args, 0);
         logMsg = PyTuple_GetItem(args, 1);
     }else{
@@ -2188,7 +2204,7 @@ static PyObject* RedisLog(PyObject *cls, PyObject *args, PyObject *kargs){
         }
     }
 
-    RedisModule_Log(NULL, logLevelCStr, "GEARS: %s", logMsgCStr);
+    RedisModule_Log(staticCtx, logLevelCStr, "GEARS: %s", logMsgCStr);
     Py_INCREF(Py_None);
     return Py_None;
 }
@@ -2313,12 +2329,8 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
     return flatList;
 }
 
-static bool verifyOrLoadRedisAI(){
-    return globals.redisAILoaded;
-}
-
 #define verifyRedisAILoaded() \
-    if(!verifyOrLoadRedisAI()){ \
+    if(!globals.redisAILoaded && (PyInitializeRedisAI() != REDISMODULE_OK)){ \
         PyErr_SetString(GearsError, "RedisAI is not loaded, it is not possible to use AI interface."); \
         return NULL;\
     }
@@ -3300,7 +3312,7 @@ static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     PyObject_CallObject(td->callback, pArgs);
     if(PyErr_Occurred()){
         char* error = getPyError();
-        RedisModule_Log(NULL, "warning", "Error occured on TimeEvent_Callback, error=%s", error);
+        RedisModule_Log(staticCtx, "warning", "Error occured on TimeEvent_Callback, error=%s", error);
         RG_FREE(error);
         td->status =TE_STATUS_ERR;
     }else{
@@ -3332,7 +3344,7 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     char* err = NULL;
     td->session = PythonSessionCtx_Deserialize(NULL, &br, version, &err);
     if(!td->session){
-        RedisModule_Log(NULL, "warning", "Could not deserialize TimeEven Session, error='%s'", err);
+        RedisModule_Log(staticCtx, "warning", "Could not deserialize TimeEven Session, error='%s'", err);
     }
     RedisModule_Free(serializedSession);
 
@@ -4563,7 +4575,7 @@ int RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err
     PyObject* objStr = PyMarshal_WriteObjectToString(obj, Py_MARSHAL_VERSION);
     if(!objStr){
         *err = getPyError();
-        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_PyObjectSerialize, error=%s", *err);
+        RedisModule_Log(staticCtx, "warning", "Error occured on RedisGearsPy_PyObjectSerialize, error=%s", *err);
         RedisGearsPy_UNLOCK
         return REDISMODULE_ERR;
     }
@@ -4630,9 +4642,9 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         char* error = getPyError();
         if(err){
             RedisGears_ASprintf(err, "Error occured when deserialized a python callback, error=%s",  error);
-            RedisModule_Log(NULL, "warning", "%s", *err);
+            RedisModule_Log(staticCtx, "warning", "%s", *err);
         }else{
-            RedisModule_Log(NULL, "warning", "Error occured when deserialized a python callback, error=%s",  error);
+            RedisModule_Log(staticCtx, "warning", "Error occured when deserialized a python callback, error=%s",  error);
         }
         RG_FREE(error);
         Py_DECREF(args);
@@ -4778,7 +4790,7 @@ static void RedisGearsPy_DoneImportRequirement(ExecutionPlan* ep, void* privateD
 
 static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc != 2){
-        RedisModule_Log(ctx, "warning", "On RedisGearsPy_ImportRequirementInternal, got bad arguments");
+        RedisModule_Log(staticCtx, "warning", "On RedisGearsPy_ImportRequirementInternal, got bad arguments");
         RedisModule_ReplyWithError(ctx, "On RedisGearsPy_ImportRequirementInternal, got bad arguments");
         return REDISMODULE_OK;
     }
@@ -4796,7 +4808,7 @@ static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModu
 
     int version = RedisGears_BRReadLong(&br);
     if(version == LONG_READ_ERROR){
-        RedisModule_Log(ctx, "warning", "On RedisGearsPy_ImportRequirementInternal, failed deserialize requirements version");
+        RedisModule_Log(staticCtx, "warning", "On RedisGearsPy_ImportRequirementInternal, failed deserialize requirements version");
         RedisModule_ReplyWithError(ctx, "On RedisGearsPy_ImportRequirementInternal, failed deserialize requirements version");
         return REDISMODULE_OK;
     }
@@ -4810,14 +4822,14 @@ static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModu
         if(!err){
             err = RG_STRDUP("On RedisGearsPy_ImportRequirementInternal, failed deserialize requirements");
         }
-        RedisModule_Log(ctx, "warning", "%s", err);
+        RedisModule_Log(staticCtx, "warning", "%s", err);
         RedisModule_ReplyWithError(ctx, err);
         return REDISMODULE_OK;
     }
 
     for(size_t i = 0 ; i < array_len(reqs) ; ++i){
         if(!PythonRequirementCtx_InstallRequirement(reqs[i])){
-            RedisModule_Log(ctx, "warning", "On RedisGearsPy_ImportRequirementInternal, Failed install requirement on shard, check shard log for more info.");
+            RedisModule_Log(staticCtx, "warning", "On RedisGearsPy_ImportRequirementInternal, Failed install requirement on shard, check shard log for more info.");
             RedisModule_ReplyWithError(ctx, "On RedisGearsPy_ImportRequirementInternal, Failed install requirement on shard, check shard log for more info.");
             return REDISMODULE_OK;
         }
@@ -5114,7 +5126,7 @@ static void InitializeGlobalPaths(){
 
         RG_FREE(PYENV_DIR);
 #else
-        RedisGears_ASprintf(&PYINSTALL_DIR, "%s/", GearsConfig_GetPythonInstallationDir());
+        RedisGears_ASprintf(&PYINSTALL_DIR, "%s/", pythonConfig.pythonInstallationDir);
 #endif
 
     }
@@ -5126,11 +5138,11 @@ static void InitializeGlobalPaths(){
 }
 
 static void PrintGlobalPaths(RedisModuleCtx* ctx){
-    RedisModule_Log(ctx, "notice", "PYENV_DIR: %s", PYENV_DIR);
-    RedisModule_Log(ctx, "notice", "PYENV_HOME_DIR: %s", PYENV_HOME_DIR);
-    RedisModule_Log(ctx, "notice", "PYENV_BIN_DIR: %s", PYENV_BIN_DIR);
-    RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE: %s", PYENV_ACTIVATE);
-    RedisModule_Log(ctx, "notice", "PYENV_ACTIVATE_SCRIPT: %s", PYENV_ACTIVATE_SCRIPT);
+    RedisModule_Log(staticCtx, "notice", "PYENV_DIR: %s", PYENV_DIR);
+    RedisModule_Log(staticCtx, "notice", "PYENV_HOME_DIR: %s", PYENV_HOME_DIR);
+    RedisModule_Log(staticCtx, "notice", "PYENV_BIN_DIR: %s", PYENV_BIN_DIR);
+    RedisModule_Log(staticCtx, "notice", "PYENV_ACTIVATE: %s", PYENV_ACTIVATE);
+    RedisModule_Log(staticCtx, "notice", "PYENV_ACTIVATE_SCRIPT: %s", PYENV_ACTIVATE_SCRIPT);
 }
 
 static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
@@ -5147,7 +5159,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
     const char* shardUid = RedisGears_GetShardIdentifier();
     if (!PyEnvExist()){
         if (skip_deps_install) {
-            RedisModule_Log(ctx, "warning", "No Python installation found and auto install is not enabled, aborting.");
+            RedisModule_Log(staticCtx, "warning", "No Python installation found and auto install is not enabled, aborting.");
             return REDISMODULE_ERR;
         }
         const char* expectedSha256 = pythonConfig.dependenciesSha256;
@@ -5162,14 +5174,14 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
         RG_FREE(sha256Command);
         char sha256[SHA_256_SIZE];
         if(fscanf(f, "%64s", sha256) != 1){
-            RedisModule_Log(ctx, "warning", "Failed to calculate sha25 on file "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
+            RedisModule_Log(staticCtx, "warning", "Failed to calculate sha25 on file "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
             pclose(f);
             return REDISMODULE_ERR;
         }
         pclose(f);
 
         if(strcmp(expectedSha256, sha256) != 0){
-            RedisModule_Log(ctx, "warning", "Failed on sha 256 comparison");
+            RedisModule_Log(staticCtx, "warning", "Failed on sha 256 comparison");
             return REDISMODULE_ERR;
         }
 
@@ -5181,7 +5193,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
         RedisGears_ExecuteCommand(ctx, "notice", "mkdir -p %s", PYINSTALL_DIR);
         RedisGears_ExecuteCommand(ctx, "notice", "mv "TMP_DEPS_FILE_DIR_FMT"/python3_%s/ %s", shardUid, expectedSha256, RedisGears_GetVersionStr(), PYINSTALL_DIR);
     }else{
-        RedisModule_Log(ctx, "notice", "Found python installation under: %s", PYENV_DIR);
+        RedisModule_Log(staticCtx, "notice", "Found python installation under: %s", PYENV_DIR);
     }
     if(pythonConfig.createVenv){
         RedisGears_ASprintf(&venvDir, "%s/.venv-%s", pythonConfig.pythonInstallationDir, shardUid);
@@ -5191,12 +5203,12 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             setenv("VIRTUALENV_OVERRIDE_APP_DATA", venvDir, 1);
             int rc = RedisGears_ExecuteCommand(ctx, "notice", "/bin/bash -c \"%s/bin/python3 -m virtualenv %s\"", PYENV_DIR, venvDir);
             if (rc) {
-                RedisModule_Log(ctx, "warning", "Failed to construct virtualenv");
+                RedisModule_Log(staticCtx, "warning", "Failed to construct virtualenv");
                 RedisGears_ExecuteCommand(ctx, "notice", "rm -rf %s", venvDir);
                 return REDISMODULE_ERR;
             }
         }else{
-            RedisModule_Log(ctx, "notice", "Found venv installation under: %s", venvDir);
+            RedisModule_Log(staticCtx, "notice", "Found venv installation under: %s", venvDir);
             closedir(dir);
         }
     }else{
@@ -5214,7 +5226,7 @@ int RedisGears_SetupPyEnv(RedisModuleCtx *ctx) {
     char* activateCommand = NULL;
     RedisGears_ASprintf(&activateScript, "%s/bin/activate_this.py", venvDir);
     RedisGears_ASprintf(&activateCommand, "exec(open('%s').read(), {'__file__': '%s'})", activateScript, activateScript);
-    RedisModule_Log(ctx, "notice", "Initializing Python environment with: %s", activateCommand);
+    RedisModule_Log(staticCtx, "notice", "Initializing Python environment with: %s", activateCommand);
     PyRun_SimpleString(activateCommand);
     RG_FREE(activateScript);
     RG_FREE(activateCommand);
@@ -5456,25 +5468,32 @@ static int PythonConfig_ToLong(const char* val, long long* res){
 }
 
 #define CONFIG_FLAG_GT_ZERO 0x01
+#define CONFIG_FLAG_IGNORE_DEFAULT 0x02
 
 extern char DependenciesUrl[];
 extern char DependenciesSha256[];
 
-static int PythonConfig_GetIntVal(const char* val, int defaultVal, int* res, int flags){
-    const char *valStr = RedisGears_GetConfig(val);
+static int PythonConfig_GetIntVal(const char* val, int defaultVal, const char* newVal, int* res, int flags){
+    const char *valStr = newVal;
     if(!valStr){
+        valStr = RedisGears_GetConfig(val);
+    }
+    if(!valStr){
+        if(flags & CONFIG_FLAG_IGNORE_DEFAULT){
+            return REDISMODULE_ERR;
+        }
         *res = defaultVal;
         return REDISMODULE_OK;
     }
     long long longVal;
     if(PythonConfig_ToLong(valStr, &longVal) != REDISMODULE_OK){
-        RedisModule_Log(NULL, "warning", "Failed parsing %s config, value must be a number.", val);
+        RedisModule_Log(staticCtx, "warning", "Failed parsing %s config, value must be a number.", val);
         return REDISMODULE_ERR;
     }
 
     if(flags & CONFIG_FLAG_GT_ZERO){
         if(longVal <= 0){
-            RedisModule_Log(NULL, "warning", "Failed parsing %s config, value must be greater then zero.", val);
+            RedisModule_Log(staticCtx, "warning", "Failed parsing %s config, value must be greater then zero.", val);
             return REDISMODULE_ERR;
         }
     }
@@ -5483,50 +5502,165 @@ static int PythonConfig_GetIntVal(const char* val, int defaultVal, int* res, int
     return REDISMODULE_OK;
 }
 
-static int PythonConfig_GetBoolVal(const char* val, int defaultVal, int* res){
-    const char *valStr = RedisGears_GetConfig(val);
+static int PythonConfig_GetBoolVal(const char* val, int defaultVal, const char* newVal, int* res, int flags){
+    const char *valStr = newVal;
     if(!valStr){
+        valStr = RedisGears_GetConfig(val);
+    }
+    if(!valStr){
+        if(flags & CONFIG_FLAG_IGNORE_DEFAULT){
+            return REDISMODULE_ERR;
+        }
         *res = defaultVal;
         return REDISMODULE_OK;
     }
     long long longVal;
     if(PythonConfig_ToLong(valStr, &longVal) != REDISMODULE_OK){
-        RedisModule_Log(NULL, "warning", "Failed parsing %s config value.", val);
+        RedisModule_Log(staticCtx, "warning", "Failed parsing %s config value.", val);
         return REDISMODULE_ERR;
     }
     *res = (longVal != 0);
     return REDISMODULE_OK;
 }
 
-static int PythonConfig_GetStrVal(const char* val, const char* defaultVal, char** res){
-    const char *valStr = RedisGears_GetConfig(val);
+static int PythonConfig_GetStrVal(const char* val, const char* defaultVal, const char* newVal, char** res, int flags){
+    const char *valStr = newVal;
     if(!valStr){
+        valStr = RedisGears_GetConfig(val);
+    }
+    if(!valStr){
+        if(flags & CONFIG_FLAG_IGNORE_DEFAULT){
+            return REDISMODULE_ERR;
+        }
         valStr = defaultVal;
     }
     *res = RG_STRDUP(valStr);
     return REDISMODULE_OK;
 }
 
-static int PythonConfig_InitConfig(RedisModuleCtx *ctx){
-#define TRY_LOAD_CONFIG(v) if(v != REDISMODULE_OK) return REDISMODULE_ERR
-    TRY_LOAD_CONFIG(PythonConfig_GetBoolVal("CreateVenv", 0, &pythonConfig.createVenv));
-    TRY_LOAD_CONFIG(PythonConfig_GetBoolVal("DownloadDeps", 0, &pythonConfig.downloadDeps));
-    TRY_LOAD_CONFIG(PythonConfig_GetBoolVal("ForeceDownloadDepsOnEnterprise", 0, &pythonConfig.foreceDownloadDepsOnEnterprise));
-    TRY_LOAD_CONFIG(PythonConfig_GetBoolVal("PythonAttemptTraceback", 1, &pythonConfig.attemptTraceback));
-    TRY_LOAD_CONFIG(PythonConfig_GetIntVal("PythonInstallReqMaxIdleTime", 30000, &pythonConfig.installReqMaxIdleTime, CONFIG_FLAG_GT_ZERO));
-    TRY_LOAD_CONFIG(PythonConfig_GetStrVal("DependenciesUrl", DependenciesUrl, &pythonConfig.dependenciesUrl));
-    TRY_LOAD_CONFIG(PythonConfig_GetStrVal("DependenciesSha256", DependenciesSha256, &pythonConfig.dependenciesSha256));
-    TRY_LOAD_CONFIG(PythonConfig_GetStrVal("PythonInstallationDir", "/var/opt/redislabs/modules/rg", &pythonConfig.pythonInstallationDir));
+#define CreateVenvConfigName "CreateVenv"
+#define DownloadDepsConfigName "DownloadDeps"
+#define ForeceDownloadDepsOnEnterpriseConfigName "ForeceDownloadDepsOnEnterprise"
+#define PythonAttemptTracebackConfigName "PythonAttemptTraceback"
+#define PythonInstallReqMaxIdleTimeConfigName "PythonInstallReqMaxIdleTime"
+#define DependenciesUrlConfigName "DependenciesUrl"
+#define DependenciesSha256ConfigName "DependenciesSha256"
+#define PythonInstallationDirConfigName "PythonInstallationDir"
 
-    RedisModule_Log(ctx, "notice", "Python config:");
-    RedisModule_Log(ctx, "notice", "\tCreateVenv : %d", pythonConfig.createVenv);
-    RedisModule_Log(ctx, "notice", "\tDownloadDeps : %d", pythonConfig.downloadDeps);
-    RedisModule_Log(ctx, "notice", "\tForeceDownloadDepsOnEnterprise : %d", pythonConfig.foreceDownloadDepsOnEnterprise);
-    RedisModule_Log(ctx, "notice", "\tPythonAttemptTraceback : %d", pythonConfig.attemptTraceback);
-    RedisModule_Log(ctx, "notice", "\tPythonInstallReqMaxIdleTime : %d", pythonConfig.installReqMaxIdleTime);
-    RedisModule_Log(ctx, "notice", "\tDependenciesUrl : %s", pythonConfig.dependenciesUrl);
-    RedisModule_Log(ctx, "notice", "\tDependenciesSha256 : %s", pythonConfig.dependenciesSha256);
-    RedisModule_Log(ctx, "notice", "\tPythonInstallationDir : %s", pythonConfig.pythonInstallationDir);
+typedef enum PythonConfigType{
+    PythonConfigType_Bool, PythonConfigType_Int, PythonConfigType_Str
+}PythonConfigType;
+
+typedef struct PythonConfigValDef{
+    const char* name;
+    PythonConfigType type;
+    bool configurableAtRuntime;
+    union{
+        int defaultBoolVal;
+        int defaultIntVal;
+        const char* defaultStrVal;
+    };
+    void* ptr;
+    int flags;
+}PythonConfigValDef;
+
+PythonConfigValDef configDefs[] = {
+        {
+                .name = CreateVenvConfigName,
+                .type = PythonConfigType_Bool,
+                .configurableAtRuntime = false,
+                .defaultBoolVal = 0,
+                .ptr = &pythonConfig.createVenv,
+        },
+        {
+                .name = DownloadDepsConfigName,
+                .type = PythonConfigType_Bool,
+                .configurableAtRuntime = false,
+                .defaultBoolVal = 0,
+                .ptr = &pythonConfig.downloadDeps,
+        },
+        {
+                .name = ForeceDownloadDepsOnEnterpriseConfigName,
+                .type = PythonConfigType_Bool,
+                .configurableAtRuntime = false,
+                .defaultBoolVal = 0,
+                .ptr = &pythonConfig.foreceDownloadDepsOnEnterprise,
+        },
+        {
+                .name = PythonAttemptTracebackConfigName,
+                .type = PythonConfigType_Bool,
+                .configurableAtRuntime = true,
+                .defaultBoolVal = 1,
+                .ptr = &pythonConfig.attemptTraceback,
+        },
+        {
+                .name = PythonInstallReqMaxIdleTimeConfigName,
+                .type = PythonConfigType_Int,
+                .configurableAtRuntime = true,
+                .defaultIntVal = 30000,
+                .ptr = &pythonConfig.installReqMaxIdleTime,
+                .flags = CONFIG_FLAG_GT_ZERO,
+        },
+        {
+                .name = DependenciesUrlConfigName,
+                .type = PythonConfigType_Str,
+                .configurableAtRuntime = false,
+                .defaultStrVal = DependenciesUrl,
+                .ptr = &pythonConfig.dependenciesUrl,
+        },
+        {
+                .name = DependenciesSha256ConfigName,
+                .type = PythonConfigType_Str,
+                .configurableAtRuntime = false,
+                .defaultStrVal = DependenciesSha256,
+                .ptr = &pythonConfig.dependenciesSha256,
+        },
+        {
+                .name = PythonInstallationDirConfigName,
+                .type = PythonConfigType_Str,
+                .configurableAtRuntime = false,
+                .defaultStrVal = "/var/opt/redislabs/modules/rg",
+                .ptr = &pythonConfig.pythonInstallationDir,
+        },
+        {
+                .name = NULL,
+        },
+};
+
+#define TRY_LOAD_CONFIG(v) if(v != REDISMODULE_OK) return REDISMODULE_ERR
+
+static int PythonConfig_InitConfig(RedisModuleCtx *ctx){
+
+    for(PythonConfigValDef* def = configDefs ; def->name ; ++def){
+        switch(def->type){
+        case PythonConfigType_Bool:
+            TRY_LOAD_CONFIG(PythonConfig_GetBoolVal(def->name, def->defaultBoolVal, NULL, def->ptr, def->flags));
+            break;
+        case PythonConfigType_Int:
+            TRY_LOAD_CONFIG(PythonConfig_GetIntVal(def->name, def->defaultIntVal, NULL, def->ptr, def->flags));
+            break;
+        case PythonConfigType_Str:
+            TRY_LOAD_CONFIG(PythonConfig_GetStrVal(def->name, def->defaultStrVal, NULL, def->ptr, def->flags));
+            break;
+        default:
+            RedisModule_Assert(false);
+        }
+    }
+
+    RedisModule_Log(staticCtx, "notice", "Python config:");
+    for(PythonConfigValDef* def = configDefs ; def->name ; ++def){
+        switch(def->type){
+        case PythonConfigType_Bool:
+        case PythonConfigType_Int:
+            RedisModule_Log(staticCtx, "notice", "\t%s : %d", def->name, *((int*)def->ptr));
+            break;
+        case PythonConfigType_Str:
+            RedisModule_Log(staticCtx, "notice", "\t%s : %s", def->name, *((char**)def->ptr));
+            break;
+        default:
+            RedisModule_Assert(false);
+        }
+    }
     return REDISMODULE_OK;
 }
 
@@ -5546,12 +5680,64 @@ static void Python_RestorThread(void* s){
     PyEval_RestoreThread(s);
 }
 
+static int Python_BeforeConfigChange(const char* key, const char* val, char** err){
+    for(PythonConfigValDef* def = configDefs ; def->name ; ++def){
+        if(strcmp(def->name, key) == 0){
+            if(!def->configurableAtRuntime){
+                RedisGears_ASprintf(err, "(error) %s is not configurable at runtime", key);
+                return REDISMODULE_ERR;
+            }
+            switch(def->type){
+            case PythonConfigType_Bool:
+                TRY_LOAD_CONFIG(PythonConfig_GetBoolVal(def->name, 0, val, def->ptr, def->flags | CONFIG_FLAG_IGNORE_DEFAULT));
+                break;
+            case PythonConfigType_Int:
+                TRY_LOAD_CONFIG(PythonConfig_GetIntVal(def->name, 0, val, def->ptr, def->flags | CONFIG_FLAG_IGNORE_DEFAULT));
+                break;
+            case PythonConfigType_Str:
+                TRY_LOAD_CONFIG(PythonConfig_GetStrVal(def->name, NULL, val, def->ptr, def->flags | CONFIG_FLAG_IGNORE_DEFAULT));
+                break;
+            default:
+                RedisModule_Assert(false);
+            }
+        }
+    }
+    return REDISMODULE_OK;
+}
+
+#define REDISGEARSPYTHON_PLUGIN_NAME "GearsPythonPlugin"
+
+#define REDISGEARSPYTHON_VERSION_MAJOR 1
+#define REDISGEARSPYTHON_VERSION_MINOR 0
+#define REDISGEARSPYTHON_VERSION_PATCH 0
+
+#define STR1(a) #a
+#define STR(e) STR1(e)
+
+#define REDISGEARSPYTHON_PLUGIN_VERSION \
+  (REDISGEARSPYTHON_VERSION_MAJOR * 10000 + REDISGEARSPYTHON_VERSION_MINOR * 100 + REDISGEARSPYTHON_VERSION_PATCH)
+
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx){
 
+    if(RedisGears_InitAsGearPlugin(ctx, REDISGEARSPYTHON_PLUGIN_NAME, REDISGEARSPYTHON_PLUGIN_VERSION) != REDISMODULE_OK){
+        RedisModule_Log(staticCtx, "warning", "Failed initialize RedisGears API");
+        return REDISMODULE_ERR;
+    }
+
+    if(RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
+        staticCtx = RedisModule_GetDetachedThreadSafeContext(ctx);
+    }else{
+        staticCtx = RedisModule_GetThreadSafeContext(NULL);
+    }
+
+    RedisModule_Log(staticCtx, "Notice", "Initializing " REDISGEARSPYTHON_PLUGIN_NAME " version %d.%d.%d", REDISGEARSPYTHON_VERSION_MAJOR, REDISGEARSPYTHON_VERSION_MINOR, REDISGEARSPYTHON_VERSION_PATCH);
+
     RedisGears_AddLockStateHandler(Python_SaveThread, Python_RestorThread);
+    RedisGears_AddConfigHooks(Python_BeforeConfigChange, NULL);
 
     if(PythonConfig_InitConfig(ctx) != REDISMODULE_OK){
-        RedisModule_Log(NULL, "warning", "Failed initialize python configuration");
+        RedisModule_Log(staticCtx, "warning", "Failed initialize python configuration");
         return REDISMODULE_ERR;
     }
 
@@ -5559,7 +5745,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     InitializeGlobalPaths();
     PrintGlobalPaths(ctx);
     if(RedisGears_InstallDeps(ctx) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "Failed installing python dependencies");
+        RedisModule_Log(staticCtx, "warning", "Failed installing python dependencies");
         return REDISMODULE_ERR;
     }
 
@@ -5610,37 +5796,37 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     PyFutureType.tp_methods = PyFutureMethods;
 
     if (PyType_Ready(&PyTensorType) < 0){
-        RedisModule_Log(ctx, "warning", "PyTensorType not ready");
+        RedisModule_Log(staticCtx, "warning", "PyTensorType not ready");
         return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyGraphRunnerType) < 0){
-        RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
+        RedisModule_Log(staticCtx, "warning", "PyGraphRunnerType not ready");
         return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyTorchScriptRunnerType) < 0){
-        RedisModule_Log(ctx, "warning", "PyGraphRunnerType not ready");
+        RedisModule_Log(staticCtx, "warning", "PyGraphRunnerType not ready");
         return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyExecutionSessionType) < 0){
-        RedisModule_Log(ctx, "warning", "PyExecutionSessionType not ready");
+        RedisModule_Log(staticCtx, "warning", "PyExecutionSessionType not ready");
         return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyFlatExecutionType) < 0){
-        RedisModule_Log(ctx, "warning", "PyFlatExecutionType not ready");
+        RedisModule_Log(staticCtx, "warning", "PyFlatExecutionType not ready");
         return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyAtomicType) < 0){
-        RedisModule_Log(ctx, "warning", "PyAtomicType not ready");
+        RedisModule_Log(staticCtx, "warning", "PyAtomicType not ready");
         return REDISMODULE_ERR;
     }
 
     if (PyType_Ready(&PyFutureType) < 0){
-        RedisModule_Log(ctx, "warning", "PyFutureType not ready");
+        RedisModule_Log(staticCtx, "warning", "PyFutureType not ready");
         return REDISMODULE_ERR;
     }
 
@@ -5690,14 +5876,14 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     // todo: fix, this is not really catching any errors
     if(PyErr_Occurred()){
         char* error = getPyError();
-        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_Init, error=%s", error);
+        RedisModule_Log(staticCtx, "warning", "Error occured on RedisGearsPy_Init, error=%s", error);
         RG_FREE(error);
         return REDISMODULE_ERR;
     }
 
     if(PyErr_Occurred()){
         char* error = getPyError();
-        RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_Init, error=%s", error);
+        RedisModule_Log(staticCtx, "warning", "Error occured on RedisGearsPy_Init, error=%s", error);
         RG_FREE(error);
         return REDISMODULE_ERR;
     }
@@ -5754,47 +5940,47 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     RGM_RegisterFlatExecutionOnRegisteredCallback(RedisGearsPy_OnRegistered, pyCallbackType);
 
     if(TimeEvent_RegisterType(ctx) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "could not register command timer datatype");
+        RedisModule_Log(staticCtx, "warning", "could not register command timer datatype");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.pyexecute", RedisGearsPy_Execute, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pyexecute");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.pyexecuteremote", RedisGearsPy_ExecuteRemote, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.pyexecuteremote");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pyexecuteremote");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.pyfreeinterpreter", RedisGearsPy_FreeInterpreter, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rg.pyexecute");
+		RedisModule_Log(staticCtx, "warning", "could not register command rg.pyexecute");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rg.pystats", RedisGearsPy_Stats, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-    	RedisModule_Log(ctx, "warning", "could not register command rg.pystats");
+    	RedisModule_Log(staticCtx, "warning", "could not register command rg.pystats");
 		return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.pyexportreq", RedisGearsPy_ExportRequirement, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.pyexportreq");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pyexportreq");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.pyimportreq", RedisGearsPy_ImportRequirement, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.pyimportreq");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pyimportreq");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.pydumpreqs", RedisGearsPy_DumpRequirements, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.pydumpreqs");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pydumpreqs");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, IMPORT_REQ_INTERAL_COMMAND, RedisGearsPy_ImportRequirementInternal, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.pyimportreq");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pyimportreq");
         return REDISMODULE_ERR;
     }
 

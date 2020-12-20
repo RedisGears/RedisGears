@@ -510,6 +510,10 @@ typedef void* (*SaveState)();
 typedef void (*RestoreState)(void*);
 void MODULE_API_FUNC(RedisGears_AddLockStateHandler)(SaveState save, RestoreState restore);
 
+typedef int (*BeforeConfigSet)(const char* key, const char* val, char** err);
+typedef void (*AfterConfigSet)(const char* key, const char* val);
+void MODULE_API_FUNC(RedisGears_AddConfigHooks)(BeforeConfigSet before, AfterConfigSet after);
+
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
@@ -945,6 +949,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ClusterIsMyId);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ClusterIsInitialized);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddLockStateHandler);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddConfigHooks);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

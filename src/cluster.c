@@ -149,7 +149,7 @@ static void Cluster_ConnectToShard(Node* n){
     }
     if (c->err) {
         /* Let *c leak for now... */
-        RedisModule_Log(NULL, "warning", "Error: %s\n", n->c->errstr);
+        RedisModule_Log(staticCtx, "warning", "Error: %s\n", n->c->errstr);
         //todo: handle this!!!
     }
     c->data = n;
@@ -169,7 +169,7 @@ static void Cluster_ResendHelloMessage(evutil_socket_t s, short what, void *arg)
         FreeNodeInternals(n);
         return;
     }
-    RedisModule_Log(NULL, "notice", "%s", "Resending hello request");
+    RedisModule_Log(staticCtx, "notice", "%s", "Resending hello request");
     redisAsyncCommand(n->c, RG_HelloResponseArrived, n, "RG.HELLO");
 }
 
@@ -251,12 +251,12 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     Node* n = (Node*)b;
     if(reply->type == REDIS_REPLY_ERROR && strncmp(reply->str, CLUSTER_ERROR, strlen(CLUSTER_ERROR)) == 0){
         n->sendClusterTopologyOnNextConnect = true;
-        RedisModule_Log(NULL, "warning", "Received ERRCLUSTER reply from shard %s, will send cluster topology to the shard on next connect", n->id);
+        RedisModule_Log(staticCtx, "warning", "Received ERRCLUSTER reply from shard %s, will send cluster topology to the shard on next connect", n->id);
         redisAsyncDisconnect(c);
         return;
     }
     if(reply->type != REDIS_REPLY_STATUS){
-        RedisModule_Log(NULL, "warning", "Received an invalid status reply from shard %s, will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id);
+        RedisModule_Log(staticCtx, "warning", "Received an invalid status reply from shard %s, will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id);
         redisAsyncDisconnect(c);
         return;
     }
@@ -283,7 +283,7 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
         // we did not got a string reply
         // the shard is probably not yet up.
         // we will try again in one second.
-        RedisModule_Log(NULL, "warning", "%s", "Got bad hello response, will try again in 1 second");
+        RedisModule_Log(staticCtx, "warning", "%s", "Got bad hello response, will try again in 1 second");
         struct timeval tv = {
                 .tv_sec = 1,
         };
@@ -315,7 +315,7 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
             if(GearsConfig_SendMsgRetries() == 0 || sentMsg->retries < GearsConfig_SendMsgRetries()){
                 redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
             }else{
-                RedisModule_Log(NULL, "warning", "Gave up of message because failed to send it for more than %lld time", GearsConfig_SendMsgRetries());
+                RedisModule_Log(staticCtx, "warning", "Gave up of message because failed to send it for more than %lld time", GearsConfig_SendMsgRetries());
                 Gears_listDelNode(n->pendingMessages, node);
             }
         }
@@ -326,7 +326,7 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
 }
 
 static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int status){
-    RedisModule_Log(NULL, "warning", "disconnected : %s:%d, status : %d, will try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
+    RedisModule_Log(staticCtx, "warning", "disconnected : %s:%d, status : %d, will try to reconnect.\r\n", c->c.tcp.host, c->c.tcp.port, status);
     if(!c->data){
         return;
     }
@@ -350,7 +350,7 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
         };
         event_add(n->reconnectEvent, &tv);
     }else{
-        RedisModule_Log(NULL, "notice", "connected : %s:%d, status = %d\r\n", c->c.tcp.host, c->c.tcp.port, status);
+        RedisModule_Log(staticCtx, "notice", "connected : %s:%d, status = %d\r\n", c->c.tcp.host, c->c.tcp.port, status);
         if(n->password){
             redisAsyncCommand((redisAsyncContext*)c, NULL, NULL, "AUTH %s", n->password);
         }
@@ -404,7 +404,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
     }
 
     if(argc < 10){
-        RedisModule_Log(ctx, "warning", "Could not parse cluster set arguments");
+        RedisModule_Log(staticCtx, "warning", "Could not parse cluster set arguments");
         return;
     }
 
@@ -598,7 +598,7 @@ static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
     if(node->status == NodeStatus_Connected){
         redisAsyncCommandArgv(node->c, OnResponseArrived, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
     }else{
-        RedisModule_Log(NULL, "warning", "message was not sent because status is not connected");
+        RedisModule_Log(staticCtx, "warning", "message was not sent because status is not connected");
     }
     Gears_listAddNodeTail(node->pendingMessages, sentMsg);
 }
@@ -607,7 +607,7 @@ static void Cluster_SendMessage(SendMsg* sendMsg){
     if(sendMsg->idToSend[0] != '\0'){
         Node* n = GetNode(sendMsg->idToSend);
         if(!n){
-            RedisModule_Log(NULL, "warning", "Could not find node to send message to");
+            RedisModule_Log(staticCtx, "warning", "Could not find node to send message to");
             return;
         }
         Cluster_SendMsgToNode(n, sendMsg);
@@ -851,7 +851,7 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     }
 
     if(!Cluster_IsInitialized()){
-        RedisModule_Log(ctx, "warning", "Got msg from another shard while cluster is not initialized");
+        RedisModule_Log(staticCtx, "warning", "Got msg from another shard while cluster is not initialized");
         return RedisModule_ReplyWithError(ctx, "ERRCLUSTER Uninitialized cluster state");
     }
 
@@ -861,7 +861,7 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     RedisModuleString* msgIdStr = argv[4];
     long long msgId;
     if(RedisModule_StringToLongLong(msgIdStr, &msgId) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "bad msg id given");
+        RedisModule_Log(staticCtx, "warning", "bad msg id given");
         RedisModule_ReplyWithError(ctx, "bad msg id given");
         return REDISMODULE_OK;
     }
@@ -875,7 +875,7 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         entity = Gears_dictAddRaw(nodesMsgIds, (char*)senderIdStr, NULL);
     }
     if(msgId <= currId){
-        RedisModule_Log(ctx, "warning", "duplicate message ignored");
+        RedisModule_Log(staticCtx, "warning", "duplicate message ignored");
         RedisModule_ReplyWithSimpleString(ctx, "duplicate message ignored");
         return REDISMODULE_OK;
     }
@@ -886,7 +886,7 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
 
     Gears_dictEntry *entry = Gears_dictFind(RemoteCallbacks, functionToCallStr);
     if(!entry){
-        RedisModule_Log(ctx, "warning", "can not find the callback requested : %s", functionToCallStr);
+        RedisModule_Log(staticCtx, "warning", "can not find the callback requested : %s", functionToCallStr);
         RedisModule_ReplyWithError(ctx, "can not find the callback requested");
         return REDISMODULE_OK;
     }

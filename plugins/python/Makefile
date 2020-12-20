@@ -9,13 +9,14 @@ REDISGEARS_SRC=../../src
 CPYTHON_DIR=../../deps/cpython
 
 GCC_FLAGS += \
-	-DCPYTHON_PATH=\"$(CPYTHON_PATH)\" \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
-	-I$(BINROOT)/cpython \
-	-Ibin/$(FULL_VARIANT.release)/cpython \
 	-I$(REDISGEARS_SRC)/ \
 	-I$(REDISGEARS_SRC)/utils/
+
+ifneq ($(CPYTHON_PATH),)
+	GCC_FLAGS += -DCPYTHON_PATH=\"$(CPYTHON_PATH)\"
+endif
 
 SOURCES=redisgears_python.c globals.c $(REDISGEARS_SRC)/utils/dict.c $(REDISGEARS_SRC)/utils/thpool.c \
 $(REDISGEARS_SRC)/utils/buffer.c
@@ -38,4 +39,4 @@ $(ARTIFACT_NAME): $(HEADERS) $(SOURCES)
 	-o $(ARTIFACT_NAME)
 
 clean:
-	rm $(ARTIFACT_NAME)
+	rm $(ARTIFACT_NAME) GearsBuilder.auto.h cloudpickle.auto.h

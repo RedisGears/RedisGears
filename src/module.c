@@ -44,8 +44,6 @@ typedef struct Plugin{
 
 Gears_dict* plugins = NULL;
 
-RedisModuleCtx* redisDummyCtx = NULL;
-
 #define REGISTER_API(name, ctx) \
     do{\
         RedisGears_ ## name = RG_ ## name;\
@@ -154,15 +152,15 @@ static FlatExecutionPlan* RG_CreateCtx(char* readerName, char** err){
         *err = RG_STRDUP("Can only create a gearsCtx on registered gears thread");
         return NULL;
     }
-    LockHandler_Acquire(redisDummyCtx);
+    LockHandler_Acquire(staticCtx);
     FlatExecutionPlan* fep = FlatExecutionPlan_New();
     if(!FlatExecutionPlan_SetReader(fep, readerName)){
         FlatExecutionPlan_Free(fep);
         *err = RG_STRDUP("The given reader does not exists");
-        LockHandler_Release(redisDummyCtx);
+        LockHandler_Release(staticCtx);
         return NULL;
     }
-    LockHandler_Release(redisDummyCtx);
+    LockHandler_Release(staticCtx);
     return fep;
 }
 
@@ -247,7 +245,7 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
         *err = RG_STRDUP("Can only register execution on registered gears thread");
         return 0;
     }
-    LockHandler_Acquire(redisDummyCtx);
+    LockHandler_Acquire(staticCtx);
 
     // we need a deep copy in case this fep will be registered again with different args
     // this is a hack because a fep represent registration, we need create
@@ -265,7 +263,7 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
     // of the fep will be taken by the reader.
     FlatExecutionPlan_Free(fep);
 
-    LockHandler_Release(redisDummyCtx);
+    LockHandler_Release(staticCtx);
     return res;
 }
 
@@ -274,14 +272,14 @@ static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* a
         *err = RG_STRDUP("Can only run execution on registered gears thread");
         return NULL;
     }
-    LockHandler_Acquire(redisDummyCtx);
+    LockHandler_Acquire(staticCtx);
     if(mode == ExecutionModeAsync && !Cluster_IsInitialized()){
         *err = RG_STRDUP("Cluster is not initialized, can not start executions.");
-        LockHandler_Release(redisDummyCtx);
+        LockHandler_Release(staticCtx);
         return NULL;
     }
     ExecutionPlan* res = FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
-    LockHandler_Release(redisDummyCtx);
+    LockHandler_Release(staticCtx);
     return res;
 }
 
@@ -636,14 +634,14 @@ static const char* RG_GetVersionStr(){
 
 static int RG_RegisterPlugin(const char* name, int version) {
     if(Gears_dictFetchValue(plugins, name)){
-        RedisModule_Log(NULL, "warning", "Plugin %s already exists", name);
+        RedisModule_Log(staticCtx, "warning", "Plugin %s already exists", name);
         return REDISMODULE_ERR;
     }
     Plugin* plugin = RG_ALLOC(sizeof(*plugin));
     plugin->name = RG_STRDUP(name);
     plugin->version = version;
     Gears_dictAdd(plugins, (char*)name, plugin);
-    RedisModule_Log(NULL, "warning", "Loading plugin %s version %d ", name, version);
+    RedisModule_Log(staticCtx, "warning", "Loading plugin %s version %d ", name, version);
     return REDISMODULE_OK;
 }
 
@@ -740,6 +738,10 @@ static void RG_AddLockStateHandler(SaveState save, RestoreState restore){
 static void RG_SetAbortCallback(ExecutionCtx *ctx, AbortCallback abort, void* abortPD){
     ctx->ep->abort = abort;
     ctx->ep->abortPD = abortPD;
+}
+
+static void RG_AddConfigHooks(BeforeConfigSet before, AfterConfigSet after){
+    GearsConfig_AddHooks(before, after);
 }
 
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
@@ -863,7 +865,7 @@ static const char* RG_GetCompiledOs(){
 
 static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     if(!RedisModule_ExportSharedAPI){
-        RedisModule_Log(ctx, "warning", "redis version are not compatible with shared api, running without expose c level api to other modules.");
+        RedisModule_Log(staticCtx, "warning", "redis version are not compatible with shared api, running without expose c level api to other modules.");
     }
     REGISTER_API(GetLLApiVersion, ctx);
 
@@ -1039,6 +1041,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(ClusterIsInitialized, ctx);
     REGISTER_API(AddLockStateHandler, ctx);
     REGISTER_API(SetAbortCallback, ctx);
+    REGISTER_API(AddConfigHooks, ctx);
 
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
@@ -1050,7 +1053,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 static void RG_OnDropExecutionMsgReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = RedisGears_GetExecution(payload);
 	if(!ep){
-		RedisModule_Log(ctx, "notice", "got msg to drop an unexists execution : %s", payload);
+		RedisModule_Log(staticCtx, "notice", "got msg to drop an unexists execution : %s", payload);
 		return;
 	}
 	if(EPIsFlagOff(ep, EFDone)){
@@ -1091,19 +1094,19 @@ static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
         RG_FREE(pluginFile);
 
         if (handler == NULL) {
-            RedisModule_Log(ctx, "warning", "Failed loading gears plugin %s, error='%s'", plugin, dlerror());
+            RedisModule_Log(staticCtx, "warning", "Failed loading gears plugin %s, error='%s'", plugin, dlerror());
             return REDISMODULE_ERR;
         }
         int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
         if (onload == NULL) {
             dlclose(handler);
-            RedisModule_Log(ctx, "warning",
+            RedisModule_Log(staticCtx, "warning",
                 "Gears plugin %s does not export RedisGears_OnLoad() symbol", plugin);
             return REDISMODULE_ERR;
         }
         if (onload(ctx) == REDISMODULE_ERR) {
             dlclose(handler);
-            RedisModule_Log(ctx, "warning",
+            RedisModule_Log(staticCtx, "warning",
                 "Plugin %s initialization failed", plugin);
             return REDISMODULE_ERR;
         }
@@ -1129,55 +1132,57 @@ static int Command_DumpPlugins(RedisModuleCtx *ctx, RedisModuleString **argv, in
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    staticCtx = RedisModule_GetThreadSafeContext(NULL);
+    if(RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
+        staticCtx = RedisModule_GetDetachedThreadSafeContext(ctx);
+    }else{
+        staticCtx = RedisModule_GetThreadSafeContext(NULL);
+    }
 
-	RedisModule_Log(ctx, "notice", "RedisGears version %s, git_sha=%s, compiled_os=%s",
+	RedisModule_Log(staticCtx, "notice", "RedisGears version %s, git_sha=%s, compiled_os=%s",
 	        REDISGEARS_VERSION_STR,
 			REDISGEARS_GIT_SHA,
 			REDISGEARS_OS_VERSION);
 
-	redisDummyCtx = RedisModule_GetThreadSafeContext(NULL);
-
     GearsGetRedisVersion();
-    RedisModule_Log(ctx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",
+    RedisModule_Log(staticCtx, "notice", "Redis version found by RedisGears : %d.%d.%d - %s",
                     currVesion.redisMajorVersion, currVesion.redisMinorVersion, currVesion.redisPatchVersion,
 	                IsEnterprise() ? (gearsIsCrdt ? "enterprise-crdt" : "enterprise") : "oss");
     if (IsEnterprise()) {
-        RedisModule_Log(ctx, "notice", "Redis Enterprise version found by RedisGears : %d.%d.%d-%d",
+        RedisModule_Log(staticCtx, "notice", "Redis Enterprise version found by RedisGears : %d.%d.%d-%d",
                         gearsRlecMajorVersion, gearsRlecMinorVersion, gearsRlecPatchVersion, gearsRlecBuild);
     }
 
     if(GearsCheckSupportedVestion() != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "Redis version is to old, please upgrade to redis %d.%d.%d and above.", supportedVersion.redisMajorVersion,
+        RedisModule_Log(staticCtx, "warning", "Redis version is to old, please upgrade to redis %d.%d.%d and above.", supportedVersion.redisMajorVersion,
                                                                                                                 supportedVersion.redisMinorVersion,
                                                                                                                 supportedVersion.redisPatchVersion);
         return REDISMODULE_ERR;
     }
 
     if(LockHandler_Initialize() != REDISMODULE_OK){
-	    RedisModule_Log(ctx, "warning", "could not initialize lock handler");
+	    RedisModule_Log(staticCtx, "warning", "could not initialize lock handler");
         return REDISMODULE_ERR;
     }
 
     if(RedisGears_RegisterApi(ctx) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "could not register RedisGears api");
+        RedisModule_Log(staticCtx, "warning", "could not register RedisGears api");
         return REDISMODULE_ERR;
     }
 
     if(GearsConfig_Init(ctx, argv, argc) != REDISMODULE_OK){
-    	RedisModule_Log(ctx, "warning", "could not initialize gears config");
+    	RedisModule_Log(staticCtx, "warning", "could not initialize gears config");
     	return REDISMODULE_ERR;
     }
 
     Record_Initialize();
 
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
-    	RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
+    	RedisModule_Log(staticCtx, "warning", "could not initialize default keys reader.");
 		return REDISMODULE_ERR;
     }
 
     if(CommandReader_Initialize(ctx) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "could not initialize default keys reader.");
+        RedisModule_Log(staticCtx, "warning", "could not initialize default keys reader.");
         return REDISMODULE_ERR;
     }
 
@@ -1196,108 +1201,108 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     Cluster_RegisterMsgReceiverM(RG_NetworkTest);
 
     if(RedisGears_CreateGearsDataType(ctx) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "failed create RedisGear DataType");
+        RedisModule_Log(staticCtx, "warning", "failed create RedisGear DataType");
         return REDISMODULE_ERR;
     }
 
     if(Command_Init() != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "could not initialize commands.");
+        RedisModule_Log(staticCtx, "warning", "could not initialize commands.");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.refreshcluster", Cluster_RefreshCluster, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.refreshcluster");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.refreshcluster");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.clusterset", Cluster_ClusterSet, "readonly", 0, 0, -1) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.refreshcluster");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.refreshcluster");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, RG_CLUSTER_SET_FROM_SHARD_COMMAND, Cluster_ClusterSetFromShard, "readonly", 0, 0, -1) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command "RG_CLUSTER_SET_FROM_SHARD_COMMAND);
+        RedisModule_Log(staticCtx, "warning", "could not register command "RG_CLUSTER_SET_FROM_SHARD_COMMAND);
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.infocluster", Cluster_GetClusterInfo, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.getclusterinfo");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.getclusterinfo");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.hello", Cluster_RedisGearsHello, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.getclusterinfo");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.getclusterinfo");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, RG_INNER_MSG_COMMAND, Cluster_OnMsgArrive, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_MSG_COMMAND);
+        RedisModule_Log(staticCtx, "warning", "could not register command "RG_INNER_MSG_COMMAND);
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, RG_INNER_REGISTER_COMMAND, ExecutionPlan_InnerRegister, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_REGISTER_COMMAND);
+        RedisModule_Log(staticCtx, "warning", "could not register command "RG_INNER_REGISTER_COMMAND);
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.dumpexecutions", ExecutionPlan_ExecutionsDump, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rg.dumpexecutions");
+		RedisModule_Log(staticCtx, "warning", "could not register command rg.dumpexecutions");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rg.dumpregistrations", ExecutionPlan_DumpRegistrations, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.dumpregistrations");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.dumpregistrations");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, RG_INNER_UNREGISTER_COMMAND, ExecutionPlan_InnerUnregisterExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command "RG_INNER_UNREGISTER_COMMAND);
+        RedisModule_Log(staticCtx, "warning", "could not register command "RG_INNER_UNREGISTER_COMMAND);
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.unregister", ExecutionPlan_UnregisterExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.unregister");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.unregister");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.getexecution", Command_ExecutionGet, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rg.getexecution");
+		RedisModule_Log(staticCtx, "warning", "could not register command rg.getexecution");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rg.getresults", Command_GetResults, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rg.getresults");
+		RedisModule_Log(staticCtx, "warning", "could not register command rg.getresults");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rg.getresultsblocking", Command_GetResultsBlocking, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rg.getresultsblocking");
+		RedisModule_Log(staticCtx, "warning", "could not register command rg.getresultsblocking");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rg.dropexecution", Command_DropExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-		RedisModule_Log(ctx, "warning", "could not register command rg.dropexecution");
+		RedisModule_Log(staticCtx, "warning", "could not register command rg.dropexecution");
 		return REDISMODULE_ERR;
 	}
 
     if (RedisModule_CreateCommand(ctx, "rg.abortexecution", Command_AbortExecution, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.abortexecution");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.abortexecution");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.networktest", Command_NetworkTest, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.networktest");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.networktest");
         return REDISMODULE_ERR;
     }
 
     if (RedisModule_CreateCommand(ctx, "rg.dumpplugins", Command_DumpPlugins, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.dumpplugins");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.dumpplugins");
         return REDISMODULE_ERR;
     }
 
     plugins = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     if (RedisGears_InitializePlugins(ctx) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "RedisGears plugin initialization failed");
+        RedisModule_Log(staticCtx, "warning", "RedisGears plugin initialization failed");
         return REDISMODULE_ERR;
     }
 

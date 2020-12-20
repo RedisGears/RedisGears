@@ -195,7 +195,7 @@ ExecutionThreadPool* ExectuionPlan_GetThreadPool(const char* name){
 
 ExecutionThreadPool* ExecutionPlan_CreateThreadPool(const char* name, size_t numOfThreads){
     if(ExectuionPlan_GetThreadPool(name)){
-        RedisModule_Log(NULL, "warning", "Pool name already exists, %s", name);
+        RedisModule_Log(staticCtx, "warning", "Pool name already exists, %s", name);
         return NULL;
     }
     ExecutionThreadPool* ret = RG_ALLOC(sizeof(*ret));
@@ -209,7 +209,7 @@ ExecutionThreadPool* ExecutionPlan_CreateThreadPool(const char* name, size_t num
 
 ExecutionThreadPool* ExecutionPlan_DefineThreadPool(const char* name, void* poolCtx, ExecutionPoolAddJob addJob){
     if(ExectuionPlan_GetThreadPool(name)){
-        RedisModule_Log(NULL, "warning", "Pool name already exists, %s", name);
+        RedisModule_Log(staticCtx, "warning", "Pool name already exists, %s", name);
         return NULL;
     }
     ExecutionThreadPool* ret = RG_ALLOC(sizeof(*ret));
@@ -222,7 +222,7 @@ ExecutionThreadPool* ExecutionPlan_DefineThreadPool(const char* name, void* pool
 
 static void ExectuionPlan_WorkerMsgSend(WorkerData* wd, WorkerMsg* msg){
     if(wd->status == WorkerStatus_ShuttingDown){
-        RedisModule_Log(NULL, "warning", "Got a message to a shuttingdown worker, fatal!!!");
+        RedisModule_Log(staticCtx, "warning", "Got a message to a shuttingdown worker, fatal!!!");
         RedisModule_Assert(false);
     }
     if(msg->type == WORKER_FREE){
@@ -744,7 +744,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
             if(!ectx.err){
                 ectx.err = RG_STRDUP("unknow");
             }
-            RedisModule_Log(NULL, "warning", "Failed serializing execution plan, error='%s'", ectx.err);
+            RedisModule_Log(staticCtx, "warning", "Failed serializing execution plan, error='%s'", ectx.err);
             RG_FREE(ectx.err);
             RedisModule_FreeThreadSafeContext(ectx.rctx);
             Gears_BufferFree(buff);
@@ -759,7 +759,7 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
         if(!ectx.err){
             ectx.err = RG_STRDUP("unknow");
         }
-        RedisModule_Log(NULL, "warning", "Failed serializing execution plan reader args, error='%s'", ectx.err);
+        RedisModule_Log(staticCtx, "warning", "Failed serializing execution plan reader args, error='%s'", ectx.err);
         RG_FREE(ectx.err);
         RedisModule_FreeThreadSafeContext(ectx.rctx);
         Gears_BufferFree(buff);
@@ -903,7 +903,7 @@ static Record* ExecutionPlan_MapNextRecord(ExecutionPlan* ep, ExecutionStep* ste
             record = RG_ErrorRecordCreate(ectx.err, strlen(ectx.err));
         }
         if(ectx.asyncRecordCreated && record != &DummyRecord){
-            RedisModule_Log(NULL, "warning", "%s", "an api violation, map returned no DummyRecord while creating async record.");
+            RedisModule_Log(staticCtx, "warning", "%s", "an api violation, map returned no DummyRecord while creating async record.");
         }
     }
 
@@ -948,7 +948,7 @@ static Record* ExecutionPlan_FilterNextRecord(ExecutionPlan* ep, ExecutionStep* 
     }
 
     if(ectx.asyncRecordCreated && filterRes != RedisGears_StepHold){
-        RedisModule_Log(NULL, "warning", "%s", "an api violation, filter did not return RedisGears_StepHold result while creating async record.");
+        RedisModule_Log(staticCtx, "warning", "%s", "an api violation, filter did not return RedisGears_StepHold result while creating async record.");
     }
 
     if(filterRes == RedisGears_StepFailed){
@@ -1340,7 +1340,7 @@ static Record* ExecutionPlan_ForEachNextRecord(ExecutionPlan* ep, ExecutionStep*
     ectx.originRecord = record;
     int res = step->forEach.forEach(&ectx, record, step->forEach.stepArg.stepArg);
     if(ectx.asyncRecordCreated && res != RedisGears_StepHold){
-        RedisModule_Log(NULL, "warning", "%s", "an api violation, foreach did not return RedisGears_StepHold result while creating async record.");
+        RedisModule_Log(staticCtx, "warning", "%s", "an api violation, foreach did not return RedisGears_StepHold result while creating async record.");
     }
     if(ectx.err){
         if(!ectx.asyncRecordCreated){
@@ -1417,7 +1417,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
         if(accumulator != &DummyRecord){
             // no async we can set the accumulator
             if(ectx.asyncRecordCreated){
-                RedisModule_Log(NULL, "warning", "%s", "an api violation, aggregate created an async record and returned accumulator,"
+                RedisModule_Log(staticCtx, "warning", "%s", "an api violation, aggregate created an async record and returned accumulator,"
                         " its unsafe to use this accumulate, the accumulator will be freed and we will"
                         " wait for the async record.");
                 RedisGears_FreeRecord(accumulator);
@@ -1432,7 +1432,7 @@ static Record* ExecutionPlan_AccumulateNextRecord(ExecutionPlan* ep, ExecutionSt
             if(ectx.asyncRecordCreated){
                 // this is a miss use so as long as we do not crash or leak we can do whatever we want
                 // we log the error and continue.
-                RedisModule_Log(NULL, "warning", "Error happened on accumulator that created async record, err='%s'", ectx.err);
+                RedisModule_Log(staticCtx, "warning", "Error happened on accumulator that created async record, err='%s'", ectx.err);
             }else{
                 if(step->accumulate.accumulator){
                     RedisGears_FreeRecord(step->accumulate.accumulator);
@@ -1494,7 +1494,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		    if(ectx.asyncRecordCreated){
                 // this is a miss use so as long as we do not crash or leak we can do whatever we want
                 // we log the error and continue.
-                RedisModule_Log(NULL, "warning", "Error happened on accumulateby that created async record, err='%s'", ectx.err);
+                RedisModule_Log(staticCtx, "warning", "Error happened on accumulateby that created async record, err='%s'", ectx.err);
                 RG_FREE(ectx.err);
                 ectx.err = NULL;
             }else{
@@ -1517,7 +1517,7 @@ static Record* ExecutionPlan_AccumulateByKeyNextRecord(ExecutionPlan* ep, Execut
 		}
 		if(accumulator != &DummyRecord){
 		    if(ectx.asyncRecordCreated){
-                RedisModule_Log(NULL, "warning", "%s", "an api violation, aggregateby created an async record and returned accumulator,"
+                RedisModule_Log(staticCtx, "warning", "%s", "an api violation, aggregateby created an async record and returned accumulator,"
                         " its unsafe to use this accumulate, the accumulator will be freed and we will"
                         " wait for the async record.");
                 RedisGears_FreeRecord(accumulator);
@@ -1995,7 +1995,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
         if(!err){
             err = RG_STRDUP("Unknown error");
         }
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+        RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
         RG_FREE(err);
         return;
     }
@@ -2010,7 +2010,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
         if(!err){
             err = RG_STRDUP("Unknown error");
         }
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan args sent by another shard : %s, error='%s'", sender_id, err);
+        RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan args sent by another shard : %s, error='%s'", sender_id, err);
         RG_FREE(err);
         FlatExecutionPlan_Free(fep);
         return;
@@ -2019,7 +2019,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
 
 
     if(FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args, &err) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "Could not register flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+        RedisModule_Log(staticCtx, "warning", "Could not register flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
         if(err){
             RG_FREE(err);
         }
@@ -2331,11 +2331,11 @@ static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* ei
 static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
 	if(!ep){
-	    RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyReceived, Could not find execution");
+	    RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_NotifyReceived, Could not find execution");
 	    return;
 	}
 	if(ep->status == ABORTED){
-	    RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyReceived, execution aborted");
+	    RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_NotifyReceived, execution aborted");
         return;
 	}
 	++ep->totalShardsRecieved;
@@ -2347,11 +2347,11 @@ static void ExecutionPlan_NotifyReceived(RedisModuleCtx *ctx, const char *sender
 static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
 	ExecutionPlan* ep = ExecutionPlan_FindById(payload);
     if(!ep){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyRun, Could not find execution");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_NotifyRun, Could not find execution");
         return;
     }
     if(ep->status == ABORTED){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyRun, execution aborted");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_NotifyRun, execution aborted");
         return;
     }
 	ExecutionPlan_RegisterForRun(ep);
@@ -2416,7 +2416,7 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
         char *id = FlatExecutionPlan_DeserializeID(&br); 
         fep = FlatExecutionPlan_FindId(id);
         if(!fep) {
-            RedisModule_Log(ctx, "warning", "Execution plan with id=%s is marked as registered at shard : %s, but could not be found", id, sender_id);
+            RedisModule_Log(staticCtx, "warning", "Execution plan with id=%s is marked as registered at shard : %s, but could not be found", id, sender_id);
             return;
         }
         // Increase ref count.
@@ -2425,7 +2425,7 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     else {
         fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
         if(!fep){
-            RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
+            RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, err);
             if(err) {
                 RG_FREE(err);
             }
@@ -2441,7 +2441,7 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
     ExecutionCtx ectx = ExecutionCtx_Initialize(ctx, ep, NULL);
     Reader* reader = ExecutionPlan_GetReader(ep);
     if(reader->deserialize(&ectx, reader->ctx, &br) != REDISMODULE_OK){
-        RedisModule_Log(ctx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, ectx.err);
+        RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan for execution, shard : %s, error='%s'", sender_id, ectx.err);
         if(ectx.err){
             RG_FREE(ectx.err);
         }
@@ -2459,7 +2459,7 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
         const char* threadPoolName = RedisGears_BRReadString(&br);
         pool = ExectuionPlan_GetThreadPool(threadPoolName);
         if(!pool){
-            RedisModule_Log(ctx, "warning", "Failed findin pool for execution %s", threadPoolName);
+            RedisModule_Log(staticCtx, "warning", "Failed findin pool for execution %s", threadPoolName);
             RedisModule_Assert(false);
         }
     }
@@ -2479,11 +2479,11 @@ static void ExecutionPlan_CollectOnRecordReceived(RedisModuleCtx *ctx, const cha
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     if(!ep){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectOnRecordReceived, Could not find execution");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_CollectOnRecordReceived, Could not find execution");
         return;
     }
     if(ep->status == ABORTED){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectOnRecordReceived, execution aborted");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_CollectOnRecordReceived, execution aborted");
         return;
     }
     size_t stepId = RedisGears_BRReadLong(&br);
@@ -2505,11 +2505,11 @@ static void ExecutionPlan_CollectDoneSendingRecords(RedisModuleCtx *ctx, const c
 	char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
 	ExecutionPlan* ep = ExecutionPlan_FindById(epId);
 	if(!ep){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectDoneSendingRecords, Could not find execution");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_CollectDoneSendingRecords, Could not find execution");
         return;
     }
     if(ep->status == ABORTED){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_CollectDoneSendingRecords, execution aborted");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_CollectDoneSendingRecords, execution aborted");
         return;
     }
 	size_t stepId = RedisGears_BRReadLong(&br);
@@ -2528,11 +2528,11 @@ static void ExecutionPlan_OnRepartitionRecordReceived(RedisModuleCtx *ctx, const
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     if(!ep){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_OnRepartitionRecordReceived, Could not find execution");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_OnRepartitionRecordReceived, Could not find execution");
         return;
     }
     if(ep->status == ABORTED){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_OnRepartitionRecordReceived, execution aborted");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_OnRepartitionRecordReceived, execution aborted");
         return;
     }
     size_t stepId = RedisGears_BRReadLong(&br);
@@ -2566,11 +2566,11 @@ static FlatExecutionPlan* FlatExecutionPlan_ShallowCopy(FlatExecutionPlan* fep){
 static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
     if(!ep){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_TeminateExecution, Could not find execution");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_TeminateExecution, Could not find execution");
         return;
     }
     if(ep->status == ABORTED){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_TeminateExecution, execution aborted");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_TeminateExecution, execution aborted");
         return;
     }
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateTerminate(ep);
@@ -2580,11 +2580,11 @@ static void ExecutionPlan_TeminateExecution(RedisModuleCtx *ctx, const char *sen
 static void ExecutionPlan_NotifyExecutionDone(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
     ExecutionPlan* ep = ExecutionPlan_FindById(payload);
     if(!ep){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyExecutionDone, Could not find execution");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_NotifyExecutionDone, Could not find execution");
         return;
     }
     if(ep->status == ABORTED){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_NotifyExecutionDone, execution aborted");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_NotifyExecutionDone, execution aborted");
         return;
     }
     WorkerMsg* msg = ExectuionPlan_WorkerMsgCreateDone(ep);
@@ -2602,11 +2602,11 @@ static void ExecutionPlan_DoneRepartition(RedisModuleCtx *ctx, const char *sende
     char* epId = RedisGears_BRReadBuffer(&br, &epIdLen);
     ExecutionPlan* ep = ExecutionPlan_FindById(epId);
     if(!ep){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_DoneRepartition, Could not find execution");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_DoneRepartition, Could not find execution");
         return;
     }
     if(ep->status == ABORTED){
-        RedisModule_Log(NULL, "warning", "On ExecutionPlan_DoneRepartition, execution aborted");
+        RedisModule_Log(staticCtx, "warning", "On ExecutionPlan_DoneRepartition, execution aborted");
         return;
     }
     size_t stepId = RedisGears_BRReadLong(&br);
@@ -2814,7 +2814,7 @@ WorkerData* ExecutionPlan_CreateWorker(ExecutionThreadPool* pool){
 
 static void ExecutionPlan_FreeWorkerInternal(WorkerData* wd){
     if(Gears_listLength(wd->notifications) > 1){
-        RedisModule_Log(NULL, "warning", "Worker was freed but not empty, fatal!!!");
+        RedisModule_Log(staticCtx, "warning", "Worker was freed but not empty, fatal!!!");
         RedisModule_Assert(false);
     }
     Gears_listRelease(wd->notifications);

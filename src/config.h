@@ -9,7 +9,9 @@
 #define SRC_CONFIG_H_
 
 #include "redismodule.h"
+#include "redisgears.h"
 
+void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after);
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc);
 long long GearsConfig_GetMaxExecutions();
 long long GearsConfig_GetMaxExecutionsPerRegistration();

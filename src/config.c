@@ -11,6 +11,13 @@
 #include <stdbool.h>
 #include <assert.h>
 
+typedef struct ConfigHook{
+    BeforeConfigSet before;
+    AfterConfigSet after;
+}ConfigHook;
+
+ConfigHook* configHooks;
+
 typedef struct ArgsIterator{
     int currIndex;
     RedisModuleString** argv;
@@ -236,7 +243,7 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
 };
 
 static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* configItem, bool sendReply) {
-    RedisModule_Log(ctx, "warning", fmt, configItem);
+    RedisModule_Log(staticCtx, "warning", fmt, configItem);
 
     if(sendReply){
         char fmt1[256] = "(error) ";
@@ -286,6 +293,30 @@ static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
                 continue;
             }
             const char* valCStr = RedisModule_StringPtrLen(valStr, NULL);
+            bool hookError = false;
+            for(size_t i = 0 ; i < array_len(configHooks) ; ++i){
+                if(configHooks[i].before){
+                    char* err = NULL;
+                    if(configHooks[i].before(configName, valCStr, &err) != REDISMODULE_OK){
+                        if(!err){
+                            rg_asprintf(&err, "Failed setting config value for key '%s' with value '%s'", configName, valCStr);
+                        }
+                        hookError = true;
+                        RedisModule_Log(staticCtx, "warning", "%s", err);
+                        if(!isFirstInitialization){
+                            RedisModule_ReplyWithError(ctx, err);
+                        }
+                        RG_FREE(err);
+                        break;
+                    }
+                }
+            }
+
+            if(hookError){
+                error = true;
+                continue;
+            }
+
             Gears_dictEntry *existing = NULL;
             Gears_dictEntry *entry = Gears_dictAddRaw(Gears_ExtraConfig, (char*)configName, &existing);
             if(!entry){
@@ -294,6 +325,13 @@ static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
                 entry = existing;
             }
             Gears_dictSetVal(Gears_ExtraConfig, entry, RG_STRDUP(valCStr));
+
+            for(size_t i = 0 ; i < array_len(configHooks) ; ++i){
+                if(configHooks[i].after){
+                    configHooks[i].after(configName, valCStr);
+                }
+            }
+
             SEND_REPLY_IF_NEEDED(RedisModule_ReplyWithSimpleString(ctx, "OK - value was saved in extra config dictionary"));
         }
     }
@@ -419,17 +457,17 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
         const ConfigVal* v = val->getter();
         switch(v->type){
         case STR:
-            RedisModule_Log(ctx, "notice", "%s:%s", val->name, v->val.str);
+            RedisModule_Log(staticCtx, "notice", "%s:%s", val->name, v->val.str);
             break;
         case LONG:
-            RedisModule_Log(ctx, "notice", "%s:%lld", val->name, v->val.longVal);
+            RedisModule_Log(staticCtx, "notice", "%s:%lld", val->name, v->val.longVal);
             break;
         case DOUBLE:
-            RedisModule_Log(ctx, "notice", "%s:%lf", val->name, v->val.doubleVal);
+            RedisModule_Log(staticCtx, "notice", "%s:%lf", val->name, v->val.doubleVal);
             break;
         case ARRAY:
             arrayStr = ArrToStr((void**)v->val.vals, array_len(v->val.vals), GearsConfig_ArrayConfigValToStr);
-            RedisModule_Log(ctx, "notice", "%s:%s", val->name, arrayStr);
+            RedisModule_Log(staticCtx, "notice", "%s:%s", val->name, arrayStr);
             RG_FREE(arrayStr);
             break;
         default:
@@ -442,20 +480,27 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
     while((entry = Gears_dictNext(iter))){
         const char* key = Gears_dictGetKey(entry);
         const char* val = Gears_dictGetVal(entry);
-        RedisModule_Log(ctx, "notice", "%s:%s", key, val);
+        RedisModule_Log(staticCtx, "notice", "%s:%s", key, val);
     }
     Gears_dictReleaseIterator(iter);
 }
 
 #define DEF_COMMAND(cmd, handler) \
     do { \
-        if (RedisModule_CreateCommand(ctx, "rg." #cmd, handler, "readonly", 0, 0, 0) != REDISMODULE_OK) { \
+        if (RedisModule_CreateCommand(staticCtx, "rg." #cmd, handler, "readonly", 0, 0, 0) != REDISMODULE_OK) { \
             RedisModule_Log(ctx, "warning", "could not register command %s", #cmd); \
             return REDISMODULE_ERR; \
         } \
     } while (false)
 
+void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after){
+    ConfigHook hook = {.before = before, .after = after,};
+    configHooks = array_append(configHooks, hook);
+}
+
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
+    configHooks = array_new(ConfigHook, 10);
+
     DefaultGearsConfig = (RedisGears_Config){
         .maxExecutions = {
             .val.longVal = 1000,
