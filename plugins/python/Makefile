@@ -9,10 +9,12 @@ ROOTDIR=../../
 REDISGEARS_SRC=$(ROOTDIR)/src
 
 CPYTHON_DIR=$(ROOTDIR)/deps/cpython
+CPYTHON_BUILD_DIR=$(ROOTDIR)/bin/linux-x64-release/cpython/
 
 GCC_FLAGS += \
 	-I$(CPYTHON_DIR)/Include \
 	-I$(CPYTHON_DIR) \
+	-I$(CPYTHON_BUILD_DIR) \
 	-I$(REDISGEARS_SRC)/ \
 	-I$(REDISGEARS_SRC)/utils/
 
