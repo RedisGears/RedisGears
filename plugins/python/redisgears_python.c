@@ -5716,6 +5716,7 @@ static int Python_BeforeConfigChange(const char* key, const char* val, char** er
                 TRY_LOAD_CONFIG(PythonConfig_GetIntVal(def->name, 0, val, def->ptr, def->flags | CONFIG_FLAG_IGNORE_DEFAULT));
                 break;
             case PythonConfigType_Str:
+                RG_FREE(*(char**)def->ptr); // free old pointer
                 TRY_LOAD_CONFIG(PythonConfig_GetStrVal(def->name, NULL, val, def->ptr, def->flags | CONFIG_FLAG_IGNORE_DEFAULT));
                 break;
             default:

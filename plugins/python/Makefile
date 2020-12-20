@@ -38,10 +38,10 @@ ARTIFACT_NAME=$(BINDIR)$(ARTIFACT_FILE_NAME)
 all: $(ARTIFACT_NAME)
 
 GearsBuilder.auto.h: GearsBuilder.py
-	$(SHOW)xxd -i $< > $@
+	xxd -i $< > $@
 
 cloudpickle.auto.h: cloudpickle.py
-	$(SHOW)xxd -i $< > $@
+	xxd -i $< > $@
 
 $(ARTIFACT_NAME): $(HEADERS) $(SOURCES)
 	mkdir -p $(BINDIR)
