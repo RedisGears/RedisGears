@@ -171,7 +171,7 @@ class GearsBuilder():
             self.gearsCtx.collect()
         kargs['prefix'] = prefix # this is for backword comptability
         if 'regex' in kargs:
-            log('Using regex argument with register is depricated and missleading, use prefix instead.', level='warning')
+            log('Using regex argument with register is deprecated and missleading, use prefix instead.', level='warning')
             kargs['prefix'] = kargs['regex']
         self.gearsCtx.register(**kargs)
 
