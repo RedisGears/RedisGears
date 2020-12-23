@@ -3731,7 +3731,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         if(strcasecmp(requirements, "REQUIREMENTS") == 0){
             RedisGearsPy_GetRequirementsList(requirementsList, argv + requirementsArg, reqLen);
         }else{
-            RedisModule_ReplyWithError(ctx, "Extra unkown arguments was given.");
+            RedisModule_ReplyWithError(ctx, "Extra unknown arguments were given.");
             return REDISMODULE_OK;
         }
     }
