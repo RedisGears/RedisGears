@@ -40,6 +40,7 @@ static PyObject* pyGlobals;
 static PyObject* runCoroutineFunction;
 static PyObject* createFutureFunction;
 static PyObject* setFutureResultsFunction;
+static PyObject* setFutureExceptionFunction;
 PyObject* GearsError;
 PyObject* ForceStoppedError;
 
@@ -3042,18 +3043,15 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 
 	RedisGearsPy_LOCK
 	PyObject* future = private_data;
-	PyObject* l = PyList_New(0);
 	PyObject* tensorList = PyList_New(0);
-	PyObject* errs = PyList_New(0);
-
-	PyList_Append(l, tensorList);
-	PyList_Append(l, errs);
+	PyObject* pArgs = PyTuple_New(2);
+	PyTuple_SetItem(pArgs, 0, future);
 
 	if (RedisAI_GetErrorCode(error) != RedisAI_ErrorCode_OK) {
 		const char *errStr = RedisAI_GetError(error);
-		PyObject* pyErr = PyUnicode_FromStringAndSize(errStr, strlen(errStr));
-		PyList_Append(errs, pyErr);
-		Py_DECREF(pyErr);
+		PyErr_SetString(GearsError, errStr);
+		PyTuple_SetItem(pArgs, 1, GearsError);
+		PyObject* r = PyObject_CallObject(setFutureExceptionFunction, pArgs);
 		goto finish;
 	}
 
@@ -3064,14 +3062,10 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 		Py_DECREF(pyt);
 	}
 
-	finish:
-	Py_DECREF(tensorList);
-	Py_DECREF(errs);
-
-	PyObject* pArgs = PyTuple_New(2);
-	PyTuple_SetItem(pArgs, 0, future);
-	PyTuple_SetItem(pArgs, 1, l);
+	PyTuple_SetItem(pArgs, 1, tensorList);
 	PyObject* r = PyObject_CallObject(setFutureResultsFunction, pArgs);
+
+	finish:
 	Py_DECREF(pArgs);
 	if(!r){
 		char* err = getPyError();
@@ -5652,6 +5646,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
     runCoroutineFunction = PyDict_GetItemString(pyGlobals, "runCoroutine");
     createFutureFunction = PyDict_GetItemString(pyGlobals, "createFuture");
     setFutureResultsFunction = PyDict_GetItemString(pyGlobals, "setFutureResults");
+    setFutureExceptionFunction = PyDict_GetItemString(pyGlobals, "setFutureException");
 
     pythonRecordType = RedisGears_RecordTypeCreate("PythonRecord", sizeof(PythonRecord),
                                                    PythonRecord_SendReply,
