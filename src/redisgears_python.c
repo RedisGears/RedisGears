@@ -254,7 +254,7 @@ static void PythonRequirementCtx_VerifyBasePath(PythonRequirementCtx* req){
         }
         c++;
     }
-    RedisModule_Log(NULL, "warning", "Fatal!!!, failed verifying basePath of requirment. name:'%s', basePath:'%s'", req->installName, req->basePath);
+    RedisModule_Log(NULL, "warning", "Fatal!!!, failed verifying basePath of requirement. name:'%s', basePath:'%s'", req->installName, req->basePath);
     RedisModule_Assert(false);
 }
 static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
@@ -375,7 +375,7 @@ static PythonRequirementCtx* PythonRequirementCtx_Create(const char* requirement
     rg_asprintf(&ret->basePath, "%s/%s", venvDir, ret->installName);
     ret->wheels = array_new(char*, 10);
     // refCount is starting from 2, one hold by RequirementsDict and once by the caller.
-    // currently we basically never delete requirments so we will know not to reinstall them
+    // currently we basically never delete requirements so we will know not to reinstall them
     // to save time
     ret->refCount = 2;
     pthread_mutex_init(&ret->installationLock, NULL);
@@ -3646,7 +3646,7 @@ static void RedisGearsPy_DownloadWheelsAndDistribute(void* ctx){
     BackgroundDepsInstallCtx* bdiCtx = ctx;
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bdiCtx->bc);
     if(!PythonSessionCtx_DownloadWheels(bdiCtx->session)){
-        RedisModule_ReplyWithError(rctx, "Could not satisfy requirments (look at redis log file for more information)");
+        RedisModule_ReplyWithError(rctx, "Could not satisfy requirements (look at redis log file for more information)");
         LockHandler_Acquire(rctx);
         goto error;
     }
@@ -3731,14 +3731,14 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         if(strcasecmp(requirements, "REQUIREMENTS") == 0){
             RedisGearsPy_GetRequirementsList(requirementsList, argv + requirementsArg, reqLen);
         }else{
-            RedisModule_ReplyWithError(ctx, "Extra unkown arguments was given.");
+            RedisModule_ReplyWithError(ctx, "Extra unknown arguments were given.");
             return REDISMODULE_OK;
         }
     }
 
     PythonSessionCtx* session = PythonSessionCtx_Create(requirementsList, reqLen);
     if(!session){
-        RedisModule_ReplyWithError(ctx, "Could not satisfy requirments, look at the log file for more information.");
+        RedisModule_ReplyWithError(ctx, "Could not satisfy requirements, look at the log file for more information.");
         return REDISMODULE_OK;
     }
 
