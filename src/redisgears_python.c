@@ -3046,6 +3046,7 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
         PyList_Append(tensorList, (PyObject*)pyt);
         Py_DECREF(pyt);
     }
+    RedisAI_ModelRunCtxFree(mctx);
     return tensorList;
 }
 
@@ -3088,6 +3089,7 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 
 	finish:
 	RedisAI_FreeError(error);
+	RedisAI_ModelRunCtxFree(mctx);
 	Py_DECREF(pArgs);
 	RedisGearsPy_UNLOCK
 }
