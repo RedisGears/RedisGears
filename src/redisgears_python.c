@@ -2885,7 +2885,7 @@ static PyObject* PyGraph_ToStr(PyObject *obj){
 
 static void PyGraphRunner_Destruct(PyObject *pyObj){
     PyGraphRunner* pyg = (PyGraphRunner*)pyObj;
-    RedisAI_ModelRunCtxFree(pyg->g);
+    if (pyg->g) RedisAI_ModelRunCtxFree(pyg->g);
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
@@ -2967,6 +2967,10 @@ static PyObject* modelRunnerAddInput(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyGraphRunner");
         return NULL;
     }
+	if(pyg->g == NULL){
+		PyErr_SetString(GearsError, "PyGraphRunner is invalid");
+		return NULL;
+	}
     PyObject* inputName = PyTuple_GetItem(args, 1);
     if(!PyUnicode_Check(inputName)){
         PyErr_SetString(GearsError, "input name argument must be a string");
@@ -2993,6 +2997,10 @@ static PyObject* modelRunnerAddOutput(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyGraphRunner");
         return NULL;
     }
+	if(pyg->g == NULL){
+		PyErr_SetString(GearsError, "PyGraphRunner is invalid");
+		return NULL;
+	}
     PyObject* outputName = PyTuple_GetItem(args, 1);
     if(!PyUnicode_Check(outputName)){
         PyErr_SetString(GearsError, "output name argument must be a string");
@@ -3014,10 +3022,16 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyGraphRunner");
         return NULL;
     }
+	if(pyg->g == NULL){
+		PyErr_SetString(GearsError, "PyGraphRunner is invalid");
+		return NULL;
+	}
     RAI_Error* err;
     RedisAI_InitError(&err);
+    RAI_ModelRunCtx *mctx = pyg->g;
+    pyg->g = NULL;
     PyThreadState* _save = PyEval_SaveThread();
-    RedisAI_ModelRun(&pyg->g, 1, err);
+    RedisAI_ModelRun(&mctx, 1, err);
     PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
@@ -3026,9 +3040,9 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     }
     RedisAI_FreeError(err);
     PyObject* tensorList = PyList_New(0);
-    for(size_t i = 0 ; i < RedisAI_ModelRunCtxNumOutputs(pyg->g) ; ++i){
+    for(size_t i = 0 ; i < RedisAI_ModelRunCtxNumOutputs(mctx) ; ++i){
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(pyg->g, i));
+        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(mctx, i));
         PyList_Append(tensorList, (PyObject*)pyt);
         Py_DECREF(pyt);
     }
@@ -3049,9 +3063,9 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 
 	if (RedisAI_GetErrorCode(error) != RedisAI_ErrorCode_OK) {
 		const char *errStr = RedisAI_GetError(error);
-		PyErr_SetString(GearsError, errStr);
-		PyTuple_SetItem(pArgs, 1, GearsError);
-		PyObject* r = PyObject_CallObject(setFutureExceptionFunction, pArgs);
+		PyObject* pyErr = PyUnicode_FromStringAndSize(errStr, strlen(errStr));
+		PyTuple_SetItem(pArgs, 1, pyErr);
+		PyObject_CallObject(setFutureExceptionFunction, pArgs);
 		goto finish;
 	}
 
@@ -3064,9 +3078,6 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 
 	PyTuple_SetItem(pArgs, 1, tensorList);
 	PyObject* r = PyObject_CallObject(setFutureResultsFunction, pArgs);
-
-	finish:
-	Py_DECREF(pArgs);
 	if(!r){
 		char* err = getPyError();
 		RedisModule_Log(NULL, "warning", "Error happened when releasing execution future, error='%s'", err);
@@ -3074,6 +3085,10 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 	}else{
 		Py_DECREF(r);
 	}
+
+	finish:
+	RedisAI_FreeError(error);
+	Py_DECREF(pArgs);
 	RedisGearsPy_UNLOCK
 }
 
@@ -3088,12 +3103,16 @@ static PyObject* modelRunnerRunAsync(PyObject *cls, PyObject *args){
 		PyErr_SetString(GearsError, "Given argument is not of type PyGraphRunner");
 		return NULL;
 	}
-
+	if(pyg->g == NULL){
+		PyErr_SetString(GearsError, "PyGraphRunner is invalid");
+		return NULL;
+	}
 	PyObject* pArgs = PyTuple_New(0);
 	PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
 	Py_DECREF(pArgs);
 
 	RedisAI_ModelRunAsync(pyg->g, FinishAsyncModelRun, future);
+	pyg->g = NULL;
 	Py_INCREF(future);
 	return future;
 }

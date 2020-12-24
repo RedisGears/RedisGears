@@ -251,7 +251,7 @@ def setFutureResults(f, res):
 
 def setFutureException(f, exception):
     async def setException():
-        f.set_exception(exception)
+        f.set_exception(Exception(str(exception)))
     asyncio.run_coroutine_threadsafe(setException(), loop)
 
 def f(loop):
