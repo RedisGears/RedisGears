@@ -249,6 +249,11 @@ def setFutureResults(f, res):
         f.set_result(res)
     asyncio.run_coroutine_threadsafe(setFutureRes(), loop)    
 
+def setFutureException(f, exception):
+    async def setException():
+        f.set_exception(Exception(str(exception)))
+    asyncio.run_coroutine_threadsafe(setException(), loop)
+
 def f(loop):
     registerGearsThread()
     asyncio.set_event_loop(loop)
