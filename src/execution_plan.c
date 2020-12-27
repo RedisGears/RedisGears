@@ -3555,7 +3555,7 @@ static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString
     FlatExecutionPlan* fep = FlatExecutionPlan_FindByStrId(id);
 
     if(!fep){
-        RedisModule_ReplyWithError(ctx, "execution does not registered");
+        RedisModule_ReplyWithError(ctx, "execution is not registered");
         return REDISMODULE_OK;
     }
 
