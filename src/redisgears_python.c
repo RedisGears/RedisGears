@@ -3036,6 +3036,7 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
+		RedisAI_ModelRunCtxFree(mctx);
         return NULL;
     }
     RedisAI_FreeError(err);
