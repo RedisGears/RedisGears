@@ -4,18 +4,7 @@ from RLTest import Env
 import yaml
 import time
 from common import TimeLimit
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
-import paella
-
-def getConnectionByEnv(env):
-    conn = None
-    if env.env == 'oss-cluster':
-        env.broadcast('rg.refreshcluster')
-        conn = env.envRunner.getClusterConnection()
-    else:
-        conn = env.getConnection()
-    return conn
+from includes import *
 
 
 class testBasic:

@@ -2,14 +2,12 @@ from RLTest import Env
 import sys
 import os
 import time
+from includes import *
 
 from common import getConnectionByEnv
 from common import TimeLimit
-
 from common import verifyRegistrationIntegrity
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
-import paella
 
 class testUnregister:
     def __init__(self):

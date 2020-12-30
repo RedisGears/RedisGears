@@ -71,7 +71,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("python2-psutil")
 
         self.install("python2-ujson")
-        # self.pip_install("gevent")
+        self.pip_install("gevent")
 
     def linux_last(self):
         self.install("valgrind")
@@ -85,7 +85,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("binutils") # into /usr/local/opt/binutils
         self.install_gnu_utils()
 
-        # self.pip_install("gevent")
+        self.pip_install("gevent")
 
     def common_last(self):
         if self.with_python:
@@ -93,13 +93,6 @@ class RedisGearsSetup(paella.Setup):
                      format(ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
                      output=True)
         self.run("PYTHON=%s %s/bin/getrmpytools" % (self.python, READIES))
-        self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest || true")
-        # redis-py-cluster should be installed from git due to redis-py dependency
-        # self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
-        self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
-        self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
-
-        # self.pip_install("-r %s/paella/requirements.txt" % READIES)
 
 #----------------------------------------------------------------------------------------------
 

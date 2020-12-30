@@ -4,6 +4,8 @@ from common import TimeLimit
 from common import verifyRegistrationIntegrity
 from threading import Thread
 import time
+from includes import *
+
 
 class Background(object):
     """
