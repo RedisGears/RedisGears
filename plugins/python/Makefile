@@ -168,7 +168,7 @@ $(BINDIR)/%.o: $(SRCDIR)/%.c
 $(TARGET): $(MISSING_DEPS) $(OBJECTS)
 	@echo Linking $@...
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
-	$(SHOW)ln -rsf -t $(ROOT) $(TARGET)
+	$(SHOW)$(READIES)/bin/symlink -f -d $(ROOT) -t $(TARGET)
 
 #----------------------------------------------------------------------------------------------
 

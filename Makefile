@@ -198,7 +198,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) static pack ramp-pack test setup fetch verify-packs
+.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs
 
 include $(MK)/rules
 
@@ -256,13 +256,11 @@ $(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o $(BINDIR)/snapsho
 	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(BINDIR)/release-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
 	$(SHOW)mkdir -p $(dir $@)/snapshot
 	$(SHOW)$(CC) -shared -o $(dir $@)/snapshot/$(notdir $@) $(OBJECTS) $(BINDIR)/snapshot-deps.o $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
-ifneq ($(DEBUG),1)
-ifneq ($(OS),macos)
-	$(call extract_symbols,$@)
-	$(call extract_symbols,$(dir $@)/snapshot/$(notdir $@))
-endif
-endif
-	$(SHOW)ln -sf $(TARGET) $(notdir $(TARGET))
+#ifneq ($(DEBUG),1)
+#	$(call extract_symbols,$@)
+#	$(call extract_symbols,$(dir $@)/snapshot/$(notdir $@))
+#endif
+	$(SHOW)$(READIES)/bin/symlink -f -d $(ROOT) -t $(TARGET)
 
 static: $(TARGET:.so=.a)
 
@@ -277,7 +275,7 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 setup:
 	@echo Setting up system...
 	$(SHOW)./deps/readies/bin/getpy2
-	$(SHOW)./system-setup.py
+	$(SHOW)python2 ./system-setup.py
 
 fetch get_deps:
 #	-$(SHOW)git submodule update --init --recursive
@@ -357,20 +355,20 @@ clean-gears-python:
 
 artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot): $(TARGET) ramp.yml
 	@echo Packing module...
-	$(SHOW)RAMP=1 DEPS=1 VARIANT=$(RAMP_VARIANT) ./pack.sh $(TARGET)
+	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) ./pack.sh $(TARGET)
 
 artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot): $(CPYTHON_PREFIX) $(GEARS_PYTHON)
 	@echo Packing Python plugin...
 	$(SHOW)RAMP=0 GEARSPY=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./pack.sh $(TARGET)
 
-ramp-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
+ramp ramp-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 
 pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
 		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot)
 
 verify-packs:
 	@set -e ;\
-	MOD=`./deps/readies/bin/redis-cmd --loadmodule $(TARGET) Plugin $(GEARS_PYTHON) -- RG.CONFIGGET GearsPythonSha256 2> /tmp/redisgears-sha.err` ;\
+	MOD=`./deps/readies/bin/redis-cmd --loadmodule $(TARGET) Plugin $(GEARS_PYTHON) -- RG.CONFIGGET DependenciesSha256 2> /tmp/redisgears-sha.err` ;\
 	if [[ -z $MOD ]]; then \
 		>&2 cat /tmp/redisgears-sha.err ;\
 		exit 1 ;\

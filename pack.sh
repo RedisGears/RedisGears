@@ -26,7 +26,7 @@ if [[ $1 == --help || $1 == help ]]; then
 		
 		RAMP=1        Generate RAMP package
 		GEARSPY=1     Generate Gears Python plugin package
-		DEPS=1        Generate packages of dependencies
+		SYM=1         Generate packages of debug symbols
 		RELEASE=1     Generate "release" packages (artifacts/release/)
 		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
 		JUST_PRINT=1  Only print package names, do not generate
@@ -47,7 +47,7 @@ MOD=$1
 
 RAMP=${RAMP:-1}
 GEARSPY=${GEARSPY:-0}
-DEPS=${DEPS:-0}
+SYM=${SYM:-0}
 
 RELEASE=${RELEASE:-1}
 SNAPSHOT=${SNAPSHOT:-1}
@@ -137,10 +137,6 @@ pack_deps() {
 	artdir=$(realpath $artdir)
 	local depdir=$(cat $artdir/$dep.dir)
 
-	local platform="$OS-$OSNICK-$ARCH"
-	
-	# local stem=${PACKAGE_NAME}-${dep}.${platform}
-	# local fq_package=$stem.${SEMVER}${VARIANT}.tgz
 	local tar_path=$artdir/$package
 	local dep_prefix_dir=$(cat $artdir/$dep.prefix)
 	
@@ -161,15 +157,15 @@ pack_deps() {
 
 #----------------------------------------------------------------------------------------------
 
-pack_debug() {
-	echo "Building debug dependencies ..."
-	echo $(dirname $(realpath $RELEASE_SO)) > artifacts/release/debug.dir
-	echo $(basename $(realpath $RELEASE_SO)).debug > artifacts/release/debug.files
+pack_sym() {
+	echo "Building debug symbols dependencies ..."
+	echo $(dirname $RELEASE_SO) > artifacts/release/debug.dir
+	echo $(basename $RELEASE_SO).debug > artifacts/release/debug.files
 	echo "" > artifacts/release/debug.prefix
 	pack_deps debug artifacts/release $RELEASE_debug
 
-	echo $(dirname $(realpath $SNAPSHOT_SO)) > artifacts/snapshot/debug.dir
-	echo $(basename $(realpath $SNAPSHOT_SO)).debug > artifacts/snapshot/debug.files
+	echo $(dirname $SNAPSHOT_SO) > artifacts/snapshot/debug.dir
+	echo $(basename $SNAPSHOT_SO).debug > artifacts/snapshot/debug.files
 	echo "" > artifacts/snapshot/debug.prefix
 	pack_deps debug artifacts/snapshot $SNAPSHOT_debug
 	echo "Done."
@@ -233,8 +229,8 @@ if [[ $RAMP == 1 ]]; then
 	[[ ! -f $MOD ]] && { eprint "$0: $MOD does not exist. Aborting."; exit 1; }
 fi
 
-if [[ $DEPS == 1 ]]; then
-	pack_debug
+if [[ $SYM == 1 ]]; then
+	pack_sym
 fi
 
 if [[ $GEARSPY == 1 ]]; then

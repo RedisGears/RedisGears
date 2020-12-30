@@ -5546,8 +5546,8 @@ static int PythonConfig_GetStrVal(const char* val, const char* defaultVal, const
 #define ForeceDownloadDepsOnEnterpriseConfigName "ForeceDownloadDepsOnEnterprise"
 #define PythonAttemptTracebackConfigName "PythonAttemptTraceback"
 #define PythonInstallReqMaxIdleTimeConfigName "PythonInstallReqMaxIdleTime"
-#define GearsPythonUrlConfigName "GearsPythonUrl"
-#define GearsPythonSha256ConfigName "GearsPythonSha256"
+#define GearsPythonUrlConfigName "DependenciesUrl"
+#define GearsPythonSha256ConfigName "DependenciesSha256"
 #define PythonInstallationDirConfigName "PythonInstallationDir"
 
 typedef enum PythonConfigType{
