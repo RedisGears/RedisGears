@@ -1,7 +1,9 @@
 
-# ifeq ($(CPYTHON_BINDIR),)
-# $(error CPYTHON_BINDIR not defined. Aborting.)
-# endif
+ifeq ($(CPYTHON_BINDIR),)
+# we always build the release variant
+CPYTHON_BINDIR=bin/$(FULL_VARIANT.release)/cpython
+CPYTHON_BINROOT=bin/$(FULL_VARIANT.release)
+endif
 
 LIBPYTHON=$(CPYTHON_BINDIR)/libpython3.7m-fixed.a
 

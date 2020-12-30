@@ -242,8 +242,8 @@ workflows:
           <<: *on-version-tags
           # <<: *on-any-branch
       - macos:
-          <<: *on-version-tags
-          # <<: *on-any-branch
+          #@@ <<: *on-version-tags
+          <<: *on-any-branch
       - build-multiarch-docker:
           <<: *never
           # <<: *on-version-tags

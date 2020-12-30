@@ -1,17 +1,29 @@
 #!/bin/bash
 
-[[ $VERBOSE == 1 ]] && set -x
+[[ $V == 1 || $VERBOSE == 1 ]] && set -x
 [[ $IGNERR == 1 ]] || set -e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-. $HERE/../deps/readies/shibumi/functions
+ROOT=$(cd $HERE/..; pwd)
+READIES=$ROOT/deps/readies
+. $READIES/shibumi/defs
 
-ROOT=$(realpath $HERE/..)
+[[ -z $MOD ]] && MOD="$ROOT/redisgears.so"
+if [[ ! -f $MOD ]]; then
+	eprint "No Gears module at $MOD"
+	exit 1
+fi
+
+[[ -z $GEARSPY_PATH ]] && GEARSPY_PATH=$ROOT/gears_python.so
+if [[ ! -f $GEARSPY_PATH ]]; then
+	eprint "No Gears Python plugin at $GEARSPY_PATH"
+	exit 1
+fi
 
 export ENV_PREFIX=${ENV_PREFIX:-oss}
-module_suffix=so
+module_suffix=".so"
 
-[[ $ENV_PREFIX != oss ]] && module_suffix=zip
+[[ $ENV_PREFIX != oss ]] && module_suffix=".zip"
 
 if [[ $VALGRIND == 1 ]]; then
 	MORE_ARGS="--use-valgrind --vg-suppressions ../leakcheck.supp"
@@ -24,16 +36,15 @@ run_tests() {
 	shift
 
 	if [[ $shards == 0 ]]; then
-		echo "no cluster on $ENV_PREFIX"
-		local mod="$ROOT/redisgears.so"
+		echo "No cluster on $ENV_PREFIX"
 		local env="$ENV_PREFIX"
 	else
-		echo "cluster mode, $shards shard"
-		local mod="$ROOT/redisgears.$module_suffix"
+		echo "Cluster mode, $shards shard"
+		MOD=${MOD/.so/$module_suffix}
 		local shards_arg="--shards-count $shards"
 		local env="${ENV_PREFIX}-cluster"
 	fi
-	python2.7 -m RLTest --clear-logs --module $mod --module-args "Plugin ../../gears_python.so" --env $env $shards_arg $MORE_ARGS "$@"
+	python2 -m RLTest --clear-logs --module $MOD --module-args "Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
 }
 
 cd $HERE

@@ -1,56 +1,199 @@
+
+ifeq ($(VG),1)
+override VALGRIND:=1
+endif
+
+ifeq ($(VALGRIND),1)
+override DEBUG:=1
+endif
+
+ROOT=../..
+include $(ROOT)/deps/readies/mk/main
+
+define HELP
+make build
+  DEBUG=1         # build debug variant
+  VG|VALGRIND=1   # build with VALGRIND (implies DEBUG=1)
+  VARIANT=name    # build as variant `name`
+  DEPS=1          # also build dependant modules
+make clean        # remove binary files
+  ALL=1           # remove binary directories
+  DEPS=1          # also clean dependant modules
+
+make deps          # build dependant modules
+make cpython       # build cpython
+make all           # build all libraries and packages
+
+endef
+
+MK_ALL_TARGETS=build
+
+#----------------------------------------------------------------------------------------------
+
+BINDIR=$(BINROOT)/gears_python
+SRCDIR=$(abspath $(ROOT))
+
+TARGET=$(BINDIR)/gears_python.so
+
+#----------------------------------------------------------------------------------------------
+
+MK_CUSTOM_CLEAN=1
+
+include $(MK)/defs
+
+DEPENDENCIES=cpython
+
+ifneq ($(filter all deps $(DEPENDENCIES),$(MAKECMDGOALS)),)
+DEPS=1
+endif
+
+#----------------------------------------------------------------------------------------------
+
+CPYTHON_BINDIR=$(ROOT)/bin/$(FULL_VARIANT.release)/cpython
+CPYTHON_BINROOT=$(ROOT)/bin/$(FULL_VARIANT.release)
+
+include $(ROOT)/build/cpython/Makefile.defs
+
+#----------------------------------------------------------------------------------------------
+
+CC=gcc
+
+define _SOURCES
+	plugins/python/redisgears_python.c
+	plugins/python/globals.c
+	src/utils/dict.c
+	src/utils/thpool.c
+	src/utils/buffer.c
+endef
 ifeq ($(DEBUG),1)
-	GCC_FLAGS=-o0 -g -DVALGRIND -fno-omit-frame-pointer
+_SOURCES += src/debug.c
+endif
+
+SOURCES=$(addprefix $(SRCDIR)/,$(filter %,$(subst $(__NL), ,$(_SOURCES))))
+OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
+
+CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
+
+define _CC_FLAGS
+	-fPIC
+	-std=gnu99
+	-MMD
+	-MF $(@:.o=.d)
+	$(CC_FLAGS.coverage)
+
+	-include common.h
+	-I$(CPYTHON_DIR)/Include
+	-I$(CPYTHON_DIR)
+	-I$(ROOT)
+	-I$(ROOT)/deps
+	-I$(SRCDIR)/src
+	-I$(BINDIR)
+	-I$(ROOT)/bin/$(FULL_VARIANT.release)/cpython
+
+	-DWITHPYTHON
+	-DREDISMODULE_EXPERIMENTAL_API
+	-DCPYTHON_PATH=\"$(abspath $(CPYTHON_BINROOT))/\"
+endef
+CC_FLAGS += $(filter %,$(subst $(__NL), ,$(_CC_FLAGS)))
+
+ifeq ($(VALGRIND),1)
+CC_FLAGS += -DVALGRIND
+endif
+
+ifeq ($(DEBUG),1)
+CC_FLAGS += -g -O0 -DDEBUG
+LD_FLAGS += -g
 else
-	GCC_FLAGS=-o2
+CC_FLAGS += -O2 -Wno-unused-result
 endif
 
-ROOTDIR=../../
-
-REDISGEARS_SRC=$(ROOTDIR)/src
-
-CPYTHON_DIR=$(ROOTDIR)/deps/cpython
-CPYTHON_BUILD_DIR=$(ROOTDIR)/bin/linux-x64-release/cpython/
-
-GCC_FLAGS += \
-	-I$(CPYTHON_DIR)/Include \
-	-I$(CPYTHON_DIR) \
-	-I$(CPYTHON_BUILD_DIR) \
-	-I$(REDISGEARS_SRC)/ \
-	-I$(REDISGEARS_SRC)/utils/
-
-ifneq ($(CPYTHON_PATH),)
-	GCC_FLAGS += -DCPYTHON_PATH=\"$(CPYTHON_PATH)\"
+ifeq ($(OS),macos)
+LD_FLAGS += -undefined dynamic_lookup
 endif
 
-ifneq ($(BINROOT),)
-	BINDIR=$(BINROOT)/plugins/python/
+LD_FLAGS += $(LD_FLAGS.coverage)
+
+#----------------------------------------------------------------------------------------------
+# cpython-related definitions
+#----------------------------------------------------------------------------------------------
+
+CPYTHON_DIR=$(ROOT)/deps/cpython
+
+LD_FLAGS +=
+
+EMBEDDED_LIBS += $(LIBPYTHON)
+
+ifeq ($(wildcard $(LIBPYTHON)),)
+MISSING_DEPS += $(LIBPYTHON)
+endif
+
+ifeq ($(OS),macos)
+LD_FLAGS += \
+	$(GETTEXT_PREFIX)/lib/libintl.a \
+	-liconv
 else
-	BINDIR=./
+EMBEDDED_LIBS += -lutil -luuid
 endif
 
-SOURCES=redisgears_python.c globals.c $(REDISGEARS_SRC)/utils/dict.c $(REDISGEARS_SRC)/utils/thpool.c \
-$(REDISGEARS_SRC)/utils/buffer.c
-HEADERS=GearsBuilder.auto.h cloudpickle.auto.h globals.h redisai.h $(REDISGEARS_SRC)/redisgears.h \
-$(REDISGEARS_SRC)/utils/dict.h $(REDISGEARS_SRC)/utils/thpool.h $(REDISGEARS_SRC)/utils/buffer.h
+ifeq ($(OS),macos)
+EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
+else
+EMBEDDED_LIBS_FLAGS=\
+	-Wl,-Bstatic  -Wl,-Bdynamic \
+	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+endif
 
+#----------------------------------------------------------------------------------------------
 
-ARTIFACT_FILE_NAME=gears_python.so
-ARTIFACT_NAME=$(BINDIR)$(ARTIFACT_FILE_NAME)
+include $(MK)/rules
 
-all: $(ARTIFACT_NAME)
+-include $(CC_DEPS)
 
-GearsBuilder.auto.h: GearsBuilder.py
-	xxd -i $< > $@
+#----------------------------------------------------------------------------------------------
 
-cloudpickle.auto.h: cloudpickle.py
-	xxd -i $< > $@
+$(SRCDIR)/plugins/python/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h
 
-$(ARTIFACT_NAME): $(HEADERS) $(SOURCES)
-	mkdir -p $(BINDIR)
-	gcc -std=gnu99 $(GCC_FLAGS) $(SOURCES) -shared -fpic -DREDISMODULE_EXPERIMENTAL_API \
-	../../bin/linux-x64-release/cpython/libpython3.7m.a \
-	-o $(ARTIFACT_NAME)
-	ln -sf $(ARTIFACT_NAME) $(ROOTDIR)$(ARTIFACT_FILE_NAME)
+$(BINDIR)/GearsBuilder.auto.h: GearsBuilder.py
+	$(SHOW)xxd -i $< > $@
+
+$(BINDIR)/cloudpickle.auto.h: cloudpickle.py
+	$(SHOW)xxd -i $< > $@
+
+#----------------------------------------------------------------------------------------------
+
+$(BINDIR)/%.o: $(SRCDIR)/%.c
+	@echo Compiling $<...
+	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
+
+$(TARGET): $(MISSING_DEPS) $(OBJECTS)
+	@echo Linking $@...
+	$(SHOW)$(CC) -shared -o $@ $(OBJECTS) $(LD_FLAGS) $(EMBEDDED_LIBS_FLAGS)
+	$(SHOW)ln -rsf -t $(ROOT) $(TARGET)
+
+#----------------------------------------------------------------------------------------------
+
+ifeq ($(DEPS),1)
+
+deps: $(LIBPYTHON)
+
+cpython: $(LIBPYTHON)
+
+$(LIBPYTHON):
+	@echo Building cpython...
+	$(SHOW)$(MAKE) --no-print-directory -C $(ROOT)/build/cpython DEBUG=
+
+else
+
+deps: ;
+
+endif # DEPS
+
+#----------------------------------------------------------------------------------------------
 
 clean:
-	rm $(ARTIFACT_NAME) $(ROOTDIR)$(ARTIFACT_FILE_NAME) GearsBuilder.auto.h cloudpickle.auto.h
+ifeq ($(ALL),1)
+	$(SHOW)rm -rf $(BINDIR) $(TARGET)
+else
+	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
+	$(SHOW)rm -f $(TARGET)
+endif

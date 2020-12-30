@@ -5,6 +5,7 @@
  *      Author: meir
  */
 
+#define GEARS_MAIN
 
 #include "redismodule.h"
 #include "version.h"
@@ -1090,7 +1091,7 @@ static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
             pluginFile = RG_STRDUP(plugin);
         }
 
-        void* handler = dlopen(pluginFile, RTLD_NOW|RTLD_LOCAL);
+        void* handler = dlopen(pluginFile, RTLD_NOW|RTLD_GLOBAL);
         RG_FREE(pluginFile);
 
         if (handler == NULL) {

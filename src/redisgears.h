@@ -776,6 +776,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
         return REDISMODULE_ERR;
     }
 
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetCompiledOs);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetLLApiVersion);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CreateType);
@@ -849,6 +850,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRecord);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetError);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, DropExecution);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AbortExecution);
+
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetId);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, FepGetId);
 
@@ -900,6 +903,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetPrivateData);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecutionFromCtx);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnStartCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnUnpausedCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnRegisteredCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetFlatExecutionOnUnregisteredCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterExecutionOnStartCallback);

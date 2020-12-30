@@ -1,0 +1,4 @@
+
+include $(ROOT)/build/cpython/Makefile.defs
+
+GEARS_PYTHON=$(BINROOT)/gears_python/gears_python.so

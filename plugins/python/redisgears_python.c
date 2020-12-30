@@ -1,17 +1,19 @@
 #include <Python.h>
 #include "redisai.h"
 #include "globals.h"
+#include "redisgears.h"
+#include "redisgears_memory.h"
+#include "GearsBuilder.auto.h"
+#include "cloudpickle.auto.h"
+#include "utils/arr_rm_alloc.h"
+#include "utils/dict.h"
+#include "utils/thpool.h"
+#include "utils/buffer.h"
+
 #include <marshal.h>
 #include <assert.h>
 #include <dirent.h>
-#include <redisgears.h>
-#include <redisgears_memory.h>
-#include <arr_rm_alloc.h>
-#include <dict.h>
-#include "GearsBuilder.auto.h"
-#include "cloudpickle.auto.h"
-#include <thpool.h>
-#include <buffer.h>
+
 #include <pthread.h>
 
 typedef struct PythonConfig{
@@ -20,8 +22,8 @@ typedef struct PythonConfig{
     int foreceDownloadDepsOnEnterprise;
     int installReqMaxIdleTime;
     int attemptTraceback;
-    char* dependenciesUrl;
-    char* dependenciesSha256;
+    char* gearsPythonUrl;
+    char* gearsPythonSha256;
     char* pythonInstallationDir;
 }PythonConfig;
 
@@ -5163,11 +5165,11 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
             RedisModule_Log(staticCtx, "warning", "No Python installation found and auto install is not enabled, aborting.");
             return REDISMODULE_ERR;
         }
-        const char* expectedSha256 = pythonConfig.dependenciesSha256;
+        const char* expectedSha256 = pythonConfig.gearsPythonSha256;
 
         RedisGears_ExecuteCommand(ctx, "notice", "rm -rf "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
 
-        RedisGears_ExecuteCommand(ctx, "notice", "curl -o "TMP_DEPS_FILE_PATH_FMT" %s", shardUid, expectedSha256, pythonConfig.dependenciesUrl);
+        RedisGears_ExecuteCommand(ctx, "notice", "curl -o "TMP_DEPS_FILE_PATH_FMT" %s", shardUid, expectedSha256, pythonConfig.gearsPythonUrl);
 
         char* sha256Command;
         RedisGears_ASprintf(&sha256Command, "sha256sum "TMP_DEPS_FILE_PATH_FMT, shardUid, expectedSha256);
@@ -5471,8 +5473,8 @@ static int PythonConfig_ToLong(const char* val, long long* res){
 #define CONFIG_FLAG_GT_ZERO 0x01
 #define CONFIG_FLAG_IGNORE_DEFAULT 0x02
 
-extern char DependenciesUrl[];
-extern char DependenciesSha256[];
+extern char GearsPythonUrl[];
+extern char GearsPythonSha256[];
 
 static int PythonConfig_GetIntVal(const char* val, int defaultVal, const char* newVal, int* res, int flags){
     const char *valStr = newVal;
@@ -5544,8 +5546,8 @@ static int PythonConfig_GetStrVal(const char* val, const char* defaultVal, const
 #define ForeceDownloadDepsOnEnterpriseConfigName "ForeceDownloadDepsOnEnterprise"
 #define PythonAttemptTracebackConfigName "PythonAttemptTraceback"
 #define PythonInstallReqMaxIdleTimeConfigName "PythonInstallReqMaxIdleTime"
-#define DependenciesUrlConfigName "DependenciesUrl"
-#define DependenciesSha256ConfigName "DependenciesSha256"
+#define GearsPythonUrlConfigName "GearsPythonUrl"
+#define GearsPythonSha256ConfigName "GearsPythonSha256"
 #define PythonInstallationDirConfigName "PythonInstallationDir"
 
 typedef enum PythonConfigType{
@@ -5603,18 +5605,18 @@ PythonConfigValDef configDefs[] = {
                 .flags = CONFIG_FLAG_GT_ZERO,
         },
         {
-                .name = DependenciesUrlConfigName,
+                .name = GearsPythonUrlConfigName,
                 .type = PythonConfigType_Str,
                 .configurableAtRuntime = false,
-                .defaultStrVal = DependenciesUrl,
-                .ptr = &pythonConfig.dependenciesUrl,
+                .defaultStrVal = GearsPythonUrl,
+                .ptr = &pythonConfig.gearsPythonUrl,
         },
         {
-                .name = DependenciesSha256ConfigName,
+                .name = GearsPythonSha256ConfigName,
                 .type = PythonConfigType_Str,
                 .configurableAtRuntime = false,
-                .defaultStrVal = DependenciesSha256,
-                .ptr = &pythonConfig.dependenciesSha256,
+                .defaultStrVal = GearsPythonSha256,
+                .ptr = &pythonConfig.gearsPythonSha256,
         },
         {
                 .name = PythonInstallationDirConfigName,
@@ -5739,7 +5741,7 @@ static int Python_BeforeConfigChange(const char* key, const char* val, char** er
 #define REDISGEARSPYTHON_PLUGIN_VERSION \
   (REDISGEARSPYTHON_VERSION_MAJOR * 10000 + REDISGEARSPYTHON_VERSION_MINOR * 100 + REDISGEARSPYTHON_VERSION_PATCH)
 
-
+__attribute__ ((visibility ("default"))) 
 int RedisGears_OnLoad(RedisModuleCtx *ctx){
 
     if(RedisGears_InitAsGearPlugin(ctx, REDISGEARSPYTHON_PLUGIN_NAME, REDISGEARSPYTHON_PLUGIN_VERSION) != REDISMODULE_OK){
@@ -5767,7 +5769,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     InitializeGlobalPaths();
     PrintGlobalPaths(ctx);
     if(RedisGears_InstallDeps(ctx) != REDISMODULE_OK){
-        RedisModule_Log(staticCtx, "warning", "Failed installing python dependencies");
+        RedisModule_Log(staticCtx, "warning", "Failed installing python plugin");
         return REDISMODULE_ERR;
     }
 

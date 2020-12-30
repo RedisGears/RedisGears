@@ -5,14 +5,16 @@ import os
 import argparse
 
 ROOT = HERE = os.path.abspath(os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(ROOT, "deps/readies"))
+READIES = os.path.join(ROOT, "deps/readies")
+sys.path.insert(0, READIES)
 import paella
 
 #----------------------------------------------------------------------------------------------
 
 class RedisGearsSetup(paella.Setup):
-    def __init__(self, nop=False):
-        paella.Setup.__init__(self, nop)
+    def __init__(self, nop=False, with_python=True):
+        paella.Setup.__init__(self, nop=nop)
+        self.with_python = with_python
 
     def common_first(self):
         self.install_downloaders()
@@ -21,17 +23,11 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
 
-        self.install("git")
+        self.install("git openssl")
 
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool gawk")
-        self.install("libbz2-dev liblzma-dev lzma-dev libncurses5-dev libsqlite3-dev uuid-dev zlib1g-dev libssl-dev libreadline-dev libffi-dev")
-        if sh("apt-cache search libgdbm-compat-dev") != "":
-            self.install("libgdbm-compat-dev")
-        self.install("libgdbm-dev")
-        self.install("tcl-dev tix-dev tk-dev")
 
-        self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
 
@@ -47,24 +43,18 @@ class RedisGearsSetup(paella.Setup):
         self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
 
-        self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
-            "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
-        self.install("tcl-devel tix-devel tk-devel")
-
         self.install("redhat-lsb-core")
-        self.install("vim-common") # for xxd
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
         self.install("libatomic file")
 
-        self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
-        self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm --replacepkgs ")
+        self.run("%s/bin/getepel" % READIES)
 
         self.run("""
             dir=$(mktemp -d /tmp/tar.XXXXXX)
             (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
             rm -rf $dir
-            """, output_on_error=True)
+            """)
 
         # pip cannot build gevent on ARM
         self.install("python-gevent python-ujson")
@@ -77,12 +67,7 @@ class RedisGearsSetup(paella.Setup):
 
     def fedora(self):
         self.group_install("'Development Tools'")
-        self.install("autoconf automake libtool")
-        self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libnsl2-devel libuuid-devel ncurses-devel "
-            "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
-        self.install("tcl-devel tix-devel tk-devel")
 
-        self.install("vim-common") # for xxd
         self.install("which libatomic file")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
@@ -95,25 +80,10 @@ class RedisGearsSetup(paella.Setup):
     def linux_last(self):
         self.install("valgrind")
 
-    def macosx(self):
-        if sh('xcode-select -p') == '':
-            fatal("Xcode tools are not installed. Please run xcode-select --install.")
+    def macos(self):
         self.install("libtool autoconf automake")
-        self.run("""
-            dir=$(mktemp -d /tmp/gettext.XXXXXX)
-            base=$(pwd)
-            cd $dir
-            wget -q -O gettext.tgz https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz
-            tar xzf gettext.tgz
-            cd gettext-0.20.2
-            ./configure
-            make
-            make install
-            cd $base
-            rm -rf $dir
-            """, output_on_error=True)
 
-        self.install("zlib openssl readline coreutils libiconv")
+        self.install("openssl readline coreutils")
         if not self.has_command("redis-server"):
             self.install("redis")
         self.install("binutils") # into /usr/local/opt/binutils
@@ -122,19 +92,23 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("pipenv gevent")
 
     def common_last(self):
+        if self.with_python:
+            self.run(self.python + " {ROOT}/build/cpython/system-setup.py {NOP}".
+                     format(ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
+                     output=True)
         self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest || true")
         # redis-py-cluster should be installed from git due to redis-py dependency
         # self.pip_install("--no-cache-dir git+https://github.com/Grokzen/redis-py-cluster.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabsModules/RLTest.git@master")
         self.pip_install("--no-cache-dir git+https://github.com/RedisLabs/RAMP@master")
 
-        self.pip_install("-r %s/deps/readies/paella/requirements.txt" % ROOT)
-        self.pip_install("distro")
+        self.pip_install("-r %s/paella/requirements.txt" % READIES)
 
 #----------------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description='Set up system for RedisGears build.')
 parser.add_argument('-n', '--nop', action="store_true", help='no operation')
+parser.add_argument('--with-python', action="store_true", default=True, help='no operation')
 args = parser.parse_args()
 
-RedisGearsSetup(nop = args.nop).setup()
+RedisGearsSetup(nop = args.nop, with_python=args.with_python).setup()
