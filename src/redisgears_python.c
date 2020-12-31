@@ -2861,6 +2861,7 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
         pyt->t = RedisAI_TensorGetShallowCopy(tensor);
         PyList_Append(tensorsList, (PyObject*)pyt);
+        Py_DECREF(pyt);
     }
     obj = tensorsList;
 
