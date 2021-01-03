@@ -3060,7 +3060,6 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 
 	RedisGearsPy_LOCK
 	PyObject* future = private_data;
-	PyObject* tensorList = PyList_New(0);
 	PyObject* pArgs = PyTuple_New(2);
 	PyTuple_SetItem(pArgs, 0, future);
 
@@ -3072,6 +3071,7 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 		goto finish;
 	}
 
+    PyObject* tensorList = PyList_New(0);
 	for(size_t i = 0 ; i < RedisAI_ModelRunCtxNumOutputs(mctx) ; ++i){
 		PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
 		pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(mctx, i));
@@ -3370,7 +3370,6 @@ static void FinishAsyncScriptRun(RAI_OnFinishCtx *onFinishCtx, void *private_dat
 
 	RedisGearsPy_LOCK
 	PyObject* future = private_data;
-	PyObject* tensorList = PyList_New(0);
 	PyObject* pArgs = PyTuple_New(2);
 	PyTuple_SetItem(pArgs, 0, future);
 
@@ -3382,6 +3381,7 @@ static void FinishAsyncScriptRun(RAI_OnFinishCtx *onFinishCtx, void *private_dat
 		goto finish;
 	}
 
+    PyObject* tensorList = PyList_New(0);
 	for(size_t i = 0 ; i < RedisAI_ScriptRunCtxNumOutputs(sctx) ; ++i){
 		PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
 		pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(sctx, i));
