@@ -47,12 +47,12 @@ class RedisGearsSetup(paella.Setup):
         self.install("libatomic file")
 
         self.run("%s/bin/getepel" % READIES)
-
-        self.run("""
-            dir=$(mktemp -d /tmp/tar.XXXXXX)
-            (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
-            rm -rf $dir
-            """)
+        if self.arch == 'x64':
+            self.run("""
+                dir=$(mktemp -d /tmp/tar.XXXXXX)
+                (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
+                rm -rf $dir
+                """)
 
         # pip cannot build gevent on ARM
         self.install("python-gevent python-ujson")
@@ -64,7 +64,7 @@ class RedisGearsSetup(paella.Setup):
     def fedora(self):
         self.group_install("'Development Tools'")
 
-        self.install("which libatomic file")
+        self.install("libatomic file")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil || true")
