@@ -2861,6 +2861,7 @@ static PyObject* mgetTensorsFromKeyspace(PyObject *cls, PyObject *args) {
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
         pyt->t = RedisAI_TensorGetShallowCopy(tensor);
         PyList_Append(tensorsList, (PyObject*)pyt);
+        Py_DECREF(pyt);
     }
     obj = tensorsList;
 
@@ -3059,7 +3060,6 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 
 	RedisGearsPy_LOCK
 	PyObject* future = private_data;
-	PyObject* tensorList = PyList_New(0);
 	PyObject* pArgs = PyTuple_New(2);
 	PyTuple_SetItem(pArgs, 0, future);
 
@@ -3071,6 +3071,7 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 		goto finish;
 	}
 
+    PyObject* tensorList = PyList_New(0);
 	for(size_t i = 0 ; i < RedisAI_ModelRunCtxNumOutputs(mctx) ; ++i){
 		PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
 		pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(mctx, i));
@@ -3097,6 +3098,10 @@ static void FinishAsyncModelRun(RAI_OnFinishCtx *onFinishCtx, void *private_data
 
 static PyObject* modelRunnerRunAsync(PyObject *cls, PyObject *args){
 	verifyRedisAILoaded();
+	if (RedisAI_ModelRunAsync == NULL) {
+		PyErr_SetString(GearsError, "Asynchronous run is not supported in RedisAI version");
+		return NULL;
+	}
 	if(PyTuple_Size(args) != 1){
 		PyErr_SetString(GearsError, "Wrong number of arguments given to modelRunnerRunAsync");
 		return NULL;
@@ -3131,7 +3136,7 @@ static PyObject* PyTorchScript_ToStr(PyObject *obj){
 
 static void PyTorchScriptRunner_Destruct(PyObject *pyObj){
     PyTorchScriptRunner* pys = (PyTorchScriptRunner*)pyObj;
-    RedisAI_ScriptRunCtxFree(pys->s);
+    if (pys->s) RedisAI_ScriptRunCtxFree(pys->s);
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
@@ -3226,6 +3231,10 @@ static PyObject* scriptRunnerAddInput(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
         return NULL;
     }
+    if(pys->s == NULL){
+        PyErr_SetString(GearsError, "PyTorchScriptRunner is invalid");
+        return NULL;
+    }
     PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
     if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
         PyErr_SetString(GearsError, "Given argument is not of type PyTensor");
@@ -3256,8 +3265,11 @@ static PyObject* scriptRunnerAddInputList(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
         return NULL;
     }
-
-     PyObject* py_tensors_iter = PyObject_GetIter(PyTuple_GetItem(args, 1));
+    if(pys->s == NULL){
+        PyErr_SetString(GearsError, "PyTorchScriptRunner is invalid");
+        return NULL;
+    }
+    PyObject* py_tensors_iter = PyObject_GetIter(PyTuple_GetItem(args, 1));
     if(!py_tensors_iter){
         PyErr_SetString(GearsError, "Tensors argument must be iterable");
         return NULL;
@@ -3302,6 +3314,10 @@ static PyObject* scriptRunnerAddOutput(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
         return NULL;
     }
+	if(pys->s == NULL){
+		PyErr_SetString(GearsError, "PyTorchScriptRunner is invalid");
+		return NULL;
+	}
     RedisAI_ScriptRunCtxAddOutput(pys->s);
     return PyLong_FromLong(1);
 }
@@ -3317,25 +3333,106 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
         PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
         return NULL;
     }
+	if(pys->s == NULL){
+		PyErr_SetString(GearsError, "PyTorchScriptRunner is invalid");
+		return NULL;
+	}
     RAI_Error* err;
     RedisAI_InitError(&err);
+	RAI_ScriptRunCtx *sctx = pys->s;
+	pys->s = NULL;
     PyThreadState* _save = PyEval_SaveThread();
-    RedisAI_ScriptRun(pys->s, err);
+    RedisAI_ScriptRun(sctx, err);
     PyEval_RestoreThread(_save);
     if (RedisAI_GetErrorCode(err) != RedisAI_ErrorCode_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
+        RedisAI_ScriptRunCtxFree(sctx);
         return NULL;
     }
     RedisAI_FreeError(err);
     PyObject* tensorList = PyList_New(0);
-    for(size_t i = 0 ; i < RedisAI_ScriptRunCtxNumOutputs(pys->s) ; ++i){
+    for(size_t i = 0 ; i < RedisAI_ScriptRunCtxNumOutputs(sctx) ; ++i){
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, i));
+        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(sctx, i));
         PyList_Append(tensorList, (PyObject*)pyt);
         Py_DECREF(pyt);
     }
+	RedisAI_ScriptRunCtxFree(sctx);
     return tensorList;
+}
+
+static void FinishAsyncScriptRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) {
+
+	RAI_Error *error;
+	RedisAI_InitError(&error);
+	RAI_ScriptRunCtx* sctx = RedisAI_GetAsScriptRunCtx(onFinishCtx, error);
+
+	RedisGearsPy_LOCK
+	PyObject* future = private_data;
+	PyObject* pArgs = PyTuple_New(2);
+	PyTuple_SetItem(pArgs, 0, future);
+
+	if (RedisAI_GetErrorCode(error) != RedisAI_ErrorCode_OK) {
+		const char *errStr = RedisAI_GetError(error);
+		PyObject* pyErr = PyUnicode_FromStringAndSize(errStr, strlen(errStr));
+		PyTuple_SetItem(pArgs, 1, pyErr);
+		PyObject_CallObject(setFutureExceptionFunction, pArgs);
+		goto finish;
+	}
+
+    PyObject* tensorList = PyList_New(0);
+	for(size_t i = 0 ; i < RedisAI_ScriptRunCtxNumOutputs(sctx) ; ++i){
+		PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+		pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(sctx, i));
+		PyList_Append(tensorList, (PyObject*)pyt);
+		Py_DECREF(pyt);
+	}
+
+	PyTuple_SetItem(pArgs, 1, tensorList);
+	PyObject* r = PyObject_CallObject(setFutureResultsFunction, pArgs);
+	if(!r){
+		char* err = getPyError();
+		RedisModule_Log(NULL, "warning", "Error happened when releasing execution future, error='%s'", err);
+		RG_FREE(err);
+	}else{
+		Py_DECREF(r);
+	}
+
+	finish:
+	RedisAI_FreeError(error);
+	RedisAI_ScriptRunCtxFree(sctx);
+	Py_DECREF(pArgs);
+	RedisGearsPy_UNLOCK
+}
+
+static PyObject* scriptRunnerRunAsync(PyObject *cls, PyObject *args){
+	verifyRedisAILoaded();
+	if (RedisAI_ScriptRunAsync == NULL) {
+		PyErr_SetString(GearsError, "Asynchronous run is not supported in RedisAI version");
+		return NULL;
+	}
+	if(PyTuple_Size(args) != 1){
+		PyErr_SetString(GearsError, "Wrong number of arguments given to scriptRunnerRunAsync");
+		return NULL;
+	}
+	PyTorchScriptRunner* pys = (PyTorchScriptRunner*)PyTuple_GetItem(args, 0);
+	if(!PyObject_IsInstance((PyObject*)pys, (PyObject*)&PyTorchScriptRunnerType)){
+		PyErr_SetString(GearsError, "Given argument is not of type PyTorchScriptRunner");
+		return NULL;
+	}
+	if(pys->s == NULL){
+		PyErr_SetString(GearsError, "PyTorchScriptRunner is invalid");
+		return NULL;
+	}
+	PyObject* pArgs = PyTuple_New(0);
+	PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
+	Py_DECREF(pArgs);
+
+	RedisAI_ScriptRunAsync(pys->s, FinishAsyncScriptRun, future);
+	pys->s = NULL;
+	Py_INCREF(future);
+	return future;
 }
 
 #define TIME_EVENT_ENCVER 2
@@ -3598,6 +3695,7 @@ PyMethodDef EmbRedisAIMethods[] = {
     {"scriptRunnerAddInputList", scriptRunnerAddInputList, METH_VARARGS, "add a list of tensor as input to torch script runner"},
     {"scriptRunnerAddOutput", scriptRunnerAddOutput, METH_VARARGS, "add output to torch script runner"},
     {"scriptRunnerRun", scriptRunnerRun, METH_VARARGS, "run torch script runner"},
+    {"scriptRunnerRunAsync", scriptRunnerRunAsync, METH_VARARGS, "run torch script runner async"},
     {"tensorToFlatList", tensorToFlatList, METH_VARARGS, "turning tensor into flat list"},
     {"tensorGetDataAsBlob", tensorGetDataAsBlob, METH_VARARGS, "getting the tensor data as a string blob"},
     {"tensorGetDims", tensorGetDims, METH_VARARGS, "return tuple of the tensor dims"},
