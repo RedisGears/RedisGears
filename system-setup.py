@@ -77,7 +77,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("valgrind")
 
     def macos(self):
-        self.install("libtool autoconf automake")
+        self.install("make libtool autoconf automake")
 
         self.install("openssl readline coreutils")
         if not self.has_command("redis-server"):
@@ -89,10 +89,10 @@ class RedisGearsSetup(paella.Setup):
 
     def common_last(self):
         if self.with_python:
-            self.run(self.python + " {ROOT}/build/cpython/system-setup.py {NOP}".
-                     format(ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
+            self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
+                     format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
                      output=True)
-        self.run("PYTHON=%s %s/bin/getrmpytools" % (self.python, READIES))
+        self.run("{PYTHON} {READIES}/bin/getrmpytools" % (PYTHON=self.python, READIES=READIES))
 
 #----------------------------------------------------------------------------------------------
 
