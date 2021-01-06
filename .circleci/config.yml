@@ -245,7 +245,8 @@ workflows:
           <<: *on-version-tags
           # <<: *on-any-branch
       - build-multiarch-docker:
-          <<: *never
+          #@@ <<: *never
+          <<: *on-any-branch
           # <<: *on-version-tags
       - deploy_snapshots:
           <<: *after-platform-builds
