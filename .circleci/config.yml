@@ -133,6 +133,9 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Submodule checkout
+          command: git submodule update --init --recursive
+      - run:
           name: Setup Docker client experimental features
           command: |
             sudo ./deps/readies/bin/getdocker --just-enable-exp
