@@ -5745,7 +5745,7 @@ __attribute__ ((visibility ("default")))
 int RedisGears_OnLoad(RedisModuleCtx *ctx){
 
     if(RedisGears_InitAsGearPlugin(ctx, REDISGEARSPYTHON_PLUGIN_NAME, REDISGEARSPYTHON_PLUGIN_VERSION) != REDISMODULE_OK){
-        RedisModule_Log(staticCtx, "warning", "Failed initialize RedisGears API");
+        RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
         return REDISMODULE_ERR;
     }
 
