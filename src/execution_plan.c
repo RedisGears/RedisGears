@@ -3036,7 +3036,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
         ret->steps[array_len(ret->steps) - 1]->prev = readerStep;
     }
     ret->steps = array_append(ret->steps, readerStep);
-    readerStep->stepId = array_len(fep->steps) - 1;
+    readerStep->stepId = array_len(ret->steps) - 1;
     ret->totalShardsRecieved = 0;
     ret->totalShardsCompleted = 0;
     ret->results = array_new(Record*, 100);
