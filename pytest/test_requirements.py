@@ -39,7 +39,7 @@ def testDependenciesInstallFailure():
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: __import__('redisgraph'))."
-                               "collect().distinct().run()", 'REQUIREMENTS', str(uuid.uuid4())).error().contains('satisfy requirments')
+                               "collect().distinct().run()", 'REQUIREMENTS', str(uuid.uuid4())).error().contains('satisfy requirements')
 
 def testDependenciesWithRegister():
     env = Env(moduleArgs='CreateVenv 1')

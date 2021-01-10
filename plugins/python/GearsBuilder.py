@@ -171,7 +171,7 @@ class GearsBuilder():
             self.gearsCtx.collect()
         kargs['prefix'] = prefix # this is for backword comptability
         if 'regex' in kargs:
-            log('Using regex argument with register is depricated and missleading, use prefix instead.', level='warning')
+            log('Using regex argument with register is deprecated and missleading, use prefix instead.', level='warning')
             kargs['prefix'] = kargs['regex']
         self.gearsCtx.register(**kargs)
 
@@ -248,6 +248,11 @@ def setFutureResults(f, res):
     async def setFutureRes():
         f.set_result(res)
     asyncio.run_coroutine_threadsafe(setFutureRes(), loop)    
+
+def setFutureException(f, exception):
+    async def setException():
+        f.set_exception(Exception(str(exception)))
+    asyncio.run_coroutine_threadsafe(setException(), loop)
 
 def f(loop):
     registerGearsThread()
