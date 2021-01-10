@@ -90,7 +90,7 @@ static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallRep
         if(reply && RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
             err = RedisModule_CallReplyStringPtr(reply, NULL);
         }
-        RedisModule_Log(ctx, logLevel, "%s : %s", msgPrefix, err);
+        RedisModule_Log(staticCtx, logLevel, "%s : %s", msgPrefix, err);
         if(reply) RedisModule_FreeCallReply(reply);
         return false;
     }
@@ -234,7 +234,7 @@ static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
             ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
             RG_FREE(epIdStr);
             if(!ep){
-                RedisModule_Log(NULL, "info", "Failed finding done execution to drop on unregister. Execution was probably already dropped.");
+                RedisModule_Log(staticCtx, "info", "Failed finding done execution to drop on unregister. Execution was probably already dropped.");
                 continue;
             }
             // all the executions here are done, will just drop it.
@@ -553,7 +553,7 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
             return;
         }
         if(RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_INTEGER){
-            RedisModule_Log(NULL, "warning", "bad reply on xlen, probably someone modified the stream while we are working on it.");
+            RedisModule_Log(staticCtx, "warning", "bad reply on xlen, probably someone modified the stream while we are working on it.");
             RedisModule_FreeCallReply(reply);
             return;
         }
@@ -564,7 +564,7 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
 
         long long streamLenForTrim = streamLen - array_len(readerCtx->batchIds);
         if(streamLenForTrim < 0){
-            RedisModule_Log(NULL, "warning", "try to trim stream to negative len, probably someone modified the stream while we are working on it.");
+            RedisModule_Log(staticCtx, "warning", "try to trim stream to negative len, probably someone modified the stream while we are working on it.");
             return;
         }
 
@@ -606,7 +606,7 @@ static void StreamReader_AbortPendings(StreamReaderTriggerCtx* srctx){
         char* epIdStr = Gears_dictGetKey(n);
         ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
         if(!ep){
-            RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
+            RedisModule_Log(staticCtx, "warning", "Failed finding pending execution to abort on unregister.");
             continue;
         }
 
@@ -620,7 +620,7 @@ static void StreamReader_AbortPendings(StreamReaderTriggerCtx* srctx){
     for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
         // we can not free while iterating so we add to the epArr and free after
         if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
-            RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
+            RedisModule_Log(staticCtx, "warning", "Failed aborting execution on unregister.");
         }
     }
 
@@ -759,7 +759,7 @@ static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
         return;
     }
 
-    RedisModule_Log(ctx, "notice", "Become master, trigger a scan on each stream registration.");
+    RedisModule_Log(staticCtx, "notice", "Become master, trigger a scan on each stream registration.");
 
     // we become master, we need to trigger a scan for each registration
     turnedMasterTEOn = false;
@@ -1109,7 +1109,7 @@ static int StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&reader, &err, encver);
         if(!fep){
-            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution, error='%s'", err);
             RedisModule_Free(data);
             return REDISMODULE_ERR;
         }
@@ -1117,7 +1117,7 @@ static int StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         void* args = StreamReader_DeserializeArgs(&reader, encver);
         RedisModule_Free(data);
         if(!args){
-            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
+            RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution args");
             FlatExecutionPlan_Free(fep);
             return REDISMODULE_ERR;
         }
@@ -1126,7 +1126,7 @@ static int StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = StreamReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
+            RedisModule_Log(staticCtx, "warning", "Could not register flat execution, error='%s'", err);
             StreamReaderTriggerArgs_Free(args);
             FlatExecutionPlan_Free(fep);
             return REDISMODULE_ERR;

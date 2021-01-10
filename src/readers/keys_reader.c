@@ -5,7 +5,6 @@
 #include "execution_plan.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
-#include "globals.h"
 #include "lock_handler.h"
 #include "record.h"
 #include "config.h"
@@ -13,6 +12,7 @@
 #include "version.h"
 
 #include <assert.h>
+#include <ctype.h>
 
 #define KEYS_NAME_FIELD "key_name"
 #define KEYS_SPEC_NAME "keys_spec"
@@ -94,7 +94,7 @@ static void KeysReaderRegisterData_Free(KeysReaderRegisterData* rData){
             ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
             RG_FREE(epIdStr);
             if(!ep){
-                RedisModule_Log(NULL, "info", "Failed finding done execution to drop on unregister. Execution was probably already dropped.");
+                RedisModule_Log(staticCtx, "info", "Failed finding done execution to drop on unregister. Execution was probably already dropped.");
                 continue;
             }
             // all the executions here are done, will just drop it.
@@ -743,7 +743,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
             ExecutionPlan* ep = RedisGears_Run(rData->fep, rData->mode, arg, callback, privateData, rData->wd, &err);
             if(!ep){
                 ++rData->numAborted;
-                RedisModule_Log(ctx, "warning", "could not execute flat execution on trigger, %s", err);
+                RedisModule_Log(staticCtx, "warning", "could not execute flat execution on trigger, %s", err);
                 if(err){
                     RG_FREE(err);
                 }
@@ -842,7 +842,7 @@ static void* KeysReader_DeserializeArgs(Gears_BufferReader* br, int encver){
         if(RedisGears_BRReadLong(br)){
             const char* readRecordCallback = RedisGears_BRReadString(br);
             if(KeysReaderTriggerArgs_SetReadRecordCallback(ret, readRecordCallback) != REDISMODULE_OK){
-                RedisModule_Log(NULL, "warning", "Failed loading readRecordCallback");
+                RedisModule_Log(staticCtx, "warning", "Failed loading readRecordCallback");
                 KeysReaderTriggerArgs_Free(ret);
                 ret = NULL;
             }
@@ -864,7 +864,7 @@ static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPendi
             char* epIdStr = Gears_dictGetKey(entry);
             ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
             if(!ep){
-                RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
+                RedisModule_Log(staticCtx, "warning", "Failed finding pending execution to abort on unregister.");
                 continue;
             }
 
@@ -878,7 +878,7 @@ static void KeysReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPendi
         for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
             // we can not free while iterating so we add to the epArr and free after
             if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
-                RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
+                RedisModule_Log(staticCtx, "warning", "Failed aborting execution on unregister.");
             }
         }
 
@@ -971,7 +971,7 @@ static void KeysReader_RegisterKeySpaceEvent(){
             event |= REDISMODULE_NOTIFY_TRIMMED;
         }
         if(RedisModule_SubscribeToKeyspaceEvents(ctx, event, KeysReader_OnKeyTouched) != REDISMODULE_OK){
-            RedisModule_Log(ctx, "warning", "Failed register on key space notification of KeysReader");
+            RedisModule_Log(staticCtx, "warning", "Failed register on key space notification of KeysReader");
         }
         RedisModule_FreeThreadSafeContext(ctx);
     }
@@ -1101,7 +1101,7 @@ static int KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         char* err = NULL;
         FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, encver);
         if(!fep){
-            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
+            RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution, error='%s'", err);
             RedisModule_Free(data);
             return REDISMODULE_ERR;
         }
@@ -1110,7 +1110,7 @@ static int KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         RedisModule_Free(data);
 
         if(!args){
-            RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
+            RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution args");
             FlatExecutionPlan_Free(fep);
             return REDISMODULE_ERR;
         }
@@ -1118,7 +1118,7 @@ static int KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
         int mode = RedisModule_LoadUnsigned(rdb);
         int ret = KeysReader_RegisrterTrigger(fep, mode, args, &err);
         if(ret != REDISMODULE_OK){
-            RedisModule_Log(NULL, "warning", "Could not register flat execution, error='%s'", err);
+            RedisModule_Log(staticCtx, "warning", "Could not register flat execution, error='%s'", err);
             KeysReaderTriggerArgs_Free(args);
             FlatExecutionPlan_Free(fep);
             return REDISMODULE_ERR;

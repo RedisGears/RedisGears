@@ -4,17 +4,17 @@ import sys
 import os
 import argparse
 
-ROOT = HERE = os.path.abspath(os.path.dirname(__file__))
+HERE = os.path.abspath(os.path.dirname(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "../.."))
 READIES = os.path.join(ROOT, "deps/readies")
 sys.path.insert(0, READIES)
 import paella
 
 #----------------------------------------------------------------------------------------------
 
-class RedisGearsSetup(paella.Setup):
-    def __init__(self, nop=False, with_python=True):
-        paella.Setup.__init__(self, nop=nop)
-        self.with_python = with_python
+class Python3Setup(paella.Setup):
+    def __init__(self, nop=False):
+        paella.Setup.__init__(self, nop)
 
     def common_first(self):
         self.install_downloaders()
@@ -27,26 +27,32 @@ class RedisGearsSetup(paella.Setup):
 
     def debian_compat(self):
         self.install("build-essential autotools-dev autoconf libtool gawk")
+        self.install("libbz2-dev liblzma-dev lzma-dev libncurses5-dev libsqlite3-dev uuid-dev zlib1g-dev libssl-dev libreadline-dev libffi-dev")
+        if sh("apt-cache search libgdbm-compat-dev") != "":
+            self.install("libgdbm-compat-dev")
+        self.install("libgdbm-dev")
+        self.install("tcl-dev tix-dev tk-dev")
 
+        self.install("vim-common") # for xxd
         self.install("lsb-release")
         self.install("zip unzip")
-
-        # pip cannot build gevent on ARM
-        self.install("python-psutil")
-        if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
-            self.install("python-gevent")
-        else:
-            self.pip_install("gevent")
 
     def redhat_compat(self):
         self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
 
+        self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
+            "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
+        self.install("tcl-devel tix-devel tk-devel")
+
         self.install("redhat-lsb-core")
+        self.install("vim-common") # for xxd
         self.install("zip unzip")
+        self.install("which") # required by pipenv (on docker)
         self.install("libatomic file")
 
         self.run("%s/bin/getepel" % READIES)
+
         if self.arch == 'x64':
             self.run("""
                 dir=$(mktemp -d /tmp/tar.XXXXXX)
@@ -54,51 +60,54 @@ class RedisGearsSetup(paella.Setup):
                 rm -rf $dir
                 """)
 
-        # pip cannot build gevent on ARM
-        self.install("python-gevent python-ujson")
-
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil || true")
         self.install("python2-psutil")
 
     def fedora(self):
         self.group_install("'Development Tools'")
+        self.install("autoconf automake libtool")
+        self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libnsl2-devel libuuid-devel ncurses-devel "
+            "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
+        self.install("tcl-devel tix-devel tk-devel")
 
-        self.install("libatomic file")
+        self.install("vim-common") # for xxd
+        self.install("which libatomic file")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil || true")
         self.install("python2-psutil")
 
-        self.install("python2-ujson")
-        self.pip_install("gevent")
-
     def linux_last(self):
-        self.install("valgrind")
+        pass
 
     def macos(self):
-        self.install("make libtool autoconf automake")
+        self.install("libtool autoconf automake")
+        self.run("""
+            dir=$(mktemp -d /tmp/gettext.XXXXXX)
+            base=$(pwd)
+            cd $dir
+            wget -q -O gettext.tgz https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz
+            tar xzf gettext.tgz
+            cd gettext-0.20.2
+            ./configure
+            make
+            make install
+            cd $base
+            rm -rf $dir
+            """)
 
-        self.install("openssl readline coreutils")
-        if not self.has_command("redis-server"):
-            self.install("redis")
+        self.install("zlib openssl readline coreutils libiconv")
         self.install("binutils") # into /usr/local/opt/binutils
         self.install_gnu_utils()
 
-        self.pip_install("gevent")
-
     def common_last(self):
-        if self.with_python:
-            self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
-                     format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
-                     output=True)
-        self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
+        pass
 
 #----------------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description='Set up system for RedisGears build.')
 parser.add_argument('-n', '--nop', action="store_true", help='no operation')
-parser.add_argument('--with-python', action="store_true", default=True, help='no operation')
 args = parser.parse_args()
 
-RedisGearsSetup(nop = args.nop, with_python=args.with_python).setup()
+Python3Setup(nop = args.nop).setup()

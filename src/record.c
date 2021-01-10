@@ -6,9 +6,6 @@
 #include "redisgears.h"
 #include "redisgears_memory.h"
 #include "execution_plan.h"
-#ifdef WITHPYTHON
-#include "redisgears_python.h"
-#endif
 
 RecordType StopRecordType;
 

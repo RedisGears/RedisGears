@@ -2,14 +2,12 @@ from RLTest import Env
 import sys
 import os
 import time
+from includes import *
 
 from common import getConnectionByEnv
 from common import TimeLimit
-
 from common import verifyRegistrationIntegrity
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
-import paella
 
 class testUnregister:
     def __init__(self):
@@ -346,7 +344,7 @@ def testBasicStream(env):
     env.assertEqual(res, 'OK')
     if(res != 'OK'):
         return
-    time.sleep(0.5)  # make sure the execution reached to all shards
+    verifyRegistrationIntegrity(env)
     conn.execute_command('set', 'x', '1')
     conn.execute_command('set', 'y', '2')
     conn.execute_command('set', 'z', '3')

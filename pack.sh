@@ -1,13 +1,16 @@
 #!/bin/bash
 
-error() {
-	>&2 echo "$0: There are errors."
-	exit 1
-}
+[[ $V == 1 || $VERBOSE == 1 ]] && set -x
+[[ $IGNERR == 1 ]] || set -e
 
-if [[ -z $_Dbg_DEBUGGER_LEVEL ]]; then
-	trap error ERR
-fi
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT=$HERE
+export READIES=$ROOT/deps/readies
+. $READIES/shibumi/defs
+
+cd $ROOT
+
+export PYTHONWARNINGS=ignore
 
 #----------------------------------------------------------------------------------------------
 
@@ -22,7 +25,8 @@ if [[ $1 == --help || $1 == help ]]; then
 		IGNERR=1      Do not abort on error
 		
 		RAMP=1        Generate RAMP package
-		DEPS=1        Generate dependency packages
+		GEARSPY=1     Generate Gears Python plugin package
+		SYM=1         Generate packages of debug symbols
 		RELEASE=1     Generate "release" packages (artifacts/release/)
 		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
 		JUST_PRINT=1  Only print package names, do not generate
@@ -31,6 +35,7 @@ if [[ $1 == --help || $1 == help ]]; then
 		BRANCH=name         Branch name for snapshot packages
 		GITSHA=1            Append Git SHA to shapshot package names
 		CPYTHON_PREFIX=dir  Python install dir
+		GEARSPY_PATH=path   Path of gears_python.so
 
 	END
 	exit 0
@@ -38,22 +43,20 @@ fi
 
 #----------------------------------------------------------------------------------------------
 
+MOD=$1
+
 RAMP=${RAMP:-1}
-DEPS=${DEPS:-1}
+GEARSPY=${GEARSPY:-0}
+SYM=${SYM:-0}
 
 RELEASE=${RELEASE:-1}
 SNAPSHOT=${SNAPSHOT:-1}
 
-[[ $VERBOSE == 1 ]] && set -x
-[[ $IGNERR == 1 ]] || set -e
+ARCH=$($READIES/bin/platform --arch)
+OS=$($READIES/bin/platform --os)
+OSNICK=$($READIES/bin/platform --osnick)
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-ROOT=$HERE
-. $HERE/deps/readies/shibumi/functions
-
-ARCH=$(./deps/readies/bin/platform --arch)
-OS=$(./deps/readies/bin/platform --os)
-OSNICK=$(./deps/readies/bin/platform --osnick)
+OS_DESC=$(python2 $ROOT/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -64,10 +67,10 @@ pack() {
 
 	cd $ROOT
 	local packfile=artifacts/$artifact/$pack_fname
-	python2 ./deps/readies/bin/xtx \
-		-d GEARS_PYTHON3_NAME=python3_$SEMVER \
-		-d GEARS_PYTHON3_FNAME=$URL_FNAME \
-		-d GEARS_PYTHON3_SHA256=$(cat $DEPS.sha256) \
+	python2 $READIES/bin/xtx \
+		-d GEARS_PYTHON_NAME=python3_$SEMVER \
+		-d GEARS_PYTHON_FNAME=$URL_FNAME \
+		-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
 		-d OS_DESC=$OS_DESC \
 		ramp.yml > /tmp/ramp.yml
 	rm -f /tmp/ramp.fname
@@ -75,7 +78,7 @@ pack() {
 		--verbose --debug -o $packfile $GEARS_SO >/tmp/ramp.err 2>&1 || true
 
 	if [[ ! -f /tmp/ramp.fname ]]; then
-		>&2 echo Failed to pack $artifact
+		eprint "Failed to pack $artifact"
 		cat /tmp/ramp.err >&2
 		exit 1
 	else
@@ -87,29 +90,37 @@ pack() {
 
 #----------------------------------------------------------------------------------------------
 
-pack_deps() {
+pack_gearspy() {
 	CPYTHON_PREFIX=${CPYTHON_PREFIX:-/var/opt/redislabs/lib/modules/python3}
 	if [[ -z $CPYTHON_PREFIX ]]; then
-		>&2 echo "$0: $CPYTHON_PREFIX is not defined"
+		eprint "$0: CPYTHON_PREFIX is not defined"
+		exit 1
+	fi
+	if [[ -z $GEARSPY_PATH ]]; then
+		eprint "$0: GEARSPY_PATH is not defined"
 		exit 1
 	fi
 	if [[ ! -d $CPYTHON_PREFIX ]]; then
-		>&2 echo "$0: $CPYTHON_PREFIX does not exist"
+		eprint "$0: CPYTHON_PREFIX does not exist"
 		exit 1
 	fi
 
-	local TAR=artifacts/release/$RELEASE_deps
+	local TAR=artifacts/release/$RELEASE_gearspy
 	TAR_PATH=$(realpath $TAR)
+	GEARSPY_PATH=$(realpath $GEARSPY_PATH)
 	cd $CPYTHON_PREFIX
 	# find . -name __pycache__ -type d -exec rm -rf {} \; 2>> /dev/null || true
 	export SEMVER
-	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,python3_$SEMVER/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
+	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' \
+		--transform "s,^./,./python3_$SEMVER/," \
+		--transform "s,^.*/gears_python/gears_python\.so,./plugin/gears_python.so," \
+		./ $GEARSPY_PATH 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
-	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
+	sha256sum $TAR | awk '{print $1}' > $TAR.sha256
 	echo "Created $TAR"
 
-	local TAR1=artifacts/snapshot/$SNAPSHOT_deps
+	local TAR1=artifacts/snapshot/$SNAPSHOT_gearspy
 	cp $TAR $TAR1
 	cp $TAR.sha256 $TAR1.sha256
 	# ( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
@@ -118,8 +129,49 @@ pack_deps() {
 
 #----------------------------------------------------------------------------------------------
 
-# export ROOT=`git rev-parse --show-toplevel`
-export ROOT=$(realpath $HERE)
+pack_deps() {
+	local dep="$1"
+	local artdir="$2"
+	local package="$3"
+	
+	artdir=$(realpath $artdir)
+	local depdir=$(cat $artdir/$dep.dir)
+
+	local tar_path=$artdir/$package
+	local dep_prefix_dir=$(cat $artdir/$dep.prefix)
+	
+	{ cd $depdir ;\
+	  cat $artdir/$dep.files | \
+	  xargs tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' \
+		--transform "s,^,$dep_prefix_dir," 2>> /tmp/pack.err | \
+	  gzip -n - > $tar_path ; E=$?; } || true
+	rm -f $artdir/$dep.prefix $artdir/$dep.files $artdir/$dep.dir
+	cd $ROOT
+	if [[ $E != 0 ]]; then
+		eprint "Error creating $tar_path:"
+		cat /tmp/pack.err >&2
+		exit 1
+	fi
+	sha256sum $tar_path | awk '{print $1}' > $tar_path.sha256
+}
+
+#----------------------------------------------------------------------------------------------
+
+pack_sym() {
+	echo "Building debug symbols dependencies ..."
+	echo $(dirname $RELEASE_SO) > artifacts/release/debug.dir
+	echo $(basename $RELEASE_SO).debug > artifacts/release/debug.files
+	echo "" > artifacts/release/debug.prefix
+	pack_deps debug artifacts/release $RELEASE_debug
+
+	echo $(dirname $SNAPSHOT_SO) > artifacts/snapshot/debug.dir
+	echo $(basename $SNAPSHOT_SO).debug > artifacts/snapshot/debug.files
+	echo "" > artifacts/snapshot/debug.prefix
+	pack_deps debug artifacts/snapshot $SNAPSHOT_debug
+	echo "Done."
+}
+
+#----------------------------------------------------------------------------------------------
 
 PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
 
@@ -130,53 +182,62 @@ if [[ $GITSHA == 1 ]]; then
 	BRANCH="${BRANCH}-${GIT_COMMIT}"
 fi
 
-export PYTHONWARNINGS=ignore
-
-cd $ROOT
-
 NUMVER=$(NUMERIC=1 $ROOT/getver)
 SEMVER=$($ROOT/getver)
 
 if [[ ! -z $VARIANT ]]; then
 	VARIANT=-${VARIANT}
 fi
-RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$SEMVER${VARIANT}.zip
-SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.${BRANCH}${VARIANT}.zip
-RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$SEMVER.tgz
-SNAPSHOT_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
+platform="$OS-$OSNICK-$ARCH"
+RELEASE_ramp=${PACKAGE_NAME}.$platform.${SEMVER}${VARIANT}.zip
+SNAPSHOT_ramp=${PACKAGE_NAME}.$platform.${BRANCH}${VARIANT}.zip
+RELEASE_gearspy=${PACKAGE_NAME}-python.$platform.$SEMVER.tgz
+SNAPSHOT_gearspy=${PACKAGE_NAME}-python.$platform.$BRANCH.tgz
+RELEASE_debug=${PACKAGE_NAME}-debug.$platform.$SEMVER.tgz
+SNAPSHOT_debug=${PACKAGE_NAME}-debug.$platform.$BRANCH.tgz
+
+#----------------------------------------------------------------------------------------------
 
 if [[ $JUST_PRINT == 1 ]]; then
 	if [[ $RAMP == 1 ]]; then
 		[[ $RELEASE == 1 ]] && echo $RELEASE_ramp
 		[[ $SNAPSHOT == 1 ]] && echo $SNAPSHOT_ramp
 	fi
-	if [[ $DEPS == 1 ]]; then
-		[[ $RELEASE == 1 ]] && echo $RELEASE_deps
-		[[ $SNAPSHOT == 1 ]] && echo $SNAPSHOT_deps
+	if [[ $GEARSPY == 1 ]]; then
+		[[ $RELEASE == 1 ]] && echo $RELEASE_gearspy
+		[[ $SNAPSHOT == 1 ]] && echo $SNAPSHOT_gearspy
 	fi
 	exit 0
 fi
 
+#----------------------------------------------------------------------------------------------
+
 mkdir -p artifacts/snapshot artifacts/release
 
-if [[ $RAMP == 1 ]]; then
-	if ! command -v redis-server > /dev/null; then
-		>&2 echo "$0: Cannot find redis-server. Aborting."
-		exit 1
-	fi
-
-	[[ -z $1 ]] && >&2 echo "$0: Nothing to pack. Aborting." && exit 1
-	[[ ! -f $1 ]] && >&2 echo "$0: $1 does not exist. Aborting." && exit 1
-	
-	RELEASE_SO=$(realpath $1)
+if [[ ! -z $MOD ]]; then
+	RELEASE_SO=$(realpath $MOD)
 	SNAPSHOT_SO=$(dirname $RELEASE_SO)/snapshot/$(basename $RELEASE_SO)
 fi
 
-if [[ $DEPS == 1 ]]; then
-	pack_deps
+if [[ $RAMP == 1 ]]; then
+	if ! command -v redis-server > /dev/null; then
+		eprint "$0: Cannot find redis-server. Aborting."
+		exit 1
+	fi
+
+	[[ -z $MOD ]] && { eprint "$0: Nothing to pack. Aborting."; exit 1; }
+	[[ ! -f $MOD ]] && { eprint "$0: $MOD does not exist. Aborting."; exit 1; }
+fi
+
+if [[ $SYM == 1 ]]; then
+	pack_sym
+fi
+
+if [[ $GEARSPY == 1 ]]; then
+	pack_gearspy
 fi
 
 if [[ $RAMP == 1 ]]; then
-	GEARS_SO=$RELEASE_SO DEPS=artifacts/release/$RELEASE_deps URL_FNAME=$RELEASE_deps pack release "$RELEASE_ramp"
-	GEARS_SO=$SNAPSHOT_SO DEPS=artifacts/snapshot/$SNAPSHOT_deps URL_FNAME=snapshots/$SNAPSHOT_deps pack snapshot "$SNAPSHOT_ramp"
+	GEARS_SO=$RELEASE_SO GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
+	GEARS_SO=$SNAPSHOT_SO GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
 fi

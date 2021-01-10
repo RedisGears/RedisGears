@@ -11,8 +11,13 @@
 #include <stdbool.h>
 #include <assert.h>
 
-extern char DependenciesUrl[];
-extern char DependenciesSha256[];
+typedef struct ConfigHook{
+    BeforeConfigSet before;
+    AfterConfigSet after;
+    GetConfig getConfig;
+}ConfigHook;
+
+ConfigHook* configHooks;
 
 typedef struct ArgsIterator{
     int currIndex;
@@ -45,16 +50,8 @@ typedef struct RedisGears_Config{
     ConfigVal maxExecutions;
     ConfigVal maxExecutionsPerRegistration;
     ConfigVal profileExecutions;
-    ConfigVal pythonAttemptTraceback;
-    ConfigVal createVenv;
     ConfigVal executionThreads;
     ConfigVal executionMaxIdleTime;
-    ConfigVal pythonInstallReqMaxIdleTime;
-    ConfigVal dependenciesUrl;
-    ConfigVal dependenciesSha256;
-    ConfigVal pythonInstallationDir;
-    ConfigVal downloadDeps;
-    ConfigVal foreceDownloadDepsOnEnterprise;
     ConfigVal sendMsgRetries;
     ConfigVal plugins;
 }RedisGears_Config;
@@ -122,51 +119,6 @@ static bool ConfigVal_ProfileExecutionsSet(ArgsIterator* iter){
     }
 }
 
-static const ConfigVal* ConfigVal_DependenciesUrlGet(){
-    return &DefaultGearsConfig.dependenciesUrl;
-}
-
-static bool ConfigVal_DependenciesUrlSet(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val){
-        return false;
-    }
-    RG_FREE(DefaultGearsConfig.dependenciesUrl.val.str);
-    const char* valStr = RedisModule_StringPtrLen(val, NULL);
-    DefaultGearsConfig.dependenciesUrl.val.str = RG_STRDUP(valStr);
-    return true;
-}
-
-static const ConfigVal* ConfigVal_DependenciesSha256Get(){
-    return &DefaultGearsConfig.dependenciesSha256;
-}
-
-static bool ConfigVal_DependenciesSha256Set(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val){
-        return false;
-    }
-    RG_FREE(DefaultGearsConfig.dependenciesSha256.val.str);
-    const char* valStr = RedisModule_StringPtrLen(val, NULL);
-    DefaultGearsConfig.dependenciesSha256.val.str = RG_STRDUP(valStr);
-    return true;
-}
-
-static const ConfigVal* ConfigVal_PythonInstallationDirGet(){
-    return &DefaultGearsConfig.pythonInstallationDir;
-}
-
-static bool ConfigVal_PythonInstallationDirSet(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val){
-        return false;
-    }
-    RG_FREE(DefaultGearsConfig.pythonInstallationDir.val.str);
-    const char* valStr = RedisModule_StringPtrLen(val, NULL);
-    DefaultGearsConfig.pythonInstallationDir.val.str = RG_STRDUP(valStr);
-    return true;
-}
-
 static const ConfigVal* ConfigVal_PluginsGet(){
     return &DefaultGearsConfig.plugins;
 }
@@ -179,74 +131,6 @@ static bool ConfigVal_PluginsSet(ArgsIterator* iter){
     const char* valStr = RedisModule_StringPtrLen(val, NULL);
     array_append(DefaultGearsConfig.plugins.val.vals, RG_STRDUP(valStr));
     return true;
-}
-
-static const ConfigVal* ConfigVal_PythonAttemptTracebackGet(){
-	return &DefaultGearsConfig.pythonAttemptTraceback;
-}
-
-static bool ConfigVal_PythonAttemptTracebackSet(ArgsIterator* iter){
-	RedisModuleString* val = ArgsIterator_Next(iter);
-	if(!val) return false;
-    long long n;
-
-	if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
-        DefaultGearsConfig.pythonAttemptTraceback.val.longVal = n;
-        return true;
-    } else {
-        return false;
-    }
-}
-
-static const ConfigVal* ConfigVal_CreateVenvGet(){
-    return &DefaultGearsConfig.createVenv;
-}
-
-static bool ConfigVal_CreateVenvSet(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val) return false;
-    long long n;
-
-    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
-        DefaultGearsConfig.createVenv.val.longVal = n;
-        return true;
-    } else {
-        return false;
-    }
-}
-
-static const ConfigVal* ConfigVal_DownloadDepsGet(){
-    return &DefaultGearsConfig.downloadDeps;
-}
-
-static bool ConfigVal_DownloadDepsSet(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val) return false;
-    long long n;
-
-    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
-        DefaultGearsConfig.downloadDeps.val.longVal = n;
-        return true;
-    } else {
-        return false;
-    }
-}
-
-static const ConfigVal* ConfigVal_ForceDownloadDepsOnEnterpriseGet(){
-    return &DefaultGearsConfig.foreceDownloadDepsOnEnterprise;
-}
-
-static bool ConfigVal_ForceDownloadDepsOnEnterpriseSet(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val) return false;
-    long long n;
-
-    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
-        DefaultGearsConfig.foreceDownloadDepsOnEnterprise.val.longVal = n;
-        return true;
-    } else {
-        return false;
-    }
 }
 
 static const ConfigVal* ConfigVal_SendMsgRetriesGet(){
@@ -309,26 +193,6 @@ static bool ConfigVal_ExecutionMaxIdleTimeSet(ArgsIterator* iter){
     }
 }
 
-static const ConfigVal* ConfigVal_PythonInstallReqMaxIdleTimeGet(){
-    return &DefaultGearsConfig.pythonInstallReqMaxIdleTime;
-}
-
-static bool ConfigVal_PythonInstallReqMaxIdleTimeSet(ArgsIterator* iter){
-    RedisModuleString* val = ArgsIterator_Next(iter);
-    if(!val) return false;
-    long long n;
-
-    if (RedisModule_StringToLongLong(val, &n) == REDISMODULE_OK) {
-        if(n <= 0){
-            return false;
-        }
-        DefaultGearsConfig.pythonInstallReqMaxIdleTime.val.longVal = n;
-        return true;
-    } else {
-        return false;
-    }
-}
-
 static Gears_dict* Gears_ExtraConfig = NULL;
 
 static Gears_ConfigVal Gears_ConfigVals[] = {
@@ -351,30 +215,6 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .configurableAtRunTime = true,
     },
     {
-        .name = "PythonAttemptTraceback",
-        .getter = ConfigVal_PythonAttemptTracebackGet,
-        .setter = ConfigVal_PythonAttemptTracebackSet,
-        .configurableAtRunTime = true,
-    },
-    {
-        .name = "DependenciesUrl",
-        .getter = ConfigVal_DependenciesUrlGet,
-        .setter = ConfigVal_DependenciesUrlSet,
-        .configurableAtRunTime = false,
-    },
-    {
-        .name = "DependenciesSha256",
-        .getter = ConfigVal_DependenciesSha256Get,
-        .setter = ConfigVal_DependenciesSha256Set,
-        .configurableAtRunTime = false,
-    },
-    {
-        .name = "CreateVenv",
-        .getter = ConfigVal_CreateVenvGet,
-        .setter = ConfigVal_CreateVenvSet,
-        .configurableAtRunTime = false,
-    },
-    {
         .name = "ExecutionThreads",
         .getter = ConfigVal_ExecutionThreadsGet,
         .setter = ConfigVal_ExecutionThreadsSet,
@@ -385,30 +225,6 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
         .getter = ConfigVal_ExecutionMaxIdleTimeGet,
         .setter = ConfigVal_ExecutionMaxIdleTimeSet,
         .configurableAtRunTime = true,
-    },
-    {
-        .name = "PythonInstallReqMaxIdleTime",
-        .getter = ConfigVal_PythonInstallReqMaxIdleTimeGet,
-        .setter = ConfigVal_PythonInstallReqMaxIdleTimeSet,
-        .configurableAtRunTime = true,
-    },
-    {
-        .name = "PythonInstallationDir",
-        .getter = ConfigVal_PythonInstallationDirGet,
-        .setter = ConfigVal_PythonInstallationDirSet,
-        .configurableAtRunTime = false,
-    },
-    {
-        .name = "DownloadDeps",
-        .getter = ConfigVal_DownloadDepsGet,
-        .setter = ConfigVal_DownloadDepsSet,
-        .configurableAtRunTime = false,
-    },
-    {
-        .name = "ForceDownloadDepsOnEnterprise",
-        .getter = ConfigVal_ForceDownloadDepsOnEnterpriseGet,
-        .setter = ConfigVal_ForceDownloadDepsOnEnterpriseSet,
-        .configurableAtRunTime = false,
     },
     {
         .name = "SendMsgRetries",
@@ -428,7 +244,7 @@ static Gears_ConfigVal Gears_ConfigVals[] = {
 };
 
 static void config_error(RedisModuleCtx *ctx, const char *fmt, const char* configItem, bool sendReply) {
-    RedisModule_Log(ctx, "warning", fmt, configItem);
+    RedisModule_Log(staticCtx, "warning", fmt, configItem);
 
     if(sendReply){
         char fmt1[256] = "(error) ";
@@ -478,6 +294,30 @@ static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
                 continue;
             }
             const char* valCStr = RedisModule_StringPtrLen(valStr, NULL);
+            bool hookError = false;
+            for(size_t i = 0 ; i < array_len(configHooks) ; ++i){
+                if(configHooks[i].before){
+                    char* err = NULL;
+                    if(configHooks[i].before(configName, valCStr, &err) != REDISMODULE_OK){
+                        if(!err){
+                            rg_asprintf(&err, "Failed setting config value for key '%s' with value '%s'", configName, valCStr);
+                        }
+                        hookError = true;
+                        RedisModule_Log(staticCtx, "warning", "%s", err);
+                        if(!isFirstInitialization){
+                            RedisModule_ReplyWithError(ctx, err);
+                        }
+                        RG_FREE(err);
+                        break;
+                    }
+                }
+            }
+
+            if(hookError){
+                error = true;
+                continue;
+            }
+
             Gears_dictEntry *existing = NULL;
             Gears_dictEntry *entry = Gears_dictAddRaw(Gears_ExtraConfig, (char*)configName, &existing);
             if(!entry){
@@ -486,6 +326,13 @@ static int GearsConfig_Set_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
                 entry = existing;
             }
             Gears_dictSetVal(Gears_ExtraConfig, entry, RG_STRDUP(valCStr));
+
+            for(size_t i = 0 ; i < array_len(configHooks) ; ++i){
+                if(configHooks[i].after){
+                    configHooks[i].after(configName, valCStr);
+                }
+            }
+
             SEND_REPLY_IF_NEEDED(RedisModule_ReplyWithSimpleString(ctx, "OK - value was saved in extra config dictionary"));
         }
     }
@@ -535,7 +382,7 @@ static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
         const char* configName = RedisModule_StringPtrLen(arg, NULL);
         bool found = false;
         for (Gears_ConfigVal* val = &Gears_ConfigVals[0]; val->name != NULL ; val++) {
-            if (strcasecmp(configName, val->name) == 0) {
+            if (strcmp(configName, val->name) == 0) {
                 const ConfigVal* confVal = val->getter(configName);
                 GearsConfig_ReplyWithConfVal(ctx, confVal);
                 found = true;
@@ -544,14 +391,24 @@ static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
             }
         }
         if (!found) {
-            error = true;
+            bool foundInPlugin = false;
             ++n_values;
-            char* valCStr = Gears_dictFetchValue(Gears_ExtraConfig, configName);
-            if(valCStr){
-                RedisModule_ReplyWithStringBuffer(ctx, valCStr, strlen(valCStr));
-            }else{
-                config_error(ctx, "Unsupported config parameter: %s", configName, true);
+            for(size_t i = 0 ; i < array_len(configHooks) ; ++i){
+                if(configHooks[i].getConfig){
+                    char* err = NULL;
+                    if(configHooks[i].getConfig(configName, ctx) == REDISMODULE_OK){
+                        // pluging took responsibility of the config
+                        foundInPlugin = true;
+                        break;
+                    }
+                }
             }
+
+            if(!foundInPlugin){
+                config_error(ctx, "Unsupported config parameter: %s", configName, true);
+                error = true;
+            }
+
         }
     }
 
@@ -581,40 +438,12 @@ long long GearsConfig_GetProfileExecutions(){
 	return DefaultGearsConfig.profileExecutions.val.longVal;
 }
 
-long long GearsConfig_GetPythonAttemptTraceback(){
-	return DefaultGearsConfig.pythonAttemptTraceback.val.longVal;
-}
-
 const char* GearsConfig_GetExtraConfigVals(const char* key){
     return Gears_dictFetchValue(Gears_ExtraConfig, key);
 }
 
-const char* GearsConfig_GetPythonInstallationDir(){
-    return DefaultGearsConfig.pythonInstallationDir.val.str;
-}
-
 char** GearsConfig_GetPlugins(){
     return DefaultGearsConfig.plugins.val.vals;
-}
-
-
-const char* GearsConfig_GetDependenciesUrl(){
-    return DefaultGearsConfig.dependenciesUrl.val.str;
-}
-const char* GearsConfig_GetDependenciesSha256(){
-    return DefaultGearsConfig.dependenciesSha256.val.str;
-}
-
-long long GearsConfig_CreateVenv(){
-    return DefaultGearsConfig.createVenv.val.longVal;
-}
-
-long long GearsConfig_DownloadDeps(){
-    return DefaultGearsConfig.downloadDeps.val.longVal;
-}
-
-long long GearsConfig_ForceDownloadDepsOnEnterprise(){
-    return DefaultGearsConfig.foreceDownloadDepsOnEnterprise.val.longVal;
 }
 
 long long GearsConfig_ExecutionThreads(){
@@ -629,10 +458,6 @@ long long GearsConfig_SendMsgRetries(){
     return DefaultGearsConfig.sendMsgRetries.val.longVal;
 }
 
-long long GearsConfig_PythonInstallReqMaxIdleTime(){
-    return DefaultGearsConfig.executionMaxIdleTime.val.longVal;
-}
-
 static char* GearsConfig_ArrayConfigValToStr(void* val){
     return RG_STRDUP(val);
 }
@@ -643,17 +468,17 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
         const ConfigVal* v = val->getter();
         switch(v->type){
         case STR:
-            RedisModule_Log(ctx, "notice", "%s:%s", val->name, v->val.str);
+            RedisModule_Log(staticCtx, "notice", "%s:%s", val->name, v->val.str);
             break;
         case LONG:
-            RedisModule_Log(ctx, "notice", "%s:%lld", val->name, v->val.longVal);
+            RedisModule_Log(staticCtx, "notice", "%s:%lld", val->name, v->val.longVal);
             break;
         case DOUBLE:
-            RedisModule_Log(ctx, "notice", "%s:%lf", val->name, v->val.doubleVal);
+            RedisModule_Log(staticCtx, "notice", "%s:%lf", val->name, v->val.doubleVal);
             break;
         case ARRAY:
             arrayStr = ArrToStr((void**)v->val.vals, array_len(v->val.vals), GearsConfig_ArrayConfigValToStr);
-            RedisModule_Log(ctx, "notice", "%s:%s", val->name, arrayStr);
+            RedisModule_Log(staticCtx, "notice", "%s:%s", val->name, arrayStr);
             RG_FREE(arrayStr);
             break;
         default:
@@ -666,20 +491,27 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
     while((entry = Gears_dictNext(iter))){
         const char* key = Gears_dictGetKey(entry);
         const char* val = Gears_dictGetVal(entry);
-        RedisModule_Log(ctx, "notice", "%s:%s", key, val);
+        RedisModule_Log(staticCtx, "notice", "%s:%s", key, val);
     }
     Gears_dictReleaseIterator(iter);
 }
 
 #define DEF_COMMAND(cmd, handler) \
     do { \
-        if (RedisModule_CreateCommand(ctx, "rg." #cmd, handler, "readonly", 0, 0, 0) != REDISMODULE_OK) { \
+        if (RedisModule_CreateCommand(staticCtx, "rg." #cmd, handler, "readonly", 0, 0, 0) != REDISMODULE_OK) { \
             RedisModule_Log(ctx, "warning", "could not register command %s", #cmd); \
             return REDISMODULE_ERR; \
         } \
     } while (false)
 
+void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig){
+    ConfigHook hook = {.before = before, .after = after, .getConfig = getConfig};
+    configHooks = array_append(configHooks, hook);
+}
+
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
+    configHooks = array_new(ConfigHook, 10);
+
     DefaultGearsConfig = (RedisGears_Config){
         .maxExecutions = {
             .val.longVal = 1000,
@@ -693,44 +525,12 @@ int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
             .val.longVal = 0,
             .type = LONG,
         },
-        .pythonAttemptTraceback = {
-            .val.longVal = 1,
-            .type = LONG,
-        },
-        .dependenciesUrl = {
-            .val.str = RG_STRDUP(DependenciesUrl),
-            .type = STR,
-        },
-        .dependenciesSha256 = {
-            .val.str = RG_STRDUP(DependenciesSha256),
-            .type = STR,
-        },
-        .createVenv = {
-            .val.longVal = 0,
-            .type = LONG,
-        },
         .executionThreads = {
             .val.longVal = 3,
             .type = LONG,
         },
         .executionMaxIdleTime = {
             .val.longVal = 5000,
-            .type = LONG,
-        },
-        .pythonInstallReqMaxIdleTime = {
-            .val.longVal = 30000,
-            .type = LONG,
-        },
-        .pythonInstallationDir = {
-            .val.str = RG_STRDUP("/var/opt/redislabs/modules/rg"),
-            .type = STR,
-        },
-        .downloadDeps = {
-            .val.longVal = 1,
-            .type = LONG,
-        },
-        .foreceDownloadDepsOnEnterprise = {
-            .val.longVal = 0,
             .type = LONG,
         },
         .sendMsgRetries = {

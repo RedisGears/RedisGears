@@ -15,9 +15,6 @@
 #include "utils/adlist.h"
 #include "utils/buffer.h"
 #include "common.h"
-#ifdef WITHPYTHON
-#include <redisgears_python.h>
-#endif
 #define STEP_TYPES \
     X(NONE, "none") \
     X(MAP, "map") \
@@ -258,6 +255,8 @@ typedef struct ExecutionPlan{
     bool maxIdleTimerSet;
     bool registered;
     StepPendingCtx** pendingCtxs;
+    AbortCallback abort;
+    void* abortPD;
 }ExecutionPlan;
 
 typedef struct FlatBasicStep{
@@ -329,6 +328,11 @@ typedef struct ExecutionCtx{
         .asyncRecordCreated = NULL, \
     }
 
+extern char* statusesNames[];
+extern char* stepsNames[];
+
+#define DURATION2MS(d)  (long long)(d/(long long)1000000)
+
 FlatExecutionPlan* FlatExecutionPlan_New();
 void FlatExecutionPlan_AddToRegisterDict(FlatExecutionPlan* fep);
 void FlatExecutionPlan_RemoveFromRegisterDict(FlatExecutionPlan* fep);
@@ -374,7 +378,6 @@ int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleStrin
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-int ExecutionPlan_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);

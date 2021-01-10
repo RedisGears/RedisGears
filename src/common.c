@@ -187,7 +187,7 @@ void GearsGetRedisVersion() {
         n = sscanf(enterpriseStr, "rlec_version:%d.%d.%d-%d", &gearsRlecMajorVersion, &gearsRlecMinorVersion,
                    &gearsRlecPatchVersion, &gearsRlecBuild);
         if (n != 4) {
-            RedisModule_Log(NULL, "warning", "Could not extract enterprise version");
+            RedisModule_Log(staticCtx, "warning", "Could not extract enterprise version");
         }
     }
 
@@ -273,7 +273,7 @@ const char* GetShardUniqueId() {
         RedisModule_Assert(RedisModule_CallReplyType(uuidReply) == REDISMODULE_REPLY_STRING);
         size_t len;
         const char* logFileName = RedisModule_CallReplyStringPtr(uuidReply, &len);
-        RedisModule_Log(ctx, "notice", "log file is %s", logFileName);
+        RedisModule_Log(staticCtx, "notice", "log file is %s", logFileName);
         const char* last = strrchr(logFileName, '/');
         if(last){
             len = len - (last - logFileName + 1);
@@ -295,18 +295,18 @@ int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fm
     char* command;
 
     rg_vasprintf(&command, __fmt, ap);
-    RedisModule_Log(ctx, logLevel, "Executing : %s", command);
+    RedisModule_Log(staticCtx, logLevel, "Executing : %s", command);
     FILE* f = popen(command, "r");
     if (f == NULL) {
         RG_FREE(command);
-        RedisModule_Log(ctx, "warning", "Failed to run command : %s", command);
+        RedisModule_Log(staticCtx, "warning", "Failed to run command : %s", command);
         exit(1);
     }
 
     /* Read the output a line at a time - output it. */
     char path[1035];
     while (fgets(path, sizeof(path), f) != NULL) {
-        RedisModule_Log(ctx, logLevel, "%s", path);
+        RedisModule_Log(staticCtx, logLevel, "%s", path);
     }
 
     /* close */
@@ -319,7 +319,7 @@ int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fm
     int exitCode = pclose(f)/256;
 
     if(exitCode != 0){
-        RedisModule_Log(ctx, "warning", "Execution failed command : %s", command);
+        RedisModule_Log(staticCtx, "warning", "Execution failed command : %s", command);
     }
 
     RG_FREE(command);

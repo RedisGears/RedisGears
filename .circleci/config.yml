@@ -211,7 +211,6 @@ platform-build-defs: &platform-build-defs
   requires:
     - linux-debian
   <<: *on-master-and-version-tags
-  # <<: *on-any-branch
 
 after-platform-builds: &after-platform-builds
   requires:
@@ -243,7 +242,6 @@ workflows:
           # <<: *on-any-branch
       - macos:
           <<: *on-version-tags
-          # <<: *on-any-branch
       - build-multiarch-docker:
           <<: *never
           # <<: *on-version-tags

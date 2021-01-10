@@ -451,7 +451,7 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
                 char* idStr = Gears_dictGetKey(entry);
                 ExecutionPlan* ep = RedisGears_GetExecution(idStr);
                 if(!ep){
-                    RedisModule_Log(NULL, "warning", "Failed finding pending execution to abort on unregister.");
+                    RedisModule_Log(staticCtx, "warning", "Failed finding pending execution to abort on unregister.");
                     continue;
                 }
 
@@ -466,7 +466,7 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
             for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
                 // we can not free while iterating so we add to the abortEpArray and free after
                 if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
-                    RedisModule_Log(NULL, "warning", "Failed aborting execution on unregister.");
+                    RedisModule_Log(staticCtx, "warning", "Failed aborting execution on unregister.");
                 }
             }
 
@@ -654,7 +654,7 @@ static int CommandReader_RdbLoadSingleRegistration(RedisModuleIO *rdb, int encve
     char* err = NULL;
     FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, encver);
     if(!fep){
-        RedisModule_Log(NULL, "warning", "Could not deserialize flat execution, error='%s'", err);
+        RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution, error='%s'", err);
         RedisModule_Free(data);
         return REDISMODULE_ERR;
     }
@@ -662,7 +662,7 @@ static int CommandReader_RdbLoadSingleRegistration(RedisModuleIO *rdb, int encve
     CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br, encver);
     RedisModule_Free(data);
     if(!crtArgs){
-        RedisModule_Log(NULL, "warning", "Could not deserialize flat execution args");
+        RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution args");
         FlatExecutionPlan_Free(fep);
         return REDISMODULE_ERR;
     }
@@ -670,7 +670,7 @@ static int CommandReader_RdbLoadSingleRegistration(RedisModuleIO *rdb, int encve
 
     int ret = CommandReader_RegisrterTrigger(fep, mode, crtArgs, &err);
     if(ret != REDISMODULE_OK){
-        RedisModule_Log(NULL, "warning", "Could not register on rdbload execution, error='%s'", err);
+        RedisModule_Log(staticCtx, "warning", "Could not register on rdbload execution, error='%s'", err);
         CommandReaderTriggerArgs_Free(crtArgs);
         FlatExecutionPlan_Free(fep);
         return REDISMODULE_ERR;
@@ -1019,13 +1019,13 @@ void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
 
 int CommandReader_Initialize(RedisModuleCtx* ctx){
     GearsOverrideCommand = RedisModule_CreateString(NULL, GEARS_OVERRIDE_COMMAND, strlen(GEARS_OVERRIDE_COMMAND));
-    RedisModuleCommandFilter *cmdFilter = RedisModule_RegisterCommandFilter(ctx, CommandReader_CommandFilter, REDISMODULE_CMDFILTER_NOSELF);
+    RedisModuleCommandFilter *cmdFilter = RedisModule_RegisterCommandFilter(ctx, CommandReader_CommandFilter, 0);
 
     // this command is considered readonly but it might actaully write data to redis
     // using rm_call. In this case the effect of the execution is replicated
     // and not the execution itself.
     if (RedisModule_CreateCommand(ctx, GEARS_OVERRIDE_COMMAND, CommandReader_Trigger, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(ctx, "warning", "could not register command rg.command");
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.command");
         return REDISMODULE_ERR;
     }
     return REDISMODULE_OK;

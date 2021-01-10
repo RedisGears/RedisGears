@@ -8,16 +8,21 @@
 #include "lock_handler.h"
 #include "redisgears_memory.h"
 #include "pthread.h"
+#include "utils/arr_rm_alloc.h"
 #include <assert.h>
-#ifdef WITHPYTHON
-#include "redisgears_python.h"
-#endif
 
 pthread_key_t _lockKey;
 
 typedef struct LockHandlerCtx{
     int lockCounter;
 }LockHandlerCtx;
+
+typedef struct LockStateHandler{
+    SaveState save;
+    RestoreState restore;
+}LockStateHandler;
+
+LockStateHandler* statesHandlers;
 
 static void LockHandler_Destructor(void *p) {
     RG_FREE(p);
@@ -31,6 +36,8 @@ int LockHandler_Initialize(){
     LockHandlerCtx* lh = RG_ALLOC(sizeof(*lh));
     lh->lockCounter = 1; // init is called from the main thread, the lock is always acquired
     pthread_setspecific(_lockKey, lh);
+
+    statesHandlers = array_new(LockStateHandler, 10);
     return REDISMODULE_OK;
 }
 
@@ -56,22 +63,17 @@ void LockHandler_Acquire(RedisModuleCtx* ctx){
         pthread_setspecific(_lockKey, lh);
     }
     if(lh->lockCounter == 0){
-#ifdef WITHPYTHON
         // to avoid deadlocks, when we try to acquire the redis GIL we first check
         // if we hold the python GIL, if we do we first release it, then acquire the redis GIL
         // and then re-acquire the python GIL.
-        PyThreadState *_save;
-        bool pythonLockAcquired = RedisGearsPy_IsLockAcquired();
-        if(pythonLockAcquired){
-            _save = PyEval_SaveThread();
+        void* states[array_len(statesHandlers)];
+        for(size_t i = 0 ; i < array_len(statesHandlers) ; ++i){
+            states[i] = statesHandlers[i].save();
         }
-#endif
         RedisModule_ThreadSafeContextLock(ctx);
-#ifdef WITHPYTHON
-        if(pythonLockAcquired){
-            PyEval_RestoreThread(_save);
+        for(size_t i = 0 ; i < array_len(statesHandlers) ; ++i){
+            statesHandlers[i].restore(states[i]);
         }
-#endif
     }
     ++lh->lockCounter;
 }
@@ -83,6 +85,13 @@ void LockHandler_Release(RedisModuleCtx* ctx){
     if(--lh->lockCounter == 0){
         RedisModule_ThreadSafeContextUnlock(ctx);
     }
+}
+
+void LockHandler_AddStateHanlder(SaveState save, RestoreState restore){
+    LockStateHandler lsh = (LockStateHandler){
+        .save = save, .restore = restore,
+    };
+    statesHandlers = array_append(statesHandlers, lsh);
 }
 
 

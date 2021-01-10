@@ -2,6 +2,7 @@ from RLTest import Env
 from common import getConnectionByEnv
 from common import TimeLimit
 import uuid
+from includes import *
 
 def testDependenciesInstall():
     env = Env(moduleArgs='CreateVenv 1')

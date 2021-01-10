@@ -43,7 +43,7 @@ ARG TEST
 
 RUN if [ "$PACK" = "1" ]; then make pack; fi
 RUN if [ "$TEST" = "1" ]; then \
-		TEST= make test TEST_ARGS="--verbose" ;\
+		TEST= make test ;\
 		tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-${ARCH}-${OSNICK}.tgz . ;\
 	fi
 
@@ -67,6 +67,7 @@ RUN chown -R redis:redis /var/opt/redislabs
 
 COPY --from=builder --chown=redis:redis /build/redisgears.so $REDIS_MODULES/
 COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/python3_* /var/opt/redislabs/modules/rg/python3/
+COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/gears_python/gears_python.so /var/opt/redislabs/modules/rg/plugin/
 
 # This is needed in order to allow extraction of artifacts from platform-specific build
 # There is no use in removing this directory if $PACK !=1, because image side will only
@@ -82,6 +83,6 @@ RUN	set -e ;\
 RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
 RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
 
-CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so"]
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so"]
 
 RUN [ "cross-build-end" ]

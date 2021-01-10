@@ -9,23 +9,18 @@
 #define SRC_CONFIG_H_
 
 #include "redismodule.h"
+#include "redisgears.h"
 
+void GearsConfig_AddHooks(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig);
 int GearsConfig_Init(RedisModuleCtx* ctx, RedisModuleString** argv, int argc);
 long long GearsConfig_GetMaxExecutions();
 long long GearsConfig_GetMaxExecutionsPerRegistration();
 long long GearsConfig_GetProfileExecutions();
-long long GearsConfig_GetPythonAttemptTraceback();
-const char* GearsConfig_GetDependenciesUrl();
-const char* GearsConfig_GetDependenciesSha256();
-long long GearsConfig_CreateVenv();
-long long GearsConfig_DownloadDeps();
 long long GearsConfig_ForceDownloadDepsOnEnterprise();
 long long GearsConfig_ExecutionThreads();
 long long GearsConfig_ExecutionMaxIdleTime();
 long long GearsConfig_SendMsgRetries();
-long long GearsConfig_PythonInstallReqMaxIdleTime();
 const char* GearsConfig_GetExtraConfigVals(const char* key);
-const char* GearsConfig_GetPythonInstallationDir();
 char** GearsConfig_GetPlugins();
 
 #endif /* SRC_CONFIG_H_ */
