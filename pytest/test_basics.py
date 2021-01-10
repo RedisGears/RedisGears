@@ -730,3 +730,16 @@ def SumMulGlobal(k, a, r):
 GB().aggregateby(lambda r: r['key'][0], {'sum':0, 'mul':1}, SumMulLocal, SumMulGlobal).map(lambda x: str(x)).sort().run()
     '''
     env.expect('RG.PYEXECUTE', script).equal([["{'key': 'x', 'value': {'sum': 6, 'mul': 6}}", "{'key': 'y', 'value': {'sum': 6, 'mul': 6}}"], []])
+
+def testClusterRefreshOnOnlySingleNode(env):
+    if env.shardsCount <= 1:
+        env.skip()
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()').equal([[str(env.shardsCount)], []])
+    env.cmd('RG.REFRESHCLUSTER')
+    try:
+        with TimeLimit(2):
+            res = env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()')
+            env.assertEqual(res, [[str(env.shardsCount)], []])
+    except Exception as e:  
+        env.assertTrue(False, message='Failed waiting for execution to finish')
