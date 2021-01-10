@@ -127,11 +127,11 @@ static void FreeNode(Node* n){
         return;
     }
     n->c->data = NULL;
-//    redisAsyncFree(n->c);
     if(n->status == NodeStatus_Disconnected){
         n->status = NodeStatus_Free;
         return;
     }
+    redisAsyncFree(n->c);
     FreeNodeInternals(n);
 }
 
