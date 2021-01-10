@@ -840,8 +840,12 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         if(n->runId){
             RedisModule_ReplyWithStringBuffer(ctx, n->runId, strlen(n->runId));
         }else{
-            const char* runId = Cluster_ReadRunId(ctx);
-            RedisModule_ReplyWithStringBuffer(ctx, runId, strlen(runId));
+            if(n->isMe){
+                const char* runId = Cluster_ReadRunId(ctx);
+                RedisModule_ReplyWithStringBuffer(ctx, runId, strlen(runId));
+            }else{
+                RedisModule_ReplyWithNull(ctx);
+            }
         }
         RedisModule_ReplyWithStringBuffer(ctx, "minHslot", strlen("minHslot"));
         RedisModule_ReplyWithLongLong(ctx, n->minSlot);
