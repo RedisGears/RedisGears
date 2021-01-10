@@ -713,6 +713,7 @@ static int RedisGears_InitializeRedisModuleApi(RedisModuleCtx* ctx){
 
 #ifdef REDISMODULE_EXPERIMENTAL_API
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetThreadSafeContext);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetDetachedThreadSafeContext);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, FreeThreadSafeContext);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, ThreadSafeContextLock);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, ThreadSafeContextUnlock);

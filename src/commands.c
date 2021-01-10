@@ -299,6 +299,7 @@ Record* Command_SingleShardGetter(ExecutionCtx* rctx, Record *data, void* arg){
     }
 
     if(RedisModule_CallReplyType(rep) == REDISMODULE_REPLY_UNKNOWN){
+        RedisModule_FreeCallReply(rep);
         RedisGears_SetError(rctx, RG_STRDUP("Unknow reply type"));
         return NULL;
     }
@@ -310,10 +311,13 @@ Record* Command_SingleShardGetter(ExecutionCtx* rctx, Record *data, void* arg){
         memcpy(errCStr, err, len);
         errCStr[len] = '\0';
         RedisGears_SetError(rctx, errCStr);
+        RedisModule_FreeCallReply(rep);
         return NULL;
     }
 
-    return Command_CallReplyToRecord(rep);
+    Record* ret = Command_CallReplyToRecord(rep);
+    RedisModule_FreeCallReply(rep);
+    return ret;
 }
 
 static void onDoneResultsOnly(ExecutionPlan* ep, void* privateData){
@@ -372,6 +376,7 @@ int Command_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         RGM_FlatMap(fep, Command_MirrorMapper, NULL);
         RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
         ExecutionPlan* ep = RGM_Run(fep, ExecutionModeAsync, NULL, onDoneResultsOnly, bc, &err);
+        RedisGears_FreeFlatExecution(fep);
         if(!ep){
             RedisModule_AbortBlock(bc);
             if(!err){
