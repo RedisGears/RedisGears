@@ -31,11 +31,12 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect
             with TimeLimit(40):
                 while True:
                     res = env.cmd('RG.PYEXECUTE', script)
+                    if len(res) == 0 || len(res[0]) == 0:
+                        raise Exception(str(res))
                     if int(res[0][0]) == 1:
                         break
                     time.sleep(0.5)
         except Exception as e:
-            print(str(e))
-            env.assertTrue(False, message='Registrations Integrity failed')
+            env.assertTrue(False, message='Registrations Integrity failed, %s', str(e))
 
         env.assertTrue(env.isUp())
