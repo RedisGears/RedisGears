@@ -37,6 +37,6 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect
                         break
                     time.sleep(0.5)
         except Exception as e:
-            env.assertTrue(False, message='Registrations Integrity failed, %s', str(e))
+            env.assertTrue(False, message='Registrations Integrity failed, %s' % str(e))
 
         env.assertTrue(env.isUp())
