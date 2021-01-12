@@ -74,8 +74,11 @@ pack() {
 		-d OS_DESC=$OS_DESC \
 		ramp.yml > /tmp/ramp.yml
 	rm -f /tmp/ramp.fname
+	if [[ ! -z $GEARSPY_PATH ]]; then
+		GEARS_OPT="Plugin $GEARSPY_PATH"
+	fi
 	GEARS_NO_DEPS=1 python2 -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
-		--verbose --debug -o $packfile $GEARS_SO >/tmp/ramp.err 2>&1 || true
+		--verbose --debug -o $packfile $GEARS_SO -c "$GEARS_OPT" >/tmp/ramp.err 2>&1 || true
 
 	if [[ ! -f /tmp/ramp.fname ]]; then
 		eprint "Failed to pack $artifact"
