@@ -1755,6 +1755,7 @@ static void ExecutionStep_Reset(ExecutionStep* es){
     case ACCUMULATE:
         if(es->accumulate.accumulator){
             RedisGears_FreeRecord(es->accumulate.accumulator);
+            es->accumulate.accumulator = NULL;
         }
         es->accumulate.isDone = false;
         break;
