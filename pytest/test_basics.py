@@ -743,3 +743,26 @@ def testClusterRefreshOnOnlySingleNode(env):
             env.assertEqual(res, [[str(env.shardsCount)], []])
     except Exception as e:  
         env.assertTrue(False, message='Failed waiting for execution to finish')
+
+def testAccumulateNotCrashingOnEPReuse(env):
+    if env.shardsCount <= 1:
+        env.skip()
+    conn = getConnectionByEnv(env)
+    script = '''
+import time
+myHashTag = hashtag()
+def WaitIfNeeded(r):
+    global myHashTag
+    if myHashTag != hashtag():
+        time.sleep(10)
+def ReverseList(r):
+    r.reverse()
+    return r
+GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(trigger='test')
+    '''
+    env.expect('RG.PYEXECUTE', script).equal('OK')
+
+    time.sleep(0.5) # wait for registration reach all shards
+
+    env.expect('RG.TRIGGER', 'test', 'error').equal('Execution max idle reached')
+    env.expect('RG.TRIGGER', 'test', 'noerror').equal('Execution max idle reached')
