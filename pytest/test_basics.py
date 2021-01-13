@@ -743,6 +743,8 @@ GB().aggregateby(lambda r: r['key'][0], {'sum':0, 'mul':1}, SumMulLocal, SumMulG
     env.expect('RG.PYEXECUTE', script).equal([["{'key': 'x', 'value': {'sum': 6, 'mul': 6}}", "{'key': 'y', 'value': {'sum': 6, 'mul': 6}}"], []])
 
 def testAccumulateNotCrashingOnEPReuse(env):
+    if env.shardsCount <= 1:
+        env.skip()
     conn = getConnectionByEnv(env)
     script = '''
 import time
