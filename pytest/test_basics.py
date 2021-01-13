@@ -741,3 +741,27 @@ def SumMulGlobal(k, a, r):
 GB().aggregateby(lambda r: r['key'][0], {'sum':0, 'mul':1}, SumMulLocal, SumMulGlobal).map(lambda x: str(x)).sort().run()
     '''
     env.expect('RG.PYEXECUTE', script).equal([["{'key': 'x', 'value': {'sum': 6, 'mul': 6}}", "{'key': 'y', 'value': {'sum': 6, 'mul': 6}}"], []])
+
+def testAccumulateNotCrashingOnEPReuse(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import time
+myHashTag = hashtag()
+
+def WaitIfNeeded(r):
+    global myHashTag
+    if myHashTag != hashtag():
+        time.sleep(10)
+
+def ReverseList(r):
+    r.reverse()
+    return r
+
+GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(trigger='test')
+    '''
+    env.expect('RG.PYEXECUTE', script).equal('OK')
+
+    time.sleep(0.5) # wait for registration reach all shards
+
+    env.expect('RG.TRIGGER', 'test', 'error').equal('Execution max idle reached')
+    env.expect('RG.TRIGGER', 'test', 'noerror').equal('Execution max idle reached')
