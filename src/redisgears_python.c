@@ -3383,12 +3383,13 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	PyObject* keyPyStr = PyUnicode_FromString(key);
 	PyObjRecordSet(r, NULL);
 	PyObject* oldAccumulateObj = Py_None;
-	Py_INCREF(oldAccumulateObj);
 	if(!accumulate){
 		accumulate = PyObjRecordCreate();
+		Py_INCREF(oldAccumulateObj);
 	}else{
 		oldAccumulateObj = PyObjRecordGet(accumulate);
 	}
+	PyObjRecordSet(accumulate, NULL);
 	PyTuple_SetItem(pArgs, 0, keyPyStr);
 	PyTuple_SetItem(pArgs, 1, oldAccumulateObj);
 	PyTuple_SetItem(pArgs, 2, currObj);
@@ -3421,12 +3422,13 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     PyObject* currObj = PyObjRecordGet(r);
     PyObjRecordSet(r, NULL);
     PyObject* oldAccumulateObj = Py_None;
-    Py_INCREF(oldAccumulateObj);
     if(!accumulate){
         accumulate = PyObjRecordCreate();
+        Py_INCREF(oldAccumulateObj);
     }else{
         oldAccumulateObj = PyObjRecordGet(accumulate);
     }
+    PyObjRecordSet(accumulate, NULL);
     PyTuple_SetItem(pArgs, 0, oldAccumulateObj);
     PyTuple_SetItem(pArgs, 1, currObj);
     PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
@@ -3458,6 +3460,7 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
     PyObject* oldObj = PyObjRecordGet(record);
+    PyObjRecordSet(record, NULL); // pass ownership of oldObj to NULL
     PyTuple_SetItem(pArgs, 0, oldObj);
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
     GearsPyDecRef(pArgs);
