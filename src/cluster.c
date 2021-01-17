@@ -123,15 +123,10 @@ static void FreeNodeInternals(Node* n){
 }
 
 static void FreeNode(Node* n){
-    if(n->isMe){
-        FreeNodeInternals(n);
-        return;
+    if(n->c){
+        n->c->data = NULL;
     }
-    n->c->data = NULL;
-    if(n->status == NodeStatus_Disconnected){
-        n->status = NodeStatus_Free;
-        return;
-    }
+    n->status = NodeStatus_Free;
     FreeNodeInternals(n);
 }
 
@@ -176,20 +171,12 @@ static void Cluster_ResendHelloMessage(evutil_socket_t s, short what, void *arg)
         // we will resent the hello request when reconnect
         return;
     }
-    if(n->status == NodeStatus_Free){
-        FreeNodeInternals(n);
-        return;
-    }
     RedisModule_Log(NULL, "notice", "%s", "Resending hello request");
     redisAsyncCommand(n->c, RG_HelloResponseArrived, n, "RG.HELLO");
 }
 
 static void Cluster_Reconnect(evutil_socket_t s, short what, void *arg){
     Node* n = arg;
-    if(n->status == NodeStatus_Free){
-        FreeNodeInternals(n);
-        return;
-    }
     Cluster_ConnectToShard(n);
 }
 
@@ -285,11 +272,6 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
         return;
     }
 
-    if(n->status == NodeStatus_Free){
-        FreeNodeInternals(n);
-        return;
-    }
-
     if(reply->type != REDIS_REPLY_STRING){
         // we did not got a string reply
         // the shard is probably not yet up.
@@ -343,6 +325,7 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
     }
     Node* n = (Node*)c->data;
     n->status = NodeStatus_Disconnected;
+    n->c = NULL;
     struct timeval tv = {
             .tv_sec = 1,
     };
@@ -356,6 +339,7 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
     Node* n = (Node*)c->data;
     if(status == -1){
         // connection failed lets try again
+        n->c = NULL;
         struct timeval tv = {
                 .tv_sec = 1,
         };
