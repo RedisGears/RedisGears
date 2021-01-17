@@ -103,11 +103,22 @@ static Node* GetNode(const char* id){
 
 static void FreeNodeInternals(Node* n){
     event_free(n->reconnectEvent);
+    event_free(n->resendHelloMessage);
     RG_FREE(n->id);
     RG_FREE(n->ip);
     if(n->unixSocket){
         RG_FREE(n->unixSocket);
     }
+    if(n->password){
+        RG_FREE(n->password);
+    }
+    if(n->runId){
+        RG_FREE(n->runId);
+    }
+    if(n->c){
+        redisAsyncFree(n->c);
+    }
+    Gears_listRelease(n->pendingMessages);
     RG_FREE(n);
 }
 
@@ -117,7 +128,6 @@ static void FreeNode(Node* n){
         return;
     }
     n->c->data = NULL;
-//    redisAsyncFree(n->c);
     if(n->status == NodeStatus_Disconnected){
         n->status = NodeStatus_Free;
         return;
@@ -145,12 +155,13 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
 static void Cluster_ConnectToShard(Node* n){
     redisAsyncContext* c = redisAsyncConnect(n->ip, n->port);
     if (!c) {
+        RedisModule_Log(NULL, "warning", "Got NULL async connection");
         return;
     }
     if (c->err) {
         /* Let *c leak for now... */
-        RedisModule_Log(NULL, "warning", "Error: %s\n", n->c->errstr);
-        //todo: handle this!!!
+        RedisModule_Log(NULL, "warning", "Error: %s\n", c->errstr);
+        return;
     }
     c->data = n;
     n->c = c;
@@ -225,8 +236,8 @@ static void Cluster_Free(){
     }
 
     if(CurrCluster->clusterSetCommand){
-        for(int i = 1 ; i < CurrCluster->clusterSetCommandSize ; ++i){
-            if(CurrCluster->clusterSetCommand){
+        for(int i = 0 ; i < CurrCluster->clusterSetCommandSize ; ++i){
+            if(CurrCluster->clusterSetCommand[i]){
                 RG_FREE(CurrCluster->clusterSetCommand[i]);
             }
         }
@@ -403,6 +414,8 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         Cluster_Free();
     }
 
+    RedisModule_Log(ctx, "info", "Got cluster set command");
+
     if(argc < 10){
         RedisModule_Log(ctx, "warning", "Could not parse cluster set arguments");
         return;
@@ -417,7 +430,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
 
     for(int i = 1 ; i < argc ; ++i){
         if(i == CLUSTER_SET_MY_ID_INDEX){
-            // we do not save myid, will be set per shard.
+            CurrCluster->clusterSetCommand[i] = NULL;
             continue;
         }
         const char* arg = RedisModule_StringPtrLen(argv[i], NULL);
@@ -495,6 +508,8 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
     if(CurrCluster){
         Cluster_Free();
     }
+
+    RedisModule_Log(ctx, "info", "Got cluster refresh command");
 
     CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
 
