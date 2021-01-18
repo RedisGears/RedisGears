@@ -16,6 +16,8 @@
 
 #define CLUSTER_SET_MY_ID_INDEX 6
 
+#define RUN_ID_SIZE 40
+
 // forward declaration
 static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* b);
 
@@ -52,6 +54,7 @@ typedef struct Cluster{
     Node* slots[MAX_SLOT];
     size_t clusterSetCommandSize;
     char** clusterSetCommand;
+    char runId[RUN_ID_SIZE + 1];
 }Cluster;
 
 Gears_dict* RemoteCallbacks;
@@ -131,16 +134,16 @@ static void FreeNode(Node* n){
 }
 
 typedef struct SentMessages{
-    size_t sizes[5];
-    char* args[5];
+    size_t sizes[6];
+    char* args[6];
     size_t retries;
 }SentMessages;
 
 static void SentMessages_Free(void* ptr){
     SentMessages* msg = ptr;
-    RG_FREE(msg->args[2]);
     RG_FREE(msg->args[3]);
     RG_FREE(msg->args[4]);
+    RG_FREE(msg->args[5]);
     RG_FREE(msg);
 }
 
@@ -171,7 +174,16 @@ static void Cluster_ResendHelloMessage(evutil_socket_t s, short what, void *arg)
         // we will resent the hello request when reconnect
         return;
     }
-    RedisModule_Log(NULL, "notice", "%s", "Resending hello request");
+    if(n->sendClusterTopologyOnNextConnect && CurrCluster->clusterSetCommand){
+        RedisModule_Log(NULL, "notice", "Sending cluster topology to %s (%s:%d) on rg.hello retry", n->id, n->ip, n->port);
+        CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = RG_STRDUP(n->id);
+        redisAsyncCommandArgv(n->c, NULL, NULL, CurrCluster->clusterSetCommandSize, (const char**)CurrCluster->clusterSetCommand, NULL);
+        RG_FREE(CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX]);
+        CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = NULL;
+        n->sendClusterTopologyOnNextConnect = false;
+    }
+
+    RedisModule_Log(NULL, "notice", "Resending hello request to %s (%s:%d)", n->id, n->ip, n->port);
     redisAsyncCommand(n->c, RG_HelloResponseArrived, n, "RG.HELLO");
 }
 
@@ -249,12 +261,12 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     Node* n = (Node*)b;
     if(reply->type == REDIS_REPLY_ERROR && strncmp(reply->str, CLUSTER_ERROR, strlen(CLUSTER_ERROR)) == 0){
         n->sendClusterTopologyOnNextConnect = true;
-        RedisModule_Log(NULL, "warning", "Received ERRCLUSTER reply from shard %s, will send cluster topology to the shard on next connect", n->id);
+        RedisModule_Log(NULL, "warning", "Received ERRCLUSTER reply from shard %s (%s:%d), will send cluster topology to the shard on next connect", n->id, n->ip, n->port);
         redisAsyncDisconnect(c);
         return;
     }
     if(reply->type != REDIS_REPLY_STATUS){
-        RedisModule_Log(NULL, "warning", "Received an invalid status reply from shard %s, will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id);
+        RedisModule_Log(NULL, "warning", "Received an invalid status reply from shard %s (%s:%d), will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id, n->ip, n->port);
         redisAsyncDisconnect(c);
         return;
     }
@@ -276,7 +288,12 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
         // we did not got a string reply
         // the shard is probably not yet up.
         // we will try again in one second.
-        RedisModule_Log(NULL, "warning", "%s", "Got bad hello response, will try again in 1 second");
+        if(reply->type == REDIS_REPLY_ERROR && strncmp(reply->str, CLUSTER_ERROR, strlen(CLUSTER_ERROR)) == 0){
+            RedisModule_Log(NULL, "warning", "Got uninitialize cluster error on hello response from %s (%s:%d), will resend cluster topology in next try in 1 second.", n->id, n->ip, n->port);
+            n->sendClusterTopologyOnNextConnect = true;
+        }else{
+            RedisModule_Log(NULL, "warning", "Got bad hello response from %s (%s:%d), will try again in 1 second", n->id, n->ip, n->port);
+        }
         struct timeval tv = {
                 .tv_sec = 1,
         };
@@ -306,7 +323,7 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
             SentMessages* sentMsg = Gears_listNodeValue(node);
             ++sentMsg->retries;
             if(GearsConfig_SendMsgRetries() == 0 || sentMsg->retries < GearsConfig_SendMsgRetries()){
-                redisAsyncCommandArgv(c, OnResponseArrived, n, 5, (const char**)sentMsg->args, sentMsg->sizes);
+                redisAsyncCommandArgv(c, OnResponseArrived, n, 6, (const char**)sentMsg->args, sentMsg->sizes);
             }else{
                 RedisModule_Log(NULL, "warning", "Gave up of message because failed to send it for more than %lld time", GearsConfig_SendMsgRetries());
                 Gears_listDelNode(n->pendingMessages, node);
@@ -350,10 +367,12 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
             redisAsyncCommand((redisAsyncContext*)c, NULL, NULL, "AUTH %s", n->password);
         }
         if(n->sendClusterTopologyOnNextConnect && CurrCluster->clusterSetCommand){
+            RedisModule_Log(NULL, "notice", "Sending cluster topology to %s (%s:%d) after reconnect", n->id, n->ip, n->port);
             CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = RG_STRDUP(n->id);
             redisAsyncCommandArgv((redisAsyncContext*)c, NULL, NULL, CurrCluster->clusterSetCommandSize, (const char**)CurrCluster->clusterSetCommand, NULL);
             RG_FREE(CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX]);
             CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = NULL;
+            n->sendClusterTopologyOnNextConnect = false;
         }
         redisAsyncCommand((redisAsyncContext*)c, RG_HelloResponseArrived, n, "RG.HELLO");
         n->status = NodeStatus_HelloSent;
@@ -374,23 +393,8 @@ static void Cluster_ConnectToShards(){
     Gears_dictEmpty(nodesMsgIds, NULL);
 }
 
-static char* Cluster_ReadRunId(RedisModuleCtx* ctx){
-    RedisModuleCallReply *infoReply = RedisModule_Call(ctx, "info", "c", "server");
-    RedisModule_Assert(RedisModule_CallReplyType(infoReply) == REDISMODULE_REPLY_STRING);
-    size_t len;
-    const char* infoStrReply = RedisModule_CallReplyStringPtr(infoReply, &len);
-    const char* runId = strstr(infoStrReply, "run_id:");
-    RedisModule_Assert(runId);
-    const char* runIdStr = runId + strlen("run_id:");
-    RedisModule_Assert(runIdStr);
-    const char* endLine = strstr(runIdStr, "\r\n");
-    RedisModule_Assert(endLine);
-    len = (size_t)(endLine - runIdStr);
-    char* runIdFinal = RG_ALLOC(sizeof(char) * (len + 1));
-    memcpy(runIdFinal, runIdStr, len);
-    runIdFinal[len] = '\0';
-    RedisModule_FreeCallReply(infoReply);
-    return runIdFinal;
+static const char* Cluster_ReadRunId(){
+    return CurrCluster->runId;
 }
 
 static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc){
@@ -398,7 +402,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         Cluster_Free();
     }
 
-    RedisModule_Log(ctx, "info", "Got cluster set command");
+    RedisModule_Log(ctx, "notice", "Got cluster set command");
 
     if(argc < 10){
         RedisModule_Log(ctx, "warning", "Could not parse cluster set arguments");
@@ -406,6 +410,10 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
     }
 
     CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
+
+    // generate runID
+    RedisModule_GetRandomHexChars(CurrCluster->runId, RUN_ID_SIZE);
+    CurrCluster->runId[RUN_ID_SIZE] = '\0';
 
     CurrCluster->clusterSetCommand = RG_ALLOC(sizeof(char*) * argc);
     CurrCluster->clusterSetCommandSize = argc;
@@ -493,9 +501,13 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
         Cluster_Free();
     }
 
-    RedisModule_Log(ctx, "info", "Got cluster refresh command");
+    RedisModule_Log(ctx, "notice", "Got cluster refresh command");
 
     CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
+
+    // generate runID
+    RedisModule_GetRandomHexChars(CurrCluster->runId, RUN_ID_SIZE);
+    CurrCluster->runId[RUN_ID_SIZE] = '\0';
 
     CurrCluster->clusterSetCommand = NULL;
     CurrCluster->clusterSetCommandSize = 0;
@@ -579,23 +591,25 @@ static void Cluster_SendMsgToNode(Node* node, SendMsg* msg){
     sentMsg->sizes[0] = strlen(sentMsg->args[0]);
     sentMsg->args[1] = CurrCluster->myId;
     sentMsg->sizes[1] = strlen(sentMsg->args[1]);
-    sentMsg->args[2] = RG_STRDUP(msg->function);
-    sentMsg->sizes[2] = strlen(sentMsg->args[2]);
-    sentMsg->args[3] = RG_ALLOC(sizeof(char) * msg->msgLen);
-    memcpy(sentMsg->args[3], msg->msg, msg->msgLen);
-    sentMsg->sizes[3] = msg->msgLen;
+    sentMsg->args[2] = CurrCluster->runId;
+    sentMsg->sizes[2] = strlen(CurrCluster->runId);
+    sentMsg->args[3] = RG_STRDUP(msg->function);
+    sentMsg->sizes[3] = strlen(sentMsg->args[3]);
+    sentMsg->args[4] = RG_ALLOC(sizeof(char) * msg->msgLen);
+    memcpy(sentMsg->args[4], msg->msg, msg->msgLen);
+    sentMsg->sizes[4] = msg->msgLen;
 
     RedisModuleString *msgIdStr = RedisModule_CreateStringFromLongLong(NULL, node->msgId++);
     size_t msgIdStrLen;
     const char* msgIdCStr = RedisModule_StringPtrLen(msgIdStr, &msgIdStrLen);
 
-    sentMsg->args[4] = RG_STRDUP(msgIdCStr);
-    sentMsg->sizes[4] = msgIdStrLen;
+    sentMsg->args[5] = RG_STRDUP(msgIdCStr);
+    sentMsg->sizes[5] = msgIdStrLen;
 
     RedisModule_FreeString(NULL, msgIdStr);
 
     if(node->status == NodeStatus_Connected){
-        redisAsyncCommandArgv(node->c, OnResponseArrived, node, 5, (const char**)sentMsg->args, sentMsg->sizes);
+        redisAsyncCommandArgv(node->c, OnResponseArrived, node, 6, (const char**)sentMsg->args, sentMsg->sizes);
     }else{
         RedisModule_Log(NULL, "warning", "message was not sent because status is not connected");
     }
@@ -793,9 +807,11 @@ bool Cluster_IsMyId(const char* id){
 }
 
 int Cluster_RedisGearsHello(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    char* runId = Cluster_ReadRunId(ctx);
-    RedisModule_ReplyWithStringBuffer(ctx, runId, strlen(runId));
-    RG_FREE(runId);
+    if(!CurrCluster){
+        RedisModule_Log(ctx, "warning", "Got hello msg while cluster is NULL");
+        return RedisModule_ReplyWithError(ctx, "ERRCLUSTER NULL cluster state on hello msg");
+    }
+    RedisModule_ReplyWithStringBuffer(ctx, CurrCluster->runId, strlen(CurrCluster->runId));
     return REDISMODULE_OK;
 }
 
@@ -805,15 +821,17 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         RedisModule_ReplyWithStringBuffer(ctx, NO_CLUSTER_MODE_REPLY, strlen(NO_CLUSTER_MODE_REPLY));
         return REDISMODULE_OK;
     }
-    RedisModule_ReplyWithArray(ctx, 3);
+    RedisModule_ReplyWithArray(ctx, 5);
     RedisModule_ReplyWithStringBuffer(ctx, "MyId", strlen("MyId"));
     RedisModule_ReplyWithStringBuffer(ctx, CurrCluster->myId, strlen(CurrCluster->myId));
+    RedisModule_ReplyWithStringBuffer(ctx, "MyRunId", strlen("MyRunId"));
+    RedisModule_ReplyWithStringBuffer(ctx, CurrCluster->runId, strlen(CurrCluster->runId));
     RedisModule_ReplyWithArray(ctx, Gears_dictSize(CurrCluster->nodes));
     Gears_dictIterator *iter = Gears_dictGetIterator(CurrCluster->nodes);
     Gears_dictEntry *entry = NULL;
     while((entry = Gears_dictNext(iter))){
         Node* n = Gears_dictGetVal(entry);
-        RedisModule_ReplyWithArray(ctx, 14);
+        RedisModule_ReplyWithArray(ctx, 16);
         RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
         RedisModule_ReplyWithStringBuffer(ctx, n->id, strlen(n->id));
         RedisModule_ReplyWithStringBuffer(ctx, "ip", strlen("ip"));
@@ -830,14 +848,19 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         if(n->runId){
             RedisModule_ReplyWithStringBuffer(ctx, n->runId, strlen(n->runId));
         }else{
-            char* runId = Cluster_ReadRunId(ctx);
-            RedisModule_ReplyWithStringBuffer(ctx, runId, strlen(runId));
-            RG_FREE(runId);
+            if(n->isMe){
+                const char* runId = Cluster_ReadRunId(ctx);
+                RedisModule_ReplyWithStringBuffer(ctx, runId, strlen(runId));
+            }else{
+                RedisModule_ReplyWithNull(ctx);
+            }
         }
         RedisModule_ReplyWithStringBuffer(ctx, "minHslot", strlen("minHslot"));
         RedisModule_ReplyWithLongLong(ctx, n->minSlot);
         RedisModule_ReplyWithStringBuffer(ctx, "maxHslot", strlen("maxHslot"));
         RedisModule_ReplyWithLongLong(ctx, n->maxSlot);
+        RedisModule_ReplyWithStringBuffer(ctx, "pendingMessages", strlen("pendingMessages"));
+        RedisModule_ReplyWithLongLong(ctx, Gears_listLength(n->pendingMessages));
 
     }
     Gears_dictReleaseIterator(iter);
@@ -845,8 +868,13 @@ int Cluster_GetClusterInfo(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 }
 
 int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if(argc != 5){
+    if(argc != 6){
         return RedisModule_WrongArity(ctx);
+    }
+
+    if(!CurrCluster){
+        RedisModule_Log(ctx, "warning", "Got msg from another shard while cluster is not NULL");
+        return RedisModule_ReplyWithError(ctx, "ERRCLUSTER NULL cluster state");
     }
 
     if(!Cluster_IsInitialized()){
@@ -855,9 +883,11 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
     }
 
     RedisModuleString* senderId = argv[1];
-    RedisModuleString* functionToCall = argv[2];
-    RedisModuleString* msg = argv[3];
-    RedisModuleString* msgIdStr = argv[4];
+    RedisModuleString* senderRunId = argv[2];
+    RedisModuleString* functionToCall = argv[3];
+    RedisModuleString* msg = argv[4];
+    RedisModuleString* msgIdStr = argv[5];
+
     long long msgId;
     if(RedisModule_StringToLongLong(msgIdStr, &msgId) != REDISMODULE_OK){
         RedisModule_Log(ctx, "warning", "bad msg id given");
@@ -865,16 +895,25 @@ int Cluster_OnMsgArrive(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
         return REDISMODULE_OK;
     }
 
-    const char* senderIdStr = RedisModule_StringPtrLen(senderId, NULL);
-    Gears_dictEntry* entity = Gears_dictFind(nodesMsgIds, senderIdStr);
+    size_t senderIdLen;
+    const char* senderIdStr = RedisModule_StringPtrLen(senderId, &senderIdLen);
+    size_t senderRunIdLen;
+    const char* senderRunIdStr = RedisModule_StringPtrLen(senderRunId, &senderRunIdLen);
+
+    char combinedId[senderIdLen + senderRunIdLen + 1]; // +1 is for '\0'
+    memcpy(combinedId, senderIdStr, senderIdLen);
+    memcpy(combinedId + senderIdLen, senderRunIdStr, senderRunIdLen);
+    combinedId[senderIdLen + senderRunIdLen] = '\0';
+
+    Gears_dictEntry* entity = Gears_dictFind(nodesMsgIds, combinedId);
     long long currId = -1;
     if(entity){
         currId = Gears_dictGetSignedIntegerVal(entity);
     }else{
-        entity = Gears_dictAddRaw(nodesMsgIds, (char*)senderIdStr, NULL);
+        entity = Gears_dictAddRaw(nodesMsgIds, (char*)combinedId, NULL);
     }
     if(msgId <= currId){
-        RedisModule_Log(ctx, "warning", "duplicate message ignored");
+        RedisModule_Log(ctx, "warning", "duplicate message ignored, msgId: %lld, currId: %lld", msgId, currId);
         RedisModule_ReplyWithSimpleString(ctx, "duplicate message ignored");
         return REDISMODULE_OK;
     }

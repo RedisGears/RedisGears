@@ -1,14 +1,6 @@
 from RLTest import Env
 import time
-
-def getConnectionByEnv(env):
-    conn = None
-    if env.env == 'oss-cluster':
-        env.broadcast('rg.refreshcluster')
-        conn = env.envRunner.getClusterConnection()
-    else:
-        conn = env.getConnection()
-    return conn
+from common import getConnectionByEnv
 
 class testGenericErrors:
     def __init__(self):

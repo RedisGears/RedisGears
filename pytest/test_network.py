@@ -5,6 +5,7 @@ import signal
 import time
 from RLTest import Env
 from common import TimeLimit
+from common import getConnectionByEnv
 
 
 class Connection(object):
@@ -211,6 +212,7 @@ class ShardMock():
         self.stream_server = gevent.server.StreamServer(('localhost', 10000), self._handle_conn)
         self.stream_server.start()
         self._send_cluster_set()
+        self.runId = self.env.cmd('RG.INFOCLUSTER')[3]
         return self
 
     def __exit__(self, type, value, traceback):
@@ -245,12 +247,12 @@ def testMessageIdCorrectness(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
         conn.send_status('OK')
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
         conn.send_status('OK')
 
 def testErrorHelloResponse(env):
@@ -281,19 +283,19 @@ def testMessageResentAfterDisconnect(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
         conn.send_status('OK')
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
         conn.close()
 
         conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
         conn.send_status('duplicate message ignored')  # reply to the second message with duplicate reply
 
@@ -318,13 +320,13 @@ def testMessageNotResentAfterCrash(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
         conn.send_status('OK')
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
         conn.close()
 
@@ -346,7 +348,7 @@ def testSendRetriesMechanizm(env):
 
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
         conn.send('-Err\r\n')
 
@@ -356,7 +358,7 @@ def testSendRetriesMechanizm(env):
 
         conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
         conn.send('-Err\r\n')
 
@@ -366,7 +368,7 @@ def testSendRetriesMechanizm(env):
 
         conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
         conn.send('-Err\r\n')
 
@@ -392,7 +394,7 @@ def testSendTopology(env):
         
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
         conn.send_error('ERRCLUSTER')
 
@@ -414,7 +416,7 @@ def testStopListening(env):
         
         env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
         conn.send_status('OK')
 
@@ -430,7 +432,7 @@ def testStopListening(env):
 
         conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '1'])
+        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
 
 
@@ -439,8 +441,8 @@ def testDuplicateMessagesAreIgnored(env):
 
     with ShardMock(env) as shardMock:
         shardMock.GetConnection()
-        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('OK')
-        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
+        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000' , 'RG_NetworkTest', 'test', '0').equal('OK')
+        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
 
 
 def testMessagesResentAfterHelloResponse(env):
@@ -461,9 +463,23 @@ def testMessagesResentAfterHelloResponse(env):
         # make sure we get the 'test' msg
         try:
             with TimeLimit(2):
-                env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', 'RG_NetworkTest', 'test', '0'])
+                env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
         except Exception:
             env.assertTrue(False, message='did not get the "test" message')
+
+
+def testClusterRefreshOnOnlySingleNode(env):
+    if env.shardsCount <= 1:
+        env.skip()
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()').equal([[str(env.shardsCount)], []])
+    env.cmd('RG.REFRESHCLUSTER')
+    try:
+        with TimeLimit(2):
+            res = env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()')
+            env.assertEqual(res, [[str(env.shardsCount)], []])
+    except Exception as e:  
+        env.assertTrue(False, message='Failed waiting for execution to finish')
 
 def testClusterSetAfterHelloResponseFailure(env):
     env.skipOnCluster()
@@ -497,3 +513,40 @@ def testClusterSetAfterHelloResponseFailure(env):
                      )
 
         time.sleep(2) # make sure the RG.HELLO resend callback is not called
+
+def testClusterSetAfterDisconnect(env):
+    env.skipOnCluster()
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # read RG.HELLO request
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+
+        conn.close()
+
+        # resend cluster set
+        res = env.cmd('RG.CLUSTERSET',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '0',
+                     '8192',
+                     'NO-USED',
+                     'password@localhost:6379',
+                     'NO-USED',
+                     )
+
+        shardMock._send_cluster_set()
+
+        conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # read RG.HELLO request
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])
