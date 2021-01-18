@@ -1,14 +1,6 @@
 from RLTest import Env
 import time
-
-def getConnectionByEnv(env):
-    conn = None
-    if env.env == 'oss-cluster':
-        env.broadcast('rg.refreshcluster')
-        conn = env.envRunner.getClusterConnection()
-    else:
-        conn = env.getConnection()
-    return conn
+from common import getConnectionByEnv
 
 class testGenericErrors:
     def __init__(self):
@@ -112,9 +104,22 @@ class testStepsErrors:
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: notexists(x), lambda a, x, k: 1).collect().run()')
         self.env.assertLessEqual(1, res[1])
 
-
     def testAccumulateError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
+        self.env.assertLessEqual(1, res[1])
+
+    def testAccumulateError2(self):
+        script = '''
+callNum = 0
+def secondCallFailed(a, x):
+    global callNum
+    if callNum > 0:
+        raise Exception('failed')
+    callNum+=1
+    return x
+GearsBuilder().accumulate(secondCallFailed).collect().run()
+        '''
+        res = self.env.cmd('rg.pyexecute', script)
         self.env.assertLessEqual(1, res[1])
 
     def testAggregateByError(self):

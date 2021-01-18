@@ -49,6 +49,11 @@ typedef struct PythonRecord{
     PyObject* obj;
 }PythonRecord;
 
+static inline void GearsPyDecRef(PyObject* obj){
+    RedisModule_Assert(obj->ob_refcnt > 0);
+    Py_DECREF(obj);
+}
+
 static Record* PyObjRecordCreate(){
     PythonRecord* ret = (PythonRecord*)RedisGears_RecordCreate(pythonRecordType);
     ret->obj = NULL;
@@ -553,7 +558,7 @@ static void PythonSessionCtx_Free(void* arg){
         PythonSessionCtx_FreeRequirementsList(session->requirements);
         void* old = RedisGearsPy_Lock(NULL);
         PyDict_Clear(session->globalsDict);
-        Py_DECREF(session->globalsDict);
+        GearsPyDecRef(session->globalsDict);
         RedisGearsPy_Unlock(old);
         RG_FREE(session);
     }
@@ -717,7 +722,7 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
 
     PyObject* pArgs = PyTuple_New(0);
     PyObject* ret = PyObject_CallObject(callback, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!ret){
         char* error = getPyError();
         RedisModule_Log(NULL, "warning", "Error occured on RedisGearsPy_OnRegistered, error=%s", error);
@@ -726,7 +731,7 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
         return;
     }
     if(ret != Py_None){
-        Py_DECREF(ret);
+        GearsPyDecRef(ret);
     }
 
     RedisGearsPy_Unlock(old);
@@ -1156,7 +1161,7 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         }else if(strcmp(RedisGears_GetReader(pfep->fep), "KeysReader") == 0){
             RedisGears_KeysReaderCtxFree(arg);
         }else if(strcmp(RedisGears_GetReader(pfep->fep), "PythonReader") == 0){
-            Py_DECREF((PyObject*)arg);
+            GearsPyDecRef((PyObject*)arg);
         }else{
             RedisModule_Log(NULL, "warning", "unknown reader when try to free reader args");
             RedisModule_Assert(false);
@@ -1210,7 +1215,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
         PyObject* event = NULL;
         while((event = PyIter_Next(eventTypesIterator))){
             if(!PyUnicode_Check(event)){
-                Py_DECREF(eventTypesIterator);
+                GearsPyDecRef(eventTypesIterator);
                 array_free_ex(eventTypes, RG_FREE(*(Arr(char*))ptr));
                 PyErr_SetString(GearsError, "given event type is not string");
                 return NULL;
@@ -1219,7 +1224,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
             char* eventTypeStr1 = RG_STRDUP(eventTypeStr);
             eventTypes = array_append(eventTypes, eventTypeStr1);
         }
-        Py_DECREF(eventTypesIterator);
+        GearsPyDecRef(eventTypesIterator);
     }
 
     // getting key types white list (no list == all key types)
@@ -1234,7 +1239,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
         PyObject* keyType = NULL;
         while((keyType = PyIter_Next(keyTypesIterator))){
             if(!PyUnicode_Check(keyType)){
-                Py_DECREF(keyTypesIterator);
+                GearsPyDecRef(keyTypesIterator);
                 array_free_ex(eventTypes, RG_FREE(*(Arr(char*))ptr));
                 array_free(keyTypes);
                 PyErr_SetString(GearsError, "given key type is not string");
@@ -1243,7 +1248,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
             const char* keyTypeStr = PyUnicode_AsUTF8AndSize(keyType, NULL);
             int keyTypeInt = registerStrKeyTypeToInt(keyTypeStr);
             if(keyTypeInt == -1){
-                Py_DECREF(keyTypesIterator);
+                GearsPyDecRef(keyTypesIterator);
                 array_free_ex(eventTypes, RG_FREE(*(Arr(char*))ptr));
                 array_free(keyTypes);
                 PyErr_SetString(GearsError, "unknown key type");
@@ -1251,7 +1256,7 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
             }
             keyTypes = array_append(keyTypes, keyTypeInt);
         }
-        Py_DECREF(keyTypesIterator);
+        GearsPyDecRef(keyTypesIterator);
     }
 
     bool readValue = true;
@@ -1435,7 +1440,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         Py_INCREF(onRegistered);
         if(RGM_SetFlatExecutionOnRegisteredCallback(pfep->fep, RedisGearsPy_OnRegistered, onRegistered) != REDISMODULE_OK){
             PyErr_SetString(GearsError, "Failed setting on OnRegistered callback");
-            Py_DECREF(onRegistered);
+            GearsPyDecRef(onRegistered);
             return NULL;
         }
     }
@@ -1635,7 +1640,7 @@ static PyObject* replyToPyList(RedisModuleCallReply *reply){
             RedisModuleCallReply *subReply = RedisModule_CallReplyArrayElement(reply, i);
             PyObject* val = replyToPyList(subReply);
             PyList_Append(ret, val);
-            Py_DECREF(val);
+            GearsPyDecRef(val);
         }
         return ret;
     }
@@ -1784,7 +1789,7 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
             argumentCStr = PyUnicode_AsUTF8AndSize(argumentStr, &argLen);
             argumentRedisStr = RedisModule_CreateString(rctx, argumentCStr, argLen);
             // Decrease ref-count after done processing the argument.
-            Py_DECREF(argumentStr);
+            GearsPyDecRef(argumentStr);
         }
         arguments = array_append(arguments, argumentRedisStr);
     }
@@ -1833,7 +1838,7 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
             pyVal = PyLong_FromLongLong(longVal);
         }else{
             PyErr_SetString(GearsError, "Failed converting tensor to flat list");
-            Py_DECREF(flatList);
+            GearsPyDecRef(flatList);
             return NULL;
         }
 
@@ -2003,19 +2008,19 @@ static PyObject* createTensorFromBlob(PyObject *cls, PyObject *args){
     while((currDim = PyIter_Next(dimsIter)) != NULL){
         if(!PyLong_Check(currDim)){
             PyErr_SetString(GearsError, "dims arguments must be long");
-            Py_DECREF(currDim);
-            Py_DECREF(dimsIter);
+            GearsPyDecRef(currDim);
+            GearsPyDecRef(dimsIter);
             goto clean_up;
         }
         if(PyErr_Occurred()){
-            Py_DECREF(currDim);
-            Py_DECREF(dimsIter);
+            GearsPyDecRef(currDim);
+            GearsPyDecRef(dimsIter);
             goto clean_up;
         }
         dims = array_append(dims, PyLong_AsLong(currDim));
-        Py_DECREF(currDim);
+        GearsPyDecRef(currDim);
     }
-    Py_DECREF(dimsIter);
+    GearsPyDecRef(dimsIter);
 
     RAI_Tensor* t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
     if(!t){
@@ -2101,19 +2106,19 @@ static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     while((currDim = PyIter_Next(dimsIter)) != NULL){
         if(!PyLong_Check(currDim)){
             PyErr_SetString(GearsError, "dims arguments must be long");
-            Py_DECREF(currDim);
-            Py_DECREF(dimsIter);
+            GearsPyDecRef(currDim);
+            GearsPyDecRef(dimsIter);
             goto error;
         }
         if(PyErr_Occurred()){
-            Py_DECREF(currDim);
-            Py_DECREF(dimsIter);
+            GearsPyDecRef(currDim);
+            GearsPyDecRef(dimsIter);
             goto error;
         }
         dims = array_append(dims, PyLong_AsLong(currDim));
-        Py_DECREF(currDim);
+        GearsPyDecRef(currDim);
     }
-    Py_DECREF(dimsIter);
+    GearsPyDecRef(dimsIter);
 
     t = RedisAI_TensorCreate(typeNameStr, dims, array_len(dims));
     if(!t){
@@ -2132,14 +2137,14 @@ static PyObject* createTensorFromValues(PyObject *cls, PyObject *args){
     while((currValue = PyIter_Next(valuesIter)) != NULL){
         if(!PyFloat_Check(currValue)){
             PyErr_SetString(GearsError, "values arguments must be double");
-            Py_DECREF(currValue);
-            Py_DECREF(valuesIter);
+            GearsPyDecRef(currValue);
+            GearsPyDecRef(valuesIter);
             goto error;
         }
         RedisAI_TensorSetValueFromDouble(t, index++, PyFloat_AsDouble(currValue));
-        Py_DECREF(currValue);
+        GearsPyDecRef(currValue);
     }
-    Py_DECREF(valuesIter);
+    GearsPyDecRef(valuesIter);
 
     PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
     pyt->t = t;
@@ -2419,7 +2424,7 @@ clean_up:
     LockHandler_Release(rctx);
     RedisModule_FreeThreadSafeContext(rctx);
     array_free(keyNameList);
-    Py_DECREF(keys_iter);
+    GearsPyDecRef(keys_iter);
     return obj;
 }
 
@@ -2579,7 +2584,7 @@ static PyObject* modelRunnerRun(PyObject *cls, PyObject *args){
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
         pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ModelRunCtxOutputTensor(pyg->g, i));
         PyList_Append(tensorList, (PyObject*)pyt);
-        Py_DECREF(pyt);
+        GearsPyDecRef((PyObject*)pyt);
     }
     return tensorList;
 }
@@ -2749,7 +2754,7 @@ static PyObject* scriptRunnerAddInputList(PyObject *cls, PyObject *args){
     obj = Py_None;
 clean_up:
 
-    Py_DECREF(py_tensors_iter);
+    GearsPyDecRef(py_tensors_iter);
     array_free(tensorList);
     RedisAI_FreeError(err);
     return obj;
@@ -2797,7 +2802,7 @@ static PyObject* scriptRunnerRun(PyObject *cls, PyObject *args){
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
         pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_ScriptRunCtxOutputTensor(pys->s, i));
         PyList_Append(tensorList, (PyObject*)pyt);
-        Py_DECREF(pyt);
+        GearsPyDecRef((PyObject*)pyt);
     }
     return tensorList;
 }
@@ -2834,7 +2839,7 @@ static void TimeEvent_Callback(RedisModuleCtx *ctx, void *data){
     }else{
         td->id = RedisModule_CreateTimer(ctx, td->period * 1000, TimeEvent_Callback, td);
     }
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     RedisGearsPy_Unlock(old);
 }
 
@@ -2885,7 +2890,7 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     void* old = RedisGearsPy_Lock(td->session);
     PyFunctionObject* callback_func = (PyFunctionObject*)td->callback;
     PyDict_Merge(td->session->globalsDict, callback_func->func_globals, 0);
-    Py_DECREF(callback_func->func_globals);
+    GearsPyDecRef(callback_func->func_globals);
     callback_func->func_globals = td->session->globalsDict;
     Py_INCREF(callback_func->func_globals);
     RedisGearsPy_Unlock(old);
@@ -2917,7 +2922,7 @@ static void TimeEvent_RDBSave(RedisModuleIO *rdb, void *value){
 static void TimeEvent_Free(void *value){
     TimerData* td = value;
     void* old = RedisGearsPy_Lock(td->session);
-    Py_DECREF(td->callback);
+    GearsPyDecRef(td->callback);
     RedisGearsPy_Unlock(old);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_StopTimer(ctx, td->id, NULL);
@@ -3297,12 +3302,12 @@ char* getPyError() {
                 PyObject *pCall = PyObject_CallFunctionObjArgs(pFunc, pType, pValue, pTraceback, NULL);
                 if(pCall){
                     pStrTraceback = PyObject_Str(pCall);
-                    Py_DECREF(pCall);
+                    GearsPyDecRef(pCall);
                 }
             }
-            Py_DECREF(pFunc);
+            GearsPyDecRef(pFunc);
         }
-        Py_DECREF(pModule);
+        GearsPyDecRef(pModule);
     }
     if(pStrTraceback == NULL){
         PyObject *pStrFormat = PyUnicode_FromString("Error type: %s, Value: %s");
@@ -3312,21 +3317,21 @@ char* getPyError() {
         PyTuple_SetItem(pArgs, 0, pStrType);
         PyTuple_SetItem(pArgs, 1, pStrValue);
         pStrTraceback = PyUnicode_Format(pStrFormat, pArgs);
-        Py_DECREF(pArgs);
-        Py_DECREF(pStrFormat);
+        GearsPyDecRef(pArgs);
+        GearsPyDecRef(pStrFormat);
     }
     char *strTraceback = (char*)PyUnicode_AsUTF8AndSize(pStrTraceback, NULL);
     char* err =  RG_STRDUP(strTraceback);
-    Py_DECREF(pStrTraceback);
-    Py_DECREF(pModuleName);
+    GearsPyDecRef(pStrTraceback);
+    GearsPyDecRef(pModuleName);
     if(pType){
-        Py_DECREF(pType);
+        GearsPyDecRef(pType);
     }
     if(pValue){
-        Py_DECREF(pValue);
+        GearsPyDecRef(pValue);
     }
     if(pTraceback){
-        Py_DECREF(pTraceback);
+        GearsPyDecRef(pTraceback);
     }
     return err;
 }
@@ -3350,7 +3355,7 @@ void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* ar
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
     PyObject* ret = PyObject_CallObject(callback, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!ret){
         fetchPyError(rctx);
 
@@ -3359,7 +3364,7 @@ void RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* ar
     }
     if(ret != Py_None){
         Py_INCREF(Py_None);
-    	Py_DECREF(ret);
+    	GearsPyDecRef(ret);
     }
 
     RedisGearsPy_Unlock(old);
@@ -3378,17 +3383,18 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	PyObject* keyPyStr = PyUnicode_FromString(key);
 	PyObjRecordSet(r, NULL);
 	PyObject* oldAccumulateObj = Py_None;
-	Py_INCREF(oldAccumulateObj);
 	if(!accumulate){
 		accumulate = PyObjRecordCreate();
+		Py_INCREF(oldAccumulateObj);
 	}else{
 		oldAccumulateObj = PyObjRecordGet(accumulate);
 	}
+	PyObjRecordSet(accumulate, NULL);
 	PyTuple_SetItem(pArgs, 0, keyPyStr);
 	PyTuple_SetItem(pArgs, 1, oldAccumulateObj);
 	PyTuple_SetItem(pArgs, 2, currObj);
 	PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
-	Py_DECREF(pArgs);
+	GearsPyDecRef(pArgs);
 	if(!newAccumulateObj){
 	    fetchPyError(rctx);
 
@@ -3416,16 +3422,17 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     PyObject* currObj = PyObjRecordGet(r);
     PyObjRecordSet(r, NULL);
     PyObject* oldAccumulateObj = Py_None;
-    Py_INCREF(oldAccumulateObj);
     if(!accumulate){
         accumulate = PyObjRecordCreate();
+        Py_INCREF(oldAccumulateObj);
     }else{
         oldAccumulateObj = PyObjRecordGet(accumulate);
     }
+    PyObjRecordSet(accumulate, NULL);
     PyTuple_SetItem(pArgs, 0, oldAccumulateObj);
     PyTuple_SetItem(pArgs, 1, currObj);
     PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!newAccumulateObj){
         fetchPyError(rctx);
 
@@ -3453,9 +3460,10 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     PyObject* pArgs = PyTuple_New(1);
     PyObject* callback = arg;
     PyObject* oldObj = PyObjRecordGet(record);
+    PyObjRecordSet(record, NULL); // pass ownership of oldObj to NULL
     PyTuple_SetItem(pArgs, 0, oldObj);
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!newObj){
         fetchPyError(rctx);
 
@@ -3484,7 +3492,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     PyObjRecordSet(record, NULL);
     PyTuple_SetItem(pArgs, 0, oldObj);
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!newObj){
         fetchPyError(rctx);
 
@@ -3503,7 +3511,7 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
             PyObjRecordSet(pyRecord, temp);
             RedisGears_ListRecordAdd(record, pyRecord);
         }
-        Py_DECREF(newObj);
+        GearsPyDecRef(newObj);
     }else{
         PyObjRecordSet(record, newObj);
     }
@@ -3526,7 +3534,7 @@ static bool RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, vo
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
     PyObject* ret = PyObject_CallObject(callback, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!ret){
         fetchPyError(rctx);
 
@@ -3553,7 +3561,7 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
     PyObject* ret = PyObject_CallObject(extractor, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!ret){
         fetchPyError(rctx);
 
@@ -3563,7 +3571,7 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     PyObject* retStr;
     if(!PyUnicode_Check(ret)){
         retStr = PyObject_Repr(ret);
-        Py_DECREF(ret);
+        GearsPyDecRef(ret);
     }else{
         retStr = ret;
     }
@@ -3571,8 +3579,8 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     char* retValue = RG_ALLOC(*len + 1);
     memcpy(retValue, retCStr, *len);
     retValue[*len] = '\0';
-    Py_DECREF(retStr);
-    //Py_DECREF(retStr); todo: we should uncomment it after we will pass bool
+    GearsPyDecRef(retStr);
+    //GearsPyDecRef(retStr); todo: we should uncomment it after we will pass bool
     //                         that will tell the extractor to free the memory!!
 
     RedisGearsPy_Unlock(old);
@@ -3600,7 +3608,7 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     PyTuple_SetItem(pArgs, 0, keyPyObj);
     PyTuple_SetItem(pArgs, 1, obj);
     PyObject* ret = PyObject_CallObject(reducer, pArgs);
-    Py_DECREF(pArgs);
+    GearsPyDecRef(pArgs);
     if(!ret){
         fetchPyError(rctx);
 
@@ -3651,7 +3659,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
         obj = PyDict_New();
         temp = PyUnicode_FromString(key);
         PyDict_SetItemString(obj, "key", temp);
-        Py_DECREF(temp);
+        GearsPyDecRef(temp);
         tempRecord = RedisGears_KeyRecordGetVal(record);
         if(tempRecord){
             tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
@@ -3681,7 +3689,7 @@ static Record* RedisGearsPy_ToPyRecordMapperInternal(Record *record, void* arg){
             tempRecord = RedisGearsPy_ToPyRecordMapperInternal(tempRecord, arg);
             RedisModule_Assert(RedisGears_RecordGetType(tempRecord) == pythonRecordType);
             PyDict_SetItem(obj, temp, PyObjRecordGet(tempRecord));
-            Py_DECREF(temp);
+            GearsPyDecRef(temp);
             RedisGears_FreeRecord(tempRecord);
         }
         array_free(keys);
@@ -3760,7 +3768,7 @@ static void* RedisGearsPy_PyObjectDup(void* arg){
 static void RedisGearsPy_PyObjectFree(void* arg){
     void* old = RedisGearsPy_Lock(NULL);
     PyObject* obj = arg;
-    Py_DECREF(obj);
+    GearsPyDecRef(obj);
     RedisGearsPy_Unlock(old);
 }
 
@@ -3771,7 +3779,7 @@ static char* RedisGearsPy_PyObjectToString(void* arg){
     PyObject *objStr = PyObject_Str(obj);
     const char* objTempCstr = PyUnicode_AsUTF8AndSize(objStr, NULL);
     objCstr = RG_STRDUP(objTempCstr);
-    Py_DECREF(objStr);
+    GearsPyDecRef(objStr);
     RedisGearsPy_Unlock(old);
     return objCstr;
 }
@@ -3790,7 +3798,7 @@ int RedisGearsPy_PyObjectSerialize(void* arg, Gears_BufferWriter* bw, char** err
     char* objStrCstr;
     PyBytes_AsStringAndSize(objStr, &objStrCstr, &len);
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
-    Py_DECREF(objStr);
+    GearsPyDecRef(objStr);
     RedisGearsPy_Unlock(old);
     return REDISMODULE_OK;
 }
@@ -3822,12 +3830,12 @@ static int RedisGearsPy_PyCallbackSerialize(void* arg, Gears_BufferWriter* bw, c
         RedisGearsPy_Unlock(old);
         return REDISMODULE_ERR;
     }
-    Py_DECREF(args);
+    GearsPyDecRef(args);
     size_t len;
     char* objStrCstr;
     PyBytes_AsStringAndSize(serializedStr, &objStrCstr, &len);
     RedisGears_BWWriteBuffer(bw, objStrCstr, len);
-    Py_DECREF(serializedStr);
+    GearsPyDecRef(serializedStr);
     RedisGearsPy_Unlock(old);
     return REDISMODULE_OK;
 }
@@ -3854,18 +3862,18 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
             RedisModule_Log(NULL, "warning", "Error occured when deserialized a python callback, error=%s",  error);
         }
         RG_FREE(error);
-        Py_DECREF(args);
+        GearsPyDecRef(args);
         RedisGearsPy_Unlock(old);
         return NULL;
     }
-    Py_DECREF(args);
+    GearsPyDecRef(args);
 
     if(fep){
         // replace the global dictionary with the session global dictionary
         PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
         PyFunctionObject* callback_func = (PyFunctionObject*)callback;
         PyDict_Merge(sctx->globalsDict, callback_func->func_globals, 0);
-        Py_DECREF(callback_func->func_globals);
+        GearsPyDecRef(callback_func->func_globals);
         callback_func->func_globals = sctx->globalsDict;
         Py_INCREF(callback_func->func_globals);
     }
@@ -4191,7 +4199,7 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
         PyObject* pArgs = PyTuple_New(0);
         PyObject* callback = pyCtx->callback;
         pyRecord = PyObject_CallObject(callback, pArgs);
-        Py_DECREF(pArgs);
+        GearsPyDecRef(pArgs);
         if(!pyRecord){
             fetchPyError(rctx);
             RedisGearsPy_Unlock(old);
@@ -4200,7 +4208,7 @@ static Record* PythonReader_Next(ExecutionCtx* rctx, void* ctx){
         }
         if(PyGen_Check(pyRecord)) {
             pyCtx->generator = PyObject_GetIter(pyRecord);
-            Py_DECREF(pyRecord);
+            GearsPyDecRef(pyRecord);
             pyRecord = PyIter_Next(pyCtx->generator);
         }
     }else{
@@ -4222,9 +4230,9 @@ static void PythonReader_Free(void* ctx){
     PythonReaderCtx* pyCtx = ctx;
     PyObject* callback = pyCtx->callback;
     void* old = RedisGearsPy_Lock(NULL);
-    Py_DECREF(callback);
+    GearsPyDecRef(callback);
     if(pyCtx->generator){
-        Py_DECREF(pyCtx->generator);
+        GearsPyDecRef(pyCtx->generator);
     }
     RedisGearsPy_Unlock(old);
     RG_FREE(pyCtx);
@@ -4502,7 +4510,7 @@ static void PythonRecord_Free(Record* base){
     PythonRecord* record = (PythonRecord*)base;
     if(record->obj && record->obj != Py_None){
         void* old = RedisGearsPy_Lock(NULL);
-        Py_DECREF(record->obj);
+        GearsPyDecRef(record->obj);
         RedisGearsPy_Unlock(old);
     }
 }
@@ -4714,11 +4722,11 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     PyObject *pName = PyUnicode_FromString("redisgears");
     PyObject* redisGearsModule = PyImport_Import(pName);
-    Py_DECREF(pName);
+    GearsPyDecRef(pName);
 
     pName = PyUnicode_FromString("redisAI");
     PyObject* redisAIModule = PyImport_Import(pName);
-    Py_DECREF(pName);
+    GearsPyDecRef(pName);
 
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
