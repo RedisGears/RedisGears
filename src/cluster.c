@@ -222,8 +222,10 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
 }
 
 static void Cluster_Free(){
-    if(CurrCluster->isClusterMode){
+    if(CurrCluster->myId){
         RG_FREE(CurrCluster->myId);
+    }
+    if(CurrCluster->nodes){
         Gears_dictIterator *iter = Gears_dictGetIterator(CurrCluster->nodes);
         Gears_dictEntry *entry = NULL;
         while((entry = Gears_dictNext(iter))){
@@ -409,7 +411,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         return;
     }
 
-    CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
+    CurrCluster = RG_CALLOC(1, sizeof(*CurrCluster));
 
     // generate runID
     RedisModule_GetRandomHexChars(CurrCluster->runId, RUN_ID_SIZE);
@@ -503,7 +505,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
 
     RedisModule_Log(ctx, "notice", "Got cluster refresh command");
 
-    CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
+    CurrCluster = RG_CALLOC(1, sizeof(*CurrCluster));
 
     // generate runID
     RedisModule_GetRandomHexChars(CurrCluster->runId, RUN_ID_SIZE);
