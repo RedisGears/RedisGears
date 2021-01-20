@@ -66,14 +66,10 @@ static int PyInitializeRedisAI(){
         return REDISMODULE_OK;
     }
 
-    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisModule_ThreadSafeContextLock(ctx);
-    int ret = RedisAI_Initialize(ctx);
+    int ret = RedisAI_Initialize(staticCtx);
     if(ret == REDISMODULE_OK){
         globals.redisAILoaded = true;
     }
-    RedisModule_ThreadSafeContextUnlock(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
     return ret;
 }
 
@@ -1908,7 +1904,7 @@ static PyObject* loadInput(PyObject *self, PyObject *args) {
     return self;
 }
 
-static PyObject* appendTensorSet(PyObject *self, PyObject *args) {
+static PyObject* TensorSet(PyObject *self, PyObject *args) {
     verifyRedisAILoaded();
     if (RedisAI_DAGAddTensorSet == NULL) {
         PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
@@ -1943,7 +1939,7 @@ static PyObject* appendTensorSet(PyObject *self, PyObject *args) {
     return self;
 }
 
-static PyObject* appendTensorGet(PyObject *self, PyObject *args) {
+static PyObject* TensorGet(PyObject *self, PyObject *args) {
     verifyRedisAILoaded();
     if (RedisAI_DAGAddTensorGet == NULL) {
         PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
@@ -1974,7 +1970,27 @@ static PyObject* appendTensorGet(PyObject *self, PyObject *args) {
     return self;
 }
 
-static PyObject* appendModelRunOp(PyObject *self, PyObject *args, PyObject *kargs) {
+static RAI_Model *_getModelFromKeyspace(const char *modelNameStr, RAI_Error *err) {
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisGears_LockHanlderAcquire(ctx);
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, modelNameStr, strlen(modelNameStr));
+    RedisModuleKey *key;
+    RAI_Model *model;
+    if(RedisAI_GetModelFromKeyspace(ctx, keyRedisStr, &key, &model, REDISMODULE_READ, err) != REDISMODULE_OK) {
+        RedisModule_FreeString(ctx, keyRedisStr);
+        RedisGears_LockHanlderRelease(ctx);
+        RedisModule_FreeThreadSafeContext(ctx);
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        return NULL;
+    }
+
+    RedisModule_FreeString(ctx, keyRedisStr);
+    RedisGears_LockHanlderRelease(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
+    return model;
+}
+
+static PyObject* ModelRun(PyObject *self, PyObject *args, PyObject *kargs) {
     verifyRedisAILoaded();
     if (RedisAI_DAGCreateModelRunOp == NULL) {
         PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
@@ -1990,7 +2006,6 @@ static PyObject* appendModelRunOp(PyObject *self, PyObject *args, PyObject *karg
         return NULL;
     }
 
-    // Load model from keyspace and create MODELRUN op.
     PyObject* modelName = GearsPyDict_GetItemString(kargs, "name");
     if (!modelName) {
         PyErr_SetString(GearsError, "Model key name was not given");
@@ -2000,26 +2015,18 @@ static PyObject* appendModelRunOp(PyObject *self, PyObject *args, PyObject *karg
         PyErr_SetString(GearsError, "Model name argument must be a string");
         return NULL;
     }
-    const char* modelNameStr = PyUnicode_AsUTF8AndSize(modelName, NULL);
-    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisGears_LockHanlderAcquire(ctx);
-    RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, modelNameStr, strlen(modelNameStr));
-    RedisModuleKey *key;
     RAI_Error *err;
     RedisAI_InitError(&err);
-    RAI_Model *model;
-    if(RedisAI_GetModelFromKeyspace(ctx, keyRedisStr, &key, &model, REDISMODULE_READ, err) != REDISMODULE_OK) {
-        RedisModule_FreeString(ctx, keyRedisStr);
-        RedisGears_LockHanlderRelease(ctx);
-        RedisModule_FreeThreadSafeContext(ctx);
-        PyErr_SetString(GearsError, RedisAI_GetError(err));
+    const char* modelNameStr = PyUnicode_AsUTF8AndSize(modelName, NULL);
+
+    // Try to bring model from keyspace (raise an exception if it does not exist)
+    RAI_Model *model = _getModelFromKeyspace(modelNameStr, err);
+    if (model == NULL) {
+        RedisAI_FreeError(err);
         return NULL;
     }
 
-    RedisModule_FreeString(ctx, keyRedisStr);
-    RedisGears_LockHanlderRelease(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
-
+    // Create a modelRun op with its inputs and output keys and insert it to the DAG
     RAI_DAGRunOp *modelRunOp = RedisAI_DAGCreateModelRunOp(model);
     PyObject* modelInputs = GearsPyDict_GetItemString(kargs, "inputs");
     if (!modelInputs) {
@@ -2074,7 +2081,27 @@ static PyObject* appendModelRunOp(PyObject *self, PyObject *args, PyObject *karg
     return NULL;
 }
 
-static PyObject* appendScriptRunOp(PyObject *self, PyObject *args, PyObject *kargs) {
+static RAI_Script *_getScriptFromKeyspace(const char *scriptNameStr, RAI_Error *err) {
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
+    RedisGears_LockHanlderAcquire(ctx);
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, scriptNameStr, strlen(scriptNameStr));
+    RedisModuleKey *key;
+    RAI_Script *script;
+    if(RedisAI_GetScriptFromKeyspace(ctx, keyRedisStr, &key, &script, REDISMODULE_READ, err) != REDISMODULE_OK) {
+        RedisModule_FreeString(ctx, keyRedisStr);
+        RedisGears_LockHanlderRelease(ctx);
+        RedisModule_FreeThreadSafeContext(ctx);
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        return NULL;
+    }
+
+    RedisModule_FreeString(ctx, keyRedisStr);
+    RedisGears_LockHanlderRelease(ctx);
+    RedisModule_FreeThreadSafeContext(ctx);
+    return script;
+}
+
+static PyObject* ScriptRun(PyObject *self, PyObject *args, PyObject *kargs) {
     verifyRedisAILoaded();
     if (RedisAI_DAGCreateScriptRunOp == NULL) {
         PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
@@ -2090,7 +2117,6 @@ static PyObject* appendScriptRunOp(PyObject *self, PyObject *args, PyObject *kar
         return NULL;
     }
 
-    // Load script from keyspace and create SCRIPTRUN op.
     PyObject* scriptName = GearsPyDict_GetItemString(kargs, "name");
     if (!scriptName) {
         PyErr_SetString(GearsError, "Script key name was not given");
@@ -2111,25 +2137,17 @@ static PyObject* appendScriptRunOp(PyObject *self, PyObject *args, PyObject *kar
     }
     const char* scriptNameStr = PyUnicode_AsUTF8AndSize(scriptName, NULL);
     const char* functionNameStr = PyUnicode_AsUTF8AndSize(funcName, NULL);
-    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisGears_LockHanlderAcquire(ctx);
-    RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, scriptNameStr, strlen(scriptNameStr));
-    RedisModuleKey *key;
+
+    // Try to bring model from keyspace (raise an exception if it does not exist)
     RAI_Error *err;
     RedisAI_InitError(&err);
-    RAI_Script *script;
-    if(RedisAI_GetScriptFromKeyspace(ctx, keyRedisStr, &key, &script, REDISMODULE_READ, err) != REDISMODULE_OK) {
-        RedisModule_FreeString(ctx, keyRedisStr);
-        RedisGears_LockHanlderRelease(ctx);
-        RedisModule_FreeThreadSafeContext(ctx);
-        PyErr_SetString(GearsError, RedisAI_GetError(err));
+    RAI_Script *script = _getScriptFromKeyspace(scriptNameStr, err);
+    if (script == NULL) {
+        RedisAI_FreeError(err);
         return NULL;
     }
 
-    RedisModule_FreeString(ctx, keyRedisStr);
-    RedisGears_LockHanlderRelease(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
-
+    // Create a scriptRun op with its inputs and output keys and insert it to the DAG
     RAI_DAGRunOp *scriptRunOp = RedisAI_DAGCreateScriptRunOp(script, functionNameStr);
     PyObject* scriptInputs = GearsPyDict_GetItemString(kargs, "inputs");
     PyObject* inputsIter;
@@ -2180,7 +2198,7 @@ static PyObject* appendScriptRunOp(PyObject *self, PyObject *args, PyObject *kar
     return NULL;
 }
 
-static PyObject* appendOpsFromString(PyObject *self, PyObject *args) {
+static PyObject* OpsFromString(PyObject *self, PyObject *args) {
     verifyRedisAILoaded();
     if(RedisAI_DAGAddOpsFromString == NULL) {
         PyErr_SetString(GearsError,
@@ -2227,8 +2245,8 @@ static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) 
 
     if (RedisAI_DAGRunError(onFinishCtx)) {
         PyObject* pyErr;
-        RAI_Error* err = RedisAI_DAGGetError(onFinishCtx);
-            const char* errStr = RedisAI_GetError(err);
+        const RAI_Error* err = RedisAI_DAGGetError(onFinishCtx);
+            const char* errStr = RedisAI_GetError((RAI_Error*)err);
             pyErr = PyUnicode_FromStringAndSize(errStr,
               strlen(errStr));
 
@@ -2241,7 +2259,7 @@ static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) 
     size_t n_outputs = RedisAI_DAGNumOutputs(onFinishCtx);
     for(size_t i = 0 ; i < n_outputs ; ++i){
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
-        pyt->t = RedisAI_TensorGetShallowCopy(RedisAI_DAGOutputTensor(onFinishCtx, i));
+        pyt->t = RedisAI_TensorGetShallowCopy((RAI_Tensor*)RedisAI_DAGOutputTensor(onFinishCtx, i));
         PyList_Append(tensorList, (PyObject*)pyt);
         Py_DECREF(pyt);
     }
@@ -2257,12 +2275,12 @@ static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) 
     }
 
     finish:
-    RedisAI_DAGFree(onFinishCtx);
+    RedisAI_DAGFree((RAI_DAGRunCtx *)onFinishCtx);
     Py_DECREF(pArgs);
     RedisGearsPy_UNLOCK
 }
 
-static PyObject* DAGRun(PyObject *self){
+static PyObject* Run(PyObject *self){
     verifyRedisAILoaded();
     if (RedisAI_DAGRun == NULL) {
         PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
@@ -2342,12 +2360,12 @@ PyMethodDef PyFlatExecutionMethods[] = {
 /* DAG runner operations */
 PyMethodDef PyDAGRunnerMethods[] = {
   {"loadInput", loadInput, METH_VARARGS, "load an input tensor to the DAG under a specific name"},
-  {"appendTensorGet", appendTensorGet, METH_VARARGS, "output a tensor within the DAG context having a specific name"},
-  {"appendTensorSet", appendTensorSet, METH_VARARGS, "load a tensor into the DAG context having a specific name"},
-  {"appendModelRunOp", (PyCFunction)appendModelRunOp, METH_VARARGS|METH_KEYWORDS, "add a model run operation to the DAG"},
-  {"appendScriptRunOp", appendScriptRunOp, METH_VARARGS|METH_KEYWORDS, "add a script run operation to the DAG"},
-  {"appendOpsFromString", appendOpsFromString, METH_VARARGS, "add operations to the DAG by using the redis DAGRUN command syntax"},
-  {"DAGRun", (PyCFunction)DAGRun, METH_VARARGS, "start the asynchronous execution of the DAG"},
+  {"TensorGet", TensorGet, METH_VARARGS, "output a tensor within the DAG context having a specific name"},
+  {"TensorSet", TensorSet, METH_VARARGS, "load a tensor into the DAG context having a specific name"},
+  {"ModelRun", (PyCFunction)ModelRun, METH_VARARGS|METH_KEYWORDS, "add a model run operation to the DAG"},
+  {"ScriptRun", (PyCFunction)ScriptRun, METH_VARARGS|METH_KEYWORDS, "add a script run operation to the DAG"},
+  {"OpsFromString", OpsFromString, METH_VARARGS, "add operations to the DAG by using the redis DAGRUN command syntax"},
+  {"Run", (PyCFunction)Run, METH_VARARGS, "start the asynchronous execution of the DAG"},
   {NULL, NULL, 0, NULL}
 };
 
