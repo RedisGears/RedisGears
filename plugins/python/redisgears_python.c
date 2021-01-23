@@ -66,10 +66,12 @@ static int PyInitializeRedisAI(){
         return REDISMODULE_OK;
     }
 
+    RedisModule_ThreadSafeContextLock(staticCtx);
     int ret = RedisAI_Initialize(staticCtx);
     if(ret == REDISMODULE_OK){
         globals.redisAILoaded = true;
     }
+    RedisModule_ThreadSafeContextUnlock(staticCtx);
     return ret;
 }
 
@@ -1869,95 +1871,73 @@ static PyObject* createDAGRunner(PyObject *cls) {
  * Methods for RedisAI DAG runner
  */
 
-static PyObject* loadInput(PyObject *self, PyObject *args) {
-    verifyRedisAILoaded();
-    if (RedisAI_DAGLoadTensor == NULL) {
+bool _IsValidDag(PyDAGRunner * pyDag, void *DagAPIFunc) {
+
+    if (DagAPIFunc == NULL) {
         PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
-        return NULL;
+        return false;
     }
-    PyDAGRunner* pyDag = (PyDAGRunner*)self;
     if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
         PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
+        return false;
+    }
+    if(pyDag->dag == NULL){
+        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
+        return false;
+    }
+    return true;
+}
+
+typedef int (*RAI_LoadTensorFunc)(RAI_DAGRunCtx *run_info, const char *t_name,
+  RAI_Tensor *tensor);
+
+static PyObject* _loadTensorToDAG(PyObject *self, PyObject *args, RAI_LoadTensorFunc loadTensor) {
+    verifyRedisAILoaded();
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if(!_IsValidDag(pyDag, loadTensor)) {
         return NULL;
     }
-    if(PyTuple_Size(args) != 2){
+    if(PyTuple_Size(args) != 2) {
         PyErr_SetString(GearsError, "Wrong number of args to DAG load input");
         return NULL;
     }
-    if(pyDag->dag == NULL){
-        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
-        return NULL;
-    }
     PyObject* tensorName = PyTuple_GetItem(args, 0);
-    if(!PyUnicode_Check(tensorName)){
+    if(!PyUnicode_Check(tensorName)) {
         PyErr_SetString(GearsError, "Tensor name argument must be a string");
         return NULL;
     }
     const char* inputNameStr = PyUnicode_AsUTF8AndSize(tensorName, NULL);
-    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
-    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
-        PyErr_SetString(GearsError, "Given argument is not of type PyTensorType");
+    PyTensor* pyt = (PyTensor*) PyTuple_GetItem(args, 1);
+    if(!PyObject_IsInstance((PyObject*) pyt, (PyObject * ) & PyTensorType)) {
+        PyErr_SetString(GearsError,
+          "Given argument is not of type PyTensorType");
         return NULL;
     }
-    RedisAI_DAGLoadTensor(pyDag->dag, inputNameStr, pyt->t);
+    loadTensor(pyDag->dag, inputNameStr, pyt->t);
     Py_INCREF(self);
     return self;
 }
 
-static PyObject* TensorSet(PyObject *self, PyObject *args) {
-    verifyRedisAILoaded();
-    if (RedisAI_DAGAddTensorSet == NULL) {
-        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
-        return NULL;
-    }
-    PyDAGRunner* pyDag = (PyDAGRunner*)self;
-    if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
-        PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
-        return NULL;
-    }
-    if(PyTuple_Size(args) != 2){
-        PyErr_SetString(GearsError, "Wrong number of args to TensorSet op");
-        return NULL;
-    }
-    if(pyDag->dag == NULL){
-        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
-        return NULL;
-    }
-    PyObject* tensorName = PyTuple_GetItem(args, 0);
-    if(!PyUnicode_Check(tensorName)){
-        PyErr_SetString(GearsError, "Tensor name argument must be a string");
-        return NULL;
-    }
-    const char* inputNameStr = PyUnicode_AsUTF8AndSize(tensorName, NULL);
-    PyTensor* pyt = (PyTensor*)PyTuple_GetItem(args, 1);
-    if(!PyObject_IsInstance((PyObject*)pyt, (PyObject*)&PyTensorType)){
-        PyErr_SetString(GearsError, "Given argument is not of type PyTensorType");
-        return NULL;
-    }
-    RedisAI_DAGAddTensorSet(pyDag->dag, inputNameStr, pyt->t);
-    Py_INCREF(self);
-    return self;
+
+static PyObject* DAGAddInput(PyObject *self, PyObject *args) {
+    return _loadTensorToDAG(self, args, RedisAI_DAGLoadTensor);
 }
 
-static PyObject* TensorGet(PyObject *self, PyObject *args) {
+static PyObject* DAGAddTensorSet(PyObject *self, PyObject *args) {
+    return _loadTensorToDAG(self, args, RedisAI_DAGAddTensorSet);
+}
+
+static PyObject* DAGAddTensorGet(PyObject *self, PyObject *args) {
     verifyRedisAILoaded();
-    if (RedisAI_DAGAddTensorGet == NULL) {
-        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if (!_IsValidDag(pyDag, RedisAI_DAGAddTensorGet)) {
         return NULL;
     }
-    PyDAGRunner* pyDag = (PyDAGRunner*)self;
-    if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
-        PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
-        return NULL;
-    }
+
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "Wrong number of args to TensorSet op");
         return NULL;
     }
-    if(pyDag->dag == NULL){
-        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
-        return NULL;
-    }
     PyObject* tensorName = PyTuple_GetItem(args, 0);
     if(!PyUnicode_Check(tensorName)){
         PyErr_SetString(GearsError, "Tensor name argument must be a string");
@@ -1965,44 +1945,33 @@ static PyObject* TensorGet(PyObject *self, PyObject *args) {
     }
 
     const char* inputNameStr = PyUnicode_AsUTF8AndSize(tensorName, NULL);
-    RedisAI_DAGAddTensorGet(pyDag->dag, inputNameStr, NULL);
+    RedisAI_DAGAddTensorGet(pyDag->dag, inputNameStr);
     Py_INCREF(self);
     return self;
 }
 
 static RAI_Model *_getModelFromKeyspace(const char *modelNameStr, RAI_Error *err) {
-    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisGears_LockHanlderAcquire(ctx);
-    RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, modelNameStr, strlen(modelNameStr));
-    RedisModuleKey *key;
+
+    RedisGears_LockHanlderAcquire(staticCtx);
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(staticCtx, modelNameStr, strlen(modelNameStr));
     RAI_Model *model;
-    if(RedisAI_GetModelFromKeyspace(ctx, keyRedisStr, &key, &model, REDISMODULE_READ, err) != REDISMODULE_OK) {
-        RedisModule_FreeString(ctx, keyRedisStr);
-        RedisGears_LockHanlderRelease(ctx);
-        RedisModule_FreeThreadSafeContext(ctx);
+    if(RedisAI_GetModelFromKeyspace(staticCtx, keyRedisStr, &model, REDISMODULE_READ, err) != REDISMODULE_OK) {
+        RedisModule_FreeString(staticCtx, keyRedisStr);
+        RedisGears_LockHanlderRelease(staticCtx);
+        RedisModule_FreeThreadSafeContext(staticCtx);
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         return NULL;
     }
 
-    RedisModule_FreeString(ctx, keyRedisStr);
-    RedisGears_LockHanlderRelease(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
+    RedisModule_FreeString(staticCtx, keyRedisStr);
+    RedisGears_LockHanlderRelease(staticCtx);
     return model;
 }
 
-static PyObject* ModelRun(PyObject *self, PyObject *args, PyObject *kargs) {
+static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs) {
     verifyRedisAILoaded();
-    if (RedisAI_DAGCreateModelRunOp == NULL) {
-        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
-        return NULL;
-    }
-    PyDAGRunner* pyDag = (PyDAGRunner*)self;
-    if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
-        PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
-        return NULL;
-    }
-    if(pyDag->dag == NULL){
-        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if (!_IsValidDag(pyDag, RedisAI_DAGCreateModelRunOp)) {
         return NULL;
     }
 
@@ -2082,38 +2051,28 @@ static PyObject* ModelRun(PyObject *self, PyObject *args, PyObject *kargs) {
 }
 
 static RAI_Script *_getScriptFromKeyspace(const char *scriptNameStr, RAI_Error *err) {
-    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisGears_LockHanlderAcquire(ctx);
-    RedisModuleString* keyRedisStr = RedisModule_CreateString(ctx, scriptNameStr, strlen(scriptNameStr));
-    RedisModuleKey *key;
+
+    RedisGears_LockHanlderAcquire(staticCtx);
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(staticCtx, scriptNameStr, strlen(scriptNameStr));
     RAI_Script *script;
-    if(RedisAI_GetScriptFromKeyspace(ctx, keyRedisStr, &key, &script, REDISMODULE_READ, err) != REDISMODULE_OK) {
-        RedisModule_FreeString(ctx, keyRedisStr);
-        RedisGears_LockHanlderRelease(ctx);
-        RedisModule_FreeThreadSafeContext(ctx);
+    if(RedisAI_GetScriptFromKeyspace(staticCtx, keyRedisStr, &script, REDISMODULE_READ, err) != REDISMODULE_OK) {
+        RedisModule_FreeString(staticCtx, keyRedisStr);
+        RedisGears_LockHanlderRelease(staticCtx);
+        RedisModule_FreeThreadSafeContext(staticCtx);
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         return NULL;
     }
 
-    RedisModule_FreeString(ctx, keyRedisStr);
-    RedisGears_LockHanlderRelease(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
+    RedisModule_FreeString(staticCtx, keyRedisStr);
+    RedisGears_LockHanlderRelease(staticCtx);
+
     return script;
 }
 
-static PyObject* ScriptRun(PyObject *self, PyObject *args, PyObject *kargs) {
+static PyObject* DAGAddScriptRun(PyObject *self, PyObject *args, PyObject *kargs) {
     verifyRedisAILoaded();
-    if (RedisAI_DAGCreateScriptRunOp == NULL) {
-        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
-        return NULL;
-    }
-    PyDAGRunner* pyDag = (PyDAGRunner*)self;
-    if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
-        PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
-        return NULL;
-    }
-    if(pyDag->dag == NULL){
-        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if (!_IsValidDag(pyDag, RedisAI_DAGCreateScriptRunOp)) {
         return NULL;
     }
 
@@ -2198,20 +2157,10 @@ static PyObject* ScriptRun(PyObject *self, PyObject *args, PyObject *kargs) {
     return NULL;
 }
 
-static PyObject* OpsFromString(PyObject *self, PyObject *args) {
+static PyObject* DAGAddOpsFromString(PyObject *self, PyObject *args) {
     verifyRedisAILoaded();
-    if(RedisAI_DAGAddOpsFromString == NULL) {
-        PyErr_SetString(GearsError,
-          "DAG run is not supported in RedisAI version");
-        return NULL;
-    }
-    PyDAGRunner* pyDag = (PyDAGRunner*)self;
-    if(!PyObject_IsInstance((PyObject*) pyDag, (PyObject *)&PyDAGRunnerType)) {
-        PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
-        return NULL;
-    }
-    if(pyDag->dag == NULL) {
-        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if (!_IsValidDag(pyDag, RedisAI_DAGAddOpsFromString)) {
         return NULL;
     }
     if(PyTuple_Size(args) != 1){
@@ -2246,9 +2195,8 @@ static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) 
     if (RedisAI_DAGRunError(onFinishCtx)) {
         PyObject* pyErr;
         const RAI_Error* err = RedisAI_DAGGetError(onFinishCtx);
-            const char* errStr = RedisAI_GetError((RAI_Error*)err);
-            pyErr = PyUnicode_FromStringAndSize(errStr,
-              strlen(errStr));
+        const char* errStr = (RedisAI_GetError((RAI_Error*)err));
+        pyErr = PyUnicode_FromStringAndSize(errStr, strlen(errStr));
 
         PyTuple_SetItem(pArgs, 1, pyErr);
         PyObject_CallObject(setFutureExceptionFunction, pArgs);
@@ -2280,21 +2228,13 @@ static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) 
     RedisGearsPy_UNLOCK
 }
 
-static PyObject* Run(PyObject *self){
+static PyObject* DAGRun(PyObject *self){
     verifyRedisAILoaded();
-    if (RedisAI_DAGRun == NULL) {
-        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if (!_IsValidDag(pyDag, RedisAI_DAGRun)) {
         return NULL;
     }
-    PyDAGRunner* pyDag = (PyDAGRunner*)self;
-    if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
-        PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
-        return NULL;
-    }
-    if(pyDag->dag == NULL){
-        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
-        return NULL;
-    }
+
     PyObject* pArgs = PyTuple_New(0);
     PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
     Py_DECREF(pArgs);
@@ -2310,7 +2250,6 @@ static PyObject* Run(PyObject *self){
     Py_INCREF(future);
     return future;
 }
-
 
 
 static void PyAtomic_Destruct(PyObject *pyObj){
@@ -2359,13 +2298,13 @@ PyMethodDef PyFlatExecutionMethods[] = {
 
 /* DAG runner operations */
 PyMethodDef PyDAGRunnerMethods[] = {
-  {"loadInput", loadInput, METH_VARARGS, "load an input tensor to the DAG under a specific name"},
-  {"TensorGet", TensorGet, METH_VARARGS, "output a tensor within the DAG context having a specific name"},
-  {"TensorSet", TensorSet, METH_VARARGS, "load a tensor into the DAG context having a specific name"},
-  {"ModelRun", (PyCFunction)ModelRun, METH_VARARGS|METH_KEYWORDS, "add a model run operation to the DAG"},
-  {"ScriptRun", (PyCFunction)ScriptRun, METH_VARARGS|METH_KEYWORDS, "add a script run operation to the DAG"},
-  {"OpsFromString", OpsFromString, METH_VARARGS, "add operations to the DAG by using the redis DAGRUN command syntax"},
-  {"Run", (PyCFunction)Run, METH_VARARGS, "start the asynchronous execution of the DAG"},
+  {"Input", DAGAddInput, METH_VARARGS, "load an input tensor to the DAG under a specific name"},
+  {"TensorGet", DAGAddTensorGet, METH_VARARGS, "output a tensor within the DAG context having a specific name"},
+  {"TensorSet", DAGAddTensorSet, METH_VARARGS, "load a tensor into the DAG context having a specific name"},
+  {"ModelRun", (PyCFunction)DAGAddModelRun, METH_VARARGS|METH_KEYWORDS, "add a model run operation to the DAG"},
+  {"ScriptRun", (PyCFunction)DAGAddScriptRun, METH_VARARGS|METH_KEYWORDS, "add a script run operation to the DAG"},
+  {"OpsFromString", DAGAddOpsFromString, METH_VARARGS, "add operations to the DAG by using the redis DAGRUN command syntax"},
+  {"Run", (PyCFunction)DAGRun, METH_VARARGS, "start the asynchronous execution of the DAG"},
   {NULL, NULL, 0, NULL}
 };
 
