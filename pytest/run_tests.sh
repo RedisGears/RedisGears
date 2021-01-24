@@ -44,7 +44,7 @@ run_tests() {
 		local shards_arg="--shards-count $shards"
 		local env="${ENV_PREFIX}-cluster"
 	fi
-	python2 -m RLTest --clear-logs --module $MOD --module-args "Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
+	python3 -m RLTest --clear-logs --module $MOD --module-args "Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
 }
 
 cd $HERE

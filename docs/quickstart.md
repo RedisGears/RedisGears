@@ -78,7 +78,7 @@ git submodule update --init --recursive
 Inside the RedisGears directory run the following:
 
 ```
-./deps/readies/bin/getpy2
+./deps/readies/bin/getpy3
 make setup # might require root privileges for installations
 make fetch
 make all

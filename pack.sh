@@ -56,7 +56,7 @@ ARCH=$($READIES/bin/platform --arch)
 OS=$($READIES/bin/platform --os)
 OSNICK=$($READIES/bin/platform --osnick)
 
-OS_DESC=$(python2 $ROOT/getos.py)
+OS_DESC=$(python3 $ROOT/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -67,7 +67,7 @@ pack() {
 
 	cd $ROOT
 	local packfile=artifacts/$artifact/$pack_fname
-	python2 $READIES/bin/xtx \
+	python3 $READIES/bin/xtx \
 		-d GEARS_PYTHON_NAME=python3_$SEMVER \
 		-d GEARS_PYTHON_FNAME=$URL_FNAME \
 		-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
@@ -77,7 +77,7 @@ pack() {
 	if [[ ! -z $GEARSPY_PATH ]]; then
 		GEARS_OPT="Plugin $GEARSPY_PATH"
 	fi
-	GEARS_NO_DEPS=1 python2 -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
+	GEARS_NO_DEPS=1 python3 -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
 		--verbose --debug -o $packfile $GEARS_SO --runcmdargs "$GEARS_OPT" >/tmp/ramp.err 2>&1 || true
 
 	if [[ ! -f /tmp/ramp.fname ]]; then

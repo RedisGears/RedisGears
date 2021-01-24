@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import sys
 import os
@@ -61,8 +61,8 @@ class Python3Setup(paella.Setup):
                 """)
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
-        self.run("pip uninstall -y psutil || true")
-        self.install("python2-psutil")
+        # self.run("pip uninstall -y psutil || true")
+        # self.install("python2-psutil")
 
     def fedora(self):
         self.group_install("'Development Tools'")
@@ -75,8 +75,8 @@ class Python3Setup(paella.Setup):
         self.install("which libatomic file")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
-        self.run("pip uninstall -y psutil || true")
-        self.install("python2-psutil")
+        # self.run("pip uninstall -y psutil || true")
+        # self.install("python2-psutil")
 
     def linux_last(self):
         pass

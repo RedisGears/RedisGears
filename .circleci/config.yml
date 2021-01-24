@@ -33,12 +33,12 @@ commands:
       - run:
           name: System setup
           command: |
-            ./deps/readies/bin/getpy2
-            BREW_NO_UPDATE=1 python2 system-setup.py
+            ./deps/readies/bin/getpy3
+            BREW_NO_UPDATE=1 python3 system-setup.py
           no_output_timeout: 20m
       - run:
           name: Install Redis
-          command: python2 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
+          command: python3 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
@@ -62,7 +62,7 @@ commands:
           name: Setup
           command: |
             git submodule update --init --recursive
-            ./deps/readies/bin/getpy2
+            ./deps/readies/bin/getpy3
       - run:
           name: Build for platform
           command: |

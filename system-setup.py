@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import sys
 import os
@@ -58,8 +58,8 @@ class RedisGearsSetup(paella.Setup):
         self.install("python-gevent python-ujson")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
-        self.run("pip uninstall -y psutil || true")
-        self.install("python2-psutil")
+        # self.run("pip uninstall -y psutil || true")
+        # self.install("python2-psutil")
 
     def fedora(self):
         self.group_install("'Development Tools'")
@@ -68,9 +68,9 @@ class RedisGearsSetup(paella.Setup):
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         self.run("pip uninstall -y psutil || true")
-        self.install("python2-psutil")
+        # self.install("python2-psutil")
 
-        self.install("python2-ujson")
+        # self.install("python2-ujson")
         self.pip_install("gevent")
 
     def linux_last(self):

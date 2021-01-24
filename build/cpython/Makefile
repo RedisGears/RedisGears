@@ -4,6 +4,7 @@
 override MAKEFLAGS:=$(filter-out r -r no-builtin-rules --no-builtin-rules,$(MAKEFLAGS))
 
 ROOT=../..
+MK.pyver:=3
 include $(ROOT)/deps/readies/mk/main
 
 MK.configure=1
