@@ -110,6 +110,34 @@ class testStepsErrors:
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
         self.env.assertLessEqual(1, res[1])
 
+    def testAccumulateError2(self):
+        script = '''
+callNum = 0
+def secondCallFailed(a, x):
+    global callNum
+    if callNum > 0:
+        raise Exception('failed')
+    callNum+=1
+    return x
+GearsBuilder().accumulate(secondCallFailed).collect().run()
+        '''
+        res = self.env.cmd('rg.pyexecute', script)
+        self.env.assertLessEqual(1, res[1])
+
+    def testAccumulatebyError(self):
+        script = '''
+callNum = 0
+def secondCallFailed(k, a, x):
+    global callNum
+    if callNum > 0:
+        raise Exception('failed')
+    callNum+=1
+    return x
+GearsBuilder().aggregateby(lambda x: 'test', 0, secondCallFailed, secondCallFailed).collect().run()
+        '''
+        res = self.env.cmd('rg.pyexecute', script)
+        self.env.assertLessEqual(1, res[1])
+
     def testAggregateByError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().aggregateby(lambda x: "1",{},lambda k, a, x: (x["kaka"] if x["key"]=="y" else x), lambda k, a, x: (x["kaka"] if x["key"]=="y" else x)).run()')
         self.env.assertLessEqual(1, res[1])
