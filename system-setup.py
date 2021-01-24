@@ -34,7 +34,7 @@ class RedisGearsSetup(paella.Setup):
         # pip cannot build gevent on ARM
         self.install("python-psutil")
         if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
-            self.install("python-gevent")
+            self.install("python3-gevent")
         else:
             self.pip_install("gevent")
 
@@ -55,7 +55,7 @@ class RedisGearsSetup(paella.Setup):
                 """)
 
         # pip cannot build gevent on ARM
-        self.install("python-gevent python-ujson")
+        self.install("python3-gevent python3-ujson")
 
         # uninstall and install psutil (order is important), otherwise RLTest fails
         # self.run("pip uninstall -y psutil || true")
@@ -70,7 +70,7 @@ class RedisGearsSetup(paella.Setup):
         self.run("pip uninstall -y psutil || true")
         # self.install("python2-psutil")
 
-        # self.install("python2-ujson")
+        self.install("python3-ujson")
         self.pip_install("gevent")
 
     def linux_last(self):

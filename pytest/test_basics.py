@@ -456,7 +456,7 @@ class testConfig:
         self.env.assertTrue(str(res[0]).startswith('(error)') and not str(res[1]).startswith('(error)'))
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
         self.env.assertTrue(str(res[0]) == 'OK - value was saved in extra config dictionary')
-        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
+        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10])
 
 
 class testGetExecution:
