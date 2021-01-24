@@ -814,7 +814,7 @@ def testKeysReaderEventTypeFilter(env):
                 counter = conn.get('counter')
                 time.sleep(0.1)
     except Exception as e:
-        print e
+        print(e)
         env.assertTrue(False, message='Failed waiting for counter to reach 2')
 
     ## make sure other commands are not triggers executions
