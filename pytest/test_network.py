@@ -181,9 +181,7 @@ class ShardMock():
         conn = Connection(sock)
         self.new_conns.put(conn)
 
-    def __enter__(self):
-        self.stream_server = gevent.server.StreamServer(('localhost', 10000), self._handle_conn)
-        self.stream_server.start()
+    def _send_cluster_set(self):
         self.env.cmd('RG.CLUSTERSET',
                      'NO-USED',
                      'NO-USED',
@@ -210,6 +208,10 @@ class ShardMock():
                      'password@localhost:10000'
                      )
 
+    def __enter__(self):
+        self.stream_server = gevent.server.StreamServer(('localhost', 10000), self._handle_conn)
+        self.stream_server.start()
+        self._send_cluster_set()
         self.runId = self.env.cmd('RG.INFOCLUSTER')[3]
         return self
 
@@ -464,3 +466,87 @@ def testMessagesResentAfterHelloResponse(env):
                 env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
         except Exception:
             env.assertTrue(False, message='did not get the "test" message')
+
+
+def testClusterRefreshOnOnlySingleNode(env):
+    if env.shardsCount <= 1:
+        env.skip()
+    conn = getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()').equal([[str(env.shardsCount)], []])
+    env.cmd('RG.REFRESHCLUSTER')
+    try:
+        with TimeLimit(2):
+            res = env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()')
+            env.assertEqual(res, [[str(env.shardsCount)], []])
+    except Exception as e:  
+        env.assertTrue(False, message='Failed waiting for execution to finish')
+
+def testClusterSetAfterHelloResponseFailure(env):
+    env.skipOnCluster()
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # read RG.HELLO request
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+
+        # send RG.HELLO bad reply
+        conn.send_error('err')  # hello response, sending runid
+
+        # resend cluster set
+        res = env.cmd('RG.CLUSTERSET',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '0',
+                     '8192',
+                     'NO-USED',
+                     'password@localhost:6379',
+                     'NO-USED',
+                     )
+
+        time.sleep(2) # make sure the RG.HELLO resend callback is not called
+
+def testClusterSetAfterDisconnect(env):
+    env.skipOnCluster()
+    with ShardMock(env) as shardMock:
+        conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # read RG.HELLO request
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+
+        conn.close()
+
+        # resend cluster set
+        res = env.cmd('RG.CLUSTERSET',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '0',
+                     '8192',
+                     'NO-USED',
+                     'password@localhost:6379',
+                     'NO-USED',
+                     )
+
+        shardMock._send_cluster_set()
+
+        conn = shardMock.GetConnection(sendHelloResponse=False)
+
+        # read RG.HELLO request
+        env.assertEqual(conn.read_request(), ['RG.HELLO'])

@@ -107,31 +107,29 @@ static Node* GetNode(const char* id){
 static void FreeNodeInternals(Node* n){
     event_free(n->reconnectEvent);
     event_free(n->resendHelloMessage);
-
-    Gears_listRelease(n->pendingMessages);
-
     RG_FREE(n->id);
     RG_FREE(n->ip);
     if(n->unixSocket){
         RG_FREE(n->unixSocket);
     }
-
-    RG_FREE(n->runId);
-
+    if(n->password){
+        RG_FREE(n->password);
+    }
+    if(n->runId){
+        RG_FREE(n->runId);
+    }
+    if(n->c){
+        redisAsyncFree(n->c);
+    }
+    Gears_listRelease(n->pendingMessages);
     RG_FREE(n);
 }
 
 static void FreeNode(Node* n){
-    if(n->isMe){
-        FreeNodeInternals(n);
-        return;
+    if(n->c){
+        n->c->data = NULL;
     }
-    n->c->data = NULL;
-    if(n->status == NodeStatus_Disconnected){
-        n->status = NodeStatus_Free;
-        return;
-    }
-    redisAsyncFree(n->c);
+    n->status = NodeStatus_Free;
     FreeNodeInternals(n);
 }
 
@@ -155,12 +153,13 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
 static void Cluster_ConnectToShard(Node* n){
     redisAsyncContext* c = redisAsyncConnect(n->ip, n->port);
     if (!c) {
+        RedisModule_Log(staticCtx, "warning", "Got NULL async connection");
         return;
     }
     if (c->err) {
         /* Let *c leak for now... */
-        RedisModule_Log(staticCtx, "warning", "Error: %s\n", n->c->errstr);
-        //todo: handle this!!!
+        RedisModule_Log(staticCtx, "warning", "Error: %s\n", c->errstr);
+        return;
     }
     c->data = n;
     n->c = c;
@@ -175,20 +174,21 @@ static void Cluster_ResendHelloMessage(evutil_socket_t s, short what, void *arg)
         // we will resent the hello request when reconnect
         return;
     }
-    if(n->status == NodeStatus_Free){
-        FreeNodeInternals(n);
-        return;
+    if(n->sendClusterTopologyOnNextConnect && CurrCluster->clusterSetCommand){
+        RedisModule_Log(staticCtx, "notice", "Sending cluster topology to %s (%s:%d) on rg.hello retry", n->id, n->ip, n->port);
+        CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = RG_STRDUP(n->id);
+        redisAsyncCommandArgv(n->c, NULL, NULL, CurrCluster->clusterSetCommandSize, (const char**)CurrCluster->clusterSetCommand, NULL);
+        RG_FREE(CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX]);
+        CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = NULL;
+        n->sendClusterTopologyOnNextConnect = false;
     }
-    RedisModule_Log(staticCtx, "notice", "%s", "Resending hello request");
+
+    RedisModule_Log(staticCtx, "notice", "Resending hello request to %s (%s:%d)", n->id, n->ip, n->port);
     redisAsyncCommand(n->c, RG_HelloResponseArrived, n, "RG.HELLO");
 }
 
 static void Cluster_Reconnect(evutil_socket_t s, short what, void *arg){
     Node* n = arg;
-    if(n->status == NodeStatus_Free){
-        FreeNodeInternals(n);
-        return;
-    }
     Cluster_ConnectToShard(n);
 }
 
@@ -222,8 +222,10 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
 }
 
 static void Cluster_Free(){
-    if(CurrCluster->isClusterMode){
+    if(CurrCluster->myId){
         RG_FREE(CurrCluster->myId);
+    }
+    if(CurrCluster->nodes){
         Gears_dictIterator *iter = Gears_dictGetIterator(CurrCluster->nodes);
         Gears_dictEntry *entry = NULL;
         while((entry = Gears_dictNext(iter))){
@@ -235,8 +237,8 @@ static void Cluster_Free(){
     }
 
     if(CurrCluster->clusterSetCommand){
-        for(int i = 1 ; i < CurrCluster->clusterSetCommandSize ; ++i){
-            if(CurrCluster->clusterSetCommand){
+        for(int i = 0 ; i < CurrCluster->clusterSetCommandSize ; ++i){
+            if(CurrCluster->clusterSetCommand[i]){
                 RG_FREE(CurrCluster->clusterSetCommand[i]);
             }
         }
@@ -261,12 +263,12 @@ static void OnResponseArrived(struct redisAsyncContext* c, void* a, void* b){
     Node* n = (Node*)b;
     if(reply->type == REDIS_REPLY_ERROR && strncmp(reply->str, CLUSTER_ERROR, strlen(CLUSTER_ERROR)) == 0){
         n->sendClusterTopologyOnNextConnect = true;
-        RedisModule_Log(staticCtx, "warning", "Received ERRCLUSTER reply from shard %s, will send cluster topology to the shard on next connect", n->id);
+        RedisModule_Log(staticCtx, "warning", "Received ERRCLUSTER reply from shard %s (%s:%d), will send cluster topology to the shard on next connect", n->id, n->ip, n->port);
         redisAsyncDisconnect(c);
         return;
     }
     if(reply->type != REDIS_REPLY_STATUS){
-        RedisModule_Log(staticCtx, "warning", "Received an invalid status reply from shard %s, will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id);
+        RedisModule_Log(staticCtx, "warning", "Received an invalid status reply from shard %s (%s:%d), will disconnect and try to reconnect. This is usually because the Redis server's 'proto-max-bulk-len' configuration setting is too low.", n->id, n->ip, n->port);
         redisAsyncDisconnect(c);
         return;
     }
@@ -284,16 +286,16 @@ static void RG_HelloResponseArrived(struct redisAsyncContext* c, void* a, void* 
         return;
     }
 
-    if(n->status == NodeStatus_Free){
-        FreeNodeInternals(n);
-        return;
-    }
-
     if(reply->type != REDIS_REPLY_STRING){
         // we did not got a string reply
         // the shard is probably not yet up.
         // we will try again in one second.
-        RedisModule_Log(staticCtx, "warning", "%s", "Got bad hello response, will try again in 1 second");
+        if(reply->type == REDIS_REPLY_ERROR && strncmp(reply->str, CLUSTER_ERROR, strlen(CLUSTER_ERROR)) == 0){
+            RedisModule_Log(staticCtx, "warning", "Got uninitialize cluster error on hello response from %s (%s:%d), will resend cluster topology in next try in 1 second.", n->id, n->ip, n->port);
+            n->sendClusterTopologyOnNextConnect = true;
+        }else{
+            RedisModule_Log(staticCtx, "warning", "Got bad hello response from %s (%s:%d), will try again in 1 second", n->id, n->ip, n->port);
+        }
         struct timeval tv = {
                 .tv_sec = 1,
         };
@@ -342,6 +344,7 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
     }
     Node* n = (Node*)c->data;
     n->status = NodeStatus_Disconnected;
+    n->c = NULL;
     struct timeval tv = {
             .tv_sec = 1,
     };
@@ -355,6 +358,7 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
     Node* n = (Node*)c->data;
     if(status == -1){
         // connection failed lets try again
+        n->c = NULL;
         struct timeval tv = {
                 .tv_sec = 1,
         };
@@ -365,10 +369,12 @@ static void Cluster_ConnectCallback(const struct redisAsyncContext* c, int statu
             redisAsyncCommand((redisAsyncContext*)c, NULL, NULL, "AUTH %s", n->password);
         }
         if(n->sendClusterTopologyOnNextConnect && CurrCluster->clusterSetCommand){
+            RedisModule_Log(staticCtx, "notice", "Sending cluster topology to %s (%s:%d) after reconnect", n->id, n->ip, n->port);
             CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = RG_STRDUP(n->id);
             redisAsyncCommandArgv((redisAsyncContext*)c, NULL, NULL, CurrCluster->clusterSetCommandSize, (const char**)CurrCluster->clusterSetCommand, NULL);
             RG_FREE(CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX]);
             CurrCluster->clusterSetCommand[CLUSTER_SET_MY_ID_INDEX] = NULL;
+            n->sendClusterTopologyOnNextConnect = false;
         }
         redisAsyncCommand((redisAsyncContext*)c, RG_HelloResponseArrived, n, "RG.HELLO");
         n->status = NodeStatus_HelloSent;
@@ -398,12 +404,14 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
         Cluster_Free();
     }
 
+    RedisModule_Log(staticCtx, "notice", "Got cluster set command");
+
     if(argc < 10){
         RedisModule_Log(staticCtx, "warning", "Could not parse cluster set arguments");
         return;
     }
 
-    CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
+    CurrCluster = RG_CALLOC(1, sizeof(*CurrCluster));
 
     // generate runID
     RedisModule_GetRandomHexChars(CurrCluster->runId, RUN_ID_SIZE);
@@ -416,7 +424,7 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
 
     for(int i = 1 ; i < argc ; ++i){
         if(i == CLUSTER_SET_MY_ID_INDEX){
-            // we do not save myid, will be set per shard.
+            CurrCluster->clusterSetCommand[i] = NULL;
             continue;
         }
         const char* arg = RedisModule_StringPtrLen(argv[i], NULL);
@@ -495,7 +503,9 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
         Cluster_Free();
     }
 
-    CurrCluster = RG_ALLOC(sizeof(*CurrCluster));
+    RedisModule_Log(staticCtx, "notice", "Got cluster refresh command");
+
+    CurrCluster = RG_CALLOC(1, sizeof(*CurrCluster));
 
     // generate runID
     RedisModule_GetRandomHexChars(CurrCluster->runId, RUN_ID_SIZE);
