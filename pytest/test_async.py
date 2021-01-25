@@ -315,7 +315,7 @@ def WaitForKeyChangeReturnSame(r, *args):
     return f
 GB('CommandReader').groupby(lambda x: 'key', WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeAccumulateby', mode='async_local')
 
-def ForEachFailed(r):
+async def ForEachFailed(r):
     def unblock(x):
         global blocked
         try:
@@ -323,7 +323,7 @@ def ForEachFailed(r):
             blocked = []
         except Exception as e:
             print(e)
-    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+    await GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
 GB().foreach(ForEachFailed).register('y', mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()
