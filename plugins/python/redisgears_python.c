@@ -65,7 +65,11 @@ static int PyInitializeRedisAI(){
     if (globals.redisAILoaded){
         return REDISMODULE_OK;
     }
-
+    if(!RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)) {
+        RedisModule_Log(staticCtx, "warning",
+          "Redis version is to old, please upgrade to a newer version.");
+        return REDISMODULE_ERR;
+    }
     RedisModule_ThreadSafeContextLock(staticCtx);
     int ret = RedisAI_Initialize(staticCtx);
     if(ret == REDISMODULE_OK){
@@ -1950,7 +1954,7 @@ static PyObject* DAGAddTensorGet(PyObject *self, PyObject *args) {
     return self;
 }
 
-static RAI_Model *_getModelFromKeyspace(const char *modelNameStr, RAI_Error *err) {
+static RAI_DAGRunOp *_createModelRunOp(const char *modelNameStr, RAI_Error *err) {
 
     RedisGears_LockHanlderAcquire(staticCtx);
     RedisModuleString* keyRedisStr = RedisModule_CreateString(staticCtx, modelNameStr, strlen(modelNameStr));
@@ -1964,8 +1968,9 @@ static RAI_Model *_getModelFromKeyspace(const char *modelNameStr, RAI_Error *err
     }
 
     RedisModule_FreeString(staticCtx, keyRedisStr);
+    RAI_DAGRunOp *modelRunOp = RedisAI_DAGCreateModelRunOp(model);
     RedisGears_LockHanlderRelease(staticCtx);
-    return model;
+    return modelRunOp;
 }
 
 static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs) {
@@ -1988,15 +1993,14 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
     RedisAI_InitError(&err);
     const char* modelNameStr = PyUnicode_AsUTF8AndSize(modelName, NULL);
 
-    // Try to bring model from keyspace (raise an exception if it does not exist)
-    RAI_Model *model = _getModelFromKeyspace(modelNameStr, err);
-    if (model == NULL) {
+    // Create MODELRUN op after bringing model from keyspace (raise an exception if it does not exist)
+    RAI_DAGRunOp *modelRunOp = _createModelRunOp(modelNameStr, err);
+    if (modelRunOp == NULL) {
         RedisAI_FreeError(err);
         return NULL;
     }
 
-    // Create a modelRun op with its inputs and output keys and insert it to the DAG
-    RAI_DAGRunOp *modelRunOp = RedisAI_DAGCreateModelRunOp(model);
+    // Add to the modelRun op with its inputs and output keys and insert it to the DAG
     PyObject* modelInputs = GearsPyDict_GetItemString(kargs, "inputs");
     if (!modelInputs) {
         PyErr_SetString(GearsError, "Must specify model inputs");
@@ -2050,7 +2054,8 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
     return NULL;
 }
 
-static RAI_Script *_getScriptFromKeyspace(const char *scriptNameStr, RAI_Error *err) {
+static RAI_DAGRunOp *_createScriptRunOp(const char *scriptNameStr, const char *functionNameStr,
+  RAI_Error *err) {
 
     RedisGears_LockHanlderAcquire(staticCtx);
     RedisModuleString* keyRedisStr = RedisModule_CreateString(staticCtx, scriptNameStr, strlen(scriptNameStr));
@@ -2064,9 +2069,9 @@ static RAI_Script *_getScriptFromKeyspace(const char *scriptNameStr, RAI_Error *
     }
 
     RedisModule_FreeString(staticCtx, keyRedisStr);
+    RAI_DAGRunOp *scriptRunOp = RedisAI_DAGCreateScriptRunOp(script, functionNameStr);
     RedisGears_LockHanlderRelease(staticCtx);
-
-    return script;
+    return scriptRunOp;
 }
 
 static PyObject* DAGAddScriptRun(PyObject *self, PyObject *args, PyObject *kargs) {
@@ -2097,17 +2102,16 @@ static PyObject* DAGAddScriptRun(PyObject *self, PyObject *args, PyObject *kargs
     const char* scriptNameStr = PyUnicode_AsUTF8AndSize(scriptName, NULL);
     const char* functionNameStr = PyUnicode_AsUTF8AndSize(funcName, NULL);
 
-    // Try to bring model from keyspace (raise an exception if it does not exist)
+    // Create SCRIPTRUN op after bringing script from keyspace (raise an exception if it does not exist)
     RAI_Error *err;
     RedisAI_InitError(&err);
-    RAI_Script *script = _getScriptFromKeyspace(scriptNameStr, err);
-    if (script == NULL) {
+    RAI_DAGRunOp *scriptRunOp = _createScriptRunOp(scriptNameStr, functionNameStr, err);
+    if (scriptRunOp == NULL) {
         RedisAI_FreeError(err);
         return NULL;
     }
 
-    // Create a scriptRun op with its inputs and output keys and insert it to the DAG
-    RAI_DAGRunOp *scriptRunOp = RedisAI_DAGCreateScriptRunOp(script, functionNameStr);
+    // Add to the scriptRun op with its inputs and output keys and insert it to the DAG
     PyObject* scriptInputs = GearsPyDict_GetItemString(kargs, "inputs");
     PyObject* inputsIter;
     if (scriptInputs) {
