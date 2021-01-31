@@ -45,7 +45,6 @@ typedef struct CommandReaderTriggerCtx{
     size_t numAborted;
     char* lastError;
     Gears_dict* pendingExections;
-    WorkerData* wd;
     Gears_listNode* listNode;
 }CommandReaderTriggerCtx;
 
@@ -173,7 +172,6 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numAborted = 0,
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
-            .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
             .listNode = NULL,
     };
     return ret;
@@ -208,7 +206,6 @@ void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
     }
     CommandReaderTriggerArgs_Free(crtCtx->args);
     Gears_dictRelease(crtCtx->pendingExections);
-    RedisGears_WorkerDataFree(crtCtx->wd);
     FlatExecutionPlan_Free(crtCtx->fep);
     RG_FREE(crtCtx);
 }
@@ -899,7 +896,7 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1, crtCtx);
     ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
-                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), crtCtx->wd, &err);
+                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), NULL, &err);
 
     ++crtCtx->numTriggered;
 

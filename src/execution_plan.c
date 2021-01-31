@@ -2317,7 +2317,7 @@ static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* ei
     if(worker){
         ep->assignWorker = ExecutionPlan_WorkerGetShallowCopy(worker);
     }else{
-        ep->assignWorker = RedisGears_WorkerDataCreate(NULL);
+        ep->assignWorker = RedisGears_WorkerDataCreate(fep->executionThreadPool);
     }
     if(mode == ExecutionModeSync){
         ExecutionPlan_RunSync(ep);
