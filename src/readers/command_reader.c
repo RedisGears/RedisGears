@@ -29,7 +29,6 @@ typedef struct CommandReaderTriggerCtx{
     size_t numAborted;
     char* lastError;
     Gears_dict* pendingExections;
-    WorkerData* wd;
 }CommandReaderTriggerCtx;
 
 Gears_dict* CommandRegistrations = NULL;
@@ -47,7 +46,6 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numAborted = 0,
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
-            .wd = RedisGears_WorkerDataCreate(NULL),
     };
     return ret;
 }
@@ -65,7 +63,6 @@ static void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
         CommandReaderTriggerArgs_Free(crtCtx->args);
         FlatExecutionPlan_Free(crtCtx->fep);
         Gears_dictRelease(crtCtx->pendingExections);
-        RedisGears_WorkerDataFree(crtCtx->wd);
         RG_FREE(crtCtx);
     }
 }
@@ -465,7 +462,7 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1);
-    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone, pd, crtCtx->wd, &err);
+    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone, pd, NULL, &err);
     if(!ep){
         // error accurred
         ++crtCtx->numAborted;
