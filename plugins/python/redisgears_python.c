@@ -1869,8 +1869,19 @@ static PyTypeObject PyDAGRunnerType = {
   "PyDAGRunner",           /* tp_doc */
 };
 
+static bool _IsDagAPISupported(void *DagAPIFunc) {
+    if (!RMAPI_FUNC_SUPPORTED(RedisAI_DAGRunCtxCreate)) {
+        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
+        return false;
+    }
+    return true;
+}
+
 static PyObject* createDAGRunner(PyObject *cls) {
     verifyRedisAILoaded();
+    if (!_IsDagAPISupported(RedisAI_DAGRunCtxCreate)) {
+        return NULL;
+    }
     RAI_DAGRunCtx* dagCtx = RedisAI_DAGRunCtxCreate();
     PyDAGRunner* pyDag = PyObject_New(PyDAGRunner, &PyDAGRunnerType);
     pyDag->dag = dagCtx;
@@ -1881,12 +1892,8 @@ static PyObject* createDAGRunner(PyObject *cls) {
  * Methods for RedisAI DAG runner
  */
 
-bool _IsValidDag(PyDAGRunner * pyDag, void *DagAPIFunc) {
+bool _IsValidDag(PyDAGRunner *pyDag) {
 
-    if (DagAPIFunc == NULL) {
-        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
-        return false;
-    }
     if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
         PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
         return false;
@@ -1904,7 +1911,7 @@ typedef int (*RAI_LoadTensorFunc)(RAI_DAGRunCtx *run_info, const char *t_name,
 static PyObject* _loadTensorToDAG(PyObject *self, PyObject *args, RAI_LoadTensorFunc loadTensor) {
     verifyRedisAILoaded();
     PyDAGRunner *pyDag = (PyDAGRunner *)self;
-    if(!_IsValidDag(pyDag, loadTensor)) {
+    if(!_IsDagAPISupported(loadTensor) || !_IsValidDag(pyDag)) {
         return NULL;
     }
     if(PyTuple_Size(args) != 2) {
@@ -1940,10 +1947,9 @@ static PyObject* DAGAddTensorSet(PyObject *self, PyObject *args) {
 static PyObject* DAGAddTensorGet(PyObject *self, PyObject *args) {
     verifyRedisAILoaded();
     PyDAGRunner *pyDag = (PyDAGRunner *)self;
-    if (!_IsValidDag(pyDag, RedisAI_DAGAddTensorGet)) {
+    if(!_IsDagAPISupported(RedisAI_DAGAddTensorGet) || !_IsValidDag(pyDag)) {
         return NULL;
     }
-
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "Wrong number of args to TensorSet op");
         return NULL;
@@ -1968,7 +1974,6 @@ static RAI_DAGRunOp *_createModelRunOp(const char *modelNameStr, RAI_Error *err)
     if(RedisAI_GetModelFromKeyspace(staticCtx, keyRedisStr, &model, REDISMODULE_READ, err) != REDISMODULE_OK) {
         RedisModule_FreeString(staticCtx, keyRedisStr);
         RedisGears_LockHanlderRelease(staticCtx);
-        RedisModule_FreeThreadSafeContext(staticCtx);
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         return NULL;
     }
@@ -1982,10 +1987,9 @@ static RAI_DAGRunOp *_createModelRunOp(const char *modelNameStr, RAI_Error *err)
 static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs) {
     verifyRedisAILoaded();
     PyDAGRunner *pyDag = (PyDAGRunner *)self;
-    if (!_IsValidDag(pyDag, RedisAI_DAGCreateModelRunOp)) {
+    if(!_IsDagAPISupported(RedisAI_DAGCreateModelRunOp) || !_IsValidDag(pyDag)) {
         return NULL;
     }
-
     PyObject* modelName = GearsPyDict_GetItemString(kargs, "name");
     if (!modelName) {
         PyErr_SetString(GearsError, "Model key name was not given");
@@ -1995,6 +1999,7 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
         PyErr_SetString(GearsError, "Model name argument must be a string");
         return NULL;
     }
+    PyObject *ret = NULL;
     RAI_Error *err;
     RedisAI_InitError(&err);
     const char* modelNameStr = PyUnicode_AsUTF8AndSize(modelName, NULL);
@@ -2002,17 +2007,19 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
     // Create MODELRUN op after bringing model from keyspace (raise an exception if it does not exist)
     RAI_DAGRunOp *modelRunOp = _createModelRunOp(modelNameStr, err);
     if (modelRunOp == NULL) {
-        RedisAI_FreeError(err);
-        return NULL;
+        goto cleanup;
     }
 
     // Add to the modelRun op with its inputs and output keys and insert it to the DAG
+    PyObject *inputsIter = NULL;
+    PyObject *outputsIter = NULL;
+    PyObject *modelOutputs = NULL;
     PyObject* modelInputs = GearsPyDict_GetItemString(kargs, "inputs");
     if (!modelInputs) {
         PyErr_SetString(GearsError, "Must specify model inputs");
         goto cleanup;
     }
-    PyObject* inputsIter = PyObject_GetIter(modelInputs);
+    inputsIter = PyObject_GetIter(modelInputs);
     if (!inputsIter) {
         PyErr_SetString(GearsError, "Model inputs must be iterable");
         goto cleanup;
@@ -2027,12 +2034,12 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
         RedisAI_DAGRunOpAddInput(modelRunOp, inputStr);
     }
 
-    PyObject* modelOutputs = GearsPyDict_GetItemString(kargs, "outputs");
+    modelOutputs = GearsPyDict_GetItemString(kargs, "outputs");
     if (!modelOutputs) {
         PyErr_SetString(GearsError, "Must specify model outputs");
         goto cleanup;
     }
-    PyObject* outputsIter = PyObject_GetIter(modelOutputs);
+    outputsIter = PyObject_GetIter(modelOutputs);
     if (!outputsIter) {
         PyErr_SetString(GearsError, "Model outputs must be iterable");
         goto cleanup;
@@ -2050,14 +2057,17 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         goto cleanup;
     }
-    RedisAI_FreeError(err);
     Py_INCREF(self);
-    return self;
+    ret = self;
 
     cleanup:
     RedisAI_FreeError(err);
-    RedisAI_DAGRunOpFree(modelRunOp);
-    return NULL;
+    if (modelInputs) GearsPyDecRef(modelInputs);
+    if (modelOutputs) GearsPyDecRef(modelOutputs);
+    if (inputsIter) GearsPyDecRef(inputsIter);
+    if (outputsIter) GearsPyDecRef(outputsIter);
+    if (!ret) RedisAI_DAGRunOpFree(modelRunOp);
+    return ret;
 }
 
 static RAI_DAGRunOp *_createScriptRunOp(const char *scriptNameStr, const char *functionNameStr,
@@ -2069,7 +2079,6 @@ static RAI_DAGRunOp *_createScriptRunOp(const char *scriptNameStr, const char *f
     if(RedisAI_GetScriptFromKeyspace(staticCtx, keyRedisStr, &script, REDISMODULE_READ, err) != REDISMODULE_OK) {
         RedisModule_FreeString(staticCtx, keyRedisStr);
         RedisGears_LockHanlderRelease(staticCtx);
-        RedisModule_FreeThreadSafeContext(staticCtx);
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         return NULL;
     }
@@ -2083,7 +2092,7 @@ static RAI_DAGRunOp *_createScriptRunOp(const char *scriptNameStr, const char *f
 static PyObject* DAGAddScriptRun(PyObject *self, PyObject *args, PyObject *kargs) {
     verifyRedisAILoaded();
     PyDAGRunner *pyDag = (PyDAGRunner *)self;
-    if (!_IsValidDag(pyDag, RedisAI_DAGCreateScriptRunOp)) {
+    if(!_IsDagAPISupported(RedisAI_DAGCreateScriptRunOp) || !_IsValidDag(pyDag)) {
         return NULL;
     }
 
@@ -2109,70 +2118,73 @@ static PyObject* DAGAddScriptRun(PyObject *self, PyObject *args, PyObject *kargs
     const char* functionNameStr = PyUnicode_AsUTF8AndSize(funcName, NULL);
 
     // Create SCRIPTRUN op after bringing script from keyspace (raise an exception if it does not exist)
+    PyObject *ret = NULL;
     RAI_Error *err;
     RedisAI_InitError(&err);
     RAI_DAGRunOp *scriptRunOp = _createScriptRunOp(scriptNameStr, functionNameStr, err);
     if (scriptRunOp == NULL) {
-        RedisAI_FreeError(err);
-        return NULL;
+        goto cleanup;
     }
 
     // Add to the scriptRun op with its inputs and output keys and insert it to the DAG
     PyObject* scriptInputs = GearsPyDict_GetItemString(kargs, "inputs");
-    PyObject* inputsIter;
+    PyObject* inputsIter = NULL;
+    PyObject* scriptOutputs = NULL;
+    PyObject* outputsIter = NULL;
     if (scriptInputs) {
         inputsIter = PyObject_GetIter(scriptInputs);
         if(!inputsIter) {
             PyErr_SetString(GearsError, "Script inputs must be iterable");
             goto cleanup;
         }
-    }
-    PyObject* input;
-    while((input = (PyObject*)PyIter_Next(inputsIter)) != NULL) {
-        if(!PyUnicode_Check(input)){
-            PyErr_SetString(GearsError, "Input name must be a string");
-            goto cleanup;
+        PyObject* input;
+        while((input = (PyObject*)PyIter_Next(inputsIter)) != NULL) {
+            if(!PyUnicode_Check(input)){
+                PyErr_SetString(GearsError, "Input name must be a string");
+                goto cleanup;
+            }
+            const char* inputStr = PyUnicode_AsUTF8AndSize(input, NULL);
+            RedisAI_DAGRunOpAddInput(scriptRunOp, inputStr);
         }
-        const char* inputStr = PyUnicode_AsUTF8AndSize(input, NULL);
-        RedisAI_DAGRunOpAddInput(scriptRunOp, inputStr);
     }
-
-    PyObject* scriptOutputs = GearsPyDict_GetItemString(kargs, "outputs");
-    PyObject* outputsIter;
+    scriptOutputs = GearsPyDict_GetItemString(kargs, "outputs");
     if (scriptOutputs) {
         outputsIter = PyObject_GetIter(scriptOutputs);
         if(!outputsIter) {
             PyErr_SetString(GearsError, "Script outputs must be iterable");
             goto cleanup;
         }
-    }
-    PyObject* output;
-    while((output = (PyObject*)PyIter_Next(outputsIter)) != NULL) {
-        if(!PyUnicode_Check(output)){
-            PyErr_SetString(GearsError, "Output name must be a string");
-            goto cleanup;
+        PyObject* output;
+        while((output = (PyObject*)PyIter_Next(outputsIter)) != NULL) {
+            if(!PyUnicode_Check(output)){
+                PyErr_SetString(GearsError, "Output name must be a string");
+                goto cleanup;
+            }
+            const char* outputStr = PyUnicode_AsUTF8AndSize(output, NULL);
+            RedisAI_DAGRunOpAddOutput(scriptRunOp, outputStr);
         }
-        const char* outputStr = PyUnicode_AsUTF8AndSize(output, NULL);
-        RedisAI_DAGRunOpAddOutput(scriptRunOp, outputStr);
     }
     RedisAI_DAGAddRunOp(pyDag->dag, scriptRunOp, err);
-
-    RedisAI_FreeError(err);
+    ret = self;
     Py_INCREF(self);
-    return self;
 
     cleanup:
     RedisAI_FreeError(err);
-    RedisAI_DAGRunOpFree(scriptRunOp);
-    return NULL;
+    if (scriptInputs) GearsPyDecRef(scriptInputs);
+    if (scriptOutputs) GearsPyDecRef(scriptOutputs);
+    if (inputsIter) GearsPyDecRef(inputsIter);
+    if (outputsIter) GearsPyDecRef(outputsIter);
+    if (!ret) RedisAI_DAGRunOpFree(scriptRunOp);
+    return ret;
 }
 
 static PyObject* DAGAddOpsFromString(PyObject *self, PyObject *args) {
     verifyRedisAILoaded();
     PyDAGRunner *pyDag = (PyDAGRunner *)self;
-    if (!_IsValidDag(pyDag, RedisAI_DAGAddOpsFromString)) {
+    if(!_IsDagAPISupported(RedisAI_DAGAddOpsFromString) || !_IsValidDag(pyDag)) {
         return NULL;
     }
+
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "Wrong number of args");
         return NULL;
@@ -2219,7 +2231,7 @@ static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) 
         PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
         pyt->t = RedisAI_TensorGetShallowCopy((RAI_Tensor*)RedisAI_DAGOutputTensor(onFinishCtx, i));
         PyList_Append(tensorList, (PyObject*)pyt);
-        GearsPyDecRef(pyt);
+        GearsPyDecRef((PyObject*)pyt);
     }
 
     PyTuple_SetItem(pArgs, 1, tensorList);
@@ -2241,10 +2253,9 @@ static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) 
 static PyObject* DAGRun(PyObject *self){
     verifyRedisAILoaded();
     PyDAGRunner *pyDag = (PyDAGRunner *)self;
-    if (!_IsValidDag(pyDag, RedisAI_DAGRun)) {
+    if(!_IsDagAPISupported(RedisAI_DAGRun) || !_IsValidDag(pyDag)) {
         return NULL;
     }
-
     PyObject* pArgs = PyTuple_New(0);
     PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
     GearsPyDecRef(pArgs);
@@ -2254,9 +2265,12 @@ static PyObject* DAGRun(PyObject *self){
     int status = RedisAI_DAGRun(pyDag->dag, FinishAsyncDAGRun, future, err);
     if (status == REDISMODULE_ERR) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
+        pyDag->dag = NULL;
+        RedisAI_FreeError(err);
         return NULL;
     }
     pyDag->dag = NULL;
+    RedisAI_FreeError(err);
     Py_INCREF(future);
     return future;
 }
