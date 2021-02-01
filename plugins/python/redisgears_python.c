@@ -1999,7 +1999,7 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
         PyErr_SetString(GearsError, "Model name argument must be a string");
         return NULL;
     }
-    PyObject *ret = NULL;
+
     RAI_Error *err;
     RedisAI_InitError(&err);
     const char* modelNameStr = PyUnicode_AsUTF8AndSize(modelName, NULL);
@@ -2007,14 +2007,16 @@ static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs)
     // Create MODELRUN op after bringing model from keyspace (raise an exception if it does not exist)
     RAI_DAGRunOp *modelRunOp = _createModelRunOp(modelNameStr, err);
     if (modelRunOp == NULL) {
-        goto cleanup;
+        RedisAI_FreeError(err);
+        return NULL;
     }
+    PyObject *ret = NULL;
 
     // Add to the modelRun op with its inputs and output keys and insert it to the DAG
     PyObject *inputsIter = NULL;
     PyObject *outputsIter = NULL;
     PyObject *modelOutputs = NULL;
-    PyObject* modelInputs = GearsPyDict_GetItemString(kargs, "inputs");
+    PyObject *modelInputs = GearsPyDict_GetItemString(kargs, "inputs");
     if (!modelInputs) {
         PyErr_SetString(GearsError, "Must specify model inputs");
         goto cleanup;
@@ -2118,13 +2120,14 @@ static PyObject* DAGAddScriptRun(PyObject *self, PyObject *args, PyObject *kargs
     const char* functionNameStr = PyUnicode_AsUTF8AndSize(funcName, NULL);
 
     // Create SCRIPTRUN op after bringing script from keyspace (raise an exception if it does not exist)
-    PyObject *ret = NULL;
     RAI_Error *err;
     RedisAI_InitError(&err);
     RAI_DAGRunOp *scriptRunOp = _createScriptRunOp(scriptNameStr, functionNameStr, err);
     if (scriptRunOp == NULL) {
-        goto cleanup;
+        RedisAI_FreeError(err);
+        return NULL;
     }
+    PyObject *ret = NULL;
 
     // Add to the scriptRun op with its inputs and output keys and insert it to the DAG
     PyObject* scriptInputs = GearsPyDict_GetItemString(kargs, "inputs");
