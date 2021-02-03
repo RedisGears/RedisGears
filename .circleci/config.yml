@@ -229,14 +229,17 @@ workflows:
       - platform-build:
           name: build-centos7
           platform: centos7
+          context: common
           <<: *platform-build-defs
       - platform-build:
           name: build-bionic
           platform: bionic
+          context: common
           <<: *platform-build-defs
       - platform-build:
           name: build-xenial
           platform: xenial
+          context: common
           <<: *platform-build-defs
       - valgrind:
           <<: *on-version-tags
@@ -245,13 +248,16 @@ workflows:
           <<: *on-version-tags
           # <<: *on-any-branch
       - build-multiarch-docker:
+          context: common
           <<: *never
           # <<: *on-version-tags
       - deploy_snapshots:
+          context: common
           <<: *after-platform-builds
           <<: *on-master
           # <<: *on-any-branch
       - deploy_releases:
+          context: common
           <<: *after-platform-builds
           <<: *on-version-tags
 
