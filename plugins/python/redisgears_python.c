@@ -1877,7 +1877,7 @@ static bool _IsDagAPISupported(void *DagAPIFunc) {
     return true;
 }
 
-static PyObject* createDAGRunner(PyObject *cls) {
+static PyObject* createDAGRunner(PyObject *cls, PyObject *args) {
     verifyRedisAILoaded();
     if (!_IsDagAPISupported(RedisAI_DAGRunCtxCreate)) {
         return NULL;
