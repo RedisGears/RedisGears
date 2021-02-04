@@ -29,7 +29,7 @@
 #include "lock_handler.h"
 #include <dlfcn.h>
 #include <dirent.h>
-#include "command_hooker.h"
+#include "command_hook.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -1212,7 +1212,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     Record_Initialize();
 
-    if(CommandHooker_Init(ctx) != REDISMODULE_OK){
+    if(CommandHook_Init(ctx) != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "could not initialize command hooker");
         return REDISMODULE_ERR;
     }

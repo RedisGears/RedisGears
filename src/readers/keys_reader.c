@@ -10,11 +10,10 @@
 #include "config.h"
 #include "mgmt.h"
 #include "version.h"
-#include "command_hooker.h"
-
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include "../command_hook.h"
 
 #define KEYS_NAME_FIELD "key_name"
 #define KEYS_SPEC_NAME "keys_spec"
@@ -232,7 +231,7 @@ static void KeysReaderRegisterData_Free(KeysReaderRegisterData* rData){
 
         if(rData->hooks){
             for(size_t i = 0 ; i < array_len(rData->hooks) ; ++i){
-                CommandHooker_Unhook(rData->hooks[i]);
+                CommandHook_Unhook(rData->hooks[i]);
             }
             array_free(rData->hooks);
         }
@@ -1248,10 +1247,10 @@ static int KeysReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mod
     if(readerArgs->hookCommands){
         hooks = array_new(CommandHookCtx*, 10);
         for(size_t i = 0 ; i < array_len(readerArgs->hookCommands) ; ++i){
-            CommandHookCtx* hookCtx = CommandHooker_Hook(readerArgs->hookCommands[i], readerArgs->prefix, KeysReader_CommandHook, NULL, err);
+            CommandHookCtx* hookCtx = CommandHook_Hook(readerArgs->hookCommands[i], readerArgs->prefix, KeysReader_CommandHook, NULL, err);
             if(!hookCtx){
                 for(size_t i = 0 ; i < array_len(hooks) ; ++i){
-                    CommandHooker_Unhook(hooks[i]);
+                    CommandHook_Unhook(hooks[i]);
                 }
                 array_free(hooks);
                 return REDISMODULE_ERR;

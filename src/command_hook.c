@@ -1,4 +1,5 @@
-#include "command_hooker.h"
+#include "command_hook.h"
+
 #include "common.h"
 #include "redisgears_memory.h"
 #include "lock_handler.h"
@@ -30,7 +31,7 @@ typedef struct CommandHookCtx{
     Gears_listNode* listNode;
 }CommandHookCtx;
 
-static CommandInfo CommandHooker_CreateInfo(const char* cmd, char** err){
+static CommandInfo CommandHook_CreateInfo(const char* cmd, char** err){
     CommandInfo info;
 
     LockHandler_Acquire(staticCtx);
@@ -93,7 +94,7 @@ done:
 static CommandHookCtx* currHook;
 static RedisModuleString* GearsHookCommand = NULL;
 
-static void CommandHooker_Filter(RedisModuleCommandFilterCtx *filter){
+static void CommandHook_Filter(RedisModuleCommandFilterCtx *filter){
     if(!HookRegistrations){
         return;
     }
@@ -170,7 +171,7 @@ static void CommandHooker_Filter(RedisModuleCommandFilterCtx *filter){
     }
 }
 
-void* CommandHooker_Unhook(CommandHookCtx* hook){
+void* CommandHook_Unhook(CommandHookCtx* hook){
     Gears_list* l = Gears_dictFetchValue(HookRegistrations, hook->cmd);
     Gears_listDelNode(l, hook->listNode);
 
@@ -196,8 +197,8 @@ void* CommandHooker_Unhook(CommandHookCtx* hook){
     return ret;
 }
 
-CommandHookCtx* CommandHooker_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err){
-    CommandInfo info = CommandHooker_CreateInfo(cmd, err);
+CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err){
+    CommandInfo info = CommandHook_CreateInfo(cmd, err);
     if(*err){
         return NULL;
     }
@@ -234,7 +235,7 @@ CommandHookCtx* CommandHooker_Hook(const char* cmd, const char* keyPrefix, HookC
     }
 
     if(!cmdFilter){
-        cmdFilter = RedisModule_RegisterCommandFilter(staticCtx, CommandHooker_Filter, REDISMODULE_CMDFILTER_NOSELF);
+        cmdFilter = RedisModule_RegisterCommandFilter(staticCtx, CommandHook_Filter, REDISMODULE_CMDFILTER_NOSELF);
     }
 
     CommandHookCtx* hook = RG_ALLOC(sizeof(*hook));
@@ -259,7 +260,7 @@ CommandHookCtx* CommandHooker_Hook(const char* cmd, const char* keyPrefix, HookC
 
 #define GEARS_HOOK_COMMAND "RG.INNERHOOK"
 
-int CommandHooker_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
@@ -291,10 +292,10 @@ int CommandHooker_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
     return hook->callback(ctx, argv + 1, argc - 1, hook->pd);
 }
 
-int CommandHooker_Init(RedisModuleCtx* ctx){
+int CommandHook_Init(RedisModuleCtx* ctx){
     HookRegistrations = Gears_dictCreate(&Gears_dictTypeHeapStringsCaseInsensitive, NULL);
     GearsHookCommand = RedisModule_CreateString(NULL, GEARS_HOOK_COMMAND, strlen(GEARS_HOOK_COMMAND));
-    if (RedisModule_CreateCommand(ctx, GEARS_HOOK_COMMAND, CommandHooker_HookCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, GEARS_HOOK_COMMAND, CommandHook_HookCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(staticCtx, "warning", "could not register command "GEARS_HOOK_COMMAND);
         return REDISMODULE_ERR;
     }

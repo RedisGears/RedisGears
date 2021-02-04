@@ -100,7 +100,7 @@ define _SOURCES:=
 	mgmt.c
 	module.c
 	module_init.c
-	command_hooker.c
+	command_hook.c
 	readers/command_reader.c
 	readers/keys_reader.c
 	readers/shardid_reader.c

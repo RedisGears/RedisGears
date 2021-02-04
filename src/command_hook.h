@@ -1,5 +1,5 @@
-#ifndef SRC_COMMAND_HOOKER_H_
-#define SRC_COMMAND_HOOKER_H_
+#ifndef SRC_COMMAND_HOOK_H_
+#define SRC_COMMAND_HOOK_H_
 
 #include "redismodule.h"
 
@@ -10,13 +10,13 @@ typedef int (*HookCallback)(RedisModuleCtx* ctx, RedisModuleString** argv, size_
 /*
  * Unregister the given hook, return the private data so the caller will be able to free it.
  */
-void* CommandHooker_Unhook(CommandHookCtx* hook);
+void* CommandHook_Unhook(CommandHookCtx* hook);
 
 /*
  * Register a hook on dmc with key prefix, returns NULL on error and set a string describing the error in err.
  */
-CommandHookCtx* CommandHooker_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err);
+CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err);
 
-int CommandHooker_Init();
+int CommandHook_Init();
 
-#endif /* SRC_COMMAND_HOOKER_H_ */
+#endif /* SRC_COMMAND_HOOK_H_ */
