@@ -4248,14 +4248,14 @@ static PyObject* getCommand(PyObject *cls, PyObject *args){
         return NULL;
     }
 
+    // we must take the lock, it is not safe to access the command args without the lock because redis might
+    // change them under our noise
+    RedisGears_LockHanlderAcquire(staticCtx);
+
     size_t len;
     RedisModuleString** argv = RedisGears_CommandCtxGetCommand(commandCtx, &len);
 
     PyObject *list = PyList_New(0);
-
-    // we must take the lock, it is not safe to access the command args without the lock because redis might
-    // change them under our noise
-    RedisGears_LockHanlderAcquire(staticCtx);
 
     for(size_t i = 0 ; i < len ; ++i){
         size_t strLen;

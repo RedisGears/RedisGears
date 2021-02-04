@@ -156,11 +156,12 @@ void KeyReader_CommandCtxFree(CommandCtx* cmdCtx){
 }
 
 int KeyReader_CommandCtxOverrideReply(CommandCtx* cmdCtx, Record* r, char** err){
-    if(cmdCtx->overrideReply){
+    void* expected = NULL;
+    __atomic_compare_exchange(&cmdCtx->overrideReply, &expected, &r, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+    if(cmdCtx->overrideReply != r){
         *err = RG_STRDUP("Can only override reply once");
         return REDISMODULE_ERR;
     }
-    cmdCtx->overrideReply = r;
     return REDISMODULE_OK;
 }
 
