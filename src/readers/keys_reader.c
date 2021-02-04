@@ -55,7 +55,7 @@ typedef struct CommandCtx{
     RedisModuleBlockedClient* bc;
 }CommandCtx;
 
-static bool ignoreKeyMissEventTriggerByUs = false;
+static bool ignoreKeysEvents = false;
 static CommandCtx* currCmdCtx = NULL;
 
 typedef struct KeysReaderCtx{
@@ -168,6 +168,12 @@ int KeyReader_CommandCtxOverrideReply(CommandCtx* cmdCtx, Record* r, char** err)
 RedisModuleString** KeyReader_CommandCtxGetCommand(CommandCtx* cmdCtx, size_t* len){
     *len = array_len(cmdCtx->args);
     return cmdCtx->args;
+}
+
+int KeyReader_SetAvoidEvents(int avoidEvents){
+    int oldVal = ignoreKeysEvents;
+    ignoreKeysEvents = avoidEvents;
+    return oldVal;
 }
 
 CommandCtx* KeyReader_CommandCtxGet(ExecutionCtx* eCtx){
@@ -508,9 +514,9 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
     RedisGears_HashSetRecordSet(record, "key", keyRecord);
 
     if(readerCtx->readValue){
-        ignoreKeyMissEventTriggerByUs = true;
+        int oldAvoidEvents = KeyReader_SetAvoidEvents(1);
         RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
-        ignoreKeyMissEventTriggerByUs = false;
+        KeyReader_SetAvoidEvents(oldAvoidEvents);
         if(keyHandler){
             Record* keyType = GetTypeRecord(keyHandler);
             Record* val = GetValueRecord(rctx, keyCStr, keyHandler);
@@ -863,9 +869,9 @@ static int KeysReader_ShouldFire(RedisModuleCtx *ctx, KeysReaderTriggerArgs* arg
         }
     }
     if(args->keyTypes){
-        ignoreKeyMissEventTriggerByUs = true;
+        int oldAvoidEvents = KeyReader_SetAvoidEvents(1);
         RedisModuleKey *kp = RedisModule_OpenKey(ctx, key, REDISMODULE_READ);
-        ignoreKeyMissEventTriggerByUs = false;
+        KeyReader_SetAvoidEvents(oldAvoidEvents);
         int type = RedisModule_KeyType(kp);
         RedisModule_CloseKey(kp);
         bool typeFound = false;
@@ -884,7 +890,7 @@ static int KeysReader_ShouldFire(RedisModuleCtx *ctx, KeysReaderTriggerArgs* arg
 }
 
 static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
-    if(ignoreKeyMissEventTriggerByUs){
+    if(ignoreKeysEvents){
         return REDISMODULE_OK;
     }
     int flags = RedisModule_GetContextFlags(ctx);

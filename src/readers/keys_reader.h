@@ -30,4 +30,6 @@ int KeyReader_CommandCtxOverrideReply(CommandCtx* cmdCtx, Record* r, char** err)
 RedisModuleString** KeyReader_CommandCtxGetCommand(CommandCtx* cmdCtx, size_t* len);
 CommandCtx* KeyReader_CommandCtxGet(ExecutionCtx* eCtx);
 
+int KeyReader_SetAvoidEvents(int avoidEvents);
+
 #endif /* SRC_KEYS_READER_H_ */

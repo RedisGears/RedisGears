@@ -353,6 +353,10 @@ static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
     return KeysReaderTriggerArgs_Free(args);
 }
 
+static int RG_KeysReaderSetAvoidEvents(int avoidEvents){
+    return KeyReader_SetAvoidEvents(avoidEvents);
+}
+
 static CommandCtx* RG_CommandCtxGetShallowCopy(CommandCtx* cmdCtx){
     return KeyReader_CommandCtxGetShallowCopy(cmdCtx);
 }
@@ -947,6 +951,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetHookCommands, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
+    REGISTER_API(KeysReaderSetAvoidEvents, ctx);
     REGISTER_API(CommandCtxGetShallowCopy, ctx);
     REGISTER_API(CommandCtxFree, ctx);
     REGISTER_API(CommandCtxOverrideReply, ctx);

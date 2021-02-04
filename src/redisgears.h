@@ -215,6 +215,7 @@ void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetHookCommands)(KeysReader
 int MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetReadRecordCallback)(KeysReaderTriggerArgs* krta, const char* name);
 #define RGM_KeysReaderTriggerArgsSetReadRecordCallback(krta, name) RedisGears_KeysReaderTriggerArgsSetReadRecordCallback(krta, #name)
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
+int MODULE_API_FUNC(RedisGears_KeysReaderSetAvoidEvents)(int avoidEvents);
 
 CommandCtx* MODULE_API_FUNC(RedisGears_CommandCtxGetShallowCopy)(CommandCtx* cmdCtx);
 void MODULE_API_FUNC(RedisGears_CommandCtxFree)(CommandCtx* cmdCtx);
@@ -848,6 +849,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandCtxGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsSetReadRecordCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderSetAvoidEvents);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreateHook);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsFree);
