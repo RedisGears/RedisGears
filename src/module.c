@@ -29,6 +29,7 @@
 #include "lock_handler.h"
 #include <dlfcn.h>
 #include <dirent.h>
+#include "command_hooker.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -316,6 +317,10 @@ static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* prefix,
     return KeysReaderTriggerArgs_Create(prefix, eventTypes, keyTypes, readValue);
 }
 
+static void RG_KeysReaderTriggerArgsSetHookCommands(KeysReaderTriggerArgs* krta, Arr(char*) hookCommands){
+    return KeysReaderTriggerArgs_SetTriggerHookCommands(krta, hookCommands);
+}
+
 static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
     return CommandReaderTriggerArgs_CreateTrigger(trigger);
 }
@@ -346,6 +351,25 @@ static void RG_CommandReaderTriggerCtxFree(CommandReaderTriggerCtx* crtCtx){
 
 static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
     return KeysReaderTriggerArgs_Free(args);
+}
+
+static CommandCtx* RG_CommandCtxGetShallowCopy(CommandCtx* cmdCtx){
+    return KeyReader_CommandCtxGetShallowCopy(cmdCtx);
+}
+static void RG_CommandCtxFree(CommandCtx* cmdCtx){
+    KeyReader_CommandCtxFree(cmdCtx);
+}
+
+static int RG_CommandCtxOverrideReply(CommandCtx* cmdCtx, Record* r, char** err){
+    return KeyReader_CommandCtxOverrideReply(cmdCtx, r, err);
+}
+
+static RedisModuleString** RG_CommandCtxGetCommand(CommandCtx* cmdCtx, size_t* len){
+    return KeyReader_CommandCtxGetCommand(cmdCtx, len);
+}
+
+static CommandCtx* RG_CommandCtxGet(ExecutionCtx* ectx){
+    return KeyReader_CommandCtxGet(ectx);
 }
 
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
@@ -921,7 +945,13 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
     REGISTER_API(StreamReaderTriggerArgsFree, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
+    REGISTER_API(KeysReaderTriggerArgsSetHookCommands, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
+    REGISTER_API(CommandCtxGetShallowCopy, ctx);
+    REGISTER_API(CommandCtxFree, ctx);
+    REGISTER_API(CommandCtxOverrideReply, ctx);
+    REGISTER_API(CommandCtxGetCommand, ctx);
+    REGISTER_API(CommandCtxGet, ctx);
     REGISTER_API(CommandReaderTriggerArgsCreate, ctx);
     REGISTER_API(CommandReaderTriggerArgsCreateHook, ctx);
     REGISTER_API(CommandReaderTriggerArgsFree, ctx);
@@ -1176,6 +1206,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     }
 
     Record_Initialize();
+
+    if(CommandHooker_Init(ctx) != REDISMODULE_OK){
+        RedisModule_Log(staticCtx, "warning", "could not initialize command hooker");
+        return REDISMODULE_ERR;
+    }
 
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
     	RedisModule_Log(staticCtx, "warning", "could not initialize default keys reader.");

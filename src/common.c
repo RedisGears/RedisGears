@@ -340,3 +340,17 @@ int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...) {
 
     return exitCode;
 }
+
+int IsKeyMatch(const char* prefix, const char* key, size_t prefixLen){
+    size_t len = prefixLen;
+    const char* data = prefix;
+    int isPrefix = prefix[len - 1] == '*';
+    if(isPrefix){
+        --len;
+    }
+    if(isPrefix){
+        return strncmp(data, key, len) == 0;
+    }else{
+        return strcmp(data, key) == 0;
+    }
+}

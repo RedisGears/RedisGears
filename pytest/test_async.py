@@ -52,7 +52,7 @@ def WaitForKeyChange(r):
     return f
 GB('CommandReader').map(WaitForKeyChange).register(trigger='WaitForKeyChange', mode='async_local')
 
-def ForEach(r):
+async def ForEach(r):
     def unblock(x):
         global blocked
         try:
@@ -60,7 +60,7 @@ def ForEach(r):
             blocked = []
         except Exception as e:
             print(e)
-    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+    await GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
 GB().foreach(ForEach).register(mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()

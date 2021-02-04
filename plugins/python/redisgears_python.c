@@ -155,6 +155,7 @@ typedef struct PythonThreadCtx{
     ExecutionCtx* currEctx;
     int flags;
     CommandReaderTriggerCtx* crtCtx;
+    CommandCtx* commandCtx;
     PyObject* pyfutureCreated;
 }PythonThreadCtx;
 
@@ -841,6 +842,7 @@ static PythonThreadCtx* GetPythonThreadCtx(){
                 .doneFunction = onDone,
                 .flags = 0,
                 .crtCtx = NULL,
+                .commandCtx = NULL,
                 .pyfutureCreated = NULL,
         };
         pthread_setspecific(pythonThreadCtxKey, ptctx);
@@ -894,6 +896,7 @@ typedef struct PyExecutionSession{
     PyObject_HEAD
     PythonSessionCtx* s;
     CommandReaderTriggerCtx* crtCtx;
+    CommandCtx* cmdCtx;
 }PyExecutionSession;
 
 
@@ -1313,6 +1316,9 @@ end:
 }
 
 static int registerStrKeyTypeToInt(const char* keyType){
+    if(strcmp(keyType, "empty") == 0){
+        return REDISMODULE_KEYTYPE_EMPTY;
+    }
     if(strcmp(keyType, "string") == 0){
         return REDISMODULE_KEYTYPE_STRING;
     }
@@ -1331,12 +1337,16 @@ static int registerStrKeyTypeToInt(const char* keyType){
     if(strcmp(keyType, "module") == 0){
         return REDISMODULE_KEYTYPE_MODULE;
     }
+    if(strcmp(keyType, "stream") == 0){
+        return REDISMODULE_KEYTYPE_STREAM;
+    }
     return -1;
 }
 
 static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, ExecutionMode mode){
     Arr(char*) eventTypes = NULL;
     Arr(int) keyTypes = NULL;
+    Arr(char*) hookCommands = NULL;
 
     // getting even types white list (no list == all event types)
     PyObject* pyEventTypes = GearsPyDict_GetItemString(kargs, "eventTypes");
@@ -1406,7 +1416,42 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
         }
     }
 
-    return RedisGears_KeysReaderTriggerArgsCreate(prefix, eventTypes, keyTypes, readValue);
+    // getting hook commands
+    PyObject* pyHookCommands = GearsPyDict_GetItemString(kargs, "commands");
+    if(pyHookCommands && pyHookCommands != Py_None){
+        PyObject* hookCommandsIterator = PyObject_GetIter(pyHookCommands);
+        if(!hookCommandsIterator){
+            PyErr_SetString(GearsError, "given commands is not iterable");
+            return NULL;
+        }
+        hookCommands = array_new(char*, 10);
+        PyObject* hook = NULL;
+        while((hook = PyIter_Next(hookCommandsIterator))){
+            if(!PyUnicode_Check(hook)){
+                GearsPyDecRef(hookCommandsIterator);
+                array_free_ex(hookCommands, RG_FREE(*(Arr(char*))ptr));
+                PyErr_SetString(GearsError, "given command type is not string");
+                return NULL;
+            }
+            const char* hookCommandStr = PyUnicode_AsUTF8AndSize(hook, NULL);
+            char* hookCommandStr1 = RG_STRDUP(hookCommandStr);
+            hookCommands = array_append(hookCommands, hookCommandStr1);
+        }
+        GearsPyDecRef(hookCommandsIterator);
+
+        if(array_len(hookCommands) == 0){
+            array_free(hookCommands);
+            hookCommands = NULL;
+        }
+    }
+
+    KeysReaderTriggerArgs* args = RedisGears_KeysReaderTriggerArgsCreate(prefix, eventTypes, keyTypes, readValue);
+
+    if(hookCommands){
+        RedisGears_KeysReaderTriggerArgsSetHookCommands(args, hookCommands);
+    }
+
+    return args;
 }
 
 static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
@@ -2351,6 +2396,9 @@ static void PyExecutionSession_Destruct(PyObject *pyObj){
     if(pyExSes->crtCtx){
         RedisGears_CommandReaderTriggerCtxFree(pyExSes->crtCtx);
     }
+    if(pyExSes->cmdCtx){
+        RedisGears_CommandCtxFree(pyExSes->cmdCtx);
+    }
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
 
@@ -2511,6 +2559,17 @@ static PyObject* registerGearsThread(PyObject *cls, PyObject *args){
     return Py_None;
 }
 
+static CommandCtx* getCommandCtx(PythonThreadCtx* ptctx){
+    CommandCtx* commandCtx = NULL;
+    if(ptctx->currEctx){
+        commandCtx = RedisGears_CommandCtxGet(ptctx->currEctx);
+    }else{
+        commandCtx = ptctx->commandCtx;
+    }
+
+    return commandCtx;
+}
+
 static CommandReaderTriggerCtx* getCommandReaderTriggerCtx(PythonThreadCtx* ptctx){
     CommandReaderTriggerCtx* crtCtx = NULL;
     if(ptctx->currEctx){
@@ -2532,10 +2591,15 @@ static PyObject* getGearsSession(PyObject *cls, PyObject *args){
         PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
         pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
         pyExSes->crtCtx = getCommandReaderTriggerCtx(ptctx);
+        pyExSes->cmdCtx = getCommandCtx(ptctx);
 
         if(pyExSes->crtCtx){
             pyExSes->crtCtx = RedisGears_CommandReaderTriggerCtxGetShallowCopy(pyExSes->crtCtx);
         }
+
+        if(pyExSes->cmdCtx){
+           pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
+       }
 
         res = (PyObject*)pyExSes;
     }
@@ -2569,6 +2633,7 @@ static PyObject* setGearsSession(PyObject *cls, PyObject *args){
         PyExecutionSession* pyExSes = (PyExecutionSession*)s;
         ptctx->currSession = pyExSes->s;
         ptctx->crtCtx = pyExSes->crtCtx;
+        ptctx->commandCtx = pyExSes->cmdCtx;
     }
 
     Py_INCREF(Py_None);
@@ -4139,6 +4204,71 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
+static PyObject* overrideReply(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    CommandCtx* commandCtx = getCommandCtx(ptctx);
+    if(!commandCtx){
+        PyErr_SetString(GearsError, "Can not get command ctx");
+        return NULL;
+    }
+
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Override reply must get a single argument");
+        return NULL;
+    }
+
+    PyObject* reply = PyTuple_GetItem(args, 0);
+
+    PythonRecord* record = (PythonRecord*)PyObjRecordCreate();
+    record->obj = reply;
+
+    Py_INCREF(record->obj);
+
+    char* err = NULL;
+
+    if(RedisGears_CommandCtxOverrideReply(commandCtx, &record->base, &err) != REDISMODULE_OK){
+        PyErr_SetString(GearsError, err);
+        RG_FREE(err);
+        RedisGears_FreeRecord(&record->base);
+        return NULL;
+    }
+
+    Py_INCREF(Py_None);
+
+    return Py_None;
+}
+
+static PyObject* getCommand(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    CommandCtx* commandCtx = getCommandCtx(ptctx);
+    if(!commandCtx){
+        PyErr_SetString(GearsError, "Can not get command ctx");
+        return NULL;
+    }
+
+    size_t len;
+    RedisModuleString** argv = RedisGears_CommandCtxGetCommand(commandCtx, &len);
+
+    PyObject *list = PyList_New(0);
+
+    // we must take the lock, it is not safe to access the command args without the lock because redis might
+    // change them under our noise
+    RedisGears_LockHanlderAcquire(staticCtx);
+
+    for(size_t i = 0 ; i < len ; ++i){
+        size_t strLen;
+        const char* arg = RedisModule_StringPtrLen(argv[i], &strLen);
+        PyObject* pyArg = PyUnicode_FromStringAndSize(arg, strLen);
+        PyList_Append(list, pyArg);
+    }
+
+    RedisGears_LockHanlderRelease(staticCtx);
+
+    return list;
+}
+
 static PyObject* callNext(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     RedisGears_LockHanlderAcquire(staticCtx);
@@ -4178,6 +4308,8 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {"callNext", callNext, METH_VARARGS, "call the next command registration or the original command (will raise error when used outside on CommandHook scope)"},
+    {"getCommand", getCommand, METH_VARARGS, "return the current running command, raise error if command is not available"},
+    {"overrideReply", overrideReply, METH_VARARGS, "override the reply with the given python value, raise error if there is no command to override its reply"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -4551,8 +4683,12 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
    PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
    pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
    pyExSes->crtCtx = RedisGears_GetCommandReaderTriggerCtx(rctx);
+   pyExSes->cmdCtx = RedisGears_CommandCtxGet(rctx);
    if(pyExSes->crtCtx){
        pyExSes->crtCtx = RedisGears_CommandReaderTriggerCtxGetShallowCopy(pyExSes->crtCtx);
+   }
+   if(pyExSes->cmdCtx){
+       pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
    }
    PyTuple_SetItem(pArgs, 2, (PyObject*)pyExSes);
 
