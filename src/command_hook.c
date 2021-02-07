@@ -12,6 +12,9 @@ static Gears_dict* HookRegistrations = NULL;
 
 #define COMMAND_FLAG_MOVEABLEKEYS (1 << 0)
 #define COMMAND_FLAG_NOSCRIPT (1 << 1)
+#define COMMAND_FLAG_READONLY (1 << 2)
+#define COMMAND_FLAG_DENYOOM (1 << 3)
+#define COMMAND_FLAG_WRITE (1 << 4)
 
 typedef struct CommandInfo{
     int arity;
@@ -71,6 +74,15 @@ static CommandInfo CommandHook_CreateInfo(const char* cmd, char** err){
         }
         if(strcasecmp(flagCStr, "noscript") == 0){
             info.commandFlags |= COMMAND_FLAG_NOSCRIPT;
+        }
+        if(strcasecmp(flagCStr, "readonly") == 0){
+            info.commandFlags |= COMMAND_FLAG_READONLY;
+        }
+        if(strcasecmp(flagCStr, "denyoom") == 0){
+            info.commandFlags |= COMMAND_FLAG_DENYOOM;
+        }
+        if(strcasecmp(flagCStr, "write") == 0){
+            info.commandFlags |= COMMAND_FLAG_WRITE;
         }
     }
 
@@ -287,6 +299,15 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
             }
         }
         return REDISMODULE_OK;
+    }
+
+    if(hook->info.commandFlags & COMMAND_FLAG_DENYOOM && RedisModule_GetUsedMemoryRatio){
+        float memoryRetio = RedisModule_GetUsedMemoryRatio();
+        if(memoryRetio > 1){
+            // we are our of memory and should deny the command
+            RedisModule_ReplyWithError(ctx, "OOM command not allowed when used memory > 'maxmemory'");
+            return REDISMODULE_OK;
+        }
     }
 
     return hook->callback(ctx, argv + 1, argc - 1, hook->pd);

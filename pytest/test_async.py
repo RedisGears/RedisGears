@@ -646,7 +646,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
                 with TimeLimit(50):
                     while bk1.isAlive or bk2.isAlive:
                         conn.execute_command('RG.TRIGGER', 'unblock')
-                        time.sleep(0.1)
+                        time.sleep(1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 

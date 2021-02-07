@@ -315,7 +315,10 @@ int KeysReaderCtx_SetReadRecordCallback(KeysReaderCtx* krCtx, const char* readRe
 
 void KeysReaderCtx_Free(void* ctx){
     KeysReaderCtx* krctx = ctx;
-    RedisModule_Assert(krctx->cmdCtx == NULL);
+    if(krctx->cmdCtx){
+        KeyReader_CommandCtxFree(krctx->cmdCtx);
+        krctx->cmdCtx = NULL;
+    }
     if(krctx->match){
         RG_FREE(krctx->match);
     }
