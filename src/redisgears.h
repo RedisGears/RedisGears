@@ -515,6 +515,8 @@ const char* MODULE_API_FUNC(RedisGears_GetNodeIdByKey)(const char* key);
 int MODULE_API_FUNC(RedisGears_ClusterIsMyId)(const char* id);
 int MODULE_API_FUNC(RedisGears_ClusterIsInitialized)();
 
+void MODULE_API_FUNC(RedisGears_RegisterLoadingEvent)(RedisModuleEventCallback pluginLoadingCallback);
+
 typedef void* (*SaveState)();
 typedef void (*RestoreState)(void*);
 void MODULE_API_FUNC(RedisGears_AddLockStateHandler)(SaveState save, RestoreState restore);
@@ -971,6 +973,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ClusterIsInitialized);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddLockStateHandler);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddConfigHooks);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterLoadingEvent);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;

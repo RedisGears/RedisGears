@@ -1349,8 +1349,12 @@ static void GenericKeysReader_RdbSave(RedisModuleIO *rdb, bool (*shouldClear)(Fl
         RedisModule_SaveUnsigned(rdb, 1); // has more
 
         // serialize args
-        int res = FlatExecutionPlan_Serialize(&bw, rData->fep, NULL);
-        RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+        char* err = NULL;
+        int res = FlatExecutionPlan_Serialize(&bw, rData->fep, &err);
+        if(res != REDISMODULE_OK){
+            RedisModule_Log(staticCtx, "warning", "Failed serializing fep, err='%s'", err);
+            RedisModule_Assert(false); // fep already registered, must be serializable.
+        }
 
         KeysReader_SerializeArgs(rData->args, &bw);
 

@@ -584,8 +584,13 @@ static void CommandReader_RdbSaveSingleRegistration(RedisModuleIO *rdb, Gears_Bu
 
     RedisModule_SaveSigned(rdb, crtCtx->mode);
 
-    int res = FlatExecutionPlan_Serialize(&bw, crtCtx->fep, NULL);
-    RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+    char* err = NULL;
+    int res = FlatExecutionPlan_Serialize(&bw, crtCtx->fep, &err);
+    if(res != REDISMODULE_OK){
+        RedisModule_Log(staticCtx, "warning", "Failed serializing fep, err='%s'", err);
+        RedisModule_Assert(false); // fep already registered, must be serializable.
+    }
+
 
     CommandReader_SerializeArgs(crtCtx->args, &bw);
 

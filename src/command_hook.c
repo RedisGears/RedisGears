@@ -106,7 +106,12 @@ done:
 static CommandHookCtx* currHook;
 static RedisModuleString* GearsHookCommand = NULL;
 
+static bool noFilter = false;
+
 static void CommandHook_Filter(RedisModuleCommandFilterCtx *filter){
+    if(noFilter){
+        return;
+    }
     if(!HookRegistrations){
         return;
     }
@@ -193,8 +198,11 @@ void* CommandHook_Unhook(CommandHookCtx* hook){
     }
 
     if(Gears_dictSize(HookRegistrations) == 0){
-        RedisModule_UnregisterCommandFilter(staticCtx, cmdFilter);
-        cmdFilter = NULL;
+        if(RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
+            // if we have detach ctx it is safe to unregister our filter and reregister it later when needed
+            RedisModule_UnregisterCommandFilter(staticCtx, cmdFilter);
+            cmdFilter = NULL;
+        }
     }
 
     RG_FREE(hook->cmd);
@@ -277,6 +285,9 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
         return RedisModule_WrongArity(ctx);
     }
 
+    // we need to protect ourself from recursive hooks, unfortunatly we can not trust redis here
+    noFilter = true;
+
     CommandHookCtx* hook = currHook;
     currHook = NULL;
 
@@ -298,6 +309,7 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
                 RedisModule_ReplyWithError(ctx, "error happened running the command");
             }
         }
+        noFilter = false;
         return REDISMODULE_OK;
     }
 
@@ -306,11 +318,15 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
         if(memoryRetio > 1){
             // we are our of memory and should deny the command
             RedisModule_ReplyWithError(ctx, "OOM command not allowed when used memory > 'maxmemory'");
+            noFilter = false;
             return REDISMODULE_OK;
         }
     }
 
-    return hook->callback(ctx, argv + 1, argc - 1, hook->pd);
+    int ret = hook->callback(ctx, argv + 1, argc - 1, hook->pd);
+
+    noFilter = false;
+    return ret;
 }
 
 int CommandHook_Init(RedisModuleCtx* ctx){
@@ -320,6 +336,12 @@ int CommandHook_Init(RedisModuleCtx* ctx){
         RedisModule_Log(staticCtx, "warning", "could not register command "GEARS_HOOK_COMMAND);
         return REDISMODULE_ERR;
     }
+
+    if(!RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
+        // if we do not have a detach ctx we have to register our command filter now and keep it
+        cmdFilter = RedisModule_RegisterCommandFilter(ctx, CommandHook_Filter, REDISMODULE_CMDFILTER_NOSELF);
+    }
+
     return REDISMODULE_OK;
 }
 

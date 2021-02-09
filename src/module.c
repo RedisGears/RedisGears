@@ -773,6 +773,24 @@ static void RG_AddConfigHooks(BeforeConfigSet before, AfterConfigSet after, GetC
     GearsConfig_AddHooks(before, after, getConfig);
 }
 
+RedisModuleEventCallback* pluginLoadingCallbacks;
+
+static void RG_RegisterLoadingEvent(RedisModuleEventCallback pluginLoadingCallback){
+    if(!pluginLoadingCallbacks){
+        pluginLoadingCallbacks = array_new(RedisModuleEventCallback, 10);
+    }
+    pluginLoadingCallbacks = array_append(pluginLoadingCallbacks, pluginLoadingCallback);
+
+}
+
+static void RedisGears_OnLoadingEvent(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
+    if(pluginLoadingCallbacks){
+        for(size_t i = 0 ; i < array_len(pluginLoadingCallbacks) ; ++i){
+            pluginLoadingCallbacks[i](ctx, eid, subevent, data);
+        }
+    }
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
         // save loaded plugins
@@ -1078,6 +1096,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(AddLockStateHandler, ctx);
     REGISTER_API(SetAbortCallback, ctx);
     REGISTER_API(AddConfigHooks, ctx);
+    REGISTER_API(RegisterLoadingEvent, ctx);
 
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
@@ -1243,6 +1262,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if(RedisGears_CreateGearsDataType(ctx) != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "failed create RedisGear DataType");
+        return REDISMODULE_ERR;
+    }
+
+    if(RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_Loading, RedisGears_OnLoadingEvent) != REDISMODULE_OK){
+        RedisModule_Log(staticCtx, "warning", "Could not subscribe to loaded events");
         return REDISMODULE_ERR;
     }
 
