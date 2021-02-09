@@ -125,6 +125,7 @@ void KeyReader_CommandCtxFree(CommandCtx* cmdCtx){
         }else if(cmdCtx->errnostr){
             RedisModule_ReplyWithError(clientCtx, cmdCtx->errnostr);
         }else{
+            RedisModule_Log(staticCtx, "warning", "Failed getting results from command execution");
             RedisModule_ReplyWithError(clientCtx, "Failed getting results from command execution");
         }
     }
