@@ -204,6 +204,10 @@ class testStepsWrongArgs:
         self.env.expect('rg.pyexecute', 'GB().register(regex="*", eventTypes=[1, 2, 3])').error().contains('type is not string')
         self.env.expect('rg.pyexecute', 'GB().register(regex="*", keyTypes=[1, 2, 3])').error().contains('type is not string')
 
+    def testRegisterWithWrongCommandsParam(self):
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", commands=1)').error().contains('not iterable')
+        self.env.expect('rg.pyexecute', 'GB().register(regex="*", commands=[1,2,3])').error().contains('type is not string')
+
     def testGearsBuilderWithWrongBuilderArgType(self):
         self.env.expect('rg.pyexecute', 'GB(1).run()').error().contains('reader argument must be a string')
 
@@ -371,6 +375,21 @@ def testCommandReaderOverrideExecRaiseError(env):
 
 def testCommandReaderOverrideBlpopRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="blpop")').error().contains('Can not override a command which are not allowed inside a script')
+
+def testKeysReaderWithUnexistingCommandRaiseError(env):
+    env.expect('rg.pyexecute', 'GB().register(commands=["test"])').error().contains('bad reply')
+
+def testKeysReaderOverrideCommandWithMovableKeysRaiseError(env):
+    env.expect('rg.pyexecute', 'GB().register(commands=["xread"])').error().contains('Can not hook a command with moveable keys by key prefix')
+
+def testKeysReaderOverrideMultiRaiseError(env):
+    env.expect('rg.pyexecute', 'GB().register(commands=["multi"])').error().contains('Can not hook a command which are not allowed inside a script')
+    
+def testKeysReaderOverrideExecRaiseError(env):
+    env.expect('rg.pyexecute', 'GB().register(commands=["exec"])').error().contains('Can not hook a command which are not allowed inside a script')
+
+def testKeysReaderOverrideBlpopRaiseError(env):
+    env.expect('rg.pyexecute', 'GB().register(commands=["blpop"])').error().contains('Can not hook a command which are not allowed inside a script')
 
 def testCallNextOnMapWrongScopes(env):
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda r: call_next(r)).run()")

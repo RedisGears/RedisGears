@@ -52,7 +52,7 @@ def WaitForKeyChange(r):
     return f
 GB('CommandReader').map(WaitForKeyChange).register(trigger='WaitForKeyChange', mode='async_local')
 
-def ForEach(r):
+async def ForEach(r):
     def unblock(x):
         global blocked
         try:
@@ -60,7 +60,7 @@ def ForEach(r):
             blocked = []
         except Exception as e:
             print(e)
-    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+    await GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
 GB().foreach(ForEach).register(mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()
@@ -646,7 +646,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
                 with TimeLimit(50):
                     while bk1.isAlive or bk2.isAlive:
                         conn.execute_command('RG.TRIGGER', 'unblock')
-                        time.sleep(0.1)
+                        time.sleep(1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 

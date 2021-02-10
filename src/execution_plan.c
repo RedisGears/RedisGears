@@ -1897,6 +1897,7 @@ static void ExecutionPlan_OnMaxIdleReacher(RedisModuleCtx *ctx, void *data){
     // finish without any stops in the middle.
 #define EXECUTION_MAX_IDLE_REACHED_MSG "Execution max idle reached"
     ExecutionPlan* ep = data;
+    RedisModule_Log(staticCtx, "warning", "Execution max idle reached, ep_id=%s", ep->idStr);
     ep->status = ABORTED;
     Record* err = RG_ErrorRecordCreate(RG_STRDUP(EXECUTION_MAX_IDLE_REACHED_MSG), strlen(EXECUTION_MAX_IDLE_REACHED_MSG));
     ExecutionPlan_WriteError(ep, err);

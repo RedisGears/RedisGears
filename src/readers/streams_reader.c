@@ -1075,8 +1075,13 @@ static void StreamReader_RdbSave(RedisModuleIO *rdb){
         StreamReaderTriggerCtx* srctx = Gears_listNodeValue(node);
         RedisModule_SaveUnsigned(rdb, 1); // has more
         size_t len;
-        int res = FlatExecutionPlan_Serialize(&bw, srctx->fep, NULL);
-        RedisModule_Assert(res == REDISMODULE_OK); // fep already registered, must be serializable.
+
+        char* err = NULL;
+        int res = FlatExecutionPlan_Serialize(&bw, srctx->fep, &err);
+        if(res != REDISMODULE_OK){
+            RedisModule_Log(staticCtx, "warning", "Failed serializing fep, err='%s'", err);
+            RedisModule_Assert(false); // fep already registered, must be serializable.
+        }
 
         StreamReader_SerializeArgs(srctx->args, &bw);
 
