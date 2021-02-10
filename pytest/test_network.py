@@ -550,3 +550,10 @@ def testClusterSetAfterDisconnect(env):
 
         # read RG.HELLO request
         env.assertEqual(conn.read_request(), ['RG.HELLO'])
+
+def testMassiveClusterSet(env):
+    env.skipOnCluster()
+    with ShardMock(env) as shardMock:
+        for i in range(1000):
+            conn = shardMock.GetConnection(sendHelloResponse=False)
+            shardMock._send_cluster_set()
