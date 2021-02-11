@@ -557,3 +557,33 @@ def testMassiveClusterSet(env):
         for i in range(1000):
             conn = shardMock.GetConnection(sendHelloResponse=False)
             shardMock._send_cluster_set()
+
+def testMassiveClusterSetFromShard(env):
+    env.skipOnCluster()
+    with ShardMock(env) as shardMock:
+        for i in range(1000):
+            env.cmd('RG.CLUSTERSETFROMSHARD',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '2',
+                     'NO-USED',
+                     '1',
+                     'NO-USED',
+                     '0',
+                     '8192',
+                     'NO-USED',
+                     'password@localhost:6379',
+                     'NO-USED',
+                     'NO-USED',
+                     '2',
+                     'NO-USED',
+                     '8193',
+                     '16383',
+                     'NO-USED',
+                     'password@localhost:10000'
+                     )

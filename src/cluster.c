@@ -967,6 +967,11 @@ int Cluster_ClusterSetFromShard(RedisModuleCtx *ctx, RedisModuleString **argv, i
         RedisModule_ReplyWithError(ctx, "Could not parse cluster set arguments");
         return REDISMODULE_OK;
     }
-    Cluster_SendClusterSet(ctx, argv, argc, false);
+    // we must copy argv because if the client will disconnect the redis will free it
+    RedisModuleString **argvNew = RG_ALLOC(sizeof(RedisModuleString *) * argc);
+    for(size_t i = 0 ; i < argc ; ++i){
+        argvNew[i] = RedisModule_CreateStringFromString(NULL, argv[i]);
+    }
+    Cluster_SendClusterSet(ctx, argvNew, argc, false);
     return REDISMODULE_OK;
 }
