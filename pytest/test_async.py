@@ -253,7 +253,7 @@ GB().foreach(ForEach).register(mode='async_local')
             with TimeLimit(50):
                 while bk.isAlive:
                     conn.execute_command('set', 'x', '1')
-                    time.sleep(0.1)
+                    time.sleep(1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
