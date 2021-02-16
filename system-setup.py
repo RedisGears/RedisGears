@@ -64,7 +64,7 @@ class RedisGearsSetup(paella.Setup):
             dir=$(mktemp -d /tmp/tar.XXXXXX)
             (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
             rm -rf $dir
-            """, output_on_error=True)
+            """, output="on_error")
 
         # pip cannot build gevent on ARM
         self.install("python-gevent python-ujson")
@@ -111,7 +111,7 @@ class RedisGearsSetup(paella.Setup):
             make install
             cd $base
             rm -rf $dir
-            """, output_on_error=True)
+            """, output="on_error")
 
         self.install("zlib openssl readline coreutils libiconv")
         if not self.has_command("redis-server"):
