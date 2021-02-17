@@ -121,6 +121,12 @@ class RedisGearsSetup(paella.Setup):
 
         self.pip_install("pipenv gevent")
 
+    def centos(self):
+        if self.platform.osnick == "centos7":
+            self.install("yum install centos-release-scl-rh")
+            self.install("yum --enablerepo=centos-sclo-rh-testing install devtoolset-7-make")
+            self.install("devtoolset-7-make-4.2.1")
+
     def common_last(self):
         self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest || true")
         # redis-py-cluster should be installed from git due to redis-py dependency
