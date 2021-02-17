@@ -87,6 +87,12 @@ class RedisGearsSetup(paella.Setup):
 
         self.pip_install("gevent")
 
+    def centos(self):
+        if self.platform.osnick == "centos7":
+            self.install("yum install centos-release-scl-rh")
+            self.install("yum --enablerepo=centos-sclo-rh-testing install devtoolset-7-make")
+            self.install("devtoolset-7-make-4.2.1")
+
     def common_last(self):
         if self.with_python:
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
