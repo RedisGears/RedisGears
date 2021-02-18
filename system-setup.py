@@ -3,7 +3,6 @@
 import sys
 import os
 import argparse
-from semantic_version import Version
 
 ROOT = HERE = os.path.abspath(os.path.dirname(__file__))
 READIES = os.path.join(ROOT, "deps/readies")
@@ -34,7 +33,7 @@ class RedisGearsSetup(paella.Setup):
 
         # pip cannot build gevent on ARM
         self.install("python-psutil")
-        if self.dist == 'ubuntu' and Version(self.ver).major < 20:
+        if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
             self.install("python-gevent")
         else:
             self.pip_install("gevent")
