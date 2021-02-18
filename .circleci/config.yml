@@ -87,14 +87,14 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: redisfab/rmbuilder:6.0.7-x64-buster
+      - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
       - build-steps:
           platform: debian
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.0.7-x64-buster
+      - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
       - build-steps:
           platform: debian
@@ -147,7 +147,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.0.7-x64-buster
+      - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
@@ -160,7 +160,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: redisfab/rmbuilder:6.0.7-x64-buster
+      - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
@@ -210,8 +210,8 @@ on-master-and-version-tags: &on-master-and-version-tags
 platform-build-defs: &platform-build-defs
   requires:
     - linux-debian
-  <<: *on-master-and-version-tags
-  # <<: *on-any-branch
+  #@@ <<: *on-master-and-version-tags
+  <<: *on-any-branch
 
 after-platform-builds: &after-platform-builds
   requires:
