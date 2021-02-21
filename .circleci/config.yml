@@ -210,8 +210,8 @@ on-master-and-version-tags: &on-master-and-version-tags
 platform-build-defs: &platform-build-defs
   requires:
     - linux-debian
-  #@@ <<: *on-master-and-version-tags
-  <<: *on-any-branch
+  <<: *on-master-and-version-tags
+  # <<: *on-any-branch
 
 after-platform-builds: &after-platform-builds
   requires:
