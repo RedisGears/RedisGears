@@ -242,6 +242,7 @@ typedef struct ExecutionPlan{
     Record** errors;
     volatile ExecutionPlanStatus status;
     ExecutionFlags flags;
+    RunFlags runFlags;
     OnDoneData* onDoneData; // Array of callbacks to run on done
     RedisGears_ExecutionOnStartCallback onStartCallback;
     RedisGears_ExecutionOnUnpausedCallback onUnpausedCallback;
@@ -362,7 +363,7 @@ void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
 int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags runFlags);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);

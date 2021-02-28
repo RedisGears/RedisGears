@@ -343,7 +343,7 @@ GB().foreach(ForEachFailed).register('y', mode='async_local')
     except Exception as e:  
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
-def testSimpleAsyncOnSyncExecution(env):
+def testSimpleAsyncOnLocalExecutions(env):
     conn = getConnectionByEnv(env)
     script = '''
 fdata = []
@@ -369,16 +369,26 @@ def bc(r):
 
 def unbc_internal(r):
     global fdata
-    [a[0].continueRun(a[1]) for a in fdata]
+    try:
+        while len(fdata) > 0:
+            a = fdata.pop()
+            a[0].continueRun(a[1])
+    except Exception as e:
+        print(e)
     return r
 
 def unbc(r):
     f = BlockHolder(gearsFuture())
-    GB('ShardsIDReader').foreach(unbc_internal).count().foreach(lambda r: f.continueRun(r)).run()
+    def c(re):
+        f.continueRun(r)
+    GB('ShardsIDReader').foreach(unbc_internal).count().foreach(c).run()
     return f.bc
 
 GB('CommandReader').map(bc).register(trigger='block', mode='async_local')
 GB('CommandReader').map(unbc).register(trigger='unblock', mode='async_local')
+
+GB('CommandReader').map(bc).register(trigger='block_sync', mode='sync')
+GB('CommandReader').map(unbc).register(trigger='unblock_sync', mode='sync')
     '''
 
     env.expect('RG.PYEXECUTE', script).ok()
@@ -396,6 +406,20 @@ GB('CommandReader').map(unbc).register(trigger='unblock', mode='async_local')
                     conn.execute_command('RG.TRIGGER', 'unblock')
                     time.sleep(0.1)
     except Exception as e:
+        print(e)
+        env.assertTrue(False, message='Failed waiting to reach unblock')
+
+    def Block2():
+        env.expect('RG.TRIGGER', 'block_sync', 'arg').equal(["['block_sync', 'arg']"])
+
+    try:
+        with Background(Block2) as bk:
+            with TimeLimit(50):
+                while bk.isAlive:
+                    conn.execute_command('RG.TRIGGER', 'unblock_sync')
+                    time.sleep(0.1)
+    except Exception as e:
+        print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
 def testStreamReaderAsync(env):
@@ -956,6 +980,46 @@ GB('ShardsIDReader').map(c).flatmap(c).foreach(c).filter(c).count().run()
         '''
 
     env.expect('RG.PYEXECUTE', script).equal([[str(env.shardsCount)], []])
+
+def testAsyncAwaitWithSyncExecution(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import asyncio
+
+async def c(r):
+    await asyncio.sleep(0.1)
+    return r
+
+GB('CommandReader').map(c).flatmap(c).foreach(c).filter(c).count().register(trigger='test', mode='sync')
+        '''
+
+    env.expect('RG.PYEXECUTE', script).equal('OK')
+    verifyRegistrationIntegrity(env)    
+
+    env.expect('RG.TRIGGER', 'test').equal(['1'])    
+
+def testAsyncAwaitWithSyncExecutionInMultiExec(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+
+def c(r):
+    if is_async_allow():
+        async def f():
+            return 'no multi'
+        return f()
+    return 'multi'
+
+GB('CommandReader').map(c).register(trigger='test', mode='sync')
+        '''
+
+    env.expect('RG.PYEXECUTE', script).equal('OK')
+    verifyRegistrationIntegrity(env)    
+
+    env.expect('RG.TRIGGER', 'test').equal(['no multi'])
+
+    env.cmd('multi')
+    env.cmd('RG.TRIGGER', 'test')
+    env.expect('exec').equal([['multi']])    
 
 def testAsyncAwaitOnUnallowRepartitionStep(env):
     conn = getConnectionByEnv(env)

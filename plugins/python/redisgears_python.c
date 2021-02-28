@@ -4204,6 +4204,20 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
+static PyObject* isAsyncAllow(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyObject* ret = Py_False;
+    if(ptctx->currEctx){
+        RunFlags runFlags = RedisGears_GetRunFlags(ptctx->currEctx);
+        if(!(runFlags & RFNoAsync)){
+            ret = Py_True;
+        }
+    }
+
+    Py_INCREF(ret);
+    return ret;
+}
+
 static PyObject* overrideReply(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
@@ -4310,6 +4324,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"callNext", callNext, METH_VARARGS, "call the next command registration or the original command (will raise error when used outside on CommandHook scope)"},
     {"getCommand", getCommand, METH_VARARGS, "return the current running command, raise error if command is not available"},
     {"overrideReply", overrideReply, METH_VARARGS, "override the reply with the given python value, raise error if there is no command to override its reply"},
+    {"isAsyncAllow", isAsyncAllow, METH_VARARGS, "return true iff async await is allow"},
     {NULL, NULL, 0, NULL}
 };
 

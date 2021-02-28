@@ -613,8 +613,8 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     }
 
     ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ectx);
-    if(ep->mode == ExecutionModeSync){
-        *err = RG_STRDUP("Can not create gearsFuture on sync execution");
+    if(ep->runFlags & RFNoAsync){
+        *err = RG_STRDUP("Creating async record is not allow");
         return NULL;
     }
     size_t maxSize;

@@ -776,6 +776,9 @@ static void ExecutionPlan_Distribute(ExecutionPlan* ep){
         RedisGears_BWWriteString(&bw, ep->assignWorker->pool->name);
     }
 
+    // send the execution run flags
+    RedisGears_BWWriteLong(&bw, ep->runFlags); // running on default pool
+
     Cluster_SendMsgM(NULL, ExecutionPlan_OnReceived, buff->buff, buff->size);
     Gears_BufferFree(buff);
     RedisModule_FreeThreadSafeContext(ectx.rctx);
@@ -2312,8 +2315,10 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     RedisModule_FreeThreadSafeContext(rctx);
 }
 
-static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker){
+static ExecutionPlan* FlatExecutionPlan_RunOnly(FlatExecutionPlan* fep, char* eid, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, RunFlags runFlags){
     ExecutionPlan* ep = FlatExecutionPlan_CreateExecution(fep, eid, mode, arg, callback, privateData);
+
+    ep->runFlags = runFlags;
 
     if(worker){
         ep->assignWorker = ExecutionPlan_WorkerGetShallowCopy(worker);
@@ -2464,6 +2469,9 @@ static void ExecutionPlan_OnReceived(RedisModuleCtx *ctx, const char *sender_id,
             RedisModule_Assert(false);
         }
     }
+
+    // read the execution run flags
+    ep->runFlags = RedisGears_BRReadLong(&br);
 
     ep->assignWorker = ExecutionPlan_CreateWorker(pool);
     ExecutionPlan_Run(ep);
@@ -2910,7 +2918,7 @@ int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void*
     return 1;
 }
 
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags runFlags){
     if(Cluster_IsClusterMode()){
         // on cluster mode, we must make sure we can distribute the execution to all shards.
         if(!FlatExecutionPlan_SerializeInternal(fep, NULL, err)){
@@ -2918,7 +2926,7 @@ ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode,
         }
     }
 
-    return FlatExecutionPlan_RunOnly(fep, NULL, mode, arg, callback, privateData, worker);
+    return FlatExecutionPlan_RunOnly(fep, NULL, mode, arg, callback, privateData, worker, runFlags);
 }
 
 static ReaderStep ExecutionPlan_NewReader(FlatExecutionReader* reader, void* arg){

@@ -885,13 +885,15 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         onDoneCallback = CommandReader_OnDoneHookReply;
     }
 
+    int runFlags = 0;
     int ctxFlags = RedisModule_GetContextFlags(ctx);
-    if(crtCtx->mode != ExecutionModeSync){
-        if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
-                (ctxFlags & REDISMODULE_CTX_FLAGS_LUA)){
+    if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
+                    (ctxFlags & REDISMODULE_CTX_FLAGS_LUA)){
+        if(crtCtx->mode != ExecutionModeSync){
             RedisModule_ReplyWithError(ctx, "ERR can not run a none sync execution inside MULTI/LUA or on loading.");
             return REDISMODULE_OK;
         }
+        runFlags |= RFNoAsync;
     }
 
     if(crtCtx->mode == ExecutionModeAsync){
@@ -900,8 +902,8 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1, crtCtx);
-    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
-                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), NULL, &err);
+    ExecutionPlan* ep = RedisGears_RunWithFlags(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
+                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), NULL, &err, runFlags);
 
     ++crtCtx->numTriggered;
 
@@ -921,7 +923,7 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         replyCallback(ep, ctx);
         RedisGears_DropExecution(ep);
     } else {
-        RedisModule_Assert(crtCtx->mode != ExecutionModeSync);
+        RedisModule_Assert(!(ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) && !(ctxFlags & REDISMODULE_CTX_FLAGS_LUA));
         if(EPIsFlagOn(ep, EFIsLocal)){
             Gears_dictAdd(crtCtx->pendingExections, ep->idStr, NULL);
         }

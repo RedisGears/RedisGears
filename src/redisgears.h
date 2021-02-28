@@ -415,6 +415,9 @@ int MODULE_API_FUNC(RedisGears_FlatMap)(FlatExecutionPlan* ctx, char* name, void
 int MODULE_API_FUNC(RedisGears_Limit)(FlatExecutionPlan* ctx, size_t offset, size_t len);
 #define RGM_Limit(ctx, offset, len) RedisGears_Limit(ctx, offset, len)
 
+#define RunFlags int
+#define RFNoAsync (1<<0)
+ExecutionPlan* MODULE_API_FUNC(RedisGears_RunWithFlags)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags flags);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
 #define RGM_Run(ctx, mode, arg, callback, privateData, err) RedisGears_Run(ctx, mode, arg, callback, privateData, NULL, err)
 
@@ -467,6 +470,7 @@ void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(ExecutionCtx* ectx
 void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionCtx* ectx);
 void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionCtx* ctx, void* PD);
 ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecutionFromCtx)(ExecutionCtx* ectx);
+RunFlags MODULE_API_FUNC(RedisGears_GetRunFlags)(ExecutionCtx* ctx);
 
 typedef void (*AbortCallback)(void* abortPD);
 void MODULE_API_FUNC(RedisGears_SetAbortCallback)(ExecutionCtx* ctx, AbortCallback abort, void* abortPD);
@@ -824,6 +828,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AccumulateBy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, LocalAccumulateBy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Filter);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RunWithFlags);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Run);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Register);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ForEach);
@@ -861,6 +866,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxFree);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRunFlags);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFep);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRecordsLen);

@@ -17,6 +17,7 @@ from redisgears import registerGearsThread
 from redisgears import isInAtomicBlock
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
+from redisgears import isAsyncAllow as is_async_allow
 import asyncio
 from asyncio.futures import Future
 from threading import Thread
