@@ -1207,7 +1207,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
                         gearsRlecMajorVersion, gearsRlecMinorVersion, gearsRlecPatchVersion, gearsRlecBuild);
     }
 
-    if(GearsCheckSupportedVestion() != REDISMODULE_OK){
+    if(GearsCheckSupportedVersion() != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "Redis version is to old, please upgrade to redis %d.%d.%d and above.", supportedVersion.redisMajorVersion,
                                                                                                                 supportedVersion.redisMinorVersion,
                                                                                                                 supportedVersion.redisPatchVersion);

@@ -56,7 +56,7 @@ int GearsCompareVersions(RedisVersion v1, RedisVersion v2) {
     return 0;
 }
 
-int GearsCheckSupportedVestion(){
+int GearsCheckSupportedVersion(){
     if (GearsCompareVersions(currVesion, supportedVersion) < 0) {
         return REDISMODULE_ERR;
     }

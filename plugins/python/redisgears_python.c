@@ -4678,6 +4678,7 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
    PyObject* pArgs = PyTuple_New(3);
    PyTuple_SetItem(pArgs, 0, coro);
    PyTuple_SetItem(pArgs, 1, (PyObject*)pyfuture);
+   PyTuple_SetItem(pArgs, 2, PyLong_FromLong(0));
 
    /* Create session object */
    PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
@@ -4690,7 +4691,7 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
    if(pyExSes->cmdCtx){
        pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
    }
-   PyTuple_SetItem(pArgs, 2, (PyObject*)pyExSes);
+   PyTuple_SetItem(pArgs, 3, (PyObject*)pyExSes);
 
    PyObject* nn = PyObject_CallObject(runCoroutineFunction, pArgs);
    GearsPyDecRef(pArgs);

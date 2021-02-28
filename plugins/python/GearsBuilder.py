@@ -244,17 +244,22 @@ loop = asyncio.new_event_loop()
 loop.create_future = lambda: GearsFuture(loop=loop, gearsSession=getGearsSession())
 
 def createFuture():
-    return loop.create_future()
+    # we need to use globals()['loop'] so the function will not break serialization
+    return globals()['loop'].create_future()
 
 def setFutureResults(f, res):
+    # we need to use globals()['loop'] so the function will not break serialization
     async def setFutureRes():
         f.set_result(res)
-    asyncio.run_coroutine_threadsafe(setFutureRes(), loop)    
+    asyncio.run_coroutine_threadsafe(setFutureRes(), globals()['loop'])    
 
 def setFutureException(f, exception):
     async def setException():
-        f.set_exception(Exception(str(exception)))
-    asyncio.run_coroutine_threadsafe(setException(), loop)
+        if isinstance(exception, Exception):
+            f.set_exception(exception)
+        else:
+            f.set_exception(Exception(str(exception)))
+    asyncio.run_coroutine_threadsafe(setException(), globals()['loop'])
 
 def f(loop):
     registerGearsThread()
@@ -264,19 +269,23 @@ def f(loop):
 t = Thread(target=f, args=(loop,))
 t.start()
 
-def runCoroutine(cr, f, s):
+def runCoroutine(cr, f=None, delay=0, s=getGearsSession()):
     async def runInternal():
         try:
             with GearsSession(s):
+                if delay:
+                    await asyncio.sleep(delay)
                 res = await cr
         except Exception as e:
             try:
-                f.continueFailed(e)
+                if f:
+                    f.continueFailed(e)
             except Exception as e1:
                 log(str(e1))
             return
-        f.continueRun(res)
-    asyncio.run_coroutine_threadsafe(runInternal(), loop)
+        if f:
+            f.continueRun(res)
+    asyncio.run_coroutine_threadsafe(runInternal(), globals()['loop'])
 
 genDeprecated('Log', 'log', log)
 genDeprecated('ConfigGet', 'configGet', configGet)

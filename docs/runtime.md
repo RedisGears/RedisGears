@@ -158,32 +158,66 @@ _Arguments_
 {{ include('runtime/log.py') }}
 ```
 
-## gearsFuture
-The `gearsFuture()` function is imported to the runtime's environment by default.
+## Async Await
 
-This function returns a `gearsFuture` object, which allows another thread/process to process the record. Returning this object from a step's operation tells RedisGears to suspend execution until background processing had finished/failed.
+For a full explination about async await look at [Async Await Support](intro.md#async-await-support)
 
-The `gearsFuture` object provides two control methods: `continueRun()` and `continueFailed()`. Both methods are thread-safe and can be called at any time to signal that the background processing has finished. `continueRun` signals success and its argument is a record for the main process. `continueFailed` reports a failure to the main process and its argument is a string describing the failure.
+### createFuture
+The `createFuture` function is imported to the runtime's environment by default.
 
-Calling `gearsFuture()` is supported only from the context of the following operations:
-* `map`
-* `flatmap`
-* `filter`
-* `foreach`
-* `aggregate`
-* `aggregateby`
+This function returns a `gearsFuture` object, which can be waited on using `await` inside a coroutine.
 
-An attempt to create a `gearsFuture` object outside of the supported contexts will result in an exception.
-
-**Examples**
+**Python API**
 
 ```python
-{{ include('runtime/gearsFuture.py') }}
+def createFuture()
 ```
 
-### gearsFuture with Python Async Await
-`gearsFuture` is also integrated seamlessly with Python's async/await syntax, so it possible to do the following:
+### setFutureResults
+The `setFutureResults` function is imported to the runtime's environment by default.
+
+This function allows set a result on a future object returned from [createFuture](runtime#createFuture)
+
+**Python API**
 
 ```python
-{{ include('runtime/async.py') }}
+def setFutureResults(f, res)
 ```
+
+_Arguments_
+
+* f: future object to set the result on.
+* res: the result to set on the future object.
+
+### setFutureException
+The `setFutureException` function is imported to the runtime's environment by default.
+
+This function allows set an exception on a future object returned from [createFuture](runtime#createFuture)
+
+**Python API**
+
+```python
+def setFutureException(f, ex)
+```
+
+_Arguments_
+
+* f: future object to set the result on.
+* ex: the exception to set on the future object.
+
+### runCoroutine
+The `runCoroutine` function is imported to the runtime's environment by default.
+
+This function allows run a coroutine in a dedicated event loop.
+
+**Python API**
+
+```python
+def runCoroutine(cr, f=None, delay=0)
+```
+
+_Arguments_
+
+* cr: coroutine to run.
+* f: future object to set the coroutine result on (if none the result are ignored).
+* delay: delay (in seconds) to start the coroutine.

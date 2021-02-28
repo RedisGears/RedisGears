@@ -48,7 +48,7 @@ extern RedisModuleCtx *staticCtx;
 #define VERIFY_CLUSTER_INITIALIZE(c) if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state")
 
 int GearsCompareVersions();
-int GearsCheckSupportedVestion();
+int GearsCheckSupportedVersion();
 void GearsGetRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);

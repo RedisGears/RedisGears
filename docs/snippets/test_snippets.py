@@ -98,6 +98,10 @@ def standalone(image):
         ('docs/snippets/runtime/gearsconfigget.py', b'OK'),
         ('docs/snippets/runtime/hashtag.py', b'OK'),
         ('docs/snippets/runtime/log.py', [[], []]),
+        ('docs/snippets/async_await/async_await-000.py', [['1'], []]),
+        ('docs/snippets/async_await/async_await-001.py', b'OK'),
+        ('docs/snippets/async_await/async_await-002.py', b'OK'),
+        ('docs/snippets/async_await/async_await-003.py', b'OK'),
     ],
 )
 
