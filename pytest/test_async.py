@@ -1003,7 +1003,7 @@ def testAsyncAwaitWithSyncExecutionInMultiExec(env):
     script = '''
 
 def c(r):
-    if is_async_allow():
+    if isAsyncAllow():
         async def f():
             return 'no multi'
         return f()

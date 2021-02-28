@@ -41,6 +41,7 @@ nav:
   - 'Clients': 'clients.md'
   - 'Design':
     - 'Isolation Technics': 'isolation.md'
+    - 'Async Await Advance Topics': 'async_await_advance_topics.md'
   - 'Glossary': 'glossary.md'
   - 'Contributing': 'contrib.md'
 

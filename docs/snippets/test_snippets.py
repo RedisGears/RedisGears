@@ -102,6 +102,7 @@ def standalone(image):
         ('docs/snippets/async_await/async_await-001.py', b'OK'),
         ('docs/snippets/async_await/async_await-002.py', b'OK'),
         ('docs/snippets/async_await/async_await-003.py', b'OK'),
+        ('docs/snippets/async_await/async_await-004.py', b'OK'),
     ],
 )
 

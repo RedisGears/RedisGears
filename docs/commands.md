@@ -154,7 +154,7 @@ An array with an entry per execution. Each entry is made of alternating key name
 
 * **executionId**: the [execution ID](functions.md#execution-id)
 * **status**: the [status](functions.md#execution-status)
-* **registered**: indicates whether this is a [registered execution](functions.html#registration)
+* **registered**: indicates whether this is a [registered execution](functions.md#registration)
 
 **Examples**
 

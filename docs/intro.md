@@ -1,7 +1,7 @@
 # Introduction to RedisGears
 
 ## What is RedisGears?
-RedisGears is a dynamic framework for data processing in Redis. RedisGears supports transaction, [batch](docs/glossary.md#batch-processing) and [event-driven](docs/glossary.md#event-processing) processing of Redis data. To use RedisGears, you write [functions](docs/functions.md) that describe how your data should be processed. You then submit this code to your Redis deployment for remote execution.
+RedisGears is a dynamic framework for data processing in Redis. RedisGears supports transaction, [batch](glossary.md#batch-processing) and [event-driven](glossary.md#event-processing) processing of Redis data. To use RedisGears, you write [functions](functions.md) that describe how your data should be processed. You then submit this code to your Redis deployment for remote execution.
 
 !!! important "Prerequisites"
     Before diving into RedisGears please make sure that you are familiar with the basic concepts of Redis and Python.
@@ -816,7 +816,7 @@ The following example will wait for 5 seconds and then return a list of all the 
 
 ### Waiting for Another Execution
 
-So we know we can give a coroutine to a step and wait for events inside this coroutine. We saw that we can wait on `async.sleep` but what else can we wait on? On v1.2 the [run](functions.md#run) function will return a future object that can be awaited inside a coroutine. So it possible to start a [local](intro.html#local-vs-global) execution and decide to create a global execution and wait for it to finish, the following shows how we can use async-await to cache global execution results in a local key and only trigger a global execution on cache missed:
+So we know we can give a coroutine to a step and wait for events inside this coroutine. We saw that we can wait on `async.sleep` but what else can we wait on? On v1.2 the [run](functions.md#run) function will return a future object that can be awaited inside a coroutine. So it possible to start a [local](intro.md#local-vs-global) execution and decide to create a global execution and wait for it to finish, the following shows how we can use async-await to cache global execution results in a local key and only trigger a global execution on cache missed:
 ```python
 {{ include('async_await/async_await-003.py')}}
 ```
@@ -856,6 +856,8 @@ The only addition is that after adding the publisher's future object to the publ
     ````
 !!! important "Notice"
     The following example only works on a single shard, we left it to the reader to think how to extend it to cluster support.
+
+To read more about async await: [Async Await Advance Topics](async_await_advance_topics.md)
 
 ## Where Next?
 At this point you should be pretty much acquainted with the basic principles under the hood of the RedisGears engine. To extend your familiarity and gain more experience with RedisGears it is recommend that you also review the following at your leisure:

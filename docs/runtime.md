@@ -221,3 +221,15 @@ _Arguments_
 * cr: coroutine to run.
 * f: future object to set the coroutine result on (if none the result are ignored).
 * delay: delay (in seconds) to start the coroutine.
+
+### isAsyncAllow
+The `isAsyncAllow` function is imported to the runtime's environment by default.
+
+This function allows to know if async await can be used in the current execution, for more info refer to [sync with multi exec](async_await_advance_topics.md#sync-with-multi-exec).
+
+**Python API**
+
+```python
+def isAsyncAllow()
+```
+
