@@ -269,7 +269,9 @@ def f(loop):
 t = Thread(target=f, args=(loop,))
 t.start()
 
-def runCoroutine(cr, f=None, delay=0, s=getGearsSession()):
+def runCoroutine(cr, f=None, delay=0, s=None):
+    if s is None:
+        s = getGearsSession()
     async def runInternal():
         try:
             with GearsSession(s):
@@ -278,12 +280,12 @@ def runCoroutine(cr, f=None, delay=0, s=getGearsSession()):
                 res = await cr
         except Exception as e:
             try:
-                if f:
+                if f is not None:
                     f.continueFailed(e)
             except Exception as e1:
                 log(str(e1))
             return
-        if f:
+        if f is not None:
             f.continueRun(res)
     asyncio.run_coroutine_threadsafe(runInternal(), globals()['loop'])
 

@@ -4675,7 +4675,7 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
 
    Py_INCREF(ptctx->pyfutureCreated);
 
-   PyObject* pArgs = PyTuple_New(3);
+   PyObject* pArgs = PyTuple_New(4);
    PyTuple_SetItem(pArgs, 0, coro);
    PyTuple_SetItem(pArgs, 1, (PyObject*)pyfuture);
    PyTuple_SetItem(pArgs, 2, PyLong_FromLong(0));
@@ -4697,6 +4697,9 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
    GearsPyDecRef(pArgs);
 
    if(!nn){
+       char* err = getPyError();
+       RedisModule_Log(staticCtx, "warning", "Error when runnong coroutine, error='%s'", err);
+       RG_FREE(err);
        GearsPyDecRef((PyObject*)pyfuture);
        return NULL;
    }
