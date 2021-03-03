@@ -5,7 +5,8 @@ import os
 import argparse
 
 ROOT = HERE = os.path.abspath(os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(ROOT, "deps/readies"))
+READIES = os.path.abspath(os.path.join(ROOT, "deps/readies"))
+sys.path.insert(0, READIES)
 import paella
 
 #----------------------------------------------------------------------------------------------
@@ -44,7 +45,7 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("pipenv")
 
     def redhat_compat(self):
-        self.group_install("'Development Tools'")
+        self.run(os.path.join(READIES, 'bin', 'getgcc') + ' --modern')
         self.install("autoconf automake libtool")
 
         self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
@@ -120,12 +121,6 @@ class RedisGearsSetup(paella.Setup):
         self.install_gnu_utils()
 
         self.pip_install("pipenv gevent")
-
-    def centos(self):
-        if self.platform.osnick == "centos7":
-            self.install("yum install centos-release-scl-rh")
-            self.install("yum --enablerepo=centos-sclo-rh-testing install devtoolset-7-make")
-            self.install("devtoolset-7-make-4.2.1")
 
     def common_last(self):
         self.run("pip uninstall -y -q redis redis-py-cluster ramp-packer RLTest || true")
