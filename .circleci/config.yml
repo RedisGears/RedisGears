@@ -215,27 +215,17 @@ on-master-and-version-tags: &on-master-and-version-tags
       only: /^v[0-9].*/
 
 
-platform-build-defs: &platform-build-defs
-  requires:
-    - linux-debian
-  <<: *on-master-and-version-tags
-
-after-platform-builds: &after-platform-builds
-  requires:
-    - platform-build
-    # - build-centos7
-    # - build-bionic
-    # - build-xenial
-
-
 workflows:
   version: 2
   default_flow:
     jobs:
       - linux-debian:
+          name: basic-build
           <<: *on-any-branch
       - platform-build:
           <<: *on-any-branch
+          requires:
+            - basic-build
           #@@ <<: *platform-build-defs
           context: common
           matrix:
@@ -252,15 +242,17 @@ workflows:
           # <<: *on-version-tags
       - deploy_snapshots:
           context: common
-          <<: *after-platform-builds
+          requires:
+            - platform-build
           <<: *on-master
           # <<: *on-any-branch
       - deploy_releases:
           context: common
-          <<: *after-platform-builds
+          requires:
+            - platform-build
           <<: *on-version-tags
       - linux-debian:
-          name: redis-versions
+          # name: redis-versions
           <<: *on-any-branch
           matrix:
             parameters:
