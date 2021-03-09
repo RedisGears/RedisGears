@@ -280,7 +280,7 @@ workflows:
       - macos
       - valgrind
       - linux-debian:
-          name: redis-versions
+          name: build-with-redis-<< matrix.redis_version >>
           matrix:
             parameters:
               redis_version: ["6.0", "6.2"]
