@@ -243,8 +243,7 @@ workflows:
       - linux-debian:
           <<: *not-on-integ-branch
       - platform-build:
-          <<: *on-any-branch
-          #@@ <<: *on-integ-and-version-tags
+          <<: *on-integ-and-version-tags
           context: common
           matrix:
             parameters:
@@ -269,12 +268,6 @@ workflows:
           requires:
             - platform-build
           <<: *on-version-tags
-      - linux-debian:
-          name: build-with-redis-<< matrix.redis_version >>
-          <<: *on-any-branch
-          matrix:
-            parameters:
-              redis_version: ["6.0", "6.2"]
 
   nightly:
     triggers:

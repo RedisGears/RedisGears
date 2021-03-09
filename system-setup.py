@@ -52,9 +52,11 @@ class RedisGearsSetup(paella.Setup):
 
         if self.platform.is_arm():
             self.install("python-gevent python-ujson")
+        else:
+            self.pip_install("gevent ujson")
 
     def fedora(self):
-        self.group_install("'Development Tools'")
+        self.run("%s/bin/getgcc" % READIES)
 
         self.install("libatomic file")
 
