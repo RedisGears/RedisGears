@@ -22,6 +22,9 @@ commands:
       test_params:
         type: string
         default: ""
+      redis_version:
+        type: string
+        default: "6"
       getredis_params:
         type: string
         default: ""
@@ -38,7 +41,7 @@ commands:
           no_output_timeout: 20m
       - run:
           name: Install Redis
-          command: python2 ./deps/readies/bin/getredis -v 6.2 --force <<parameters.getredis_params>>
+          command: python2 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
@@ -88,9 +91,14 @@ jobs:
   linux-debian:
     docker:
       - image: redisfab/rmbuilder:6.0.9-x64-buster
+    parameters:
+      redis_version:
+        type: string
+        default: "6"
     steps:
       - build-steps:
           platform: debian
+          redis_version: <<parameters.redis_version>>
 
   valgrind:
     docker:
@@ -214,9 +222,10 @@ platform-build-defs: &platform-build-defs
 
 after-platform-builds: &after-platform-builds
   requires:
-    - build-centos7
-    - build-bionic
-    - build-xenial
+    - platform-build
+    # - build-centos7
+    # - build-bionic
+    # - build-xenial
 
 
 workflows:
@@ -226,20 +235,11 @@ workflows:
       - linux-debian:
           <<: *on-any-branch
       - platform-build:
-          name: build-centos7
-          platform: centos7
-          context: common
           <<: *platform-build-defs
-      - platform-build:
-          name: build-bionic
-          platform: bionic
           context: common
-          <<: *platform-build-defs
-      - platform-build:
-          name: build-xenial
-          platform: xenial
-          context: common
-          <<: *platform-build-defs
+          matrix:
+            parameters:
+              platform: [centos7, bionic, xenial]
       - valgrind:
           <<: *on-version-tags
           # <<: *on-any-branch
@@ -258,6 +258,13 @@ workflows:
           context: common
           <<: *after-platform-builds
           <<: *on-version-tags
+      - linux-debian:
+          name: redis-versions
+          <<: *on-any-branch
+          matrix:
+            alias: redis-versions
+            parameters:
+              redis_version: ["6.0", "6.2"]
 
   nightly:
     triggers:
@@ -267,3 +274,8 @@ workflows:
     jobs:
       - macos
       - valgrind
+      - linux-debian:
+          name: redis-versions
+          matrix:
+            parameters:
+              redis_version: ["6.0", "6.2"]
