@@ -88,7 +88,7 @@ class RedisGearsSetup(paella.Setup):
 
 parser = argparse.ArgumentParser(description='Set up system for RedisGears build.')
 parser.add_argument('-n', '--nop', action="store_true", help='no operation')
-parser.add_argument('--with-python', action="store_true", default=True, help='no operation')
+parser.add_argument('--with-python', action="store_true", default=True, help='with Python')
 args = parser.parse_args()
 
 RedisGearsSetup(nop = args.nop, with_python=args.with_python).setup()
