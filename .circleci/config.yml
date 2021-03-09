@@ -235,7 +235,8 @@ workflows:
       - linux-debian:
           <<: *on-any-branch
       - platform-build:
-          <<: *platform-build-defs
+          <<: *on-any-branch
+          #@@ <<: *platform-build-defs
           context: common
           matrix:
             parameters:
@@ -262,7 +263,6 @@ workflows:
           name: redis-versions
           <<: *on-any-branch
           matrix:
-            alias: redis-versions
             parameters:
               redis_version: ["6.0", "6.2"]
 
