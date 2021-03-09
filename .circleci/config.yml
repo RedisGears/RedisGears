@@ -270,7 +270,7 @@ workflows:
             - platform-build
           <<: *on-version-tags
       - linux-debian:
-          name: build-with-redis
+          name: build-with-redis-<< matrix.redis_version >>
           <<: *on-any-branch
           matrix:
             parameters:
