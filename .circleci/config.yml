@@ -242,6 +242,12 @@ workflows:
     jobs:
       - linux-debian:
           <<: *not-on-integ-branch
+      - linux-debian:
+          name: build-with-redis-<< matrix.redis_version >>
+          <<: *on-integ-branch
+          matrix:
+            parameters:
+              redis_version: ["6.0", "6.2"]
       - platform-build:
           <<: *on-integ-and-version-tags
           context: common
