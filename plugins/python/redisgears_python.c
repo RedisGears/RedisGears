@@ -1821,9 +1821,9 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
         PyObject *pyVal = NULL;
         double doubleVal;
         long long longVal;
-        if(RedisAI_TensorGetValueAsDouble(pyt->t, j, &doubleVal)){
+        if(RedisAI_TensorGetValueAsDouble(pyt->t, j, &doubleVal) == REDISMODULE_OK){
             pyVal = PyFloat_FromDouble(doubleVal);
-        }else if(RedisAI_TensorGetValueAsLongLong(pyt->t, j, &longVal)){
+        }else if(RedisAI_TensorGetValueAsLongLong(pyt->t, j, &longVal) == REDISMODULE_OK){
             pyVal = PyLong_FromLongLong(longVal);
         }else{
             PyErr_SetString(GearsError, "Failed converting tensor to flat list");
