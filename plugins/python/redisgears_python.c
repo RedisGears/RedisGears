@@ -1830,8 +1830,8 @@ static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
             GearsPyDecRef(flatList);
             return NULL;
         }
-
         PyList_Append(flatList, pyVal);
+        GearsPyDecRef(pyVal);
     }
     return flatList;
 }
