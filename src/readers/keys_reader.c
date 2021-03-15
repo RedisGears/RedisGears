@@ -519,14 +519,20 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
 
     if(readerCtx->readValue){
         int oldAvoidEvents = KeyReader_SetAvoidEvents(1);
-        RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
+        RedisModuleKey *keyHandler = keyPtr;
+        if (!keyHandler) {
+            keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
+        }
         KeyReader_SetAvoidEvents(oldAvoidEvents);
         if(keyHandler){
             Record* keyType = GetTypeRecord(keyHandler);
             Record* val = GetValueRecord(rctx, keyCStr, keyHandler);
             RedisGears_HashSetRecordSet(record, "value", val);
             RedisGears_HashSetRecordSet(record, "type", keyType);
-            RedisModule_CloseKey(keyHandler);
+            if (!keyPtr) {
+                // we open the key so we also need to close it
+                RedisModule_CloseKey(keyHandler);
+            }
         }else{
             RedisGears_HashSetRecordSet(record, "value", NULL);
             RedisGears_HashSetRecordSet(record, "type", RedisGears_StringRecordCreate(RG_STRDUP("empty"), strlen("empty")));
