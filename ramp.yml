@@ -10,6 +10,7 @@ min_redis_pack_version: '6.0.0'
 config_command: "RG.CONFIGSET"
 capabilities:
     - types
+    - crdb
     - failover_migrate
     - persistence_aof
     - persistence_rdb
