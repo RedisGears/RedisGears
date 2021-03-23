@@ -22,6 +22,9 @@ commands:
       test_params:
         type: string
         default: ""
+      redis_version:
+        type: string
+        default: "6"
       getredis_params:
         type: string
         default: ""
@@ -38,7 +41,7 @@ commands:
           no_output_timeout: 20m
       - run:
           name: Install Redis
-          command: python2 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
+          command: python2 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
@@ -88,9 +91,14 @@ jobs:
   linux-debian:
     docker:
       - image: redisfab/rmbuilder:6.0.9-x64-buster
+    parameters:
+      redis_version:
+        type: string
+        default: "6"
     steps:
       - build-steps:
           platform: debian
+          redis_version: <<parameters.redis_version>>
 
   valgrind:
     docker:
@@ -190,6 +198,26 @@ on-master: &on-master
   filters:
     branches:
       only: master
+    tags:
+      ignore: /.*/
+
+on-integ-branch: &on-integ-branch
+  filters:
+    branches:
+      only:
+        - master
+        - /^\d+\.\d+.*$/
+    tags:
+      ignore: /.*/
+
+not-on-integ-branch: &not-on-integ-branch
+  filters:
+    branches:
+      ignore:
+        - master
+        - /^\d+\.\d+.*$/
+    tags:
+      ignore: /.*/
 
 on-version-tags: &on-version-tags
   filters:
@@ -198,26 +226,14 @@ on-version-tags: &on-version-tags
     tags:
       only: /^v[0-9].*/
 
-on-master-and-version-tags: &on-master-and-version-tags
+on-integ-and-version-tags: &on-integ-and-version-tags
   filters:
     branches:
       only:
         - master
+        - /^\d+\.\d+.*$/
     tags:
       only: /^v[0-9].*/
-
-
-platform-build-defs: &platform-build-defs
-  requires:
-    - linux-debian
-  <<: *on-master-and-version-tags
-  # <<: *on-any-branch
-
-after-platform-builds: &after-platform-builds
-  requires:
-    - build-centos7
-    - build-bionic
-    - build-xenial
 
 
 workflows:
@@ -225,47 +241,52 @@ workflows:
   default_flow:
     jobs:
       - linux-debian:
-          <<: *on-any-branch
+          <<: *not-on-integ-branch
+      - linux-debian:
+          name: build-with-redis-<< matrix.redis_version >>
+          <<: *on-integ-branch
+          matrix:
+            parameters:
+              redis_version: ["6.0", "6.2"]
       - platform-build:
-          name: build-centos7
-          platform: centos7
+          <<: *on-integ-and-version-tags
           context: common
-          <<: *platform-build-defs
-      - platform-build:
-          name: build-bionic
-          platform: bionic
-          context: common
-          <<: *platform-build-defs
-      - platform-build:
-          name: build-xenial
-          platform: xenial
-          context: common
-          <<: *platform-build-defs
+          matrix:
+            parameters:
+              platform: [centos7, bionic, xenial, focal]
       - valgrind:
-          <<: *on-version-tags
+          <<: *on-integ-and-version-tags
           # <<: *on-any-branch
       - macos:
-          <<: *on-version-tags
-          # <<: *on-any-branch
+          <<: *on-integ-and-version-tags
       - build-multiarch-docker:
           context: common
           <<: *never
-          # <<: *on-version-tags
+          # <<: *on-integ-and-version-tags
       - deploy_snapshots:
           context: common
-          <<: *after-platform-builds
-          <<: *on-master
+          requires:
+            - platform-build
+          <<: *on-integ-branch
           # <<: *on-any-branch
       - deploy_releases:
           context: common
-          <<: *after-platform-builds
+          requires:
+            - platform-build
           <<: *on-version-tags
 
   nightly:
     triggers:
       - schedule:
           cron: "20 17 * * *"
-          <<: *on-master
+          filters:
+            branches:
+              only: master
     jobs:
       - macos
       - valgrind
+      - linux-debian:
+          name: build-with-redis-<< matrix.redis_version >>
+          matrix:
+            parameters:
+              redis_version: ["6.0", "6.2"]

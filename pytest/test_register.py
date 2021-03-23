@@ -2,12 +2,11 @@ from RLTest import Env
 import sys
 import os
 import time
+from includes import *
 
 from common import getConnectionByEnv
 from common import TimeLimit
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
-import paella
 
 class testUnregister:
     def __init__(self):
@@ -255,7 +254,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     env.cmd('xadd', 's', '*', 'foo', 'bar')
 
     # we have this part to make sure no two events will enter the same execution
-    # because the first write triggers the background event that reads all the data 
+    # because the first write triggers the background event that reads all the data
     # from the stream.
     try:
         with TimeLimit(4):
@@ -526,7 +525,7 @@ def testRegistersReplicatedToSlave():
                 numOfKeys = conn.get('NumOfKeys')
     except Exception:
         env.assertTrue(False, message='Failed waiting for keys to update')
-    
+
 
     ## make sure registrations did not run on slave (if it did NumOfKeys would get to 200)
     try:
@@ -583,7 +582,7 @@ def testSyncRegister(env):
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
-    
+
 def testOnRegisteredCallback(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB()."
@@ -724,7 +723,7 @@ def FailedOnMaster(r):
     if currNum is not None:
         currNum = int(currNum)
     if currNum == 5 and numSlaves == 1:
-        execute('set', 'inside_loop', '1')    
+        execute('set', 'inside_loop', '1')
         while True:
             time.sleep(1)
     execute('incr', 'NumOfElements')
@@ -901,7 +900,7 @@ def testStreamTrimming(env):
 
     env.cmd('XADD s2{06S} * foo bar')
     env.cmd('XADD s1{06S} * foo bar')
-    
+
 
     try:
         with TimeLimit(2):

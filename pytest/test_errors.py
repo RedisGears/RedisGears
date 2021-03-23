@@ -1,6 +1,7 @@
 from RLTest import Env
 import time
-from common import getConnectionByEnv
+from includes import *
+
 
 class testGenericErrors:
     def __init__(self):
@@ -297,7 +298,7 @@ class testStepsWrongArgs:
 
     def testStreamReaderTrimStreamBadValue(self):
         self.env.expect('rg.pyexecute', 'GearsBuilder("StreamReader").register(trimStream="test")').error()
-        
+
     def testKeysReadeReadValueBadValue(self):
         self.env.expect('rg.pyexecute', 'GearsBuilder().register(readValue=1)').error()
 

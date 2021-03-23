@@ -213,8 +213,6 @@ MK_CUSTOM_CLEAN=1
 
 .PHONY: deps $(DEPENDENCIES) static pack ramp_pack test setup fetch
 
-# build: bindirs $(TARGET)
-
 include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
@@ -299,7 +297,7 @@ setup:
 	$(SHOW)./system-setup.py
 
 fetch get_deps:
-	-$(SHOW)git submodule update --init --recursive
+#	-$(SHOW)git submodule update --init --recursive
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
 
 #----------------------------------------------------------------------------------------------

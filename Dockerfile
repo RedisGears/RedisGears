@@ -1,6 +1,6 @@
 # BUILD redisfab/redisgears:${VERSION}-${ARCH}-${OSNICK}
 
-ARG REDIS_VER=6.0.1
+ARG REDIS_VER=6.2.1
 
 # OSNICK=bionic|stretch|buster
 ARG OSNICK=buster
@@ -41,7 +41,7 @@ ARG TEST
 
 RUN if [ "$PACK" = "1" ]; then bash -l -c "make pack"; fi
 RUN if [ "$TEST" = "1" ]; then \
-		bash -l -c "TEST= make test TEST_ARGS='--verbose'" ;\
+		bash -l -c "TEST= make test" ;\
 		tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-${ARCH}-${OSNICK}.tgz . ;\
 	fi
 
@@ -60,7 +60,7 @@ RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
 RUN chown -R redis:redis /var/opt/redislabs
 
 COPY --from=builder --chown=redis:redis /build/redisgears.so $REDIS_MODULES/
-COPY --from=builder --chown=redis:redis /build/bin/linux-x64-release/python3_* /var/opt/redislabs/modules/rg/python3/
+COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/python3_* /var/opt/redislabs/modules/rg/python3/
 
 # This is needed in order to allow extraction of artifacts from platform-specific build
 # There is no use in removing this directory if $PACK !=1, because image side will only
