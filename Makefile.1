@@ -60,7 +60,7 @@ OS_VERSION_DESC:=$(shell python $(ROOT)/getos.py)
 
 DEPENDENCIES=libevent hiredis
 ifeq ($(WITH_PYTHON),1)
-DEPENDENCIES += gears_python
+DEPENDENCIES += gears_python cpython
 endif
 
 ifneq ($(filter all deps $(DEPENDENCIES) pack ramp-pack,$(MAKECMDGOALS)),)
@@ -100,7 +100,6 @@ define _SOURCES:=
 	mgmt.c
 	module.c
 	module_init.c
-	command_hook.c
 	readers/command_reader.c
 	readers/keys_reader.c
 	readers/shardid_reader.c
@@ -275,8 +274,8 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 
 setup:
 	@echo Setting up system...
-	$(SHOW)./deps/readies/bin/getpy2
-	$(SHOW)python2 ./system-setup.py
+	$(SHOW)./deps/readies/bin/getpy3
+	$(SHOW)python3 ./system-setup.py
 
 fetch get_deps:
 #	-$(SHOW)git submodule update --init --recursive
@@ -354,13 +353,9 @@ clean-gears-python:
 
 #----------------------------------------------------------------------------------------------
 
-ifeq ($(WITH_PYTHON),1)
-RAMP_OPT += GEARSPY_PATH=$(abspath $(GEARS_PYTHON))
-endif
-
-artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml
+artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot): $(TARGET) ramp.yml
 	@echo Packing module...
-	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) $(RAMP_OPT) ./pack.sh $(TARGET)
+	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) ./pack.sh $(TARGET)
 
 artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot): $(CPYTHON_PREFIX) $(GEARS_PYTHON)
 	@echo Packing Python plugin...
@@ -409,8 +404,8 @@ test: __sep
 ifneq ($(TEST),)
 	@set -e; \
 	cd pytest; \
-	BB=1 $(TEST_FLAGS) python2 -m RLTest --test $(TEST) $(TEST_ARGS) \
-		$(RLTEST_GDB) -s -v --module $(abspath $(TARGET)) \
+	BB=1 $(TEST_FLAGS) python3 -m RLTest --test $(TEST) $(TEST_ARGS) \
+		$(RLTEST_GDB) -s --module $(abspath $(TARGET)) \
 		--module-args "Plugin $(abspath $(GEARS_PYTHON))"
 else
 	$(SHOW)set -e; \

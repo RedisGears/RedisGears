@@ -8,6 +8,9 @@ ROOT=$(cd $HERE/..; pwd)
 READIES=$ROOT/deps/readies
 . $READIES/shibumi/defs
 
+OP=""
+[[ $NOP == 1 ]] && OP=echo
+
 [[ -z $MOD ]] && MOD="$ROOT/redisgears.so"
 if [[ ! -f $MOD ]]; then
 	eprint "No Gears module at $MOD"
@@ -44,12 +47,16 @@ run_tests() {
 		local shards_arg="--shards-count $shards"
 		local env="${ENV_PREFIX}-cluster"
 	fi
-	python2 -m RLTest --clear-logs --module $MOD --module-args "Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
+	$OP python2 -m RLTest --clear-logs --module $MOD --module-args "Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
 }
 
 cd $HERE
 mkdir -p logs
-run_tests 0 "$@"
-run_tests 1 "$@"
-run_tests 2 "$@"
-run_tests 3 "$@"
+if [[ -z $SHARDS ]]; then
+	run_tests 0 "$@"
+	run_tests 1 "$@"
+	run_tests 2 "$@"
+	run_tests 3 "$@"
+else
+	run_tests $SHARDS "$@"
+fi
