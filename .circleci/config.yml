@@ -335,7 +335,7 @@ workflows:
       - release_automation:
           <<: *on-version-tags
           requires:
-            - deploy_release
+            - deploy_releases
 
   nightly:
     triggers:
