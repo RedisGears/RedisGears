@@ -1,6 +1,29 @@
 version: 2.1
 
 commands:
+  abort_for_docs:
+    steps:
+      - run:
+          name: Avoid tests for docs
+          command: |
+            if [[ $CIRCLE_BRANCH == *_docs ]]; then
+              echo "Identifies as documents PR, no testing required"
+              circleci step halt
+            fi
+
+  early_return_for_forked_pull_requests:
+    description: >-
+      If this build is from a fork, stop executing the current job and return success.
+      This is useful to avoid steps that will fail due to missing credentials.
+    steps:
+      - run:
+          name: Early return if this build is from a forked PR
+          command: |
+            if [[ -n "$CIRCLE_PR_NUMBER" ]]; then
+              echo "Nothing to do for forked PRs, so marking this step successful"
+              circleci step halt
+            fi
+
   setup-executor:
     steps:
       - run:
@@ -11,6 +34,14 @@ commands:
             bash <(curl -fsSL https://get.docker.com)
       - setup_remote_docker:
           docker_layer_caching: true
+
+  setup-automation:
+    steps:
+      - run:
+          name: Setup automation
+          command: |
+            git submodule update --init deps/readies
+            ./deps/readies/bin/getpy2
 
   build-steps:
     parameters:
@@ -29,6 +60,7 @@ commands:
         type: string
         default: ""
     steps:
+      - abort_for_docs
       - checkout
       - run:
           name: Submodule checkout
@@ -59,6 +91,7 @@ commands:
       platform:
         type: string
     steps:
+      - abort_for_docs
       - setup-executor
       - checkout
       - run:
@@ -132,13 +165,14 @@ jobs:
             sudo mkdir -p /var/opt/redislabs
             sudo chmod 777 /var/opt/redislabs
       - build-steps:
-          platform: macosx
+          platform: macos
 
   build-multiarch-docker:
     machine:
       enabled: true
       image: cimg/base:2020.01
     steps:
+      - abort_for_docs
       - checkout
       - run:
           name: Setup Docker client experimental features
@@ -157,6 +191,8 @@ jobs:
     docker:
       - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
+      - abort_for_docs
+      - early_return_for_forked_pull_requests
       - attach_workspace:
           at: artifacts
       - run:
@@ -170,6 +206,8 @@ jobs:
     docker:
       - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
+      - abort_for_docs
+      - early_return_for_forked_pull_requests
       - attach_workspace:
           at: artifacts
       - run:
@@ -178,6 +216,26 @@ jobs:
             for f in artifacts/release/*.zip artifacts/release/*.tgz; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
+
+  release_automation:
+    docker:
+      - image: redisfab/rmbuilder:6.0.9-x64-buster
+    steps:
+      - checkout
+      - setup-automation
+      - run:
+          name: Run QA Automation
+          command: MODULE_VERSION=$CIRCLE_TAG VERBOSE=1 TEST=release ./tests/qa/run
+
+  nightly_automation:
+    docker:
+      - image: redisfab/rmbuilder:6.0.9-x64-buster
+    steps:
+      - checkout
+      - setup-automation
+      - run:
+          name: Run QA Automation
+          command: MODULE_VERSION=$CIRCLE_BRANCH VERBOSE=1 TEST=nightly QUICK=1 ./tests/qa/run
 
 
 on-any-branch: &on-any-branch
@@ -274,6 +332,10 @@ workflows:
           requires:
             - platform-build
           <<: *on-version-tags
+      - release_automation:
+          <<: *on-version-tags
+          requires:
+            - deploy_release
 
   nightly:
     triggers:
@@ -290,3 +352,4 @@ workflows:
           matrix:
             parameters:
               redis_version: ["6.0", "6.2"]
+      - nightly_automation
