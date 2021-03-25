@@ -410,7 +410,7 @@ ifneq ($(TEST),)
 	@set -e; \
 	cd pytest; \
 	BB=1 $(TEST_FLAGS) python2 -m RLTest --test $(TEST) $(TEST_ARGS) \
-		$(RLTEST_GDB) -s --module $(abspath $(TARGET)) \
+		$(RLTEST_GDB) -s -v --module $(abspath $(TARGET)) \
 		--module-args "Plugin $(abspath $(GEARS_PYTHON))"
 else
 	$(SHOW)set -e; \
