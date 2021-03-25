@@ -32,7 +32,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("zip unzip gawk")
 
         # pip cannot build gevent on ARM
-        if self.platform.is_arm() and self.dist == 'ubuntu' and self.version()[0] < 20:
+        if self.platform.is_arm() and self.dist == 'ubuntu' and self.os_version[0] < 20:
             self.install("python-gevent")
         else:
             self.pip_install("gevent")
@@ -50,8 +50,8 @@ class RedisGearsSetup(paella.Setup):
         if self.arch == 'x64':
             self.install_linux_gnu_tar()
 
-        if self.platform.is_arm():
-            self.install("python-gevent python-ujson")
+        if self.platform.is_arm() or self.dist == 'centos' and self.os_version[0] == 8:
+            self.install("python3-gevent python3-ujson")
         else:
             self.pip_install("gevent ujson")
 
@@ -76,12 +76,6 @@ class RedisGearsSetup(paella.Setup):
         self.install_gnu_utils()
 
         self.pip_install("gevent")
-
-    def centos(self):
-        if self.platform.osnick == "centos7":
-            self.install("yum install centos-release-scl-rh")
-            self.install("yum --enablerepo=centos-sclo-rh-testing install devtoolset-7-make")
-            self.install("devtoolset-7-make-4.2.1")
 
     def common_last(self):
         if self.with_python:
