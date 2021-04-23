@@ -730,7 +730,7 @@ That's an efficient processing pattern because data is first reduced locally, wh
 
 Using only our limited dataset it is unlikely that we'll be able to discern any difference in performance. Instead of collecting two records we'll be collecting three and that's hardly significant.
 
-Consider, however, what will happen once we start adding Revolio Clockberg Jr. (a.k.a Gearhead), Mr. Poopybutthole, Birdperson, Fart and the rest of the multiverse to the database. The number of input records and the number of families will increase accordingly, causing more and more records to be moved across the network and resulting in higher latencies.
+Consider, however, what will happen once we start adding Revolio Clockberg Jr. (a.k.a Gearhead), Donna Gueterman, Birdperson, Reverse Giraffe and the rest of the multiverse to the database. The number of input records and the number of families will increase accordingly, causing more and more records to be moved across the network and resulting in higher latencies.
 
 ## Repartitioning Data
 !!! important "Important reminder"
