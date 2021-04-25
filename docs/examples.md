@@ -43,6 +43,21 @@ There may be keys in the database. Some of these may have names beginning with t
 {{ include('examples/del-by-prefix.py') }}
 ```
 
+## Average on age field in json
+Calculate average on age field on all jsons keys starts with prefix `docs`
+
+**Author: [RedisLabs](https://redislabs.com/)**
+
+**Assumptions**
+
+[Json module](https://oss.redislabs.com/redisjson/) is loaded into the database
+
+**Python API**
+
+```python
+{{ include('examples/json-avg.py') }}
+```
+
 ## Basic Redis Stream Processing
 
 Copy every new message from a Redis Stream to a Redis Hash key.
