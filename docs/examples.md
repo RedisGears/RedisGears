@@ -44,13 +44,13 @@ There may be keys in the database. Some of these may have names beginning with t
 ```
 
 ## Average on age field in json
-Calculate average on age field on all jsons keys starts with prefix `docs`
+Calculates the average `age` scanning all JSON docs keys that start with prefix `docs`
 
 **Author: [RedisLabs](https://redislabs.com/)**
 
 **Assumptions**
 
-[Json module](https://oss.redislabs.com/redisjson/) is loaded into the database
+[Json module](https://oss.redislabs.com/redisjson/) is also loaded to Redis
 
 **Python API**
 
