@@ -209,6 +209,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .isMe = false,
             .status = NodeStatus_Disconnected,
             .sendClusterTopologyOnNextConnect = false,
+            .runId = NULL,
     };
     n->reconnectEvent = event_new(main_base, -1, 0, Cluster_Reconnect, n);
     n->resendHelloMessage = event_new(main_base, -1, 0, Cluster_ResendHelloMessage, n);
