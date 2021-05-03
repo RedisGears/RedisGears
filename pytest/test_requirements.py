@@ -59,6 +59,10 @@ def testDependenciesWithRegister():
 def testDependenciesBasicExportImport():
     env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
+
+    #disable rdb save
+    res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('config', 'set', 'save', '')).run()")
+
     env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
     md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph')
     env.assertEqual(md[5], 'yes')
