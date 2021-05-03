@@ -425,23 +425,16 @@ def testBasicStreamProcessing(env):
         return
     time.sleep(0.5)  # make sure the registration reached to all shards
     env.cmd('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
-    res = []
-    while len(res) < 1:
-        res = env.cmd('rg.dumpexecutions')
-    for e in res:
-        env.broadcast('rg.getresultsblocking', e[1])
-        env.cmd('rg.dropexecution', e[1])
-    env.assertEqual(conn.get('f1'), 'v1')
-    env.assertEqual(conn.get('f2'), 'v2')
-
-    # delete all registrations and executions so valgrind check will pass
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for r in executions:
-         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
-
-    registrations = env.cmd('RG.DUMPREGISTRATIONS')
-    for r in registrations:
-         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+    try:
+        with TimeLimit(5):
+            while True:
+                if conn.get('f1') != 'v1':
+                    continue
+                if conn.get('f2') != 'v2':
+                    continue
+                break
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for keys to updated')
 
 def testRegistersOnPrefix(env):
     conn = getConnectionByEnv(env)
