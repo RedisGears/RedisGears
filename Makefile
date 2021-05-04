@@ -47,6 +47,11 @@ make ramp-pack     # only build ramp package
 make verify-packs  # verify signatures of packages vs module so
 
 make show-version  # show module version
+
+make platform      # build for given platform
+  OSNICK=nick      # OS/distribution to build for
+  ARTIFACTS=1      # copy artifacts from builder container
+  TEST=1           # run tests
 endef
 
 MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
@@ -199,7 +204,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs
+.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs platform
 
 include $(MK)/rules
 
@@ -417,3 +422,9 @@ else
 	cd pytest; \
 	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh
 endif
+
+#----------------------------------------------------------------------------------------------
+
+platform:
+	$(SHOW)make -C build/docker build $(shell ./build/docker/version-params) OSNICK=$(OSNICK) \
+		TEST=$(TEST) ARTIFACTS=$(ARTIFACTS)
