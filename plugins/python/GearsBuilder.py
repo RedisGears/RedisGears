@@ -3,6 +3,8 @@ import copy
 import redisgears as rg
 from redisgears import executeCommand as execute
 from redisgears import callNext as call_next
+from redisgears import getCommand as get_command
+from redisgears import overrideReply as override_reply
 from redisgears import atomicCtx as atomic
 from redisgears import getMyHashTag as hashtag
 from redisgears import registerTimeEvent as registerTE

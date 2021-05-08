@@ -11,7 +11,7 @@
 #include "utils/arr_rm_alloc.h"
 #include <assert.h>
 
-pthread_key_t _lockKey;
+static pthread_key_t _lockKey;
 
 typedef struct LockHandlerCtx{
     int lockCounter;
