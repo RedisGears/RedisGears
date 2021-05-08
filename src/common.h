@@ -13,6 +13,7 @@
 #include "cluster.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include "utils/arr_rm_alloc.h"
 
 #if defined(DEBUG) || !defined(NDEBUG)
 #include "readies/cetara/diag/gdb.h"
