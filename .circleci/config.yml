@@ -275,12 +275,6 @@ workflows:
           requires:
             - platform-build
           <<: *on-version-tags
-      - linux-debian:
-          name: build-with-redis-<< matrix.redis_version >>
-          <<: *on-any-branch
-          matrix:
-            parameters:
-              redis_version: ["6.0", "6.2"]
 
   nightly:
     triggers:
