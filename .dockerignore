@@ -1,7 +1,7 @@
 # .git/
 /bin/
-/deps/cpython/
-/deps/libevent/
+# /deps/cpython/
+# /deps/libevent/
 /[0-9]*/
 /artifacts/
 /pytest/logs/

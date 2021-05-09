@@ -26,24 +26,22 @@ class RedisGearsSetup(paella.Setup):
 
     def debian_compat(self):
         self.run("%s/bin/getgcc" % READIES)
-        self.install("autotools-dev autoconf libtool gawk")
+        self.install("autotools-dev autoconf libtool")
 
         self.install("lsb-release")
-        self.install("zip unzip")
+        self.install("zip unzip gawk")
 
         # pip cannot build gevent on ARM
-        self.install("python-psutil")
-        if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
+        if self.platform.is_arm() and self.dist == 'ubuntu' and self.os_version[0] < 20:
             self.install("python-gevent")
         else:
             self.pip_install("gevent")
 
     def redhat_compat(self):
-        self.install("redhat-lsb-core")
-        self.run("%s/bin/enable-utf8" % READIES)
         self.run("%s/bin/getgcc --modern" % READIES)
         self.install("autoconf automake libtool")
 
+        self.install("redhat-lsb-core")
         self.install("zip unzip")
         self.install("libatomic file")
 
@@ -52,8 +50,10 @@ class RedisGearsSetup(paella.Setup):
         if self.arch == 'x64':
             self.install_linux_gnu_tar()
 
-        # pip cannot build gevent on ARM
-        self.install("python-gevent python-ujson")
+        if self.platform.is_arm() or self.dist == 'centos' and self.os_version[0] == 8:
+            self.install("python3-gevent python3-ujson")
+        else:
+            self.pip_install("gevent ujson")
 
     def fedora(self):
         self.run("%s/bin/getgcc" % READIES)

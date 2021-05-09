@@ -2,6 +2,7 @@ from RLTest import Env
 from common import getConnectionByEnv
 from common import TimeLimit
 import uuid
+from includes import *
 
 def testDependenciesInstall():
     env = Env(moduleArgs='CreateVenv 1')
@@ -58,6 +59,10 @@ def testDependenciesWithRegister():
 def testDependenciesBasicExportImport():
     env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
+
+    #disable rdb save
+    res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('config', 'set', 'save', '')).run()")
+
     env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
     md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph')
     env.assertEqual(md[5], 'yes')
@@ -120,7 +125,7 @@ def testAof(env):
     env.assertEqual(len(err), 0)
     env.assertEqual(len(res), env.shardsCount)
     for r in res:
-        env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)    
+        env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)
 
 def testDependenciesImportSerializationError():
     env = Env(moduleArgs='CreateVenv 1')

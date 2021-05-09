@@ -5,7 +5,7 @@ import signal
 import time
 from RLTest import Env
 from common import TimeLimit
-from common import getConnectionByEnv
+from includes import *
 
 
 class Connection(object):
@@ -391,7 +391,7 @@ def testSendTopology(env):
 
     with ShardMock(env) as shardMock:
         conn = shardMock.GetConnection()
-        
+
         env.expect('RG.NETWORKTEST').equal('OK')
 
         env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
@@ -413,7 +413,7 @@ def testStopListening(env):
 
     with ShardMock(env) as shardMock:
         conn = shardMock.GetConnection()
-        
+
         env.expect('RG.NETWORKTEST').equal('OK')
 
         env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
@@ -478,7 +478,7 @@ def testClusterRefreshOnOnlySingleNode(env):
         with TimeLimit(2):
             res = env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()')
             env.assertEqual(res, [[str(env.shardsCount)], []])
-    except Exception as e:  
+    except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to finish')
 
 def testClusterSetAfterHelloResponseFailure(env):

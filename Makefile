@@ -45,6 +45,11 @@ make ramp_pack     # only build ramp package
 make verify-packs  # verify signatures of packages vs module so
 
 make show-version  # show module version
+
+make platform      # build for given platform
+  OSNICK=nick      # OS/distribution to build for
+  ARTIFACTS=1      # copy artifacts from builder container
+  TEST=1           # run tests
 endef
 
 MK_ALL_TARGETS=bindirs deps build ramp_pack verify-packs
@@ -211,9 +216,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) static pack ramp_pack test setup fetch
-
-# build: bindirs $(TARGET)
+.PHONY: deps $(DEPENDENCIES) static pack ramp_pack test setup fetch platform
 
 include $(MK)/rules
 
@@ -299,7 +302,7 @@ setup:
 	$(SHOW)./system-setup.py
 
 fetch get_deps:
-	-$(SHOW)git submodule update --init --recursive
+#	-$(SHOW)git submodule update --init --recursive
 	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
 
 #----------------------------------------------------------------------------------------------
@@ -419,3 +422,7 @@ else
 endif
 
 #----------------------------------------------------------------------------------------------
+
+platform:
+	$(SHOW)make -C build/docker build $(shell ./build/docker/version-params) OSNICK=$(OSNICK) \
+		TEST=$(TEST) ARTIFACTS=$(ARTIFACTS)

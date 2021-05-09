@@ -4,10 +4,8 @@ from RLTest import Env
 import yaml
 import time
 from common import TimeLimit
-from common import getConnectionByEnv
+from includes import *
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../deps/readies"))
-import paella
 
 class testBasic:
     def __init__(self):
@@ -396,7 +394,7 @@ GB().map(InfinitLoop).run()
     res = env.cmd('RG.GETEXECUTION', executionId1)
     env.assertEqual(res[0][3][1], 'done')
     env.assertEqual(len(res[0][3][9]), 1) # number if error is one
-    
+
     env.expect('rg.dropexecution', executionId1).ok()
     env.expect('rg.dropexecution', executionId2).ok()
 
@@ -497,7 +495,7 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(steps))
         sdursum = 0
         for _, stype, _, sdur, _, sname, _, sarg in steps:
-            sdursum += sdur    
+            sdursum += sdur
         self.env.assertEqual(sdursum, 0)
         self.env.cmd('RG.DROPEXECUTION', id)
 
@@ -514,7 +512,7 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(steps))
         sdursum = 0
         for _, stype, _, sdur, _, sname, _, sarg in steps:
-            sdursum += sdur    
+            sdursum += sdur
         self.env.assertLessEqual(0, sdursum)
         self.env.cmd('RG.DROPEXECUTION', id)
 
