@@ -630,6 +630,7 @@ static void CommandReader_RdbSave(RedisModuleIO *rdb){
                 CommandReaderTriggerCtx* crtCtx = Gears_listNodeValue(node);
                 CommandReader_RdbSaveSingleRegistration(rdb, buff, crtCtx);
             }
+            Gears_listReleaseIterator(listIter);
         }
         Gears_dictReleaseIterator(iter);
     }else{

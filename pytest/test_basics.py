@@ -576,12 +576,13 @@ GB('ShardsIDReader').foreach(InifinitLoop).run()
     env.expect('RG.ABORTEXECUTION', executionId).ok()
     env.expect('RG.DROPEXECUTION', executionId).ok()
 
-def testMaxIdle():
-    env = Env(moduleArgs='ExecutionMaxIdleTime 500')
+def testMaxIdle(env):
     if env.shardsCount == 1:
         env.skip()
 
     conn = getConnectionByEnv(env)
+    
+    env.broadcast('RG.CONFIGSET', 'ExecutionMaxIdleTime', '500')
 
     longExecution = '''
 import time
@@ -766,3 +767,7 @@ GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(
 
     env.expect('RG.TRIGGER', 'test', 'error').equal('Execution max idle reached')
     env.expect('RG.TRIGGER', 'test', 'noerror').equal('Execution max idle reached')
+
+def testConfigGetSet(env):
+    env.expect('RG.CONFIGSET', 'test', 'test').contains('OK - value was saved in extra config dictionary')
+    env.expect('RG.CONFIGGET', 'test').equal(['test'])
