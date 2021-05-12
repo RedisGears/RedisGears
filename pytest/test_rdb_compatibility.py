@@ -2,19 +2,29 @@ import os
 import subprocess
 from includes import *
 
+from common import TimeLimit
 
 GEARS_CACHE_DIR = '/tmp/'
 BASE_RDBS_URL = 'https://s3.amazonaws.com/redismodules/redisgears/versions_rdbs_samples/'
 
+class RdbMetaData:
+    def __init__(self, fileName, nRegistrations, nExecutions):
+        self.fileName = fileName
+        self.nRegistrations = nRegistrations
+        self.nExecutions = nExecutions
+    
+    def getRdbMetaData(self):
+        return (self.fileName, self.nRegistrations, self.nExecutions)
+
 RDBS = [
-    ('redisgears_1.0.0.rdb', 1),
-    ('redisgears_1.0.0_2.rdb', 3),
+    RdbMetaData(fileName='redisgears_1.0.0.rdb', nRegistrations=1, nExecutions=0),
+    RdbMetaData(fileName='redisgears_1.0.0_2.rdb', nRegistrations=3, nExecutions=2)
 ]
 
 def downloadFiles():
     if not os.path.exists(GEARS_CACHE_DIR):
         os.makedirs(GEARS_CACHE_DIR)
-    for f, _ in RDBS:
+    for f, _, _ in [r.getRdbMetaData() for r in RDBS]:
         path = os.path.join(GEARS_CACHE_DIR, f)
         if not os.path.exists(path):
             subprocess.call(['wget', '-q', BASE_RDBS_URL + f, '-O', path])
@@ -34,7 +44,7 @@ def testRDBCompatibility(env):
             env.skip()
             return
 
-    for fileName, nRegistrations in RDBS:
+    for fileName, nRegistrations, nExecutions in [r.getRdbMetaData() for r in RDBS]:
         env.stop()
         filePath = os.path.join(GEARS_CACHE_DIR, fileName)
         try:
@@ -48,6 +58,19 @@ def testRDBCompatibility(env):
         res = env.cmd('rg.pydumpreqs')
         env.assertEqual(len(res), 1)
         env.assertTrue(env.checkExitCode())
+
+        # wait until we will have enough executions
+        try:
+            with TimeLimit(5):
+                executions = 0
+                while executions != nExecutions:
+                    r = env.cmd('rg.dumpexecutions')
+                    res = [r for r in env.cmd('rg.dumpexecutions') if r[3] == 'done']
+                    executions = len(res)
+        except Exception as e:
+            print(e)
+            env.assertTrue(False, message='Could not wait for all executions to finished')
+
 
 if __name__ == "__main__":
     if not downloadFiles():
