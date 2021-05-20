@@ -1,6 +1,36 @@
 version: 2.1
 
 commands:
+
+  # If this build is from a fork, stop executing the current job and return success.
+  # This is useful to avoid steps that will fail due to missing credentials.
+  early_return_for_forked_pull_requests:
+    steps:
+      - run:
+          name: Early return if this build is from a forked PR
+          command: |
+            if [ -n "$CIRCLE_PR_NUMBER" ]; then
+              echo "Nothing to do for forked PRs, so marking this step successful."
+              circleci step halt
+            fi
+
+  early_returns:
+    steps:
+      - run:
+          name: Early return if this is a docs build
+          command: |
+            if [[ $CIRCLE_BRANCH == *docs ]]; then
+              echo "Identifies as documents PR, no testing required."
+              circleci step halt
+            fi
+      - run:
+          name: Early return if this branch should ignore CI
+          command: |
+            if [[ $CIRCLE_BRANCH == *noci ]]; then
+              echo "Identifies as actively ignoring CI, no testing required."
+              circleci step halt
+            fi
+
   setup-executor:
     steps:
       - run:
@@ -29,6 +59,7 @@ commands:
         type: string
         default: ""
     steps:
+      - early_returns
       - checkout
       - run:
           name: Submodule checkout
@@ -51,6 +82,7 @@ commands:
           name: Test
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
+      - early_return_for_forked_pull_requests
       - store_artifacts:
           path: pytest/logs
 
@@ -59,6 +91,8 @@ commands:
       platform:
         type: string
     steps:
+      - early_returns
+      - early_return_for_forked_pull_requests
       - setup-executor
       - checkout
       - run:
