@@ -32,6 +32,10 @@ ADD . /build
 
 RUN ./deps/readies/bin/getpy2
 RUN ./system-setup.py
+RUN apt-get update -qq
+RUN apt-get upgrade -qqy
+RUN rm -rf /var/cache/apt/
+
 RUN bash -l -c "make fetch SHOW=1"
 RUN bash -l -c "make all SHOW=1"
 RUN ./getver > artifacts/VERSION
