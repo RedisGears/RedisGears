@@ -72,6 +72,11 @@ ifneq ($(filter all deps $(DEPENDENCIES) pack ramp-pack,$(MAKECMDGOALS)),)
 DEPS=1
 endif
 
+ifeq ($(COV),1)
+CFLAGS += -fprofile-args -ftest-coverage
+MODULE_LDFLAGS += -fprofile-arcs
+endif
+
 #----------------------------------------------------------------------------------------------
 
 ifeq ($(WITH_PYTHON),1)
@@ -428,3 +433,14 @@ endif
 platform:
 	$(SHOW)make -C build/docker build $(shell ./build/docker/version-params) OSNICK=$(OSNICK) \
 		TEST=$(TEST) ARTIFACTS=$(ARTIFACTS)
+
+COV_DIR=tmp/lcov
+cov coverage:
+	@$(MAKE) clean
+	@$(MAKE) test COV=1
+	mkdir -p $(COV_DIR)
+	gcov -c -b $(SRCDIR)/* > /dev/null 2>&1
+	lcov -d . -c -o $(COV_DIR)/gcov.info --no-external > /dev/null 2>&1
+	lcov -r $(COV_DIR)/gcov.info "*test*" "*contrib*" "*redismodule.h" "*util.c*" -o $(COV_DIR)/gcov.info > /dev/null 2>&1
+	lcov -l $(COV_DIR)/gcov.info
+	genhtml --legend -o $(COV_DIR)/report $(COV_DIR)/gcov.info > /dev/null 2>&1

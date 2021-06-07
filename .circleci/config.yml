@@ -134,6 +134,14 @@ jobs:
           platform: debian
           redis_version: <<parameters.redis_version>>
 
+      - run:
+          name: Coverage
+          command: |
+            apt-get update -qq
+            apt-get install -y lcov curl
+            make coverage
+            bash <(curl -s https://codecov.io/bash)
+
   valgrind:
     docker:
       - image: redisfab/rmbuilder:6.0.9-x64-buster
@@ -275,9 +283,11 @@ workflows:
   default_flow:
     jobs:
       - linux-debian:
+          context: common
           <<: *not-on-integ-branch
       - linux-debian:
           name: build-with-redis-<< matrix.redis_version >>
+          context: common
           <<: *on-integ-branch
           matrix:
             parameters:
