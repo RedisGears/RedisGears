@@ -82,6 +82,13 @@ commands:
           name: Test
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
+      - run:
+          name: Coverage
+          command: |
+            apt-get update -qq
+            apt-get install -y lcov curl
+            make coverage
+            bash <(curl -s https://codecov.io/bash)
       - early_return_for_forked_pull_requests
       - store_artifacts:
           path: pytest/logs
@@ -133,14 +140,6 @@ jobs:
       - build-steps:
           platform: debian
           redis_version: <<parameters.redis_version>>
-
-      - run:
-          name: Coverage
-          command: |
-            apt-get update -qq
-            apt-get install -y lcov curl
-            make coverage
-            bash <(curl -s https://codecov.io/bash)
 
   valgrind:
     docker:
