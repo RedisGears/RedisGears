@@ -35,7 +35,9 @@ include $(MK)/defs
 export CFLAGS=\
 	-fPIC \
 	-Wno-nullability-completeness \
-	-Wno-expansion-to-defined
+	-Wno-expansion-to-defined \
+	-fno-semantic-interposition \
+	-Bsymbolic
 
 ifeq ($(OS),macos)
 BINUTILS_PREFIX:=$(shell brew --prefix binutils)
