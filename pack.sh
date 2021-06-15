@@ -32,7 +32,7 @@ if [[ $1 == --help || $1 == help ]]; then
 		JUST_PRINT=1  Only print package names, do not generate
 
 		VARIANT=name        Build variant (empty for standard packages)
-		BRANCH=name         Branch name for snapshot packages
+		BRANCH=name         Branch name for snapshot packages (also: GEARS_PACK_BRANCH=name)
 		GITSHA=1            Append Git SHA to shapshot package names
 		CPYTHON_PREFIX=dir  Python install dir
 		GEARSPY_PATH=path   Path of gears_python.so
@@ -176,9 +176,9 @@ pack_sym() {
 
 #----------------------------------------------------------------------------------------------
 
-PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
+PACKAGE_NAME=redisgears
 
-[[ -z $BRANCH ]] && BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
+[[ -z $BRANCH ]] && BRANCH=${GEARS_PACK_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
 BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
 if [[ $GITSHA == 1 ]]; then
 	GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)

@@ -82,9 +82,16 @@ commands:
           name: Test
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
-      - early_return_for_forked_pull_requests
       - store_artifacts:
           path: pytest/logs
+      - early_return_for_forked_pull_requests
+      - persist_to_workspace:
+          root: artifacts
+          paths:
+            - 'snapshot/*.zip'
+            - 'snapshot/*.tgz'
+            - 'release/*.zip'
+            - 'release/*.tgz'
 
   platform-build-steps:
     parameters:
@@ -92,7 +99,6 @@ commands:
         type: string
     steps:
       - early_returns
-      - early_return_for_forked_pull_requests
       - setup-executor
       - checkout
       - run:
@@ -103,9 +109,8 @@ commands:
       - run:
           name: Build for platform
           command: |
-            docker login -u redisfab -p $DOCKER_REDISFAB_PWD
             pushd build/docker
-            make build publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
+            make build $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
@@ -113,6 +118,15 @@ commands:
           no_output_timeout: 40m
       - store_artifacts:
           path: pytest/logs
+      - early_return_for_forked_pull_requests
+      - run:
+          name: Deploy for platform
+          command: |
+            docker login -u redisfab -p $DOCKER_REDISFAB_PWD
+            pushd build/docker
+            make publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 SHOW=1
+            popd
+          no_output_timeout: 40m
       - persist_to_workspace:
           root: artifacts
           paths:
@@ -124,7 +138,7 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     parameters:
       redis_version:
         type: string
@@ -136,7 +150,7 @@ jobs:
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
       - build-steps:
           platform: debian
@@ -166,7 +180,7 @@ jobs:
             sudo mkdir -p /var/opt/redislabs
             sudo chmod 777 /var/opt/redislabs
       - build-steps:
-          platform: macosx
+          platform: macos
 
   build-multiarch-docker:
     machine:
@@ -189,7 +203,7 @@ jobs:
 
   deploy_snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
@@ -202,7 +216,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
