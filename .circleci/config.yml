@@ -82,6 +82,9 @@ commands:
           name: Test
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
+      - run:
+          name: Cleanup test log dir
+          command: rm -f pytest/logs/*.rdb
       - store_artifacts:
           path: pytest/logs
       - early_return_for_forked_pull_requests
@@ -116,6 +119,9 @@ commands:
             mkdir -p $logs_d
             tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
+      - run:
+          name: Cleanup test log dir
+          command: rm -f pytest/logs/*.rdb
       - store_artifacts:
           path: pytest/logs
       - early_return_for_forked_pull_requests
