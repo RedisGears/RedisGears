@@ -1,26 +1,33 @@
 version: 2.1
 
 commands:
-  abort_for_docs:
-    steps:
-      - run:
-          name: Avoid tests for docs
-          command: |
-            if [[ $CIRCLE_BRANCH == *_docs ]]; then
-              echo "Identifies as documents PR, no testing required"
-              circleci step halt
-            fi
 
+  # If this build is from a fork, stop executing the current job and return success.
+  # This is useful to avoid steps that will fail due to missing credentials.
   early_return_for_forked_pull_requests:
-    description: >-
-      If this build is from a fork, stop executing the current job and return success.
-      This is useful to avoid steps that will fail due to missing credentials.
     steps:
       - run:
           name: Early return if this build is from a forked PR
           command: |
-            if [[ -n "$CIRCLE_PR_NUMBER" ]]; then
-              echo "Nothing to do for forked PRs, so marking this step successful"
+            if [ -n "$CIRCLE_PR_NUMBER" ]; then
+              echo "Nothing to do for forked PRs, so marking this step successful."
+              circleci step halt
+            fi
+
+  early_returns:
+    steps:
+      - run:
+          name: Early return if this is a docs build
+          command: |
+            if [[ $CIRCLE_BRANCH == *docs ]]; then
+              echo "Identifies as documents PR, no testing required."
+              circleci step halt
+            fi
+      - run:
+          name: Early return if this branch should ignore CI
+          command: |
+            if [[ $CIRCLE_BRANCH == *noci ]]; then
+              echo "Identifies as actively ignoring CI, no testing required."
               circleci step halt
             fi
 
@@ -60,7 +67,7 @@ commands:
         type: string
         default: ""
     steps:
-      - abort_for_docs
+      - early_returns
       - checkout
       - run:
           name: Submodule checkout
@@ -83,6 +90,7 @@ commands:
           name: Test
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
+      - early_return_for_forked_pull_requests
       - store_artifacts:
           path: pytest/logs
 
@@ -91,7 +99,8 @@ commands:
       platform:
         type: string
     steps:
-      - abort_for_docs
+      - early_returns
+      - early_return_for_forked_pull_requests
       - setup-executor
       - checkout
       - run:
@@ -165,14 +174,13 @@ jobs:
             sudo mkdir -p /var/opt/redislabs
             sudo chmod 777 /var/opt/redislabs
       - build-steps:
-          platform: macos
+          platform: macosx
 
   build-multiarch-docker:
     machine:
       enabled: true
       image: cimg/base:2020.01
     steps:
-      - abort_for_docs
       - checkout
       - run:
           name: Setup Docker client experimental features
@@ -191,8 +199,6 @@ jobs:
     docker:
       - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
-      - abort_for_docs
-      - early_return_for_forked_pull_requests
       - attach_workspace:
           at: artifacts
       - run:
@@ -206,8 +212,6 @@ jobs:
     docker:
       - image: redisfab/rmbuilder:6.0.9-x64-buster
     steps:
-      - abort_for_docs
-      - early_return_for_forked_pull_requests
       - attach_workspace:
           at: artifacts
       - run:
@@ -219,7 +223,7 @@ jobs:
 
   release_automation:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
       - checkout
       - setup-automation
@@ -229,7 +233,7 @@ jobs:
 
   nightly_automation:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
       - checkout
       - setup-automation
@@ -352,4 +356,3 @@ workflows:
           matrix:
             parameters:
               redis_version: ["6.0", "6.2"]
-      - nightly_automation

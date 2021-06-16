@@ -767,3 +767,7 @@ GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(
 
     env.expect('RG.TRIGGER', 'test', 'error').equal('Execution max idle reached')
     env.expect('RG.TRIGGER', 'test', 'noerror').equal('Execution max idle reached')
+
+def testConfigGetSet(env):
+    env.expect('RG.CONFIGSET', 'test', 'test').contains('OK - value was saved in extra config dictionary')
+    env.expect('RG.CONFIGGET', 'test').equal(['test'])
