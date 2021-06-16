@@ -42,6 +42,14 @@ commands:
       - setup_remote_docker:
           docker_layer_caching: true
 
+  setup-automation:
+    steps:
+      - run:
+          name: Setup automation
+          command: |
+            git submodule update --init deps/readies
+            ./deps/readies/bin/getpy2
+
   build-steps:
     parameters:
       platform:
@@ -213,6 +221,26 @@ jobs:
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
 
+  release_automation:
+    docker:
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
+    steps:
+      - checkout
+      - setup-automation
+      - run:
+          name: Run QA Automation
+          command: MODULE_VERSION=$CIRCLE_TAG VERBOSE=1 TEST=release ./tests/qa/run
+
+  nightly_automation:
+    docker:
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
+    steps:
+      - checkout
+      - setup-automation
+      - run:
+          name: Run QA Automation
+          command: MODULE_VERSION=$CIRCLE_BRANCH VERBOSE=1 TEST=nightly QUICK=1 ./tests/qa/run
+
 
 on-any-branch: &on-any-branch
   filters:
@@ -308,6 +336,10 @@ workflows:
           requires:
             - platform-build
           <<: *on-version-tags
+      - release_automation:
+          <<: *on-version-tags
+          requires:
+            - deploy_releases
 
   nightly:
     triggers:
