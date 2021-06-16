@@ -1,7 +1,6 @@
 version: 2.1
 
 commands:
-
   # If this build is from a fork, stop executing the current job and return success.
   # This is useful to avoid steps that will fail due to missing credentials.
   early_return_for_forked_pull_requests:
@@ -176,7 +175,7 @@ jobs:
 
   macos:
     macos:
-      xcode: 11.3.0
+      xcode: 11.6.0
     steps:
       - run:
           name: Fix macOS setup
@@ -193,6 +192,7 @@ jobs:
       enabled: true
       image: cimg/base:2020.01
     steps:
+      - early_returns
       - checkout
       - run:
           name: Setup Docker client experimental features
@@ -202,15 +202,22 @@ jobs:
       - run:
           name: Build
           command: |
-            sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
             cd build/docker
             make build
+      - early_return_for_forked_pull_requests
+      - run:
+          name: Deploy
+          command: |
+            sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
+            cd build/docker
             sudo make publish
 
   deploy_snapshots:
     docker:
       - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
+      - early_returns
+      - early_return_for_forked_pull_requests
       - attach_workspace:
           at: artifacts
       - run:
