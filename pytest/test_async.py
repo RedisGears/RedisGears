@@ -52,7 +52,7 @@ def WaitForKeyChange(r):
     return f
 GB('CommandReader').map(WaitForKeyChange).register(trigger='WaitForKeyChange', mode='async_local')
 
-def ForEach(r):
+async def ForEach(r):
     def unblock(x):
         global blocked
         try:
@@ -60,7 +60,7 @@ def ForEach(r):
             blocked = []
         except Exception as e:
             print(e)
-    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+    await GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
 GB().foreach(ForEach).register(mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()
@@ -253,7 +253,7 @@ GB().foreach(ForEach).register(mode='async_local')
             with TimeLimit(50):
                 while bk.isAlive:
                     conn.execute_command('set', 'x', '1')
-                    time.sleep(0.1)
+                    time.sleep(1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
@@ -315,7 +315,7 @@ def WaitForKeyChangeReturnSame(r, *args):
     return f
 GB('CommandReader').groupby(lambda x: 'key', WaitForKeyChangeReturnSame).register(trigger='WaitForKeyChangeAccumulateby', mode='async_local')
 
-def ForEachFailed(r):
+async def ForEachFailed(r):
     def unblock(x):
         global blocked
         try:
@@ -323,7 +323,7 @@ def ForEachFailed(r):
             blocked = []
         except Exception as e:
             print(e)
-    GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
+    await GB('ShardsIDReader').map(lambda x: r).foreach(unblock).run()
 GB().foreach(ForEachFailed).register('y', mode='async_local')
     '''
     env.expect('RG.PYEXECUTE', script).ok()
@@ -646,7 +646,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
                 with TimeLimit(50):
                     while bk1.isAlive or bk2.isAlive:
                         conn.execute_command('RG.TRIGGER', 'unblock')
-                        time.sleep(0.1)
+                        time.sleep(1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 

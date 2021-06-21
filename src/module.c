@@ -29,6 +29,7 @@
 #include "lock_handler.h"
 #include <dlfcn.h>
 #include <dirent.h>
+#include "command_hook.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -316,6 +317,10 @@ static KeysReaderTriggerArgs* RG_KeysReaderTriggerArgsCreate(const char* prefix,
     return KeysReaderTriggerArgs_Create(prefix, eventTypes, keyTypes, readValue);
 }
 
+static void RG_KeysReaderTriggerArgsSetHookCommands(KeysReaderTriggerArgs* krta, Arr(char*) hookCommands){
+    return KeysReaderTriggerArgs_SetTriggerHookCommands(krta, hookCommands);
+}
+
 static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
     return CommandReaderTriggerArgs_CreateTrigger(trigger);
 }
@@ -346,6 +351,29 @@ static void RG_CommandReaderTriggerCtxFree(CommandReaderTriggerCtx* crtCtx){
 
 static void RG_KeysReaderTriggerArgsFree(KeysReaderTriggerArgs* args){
     return KeysReaderTriggerArgs_Free(args);
+}
+
+static int RG_KeysReaderSetAvoidEvents(int avoidEvents){
+    return KeyReader_SetAvoidEvents(avoidEvents);
+}
+
+static CommandCtx* RG_CommandCtxGetShallowCopy(CommandCtx* cmdCtx){
+    return KeyReader_CommandCtxGetShallowCopy(cmdCtx);
+}
+static void RG_CommandCtxFree(CommandCtx* cmdCtx){
+    KeyReader_CommandCtxFree(cmdCtx);
+}
+
+static int RG_CommandCtxOverrideReply(CommandCtx* cmdCtx, Record* r, char** err){
+    return KeyReader_CommandCtxOverrideReply(cmdCtx, r, err);
+}
+
+static RedisModuleString** RG_CommandCtxGetCommand(CommandCtx* cmdCtx, size_t* len){
+    return KeyReader_CommandCtxGetCommand(cmdCtx, len);
+}
+
+static CommandCtx* RG_CommandCtxGet(ExecutionCtx* ectx){
+    return KeyReader_CommandCtxGet(ectx);
 }
 
 static void RG_FreeFlatExecution(FlatExecutionPlan* fep){
@@ -745,6 +773,24 @@ static void RG_AddConfigHooks(BeforeConfigSet before, AfterConfigSet after, GetC
     GearsConfig_AddHooks(before, after, getConfig);
 }
 
+RedisModuleEventCallback* pluginLoadingCallbacks;
+
+static void RG_RegisterLoadingEvent(RedisModuleEventCallback pluginLoadingCallback){
+    if(!pluginLoadingCallbacks){
+        pluginLoadingCallbacks = array_new(RedisModuleEventCallback, 10);
+    }
+    pluginLoadingCallbacks = array_append(pluginLoadingCallbacks, pluginLoadingCallback);
+
+}
+
+static void RedisGears_OnLoadingEvent(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
+    if(pluginLoadingCallbacks){
+        for(size_t i = 0 ; i < array_len(pluginLoadingCallbacks) ; ++i){
+            pluginLoadingCallbacks[i](ctx, eid, subevent, data);
+        }
+    }
+}
+
 static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     if(when == REDISMODULE_AUX_BEFORE_RDB){
         // save loaded plugins
@@ -921,7 +967,14 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(StreamReaderTriggerArgsCreate, ctx);
     REGISTER_API(StreamReaderTriggerArgsFree, ctx);
     REGISTER_API(KeysReaderTriggerArgsCreate, ctx);
+    REGISTER_API(KeysReaderTriggerArgsSetHookCommands, ctx);
     REGISTER_API(KeysReaderTriggerArgsFree, ctx);
+    REGISTER_API(KeysReaderSetAvoidEvents, ctx);
+    REGISTER_API(CommandCtxGetShallowCopy, ctx);
+    REGISTER_API(CommandCtxFree, ctx);
+    REGISTER_API(CommandCtxOverrideReply, ctx);
+    REGISTER_API(CommandCtxGetCommand, ctx);
+    REGISTER_API(CommandCtxGet, ctx);
     REGISTER_API(CommandReaderTriggerArgsCreate, ctx);
     REGISTER_API(CommandReaderTriggerArgsCreateHook, ctx);
     REGISTER_API(CommandReaderTriggerArgsFree, ctx);
@@ -1043,6 +1096,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(AddLockStateHandler, ctx);
     REGISTER_API(SetAbortCallback, ctx);
     REGISTER_API(AddConfigHooks, ctx);
+    REGISTER_API(RegisterLoadingEvent, ctx);
 
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
@@ -1177,6 +1231,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     Record_Initialize();
 
+    if(CommandHook_Init(ctx) != REDISMODULE_OK){
+        RedisModule_Log(staticCtx, "warning", "could not initialize command hooker");
+        return REDISMODULE_ERR;
+    }
+
     if(KeysReader_Initialize(ctx) != REDISMODULE_OK){
     	RedisModule_Log(staticCtx, "warning", "could not initialize default keys reader.");
 		return REDISMODULE_ERR;
@@ -1203,6 +1262,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     if(RedisGears_CreateGearsDataType(ctx) != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "failed create RedisGear DataType");
+        return REDISMODULE_ERR;
+    }
+
+    if(RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_Loading, RedisGears_OnLoadingEvent) != REDISMODULE_OK){
+        RedisModule_Log(staticCtx, "warning", "Could not subscribe to loaded events");
         return REDISMODULE_ERR;
     }
 

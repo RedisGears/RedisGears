@@ -209,6 +209,7 @@ static Node* CreateNode(const char* id, const char* ip, unsigned short port, con
             .isMe = false,
             .status = NodeStatus_Disconnected,
             .sendClusterTopologyOnNextConnect = false,
+            .runId = NULL,
     };
     n->reconnectEvent = event_new(main_base, -1, 0, Cluster_Reconnect, n);
     n->resendHelloMessage = event_new(main_base, -1, 0, Cluster_ResendHelloMessage, n);
@@ -577,8 +578,13 @@ static void Cluster_FreeMsg(Msg* msg){
         RG_FREE(msg->sendMsg.function);
         RG_FREE(msg->sendMsg.msg);
         break;
-    case CLUSTER_REFRESH_MSG:
     case CLUSTER_SET_MSG:
+        for(size_t i = 0 ; i < msg->clusterSet.argc ; ++i){
+            RedisModule_FreeString(0, msg->clusterSet.argv[i]);
+        }
+        RG_FREE(msg->clusterSet.argv);
+        break;
+    case CLUSTER_REFRESH_MSG:
         break;
     default:
         RedisModule_Assert(false);
@@ -948,7 +954,12 @@ int Cluster_ClusterSet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         RedisModule_ReplyWithError(ctx, "Could not parse cluster set arguments");
         return REDISMODULE_OK;
     }
-    Cluster_SendClusterSet(ctx, argv, argc, true);
+    // we must copy argv because if the client will disconnect the redis will free it
+    RedisModuleString **argvNew = RG_ALLOC(sizeof(RedisModuleString *) * argc);
+    for(size_t i = 0 ; i < argc ; ++i){
+        argvNew[i] = RedisModule_CreateStringFromString(NULL, argv[i]);
+    }
+    Cluster_SendClusterSet(ctx, argvNew, argc, true);
     return REDISMODULE_OK;
 }
 
@@ -957,6 +968,11 @@ int Cluster_ClusterSetFromShard(RedisModuleCtx *ctx, RedisModuleString **argv, i
         RedisModule_ReplyWithError(ctx, "Could not parse cluster set arguments");
         return REDISMODULE_OK;
     }
-    Cluster_SendClusterSet(ctx, argv, argc, false);
+    // we must copy argv because if the client will disconnect the redis will free it
+    RedisModuleString **argvNew = RG_ALLOC(sizeof(RedisModuleString *) * argc);
+    for(size_t i = 0 ; i < argc ; ++i){
+        argvNew[i] = RedisModule_CreateStringFromString(NULL, argv[i]);
+    }
+    Cluster_SendClusterSet(ctx, argvNew, argc, false);
     return REDISMODULE_OK;
 }

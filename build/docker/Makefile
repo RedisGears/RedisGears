@@ -9,6 +9,8 @@ OSNICK ?= buster
 REPO=redisfab
 STEM=$(REPO)/redisgears
 
+REDIS_VER=6.2.4
+
 ART_DIR=$(ROOT)/artifacts
 ART_INT_DIR=/var/opt/redislabs/artifacts
 

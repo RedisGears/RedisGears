@@ -1,6 +1,35 @@
 version: 2.1
 
 commands:
+  # If this build is from a fork, stop executing the current job and return success.
+  # This is useful to avoid steps that will fail due to missing credentials.
+  early_return_for_forked_pull_requests:
+    steps:
+      - run:
+          name: Early return if this build is from a forked PR
+          command: |
+            if [ -n "$CIRCLE_PR_NUMBER" ]; then
+              echo "Nothing to do for forked PRs, so marking this step successful."
+              circleci step halt
+            fi
+
+  early_returns:
+    steps:
+      - run:
+          name: Early return if this is a docs build
+          command: |
+            if [[ $CIRCLE_BRANCH == *docs ]]; then
+              echo "Identifies as documents PR, no testing required."
+              circleci step halt
+            fi
+      - run:
+          name: Early return if this branch should ignore CI
+          command: |
+            if [[ $CIRCLE_BRANCH == *noci ]]; then
+              echo "Identifies as actively ignoring CI, no testing required."
+              circleci step halt
+            fi
+
   setup-executor:
     steps:
       - run:
@@ -12,6 +41,14 @@ commands:
       - setup_remote_docker:
           docker_layer_caching: true
 
+  setup-automation:
+    steps:
+      - run:
+          name: Setup automation
+          command: |
+            git submodule update --init deps/readies
+            ./deps/readies/bin/getpy2
+
   build-steps:
     parameters:
       platform:
@@ -22,10 +59,14 @@ commands:
       test_params:
         type: string
         default: ""
+      redis_version:
+        type: string
+        default: "6"
       getredis_params:
         type: string
         default: ""
     steps:
+      - early_returns
       - checkout
       - run:
           name: Submodule checkout
@@ -38,7 +79,7 @@ commands:
           no_output_timeout: 20m
       - run:
           name: Install Redis
-          command: python3 ./deps/readies/bin/getredis -v 6 --force <<parameters.getredis_params>>
+          command: python3 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
@@ -48,14 +89,26 @@ commands:
           name: Test
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
+      - run:
+          name: Cleanup test log dir
+          command: rm -f pytest/logs/*.rdb
       - store_artifacts:
           path: pytest/logs
+      - early_return_for_forked_pull_requests
+      - persist_to_workspace:
+          root: artifacts
+          paths:
+            - 'snapshot/*.zip'
+            - 'snapshot/*.tgz'
+            - 'release/*.zip'
+            - 'release/*.tgz'
 
   platform-build-steps:
     parameters:
       platform:
         type: string
     steps:
+      - early_returns
       - setup-executor
       - checkout
       - run:
@@ -66,16 +119,27 @@ commands:
       - run:
           name: Build for platform
           command: |
-            docker login -u redisfab -p $DOCKER_REDISFAB_PWD
             pushd build/docker
-            make build publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
+            make build $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
             tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
+      - run:
+          name: Cleanup test log dir
+          command: rm -f pytest/logs/*.rdb
       - store_artifacts:
           path: pytest/logs
+      - early_return_for_forked_pull_requests
+      - run:
+          name: Deploy for platform
+          command: |
+            docker login -u redisfab -p $DOCKER_REDISFAB_PWD
+            pushd build/docker
+            make publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 SHOW=1
+            popd
+          no_output_timeout: 40m
       - persist_to_workspace:
           root: artifacts
           paths:
@@ -87,14 +151,19 @@ commands:
 jobs:
   linux-debian:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
+    parameters:
+      redis_version:
+        type: string
+        default: "6"
     steps:
       - build-steps:
           platform: debian
+          redis_version: <<parameters.redis_version>>
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
       - build-steps:
           platform: debian
@@ -114,7 +183,7 @@ jobs:
 
   macos:
     macos:
-      xcode: 11.3.0
+      xcode: 11.6.0
     steps:
       - run:
           name: Fix macOS setup
@@ -124,13 +193,14 @@ jobs:
             sudo mkdir -p /var/opt/redislabs
             sudo chmod 777 /var/opt/redislabs
       - build-steps:
-          platform: macosx
+          platform: macos
 
   build-multiarch-docker:
     machine:
       enabled: true
       image: cimg/base:2020.01
     steps:
+      - early_returns
       - checkout
       - run:
           name: Setup Docker client experimental features
@@ -140,15 +210,22 @@ jobs:
       - run:
           name: Build
           command: |
-            sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
             cd build/docker
             make build
+      - early_return_for_forked_pull_requests
+      - run:
+          name: Deploy
+          command: |
+            sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
+            cd build/docker
             sudo make publish
 
   deploy_snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
+      - early_returns
+      - early_return_for_forked_pull_requests
       - attach_workspace:
           at: artifacts
       - run:
@@ -160,7 +237,7 @@ jobs:
 
   deploy_releases:
     docker:
-      - image: redisfab/rmbuilder:6.0.9-x64-buster
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
     steps:
       - attach_workspace:
           at: artifacts
@@ -170,6 +247,26 @@ jobs:
             for f in artifacts/release/*.zip artifacts/release/*.tgz; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
+
+  release_automation:
+    docker:
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
+    steps:
+      - checkout
+      - setup-automation
+      - run:
+          name: Run QA Automation
+          command: MODULE_VERSION=$CIRCLE_TAG VERBOSE=1 TEST=release ./tests/qa/run
+
+  nightly_automation:
+    docker:
+      - image: redisfab/rmbuilder:6.2.3-x64-buster
+    steps:
+      - checkout
+      - setup-automation
+      - run:
+          name: Run QA Automation
+          command: MODULE_VERSION=$CIRCLE_BRANCH VERBOSE=1 TEST=nightly QUICK=1 ./tests/qa/run
 
 
 on-any-branch: &on-any-branch
@@ -190,6 +287,26 @@ on-master: &on-master
   filters:
     branches:
       only: master
+    tags:
+      ignore: /.*/
+
+on-integ-branch: &on-integ-branch
+  filters:
+    branches:
+      only:
+        - master
+        - /^\d+\.\d+.*$/
+    tags:
+      ignore: /.*/
+
+not-on-integ-branch: &not-on-integ-branch
+  filters:
+    branches:
+      ignore:
+        - master
+        - /^\d+\.\d+.*$/
+    tags:
+      ignore: /.*/
 
 on-version-tags: &on-version-tags
   filters:
@@ -198,25 +315,14 @@ on-version-tags: &on-version-tags
     tags:
       only: /^v[0-9].*/
 
-on-master-and-version-tags: &on-master-and-version-tags
+on-integ-and-version-tags: &on-integ-and-version-tags
   filters:
     branches:
       only:
         - master
+        - /^\d+\.\d+.*$/
     tags:
       only: /^v[0-9].*/
-
-
-platform-build-defs: &platform-build-defs
-  requires:
-    - linux-debian
-  <<: *on-master-and-version-tags
-
-after-platform-builds: &after-platform-builds
-  requires:
-    - build-centos7
-    - build-bionic
-    - build-xenial
 
 
 workflows:
@@ -224,40 +330,56 @@ workflows:
   default_flow:
     jobs:
       - linux-debian:
-          <<: *on-any-branch
+          <<: *not-on-integ-branch
+      - linux-debian:
+          name: build-with-redis-<< matrix.redis_version >>
+          <<: *on-integ-branch
+          matrix:
+            parameters:
+              redis_version: ["6.0", "6.2"]
       - platform-build:
-          name: build-centos7
-          platform: centos7
-          <<: *platform-build-defs
-      - platform-build:
-          name: build-bionic
-          platform: bionic
-          <<: *platform-build-defs
-      - platform-build:
-          name: build-xenial
-          platform: xenial
-          <<: *platform-build-defs
+          <<: *on-integ-and-version-tags
+          context: common
+          matrix:
+            parameters:
+              platform: [centos7, bionic, xenial, focal]
       - valgrind:
-          <<: *on-version-tags
+          <<: *on-integ-and-version-tags
           # <<: *on-any-branch
       - macos:
-          <<: *on-version-tags
+          <<: *on-integ-and-version-tags
       - build-multiarch-docker:
+          context: common
           <<: *never
-          # <<: *on-version-tags
+          # <<: *on-integ-and-version-tags
       - deploy_snapshots:
-          <<: *after-platform-builds
-          <<: *on-master
+          context: common
+          requires:
+            - platform-build
+          <<: *on-integ-branch
           # <<: *on-any-branch
       - deploy_releases:
-          <<: *after-platform-builds
+          context: common
+          requires:
+            - platform-build
           <<: *on-version-tags
+      - release_automation:
+          <<: *on-version-tags
+          requires:
+            - deploy_releases
 
   nightly:
     triggers:
       - schedule:
-          cron: "20 17 * * *"
-          <<: *on-master
+          cron: "20 17 * * 0,3"
+          filters:
+            branches:
+              only: master
     jobs:
       - macos
       - valgrind
+      - linux-debian:
+          name: build-with-redis-<< matrix.redis_version >>
+          matrix:
+            parameters:
+              redis_version: ["6.0", "6.2"]

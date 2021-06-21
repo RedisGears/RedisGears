@@ -405,8 +405,13 @@ static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
             }
 
             if(!foundInPlugin){
-                config_error(ctx, "Unsupported config parameter: %s", configName, true);
-                error = true;
+                const char* val = Gears_dictFetchValue(Gears_ExtraConfig, (char*)configName);
+                if (val) {
+                    RedisModule_ReplyWithCString(ctx, val);
+                }else{
+                    config_error(ctx, "Unsupported config parameter: %s", configName, true);
+                    error = true;
+                }
             }
 
         }

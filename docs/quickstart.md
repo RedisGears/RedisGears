@@ -50,12 +50,12 @@ yum install devtoolset-7
 scl enable devtoolset-7 bash
 ```
 
-* Install [Redis 6.0.1 or higher](https://redis.io/) on your machine.
+* Install [Redis 6.2.1 or higher](https://redis.io/) on your machine.
 
 ```
 git clone https://github.com/redis/redis.git
 cd redis
-git checkout 6.0
+git checkout 6.2
 make
 make install
 ```

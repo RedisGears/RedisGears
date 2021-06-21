@@ -13,6 +13,7 @@
 #include "cluster.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include "utils/arr_rm_alloc.h"
 
 #if defined(DEBUG) || !defined(NDEBUG)
 #include "readies/cetara/diag/gdb.h"
@@ -56,6 +57,7 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
 char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*));
 const char* GetShardUniqueId();
 int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);
+int IsKeyMatch(const char* prefix, const char* key, size_t prefixLen);
 int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, va_list __arg);
 
 #endif /* SRC_COMMANDS_H_ */

@@ -9,8 +9,18 @@
 #define SRC_REDISGEARG_H_
 
 #include <stdbool.h>
+#include <limits.h>
 #include "redismodule.h"
-#include "utils/arr_rm_alloc.h"
+
+#if defined(__GNUC__) && (__GNUC__ >= 7)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#elif defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpedantic"
+#pragma clang diagnostic ignored "-Wunused-function"
+#endif
 
 #define ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
 #define STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
@@ -193,6 +203,7 @@ typedef struct StreamReaderTriggerArgs StreamReaderTriggerArgs;
 typedef struct KeysReaderTriggerArgs KeysReaderTriggerArgs;
 typedef struct CommandReaderTriggerArgs CommandReaderTriggerArgs;
 typedef struct CommandReaderTriggerCtx CommandReaderTriggerCtx;
+typedef struct CommandCtx CommandCtx;
 
 typedef Record* (*RedisGears_KeysReaderReadRecordCallback)(RedisModuleCtx* rctx, RedisModuleString* key, RedisModuleKey* keyPtr, bool readValue, const char* event);
 
@@ -210,9 +221,17 @@ StreamReaderTriggerArgs* MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsCreat
 void MODULE_API_FUNC(RedisGears_StreamReaderTriggerArgsFree)(StreamReaderTriggerArgs* args);
 
 KeysReaderTriggerArgs* MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsCreate)(const char* prefix, Arr(char*) eventTypes, Arr(int) keyTypes, bool readValue);
+void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetHookCommands)(KeysReaderTriggerArgs* krta, Arr(char*) hookCommands);
 int MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsSetReadRecordCallback)(KeysReaderTriggerArgs* krta, const char* name);
 #define RGM_KeysReaderTriggerArgsSetReadRecordCallback(krta, name) RedisGears_KeysReaderTriggerArgsSetReadRecordCallback(krta, #name)
 void MODULE_API_FUNC(RedisGears_KeysReaderTriggerArgsFree)(KeysReaderTriggerArgs* args);
+int MODULE_API_FUNC(RedisGears_KeysReaderSetAvoidEvents)(int avoidEvents);
+
+CommandCtx* MODULE_API_FUNC(RedisGears_CommandCtxGetShallowCopy)(CommandCtx* cmdCtx);
+void MODULE_API_FUNC(RedisGears_CommandCtxFree)(CommandCtx* cmdCtx);
+int MODULE_API_FUNC(RedisGears_CommandCtxOverrideReply)(CommandCtx* cmdCtx, Record* r, char** err);
+RedisModuleString** MODULE_API_FUNC(RedisGears_CommandCtxGetCommand)(CommandCtx* cmdCtx, size_t* len);
+CommandCtx* MODULE_API_FUNC(RedisGears_CommandCtxGet)(ExecutionCtx* ectx);
 
 CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
 CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreateHook)(const char* hook, const char* prefix);
@@ -506,6 +525,8 @@ const char* MODULE_API_FUNC(RedisGears_GetNodeIdByKey)(const char* key);
 int MODULE_API_FUNC(RedisGears_ClusterIsMyId)(const char* id);
 int MODULE_API_FUNC(RedisGears_ClusterIsInitialized)();
 
+void MODULE_API_FUNC(RedisGears_RegisterLoadingEvent)(RedisModuleEventCallback pluginLoadingCallback);
+
 typedef void* (*SaveState)();
 typedef void (*RestoreState)(void*);
 void MODULE_API_FUNC(RedisGears_AddLockStateHandler)(SaveState save, RestoreState restore);
@@ -525,7 +546,6 @@ void MODULE_API_FUNC(RedisGears_AddConfigHooks)(BeforeConfigSet before, AfterCon
 #define REDISMODULE_MODULE_INIT_FUNCTION(ctx, name) \
         if(RedisModule_GetApi("RedisModule_" #name, &RedisModule_ ## name) != REDISMODULE_OK){ \
             RedisModule_Log(ctx, "warning", "could not initialize RedisModule_" #name "\r\n");\
-            return REDISMODULE_ERR; \
         }
 
 static int RedisGears_InitializeRedisModuleApi(RedisModuleCtx* ctx){
@@ -833,8 +853,15 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, StreamReaderTriggerArgsFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsSetHookCommands);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandCtxGetShallowCopy);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandCtxFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandCtxOverrideReply);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandCtxGetCommand);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandCtxGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsSetReadRecordCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderTriggerArgsFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, KeysReaderSetAvoidEvents);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsCreateHook);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerArgsFree);
@@ -956,6 +983,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ClusterIsInitialized);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddLockStateHandler);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddConfigHooks);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterLoadingEvent);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;
@@ -967,6 +995,12 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
 
     return REDISMODULE_OK;
 }
+
+#if defined(__GNUC__) && (__GNUC__ >= 7)
+#pragma GCC diagnostic pop
+#elif defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #define RedisGears_InitAsGearPlugin(ctx, pluginName, version) RedisGears_Initialize(ctx, pluginName, version, true)
 #define RedisGears_InitAsRedisModule(ctx, pluginName, version) RedisGears_Initialize(ctx, pluginName, version, false)

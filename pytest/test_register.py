@@ -425,23 +425,16 @@ def testBasicStreamProcessing(env):
         return
     time.sleep(0.5)  # make sure the registration reached to all shards
     env.cmd('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
-    res = []
-    while len(res) < 1:
-        res = env.cmd('rg.dumpexecutions')
-    for e in res:
-        env.broadcast('rg.getresultsblocking', e[1])
-        env.cmd('rg.dropexecution', e[1])
-    env.assertEqual(conn.get('f1'), 'v1')
-    env.assertEqual(conn.get('f2'), 'v2')
-
-    # delete all registrations and executions so valgrind check will pass
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for r in executions:
-         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
-
-    registrations = env.cmd('RG.DUMPREGISTRATIONS')
-    for r in registrations:
-         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+    try:
+        with TimeLimit(5):
+            while True:
+                if conn.get('f1') != 'v1':
+                    continue
+                if conn.get('f2') != 'v2':
+                    continue
+                break
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for keys to updated')
 
 def testRegistersOnPrefix(env):
     conn = getConnectionByEnv(env)
@@ -1236,3 +1229,139 @@ GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
     while registration[7][3] != registration[7][5]:
         time.sleep(0.1)
         registration = env.cmd('RG.DUMPREGISTRATIONS')[0]
+
+class testKeysReaderWithCommands():
+    def __init__(self):
+        self.env = Env()
+        self.conn = getConnectionByEnv(self.env)
+
+    def setUp(self):
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        for r in registrations:
+            self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+    def testKeysReaderWithCommandsOption(self):
+        script = '''
+GB().foreach(lambda x: override_reply('key does not exists')).register(eventTypes=['keymiss'], commands=['get', 'mget'], mode='sync')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+        
+        res = self.conn.execute_command('get', 'x')
+        self.env.assertEqual(res, 'key does not exists')
+
+    def testKeysReaderWithCommandsOptionOnAsynLocalExecution(self):
+        script = '''
+GB().foreach(lambda x: override_reply('key does not exists')).register(eventTypes=['keymiss'], commands=['get', 'mget'], mode='async_local')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+        
+        res = self.conn.execute_command('get', 'x')
+        self.env.assertEqual(res, 'key does not exists')
+
+    def testKeysReaderWithCommandsOptionOnAsynExecution(self):
+        script = '''
+GB().foreach(lambda x: override_reply('key does not exists')).register(eventTypes=['keymiss'], commands=['get', 'mget'], mode='async')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+        
+        res = self.conn.execute_command('get', 'x')
+        self.env.assertEqual(res, 'key does not exists')
+
+    def testKeysReaderWithCommandsOptionOnAsynLocalExecutionOnMultiExec(self):
+        self.env.skipOnCluster()
+        script = '''
+GB().foreach(lambda x: override_reply('key does not exists')).register(eventTypes=['keymiss'], commands=['get', 'mget'], mode='async_local')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+
+
+        self.env.cmd('multi')
+        self.env.cmd('get', 'x')
+        self.env.expect('exec').equal([None])
+
+    def testKeysReaderWithCommandsOptionOnSynExecutionOnMultiExec(self):
+        self.env.skipOnCluster()
+        script = '''
+GB().foreach(lambda x: override_reply('key does not exists')).register(eventTypes=['keymiss'], commands=['get', 'mget'], mode='sync')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+
+
+        self.env.cmd('multi')
+        self.env.cmd('get', 'x')
+        self.env.expect('exec').equal(['key does not exists'])
+
+    def testKeysReaderWithCommandsOptionOnAsyncAwait(self):
+        script = '''
+async def OverrideReply(x):
+    res = await GB('ShardsIDReader').run()
+    override_reply(len(res))
+
+GB().foreach(OverrideReply).register(eventTypes=['keymiss'], commands=['get', 'mget'], mode='async')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+        
+        res = self.conn.execute_command('get', 'x')
+        self.env.assertEqual(res, 2)
+
+    def testKeysReaderWithCommandsOptionWithKeyPrefix(self):
+        script = '''
+async def OverrideReply(x):
+    res = await GB('ShardsIDReader').run()
+    override_reply(len(res))
+
+GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], commands=['get', 'mget'], mode='async')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+        
+        res = self.conn.execute_command('get', 'x')
+        self.env.assertEqual(res, None)
+
+        res = self.conn.execute_command('get', 'test1')
+        self.env.assertEqual(res, 2)
+
+    def testKeysReaderWithCommandsUnregister(self):
+        script = '''
+async def OverrideReply(x):
+    res = await GB('ShardsIDReader').run()
+    override_reply(len(res))
+
+GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], commands=['get', 'mget'], mode='async')
+        '''
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+        
+        res = self.conn.execute_command('get', 'x')
+        self.env.assertEqual(res, None)
+
+        res = self.conn.execute_command('get', 'test1')
+        self.env.assertEqual(res, 2)
+
+        registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
+        for r in registrations:
+            self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+        res = self.conn.execute_command('get', 'test1')
+        self.env.assertEqual(res, None)
+
+        self.env.expect('rg.pyexecute', script).ok()
+
+        verifyRegistrationIntegrity(self.env)
+
+        res = self.conn.execute_command('get', 'test1')
+        self.env.assertEqual(res, 2)

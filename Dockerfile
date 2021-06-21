@@ -1,6 +1,6 @@
 # BUILD redisfab/redisgears:${VERSION}-${ARCH}-${OSNICK}
 
-ARG REDIS_VER=6.0.9
+ARG REDIS_VER=6.2.4
 
 # OSNICK=bionic|stretch|buster
 ARG OSNICK=buster
@@ -30,18 +30,19 @@ COPY --from=redis /usr/local/ /usr/local/
 
 ADD . /build
 
+RUN ./deps/readies/bin/getupdates
 RUN ./deps/readies/bin/getpy3
 RUN ./system-setup.py
-RUN make fetch SHOW=1
-RUN make all SHOW=1
+RUN bash -l -c "make fetch SHOW=1"
+RUN bash -l -c "make all SHOW=1"
 RUN ./getver > artifacts/VERSION
 
 ARG PACK
 ARG TEST
 
-RUN if [ "$PACK" = "1" ]; then make pack; fi
+RUN if [ "$PACK" = "1" ]; then bash -l -c "make pack"; fi
 RUN if [ "$TEST" = "1" ]; then \
-		TEST= make test ;\
+		bash -l -c "TEST= make test" ;\
 		tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-${ARCH}-${OSNICK}.tgz . ;\
 	fi
 

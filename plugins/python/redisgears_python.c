@@ -70,17 +70,25 @@ static int PyInitializeRedisAI(){
     if (globals.redisAILoaded){
         return REDISMODULE_OK;
     }
-
-    RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisModule_ThreadSafeContextLock(ctx);
-    int ret = RedisAI_Initialize(ctx);
+    if(!RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)) {
+        RedisModule_Log(staticCtx, "warning",
+          "Redis version is to old, please upgrade to a newer version.");
+        return REDISMODULE_ERR;
+    }
+    RedisModule_ThreadSafeContextLock(staticCtx);
+    int ret = RedisAI_Initialize(staticCtx);
     if(ret == REDISMODULE_OK){
         globals.redisAILoaded = true;
     }
-    RedisModule_ThreadSafeContextUnlock(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
+    RedisModule_ThreadSafeContextUnlock(staticCtx);
     return ret;
 }
+
+#define verifyRedisAILoaded() \
+    if(!globals.redisAILoaded && (PyInitializeRedisAI() != REDISMODULE_OK)){ \
+        PyErr_SetString(GearsError, "RedisAI is not loaded, it is not possible to use AI interface."); \
+        return NULL;\
+    }
 
 static Record* PyObjRecordCreate(){
     PythonRecord* ret = (PythonRecord*)RedisGears_RecordCreate(pythonRecordType);
@@ -147,6 +155,7 @@ typedef struct PythonThreadCtx{
     ExecutionCtx* currEctx;
     int flags;
     CommandReaderTriggerCtx* crtCtx;
+    CommandCtx* commandCtx;
     PyObject* pyfutureCreated;
 }PythonThreadCtx;
 
@@ -833,6 +842,7 @@ static PythonThreadCtx* GetPythonThreadCtx(){
                 .doneFunction = onDone,
                 .flags = 0,
                 .crtCtx = NULL,
+                .commandCtx = NULL,
                 .pyfutureCreated = NULL,
         };
         pthread_setspecific(pythonThreadCtxKey, ptctx);
@@ -886,6 +896,7 @@ typedef struct PyExecutionSession{
     PyObject_HEAD
     PythonSessionCtx* s;
     CommandReaderTriggerCtx* crtCtx;
+    CommandCtx* cmdCtx;
 }PyExecutionSession;
 
 
@@ -1305,6 +1316,9 @@ end:
 }
 
 static int registerStrKeyTypeToInt(const char* keyType){
+    if(strcmp(keyType, "empty") == 0){
+        return REDISMODULE_KEYTYPE_EMPTY;
+    }
     if(strcmp(keyType, "string") == 0){
         return REDISMODULE_KEYTYPE_STRING;
     }
@@ -1323,12 +1337,16 @@ static int registerStrKeyTypeToInt(const char* keyType){
     if(strcmp(keyType, "module") == 0){
         return REDISMODULE_KEYTYPE_MODULE;
     }
+    if(strcmp(keyType, "stream") == 0){
+        return REDISMODULE_KEYTYPE_STREAM;
+    }
     return -1;
 }
 
 static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, ExecutionMode mode){
     Arr(char*) eventTypes = NULL;
     Arr(int) keyTypes = NULL;
+    Arr(char*) hookCommands = NULL;
 
     // getting even types white list (no list == all event types)
     PyObject* pyEventTypes = GearsPyDict_GetItemString(kargs, "eventTypes");
@@ -1398,7 +1416,42 @@ static void* registerCreateKeysArgs(PyObject *kargs, const char* prefix, Executi
         }
     }
 
-    return RedisGears_KeysReaderTriggerArgsCreate(prefix, eventTypes, keyTypes, readValue);
+    // getting hook commands
+    PyObject* pyHookCommands = GearsPyDict_GetItemString(kargs, "commands");
+    if(pyHookCommands && pyHookCommands != Py_None){
+        PyObject* hookCommandsIterator = PyObject_GetIter(pyHookCommands);
+        if(!hookCommandsIterator){
+            PyErr_SetString(GearsError, "given commands is not iterable");
+            return NULL;
+        }
+        hookCommands = array_new(char*, 10);
+        PyObject* hook = NULL;
+        while((hook = PyIter_Next(hookCommandsIterator))){
+            if(!PyUnicode_Check(hook)){
+                GearsPyDecRef(hookCommandsIterator);
+                array_free_ex(hookCommands, RG_FREE(*(Arr(char*))ptr));
+                PyErr_SetString(GearsError, "given command type is not string");
+                return NULL;
+            }
+            const char* hookCommandStr = PyUnicode_AsUTF8AndSize(hook, NULL);
+            char* hookCommandStr1 = RG_STRDUP(hookCommandStr);
+            hookCommands = array_append(hookCommands, hookCommandStr1);
+        }
+        GearsPyDecRef(hookCommandsIterator);
+
+        if(array_len(hookCommands) == 0){
+            array_free(hookCommands);
+            hookCommands = NULL;
+        }
+    }
+
+    KeysReaderTriggerArgs* args = RedisGears_KeysReaderTriggerArgsCreate(prefix, eventTypes, keyTypes, readValue);
+
+    if(hookCommands){
+        RedisGears_KeysReaderTriggerArgsSetHookCommands(args, hookCommands);
+    }
+
+    return args;
 }
 
 static OnFailedPolicy getOnFailedPolicy(const char* onFailurePolicyStr){
@@ -1751,6 +1804,529 @@ static PyObject* atomicExit(PyObject *self, PyObject *args){
     return Py_None;
 }
 
+typedef struct PyTensor{
+    PyObject_HEAD
+    RAI_Tensor* t;
+} PyTensor;
+
+static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
+    int ndims = RedisAI_TensorNumDims(pyt->t);
+    PyObject* flatList = PyList_New(0);
+    long long len = 0;
+    long long totalElements = 1;
+    for(int i = 0 ; i < ndims ; ++i){
+        totalElements *= RedisAI_TensorDim(pyt->t, i);
+    }
+    for(long long j = 0 ; j < totalElements ; ++j){
+        PyObject *pyVal = NULL;
+        double doubleVal;
+        long long longVal;
+        if(RedisAI_TensorGetValueAsDouble(pyt->t, j, &doubleVal)){
+            pyVal = PyFloat_FromDouble(doubleVal);
+        }else if(RedisAI_TensorGetValueAsLongLong(pyt->t, j, &longVal)){
+            pyVal = PyLong_FromLongLong(longVal);
+        }else{
+            PyErr_SetString(GearsError, "Failed converting tensor to flat list");
+            GearsPyDecRef(flatList);
+            return NULL;
+        }
+        PyList_Append(flatList, pyVal);
+        GearsPyDecRef(pyVal);
+    }
+    return flatList;
+}
+
+static PyObject *PyTensor_ToStr(PyObject * pyObj){
+    PyTensor* pyt = (PyTensor*)pyObj;
+    PyObject* flatList = PyTensor_ToFlatList(pyt);
+    if(!flatList){
+        return NULL;
+    }
+    return PyObject_Repr(flatList);
+}
+
+static void PyTensor_Destruct(PyObject *pyObj){
+    PyTensor* pyt = (PyTensor*)pyObj;
+    RedisAI_TensorFree(pyt->t);
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
+static PyTypeObject PyTensorType = {
+  PyVarObject_HEAD_INIT(NULL, 0)
+  "redisgears.PyTensor",       /* tp_name */
+  sizeof(PyTensor),          /* tp_basicsize */
+  0,                         /* tp_itemsize */
+  PyTensor_Destruct,         /* tp_dealloc */
+  0,                         /* tp_print */
+  0,                         /* tp_getattr */
+  0,                         /* tp_setattr */
+  0,                         /* tp_compare */
+  0,                         /* tp_repr */
+  0,                         /* tp_as_number */
+  0,                         /* tp_as_sequence */
+  0,                         /* tp_as_mapping */
+  0,                         /* tp_hash */
+  0,                         /* tp_call */
+  PyTensor_ToStr,            /* tp_str */
+  0,                         /* tp_getattro */
+  0,                         /* tp_setattro */
+  0,                         /* tp_as_buffer */
+  Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+  "PyTensor",                /* tp_doc */
+};
+
+typedef struct PyDAGRunner{
+    PyObject_HEAD
+    RAI_DAGRunCtx* dag;
+} PyDAGRunner;
+
+static PyObject* PyDAG_ToStr(PyObject *obj){
+    return PyUnicode_FromString("PyDAGRunner to str");
+}
+
+static void PyDAGRunner_Destruct(PyObject *pyObj){
+    PyDAGRunner* pyDag = (PyDAGRunner*)pyObj;
+    if (pyDag->dag) RedisAI_DAGFree(pyDag->dag);
+    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
+}
+
+static PyTypeObject PyDAGRunnerType = {
+  PyVarObject_HEAD_INIT(NULL, 0)
+  "redisgears.PyDAGRunner",             /* tp_name */
+  sizeof(PyDAGRunner), /* tp_basicsize */
+  0,                         /* tp_itemsize */
+  PyDAGRunner_Destruct,    /* tp_dealloc */
+  0,                         /* tp_print */
+  0,                         /* tp_getattr */
+  0,                         /* tp_setattr */
+  0,                         /* tp_compare */
+  0,                         /* tp_repr */
+  0,                         /* tp_as_number */
+  0,                         /* tp_as_sequence */
+  0,                         /* tp_as_mapping */
+  0,                         /* tp_hash */
+  0,                         /* tp_call */
+  PyDAG_ToStr,                         /* tp_str */
+  0,                         /* tp_getattro */
+  0,                         /* tp_setattro */
+  0,                         /* tp_as_buffer */
+  Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
+  "PyDAGRunner",           /* tp_doc */
+};
+
+static bool _IsDagAPISupported(void *DagAPIFunc) {
+    if (!RMAPI_FUNC_SUPPORTED(RedisAI_DAGRunCtxCreate)) {
+        PyErr_SetString(GearsError, "DAG run is not supported in RedisAI version");
+        return false;
+    }
+    return true;
+}
+
+static PyObject* createDAGRunner(PyObject *cls, PyObject *args) {
+    verifyRedisAILoaded();
+    if (!_IsDagAPISupported(RedisAI_DAGRunCtxCreate)) {
+        return NULL;
+    }
+    RAI_DAGRunCtx* dagCtx = RedisAI_DAGRunCtxCreate();
+    PyDAGRunner* pyDag = PyObject_New(PyDAGRunner, &PyDAGRunnerType);
+    pyDag->dag = dagCtx;
+
+    return (PyObject*) pyDag;
+}
+/*
+ * Methods for RedisAI DAG runner
+ */
+
+bool _IsValidDag(PyDAGRunner *pyDag) {
+
+    if(!PyObject_IsInstance((PyObject*)pyDag, (PyObject*)&PyDAGRunnerType)){
+        PyErr_SetString(GearsError, "Given argument is not of type DAGRunner");
+        return false;
+    }
+    if(pyDag->dag == NULL){
+        PyErr_SetString(GearsError, "PyDAGRunner is invalid");
+        return false;
+    }
+    return true;
+}
+
+typedef int (*RAI_LoadTensorFunc)(RAI_DAGRunCtx *run_info, const char *t_name,
+  RAI_Tensor *tensor);
+
+static PyObject* _loadTensorToDAG(PyObject *self, PyObject *args, RAI_LoadTensorFunc loadTensor) {
+    verifyRedisAILoaded();
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if(!_IsDagAPISupported(loadTensor) || !_IsValidDag(pyDag)) {
+        return NULL;
+    }
+    if(PyTuple_Size(args) != 2) {
+        PyErr_SetString(GearsError, "Wrong number of args to DAG load input");
+        return NULL;
+    }
+    PyObject* tensorName = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(tensorName)) {
+        PyErr_SetString(GearsError, "Tensor name argument must be a string");
+        return NULL;
+    }
+    const char* inputNameStr = PyUnicode_AsUTF8AndSize(tensorName, NULL);
+    PyTensor* pyt = (PyTensor*) PyTuple_GetItem(args, 1);
+    if(!PyObject_IsInstance((PyObject*) pyt, (PyObject * ) & PyTensorType)) {
+        PyErr_SetString(GearsError,
+          "Given argument is not of type PyTensorType");
+        return NULL;
+    }
+    loadTensor(pyDag->dag, inputNameStr, pyt->t);
+    Py_INCREF(self);
+    return self;
+}
+
+
+static PyObject* DAGAddInput(PyObject *self, PyObject *args) {
+    return _loadTensorToDAG(self, args, RedisAI_DAGLoadTensor);
+}
+
+static PyObject* DAGAddTensorSet(PyObject *self, PyObject *args) {
+    return _loadTensorToDAG(self, args, RedisAI_DAGAddTensorSet);
+}
+
+static PyObject* DAGAddTensorGet(PyObject *self, PyObject *args) {
+    verifyRedisAILoaded();
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if(!_IsDagAPISupported(RedisAI_DAGAddTensorGet) || !_IsValidDag(pyDag)) {
+        return NULL;
+    }
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of args to TensorSet op");
+        return NULL;
+    }
+    PyObject* tensorName = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(tensorName)){
+        PyErr_SetString(GearsError, "Tensor name argument must be a string");
+        return NULL;
+    }
+
+    const char* inputNameStr = PyUnicode_AsUTF8AndSize(tensorName, NULL);
+    RedisAI_DAGAddTensorGet(pyDag->dag, inputNameStr);
+    Py_INCREF(self);
+    return self;
+}
+
+static RAI_DAGRunOp *_createModelRunOp(const char *modelNameStr, RAI_Error *err) {
+
+    RedisGears_LockHanlderAcquire(staticCtx);
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(staticCtx, modelNameStr, strlen(modelNameStr));
+    RAI_Model *model;
+    if(RedisAI_GetModelFromKeyspace(staticCtx, keyRedisStr, &model, REDISMODULE_READ, err) != REDISMODULE_OK) {
+        RedisModule_FreeString(staticCtx, keyRedisStr);
+        RedisGears_LockHanlderRelease(staticCtx);
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        return NULL;
+    }
+
+    RedisModule_FreeString(staticCtx, keyRedisStr);
+    RAI_DAGRunOp *modelRunOp = RedisAI_DAGCreateModelRunOp(model);
+    RedisGears_LockHanlderRelease(staticCtx);
+    return modelRunOp;
+}
+
+static PyObject* DAGAddModelRun(PyObject *self, PyObject *args, PyObject *kargs) {
+    verifyRedisAILoaded();
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if(!_IsDagAPISupported(RedisAI_DAGCreateModelRunOp) || !_IsValidDag(pyDag)) {
+        return NULL;
+    }
+    PyObject* modelName = GearsPyDict_GetItemString(kargs, "name");
+    if (!modelName) {
+        PyErr_SetString(GearsError, "Model key name was not given");
+        return NULL;
+    }
+    if(!PyUnicode_Check(modelName)){
+        PyErr_SetString(GearsError, "Model name argument must be a string");
+        return NULL;
+    }
+
+    RAI_Error *err;
+    RedisAI_InitError(&err);
+    const char* modelNameStr = PyUnicode_AsUTF8AndSize(modelName, NULL);
+
+    // Create MODELRUN op after bringing model from keyspace (raise an exception if it does not exist)
+    RAI_DAGRunOp *modelRunOp = _createModelRunOp(modelNameStr, err);
+    if (modelRunOp == NULL) {
+        RedisAI_FreeError(err);
+        return NULL;
+    }
+    PyObject *ret = NULL;
+
+    // Add to the modelRun op with its inputs and output keys and insert it to the DAG
+    PyObject *inputsIter = NULL;
+    PyObject *outputsIter = NULL;
+    PyObject *modelOutputs = NULL;
+    PyObject *modelInputs = GearsPyDict_GetItemString(kargs, "inputs");
+    if (!modelInputs) {
+        PyErr_SetString(GearsError, "Must specify model inputs");
+        goto cleanup;
+    }
+    inputsIter = PyObject_GetIter(modelInputs);
+    if (!inputsIter) {
+        PyErr_SetString(GearsError, "Model inputs must be iterable");
+        goto cleanup;
+    }
+    PyObject* input;
+    while((input = (PyObject*)PyIter_Next(inputsIter)) != NULL) {
+        if(!PyUnicode_Check(input)){
+            PyErr_SetString(GearsError, "Input name must be a string");
+            goto cleanup;
+        }
+        const char* inputStr = PyUnicode_AsUTF8AndSize(input, NULL);
+        RedisAI_DAGRunOpAddInput(modelRunOp, inputStr);
+    }
+
+    modelOutputs = GearsPyDict_GetItemString(kargs, "outputs");
+    if (!modelOutputs) {
+        PyErr_SetString(GearsError, "Must specify model outputs");
+        goto cleanup;
+    }
+    outputsIter = PyObject_GetIter(modelOutputs);
+    if (!outputsIter) {
+        PyErr_SetString(GearsError, "Model outputs must be iterable");
+        goto cleanup;
+    }
+    PyObject* output;
+    while((output = (PyObject*)PyIter_Next(outputsIter)) != NULL) {
+        if(!PyUnicode_Check(output)){
+            PyErr_SetString(GearsError, "Output name must be a string");
+            goto cleanup;
+        }
+        const char* outputStr = PyUnicode_AsUTF8AndSize(output, NULL);
+        RedisAI_DAGRunOpAddOutput(modelRunOp, outputStr);
+    }
+    if (RedisAI_DAGAddRunOp(pyDag->dag, modelRunOp, err) != REDISMODULE_OK) {
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        goto cleanup;
+    }
+    Py_INCREF(self);
+    ret = self;
+
+    cleanup:
+    RedisAI_FreeError(err);
+    if (modelInputs) GearsPyDecRef(modelInputs);
+    if (modelOutputs) GearsPyDecRef(modelOutputs);
+    if (inputsIter) GearsPyDecRef(inputsIter);
+    if (outputsIter) GearsPyDecRef(outputsIter);
+    if (!ret) RedisAI_DAGRunOpFree(modelRunOp);
+    return ret;
+}
+
+static RAI_DAGRunOp *_createScriptRunOp(const char *scriptNameStr, const char *functionNameStr,
+  RAI_Error *err) {
+
+    RedisGears_LockHanlderAcquire(staticCtx);
+    RedisModuleString* keyRedisStr = RedisModule_CreateString(staticCtx, scriptNameStr, strlen(scriptNameStr));
+    RAI_Script *script;
+    if(RedisAI_GetScriptFromKeyspace(staticCtx, keyRedisStr, &script, REDISMODULE_READ, err) != REDISMODULE_OK) {
+        RedisModule_FreeString(staticCtx, keyRedisStr);
+        RedisGears_LockHanlderRelease(staticCtx);
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        return NULL;
+    }
+
+    RedisModule_FreeString(staticCtx, keyRedisStr);
+    RAI_DAGRunOp *scriptRunOp = RedisAI_DAGCreateScriptRunOp(script, functionNameStr);
+    RedisGears_LockHanlderRelease(staticCtx);
+    return scriptRunOp;
+}
+
+static PyObject* DAGAddScriptRun(PyObject *self, PyObject *args, PyObject *kargs) {
+    verifyRedisAILoaded();
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if(!_IsDagAPISupported(RedisAI_DAGCreateScriptRunOp) || !_IsValidDag(pyDag)) {
+        return NULL;
+    }
+
+    PyObject* scriptName = GearsPyDict_GetItemString(kargs, "name");
+    if (!scriptName) {
+        PyErr_SetString(GearsError, "Script key name was not given");
+        return NULL;
+    }
+    if(!PyUnicode_Check(scriptName)){
+        PyErr_SetString(GearsError, "Script name argument must be a string");
+        return NULL;
+    }
+    PyObject* funcName = GearsPyDict_GetItemString(kargs, "func");
+    if (!funcName) {
+        PyErr_SetString(GearsError, "Function name was not given");
+        return NULL;
+    }
+    if(!PyUnicode_Check(funcName)){
+        PyErr_SetString(GearsError, "Function name argument must be a string");
+        return NULL;
+    }
+    const char* scriptNameStr = PyUnicode_AsUTF8AndSize(scriptName, NULL);
+    const char* functionNameStr = PyUnicode_AsUTF8AndSize(funcName, NULL);
+
+    // Create SCRIPTRUN op after bringing script from keyspace (raise an exception if it does not exist)
+    RAI_Error *err;
+    RedisAI_InitError(&err);
+    RAI_DAGRunOp *scriptRunOp = _createScriptRunOp(scriptNameStr, functionNameStr, err);
+    if (scriptRunOp == NULL) {
+        RedisAI_FreeError(err);
+        return NULL;
+    }
+    PyObject *ret = NULL;
+
+    // Add to the scriptRun op with its inputs and output keys and insert it to the DAG
+    PyObject* scriptInputs = GearsPyDict_GetItemString(kargs, "inputs");
+    PyObject* inputsIter = NULL;
+    PyObject* scriptOutputs = NULL;
+    PyObject* outputsIter = NULL;
+    if (scriptInputs) {
+        inputsIter = PyObject_GetIter(scriptInputs);
+        if(!inputsIter) {
+            PyErr_SetString(GearsError, "Script inputs must be iterable");
+            goto cleanup;
+        }
+        PyObject* input;
+        while((input = (PyObject*)PyIter_Next(inputsIter)) != NULL) {
+            if(!PyUnicode_Check(input)){
+                PyErr_SetString(GearsError, "Input name must be a string");
+                goto cleanup;
+            }
+            const char* inputStr = PyUnicode_AsUTF8AndSize(input, NULL);
+            RedisAI_DAGRunOpAddInput(scriptRunOp, inputStr);
+        }
+    }
+    scriptOutputs = GearsPyDict_GetItemString(kargs, "outputs");
+    if (scriptOutputs) {
+        outputsIter = PyObject_GetIter(scriptOutputs);
+        if(!outputsIter) {
+            PyErr_SetString(GearsError, "Script outputs must be iterable");
+            goto cleanup;
+        }
+        PyObject* output;
+        while((output = (PyObject*)PyIter_Next(outputsIter)) != NULL) {
+            if(!PyUnicode_Check(output)){
+                PyErr_SetString(GearsError, "Output name must be a string");
+                goto cleanup;
+            }
+            const char* outputStr = PyUnicode_AsUTF8AndSize(output, NULL);
+            RedisAI_DAGRunOpAddOutput(scriptRunOp, outputStr);
+        }
+    }
+    RedisAI_DAGAddRunOp(pyDag->dag, scriptRunOp, err);
+    ret = self;
+    Py_INCREF(self);
+
+    cleanup:
+    RedisAI_FreeError(err);
+    if (scriptInputs) GearsPyDecRef(scriptInputs);
+    if (scriptOutputs) GearsPyDecRef(scriptOutputs);
+    if (inputsIter) GearsPyDecRef(inputsIter);
+    if (outputsIter) GearsPyDecRef(outputsIter);
+    if (!ret) RedisAI_DAGRunOpFree(scriptRunOp);
+    return ret;
+}
+
+static PyObject* DAGAddOpsFromString(PyObject *self, PyObject *args) {
+    verifyRedisAILoaded();
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if(!_IsDagAPISupported(RedisAI_DAGAddOpsFromString) || !_IsValidDag(pyDag)) {
+        return NULL;
+    }
+
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Wrong number of args");
+        return NULL;
+    }
+    PyObject* ops = PyTuple_GetItem(args, 0);
+    if(!PyUnicode_Check(ops)){
+        PyErr_SetString(GearsError, "ops argument must be a string");
+        return NULL;
+    }
+    const char* opsStr = PyUnicode_AsUTF8AndSize(ops, NULL);
+    RAI_Error *err;
+    RedisAI_InitError(&err);
+    RedisGears_LockHanlderAcquire(staticCtx);
+    if (RedisAI_DAGAddOpsFromString(pyDag->dag, opsStr, err) != REDISMODULE_OK) {
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        RedisAI_FreeError(err);
+        RedisGears_LockHanlderRelease(staticCtx);
+        return NULL;
+    }
+    RedisAI_FreeError(err);
+    RedisGears_LockHanlderRelease(staticCtx);
+    Py_INCREF(self);
+    return self;
+}
+
+static void FinishAsyncDAGRun(RAI_OnFinishCtx *onFinishCtx, void *private_data) {
+
+    RedisGearsPy_LOCK
+    PyObject* future = private_data;
+    PyObject* pArgs = PyTuple_New(2);
+    PyTuple_SetItem(pArgs, 0, future);
+
+    if (RedisAI_DAGRunError(onFinishCtx)) {
+        PyObject* pyErr;
+        const RAI_Error* err = RedisAI_DAGGetError(onFinishCtx);
+        const char* errStr = (RedisAI_GetError((RAI_Error*)err));
+        pyErr = PyUnicode_FromStringAndSize(errStr, strlen(errStr));
+
+        PyTuple_SetItem(pArgs, 1, pyErr);
+        PyObject_CallObject(setFutureExceptionFunction, pArgs);
+        goto finish;
+    }
+
+    PyObject* tensorList = PyList_New(0);
+    size_t n_outputs = RedisAI_DAGNumOutputs(onFinishCtx);
+    for(size_t i = 0 ; i < n_outputs ; ++i){
+        PyTensor* pyt = PyObject_New(PyTensor, &PyTensorType);
+        pyt->t = RedisAI_TensorGetShallowCopy((RAI_Tensor*)RedisAI_DAGOutputTensor(onFinishCtx, i));
+        PyList_Append(tensorList, (PyObject*)pyt);
+        GearsPyDecRef((PyObject*)pyt);
+    }
+
+    PyTuple_SetItem(pArgs, 1, tensorList);
+    PyObject* r = PyObject_CallObject(setFutureResultsFunction, pArgs);
+    if(!r){
+        char* err = getPyError();
+        RedisModule_Log(NULL, "warning", "Error happened when releasing execution future, error='%s'", err);
+        RG_FREE(err);
+    }else{
+        GearsPyDecRef(r);
+    }
+
+    finish:
+    RedisAI_DAGFree((RAI_DAGRunCtx *)onFinishCtx);
+    GearsPyDecRef(pArgs);
+    RedisGearsPy_UNLOCK
+}
+
+static PyObject* DAGRun(PyObject *self){
+    verifyRedisAILoaded();
+    PyDAGRunner *pyDag = (PyDAGRunner *)self;
+    if(!_IsDagAPISupported(RedisAI_DAGRun) || !_IsValidDag(pyDag)) {
+        return NULL;
+    }
+    PyObject* pArgs = PyTuple_New(0);
+    PyObject* future = PyObject_CallObject(createFutureFunction, pArgs);
+    GearsPyDecRef(pArgs);
+
+    RAI_Error *err;
+    RedisAI_InitError(&err);
+    int status = RedisAI_DAGRun(pyDag->dag, FinishAsyncDAGRun, future, err);
+    if (status == REDISMODULE_ERR) {
+        PyErr_SetString(GearsError, RedisAI_GetError(err));
+        pyDag->dag = NULL;
+        RedisAI_FreeError(err);
+        return NULL;
+    }
+    pyDag->dag = NULL;
+    RedisAI_FreeError(err);
+    Py_INCREF(future);
+    return future;
+}
+
+
 static void PyAtomic_Destruct(PyObject *pyObj){
     PyAtomic* pyAtomic = (PyAtomic*)pyObj;
     RedisModule_FreeThreadSafeContext(pyAtomic->ctx);
@@ -1795,6 +2371,18 @@ PyMethodDef PyFlatExecutionMethods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+/* DAG runner operations */
+PyMethodDef PyDAGRunnerMethods[] = {
+  {"Input", DAGAddInput, METH_VARARGS, "load an input tensor to the DAG under a specific name"},
+  {"TensorGet", DAGAddTensorGet, METH_VARARGS, "output a tensor within the DAG context having a specific name"},
+  {"TensorSet", DAGAddTensorSet, METH_VARARGS, "load a tensor into the DAG context having a specific name"},
+  {"ModelRun", (PyCFunction)DAGAddModelRun, METH_VARARGS|METH_KEYWORDS, "add a model run operation to the DAG"},
+  {"ScriptRun", (PyCFunction)DAGAddScriptRun, METH_VARARGS|METH_KEYWORDS, "add a script run operation to the DAG"},
+  {"OpsFromString", DAGAddOpsFromString, METH_VARARGS, "add operations to the DAG by using the redis DAGRUN command syntax"},
+  {"Run", (PyCFunction)DAGRun, METH_VARARGS, "start the asynchronous execution of the DAG"},
+  {NULL, NULL, 0, NULL}
+};
+
 static PyObject *PyExecutionSession_ToStr(PyObject * pyObj){
     return PyUnicode_FromString("PyExecutionSession");
 }
@@ -1810,6 +2398,9 @@ static void PyExecutionSession_Destruct(PyObject *pyObj){
     }
     if(pyExSes->crtCtx){
         RedisGears_CommandReaderTriggerCtxFree(pyExSes->crtCtx);
+    }
+    if(pyExSes->cmdCtx){
+        RedisGears_CommandCtxFree(pyExSes->cmdCtx);
     }
     Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
 }
@@ -1971,6 +2562,17 @@ static PyObject* registerGearsThread(PyObject *cls, PyObject *args){
     return Py_None;
 }
 
+static CommandCtx* getCommandCtx(PythonThreadCtx* ptctx){
+    CommandCtx* commandCtx = NULL;
+    if(ptctx->currEctx){
+        commandCtx = RedisGears_CommandCtxGet(ptctx->currEctx);
+    }else{
+        commandCtx = ptctx->commandCtx;
+    }
+
+    return commandCtx;
+}
+
 static CommandReaderTriggerCtx* getCommandReaderTriggerCtx(PythonThreadCtx* ptctx){
     CommandReaderTriggerCtx* crtCtx = NULL;
     if(ptctx->currEctx){
@@ -1992,10 +2594,15 @@ static PyObject* getGearsSession(PyObject *cls, PyObject *args){
         PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
         pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
         pyExSes->crtCtx = getCommandReaderTriggerCtx(ptctx);
+        pyExSes->cmdCtx = getCommandCtx(ptctx);
 
         if(pyExSes->crtCtx){
             pyExSes->crtCtx = RedisGears_CommandReaderTriggerCtxGetShallowCopy(pyExSes->crtCtx);
         }
+
+        if(pyExSes->cmdCtx){
+           pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
+       }
 
         res = (PyObject*)pyExSes;
     }
@@ -2029,6 +2636,7 @@ static PyObject* setGearsSession(PyObject *cls, PyObject *args){
         PyExecutionSession* pyExSes = (PyExecutionSession*)s;
         ptctx->currSession = pyExSes->s;
         ptctx->crtCtx = pyExSes->crtCtx;
+        ptctx->commandCtx = pyExSes->cmdCtx;
     }
 
     Py_INCREF(Py_None);
@@ -2304,83 +2912,6 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     RedisModule_FreeThreadSafeContext(rctx);
     return res;
 }
-
-typedef struct PyTensor{
-   PyObject_HEAD
-   RAI_Tensor* t;
-} PyTensor;
-
-static PyObject *PyTensor_ToFlatList(PyTensor * pyt){
-    int ndims = RedisAI_TensorNumDims(pyt->t);
-    PyObject* flatList = PyList_New(0);
-    long long len = 0;
-    long long totalElements = 1;
-    for(int i = 0 ; i < ndims ; ++i){
-        totalElements *= RedisAI_TensorDim(pyt->t, i);
-    }
-    for(long long j = 0 ; j < totalElements ; ++j){
-        PyObject *pyVal = NULL;
-        double doubleVal;
-        long long longVal;
-        if(RedisAI_TensorGetValueAsDouble(pyt->t, j, &doubleVal)){
-            pyVal = PyFloat_FromDouble(doubleVal);
-        }else if(RedisAI_TensorGetValueAsLongLong(pyt->t, j, &longVal)){
-            pyVal = PyLong_FromLongLong(longVal);
-        }else{
-            PyErr_SetString(GearsError, "Failed converting tensor to flat list");
-            GearsPyDecRef(flatList);
-            return NULL;
-        }
-
-        PyList_Append(flatList, pyVal);
-    }
-    return flatList;
-}
-
-#define verifyRedisAILoaded() \
-    if(!globals.redisAILoaded && (PyInitializeRedisAI() != REDISMODULE_OK)){ \
-        PyErr_SetString(GearsError, "RedisAI is not loaded, it is not possible to use AI interface."); \
-        return NULL;\
-    }
-
-static PyObject *PyTensor_ToStr(PyObject * pyObj){
-    PyTensor* pyt = (PyTensor*)pyObj;
-    PyObject* flatList = PyTensor_ToFlatList(pyt);
-    if(!flatList){
-        return NULL;
-    }
-    return PyObject_Repr(flatList);
-}
-
-static void PyTensor_Destruct(PyObject *pyObj){
-    PyTensor* pyt = (PyTensor*)pyObj;
-    RedisAI_TensorFree(pyt->t);
-    Py_TYPE(pyObj)->tp_free((PyObject*)pyObj);
-}
-
-static PyTypeObject PyTensorType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "redisgears.PyTensor",       /* tp_name */
-    sizeof(PyTensor),          /* tp_basicsize */
-    0,                         /* tp_itemsize */
-    PyTensor_Destruct,         /* tp_dealloc */
-    0,                         /* tp_print */
-    0,                         /* tp_getattr */
-    0,                         /* tp_setattr */
-    0,                         /* tp_compare */
-    0,                         /* tp_repr */
-    0,                         /* tp_as_number */
-    0,                         /* tp_as_sequence */
-    0,                         /* tp_as_mapping */
-    0,                         /* tp_hash */
-    0,                         /* tp_call */
-    PyTensor_ToStr,            /* tp_str */
-    0,                         /* tp_getattro */
-    0,                         /* tp_setattro */
-    0,                         /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,        /* tp_flags */
-    "PyTensor",                /* tp_doc */
-};
 
 static PyObject* tensorGetDims(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
@@ -3676,6 +4207,71 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
+static PyObject* overrideReply(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    CommandCtx* commandCtx = getCommandCtx(ptctx);
+    if(!commandCtx){
+        PyErr_SetString(GearsError, "Can not get command ctx");
+        return NULL;
+    }
+
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "Override reply must get a single argument");
+        return NULL;
+    }
+
+    PyObject* reply = PyTuple_GetItem(args, 0);
+
+    PythonRecord* record = (PythonRecord*)PyObjRecordCreate();
+    record->obj = reply;
+
+    Py_INCREF(record->obj);
+
+    char* err = NULL;
+
+    if(RedisGears_CommandCtxOverrideReply(commandCtx, &record->base, &err) != REDISMODULE_OK){
+        PyErr_SetString(GearsError, err);
+        RG_FREE(err);
+        RedisGears_FreeRecord(&record->base);
+        return NULL;
+    }
+
+    Py_INCREF(Py_None);
+
+    return Py_None;
+}
+
+static PyObject* getCommand(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    CommandCtx* commandCtx = getCommandCtx(ptctx);
+    if(!commandCtx){
+        PyErr_SetString(GearsError, "Can not get command ctx");
+        return NULL;
+    }
+
+    // we must take the lock, it is not safe to access the command args without the lock because redis might
+    // change them under our noise
+    RedisGears_LockHanlderAcquire(staticCtx);
+
+    size_t len;
+    RedisModuleString** argv = RedisGears_CommandCtxGetCommand(commandCtx, &len);
+
+    PyObject *list = PyList_New(0);
+
+    for(size_t i = 0 ; i < len ; ++i){
+        size_t strLen;
+        const char* arg = RedisModule_StringPtrLen(argv[i], &strLen);
+        PyObject* pyArg = PyUnicode_FromStringAndSize(arg, strLen);
+        PyList_Append(list, pyArg);
+    }
+
+    RedisGears_LockHanlderRelease(staticCtx);
+
+    return list;
+}
+
 static PyObject* callNext(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     RedisGears_LockHanlderAcquire(staticCtx);
@@ -3715,6 +4311,8 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"getMyHashTag", getMyHashTag, METH_VARARGS, "return hash tag of the current node or None if not running on cluster"},
     {"registerTimeEvent", gearsTimeEvent, METH_VARARGS, "register a function to be called on each time period"},
     {"callNext", callNext, METH_VARARGS, "call the next command registration or the original command (will raise error when used outside on CommandHook scope)"},
+    {"getCommand", getCommand, METH_VARARGS, "return the current running command, raise error if command is not available"},
+    {"overrideReply", overrideReply, METH_VARARGS, "override the reply with the given python value, raise error if there is no command to override its reply"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -3739,6 +4337,7 @@ PyMethodDef EmbRedisAIMethods[] = {
     {"tensorToFlatList", tensorToFlatList, METH_VARARGS, "turning tensor into flat list"},
     {"tensorGetDataAsBlob", tensorGetDataAsBlob, METH_VARARGS, "getting the tensor data as a string blob"},
     {"tensorGetDims", tensorGetDims, METH_VARARGS, "return tuple of the tensor dims"},
+    {"createDAGRunner", createDAGRunner, METH_VARARGS, "create an empty DAG runner"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -4087,8 +4686,12 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
    PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
    pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
    pyExSes->crtCtx = RedisGears_GetCommandReaderTriggerCtx(rctx);
+   pyExSes->cmdCtx = RedisGears_CommandCtxGet(rctx);
    if(pyExSes->crtCtx){
        pyExSes->crtCtx = RedisGears_CommandReaderTriggerCtxGetShallowCopy(pyExSes->crtCtx);
+   }
+   if(pyExSes->cmdCtx){
+       pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
    }
    PyTuple_SetItem(pArgs, 2, (PyObject*)pyExSes);
 
@@ -6002,10 +6605,12 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     PyMem_RawFree(arg2);
     PyTensorType.tp_new = PyType_GenericNew;
     PyGraphRunnerType.tp_new = PyType_GenericNew;
+    PyDAGRunnerType.tp_new = PyType_GenericNew;
     PyFlatExecutionType.tp_new = PyType_GenericNew;
     PyExecutionSessionType.tp_new = PyType_GenericNew;
     PyAtomicType.tp_new = PyType_GenericNew;
 
+    PyDAGRunnerType.tp_methods = PyDAGRunnerMethods;
     PyFlatExecutionType.tp_methods = PyFlatExecutionMethods;
     PyAtomicType.tp_methods = PyAtomicMethods;
     PyFutureType.tp_methods = PyFutureMethods;
@@ -6021,6 +6626,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     }
 
     if (PyType_Ready(&PyTorchScriptRunnerType) < 0){
+        RedisModule_Log(staticCtx, "warning", "PyGraphRunnerType not ready");
+        return REDISMODULE_ERR;
+    }
+
+    if (PyType_Ready(&PyDAGRunnerType) < 0){
         RedisModule_Log(staticCtx, "warning", "PyGraphRunnerType not ready");
         return REDISMODULE_ERR;
     }
@@ -6056,6 +6666,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     Py_INCREF(&PyTensorType);
     Py_INCREF(&PyGraphRunnerType);
     Py_INCREF(&PyTorchScriptRunnerType);
+    Py_INCREF(&PyDAGRunnerType);
     Py_INCREF(&PyExecutionSessionType);
     Py_INCREF(&PyFlatExecutionType);
     Py_INCREF(&PyAtomicType);
@@ -6064,6 +6675,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     PyModule_AddObject(redisAIModule, "PyTensor", (PyObject *)&PyTensorType);
     PyModule_AddObject(redisAIModule, "PyGraphRunner", (PyObject *)&PyGraphRunnerType);
     PyModule_AddObject(redisAIModule, "PyTorchScriptRunner", (PyObject *)&PyTorchScriptRunnerType);
+    PyModule_AddObject(redisAIModule, "PyDAGRunner", (PyObject *)&PyDAGRunnerType);
     PyModule_AddObject(redisGearsModule, "PyExecutionSession", (PyObject *)&PyExecutionSessionType);
     PyModule_AddObject(redisGearsModule, "PyFlatExecution", (PyObject *)&PyFlatExecutionType);
     PyModule_AddObject(redisGearsModule, "PyAtomic", (PyObject *)&PyAtomicType);
