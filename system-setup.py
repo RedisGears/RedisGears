@@ -32,14 +32,8 @@ class RedisGearsSetup(paella.Setup):
         self.install("zip unzip gawk")
 
         # pip cannot build gevent on ARM
-<<<<<<< HEAD
-        self.install("python-psutil")
-        if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
-            self.install("python3-gevent")
-=======
         if self.platform.is_arm() and self.dist == 'ubuntu' and self.os_version[0] < 20:
-            self.install("python-gevent")
->>>>>>> origin/master
+            self.install("python3-gevent")
         else:
             self.pip_install("gevent")
 
@@ -53,14 +47,6 @@ class RedisGearsSetup(paella.Setup):
 
         self.run("%s/bin/getepel" % READIES)
 
-<<<<<<< HEAD
-        # pip cannot build gevent on ARM
-        self.install("python3-gevent python3-ujson")
-
-        # uninstall and install psutil (order is important), otherwise RLTest fails
-        # self.run("pip uninstall -y psutil || true")
-        # self.install("python2-psutil")
-=======
         if self.arch == 'x64':
             self.install_linux_gnu_tar()
 
@@ -68,22 +54,13 @@ class RedisGearsSetup(paella.Setup):
             self.install("python3-gevent python3-ujson")
         else:
             self.pip_install("gevent ujson")
->>>>>>> origin/master
 
     def fedora(self):
         self.run("%s/bin/getgcc" % READIES)
 
         self.install("libatomic file")
 
-<<<<<<< HEAD
-        # uninstall and install psutil (order is important), otherwise RLTest fails
-        self.run("pip uninstall -y psutil || true")
-        # self.install("python2-psutil")
-
         self.install("python3-ujson")
-=======
-        self.install("python2-ujson")
->>>>>>> origin/master
         self.pip_install("gevent")
 
     def linux_last(self):
