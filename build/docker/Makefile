@@ -14,4 +14,4 @@ INT_BRANCHES=1.2 1.0
 ART_DIR=$(ROOT)/artifacts
 ART_INT_DIR=/var/opt/redislabs/artifacts
 
-include $(MK)/docker
+include $(MK)/docker.native
