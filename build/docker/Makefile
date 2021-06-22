@@ -5,8 +5,7 @@ include $(ROOT)/deps/readies/mk/main
 # OSNICK=buster|stretch|bionic|xenial|centos7
 OSNICK ?= buster
 
-REPO=redisfab
-STEM=$(REPO)/redisgears
+REPO=redisgears
 
 REDIS_VER=6.2.4
 
