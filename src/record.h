@@ -68,6 +68,10 @@ typedef struct AsyncRecord{
     Record* originRecord;
 }AsyncRecord;
 
+typedef struct NullRecord{
+    Record base;
+}NullRecord;
+
 extern RecordType* listRecordType;
 extern RecordType* stringRecordType;
 extern RecordType* errorRecordType;
@@ -76,6 +80,7 @@ extern RecordType* doubleRecordType;
 extern RecordType* keyRecordType;
 extern RecordType* keysHandlerRecordType;
 extern RecordType* hashSetRecordType;
+extern RecordType* nullRecordType;
 extern RecordType* asyncRecordType;
 extern Record StopRecord;
 extern Record WaitRecord;

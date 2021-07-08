@@ -629,6 +629,10 @@ static RecordType* RG_GetHashSetRecordType(){
     return hashSetRecordType;
 }
 
+static RecordType* RG_GetNullRecordType(){
+    return nullRecordType;
+}
+
 static ExecutionPlan* RG_GetExecutionFromCtx(ExecutionCtx* ectx){
     return ectx->ep;
 }
@@ -1075,6 +1079,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetKeyRecordType, ctx);
     REGISTER_API(GetKeysHandlerRecordType, ctx);
     REGISTER_API(GetHashSetRecordType, ctx);
+    REGISTER_API(GetNullRecordType, ctx);
 
     REGISTER_API(GetConfig, ctx);
 

@@ -22,6 +22,7 @@ RecordType* keyRecordType;
 RecordType* keysHandlerRecordType;
 RecordType* hashSetRecordType;
 RecordType* asyncRecordType;
+RecordType* nullRecordType;
 
 static RecordType** recordsTypes;
 
@@ -116,6 +117,8 @@ static void HashSetRecord_Free(Record* base){
     Gears_dictRelease(record->d);
 }
 
+static void NullRecord_Free(Record* base){}
+
 static int StringRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
     StringRecord* r = (StringRecord*)base;
     RedisGears_BWWriteBuffer(bw, r->str, r->len);
@@ -189,6 +192,10 @@ static int HashSetRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Re
     return REDISMODULE_OK;
 }
 
+static int NullRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Record* base){
+    return REDISMODULE_OK;
+}
+
 static Record* StringRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
@@ -258,6 +265,10 @@ static Record* HashSetRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* 
     return record;
 }
 
+static Record* NullRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
+    return RedisGears_NullRecordCreate();
+}
+
 static int StringRecord_SendReply(Record* r, RedisModuleCtx* rctx){
     size_t listLen;
     char* str = RedisGears_StringRecordGet(r, &listLen);
@@ -300,6 +311,11 @@ static int KeysHandlerRecord_SendReply(Record* r, RedisModuleCtx* rctx){
 
 static int AsyncRecord_SendReply(Record* base, RedisModuleCtx* rctx){
     RedisModule_Assert(false); // can not reach here;
+    return REDISMODULE_OK;
+}
+
+static int NullRecord_SendReply(Record* base, RedisModuleCtx* rctx){
+    RedisModule_ReplyWithNull(rctx);
     return REDISMODULE_OK;
 }
 
@@ -419,6 +435,12 @@ void Record_Initialize(){
                                             AsyncRecord_Serialize,
                                             AsyncRecord_Deserialize,
                                             AsyncRecord_Free);
+
+    nullRecordType = RG_RecordTypeCreate("NullRecord", sizeof(NullRecord),
+                                          NullRecord_SendReply,
+                                          NullRecord_Serialize,
+                                          NullRecord_Deserialize,
+                                          NullRecord_Free);
 }
 
 void RG_FreeRecord(Record* record){
@@ -544,6 +566,9 @@ void RG_DoubleRecordSet(Record* base, double val){
     r->num = val;
 }
 
+Record* RG_NullRecordCreate() {
+    return RG_RecordCreate(nullRecordType);
+}
 Record* RG_LongRecordCreate(long val){
     LongRecord* ret = (LongRecord*)RG_RecordCreate(longRecordType);
     ret->num = val;
