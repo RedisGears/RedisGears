@@ -12,6 +12,7 @@ RecordType StopRecordType;
 Record StopRecord;
 Record WaitRecord;
 Record DummyRecord;
+Record NullRecord;
 
 RecordType* listRecordType;
 RecordType* stringRecordType;
@@ -266,7 +267,7 @@ static Record* HashSetRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* 
 }
 
 static Record* NullRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
-    return RedisGears_NullRecordCreate();
+    return &NullRecord;
 }
 
 static int StringRecord_SendReply(Record* r, RedisModuleCtx* rctx){
@@ -458,6 +459,10 @@ Record* RG_GetDummyRecord(){
     return &DummyRecord;
 }
 
+Record* RG_GetNullRecord(){
+    return &NullRecord;
+}
+
 RecordType* RG_RecordGetType(Record* r){
     return r->type;
 }
@@ -566,9 +571,6 @@ void RG_DoubleRecordSet(Record* base, double val){
     r->num = val;
 }
 
-Record* RG_NullRecordCreate() {
-    return RG_RecordCreate(nullRecordType);
-}
 Record* RG_LongRecordCreate(long val){
     LongRecord* ret = (LongRecord*)RG_RecordCreate(longRecordType);
     ret->num = val;
