@@ -442,6 +442,7 @@ void Record_Initialize(){
                                           NullRecord_Serialize,
                                           NullRecord_Deserialize,
                                           NullRecord_Free);
+    NullRecord.type = nullRecordType;
 }
 
 void RG_FreeRecord(Record* record){
