@@ -85,7 +85,7 @@ extern Record NullRecord;
 
 Record* RG_GetDummyRecord();
 
-#define IS_SPECIAL_RECORD(r) (r == &StopRecord || r == &WaitRecord || r == &DummyRecord)
+#define IS_SPECIAL_RECORD(r) (r == &StopRecord || r == &WaitRecord || r == &DummyRecord || r == &NullRecord)
 
 void RG_FreeRecord(Record* record);
 RecordType* RG_RecordGetType(Record* r);
