@@ -307,7 +307,7 @@ Record* MODULE_API_FUNC(RedisGears_HashSetRecordCreate)();
 int MODULE_API_FUNC(RedisGears_HashSetRecordSet)(Record* r, char* key, Record* val);
 Record* MODULE_API_FUNC(RedisGears_HashSetRecordGet)(Record* r, char* key);
 Arr(char*) MODULE_API_FUNC(RedisGears_HashSetRecordGetAllKeys)(Record* r);
-Record* MODULE_API_FUNC(RedisGears_NullRecordCreate)();
+Record* MODULE_API_FUNC(RedisGears_GetNullRecord)();
 int MODULE_API_FUNC(RedisGears_RecordSendReply)(Record* record, RedisModuleCtx* rctx);
 
 /**
@@ -921,6 +921,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordSendReply);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetAbortCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetNullRecord);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetReadDuration);

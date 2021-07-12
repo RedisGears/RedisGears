@@ -1033,6 +1033,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(HashSetRecordSet, ctx);
     REGISTER_API(HashSetRecordGet, ctx);
     REGISTER_API(HashSetRecordGetAllKeys, ctx);
+    REGISTER_API(GetNullRecord, ctx);
     REGISTER_API(RecordSendReply, ctx);
 
     REGISTER_API(GetTotalDuration, ctx);
