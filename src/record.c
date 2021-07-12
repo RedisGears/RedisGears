@@ -449,7 +449,7 @@ void RG_FreeRecord(Record* record){
     if(!record){
         return;
     }
-    if(IS_SPECIAL_RECORD(record)){
+    if(IS_SINGLETON(record)){
         return;
     }
     record->type->free(record);
