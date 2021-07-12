@@ -237,7 +237,8 @@ jobs:
           command: |
             sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
             cd build/docker
-            sudo make publish
+            #@@ vvv
+            echo sudo make publish
 
   deploy-snapshots:
     docker:
@@ -251,7 +252,8 @@ jobs:
           name: Deploy Snapshots to S3
           command: |
             for f in artifacts/snapshot/*.zip artifacts/snapshot/*.tgz; do
-              aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
+              #@@ vvv
+              echo aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
             done
 
   deploy-releases:
@@ -281,7 +283,7 @@ jobs:
           name: Run QA Automation
           command: MODULE_VERSION="$CIRCLE_TAG" VERBOSE=1 TEST=release ./tests/qa/run
 
-  nightly_automation:
+  nightly-automation:
     docker:
       - image: redisfab/rmbuilder:6.2.4-x64-buster
     steps:
@@ -367,7 +369,8 @@ workflows:
             parameters:
               redis_version: ["6.0", "6.2"]
       - build-platforms:
-          <<: *on-integ-and-version-tags
+          #@@<<: *on-integ-and-version-tags
+          <<: *on-any-branch
           context: common
           matrix:
             parameters:
@@ -376,7 +379,8 @@ workflows:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
       - build-macos:
-          <<: *on-integ-and-version-tags
+          #@@ <<: *on-integ-and-version-tags
+          <<: *on-any-branch
       - build-multiarch-docker:
           context: common
           <<: *never
