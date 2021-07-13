@@ -55,7 +55,7 @@ commands:
           name: Setup automation
           command: |
             git submodule update --init deps/readies
-            ./deps/readies/bin/getpy2
+            FORCE=1 ./deps/readies/bin/getpy2
 
   install-prerequisites:
     parameters:
@@ -70,6 +70,7 @@ commands:
       - run:
           name: System setup
           command: ./system-setup.py
+          no_output_timeout: 30m
       - run:
           name: Install Redis
           command: |
