@@ -126,7 +126,7 @@ commands:
           name: Build
           command: |
             make get_deps
-            make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1
+            bash -l "make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1"
       - run:
           name: Test
           command: make test <<parameters.test_params>>
@@ -238,8 +238,7 @@ jobs:
           command: |
             sudo docker login -u redisfab -p $DOCKER_REDISFAB_PWD
             cd build/docker
-            #@@ vvv
-            echo sudo make publish
+            sudo make publish
 
   deploy-snapshots:
     docker:
@@ -370,8 +369,7 @@ workflows:
             parameters:
               redis_version: ["6.0", "6.2"]
       - build-platforms:
-          #@@<<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
           context: common
           matrix:
             parameters:
@@ -389,7 +387,7 @@ workflows:
       - deploy-snapshots:
           context: common
           requires:
-            - build-platforms
+            #@@- build-platforms
             - build-macos
           #@@<<: *on-integ-branch
           <<: *on-any-branch
