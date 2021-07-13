@@ -31,7 +31,7 @@ COPY --from=redis /usr/local/ /usr/local/
 ADD . /build
 
 RUN ./deps/readies/bin/getupdates
-RUN ./deps/readies/bin/getpy2
+RUN FORCE=1 ./deps/readies/bin/getpy2
 RUN ./system-setup.py
 RUN bash -l -c "make fetch SHOW=1"
 RUN bash -l -c "make all SHOW=1"
