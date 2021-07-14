@@ -90,7 +90,6 @@ include build/hiredis/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
-CC=gcc
 SRCDIR=src
 
 define _SOURCES:=
