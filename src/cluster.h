@@ -5,11 +5,9 @@
  *      Author: meir
  */
 
-#ifndef SRC_CLUSTER_H_
-#define SRC_CLUSTER_H_
+#pragma once
 
 #include "redismodule.h"
-#include <stdbool.h>
 
 #define MAX_SLOT 16384
 #define RG_INNER_MSG_COMMAND "RG.INNERMSGCOMMAND"
@@ -36,5 +34,7 @@ int Cluster_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 int Cluster_ClusterSet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Cluster_ClusterSetFromShard(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
-
-#endif /* SRC_CLUSTER_H_ */
+#define VERIFY_CLUSTER_INITIALIZE(c) \
+	do { \
+		if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state"); \
+	} while(0)

@@ -5,6 +5,7 @@
 #include "lock_handler.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
+
 #include <errno.h>
 
 static RedisModuleCommandFilter *cmdFilter = NULL;

@@ -1,7 +1,7 @@
-#include "utils/arr_rm_alloc.h"
-#include "utils/dict.h"
 #include "record.h"
 
+#include "utils/arr_rm_alloc.h"
+#include "utils/dict.h"
 #include "redisgears.h"
 #include "redisgears_memory.h"
 #include "execution_plan.h"
