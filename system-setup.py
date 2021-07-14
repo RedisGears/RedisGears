@@ -50,7 +50,7 @@ class RedisGearsSetup(paella.Setup):
         if self.arch == 'x64':
             self.install_linux_gnu_tar()
 
-        if self.platform.is_arm(): # or self.dist == 'centos' and self.os_version[0] == 8:
+        if self.platform.is_arm():
             self.install("python-gevent python-ujson")
         else:
             self.pip_install("gevent ujson")
