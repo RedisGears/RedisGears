@@ -5,9 +5,9 @@
  *      Author: meir
  */
 
-#define GEARS_MAIN
-
+#define REDISMODULE_MAIN
 #include "redismodule.h"
+
 #include "version.h"
 #include "mgmt.h"
 #include "execution_plan.h"
