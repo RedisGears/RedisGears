@@ -8,7 +8,9 @@
 #ifndef SRC_REDISGEARG_H_
 #define SRC_REDISGEARG_H_
 
-#define GEARS_API
+#ifndef GEARS_API
+#define GEARS_API extern
+#endif
 
 #include <stdbool.h>
 #include <limits.h>

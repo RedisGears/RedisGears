@@ -16,8 +16,8 @@
 #include <event2/event.h>
 #include "lock_handler.h"
 #include "utils/thpool.h"
+#include "module.h"
 #include "version.h"
-#include "common.h"
 
 #define INIT_TIMER  struct timespec _ts = {0}, _te = {0}; \
                     bool timerInitialized = false;

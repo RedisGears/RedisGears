@@ -1,4 +1,6 @@
 #include "cluster.h"
+#include "module.h"
+#include "version.h"
 #include "redismodule.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"

@@ -5,7 +5,8 @@
  *      Author: root
  */
 
-#include "common.h"
+#include "module.h"
+#include "version.h"
 #include "cluster.h"
 #include "redisgears_memory.h"
 #include <string.h>

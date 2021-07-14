@@ -8,6 +8,8 @@
 #ifndef SRC_VERSION_H_
 #define SRC_VERSION_H_
 
+#include <stdbool.h>
+
 #define REDISGEARS_VERSION_MAJOR 99
 #define REDISGEARS_VERSION_MINOR 99
 #define REDISGEARS_VERSION_PATCH 99
@@ -34,5 +36,29 @@
 #define REDISGEARS_DATATYPE_NAME "GEARS_DT0"
 
 #define REDISGEARS_MODULE_NAME "rg"
+
+typedef struct RedisVersion{
+    int redisMajorVersion;
+    int redisMinorVersion;
+    int redisPatchVersion;
+}RedisVersion;
+
+extern RedisVersion currVesion;
+extern RedisVersion supportedVersion;
+
+extern int gearsRlecMajorVersion;
+extern int gearsRlecMinorVersion;
+extern int gearsRlecPatchVersion;
+extern int gearsRlecBuild;
+
+extern bool gearsIsCrdt;
+
+static inline int IsEnterprise() {
+  return gearsRlecMajorVersion != -1;
+}
+
+int GearsCompareVersions();
+int GearsCheckSupportedVestion();
+void GearsGetRedisVersion();
 
 #endif /* SRC_VERSION_H_ */

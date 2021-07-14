@@ -6,6 +6,7 @@
  */
 
 #include "config.h"
+#include "module.h"
 #include "redisgears_memory.h"
 #include "utils/arr.h"
 #include <stdbool.h>

@@ -1,4 +1,5 @@
 #include "keys_reader.h"
+#include "module.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/adlist.h"
 #include <stdbool.h>

@@ -1,6 +1,6 @@
 #include "command_hook.h"
 
-#include "common.h"
+#include "module.h"
 #include "redisgears_memory.h"
 #include "lock_handler.h"
 #include "utils/dict.h"

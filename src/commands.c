@@ -5,6 +5,8 @@
 #include "execution_plan.h"
 #include "lock_handler.h"
 #include "mgmt.h"
+#include "module.h"
+#include "version.h"
 
 #include <unistd.h>
 

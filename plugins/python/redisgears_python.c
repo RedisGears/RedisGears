@@ -1,4 +1,5 @@
 
+#define GEARS_API
 #define REDISMODULE_MAIN
 
 #include <Python.h>

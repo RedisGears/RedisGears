@@ -5,9 +5,11 @@
  *      Author: meir
  */
 
+#define GEARS_API
 #define REDISMODULE_MAIN
 #include "redismodule.h"
 
+#include "module.h"
 #include "version.h"
 #include "mgmt.h"
 #include "execution_plan.h"

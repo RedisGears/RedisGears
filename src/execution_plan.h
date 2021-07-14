@@ -14,7 +14,7 @@
 #include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
-#include "common.h"
+
 #define STEP_TYPES \
     X(NONE, "none") \
     X(MAP, "map") \

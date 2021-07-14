@@ -1,4 +1,5 @@
 #include "command_reader.h"
+#include "module.h"
 #include "redisgears_memory.h"
 #include "execution_plan.h"
 #include "record.h"

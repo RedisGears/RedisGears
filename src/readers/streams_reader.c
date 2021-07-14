@@ -1,4 +1,5 @@
 #include "utils/arr_rm_alloc.h"
+#include "module.h"
 #include "utils/adlist.h"
 #include <stdbool.h>
 #include "redisgears.h"

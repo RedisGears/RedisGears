@@ -1,4 +1,5 @@
 #include "shardid_reader.h"
+#include "module.h"
 #include "cluster.h"
 
 typedef struct ShardIDReaderCtx{
