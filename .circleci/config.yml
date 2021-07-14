@@ -55,7 +55,7 @@ commands:
           name: Setup automation
           command: |
             git submodule update --init deps/readies
-            FORCE=1 ./deps/readies/bin/getpy2
+            ./deps/readies/bin/getpy2
 
   install-prerequisites:
     parameters:
@@ -252,8 +252,7 @@ jobs:
           name: Deploy Snapshots to S3
           command: |
             for f in artifacts/snapshot/*.zip artifacts/snapshot/*.tgz; do
-              #@@ vvv
-              echo aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
+              aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
             done
 
   deploy-releases:
@@ -378,8 +377,7 @@ workflows:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
       - build-macos:
-          #@@ <<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
       - build-multiarch-docker:
           context: common
           <<: *never
@@ -387,10 +385,9 @@ workflows:
       - deploy-snapshots:
           context: common
           requires:
-            #@@- build-platforms
+            - build-platforms
             - build-macos
-          #@@<<: *on-integ-branch
-          <<: *on-any-branch
+          <<: *on-integ-branch
       - deploy-releases:
           context: common
           requires:
