@@ -100,6 +100,7 @@ define _SOURCES:=
 	config.c
 	crc16.c
 	execution_plan.c
+	global.c
 	lock_handler.c
 	mappers.c
 	mgmt.c
@@ -133,7 +134,7 @@ define _CC_FLAGS
 	-MMD
 	-MF $(@:.o=.d)
 
-	-include $(SRCDIR)/common.h
+	
 	-I$(SRCDIR)
 	-I$(BINDIR)
 	-Ideps
@@ -212,9 +213,13 @@ include $(MK)/rules
 
 -include $(CC_DEPS)
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
+$(BINDIR)/global.o: $(SRCDIR)/global.c
 	@echo Compiling $<...
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
+
+$(BINDIR)/%.o: $(SRCDIR)/%.c
+	@echo Compiling $<...
+	$(SHOW)$(CC) $(CC_FLAGS) -c -include $(SRCDIR)/common.h $< -o $@
 
 #----------------------------------------------------------------------------------------------
 

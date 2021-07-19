@@ -5,8 +5,15 @@
  *      Author: meir
  */
 
-#ifndef SRC_REDISGEARG_H_
-#define SRC_REDISGEARG_H_
+#pragma once
+
+#ifdef REDISMODULE_MAIN
+#define GEARS_API
+#endif
+
+#ifndef GEARS_API
+#define GEARS_API extern
+#endif
 
 #include <stdbool.h>
 #include <limits.h>
@@ -1008,5 +1015,3 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
 
 #define RedisGears_InitAsGearPlugin(ctx, pluginName, version) RedisGears_Initialize(ctx, pluginName, version, true)
 #define RedisGears_InitAsRedisModule(ctx, pluginName, version) RedisGears_Initialize(ctx, pluginName, version, false)
-
-#endif /* SRC_REDISGEARG_H_ */
