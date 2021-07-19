@@ -59,7 +59,7 @@ MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
 include $(MK)/defs
 
 GEARS_VERSION:=$(shell $(ROOT)/getver)
-OS_VERSION_DESC:=$(shell python $(ROOT)/getos.py)
+OS_VERSION_DESC:=$(shell python2 $(ROOT)/getos.py)
 
 #----------------------------------------------------------------------------------------------
 

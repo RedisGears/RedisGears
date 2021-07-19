@@ -3,7 +3,7 @@ version: 2.1
 commands:
   # If this build is from a fork, stop executing the current job and return success.
   # This is useful to avoid steps that will fail due to missing credentials.
-  early_return_for_forked_pull_requests:
+  early-return-for-forked-pull-requests:
     steps:
       - run:
           name: Early return if this build is from a forked PR
@@ -13,7 +13,7 @@ commands:
               circleci step halt
             fi
 
-  early_returns:
+  early-returns:
     steps:
       - run:
           name: Early return if this is a docs build
@@ -39,7 +39,15 @@ commands:
             apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
             bash <(curl -fsSL https://raw.githubusercontent.com/docker/docker-install/master/install.sh)
       - setup_remote_docker:
+          version: 20.10.2
           docker_layer_caching: true
+
+  checkout-all:
+    steps:
+      - checkout
+      - run:
+          name: Checkout submodules
+          command: git submodule update --init --recursive
 
   setup-automation:
     steps:
@@ -48,6 +56,49 @@ commands:
           command: |
             git submodule update --init deps/readies
             ./deps/readies/bin/getpy2
+
+  install-prerequisites:
+    parameters:
+      redis_version:
+        type: string
+        default: "6"
+      getredis_params:
+        type: string
+        default: ""
+    steps:
+      - setup-automation
+      - run:
+          name: System setup
+          command: ./system-setup.py
+          no_output_timeout: 30m
+      - run:
+          name: Install Redis
+          command: |
+            bash -l -c "python2 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>"
+            redis-server --version
+
+  save-tests-logs:
+    steps:
+      - run:
+          name: Cleanup test log dir
+          command: |
+            if [[ -d pytest/logs ]]; then
+              cd pytest/logs
+              rm -f *.aof *.rdb
+            fi
+      - store_artifacts:
+          path: pytest/logs
+
+  persist-artifacts:
+    steps:
+      - early-return-for-forked-pull-requests
+      - persist_to_workspace:
+          root: artifacts
+          paths:
+            - 'snapshot/*.zip'
+            - 'snapshot/*.tgz'
+            - 'release/*.zip'
+            - 'release/*.tgz'
 
   build-steps:
     parameters:
@@ -66,92 +117,60 @@ commands:
         type: string
         default: ""
     steps:
-      - early_returns
-      - checkout
-      - run:
-          name: Submodule checkout
-          command: git submodule update --init --recursive
-      - run:
-          name: System setup
-          command: |
-            ./deps/readies/bin/getpy2
-            BREW_NO_UPDATE=1 python2 system-setup.py
-          no_output_timeout: 20m
-      - run:
-          name: Install Redis
-          command: python2 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>
+      - early-returns
+      - checkout-all
+      - install-prerequisites:
+          redis_version: <<parameters.redis_version>>
+          getredis_params: <<parameters.getredis_params>>
       - run:
           name: Build
           command: |
-            make get_deps
-            make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1
+            bash -l -c "make get_deps"
+            bash -l -c "make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1"
       - run:
           name: Test
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
-      - run:
-          name: Cleanup test log dir
-          command: rm -f pytest/logs/*.rdb
-      - store_artifacts:
-          path: pytest/logs
-      - early_return_for_forked_pull_requests
-      - persist_to_workspace:
-          root: artifacts
-          paths:
-            - 'snapshot/*.zip'
-            - 'snapshot/*.tgz'
-            - 'release/*.zip'
-            - 'release/*.tgz'
+      - save-tests-logs
+      - persist-artifacts
 
-  platform-build-steps:
+  build-platforms-steps:
     parameters:
       platform:
         type: string
     steps:
-      - early_returns
+      - early-returns
       - setup-executor
-      - checkout
-      - run:
-          name: Setup
-          command: |
-            git submodule update --init --recursive
-            ./deps/readies/bin/getpy2
+      - checkout-all
+      - setup-automation
       - run:
           name: Build for platform
           command: |
             pushd build/docker
-            make build $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 TEST=1 SHOW=1
+            make build $(./version-params) OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
             tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
-      - run:
-          name: Cleanup test log dir
-          command: rm -f pytest/logs/*.rdb
-      - store_artifacts:
-          path: pytest/logs
-      - early_return_for_forked_pull_requests
+      - save-tests-logs
+      - early-return-for-forked-pull-requests
       - run:
           name: Deploy for platform
           command: |
             docker login -u redisfab -p $DOCKER_REDISFAB_PWD
-            pushd build/docker
-            make publish $(./version-params) OSNICK=<<parameters.platform>> X64=1 ARTIFACTS=1 SHOW=1
-            popd
+            cd build/docker
+            make publish OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH OFFICIAL=0 SHOW=1 VERBOSE=1
+
           no_output_timeout: 40m
-      - persist_to_workspace:
-          root: artifacts
-          paths:
-            - 'snapshot/*.zip'
-            - 'snapshot/*.tgz'
-            - 'release/*.zip'
-            - 'release/*.tgz'
+      - persist-artifacts
+
+#----------------------------------------------------------------------------------------------------------------------------------
 
 jobs:
-  linux-debian:
+  build-linux-debian:
     docker:
-      - image: redisfab/rmbuilder:6.2.3-x64-buster
+      - image: redisfab/rmbuilder:6.2.4-x64-buster
     parameters:
       redis_version:
         type: string
@@ -163,7 +182,7 @@ jobs:
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.2.3-x64-buster
+      - image: redisfab/rmbuilder:6.2.4-x64-buster
     steps:
       - build-steps:
           platform: debian
@@ -171,17 +190,17 @@ jobs:
           test_params: VALGRIND=1
           getredis_params: --valgrind
 
-  platform-build:
+  build-platforms:
     parameters:
       platform:
         type: string
     docker:
       - image: debian:buster
     steps:
-      - platform-build-steps:
+      - build-platforms-steps:
           platform: <<parameters.platform>>
 
-  macos:
+  build-macos:
     macos:
       xcode: 11.6.0
     steps:
@@ -194,13 +213,14 @@ jobs:
             sudo chmod 777 /var/opt/redislabs
       - build-steps:
           platform: macos
+      - persist-artifacts
 
   build-multiarch-docker:
     machine:
       enabled: true
       image: cimg/base:2020.01
     steps:
-      - early_returns
+      - early-returns
       - checkout
       - run:
           name: Setup Docker client experimental features
@@ -212,7 +232,7 @@ jobs:
           command: |
             cd build/docker
             make build
-      - early_return_for_forked_pull_requests
+      - early-return-for-forked-pull-requests
       - run:
           name: Deploy
           command: |
@@ -220,12 +240,12 @@ jobs:
             cd build/docker
             sudo make publish
 
-  deploy_snapshots:
+  deploy-snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.2.3-x64-buster
+      - image: redisfab/rmbuilder:6.2.4-x64-buster
     steps:
-      - early_returns
-      - early_return_for_forked_pull_requests
+      - early-returns
+      - early-return-for-forked-pull-requests
       - attach_workspace:
           at: artifacts
       - run:
@@ -235,10 +255,12 @@ jobs:
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
             done
 
-  deploy_releases:
+  deploy-releases:
     docker:
-      - image: redisfab/rmbuilder:6.2.3-x64-buster
+      - image: redisfab/rmbuilder:6.2.4-x64-buster
     steps:
+      - early-returns
+      - early-return-for-forked-pull-requests
       - attach_workspace:
           at: artifacts
       - run:
@@ -248,25 +270,29 @@ jobs:
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
 
-  release_automation:
+  release-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.3-x64-buster
+      - image: redisfab/rmbuilder:6.2.4-x64-buster
     steps:
+      - early-returns
+      - early-return-for-forked-pull-requests
       - checkout
       - setup-automation
       - run:
           name: Run QA Automation
-          command: MODULE_VERSION=$CIRCLE_TAG VERBOSE=1 TEST=release ./tests/qa/run
+          command: MODULE_VERSION="$CIRCLE_TAG" VERBOSE=1 TEST=release ./tests/qa/run
 
-  nightly_automation:
+  nightly-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.3-x64-buster
+      - image: redisfab/rmbuilder:6.2.4-x64-buster
     steps:
+      - early-returns
+      - early-return-for-forked-pull-requests
       - checkout
       - setup-automation
       - run:
           name: Run QA Automation
-          command: MODULE_VERSION=$CIRCLE_BRANCH VERBOSE=1 TEST=nightly QUICK=1 ./tests/qa/run
+          command: MODULE_VERSION="$CIRCLE_BRANCH" VERBOSE=1 TEST=nightly QUICK=1 ./tests/qa/run
 
 
 on-any-branch: &on-any-branch
@@ -296,6 +322,7 @@ on-integ-branch: &on-integ-branch
       only:
         - master
         - /^\d+\.\d+.*$/
+        - /^feature-.*$/
     tags:
       ignore: /.*/
 
@@ -305,6 +332,7 @@ not-on-integ-branch: &not-on-integ-branch
       ignore:
         - master
         - /^\d+\.\d+.*$/
+        - /^feature-.*$/
     tags:
       ignore: /.*/
 
@@ -321,52 +349,55 @@ on-integ-and-version-tags: &on-integ-and-version-tags
       only:
         - master
         - /^\d+\.\d+.*$/
+        - /^feature-.*$/
     tags:
       only: /^v[0-9].*/
 
+#----------------------------------------------------------------------------------------------------------------------------------
 
 workflows:
   version: 2
-  default_flow:
+  default-flow:
     jobs:
-      - linux-debian:
+      - build-linux-debian:
           <<: *not-on-integ-branch
-      - linux-debian:
+      - build-linux-debian:
           name: build-with-redis-<< matrix.redis_version >>
           <<: *on-integ-branch
           matrix:
             parameters:
               redis_version: ["6.0", "6.2"]
-      - platform-build:
+      - build-platforms:
           <<: *on-integ-and-version-tags
           context: common
           matrix:
             parameters:
-              platform: [centos7, bionic, xenial, focal]
+              platform: [focal, bionic, xenial, centos7, centos8]
       - valgrind:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
-      - macos:
+      - build-macos:
           <<: *on-integ-and-version-tags
       - build-multiarch-docker:
           context: common
           <<: *never
           # <<: *on-integ-and-version-tags
-      - deploy_snapshots:
+      - deploy-snapshots:
           context: common
           requires:
-            - platform-build
+            - build-platforms
+            - build-macos
           <<: *on-integ-branch
-          # <<: *on-any-branch
-      - deploy_releases:
+      - deploy-releases:
           context: common
           requires:
-            - platform-build
+            - build-platforms
+            - build-macos
           <<: *on-version-tags
-      - release_automation:
+      - release-automation:
           <<: *on-version-tags
           requires:
-            - deploy_releases
+            - deploy-releases
 
   nightly:
     triggers:
@@ -376,9 +407,9 @@ workflows:
             branches:
               only: master
     jobs:
-      - macos
+      - build-macos
       - valgrind
-      - linux-debian:
+      - build-linux-debian:
           name: build-with-redis-<< matrix.redis_version >>
           matrix:
             parameters:
