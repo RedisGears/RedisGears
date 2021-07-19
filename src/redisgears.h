@@ -7,7 +7,7 @@
 
 #pragma once
 
-#ifdef GEARS_API_MAIN
+#ifdef REDISMODULE_MAIN
 #define GEARS_API
 #endif
 
