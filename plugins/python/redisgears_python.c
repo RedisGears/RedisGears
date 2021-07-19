@@ -1,3 +1,6 @@
+
+#define REDISMODULE_MAIN
+
 #include <Python.h>
 #include "redisai.h"
 #include "globals.h"

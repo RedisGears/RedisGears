@@ -1,10 +1,10 @@
 #include "command_hook.h"
 
-#include "common.h"
 #include "redisgears_memory.h"
 #include "lock_handler.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
+
 #include <errno.h>
 
 static RedisModuleCommandFilter *cmdFilter = NULL;

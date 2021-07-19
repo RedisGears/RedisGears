@@ -5,8 +5,9 @@
  *      Author: meir
  */
 
-#ifndef SRC_VERSION_H_
-#define SRC_VERSION_H_
+#pragma once
+
+#include <stdbool.h>
 
 #define REDISGEARS_VERSION_MAJOR 99
 #define REDISGEARS_VERSION_MINOR 99
@@ -20,7 +21,7 @@
 
 #define REDISGEARS_VERSION_STR STR(REDISGEARS_VERSION_MAJOR) "." STR(REDISGEARS_VERSION_MINOR) "." STR(REDISGEARS_VERSION_PATCH)
 
-/* API versions. */
+// API versions
 #define REDISMODULE_APIVER_1 1
 
 #define REDISGEARS_DATATYPE_VERSION 3
@@ -35,4 +36,26 @@
 
 #define REDISGEARS_MODULE_NAME "rg"
 
-#endif /* SRC_VERSION_H_ */
+typedef struct RedisVersion{
+    int redisMajorVersion;
+    int redisMinorVersion;
+    int redisPatchVersion;
+}RedisVersion;
+
+extern RedisVersion currVesion;
+extern RedisVersion supportedVersion;
+
+extern int gearsRlecMajorVersion;
+extern int gearsRlecMinorVersion;
+extern int gearsRlecPatchVersion;
+extern int gearsRlecBuild;
+
+extern bool gearsIsCrdt;
+
+static inline int IsEnterprise() {
+  return gearsRlecMajorVersion != -1;
+}
+
+int GearsCompareVersions();
+int GearsCheckSupportedVestion();
+void GearsGetRedisVersion();
