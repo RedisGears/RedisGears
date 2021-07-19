@@ -55,7 +55,7 @@ commands:
           name: Setup automation
           command: |
             git submodule update --init deps/readies
-            ./deps/readies/bin/getpy2
+            FORCE=1 ./deps/readies/bin/getpy2
 
   install-prerequisites:
     parameters:
@@ -374,7 +374,7 @@ workflows:
           matrix:
             parameters:
               #@@platform: [hirsute, focal, bionic, xenial, centos7, centos8]
-              platform: [hirsute]
+              platform: [hirsute, centos8]
       - valgrind:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
