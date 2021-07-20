@@ -368,13 +368,11 @@ workflows:
             parameters:
               redis_version: ["6.0", "6.2"]
       - build-platforms:
-          #@@<<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
           context: common
           matrix:
             parameters:
-              #@@platform: [hirsute, focal, bionic, xenial, centos7, centos8]
-              platform: [hirsute, centos8]
+              platform: [hirsute, focal, bionic, xenial, centos7, centos8]
       - valgrind:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
