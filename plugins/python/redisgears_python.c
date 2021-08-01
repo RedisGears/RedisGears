@@ -2245,12 +2245,15 @@ static PyObject* DAGAddOpsFromString(PyObject *self, PyObject *args) {
     const char* opsStr = PyUnicode_AsUTF8AndSize(ops, NULL);
     RAI_Error *err;
     RedisAI_InitError(&err);
+    RedisGears_LockHanlderAcquire(staticCtx);
     if (RedisAI_DAGAddOpsFromString(pyDag->dag, opsStr, err) != REDISMODULE_OK) {
         PyErr_SetString(GearsError, RedisAI_GetError(err));
         RedisAI_FreeError(err);
+        RedisGears_LockHanlderRelease(staticCtx);
         return NULL;
     }
     RedisAI_FreeError(err);
+    RedisGears_LockHanlderRelease(staticCtx);
     Py_INCREF(self);
     return self;
 }

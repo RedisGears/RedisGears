@@ -1,6 +1,6 @@
 # BUILD redisfab/redisgears:${VERSION}-${ARCH}-${OSNICK}
 
-ARG REDIS_VER=6.2.3
+ARG REDIS_VER=6.2.4
 
 # OSNICK=bionic|stretch|buster
 ARG OSNICK=buster
@@ -30,6 +30,7 @@ COPY --from=redis /usr/local/ /usr/local/
 
 ADD . /build
 
+RUN ./deps/readies/bin/getupdates
 RUN ./deps/readies/bin/getpy2
 RUN ./system-setup.py
 RUN bash -l -c "make fetch SHOW=1"

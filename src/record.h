@@ -76,14 +76,16 @@ extern RecordType* doubleRecordType;
 extern RecordType* keyRecordType;
 extern RecordType* keysHandlerRecordType;
 extern RecordType* hashSetRecordType;
+extern RecordType* nullRecordType;
 extern RecordType* asyncRecordType;
 extern Record StopRecord;
 extern Record WaitRecord;
 extern Record DummyRecord;
+extern Record NullRecord;
 
 Record* RG_GetDummyRecord();
 
-#define IS_SPECIAL_RECORD(r) (r == &StopRecord || r == &WaitRecord || r == &DummyRecord)
+#define IS_SINGLETON(r) (r == &StopRecord || r == &WaitRecord || r == &DummyRecord || r == &NullRecord)
 
 void RG_FreeRecord(Record* record);
 RecordType* RG_RecordGetType(Record* r);
@@ -127,6 +129,9 @@ void RG_HashSetRecordFreeKeysArray(char** keyArr);
 /** async record api **/
 Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err);
 void RG_AsyncRecordContinue(Record* asyncRecord, Record* r);
+
+/** null record api **/
+Record* RG_GetNullRecord();
 
 /* todo: think if we can removed this!! */
 Record* RG_KeyHandlerRecordCreate(RedisModuleKey* handler);
