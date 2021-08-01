@@ -32,7 +32,3 @@ int Cluster_RefreshCluster(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 int Cluster_ClusterSet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Cluster_ClusterSetFromShard(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 
-#define VERIFY_CLUSTER_INITIALIZE(c) \
-	do { \
-		if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state"); \
-	} while(0)

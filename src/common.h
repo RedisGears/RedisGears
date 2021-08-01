@@ -44,7 +44,16 @@ extern int gearsRlecBuild;
 
 extern bool gearsIsCrdt;
 
+static inline int IsEnterprise() {
+  return gearsRlecMajorVersion != -1;
+}
+
 extern RedisModuleCtx *staticCtx;
+
+#define VERIFY_CLUSTER_INITIALIZE(c) \
+	do { \
+		if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state"); \
+	} while(0)
 
 int GearsCompareVersions();
 int GearsCheckSupportedVestion();
