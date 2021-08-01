@@ -36,26 +36,3 @@
 
 #define REDISGEARS_MODULE_NAME "rg"
 
-typedef struct RedisVersion{
-    int redisMajorVersion;
-    int redisMinorVersion;
-    int redisPatchVersion;
-}RedisVersion;
-
-extern RedisVersion currVesion;
-extern RedisVersion supportedVersion;
-
-extern int gearsRlecMajorVersion;
-extern int gearsRlecMinorVersion;
-extern int gearsRlecPatchVersion;
-extern int gearsRlecBuild;
-
-extern bool gearsIsCrdt;
-
-static inline int IsEnterprise() {
-  return gearsRlecMajorVersion != -1;
-}
-
-int GearsCompareVersions();
-int GearsCheckSupportedVestion();
-void GearsGetRedisVersion();
