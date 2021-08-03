@@ -4,20 +4,20 @@
 #include "record.h"
 #include "cluster.h"
 #include "config.h"
-#include <assert.h>
-#include <stdbool.h>
 #include "utils/adlist.h"
 #include "utils/buffer.h"
-#include <pthread.h>
-#include <unistd.h>
-#include <time.h>
 #include "redisgears.h"
 #include "redisgears_memory.h"
-#include <event2/event.h>
 #include "lock_handler.h"
 #include "utils/thpool.h"
 #include "version.h"
-#include "common.h"
+
+#include <assert.h>
+
+#include <pthread.h>
+#include <unistd.h>
+#include <time.h>
+#include <event2/event.h>
 
 #define INIT_TIMER  struct timespec _ts = {0}, _te = {0}; \
                     bool timerInitialized = false;

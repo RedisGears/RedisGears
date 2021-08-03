@@ -4,6 +4,8 @@
 #include "record.h"
 #include "lock_handler.h"
 #include "version.h"
+#include "cluster.h"
+
 #include <string.h>
 
 #define COMMAND_FLAG_MOVEABLEKEYS (1 << 0)

@@ -5,8 +5,9 @@
  *      Author: meir
  */
 
-#ifndef SRC_VERSION_H_
-#define SRC_VERSION_H_
+#pragma once
+
+#include <stdbool.h>
 
 #define REDISGEARS_VERSION_MAJOR 99
 #define REDISGEARS_VERSION_MINOR 99
@@ -20,7 +21,7 @@
 
 #define REDISGEARS_VERSION_STR STR(REDISGEARS_VERSION_MAJOR) "." STR(REDISGEARS_VERSION_MINOR) "." STR(REDISGEARS_VERSION_PATCH)
 
-/* API versions. */
+// API versions
 #define REDISMODULE_APIVER_1 1
 
 #define REDISGEARS_DATATYPE_VERSION 3
@@ -35,4 +36,3 @@
 
 #define REDISGEARS_MODULE_NAME "rg"
 
-#endif /* SRC_VERSION_H_ */
