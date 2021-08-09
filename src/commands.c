@@ -1,5 +1,4 @@
 #include "commands.h"
-#include "utils/arr_rm_alloc.h"
 #include "cluster.h"
 #include "record.h"
 #include "execution_plan.h"

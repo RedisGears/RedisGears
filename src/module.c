@@ -5,9 +5,6 @@
  *      Author: meir
  */
 
-#define GEARS_MAIN
-
-#include "redismodule.h"
 #include "version.h"
 #include "mgmt.h"
 #include "execution_plan.h"
@@ -24,12 +21,12 @@
 #include "readers/command_reader.h"
 #include "readers/shardid_reader.h"
 #include "mappers.h"
-#include <stdbool.h>
-#include <unistd.h>
 #include "lock_handler.h"
+#include "command_hook.h"
+
+#include <unistd.h>
 #include <dlfcn.h>
 #include <dirent.h>
-#include "command_hook.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -629,6 +626,10 @@ static RecordType* RG_GetHashSetRecordType(){
     return hashSetRecordType;
 }
 
+static RecordType* RG_GetNullRecordType(){
+    return nullRecordType;
+}
+
 static ExecutionPlan* RG_GetExecutionFromCtx(ExecutionCtx* ectx){
     return ectx->ep;
 }
@@ -1029,6 +1030,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(HashSetRecordSet, ctx);
     REGISTER_API(HashSetRecordGet, ctx);
     REGISTER_API(HashSetRecordGetAllKeys, ctx);
+    REGISTER_API(GetNullRecord, ctx);
     REGISTER_API(RecordSendReply, ctx);
 
     REGISTER_API(GetTotalDuration, ctx);
@@ -1075,6 +1077,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetKeyRecordType, ctx);
     REGISTER_API(GetKeysHandlerRecordType, ctx);
     REGISTER_API(GetHashSetRecordType, ctx);
+    REGISTER_API(GetNullRecordType, ctx);
 
     REGISTER_API(GetConfig, ctx);
 

@@ -50,8 +50,8 @@ class RedisGearsSetup(paella.Setup):
         if self.arch == 'x64':
             self.install_linux_gnu_tar()
 
-        if self.platform.is_arm() or self.dist == 'centos' and self.os_version[0] == 8:
-            self.install("python3-gevent python3-ujson")
+        if self.platform.is_arm():
+            self.install("python-gevent python-ujson")
         else:
             self.pip_install("gevent ujson")
 
@@ -81,7 +81,7 @@ class RedisGearsSetup(paella.Setup):
         if self.with_python:
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
-                     output=True)
+                     nop=False, output=True)
         self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
 
 #----------------------------------------------------------------------------------------------
