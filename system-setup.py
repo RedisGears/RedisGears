@@ -23,6 +23,7 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("setuptools --upgrade")
 
         self.install("git openssl")
+        self.run("%s/bin/enable-utf8" % READIES)
 
     def debian_compat(self):
         self.run("%s/bin/getgcc" % READIES)
