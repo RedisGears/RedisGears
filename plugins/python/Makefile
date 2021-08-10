@@ -8,6 +8,7 @@ override DEBUG:=1
 endif
 
 ROOT=../..
+MK.pyver:=3
 include $(ROOT)/deps/readies/mk/main
 
 define HELP
