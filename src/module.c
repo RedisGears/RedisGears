@@ -318,12 +318,12 @@ static void RG_KeysReaderTriggerArgsSetHookCommands(KeysReaderTriggerArgs* krta,
     return KeysReaderTriggerArgs_SetTriggerHookCommands(krta, hookCommands);
 }
 
-static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
-    return CommandReaderTriggerArgs_CreateTrigger(trigger);
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger, int inOrder){
+    return CommandReaderTriggerArgs_CreateTrigger(trigger, inOrder);
 }
 
-static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreateHook(const char* hook, const char* prefix){
-    return CommandReaderTriggerArgs_CreateHook(hook, prefix);
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreateHook(const char* hook, const char* prefix, int inOrder){
+    return CommandReaderTriggerArgs_CreateHook(hook, prefix, inOrder);
 }
 
 static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){

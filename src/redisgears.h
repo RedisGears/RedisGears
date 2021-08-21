@@ -240,8 +240,8 @@ GEARS_API int MODULE_API_FUNC(RedisGears_CommandCtxOverrideReply)(CommandCtx* cm
 GEARS_API RedisModuleString** MODULE_API_FUNC(RedisGears_CommandCtxGetCommand)(CommandCtx* cmdCtx, size_t* len);
 GEARS_API CommandCtx* MODULE_API_FUNC(RedisGears_CommandCtxGet)(ExecutionCtx* ectx);
 
-GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
-GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreateHook)(const char* hook, const char* prefix);
+GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger, int inOrder);
+GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreateHook)(const char* hook, const char* prefix, int inOrder);
 GEARS_API void MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsFree)(CommandReaderTriggerArgs* args);
 
 /* will return trigger ctx that can be used to call the next command (the one that was overrided) */

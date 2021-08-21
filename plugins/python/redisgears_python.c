@@ -1546,6 +1546,7 @@ static void* registerCreateCommandArgs(PyObject *kargs){
     const char* trigger = NULL;
     const char* keyPrefix = NULL;
     const char* hook = NULL;
+    int inOrder = 0;
     PyObject* pyTrigger = GearsPyDict_GetItemString(kargs, "trigger");
     if(pyTrigger){
         if(!PyUnicode_Check(pyTrigger)){
@@ -1553,6 +1554,19 @@ static void* registerCreateCommandArgs(PyObject *kargs){
             return NULL;
         }
         trigger = PyUnicode_AsUTF8AndSize(pyTrigger, NULL);
+    }
+
+    PyObject* pyInOrder = GearsPyDict_GetItemString(kargs, "inorder");
+    if(pyInOrder){
+        if(!PyBool_Check(pyInOrder)){
+            PyErr_SetString(GearsError, "inorder argument is be boolean");
+            return NULL;
+        }
+        if(Py_True == pyInOrder){
+            inOrder = 1;
+        }else{
+            inOrder = 0;
+        }
     }
 
     PyObject* PykeyPrefix = GearsPyDict_GetItemString(kargs, "keyprefix");
@@ -1578,13 +1592,13 @@ static void* registerCreateCommandArgs(PyObject *kargs){
             PyErr_SetString(GearsError, "trigger argument can not be given with keyprefix or hook");
             return NULL;
         }
-        return RedisGears_CommandReaderTriggerArgsCreate(trigger);
+        return RedisGears_CommandReaderTriggerArgsCreate(trigger, inOrder);
     }else{
         if(!hook){
             PyErr_SetString(GearsError, "no trigger or hook argument was given");
             return NULL;
         }
-        return RedisGears_CommandReaderTriggerArgsCreateHook(hook, keyPrefix);
+        return RedisGears_CommandReaderTriggerArgsCreateHook(hook, keyPrefix, inOrder);
     }
 
 }

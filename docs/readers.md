@@ -342,12 +342,13 @@ The reader returns a list record with elements being the trigger's name followed
 **_Event Mode_**
 
 ```python
-class GearsBuilder('CommandReader').register(trigger=None)
+class GearsBuilder('CommandReader').register(trigger=None, inorder=True/False)
 ```
 
 _Arguments_
 
 * _trigger_: the trigger's name
+* _inorder_: if `True`, the commands will run one after the other in the order they came (this option is only relevant for [`async_local`](functions.md#register) executions, on [`sync`](functions.md#register) executions you get it by default from the sync property, and its currently not possible to promise this property on [`async`](functions.md#register) executions ). Supported only on v1.0.7 and above.
 
 **Examples**
 
