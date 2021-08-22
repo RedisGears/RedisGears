@@ -1360,6 +1360,7 @@ static void* registerCreateStreamArgs(PyObject *kargs, const char* prefix, Execu
 }
 
 static void* registerCreateCommandArgs(PyObject *kargs){
+    int inOrder = 0;
     const char* trigger = NULL;
     PyObject* pyTrigger = GearsPyDict_GetItemString(kargs, "trigger");
     if(!pyTrigger){
@@ -1370,8 +1371,17 @@ static void* registerCreateCommandArgs(PyObject *kargs){
         PyErr_SetString(GearsError, "trigger argument is not string");
         return NULL;
     }
+
+    PyObject* pyInOrder = GearsPyDict_GetItemString(kargs, "inorder");
+    if(pyInOrder){
+        if(!PyBool_Check(pyInOrder)){
+            PyErr_SetString(GearsError, "inorder argument must be a boolean");
+            return NULL;
+        }
+        inOrder = Py_True == pyInOrder ? 1 : 0;
+    }
     trigger = PyUnicode_AsUTF8AndSize(pyTrigger, NULL);
-    return RedisGears_CommandReaderTriggerArgsCreate(trigger);
+    return RedisGears_CommandReaderTriggerArgsCreate(trigger, inOrder);
 }
 
 static void* registerCreateArgs(FlatExecutionPlan* fep, PyObject *kargs, ExecutionMode mode){

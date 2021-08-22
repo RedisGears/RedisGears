@@ -2,14 +2,17 @@
 #include "redisgears_memory.h"
 #include "execution_plan.h"
 #include "record.h"
+#include "version.h"
 
 typedef struct CommandReaderTriggerArgs{
     char* trigger;
+    int inOrder;
 }CommandReaderTriggerArgs;
 
-CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* trigger){
+CommandReaderTriggerArgs* CommandReaderTriggerArgs_Create(const char* trigger, int inOrder){
     CommandReaderTriggerArgs* ret = RG_ALLOC(sizeof(*ret));
     ret->trigger = RG_STRDUP(trigger);
+    ret->inOrder = inOrder;
     return ret;
 }
 
@@ -29,6 +32,7 @@ typedef struct CommandReaderTriggerCtx{
     size_t numAborted;
     char* lastError;
     Gears_dict* pendingExections;
+    WorkerData* wd;
 }CommandReaderTriggerCtx;
 
 Gears_dict* CommandRegistrations = NULL;
@@ -46,6 +50,7 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numAborted = 0,
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
+            .wd = args->inOrder? RedisGears_WorkerDataCreate(NULL) : NULL,
     };
     return ret;
 }
@@ -63,6 +68,9 @@ static void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
         CommandReaderTriggerArgs_Free(crtCtx->args);
         FlatExecutionPlan_Free(crtCtx->fep);
         Gears_dictRelease(crtCtx->pendingExections);
+        if (crtCtx->wd) {
+            RedisGears_WorkerDataFree(crtCtx->wd);
+        }
         RG_FREE(crtCtx);
     }
 }
@@ -224,12 +232,17 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
 
 static void CommandReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
     CommandReaderTriggerArgs* crtArgs = var;
+    RedisGears_BWWriteLong(bw, crtArgs->inOrder);
     RedisGears_BWWriteString(bw, crtArgs->trigger);
 }
 
-static void* CommandReader_DeserializeArgs(Gears_BufferReader* br){
+static void* CommandReader_DeserializeArgs(Gears_BufferReader* br, int encVer){
+    int inOrder = 0;
+    if (encVer >= VERSION_WITH_COMMAND_READER_IN_ORDER) {
+        inOrder = RedisGears_BRReadLong(br);
+    }
     const char* command = RedisGears_BRReadString(br);
-    return CommandReaderTriggerArgs_Create(command);
+    return CommandReaderTriggerArgs_Create(command, inOrder);
 }
 
 static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
@@ -317,7 +330,7 @@ static void CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
             RedisModule_Assert(false);
         }
 
-        CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br);
+        CommandReaderTriggerArgs* crtArgs = CommandReader_DeserializeArgs(&br, encver);
         RedisModule_Free(data);
 
         int ret = CommandReader_RegisrterTrigger(fep, mode, crtArgs, &err);
@@ -462,7 +475,7 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1);
-    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone, pd, NULL, &err);
+    ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone, pd, crtCtx->wd, &err);
     if(!ep){
         // error accurred
         ++crtCtx->numAborted;

@@ -1576,7 +1576,7 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     RedisModule_Assert(callbacks);
     RedisModule_Assert(callbacks->deserializeTriggerArgs);
 
-    void* args = callbacks->deserializeTriggerArgs(&br);
+    void* args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
     ExecutionMode mode = RedisGears_BRReadLong(&br);
 
 

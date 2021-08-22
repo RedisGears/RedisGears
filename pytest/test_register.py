@@ -7,6 +7,8 @@ from includes import *
 from common import getConnectionByEnv
 from common import TimeLimit
 
+from common import Background
+
 
 class testUnregister:
     def __init__(self):
@@ -995,3 +997,60 @@ GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
     while registration[7][3] != registration[7][5]:
         time.sleep(0.1)
         registration = env.cmd('RG.DUMPREGISTRATIONS')[0]
+
+
+def testCommandReaderInOrder(env):
+    env.skipOnCluster()
+    script = '''
+import time
+def SleepIfNeeded(x):
+    if x[2] == 'x':
+        time.sleep(0.5)
+GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], x[2])).register(trigger='test_inorder', mode='async_local', inorder=True)
+GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], x[2])).register(trigger='test_not_inorder', mode='async_local')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    for _ in env.reloading_iterator():
+        conn1 = env.getConnection()
+        conn2 = env.getConnection()
+
+        def RunTestNotInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'x')
+
+        def RunTestNotInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'y')
+
+        try:
+            with Background(RunTestNotInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
+                with Background(RunTestNotInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:
+            env.assertTrue(False, message='Failed wait for RunTestNotInOrder to finish: %s' % str(e))
+
+        env.expect('lrange', 'l', '0', '-1').equal(['x', 'y'])
+
+        env.cmd('flushall')
+
+        def RunTestInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'x')
+
+        def RunTestInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'y')
+
+        try:
+            with Background(RunTestInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
+                with Background(RunTestInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:  
+            env.assertTrue(False, message='Failed wait for RunTestInOrder to finish: %s' % str(e))
+
+        env.expect('lrange', 'l', '0', '-1').equal(['y', 'x'])
+
+        env.cmd('flushall')
