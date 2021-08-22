@@ -1,6 +1,28 @@
 import signal
 from includes import *
+from threading import Thread
 
+class Background(object):
+    """
+    A context manager that fires a TimeExpired exception if it does not
+    return within the specified amount of time.
+    """
+
+    def doJob(self):
+        self.f()
+        self.isAlive = False
+
+    def __init__(self, f):
+        self.f = f
+        self.isAlive = True
+
+    def __enter__(self):
+        self.t = Thread(target = self.doJob)
+        self.t.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
 
 class TimeLimit(object):
     """

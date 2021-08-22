@@ -1011,7 +1011,7 @@ static void StreamReader_SerializeArgs(void* args, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, triggerArgs->trimStream);
 }
 
-static void* StreamReader_DeserializeArgs(Gears_BufferReader* br){
+static void* StreamReader_DeserializeArgs(Gears_BufferReader* br, int encVer){
     char* stream = RedisGears_BRReadString(br);
     size_t batchSize = RedisGears_BRReadLong(br);
     size_t durationMS = RedisGears_BRReadLong(br);
@@ -1127,7 +1127,7 @@ static void StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
             RedisModule_Assert(false);
         }
 
-        void* args = StreamReader_DeserializeArgs(&reader);
+        void* args = StreamReader_DeserializeArgs(&reader, encver);
         RedisModule_Free(data);
 
         int mode = RedisModule_LoadUnsigned(rdb);
