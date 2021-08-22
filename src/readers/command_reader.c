@@ -32,8 +32,9 @@ typedef struct CommandReaderTriggerArgs{
         }hookData;
         char* trigger;
     };
-
     TriggerType triggerType;
+    int inOrder; // it true, fire the events in the order they arrive,
+                 // i.e, do not start the next event before the last one finished.
 }CommandReaderTriggerArgs;
 
 typedef struct CommandReaderTriggerCtx{
@@ -48,6 +49,7 @@ typedef struct CommandReaderTriggerCtx{
     char* lastError;
     Gears_dict* pendingExections;
     Gears_listNode* listNode;
+    WorkerData* wd;
 }CommandReaderTriggerCtx;
 
 typedef struct CommandReaderArgs{
@@ -125,18 +127,20 @@ done:
     return ret;
 }
 
-CommandReaderTriggerArgs* CommandReaderTriggerArgs_CreateTrigger(const char* trigger){
+CommandReaderTriggerArgs* CommandReaderTriggerArgs_CreateTrigger(const char* trigger, int inOrder){
     CommandReaderTriggerArgs* ret = RG_CALLOC(1, sizeof(*ret));
     ret->triggerType = TriggerType_Trigger;
     ret->trigger = RG_STRDUP(trigger);
+    ret->inOrder = inOrder;
     return ret;
 }
 
-CommandReaderTriggerArgs* CommandReaderTriggerArgs_CreateHook(const char* hook, const char* keyPrefix){
+CommandReaderTriggerArgs* CommandReaderTriggerArgs_CreateHook(const char* hook, const char* keyPrefix, int inOrder){
     CommandReaderTriggerArgs* ret = RG_CALLOC(1, sizeof(*ret));
     ret->triggerType = TriggerType_Hook;
     ret->hookData.hook = RG_STRDUP(hook);
     ret->hookData.keyPrefix = keyPrefix ? RG_STRDUP(keyPrefix) : NULL;
+    ret->inOrder = inOrder;
     return ret;
 }
 
@@ -175,6 +179,7 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
             .listNode = NULL,
+            .wd = args->inOrder? RedisGears_WorkerDataCreate(fep->executionThreadPool) : NULL,
     };
     return ret;
 }
@@ -209,6 +214,9 @@ void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
     CommandReaderTriggerArgs_Free(crtCtx->args);
     Gears_dictRelease(crtCtx->pendingExections);
     FlatExecutionPlan_Free(crtCtx->fep);
+    if (crtCtx->wd) {
+        RedisGears_WorkerDataFree(crtCtx->wd);
+    }
     RG_FREE(crtCtx);
 }
 
@@ -496,6 +504,7 @@ static void CommandReader_UnregisterTrigger(FlatExecutionPlan* fep, bool abortPe
 static void CommandReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
     CommandReaderTriggerArgs* crtArgs = var;
     RedisGears_BWWriteLong(bw, crtArgs->triggerType);
+    RedisGears_BWWriteLong(bw, crtArgs->inOrder);
     switch(crtArgs->triggerType){
     case TriggerType_Trigger:
         RedisGears_BWWriteString(bw, crtArgs->trigger);
@@ -519,15 +528,19 @@ static void* CommandReader_DeserializeArgs(Gears_BufferReader* br, int encver){
     const char* trigger;
     const char* hook;
     const char* keyPrefix;
+    int inOrder = 0;
     CommandReaderTriggerArgs* crtArgs = NULL;
     TriggerType triggerType = TriggerType_Trigger;
     if(encver >= VERSION_WITH_COMMAND_HOOKS){
         triggerType = RedisGears_BRReadLong(br);
     }
+    if (encver >= VERSION_WITH_COMMAND_READER_IN_ORDER) {
+        inOrder = RedisGears_BRReadLong(br);
+    }
     switch(triggerType){
     case TriggerType_Trigger:
         trigger = RedisGears_BRReadString(br);
-        crtArgs = CommandReaderTriggerArgs_CreateTrigger(trigger);
+        crtArgs = CommandReaderTriggerArgs_CreateTrigger(trigger, inOrder);
         break;
     case TriggerType_Hook:
         hook = RedisGears_BRReadString(br);
@@ -535,7 +548,7 @@ static void* CommandReader_DeserializeArgs(Gears_BufferReader* br, int encver){
         if(RedisGears_BRReadLong(br)){
             keyPrefix = RedisGears_BRReadString(br);
         }
-        crtArgs = CommandReaderTriggerArgs_CreateHook(hook, keyPrefix);
+        crtArgs = CommandReaderTriggerArgs_CreateHook(hook, keyPrefix, inOrder);
         size_t len;
         crtArgs->hookData.info = *((CommandReaderTriggerInfo*)RedisGears_BRReadBuffer(br, &len));
         RedisModule_Assert(len == sizeof(CommandReaderTriggerInfo));
@@ -575,9 +588,11 @@ static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutio
         RedisModule_ReplyWithNull(ctx);
     }
     RedisModule_ReplyWithStringBuffer(ctx, "args", strlen("args"));
-    RedisModule_ReplyWithArray(ctx, 2);
+    RedisModule_ReplyWithArray(ctx, 4);
     RedisModule_ReplyWithStringBuffer(ctx, "trigger", strlen("trigger"));
     RedisModule_ReplyWithStringBuffer(ctx, crtCtx->args->trigger, strlen(crtCtx->args->trigger));
+    RedisModule_ReplyWithStringBuffer(ctx, "inorder", strlen("inorder"));
+    RedisModule_ReplyWithLongLong(ctx, crtCtx->args->inOrder);
 }
 
 static void CommandReader_RdbSaveSingleRegistration(RedisModuleIO *rdb, Gears_Buffer* buff, CommandReaderTriggerCtx* crtCtx){
@@ -904,7 +919,7 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
     char* err = NULL;
     CommandReaderArgs* args = CommandReaderArgs_Create(argv + 1, argc - 1, crtCtx);
     ExecutionPlan* ep = RedisGears_Run(crtCtx->fep, crtCtx->mode, args, CommandReader_OnDone,
-                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), NULL, &err);
+                                       CommandReaderTriggerCtx_GetShallowCopy(crtCtx), crtCtx->wd, &err);
 
     ++crtCtx->numTriggered;
 
