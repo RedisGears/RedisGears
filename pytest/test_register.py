@@ -1023,6 +1023,7 @@ GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], 
 
         try:
             with Background(RunTestNotInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
                 with Background(RunTestNotInOrderY) as bk2:
                     with TimeLimit(50):
                         while bk1.isAlive or bk2.isAlive:
@@ -1042,6 +1043,7 @@ GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], 
 
         try:
             with Background(RunTestInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
                 with Background(RunTestInOrderY) as bk2:
                     with TimeLimit(50):
                         while bk1.isAlive or bk2.isAlive:
