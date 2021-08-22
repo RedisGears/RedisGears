@@ -1384,41 +1384,44 @@ GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], 
 
     verifyRegistrationIntegrity(env)
 
-    conn1 = env.getConnection()
-    conn2 = env.getConnection()
+    for _ in env.reloading_iterator():
+        conn1 = env.getConnection()
+        conn2 = env.getConnection()
 
-    def RunTestNotInOrderX():
-        conn1.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'x')
+        def RunTestNotInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'x')
 
-    def RunTestNotInOrderY():
-        conn2.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'y')
+        def RunTestNotInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'y')
 
-    try:
-        with Background(RunTestNotInOrderX) as bk1:
-            with Background(RunTestNotInOrderY) as bk2:
-                with TimeLimit(50):
-                    while bk1.isAlive or bk2.isAlive:
-                        time.sleep(0.1)
-    except Exception as e:
-        env.assertTrue(False, message='Failed wait for RunTestNotInOrder to finish: %s' % str(e))
+        try:
+            with Background(RunTestNotInOrderX) as bk1:
+                with Background(RunTestNotInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:
+            env.assertTrue(False, message='Failed wait for RunTestNotInOrder to finish: %s' % str(e))
 
-    env.expect('lrange', 'l', '0', '-1').equal(['x', 'y'])
+        env.expect('lrange', 'l', '0', '-1').equal(['x', 'y'])
 
-    env.cmd('flushall')
+        env.cmd('flushall')
 
-    def RunTestInOrderX():
-        conn1.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'x')
+        def RunTestInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'x')
 
-    def RunTestInOrderY():
-        conn2.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'y')
+        def RunTestInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'y')
 
-    try:
-        with Background(RunTestInOrderX) as bk1:
-            with Background(RunTestInOrderY) as bk2:
-                with TimeLimit(50):
-                    while bk1.isAlive or bk2.isAlive:
-                        time.sleep(0.1)
-    except Exception as e:  
-        env.assertTrue(False, message='Failed wait for RunTestInOrder to finish: %s' % str(e))
+        try:
+            with Background(RunTestInOrderX) as bk1:
+                with Background(RunTestInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:  
+            env.assertTrue(False, message='Failed wait for RunTestInOrder to finish: %s' % str(e))
 
-    env.expect('lrange', 'l', '0', '-1').equal(['y', 'x'])
+        env.expect('lrange', 'l', '0', '-1').equal(['y', 'x'])
+
+        env.cmd('flushall')
