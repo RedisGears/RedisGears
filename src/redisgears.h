@@ -934,6 +934,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnRunningCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnHoldingCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetNullRecord);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetReadDuration);
