@@ -68,6 +68,9 @@ static void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
         CommandReaderTriggerArgs_Free(crtCtx->args);
         FlatExecutionPlan_Free(crtCtx->fep);
         Gears_dictRelease(crtCtx->pendingExections);
+        if (crtCtx->wd) {
+            RedisGears_WorkerDataFree(crtCtx->wd);
+        }
         RG_FREE(crtCtx);
     }
 }
