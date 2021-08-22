@@ -405,11 +405,41 @@ static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCa
     if(EPIsFlagOn(ep, EFDone)){
         return false;
     }
-    OnDoneData onDoneData = {
+    ExecutionCallbacData onDoneData = {
             .callback = callback,
-            .privateData = privateData,
+            .pd = privateData,
     };
     ep->onDoneData = array_append(ep->onDoneData, onDoneData);
+    return true;
+}
+
+static bool RG_AddOnRunningCallback(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData) {
+    if(EPIsFlagOn(ep, EFDone)){
+        return false;
+    }
+    ExecutionCallbacData callbackData = {
+            .callback = callback,
+            .pd = privateData,
+    };
+    if (!ep->runCallbacks) {
+        ep->runCallbacks = array_new(ExecutionCallbacData, 2);
+    }
+    ep->runCallbacks = array_append(ep->runCallbacks, callbackData);
+    return true;
+}
+
+static bool RG_AddOnHoldingCallback(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData) {
+    if(EPIsFlagOn(ep, EFDone)){
+        return false;
+    }
+    ExecutionCallbacData callbackData = {
+            .callback = callback,
+            .pd = privateData,
+    };
+    if (!ep->holdCallbacks) {
+        ep->holdCallbacks = array_new(ExecutionCallbacData, 2);
+    }
+    ep->holdCallbacks = array_append(ep->holdCallbacks, callbackData);
     return true;
 }
 
@@ -992,6 +1022,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetErrorsLen, ctx);
     REGISTER_API(GetError, ctx);
     REGISTER_API(AddOnDoneCallback, ctx);
+    REGISTER_API(AddOnRunningCallback, ctx);
+    REGISTER_API(AddOnHoldingCallback, ctx);
     REGISTER_API(DropExecution, ctx);
     REGISTER_API(AbortExecution, ctx);
     REGISTER_API(GetId, ctx);

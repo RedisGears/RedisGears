@@ -1801,7 +1801,7 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     // will free it only after all the callbacks are executed
     EPTurnOnFlag(ep, EFIsOnDoneCallback);
     for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
-        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].pd);
     }
     EPTurnOffFlag(ep, EFIsOnDoneCallback);
     if(EPIsFlagOn(ep, EFIsFreedOnDoneCallback)){
@@ -2081,7 +2081,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     }
 
     if(callback){
-        OnDoneData onDoneData = (OnDoneData){.callback = callback, .privateData = privateData};
+        ExecutionCallbacData onDoneData = (ExecutionCallbacData){.callback = callback, .pd = privateData};
         ep->onDoneData = array_append(ep->onDoneData, onDoneData);
     }
     ep->fep = FlatExecutionPlan_ShallowCopy(fep);
@@ -2259,6 +2259,14 @@ static void ExecutionPlan_Reset(ExecutionPlan* ep){
     EPTurnOffFlag(ep, EFStarted);
     EPTurnOffFlag(ep, EFWaiting);
 
+    if (ep->runCallbacks) {
+        array_trimm_len(ep->runCallbacks, 0);
+    }
+
+    if (ep->holdCallbacks) {
+        array_trimm_len(ep->holdCallbacks, 0);
+    }
+
     ExecutionStep_Reset(ep->steps[0]);
 }
 
@@ -2305,7 +2313,7 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     EPTurnOnFlag(ep, EFDone);
 
     for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
-        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].pd);
     }
 
     LockHandler_Release(rctx);
@@ -2675,6 +2683,14 @@ static void ExecutionPlan_AddStepRecord(RedisModuleCtx* ctx, ExecutionPlan* ep, 
 	}
 }
 
+static void ExecutionPlan_RunCallbacks(ExecutionPlan* ep, ExecutionCallbacData* callbacks) {
+    if (callbacks) {
+        for (size_t i = 0 ; i < array_len(callbacks) ; ++i) {
+            callbacks[i].callback(ep, callbacks[i].pd);
+        }
+    }
+}
+
 static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     ExecutionPendingCtx* pctx = NULL;
     ExecutionPlan* ep;
@@ -2728,7 +2744,11 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     }
     ep->isPaused = false;
     LockHandler_Release(ctx);
-	switch(msg->type){
+
+    // run the running callbacks
+    ExecutionPlan_RunCallbacks(ep, ep->runCallbacks);
+
+    switch(msg->type){
 	case RUN_MSG:
 	    RedisModule_Assert(EPIsFlagOff(ep, EFWaiting));
         ExecutionPlan_Main(ctx, ep);
@@ -2766,6 +2786,9 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
 	    RedisModule_Assert(false);
 	}
 	ExectuionPlan_WorkerMsgFree(msg);
+
+	// run the holding callbacks
+    ExecutionPlan_RunCallbacks(ep, ep->holdCallbacks);
 }
 
 static void ExecutionPlan_MessageThreadMain(void *arg){
@@ -3044,7 +3067,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     ret->errors = array_new(Record*, 1);
     ret->status = CREATED;
     EPTurnOffFlag(ret, EFSentRunRequest);
-    ret->onDoneData = array_new(OnDoneData, 10);
+    ret->onDoneData = array_new(ExecutionCallbacData, 2);
     EPTurnOffFlag(ret, EFDone);
     ret->mode = mode;
     if(ret->mode == ExecutionModeSync ||
@@ -3054,6 +3077,8 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     }else{
         EPTurnOffFlag(ret, EFIsLocal);
     }
+    ret->runCallbacks = NULL;
+    ret->holdCallbacks = NULL;
     EPTurnOffFlag(ret, EFIsFreedOnDoneCallback);
     EPTurnOffFlag(ret, EFIsLocalyFreedOnDoneCallback);
     EPTurnOffFlag(ret, EFIsOnDoneCallback);
@@ -3148,6 +3173,12 @@ static void ExecutionPlan_FreeRaw(ExecutionPlan* ep){
     array_free(ep->results);
     array_free(ep->errors);
     array_free(ep->onDoneData);
+    if (ep->runCallbacks) {
+        array_free(ep->runCallbacks);
+    }
+    if (ep->holdCallbacks) {
+        array_free(ep->holdCallbacks);
+    }
     RG_FREE(ep);
 }
 
