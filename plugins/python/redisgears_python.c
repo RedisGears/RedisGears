@@ -1562,11 +1562,7 @@ static void* registerCreateCommandArgs(PyObject *kargs){
             PyErr_SetString(GearsError, "inorder argument is be boolean");
             return NULL;
         }
-        if(Py_True == pyInOrder){
-            inOrder = 1;
-        }else{
-            inOrder = 0;
-        }
+        pyInOrder = Py_True == pyInOrder ? 1 : 0;
     }
 
     PyObject* PykeyPrefix = GearsPyDict_GetItemString(kargs, "keyprefix");
