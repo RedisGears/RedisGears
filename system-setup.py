@@ -33,7 +33,8 @@ class RedisGearsSetup(paella.Setup):
 
         self.install("vim-common") # for xxd
         self.install("lsb-release")
-        self.install("zip unzip")
+        self.install("zip unzip gawk")
+        self.install("python-dev")
 
         # pip cannot build gevent on ARM
         self.install("python-psutil")
@@ -56,6 +57,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("zip unzip")
         self.install("which") # required by pipenv (on docker)
         self.install("libatomic file")
+        self.install("python2-devel")
 
         self.run("wget -q -O /tmp/epel-release-latest-7.noarch.rpm http://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm")
         self.run("rpm -Uv /tmp/epel-release-latest-7.noarch.rpm --replacepkgs ")
