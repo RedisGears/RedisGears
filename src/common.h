@@ -61,6 +61,7 @@ void GearsGetRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);
 int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
+char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int));
 char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*));
 const char* GetShardUniqueId();
 int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);

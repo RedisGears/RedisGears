@@ -372,6 +372,9 @@ void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
 void ExecutionPlan_Free(ExecutionPlan* ep);
 
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+size_t ExecutionPlan_NRegistrations();
+size_t ExecutionPlan_NExecutions();
+void ExecutionPlan_InfoRegistrations(RedisModuleInfoCtx *ctx, int for_crash_report);
 int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

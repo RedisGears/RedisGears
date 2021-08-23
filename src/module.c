@@ -1187,6 +1187,18 @@ static int Command_DumpPlugins(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
+static void RedisGears_InfoFunc(RedisModuleInfoCtx *ctx, int for_crash_report) {
+    if (RedisModule_InfoAddSection(ctx, NULL) == REDISMODULE_OK) {
+        // default section
+        RedisModule_InfoAddFieldULongLong(ctx, "nexecutions", ExecutionPlan_NExecutions());
+        RedisModule_InfoAddFieldULongLong(ctx, "nregistrations", ExecutionPlan_NRegistrations());
+    }
+
+    if (RedisModule_InfoAddSection(ctx, "regisrations") == REDISMODULE_OK) {
+        ExecutionPlan_InfoRegistrations(ctx, for_crash_report);
+    }
+}
+
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -1267,6 +1279,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_Log(staticCtx, "warning", "failed create RedisGear DataType");
         return REDISMODULE_ERR;
     }
+
+    RedisModule_RegisterInfoFunc(ctx, RedisGears_InfoFunc);
 
     if(RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_Loading, RedisGears_OnLoadingEvent) != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "Could not subscribe to loaded events");
