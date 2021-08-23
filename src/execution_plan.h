@@ -201,11 +201,6 @@ typedef struct WorkerData{
     ExecutionThreadPool* pool;
 }WorkerData;
 
-typedef struct OnDoneData{
-    RedisGears_OnExecutionDoneCallback callback;
-    void* privateData;
-}OnDoneData;
-
 #define ExecutionFlags int
 #define EFDone 0x01
 #define EFIsOnDoneCallback 0x02
@@ -245,7 +240,7 @@ typedef struct ExecutionPlan{
     Record** errors;
     volatile ExecutionPlanStatus status;
     ExecutionFlags flags;
-    OnDoneData* onDoneData; // Array of callbacks to run on done
+    ExecutionCallbacData* onDoneData; // Array of callbacks to run on done
     RedisGears_ExecutionOnStartCallback onStartCallback;
     RedisGears_ExecutionOnUnpausedCallback onUnpausedCallback;
     ExecutionCallbacData* runCallbacks;

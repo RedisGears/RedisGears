@@ -860,12 +860,12 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
 static CommandReaderTriggerCtx* currTCtx = NULL;
 static bool noOverride = false;
 
-static void CommandReader_ExectionRunningCallback(void* privateData) {
+static void CommandReader_ExectionRunningCallback(ExecutionPlan* ep, void* privateData) {
     // privateData is the blocked client
     RedisModule_BlockedClientMeasureTimeStart(privateData);
 }
 
-static void CommandReader_ExectionHoldingCallback(void* privateData) {
+static void CommandReader_ExectionHoldingCallback(ExecutionPlan* ep, void* privateData) {
     // privateData is the blocked client
     RedisModule_BlockedClientMeasureTimeEnd(privateData);
 }

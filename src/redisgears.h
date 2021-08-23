@@ -147,12 +147,13 @@ GEARS_API char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br,
 /**
  * On done callback definition
  */
-typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
-typedef void (*RedisGears_ExecutionCallback)(void* privateData);
+typedef void (*RedisGears_ExecutionCallback)(ExecutionPlan* ctx, void* privateData);
 typedef void (*RedisGears_ExecutionOnStartCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_ExecutionOnUnpausedCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_FlatExecutionOnRegisteredCallback)(FlatExecutionPlan* fep, void* arg);
 typedef void (*RedisGears_FlatExecutionOnUnregisteredCallback)(FlatExecutionPlan* fep, void* arg);
+
+typedef RedisGears_ExecutionCallback RedisGears_OnExecutionDoneCallback;
 
 /**
  * Reader callbacks definition.

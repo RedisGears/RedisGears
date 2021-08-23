@@ -1788,10 +1788,10 @@ ActionResult EPStatus_AbortedAction(ExecutionPlan* ep){
     return COMPLETED;
 }
 
-static void ExecutionPlan_RunCallbacks(ExecutionCallbacData* callbacks) {
+static void ExecutionPlan_RunCallbacks(ExecutionPlan* ep, ExecutionCallbacData* callbacks) {
     if (callbacks) {
         for (size_t i = 0 ; i < array_len(callbacks) ; ++i) {
-            callbacks[i].callback(callbacks[i].pd);
+            callbacks[i].callback(ep, callbacks[i].pd);
         }
     }
 }
@@ -1803,7 +1803,7 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
         // execution is completed, lets call the hold callbacks before completing it.
         // this should only be called if we reached here because execution was running, i.e not Paused,
         // otherwise we reach here because of abort or maxidle reached and there is no need to do it.
-        ExecutionPlan_RunCallbacks(ep->holdCallbacks);
+        ExecutionPlan_RunCallbacks(ep, ep->holdCallbacks);
     }
 
     LockHandler_Acquire(rctx);
@@ -1817,7 +1817,7 @@ ActionResult EPStatus_DoneAction(ExecutionPlan* ep){
     // will free it only after all the callbacks are executed
     EPTurnOnFlag(ep, EFIsOnDoneCallback);
     for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
-        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].pd);
     }
     EPTurnOffFlag(ep, EFIsOnDoneCallback);
     if(EPIsFlagOn(ep, EFIsFreedOnDoneCallback)){
@@ -2100,7 +2100,7 @@ static ExecutionPlan* FlatExecutionPlan_CreateExecution(FlatExecutionPlan* fep, 
     }
 
     if(callback){
-        OnDoneData onDoneData = (OnDoneData){.callback = callback, .privateData = privateData};
+        ExecutionCallbacData onDoneData = (ExecutionCallbacData){.callback = callback, .pd = privateData};
         ep->onDoneData = array_append(ep->onDoneData, onDoneData);
     }
     ep->fep = FlatExecutionPlan_ShallowCopy(fep);
@@ -2332,7 +2332,7 @@ static void ExecutionPlan_RunSync(ExecutionPlan* ep){
     EPTurnOnFlag(ep, EFDone);
 
     for(size_t i = 0 ; i < array_len(ep->onDoneData) ; ++i){
-        ep->onDoneData[i].callback(ep, ep->onDoneData[i].privateData);
+        ep->onDoneData[i].callback(ep, ep->onDoneData[i].pd);
     }
 
     LockHandler_Release(rctx);
@@ -2760,7 +2760,7 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
     LockHandler_Release(ctx);
 
     // run the running callbacks
-    ExecutionPlan_RunCallbacks(ep->runCallbacks);
+    ExecutionPlan_RunCallbacks(ep, ep->runCallbacks);
 
     ActionResult res;
     switch(msg->type){
@@ -2805,7 +2805,7 @@ static void ExecutionPlan_MsgArrive(RedisModuleCtx* ctx, WorkerMsg* msg){
 	// run the holding callbacks
 	if (res != COMPLETED) {
 	    // if execution is completed, this callback will be called just before the done action.
-	    ExecutionPlan_RunCallbacks(ep->holdCallbacks);
+	    ExecutionPlan_RunCallbacks(ep, ep->holdCallbacks);
 	}
 }
 
@@ -3085,7 +3085,7 @@ static ExecutionPlan* ExecutionPlan_New(FlatExecutionPlan* fep, ExecutionMode mo
     ret->errors = array_new(Record*, 1);
     ret->status = CREATED;
     EPTurnOffFlag(ret, EFSentRunRequest);
-    ret->onDoneData = array_new(OnDoneData, 2);
+    ret->onDoneData = array_new(ExecutionCallbacData, 2);
     EPTurnOffFlag(ret, EFDone);
     ret->mode = mode;
     if(ret->mode == ExecutionModeSync ||

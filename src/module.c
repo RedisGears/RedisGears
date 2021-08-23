@@ -405,9 +405,9 @@ static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCa
     if(EPIsFlagOn(ep, EFDone)){
         return false;
     }
-    OnDoneData onDoneData = {
+    ExecutionCallbacData onDoneData = {
             .callback = callback,
-            .privateData = privateData,
+            .pd = privateData,
     };
     ep->onDoneData = array_append(ep->onDoneData, onDoneData);
     return true;
