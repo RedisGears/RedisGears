@@ -39,6 +39,7 @@
 typedef struct Plugin{
     char* name;
     int version;
+    RedisModuleInfoFunc infoFunc;
 }Plugin;
 
 Gears_dict* plugins = NULL;
@@ -662,17 +663,22 @@ static const char* RG_GetVersionStr(){
     return REDISGEARS_VERSION_STR;
 }
 
-static int RG_RegisterPlugin(const char* name, int version) {
+static Plugin* RG_RegisterPlugin(const char* name, int version) {
     if(Gears_dictFetchValue(plugins, name)){
         RedisModule_Log(staticCtx, "warning", "Plugin %s already exists", name);
-        return REDISMODULE_ERR;
+        return NULL;
     }
     Plugin* plugin = RG_ALLOC(sizeof(*plugin));
     plugin->name = RG_STRDUP(name);
     plugin->version = version;
+    plugin->infoFunc = NULL;
     Gears_dictAdd(plugins, (char*)name, plugin);
     RedisModule_Log(staticCtx, "warning", "Loading plugin %s version %d ", name, version);
-    return REDISMODULE_OK;
+    return plugin;
+}
+
+static void RG_PluginSetInfoCallback(Plugin* p, RedisModuleInfoFunc infoFunc) {
+    p->infoFunc = infoFunc;
 }
 
 static int RG_KeysReaderSetReadRecordCallback(KeysReaderCtx* krCtx, const char* name){
@@ -1082,6 +1088,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetConfig, ctx);
 
     REGISTER_API(RegisterPlugin, ctx);
+    REGISTER_API(PluginSetInfoCallback, ctx);
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
     REGISTER_API(GetVersion, ctx);
@@ -1197,6 +1204,29 @@ static void RedisGears_InfoFunc(RedisModuleInfoCtx *ctx, int for_crash_report) {
     if (RedisModule_InfoAddSection(ctx, "regisrations") == REDISMODULE_OK) {
         ExecutionPlan_InfoRegistrations(ctx, for_crash_report);
     }
+
+    if (RedisModule_InfoAddSection(ctx, "plugins") == REDISMODULE_OK) {
+        Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
+        Gears_dictEntry *curr = NULL;
+        while((curr = Gears_dictNext(iter))){
+            RedisModule_InfoBeginDictField(ctx, "plugin");
+            Plugin* p = Gears_dictGetVal(curr);
+            RedisModule_InfoAddFieldCString(ctx, "name", p->name);
+            RedisModule_InfoAddFieldULongLong(ctx, "version", p->version);
+            RedisModule_InfoEndDictField(ctx);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+
+    Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
+    Gears_dictEntry *curr = NULL;
+    while((curr = Gears_dictNext(iter))){
+        Plugin* p = Gears_dictGetVal(curr);
+        if (p->infoFunc) {
+            p->infoFunc(ctx, for_crash_report);
+        }
+    }
+    Gears_dictReleaseIterator(iter);
 }
 
 static bool isInitiated = false;

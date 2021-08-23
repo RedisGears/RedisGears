@@ -3519,6 +3519,7 @@ void ExecutionPlan_InfoRegistrations(RedisModuleInfoCtx *ctx, int for_crash_repo
 
         RedisModule_InfoEndDictField(ctx);
     }
+    Gears_dictReleaseIterator(iter);
 
 }
 
