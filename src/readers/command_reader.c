@@ -507,7 +507,7 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
             Gears_dictAdd(crtCtx->pendingExections, ep->idStr, NULL);
         }
 
-        if (crtCtx->mode != ExecutionModeAsync || crtCtx->mode != ExecutionModeAsyncLocal) {
+        if (crtCtx->mode == ExecutionModeAsync || crtCtx->mode == ExecutionModeAsyncLocal) {
             // on async executions we will set running and holding callbacks to update slowlog stats
             // but we do it only if we have the relevant api from Redis
             if (RedisModule_BlockedClientMeasureTimeStart && RedisModule_BlockedClientMeasureTimeStart) {
