@@ -760,7 +760,7 @@ GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(
 def testSlowlogReportOnRun(env):
     info = env.cmd('info')
     redis_version = info['redis_version'].split('.')
-    redis_version = redis_version[0] * 100000 + redis_version[1] * 1000 + redis_version[2]
+    redis_version = int(redis_version[0]) * 1000000 + int(redis_version[1]) * 1000 + int(redis_version[2])
     if redis_version < 6002000:
         # skip on version older then 6.2
         env.skip()
