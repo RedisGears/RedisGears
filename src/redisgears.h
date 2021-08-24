@@ -532,7 +532,7 @@ GEARS_API int MODULE_API_FUNC(RedisGears_IsCrdt)();
 GEARS_API int MODULE_API_FUNC(RedisGears_IsEnterprise)();
 
 GEARS_API int MODULE_API_FUNC(RedisGears_ASprintf)(char **__ptr, const char *__restrict __fmt, ...);
-GEARS_API char* MODULE_API_FUNC(RedisGears_ArrToStr)(void** arr, size_t len, char*(*toStr)(void*));
+GEARS_API char* MODULE_API_FUNC(RedisGears_ArrToStr)(void** arr, size_t len, char*(*toStr)(void*), char sep);
 
 GEARS_API int MODULE_API_FUNC(RedisGears_IsClusterMode)();
 GEARS_API const char* MODULE_API_FUNC(RedisGears_GetNodeIdByKey)(const char* key);

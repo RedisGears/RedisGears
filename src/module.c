@@ -747,8 +747,8 @@ static int RG_ASprintf(char **__ptr, const char *__restrict __fmt, ...){
     return res;
 }
 
-static char* RG_ArrToStr(void** arr, size_t len, char*(*toStr)(void*)){
-    return ArrToStr(arr, len, toStr);
+static char* RG_ArrToStr(void** arr, size_t len, char*(*toStr)(void*), char sep){
+    return ArrToStr(arr, len, toStr, sep);
 }
 
 static int RG_IsClusterMode(){
@@ -1209,9 +1209,8 @@ static void RedisGears_InfoFunc(RedisModuleInfoCtx *ctx, int for_crash_report) {
         Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
         Gears_dictEntry *curr = NULL;
         while((curr = Gears_dictNext(iter))){
-            RedisModule_InfoBeginDictField(ctx, "plugin");
             Plugin* p = Gears_dictGetVal(curr);
-            RedisModule_InfoAddFieldCString(ctx, "name", p->name);
+            RedisModule_InfoBeginDictField(ctx, p->name);
             RedisModule_InfoAddFieldULongLong(ctx, "version", p->version);
             RedisModule_InfoEndDictField(ctx);
         }

@@ -1182,15 +1182,15 @@ static void KeysReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModuleI
     RedisModule_InfoAddFieldCString(ctx, "lastError", rData->lastError ? rData->lastError : "None");
     RedisModule_InfoAddFieldCString(ctx, "regex", rData->args->prefix);
 
-    char* eventTypesStr = rData->args->eventTypes? ArrToStr((void**)rData->args->eventTypes, array_len(rData->args->eventTypes), KeysReader_StrToStr) : NULL;
+    char* eventTypesStr = rData->args->eventTypes? ArrToStr((void**)rData->args->eventTypes, array_len(rData->args->eventTypes), KeysReader_StrToStr, '|') : NULL;
     RedisModule_InfoAddFieldCString(ctx, "eventTypes", eventTypesStr? eventTypesStr : "None");
     RG_FREE(eventTypesStr);
 
-    char* keyTypesStr = rData->args->keyTypes? IntArrToStr(rData->args->keyTypes, array_len(rData->args->keyTypes), KeysReader_keyTypeToStr) : NULL;
+    char* keyTypesStr = rData->args->keyTypes? IntArrToStr(rData->args->keyTypes, array_len(rData->args->keyTypes), KeysReader_keyTypeToStr, '|') : NULL;
     RedisModule_InfoAddFieldCString(ctx, "keyTypes", keyTypesStr? keyTypesStr : "None");
     RG_FREE(keyTypesStr);
 
-    char* hookCommandsStr = rData->args->hookCommands? ArrToStr((void**)rData->args->hookCommands, array_len(rData->args->hookCommands), KeysReader_StrToStr) : NULL;
+    char* hookCommandsStr = rData->args->hookCommands? ArrToStr((void**)rData->args->hookCommands, array_len(rData->args->hookCommands), KeysReader_StrToStr, '|') : NULL;
     RedisModule_InfoAddFieldCString(ctx, "hookCommands", hookCommandsStr? hookCommandsStr : "None");
     RG_FREE(hookCommandsStr);
 }

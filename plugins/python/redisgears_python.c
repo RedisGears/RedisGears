@@ -336,7 +336,7 @@ static char* PythonRequirementCtx_WheelToStr(void* wheel){
 static char* PythonRequirementCtx_ToStr(void* val){
     PythonRequirementCtx* req = val;
     char* res;
-    char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr);
+    char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, ',');
     RedisGears_ASprintf(&res, "{'name':'%s', 'basePath':'%s', 'wheels':%s}", req->installName, req->basePath, wheelsStr);
     RG_FREE(wheelsStr);
     return res;
@@ -344,7 +344,7 @@ static char* PythonRequirementCtx_ToStr(void* val){
 
 static char* PythonSessionRequirements_ToString(void* arg){
     PythonRequirementCtx** req = arg;
-    return RedisGears_ArrToStr((void**)req, array_len(req), PythonRequirementCtx_ToStr);
+    return RedisGears_ArrToStr((void**)req, array_len(req), PythonRequirementCtx_ToStr, ',');
 }
 
 static void* PythonSessionRequirements_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
@@ -774,7 +774,7 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
 
 static char* PythonSessionCtx_ToString(void* arg){
     PythonSessionCtx* s = arg;
-    char* depsListStr = RedisGears_ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr);
+    char* depsListStr = RedisGears_ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr, ',');
     char* ret;
     RedisGears_ASprintf(&ret, "{'sessionId':'%s', 'depsList':%s}", s->sessionIdStr, depsListStr);
     RG_FREE(depsListStr);
@@ -6564,7 +6564,7 @@ static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
             RedisModule_InfoAddFieldCString(ctx, "IsDownloaded", req->isDownloaded ? "yes" : "no");
             RedisModule_InfoAddFieldCString(ctx, "IsInstalled", req->isInstalled ? "yes" : "no");
             RedisModule_InfoAddFieldCString(ctx, "CompiledOs", (char*)RedisGears_GetCompiledOs());
-            char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr);
+            char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, '|');
             RedisModule_InfoAddFieldCString(ctx, "Wheels", wheelsStr);
             RG_FREE(wheelsStr);
             RedisModule_InfoEndDictField(ctx);

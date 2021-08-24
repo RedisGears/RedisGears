@@ -138,7 +138,7 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...) {
   return res;
 }
 
-char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int)) {
+char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int), char sep) {
     char* res = array_new(char, 100);
     res = array_append(res, '[');
     if(len == 0){
@@ -155,7 +155,7 @@ char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int)) {
             res = array_append(res, *c);
             ++c;
         }
-        res = array_append(res, ',');
+        res = array_append(res, sep);
         RG_FREE(elementStr);
     }
     res[array_len(res) - 1] = ']';
@@ -165,7 +165,7 @@ char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int)) {
     return ret;
 }
 
-char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
+char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*), char sep) {
     char* res = array_new(char, 100);
     res = array_append(res, '[');
     if(len == 0){
@@ -182,7 +182,7 @@ char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
             res = array_append(res, *c);
             ++c;
         }
-        res = array_append(res, ',');
+        res = array_append(res, sep);
         RG_FREE(elementStr);
     }
     res[array_len(res) - 1] = ']';
