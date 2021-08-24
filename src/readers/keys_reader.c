@@ -630,7 +630,7 @@ static void KeysReader_SerializeArgs(void* var, Gears_BufferWriter* bw){
     RedisGears_BWWriteLong(bw, args->readValue);
 }
 
-static void* KeysReader_DeserializeArgs(Gears_BufferReader* br){
+static void* KeysReader_DeserializeArgs(Gears_BufferReader* br, int encVer){
     char* regex = RedisGears_BRReadString(br);
     char** eventTypes = NULL;
     int* keyTypes = NULL;
@@ -890,7 +890,7 @@ static void KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
             RedisModule_Assert(false);
         }
 
-        void* args = KeysReader_DeserializeArgs(&br);
+        void* args = KeysReader_DeserializeArgs(&br, encver);
         RedisModule_Free(data);
 
         int mode = RedisModule_LoadUnsigned(rdb);

@@ -450,6 +450,16 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
     CommandPD_Free(pd);
 }
 
+static void CommandReader_ExectionRunningCallback(ExecutionPlan* ep, void* privateData) {
+    // privateData is the blocked client
+    RedisModule_BlockedClientMeasureTimeStart(privateData);
+}
+
+static void CommandReader_ExectionHoldingCallback(ExecutionPlan* ep, void* privateData) {
+    // privateData is the blocked client
+    RedisModule_BlockedClientMeasureTimeEnd(privateData);
+}
+
 static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
@@ -495,6 +505,16 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         ++crtCtx->numTriggered;
         if(EPIsFlagOn(ep, EFIsLocal) && crtCtx->mode != ExecutionModeSync){
             Gears_dictAdd(crtCtx->pendingExections, ep->idStr, NULL);
+        }
+
+        if (crtCtx->mode != ExecutionModeAsync || crtCtx->mode != ExecutionModeAsyncLocal) {
+            // on async executions we will set running and holding callbacks to update slowlog stats
+            // but we do it only if we have the relevant api from Redis
+            if (RedisModule_BlockedClientMeasureTimeStart && RedisModule_BlockedClientMeasureTimeStart) {
+                RedisModule_Assert(pd->rctxType == RctxType_BlockedClient);
+                RedisGears_AddOnRunningCallback(ep, CommandReader_ExectionRunningCallback, pd->rctx.bc);
+                RedisGears_AddOnHoldingCallback(ep, CommandReader_ExectionHoldingCallback, pd->rctx.bc);
+            }
         }
     }
     return REDISMODULE_OK;

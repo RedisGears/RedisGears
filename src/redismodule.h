@@ -654,6 +654,8 @@ int REDISMODULE_API_FUNC(RedisModule_IsBlockedTimeoutRequest)(RedisModuleCtx *ct
 void *REDISMODULE_API_FUNC(RedisModule_GetBlockedClientPrivateData)(RedisModuleCtx *ctx);
 RedisModuleBlockedClient *REDISMODULE_API_FUNC(RedisModule_GetBlockedClientHandle)(RedisModuleCtx *ctx);
 int REDISMODULE_API_FUNC(RedisModule_AbortBlock)(RedisModuleBlockedClient *bc);
+int REDISMODULE_API_FUNC(RedisModule_BlockedClientMeasureTimeStart)(RedisModuleBlockedClient *bc);
+int REDISMODULE_API_FUNC(RedisModule_BlockedClientMeasureTimeEnd)(RedisModuleBlockedClient *bc);
 RedisModuleCtx *REDISMODULE_API_FUNC(RedisModule_GetThreadSafeContext)(RedisModuleBlockedClient *bc);
 void REDISMODULE_API_FUNC(RedisModule_FreeThreadSafeContext)(RedisModuleCtx *ctx);
 void REDISMODULE_API_FUNC(RedisModule_ThreadSafeContextLock)(RedisModuleCtx *ctx);
@@ -902,6 +904,8 @@ static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int 
     REDISMODULE_GET_API(GetBlockedClientPrivateData);
     REDISMODULE_GET_API(GetBlockedClientHandle);
     REDISMODULE_GET_API(AbortBlock);
+    REDISMODULE_GET_API(BlockedClientMeasureTimeStart);
+    REDISMODULE_GET_API(BlockedClientMeasureTimeEnd);
     REDISMODULE_GET_API(SetDisconnectCallback);
     REDISMODULE_GET_API(SubscribeToKeyspaceEvents);
     REDISMODULE_GET_API(NotifyKeyspaceEvent);
