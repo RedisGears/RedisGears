@@ -147,11 +147,13 @@ GEARS_API char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br,
 /**
  * On done callback definition
  */
-typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
+typedef void (*RedisGears_ExecutionCallback)(ExecutionPlan* ctx, void* privateData);
 typedef void (*RedisGears_ExecutionOnStartCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_ExecutionOnUnpausedCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_FlatExecutionOnRegisteredCallback)(FlatExecutionPlan* fep, void* arg);
 typedef void (*RedisGears_FlatExecutionOnUnregisteredCallback)(FlatExecutionPlan* fep, void* arg);
+
+typedef RedisGears_ExecutionCallback RedisGears_OnExecutionDoneCallback;
 
 /**
  * Reader callbacks definition.
@@ -491,6 +493,8 @@ typedef void (*AbortCallback)(void* abortPD);
 GEARS_API void MODULE_API_FUNC(RedisGears_SetAbortCallback)(ExecutionCtx* ctx, AbortCallback abort, void* abortPD);
 
 GEARS_API bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+GEARS_API bool MODULE_API_FUNC(RedisGears_AddOnRunningCallback)(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData);
+GEARS_API bool MODULE_API_FUNC(RedisGears_AddOnHoldingCallback)(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData);
 
 GEARS_API const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
 
@@ -928,6 +932,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordSendReply);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetAbortCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnRunningCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnHoldingCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetNullRecord);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
