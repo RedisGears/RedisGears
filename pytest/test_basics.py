@@ -3,7 +3,7 @@ import os
 from RLTest import Env
 import yaml
 import time
-from common import TimeLimit
+from common import TimeLimit, verifyRegistrationIntegrity
 from includes import *
 
 
@@ -772,6 +772,7 @@ def testConfigGetSet(env):
     env.expect('RG.CONFIGSET', 'test', 'test').contains('OK - value was saved in extra config dictionary')
     env.expect('RG.CONFIGGET', 'test').equal(['test'])
 
+
 def testInfo(env):
     env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('CommandReader').foreach(lambda x: __import__('time').sleep(2)).register(trigger='test')", 'REQUIREMENTS', 'redis').equal('OK')
@@ -784,3 +785,36 @@ def testInfo(env):
     env.assertTrue(res.has_key('rg_CurrAllocated'))
     env.assertTrue(res.has_key('rg_nexecutions'))
     env.assertTrue(res.has_key('rg_nregistrations'))
+
+def testSlowlogReportOnRun(env):
+    info = env.cmd('info')
+    redis_version = info['redis_version'].split('.')
+    redis_version = redis_version[0] * 100000 + redis_version[1] * 1000 + redis_version[2]
+    if redis_version < 6002000:
+        # skip on version older then 6.2
+        env.skip()
+
+    env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").foreach(lambda x: __import__("time").sleep(1)).run()')
+
+    res = env.cmd('SLOWLOG', 'GET')
+
+    env.assertEqual(len(res), 1)
+    env.assertEqual(res[0][3], ['RG.PYEXECUTE', 'GB("ShardsIDReader").foreach(lambda x: __import__("time").sleep(1)).run()'])
+
+def testSlowlogReportOnCommandReader(env):
+    info = env.cmd('info')
+    redis_version = info['redis_version'].split('.')
+    redis_version = redis_version[0] * 100000 + redis_version[1] * 1000 + redis_version[2]
+    if redis_version < 6002000:
+        # skip on version older then 6.2
+        env.skip()
+
+    env.expect('RG.PYEXECUTE', 'GB("CommandReader").foreach(lambda x: __import__("time").sleep(1)).register(trigger="test")').equal('OK')
+    verifyRegistrationIntegrity(env)
+
+    env.cmd('RG.TRIGGER', 'test')
+
+    res = env.cmd('SLOWLOG', 'GET')
+
+    env.assertEqual(len(res), 1)
+    env.assertEqual(res[0][3], ['RG.TRIGGER', 'test'])

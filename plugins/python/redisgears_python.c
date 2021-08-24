@@ -4384,6 +4384,16 @@ typedef struct BackgroundDepsInstallCtx{
 
 static Gears_threadpool installDepsPool = NULL;
 
+static void RedisGearsPy_ExectionRunningCallback(ExecutionPlan* ep, void* privateData) {
+    // privateData is the blocked client
+    RedisModule_BlockedClientMeasureTimeStart(privateData);
+}
+
+static void RedisGearsPy_ExectionHoldingCallback(ExecutionPlan* ep, void* privateData) {
+    // privateData is the blocked client
+    RedisModule_BlockedClientMeasureTimeEnd(privateData);
+}
+
 static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstallCtx* bdiCtx){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     ptctx->currentCtx = rctx;
@@ -4424,6 +4434,12 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
                 bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 0);
             }
             RedisGears_AddOnDoneCallback(ptctx->createdExecution, bdiCtx->doneFunction, bc);
+            // on async executions we will set running and holding callbacks to update slowlog stats
+            // but we do it only if we have the relevant api from Redis
+            if (RedisModule_BlockedClientMeasureTimeStart && RedisModule_BlockedClientMeasureTimeStart) {
+                RedisGears_AddOnRunningCallback(ptctx->createdExecution, RedisGearsPy_ExectionRunningCallback, bc);
+                RedisGears_AddOnHoldingCallback(ptctx->createdExecution, RedisGearsPy_ExectionHoldingCallback, bc);
+            }
         }else{
             const char* id = RedisGears_GetId(ptctx->createdExecution);
             RedisModule_ReplyWithStringBuffer(rctx, id, strlen(id));
