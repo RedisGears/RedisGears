@@ -769,7 +769,7 @@ def testSlowlogReportOnRun(env):
 
     res = env.cmd('SLOWLOG', 'GET')
 
-    env.assertEqual(len(res), 1)
+    env.assertGreaterEqual(len(res), 1)
     env.assertEqual(res[0][3], ['RG.PYEXECUTE', 'GB("ShardsIDReader").foreach(lambda x: __import__("time").sleep(1)).run()'])
 
 def testSlowlogReportOnCommandReader(env):
@@ -786,5 +786,5 @@ def testSlowlogReportOnCommandReader(env):
 
     res = env.cmd('SLOWLOG', 'GET')
 
-    env.assertEqual(len(res), 1)
+    env.assertGreaterEqual(len(res), 1)
     env.assertEqual(res[0][3], ['RG.TRIGGER', 'test'])
