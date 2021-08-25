@@ -128,6 +128,7 @@ typedef void (*RedisGears_ReaderSerializeRegisterArgsCallback)(void* arg, Gears_
 typedef void* (*RedisGears_ReaderDeserializeRegisterArgsCallback)(Gears_BufferReader* br, int encVer);
 typedef void (*RedisGears_ReaderFreeArgsCallback)(void* args);
 typedef void (*RedisGears_ReaderDumpRegistrationData)(RedisModuleCtx* ctx, FlatExecutionPlan* fep);
+typedef void (*RedisGears_ReaderDumpRegistrationInfo)(FlatExecutionPlan* fep, RedisModuleInfoCtx *ctx, int for_crash_report);
 typedef void (*RedisGears_ReaderRdbSave)(RedisModuleIO *rdb);
 typedef void (*RedisGears_ReaderRdbLoad)(RedisModuleIO *rdb, int encver);
 typedef void (*RedisGears_ReaderClear)();
@@ -145,6 +146,7 @@ typedef struct RedisGears_ReaderCallbacks{
     RedisGears_ReaderDeserializeRegisterArgsCallback deserializeTriggerArgs;
     RedisGears_ReaderFreeArgsCallback freeTriggerArgs;
     RedisGears_ReaderDumpRegistrationData dumpRegistratioData;
+    RedisGears_ReaderDumpRegistrationInfo dumpRegistratioInfo;
     RedisGears_ReaderRdbSave rdbSave;
     RedisGears_ReaderRdbLoad rdbLoad;
     RedisGears_ReaderClear clear;

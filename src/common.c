@@ -128,7 +128,7 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...) {
   return res;
 }
 
-char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
+char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int), char sep) {
     char* res = array_new(char, 100);
     res = array_append(res, '[');
     if(len == 0){
@@ -145,7 +145,34 @@ char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
             res = array_append(res, *c);
             ++c;
         }
-        res = array_append(res, ',');
+        res = array_append(res, sep);
+        RG_FREE(elementStr);
+    }
+    res[array_len(res) - 1] = ']';
+    res = array_append(res, '\0');
+    char* ret = RG_STRDUP(res);
+    array_free(res);
+    return ret;
+}
+
+char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*), char sep) {
+    char* res = array_new(char, 100);
+    res = array_append(res, '[');
+    if(len == 0){
+        res = array_append(res, ']');
+        res = array_append(res, '\0');
+        char* ret = RG_STRDUP(res);
+        array_free(res);
+        return ret;
+    }
+    for(size_t i = 0 ; i < len ; ++i){
+        char* elementStr = toStr(arr[i]);
+        char* c = elementStr;
+        while(*c){
+            res = array_append(res, *c);
+            ++c;
+        }
+        res = array_append(res, sep);
         RG_FREE(elementStr);
     }
     res[array_len(res) - 1] = ']';

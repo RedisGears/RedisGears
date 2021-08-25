@@ -265,7 +265,7 @@ static char* PythonRequirementCtx_WheelToStr(void* wheel){
 static char* PythonRequirementCtx_ToStr(void* val){
     PythonRequirementCtx* req = val;
     char* res;
-    char* wheelsStr = ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr);
+    char* wheelsStr = ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, ',');
     rg_asprintf(&res, "{'name':'%s', 'basePath':'%s', 'wheels':%s}", req->installName, req->basePath, wheelsStr);
     RG_FREE(wheelsStr);
     return res;
@@ -273,7 +273,7 @@ static char* PythonRequirementCtx_ToStr(void* val){
 
 static char* PythonSessionRequirements_ToString(void* arg){
     PythonRequirementCtx** req = arg;
-    return ArrToStr((void**)req, array_len(req), PythonRequirementCtx_ToStr);
+    return ArrToStr((void**)req, array_len(req), PythonRequirementCtx_ToStr, ',');
 }
 
 static void* PythonSessionRequirements_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
@@ -703,7 +703,7 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
 
 static char* PythonSessionCtx_ToString(void* arg){
     PythonSessionCtx* s = arg;
-    char* depsListStr = ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr);
+    char* depsListStr = ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr, ',');
     char* ret;
     rg_asprintf(&ret, "{'sessionId':'%s', 'depsList':%s}", s->sessionIdStr, depsListStr);
     RG_FREE(depsListStr);
@@ -4666,6 +4666,31 @@ static int RedisGearsPy_CreateRequirementsDataType(RedisModuleCtx* ctx){
 
     RedisModuleType* GearsPyRequirementDT = RedisModule_CreateDataType(ctx, REDISGEARSPY_REQ_DATATYPE_NAME, REDISGEARSPY_REQ_DATATYPE_VERSION, &methods);
     return GearsPyRequirementDT ? REDISMODULE_OK : REDISMODULE_ERR;
+}
+
+void RedisGearsPy_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
+    if (RedisModule_InfoAddSection(ctx, "python_stats") == REDISMODULE_OK) {
+        RedisModule_InfoAddFieldULongLong(ctx, "TotalAllocated", totalAllocated);
+        RedisModule_InfoAddFieldULongLong(ctx, "PeakAllocated", peakAllocated);
+        RedisModule_InfoAddFieldULongLong(ctx, "CurrAllocated", currAllocated);
+    }
+
+    if (RedisModule_InfoAddSection(ctx, "python_requirements") == REDISMODULE_OK) {
+        Gears_dictIterator *iter = Gears_dictGetIterator(RequirementsDict);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            PythonRequirementCtx* req = Gears_dictGetVal(entry);
+            RedisModule_InfoBeginDictField(ctx, req->installName);
+            RedisModule_InfoAddFieldCString(ctx, "IsDownloaded", req->isDownloaded ? "yes" : "no");
+            RedisModule_InfoAddFieldCString(ctx, "IsInstalled", req->isInstalled ? "yes" : "no");
+            RedisModule_InfoAddFieldCString(ctx, "CompiledOs", (char*)RedisGears_GetCompiledOs());
+            char* wheelsStr = ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, '|');
+            RedisModule_InfoAddFieldCString(ctx, "Wheels", wheelsStr);
+            RG_FREE(wheelsStr);
+            RedisModule_InfoEndDictField(ctx);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
 }
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){

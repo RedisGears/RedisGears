@@ -21,6 +21,7 @@ void* RedisGearsPy_PyObjectDeserialize(Gears_BufferReader* br);
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int RedisGearsPy_ExecuteWithCallback(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, DoneCallbackFunction callback);
 int RedisGearsPy_Init(RedisModuleCtx *ctx);
+void RedisGearsPy_Info(RedisModuleInfoCtx *ctx, int for_crash_report);
 void RedisGearsPy_ForceStop(unsigned long threadID);
 PythonSessionCtx* RedisGearsPy_Lock(PythonSessionCtx* currSession);
 void RedisGearsPy_Unlock(PythonSessionCtx* prevSession);
