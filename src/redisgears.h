@@ -111,10 +111,12 @@ char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br, size_t* l
 /**
  * On done callback definition
  */
-typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
+typedef void (*RedisGears_ExecutionCallback)(ExecutionPlan* ctx, void* privateData);
 typedef void (*RedisGears_ExecutionOnStartCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_ExecutionOnUnpausedCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_FlatExecutionOnRegisteredCallback)(FlatExecutionPlan* fep, void* arg);
+
+typedef RedisGears_ExecutionCallback RedisGears_OnExecutionDoneCallback;
 
 /**
  * Reader callbacks definition.
@@ -402,6 +404,8 @@ void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionCtx* ectx);
 void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionCtx* ctx, void* PD);
 
 bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+bool MODULE_API_FUNC(RedisGears_AddOnRunningCallback)(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData);
+bool MODULE_API_FUNC(RedisGears_AddOnHoldingCallback)(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData);
 
 const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
 
@@ -517,6 +521,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGet);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, HashSetRecordGetAllKeys);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnRunningCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnHoldingCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetReadDuration);
