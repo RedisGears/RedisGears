@@ -3547,6 +3547,35 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
     FlatExecutionPlan_AddMapStep(fep, "GetValueMapper", NULL);
 }
 
+size_t ExecutionPlan_NRegistrations() {
+    return Gears_dictSize(epData.registeredFepDict);
+}
+
+void ExecutionPlan_InfoRegistrations(RedisModuleInfoCtx *ctx, int for_crash_report) {
+    Gears_dictIterator* iter = Gears_dictGetIterator(epData.registeredFepDict);
+    Gears_dictEntry *curr = NULL;
+    while((curr = Gears_dictNext(iter))) {
+        FlatExecutionPlan* fep = Gears_dictGetVal(curr);
+        RedisModule_InfoBeginDictField(ctx, fep->idStr);
+
+        RedisModule_InfoAddFieldCString(ctx, "desc", fep->desc ? fep->desc : "None");
+        RedisModule_InfoAddFieldCString(ctx, "reader", fep->reader->reader);
+
+        RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+        if (callbacks->dumpRegistratioInfo) {
+            callbacks->dumpRegistratioInfo(fep, ctx, for_crash_report);
+        }
+
+        RedisModule_InfoEndDictField(ctx);
+    }
+    Gears_dictReleaseIterator(iter);
+
+}
+
+size_t ExecutionPlan_NExecutions() {
+    return Gears_dictSize(epData.epDict);
+}
+
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 1){
         return RedisModule_WrongArity(ctx);
