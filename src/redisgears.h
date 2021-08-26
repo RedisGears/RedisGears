@@ -762,6 +762,8 @@ static int RedisGears_InitializeRedisModuleApi(RedisModuleCtx* ctx){
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetBlockedClientPrivateData);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetBlockedClientHandle);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, AbortBlock);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, BlockedClientMeasureTimeStart);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, BlockedClientMeasureTimeEnd);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetDisconnectCallback);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, SubscribeToKeyspaceEvents);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, NotifyKeyspaceEvent);
