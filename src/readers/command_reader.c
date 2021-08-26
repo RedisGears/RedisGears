@@ -245,6 +245,28 @@ static void* CommandReader_DeserializeArgs(Gears_BufferReader* br, int encVer){
     return CommandReaderTriggerArgs_Create(command, inOrder);
 }
 
+static void CommandReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModuleInfoCtx *ctx, int for_crash_report) {
+    CommandReaderTriggerCtx* crtCtx = CommandReader_FindByFep(fep);
+
+    if(crtCtx->mode == ExecutionModeSync){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "sync");
+    } else if(crtCtx->mode == ExecutionModeAsync){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "async");
+    } else if(crtCtx->mode == ExecutionModeAsyncLocal){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "async_local");
+    } else{
+        RedisModule_InfoAddFieldCString(ctx, "mode", "unknown");
+    }
+
+    RedisModule_InfoAddFieldULongLong(ctx, "numTriggered", crtCtx->numTriggered);
+    RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", crtCtx->numSuccess);
+    RedisModule_InfoAddFieldULongLong(ctx, "numFailures", crtCtx->numFailures);
+    RedisModule_InfoAddFieldULongLong(ctx, "numAborted", crtCtx->numAborted);
+    RedisModule_InfoAddFieldCString(ctx, "lastError", crtCtx->lastError ? crtCtx->lastError : "None");
+    RedisModule_InfoAddFieldCString(ctx, "trigger", crtCtx->args->trigger);
+    RedisModule_InfoAddFieldULongLong(ctx, "inorder", crtCtx->args->inOrder);
+}
+
 static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     CommandReaderTriggerCtx* crtCtx = CommandReader_FindByFep(fep);
     RedisModule_Assert(crtCtx);
@@ -371,6 +393,7 @@ RedisGears_ReaderCallbacks CommandReader = {
         .deserializeTriggerArgs = CommandReader_DeserializeArgs,
         .freeTriggerArgs = CommandReader_FreeArgs,
         .dumpRegistratioData = CommandReader_DumpRegistrationData,
+        .dumpRegistratioInfo = CommandReader_DumpRegistrationInfo,
         .rdbSave = CommandReader_RdbSave,
         .rdbLoad = CommandReader_RdbLoad,
         .clear = CommandReader_Clear,

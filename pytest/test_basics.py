@@ -757,6 +757,24 @@ GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(
     env.expect('RG.TRIGGER', 'test', 'error').equal('Execution max idle reached')
     env.expect('RG.TRIGGER', 'test', 'noerror').equal('Execution max idle reached')
 
+def testConfigGetSet(env):
+    env.expect('RG.CONFIGSET', 'test', 'test').contains('OK - value was saved in extra config dictionary')
+    env.expect('RG.CONFIGGET', 'test').equal(['test'])
+
+
+def testInfo(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').foreach(lambda x: __import__('time').sleep(2)).register(trigger='test')", 'REQUIREMENTS', 'redis').equal('OK')
+    env.expect('RG.PYEXECUTE', "GB().foreach(lambda x: __import__('time').sleep(2)).register(eventTypes=['set','hset'], keyTypes=['string', 'hash'], commands=['set', 'hset'])").equal('OK')
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').foreach(lambda x: __import__('time').sleep(2)).register(prefix='s*')").equal('OK')
+    res = env.cmd('info', 'rg')
+    # basic checks on the reply
+    env.assertTrue(res.has_key('rg_TotalAllocated'))
+    env.assertTrue(res.has_key('rg_PeakAllocated'))
+    env.assertTrue(res.has_key('rg_CurrAllocated'))
+    env.assertTrue(res.has_key('rg_nexecutions'))
+    env.assertTrue(res.has_key('rg_nregistrations'))
+
 def testSlowlogReportOnRun(env):
     info = env.cmd('info')
     redis_version = info['redis_version'].split('.')
