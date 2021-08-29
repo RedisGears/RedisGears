@@ -1,17 +1,17 @@
 #include "cluster.h"
-#include "redismodule.h"
+#include "redisgears_memory.h"
+#include "lock_handler.h"
+#include "slots_table.h"
+#include "config.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
+
 #include <stdlib.h>
 #include <assert.h>
 #include <event2/event.h>
 #include <async.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <redisgears_memory.h>
-#include "lock_handler.h"
-#include "slots_table.h"
-#include "config.h"
 #include <libevent.h>
 
 #define CLUSTER_SET_MY_ID_INDEX 6

@@ -5,9 +5,6 @@
  *      Author: meir
  */
 
-#define GEARS_MAIN
-
-#include "redismodule.h"
 #include "version.h"
 #include "mgmt.h"
 #include "execution_plan.h"
@@ -24,12 +21,12 @@
 #include "readers/command_reader.h"
 #include "readers/shardid_reader.h"
 #include "mappers.h"
-#include <stdbool.h>
-#include <unistd.h>
 #include "lock_handler.h"
+#include "command_hook.h"
+
+#include <unistd.h>
 #include <dlfcn.h>
 #include <dirent.h>
-#include "command_hook.h"
 
 #ifndef REDISGEARS_GIT_SHA
 #define REDISGEARS_GIT_SHA "unknown"
@@ -42,6 +39,7 @@
 typedef struct Plugin{
     char* name;
     int version;
+    RedisModuleInfoFunc infoFunc;
 }Plugin;
 
 Gears_dict* plugins = NULL;
@@ -321,12 +319,12 @@ static void RG_KeysReaderTriggerArgsSetHookCommands(KeysReaderTriggerArgs* krta,
     return KeysReaderTriggerArgs_SetTriggerHookCommands(krta, hookCommands);
 }
 
-static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger){
-    return CommandReaderTriggerArgs_CreateTrigger(trigger);
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreate(const char* trigger, int inOrder){
+    return CommandReaderTriggerArgs_CreateTrigger(trigger, inOrder);
 }
 
-static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreateHook(const char* hook, const char* prefix){
-    return CommandReaderTriggerArgs_CreateHook(hook, prefix);
+static CommandReaderTriggerArgs* RG_CommandReaderTriggerArgsCreateHook(const char* hook, const char* prefix, int inOrder){
+    return CommandReaderTriggerArgs_CreateHook(hook, prefix, inOrder);
 }
 
 static void RG_CommandReaderTriggerArgsFree(CommandReaderTriggerArgs* args){
@@ -408,11 +406,41 @@ static bool RG_AddOnDoneCallback(ExecutionPlan* ep, RedisGears_OnExecutionDoneCa
     if(EPIsFlagOn(ep, EFDone)){
         return false;
     }
-    OnDoneData onDoneData = {
+    ExecutionCallbacData onDoneData = {
             .callback = callback,
-            .privateData = privateData,
+            .pd = privateData,
     };
     ep->onDoneData = array_append(ep->onDoneData, onDoneData);
+    return true;
+}
+
+static bool RG_AddOnRunningCallback(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData) {
+    if(EPIsFlagOn(ep, EFDone)){
+        return false;
+    }
+    ExecutionCallbacData callbackData = {
+            .callback = callback,
+            .pd = privateData,
+    };
+    if (!ep->runCallbacks) {
+        ep->runCallbacks = array_new(ExecutionCallbacData, 2);
+    }
+    ep->runCallbacks = array_append(ep->runCallbacks, callbackData);
+    return true;
+}
+
+static bool RG_AddOnHoldingCallback(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData) {
+    if(EPIsFlagOn(ep, EFDone)){
+        return false;
+    }
+    ExecutionCallbacData callbackData = {
+            .callback = callback,
+            .pd = privateData,
+    };
+    if (!ep->holdCallbacks) {
+        ep->holdCallbacks = array_new(ExecutionCallbacData, 2);
+    }
+    ep->holdCallbacks = array_append(ep->holdCallbacks, callbackData);
     return true;
 }
 
@@ -665,17 +693,22 @@ static const char* RG_GetVersionStr(){
     return REDISGEARS_VERSION_STR;
 }
 
-static int RG_RegisterPlugin(const char* name, int version) {
+static Plugin* RG_RegisterPlugin(const char* name, int version) {
     if(Gears_dictFetchValue(plugins, name)){
         RedisModule_Log(staticCtx, "warning", "Plugin %s already exists", name);
-        return REDISMODULE_ERR;
+        return NULL;
     }
     Plugin* plugin = RG_ALLOC(sizeof(*plugin));
     plugin->name = RG_STRDUP(name);
     plugin->version = version;
+    plugin->infoFunc = NULL;
     Gears_dictAdd(plugins, (char*)name, plugin);
     RedisModule_Log(staticCtx, "warning", "Loading plugin %s version %d ", name, version);
-    return REDISMODULE_OK;
+    return plugin;
+}
+
+static void RG_PluginSetInfoCallback(Plugin* p, RedisModuleInfoFunc infoFunc) {
+    p->infoFunc = infoFunc;
 }
 
 static int RG_KeysReaderSetReadRecordCallback(KeysReaderCtx* krCtx, const char* name){
@@ -744,8 +777,8 @@ static int RG_ASprintf(char **__ptr, const char *__restrict __fmt, ...){
     return res;
 }
 
-static char* RG_ArrToStr(void** arr, size_t len, char*(*toStr)(void*)){
-    return ArrToStr(arr, len, toStr);
+static char* RG_ArrToStr(void** arr, size_t len, char*(*toStr)(void*), char sep){
+    return ArrToStr(arr, len, toStr, sep);
 }
 
 static int RG_IsClusterMode(){
@@ -995,6 +1028,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetErrorsLen, ctx);
     REGISTER_API(GetError, ctx);
     REGISTER_API(AddOnDoneCallback, ctx);
+    REGISTER_API(AddOnRunningCallback, ctx);
+    REGISTER_API(AddOnHoldingCallback, ctx);
     REGISTER_API(DropExecution, ctx);
     REGISTER_API(AbortExecution, ctx);
     REGISTER_API(GetId, ctx);
@@ -1085,6 +1120,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetConfig, ctx);
 
     REGISTER_API(RegisterPlugin, ctx);
+    REGISTER_API(PluginSetInfoCallback, ctx);
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
     REGISTER_API(GetVersion, ctx);
@@ -1190,6 +1226,40 @@ static int Command_DumpPlugins(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
+static void RedisGears_InfoFunc(RedisModuleInfoCtx *ctx, int for_crash_report) {
+    if (RedisModule_InfoAddSection(ctx, NULL) == REDISMODULE_OK) {
+        // default section
+        RedisModule_InfoAddFieldULongLong(ctx, "nexecutions", ExecutionPlan_NExecutions());
+        RedisModule_InfoAddFieldULongLong(ctx, "nregistrations", ExecutionPlan_NRegistrations());
+    }
+
+    if (RedisModule_InfoAddSection(ctx, "regisrations") == REDISMODULE_OK) {
+        ExecutionPlan_InfoRegistrations(ctx, for_crash_report);
+    }
+
+    if (RedisModule_InfoAddSection(ctx, "plugins") == REDISMODULE_OK) {
+        Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
+        Gears_dictEntry *curr = NULL;
+        while((curr = Gears_dictNext(iter))){
+            Plugin* p = Gears_dictGetVal(curr);
+            RedisModule_InfoBeginDictField(ctx, p->name);
+            RedisModule_InfoAddFieldULongLong(ctx, "version", p->version);
+            RedisModule_InfoEndDictField(ctx);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+
+    Gears_dictIterator* iter = Gears_dictGetIterator(plugins);
+    Gears_dictEntry *curr = NULL;
+    while((curr = Gears_dictNext(iter))){
+        Plugin* p = Gears_dictGetVal(curr);
+        if (p->infoFunc) {
+            p->infoFunc(ctx, for_crash_report);
+        }
+    }
+    Gears_dictReleaseIterator(iter);
+}
+
 static bool isInitiated = false;
 
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -1270,6 +1340,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         RedisModule_Log(staticCtx, "warning", "failed create RedisGear DataType");
         return REDISMODULE_ERR;
     }
+
+    RedisModule_RegisterInfoFunc(ctx, RedisGears_InfoFunc);
 
     if(RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_Loading, RedisGears_OnLoadingEvent) != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "Could not subscribe to loaded events");

@@ -39,7 +39,7 @@ commands:
             apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
             bash <(curl -fsSL https://raw.githubusercontent.com/docker/docker-install/master/install.sh)
       - setup_remote_docker:
-          version: 20.10.2
+          version: 20.10.6
           docker_layer_caching: true
 
   checkout-all:
@@ -372,7 +372,7 @@ workflows:
           context: common
           matrix:
             parameters:
-              platform: [focal, bionic, xenial, centos7, centos8]
+              platform: [hirsute, focal, bionic, xenial, centos7, centos8]
       - valgrind:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch

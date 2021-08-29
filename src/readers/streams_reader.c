@@ -1007,6 +1007,59 @@ static void* StreamReader_DeserializeArgs(Gears_BufferReader* br, int encver){
     return StreamReaderTriggerArgs_Create(stream, batchSize, durationMS, onFailedPolicy, retryInterval, trimStream);
 }
 
+static void StreamReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModuleInfoCtx *ctx, int for_crash_report) {
+    StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
+
+    if(srctx->mode == ExecutionModeSync){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "sync");
+    } else if(srctx->mode == ExecutionModeAsync){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "async");
+    } else if(srctx->mode == ExecutionModeAsyncLocal){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "async_local");
+    } else{
+        RedisModule_InfoAddFieldCString(ctx, "mode", "unknown");
+    }
+
+    RedisModule_InfoAddFieldULongLong(ctx, "numTriggered", srctx->numTriggered);
+    RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", srctx->numSuccess);
+    RedisModule_InfoAddFieldULongLong(ctx, "numFailures", srctx->numFailures);
+    RedisModule_InfoAddFieldULongLong(ctx, "numAborted", srctx->numAborted);
+    RedisModule_InfoAddFieldCString(ctx, "lastError", srctx->lastError ? srctx->lastError : "None");
+    RedisModule_InfoAddFieldULongLong(ctx, "batchSize", srctx->args->batchSize);
+    RedisModule_InfoAddFieldULongLong(ctx, "durationMS", srctx->args->durationMS);
+    RedisModule_InfoAddFieldCString(ctx, "stream", srctx->args->streamPrefix);
+    switch(srctx->status){
+    case StreamRegistrationStatus_OK:
+        RedisModule_InfoAddFieldCString(ctx, "status", "OK");
+        break;
+    case StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE:
+        RedisModule_InfoAddFieldCString(ctx, "status", "WAITING_FOR_RETRY_ON_FAILURE");
+        break;
+    case StreamRegistrationStatus_ABORTED:
+        RedisModule_InfoAddFieldCString(ctx, "status", "ABORTED");
+        break;
+    default:
+        RedisModule_Assert(false);
+    }
+    RedisModule_InfoAddFieldULongLong(ctx, "trimStream", srctx->args->trimStream);
+
+    switch(srctx->args->onFailedPolicy){
+    case OnFailedPolicyContinue:
+        RedisModule_InfoAddFieldCString(ctx, "onFailedPolicy", "continue");
+        break;
+    case OnFailedPolicyAbort:
+        RedisModule_InfoAddFieldCString(ctx, "onFailedPolicy", "abort");
+        break;
+    case OnFailedPolicyRetry:
+        RedisModule_InfoAddFieldCString(ctx, "onFailedPolicy", "retry");
+        break;
+    default:
+        RedisModule_Assert(false);
+    }
+
+    RedisModule_InfoAddFieldULongLong(ctx, "retryInterval", srctx->args->retryInterval);
+}
+
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
     RedisModule_Assert(srctx);
@@ -1168,6 +1221,7 @@ RedisGears_ReaderCallbacks StreamReader = {
         .deserializeTriggerArgs = StreamReader_DeserializeArgs,
         .freeTriggerArgs = StreamReader_FreeArgs,
         .dumpRegistratioData = StreamReader_DumpRegistrationData,
+        .dumpRegistratioInfo = StreamReader_DumpRegistrationInfo,
         .rdbSave = StreamReader_RdbSave,
         .rdbLoad = StreamReader_RdbLoad,
         .clear = StreamReader_Clear,
