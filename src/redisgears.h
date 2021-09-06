@@ -526,6 +526,7 @@ GEARS_API Plugin* MODULE_API_FUNC(RedisGears_RegisterPlugin)(const char* name, i
 GEARS_API void MODULE_API_FUNC(RedisGears_PluginSetInfoCallback)(Plugin*, RedisModuleInfoFunc infoFunc);
 
 GEARS_API const char* MODULE_API_FUNC(RedisGears_GetConfig)(const char* name);
+GEARS_API bool MODULE_API_FUNC(RedisGears_ProfileEnabled)();
 
 GEARS_API const int MODULE_API_FUNC(RedisGears_ExecutionPlanIsLocal)(ExecutionPlan* ep);
 
@@ -990,6 +991,7 @@ static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetHashSetRecordType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetNullRecordType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetConfig);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ProfileEnabled);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterPlugin);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, PluginSetInfoCallback);
