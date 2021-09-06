@@ -5787,6 +5787,8 @@ static int RedisGearsPy_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **ar
         }
     }
 
+    RedisModule_DictIteratorStop(iter);
+
     return REDISMODULE_OK;
 }
 
