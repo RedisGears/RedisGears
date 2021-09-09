@@ -38,6 +38,15 @@ GB('CommandReader').map(map_func).filter(filter_func).flatmap(flat_map_func).for
 	env.assertContains('extractor_func', res)
 	env.assertContains('aggregateby_func', res)
 
+	res = env.cmd('RG.PYPROFILESTATS', '0000000000000000000000000000000000000000-0', 'ncalls')
+	env.assertContains('map_func', res)
+	env.assertContains('filter_func', res)
+	env.assertContains('flat_map_func', res)
+	env.assertContains('foreach_func', res)
+	env.assertContains('aggregate_func', res)
+	env.assertContains('extractor_func', res)
+	env.assertContains('aggregateby_func', res)
+
 def testProfileWithoutProfileInfo(env):
 	env.skipOnCluster()
 	env.expect('RG.CONFIGSET', 'ProfileExecutions', '1').equal(['OK'])
