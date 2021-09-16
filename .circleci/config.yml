@@ -69,12 +69,15 @@ commands:
       - setup-automation
       - run:
           name: System setup
-          command: ./system-setup.py
+          command: |
+            ./system-setup.py
+            python3 -m pip list
           no_output_timeout: 30m
       - run:
           name: Install Redis
+          shell: /bin/bash -l -eo pipefail
           command: |
-            bash -l -c "python3 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>"
+            python3 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>
             redis-server --version
 
   save-tests-logs:
@@ -131,9 +134,7 @@ commands:
       - run:
           name: Test
           shell: /bin/bash -l -eo pipefail
-          command: |
-            python3 -m pip list
-            make test <<parameters.test_params>>
+          command: make test <<parameters.test_params>>
           no_output_timeout: 30m
       - save-tests-logs
       - persist-artifacts

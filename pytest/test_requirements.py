@@ -131,7 +131,6 @@ def testDependenciesImportSerializationError():
     env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson').ok()
-    md, data = env.cmd('RG.PYEXPORTREQ', 'rejson')
-    data = b''.join(data)
+    md, data = env.cmd('RG.PYEXPORTREQ', 'rejson', decode_responses=False) # contains binary content
     for i in range(len(data) - 1):
         env.expect('RG.PYIMPORTREQ', data[:i]).error()
