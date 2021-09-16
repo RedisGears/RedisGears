@@ -436,7 +436,7 @@ class testConfig:
 
     def testMaxExecutions(self):
         max_exe = self.env.execute_command('RG.CONFIGGET', 'MaxExecutions')
-        n = long(max_exe[0]) + 1
+        n = int(max_exe[0]) + 1
         self.env.expect('RG.CONFIGSET', 'MaxExecutions', n).equal(['OK'])
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([n])
 

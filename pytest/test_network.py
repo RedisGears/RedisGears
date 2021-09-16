@@ -42,43 +42,41 @@ class Connection(object):
         return self.sock.getsockname()[1]
 
     def read(self, bytes):
-        return self.sockf.read(bytes)
+        return self.sockf.read(bytes).decode('utf-8', 'replace')
 
     def read_at_most(self, bytes, timeout=0.01):
         self.sock.settimeout(timeout)
-        return self.sock.recv(bytes)
+        return self.sock.recv(bytes).decode('utf-8', 'replace')
+
+    def write(self, data):
+        self.sockf.write(data.encode('utf-8'))
 
     def send(self, data):
-        self.sockf.write(data)
+        self.sockf.write(data.encode('utf-8'))
         self.sockf.flush()
 
     def readline(self):
-        return self.sockf.readline()
+        return self.sockf.readline().decode('utf-8', 'replace')
 
     def send_bulk_header(self, data_len):
-        self.sockf.write('$%d\r\n' % data_len)
-        self.sockf.flush()
+        self.send('$%d\r\n' % data_len)
 
     def send_bulk(self, data):
-        self.sockf.write('$%d\r\n%s\r\n' % (len(data), data))
-        self.sockf.flush()
+        self.send('$%d\r\n%s\r\n' % (len(data), data))
 
     def send_status(self, data):
-        self.sockf.write('+%s\r\n' % data)
-        self.sockf.flush()
+        self.send('+%s\r\n' % data)
 
     def send_error(self, data):
-        self.sockf.write('-%s\r\n' % data)
-        self.sockf.flush()
+        self.send('-%s\r\n' % data)
 
     def send_integer(self, data):
-        self.sockf.write(':%u\r\n' % data)
-        self.sockf.flush()
+        self.send(':%u\r\n' % data)
 
     def send_mbulk(self, data):
-        self.sockf.write('*%d\r\n' % len(data))
+        self.write('*%d\r\n' % len(data))
         for elem in data:
-            self.sockf.write('$%d\r\n%s\r\n' % (len(elem), elem))
+            self.write('$%d\r\n%s\r\n' % (len(elem), elem))
         self.sockf.flush()
 
     def read_mbulk(self, args_count=None):
@@ -157,7 +155,7 @@ class Connection(object):
                 raise Exception('Invalid bulk response: %s' % line)
             if bulk_len == -1:
                 return None
-            data = self.sockf.read(bulk_len + 2)
+            data = self.read(bulk_len + 2)
             if len(data) < bulk_len:
                 self.peer_closed = True
                 self.close()
@@ -257,7 +255,6 @@ def testMessageIdCorrectness(env):
 
 def testErrorHelloResponse(env):
     env.skipOnCluster()
-
     with ShardMock(env) as shardMock:
         conn = shardMock.GetCleanConnection()
         env.assertEqual(conn.read_request(), ['AUTH', 'password'])
