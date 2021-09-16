@@ -124,12 +124,16 @@ commands:
           getredis_params: <<parameters.getredis_params>>
       - run:
           name: Build
+          shell: /bin/bash -l -eo pipefail
           command: |
-            bash -l -c "make get_deps"
-            bash -l -c "make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1"
+            make get_deps
+            make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1
       - run:
           name: Test
-          command: make test <<parameters.test_params>>
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            python3 -m pip list
+            make test <<parameters.test_params>>
           no_output_timeout: 30m
       - save-tests-logs
       - persist-artifacts

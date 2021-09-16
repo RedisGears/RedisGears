@@ -83,7 +83,7 @@ class RedisGearsSetup(paella.Setup):
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
                      nop=False, output=True)
-        self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
+        self.run("{PYTHON} {READIES}/bin/getrmpytools --reinstall".format(PYTHON=self.python, READIES=READIES))
 
 #----------------------------------------------------------------------------------------------
 
