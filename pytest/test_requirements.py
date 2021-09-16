@@ -64,9 +64,9 @@ def testDependenciesBasicExportImport():
     res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('config', 'set', 'save', '')).run()")
     
     env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
-    md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph')
-    env.assertEqual(md[5], 'yes')
-    env.assertEqual(md[7], 'yes')
+    md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph', decode_responses=False) # contains binary content
+    env.assertEqual(md[5], b'yes')
+    env.assertEqual(md[7], b'yes')
     env.stop()
     env.start()
     conn = getConnectionByEnv(env)
