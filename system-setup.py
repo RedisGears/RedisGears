@@ -31,6 +31,7 @@ class RedisGearsSetup(paella.Setup):
 
         self.install("lsb-release")
         self.install("zip unzip gawk")
+        self.install("python-dev")
 
         # pip cannot build gevent on ARM
         if self.platform.is_arm() and self.dist == 'ubuntu' and self.os_version[0] < 20:
@@ -45,6 +46,7 @@ class RedisGearsSetup(paella.Setup):
         self.install("redhat-lsb-core")
         self.install("zip unzip")
         self.install("libatomic file")
+        self.install("python2-devel")
 
         self.run("%s/bin/getepel" % READIES)
 

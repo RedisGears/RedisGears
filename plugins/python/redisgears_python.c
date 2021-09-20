@@ -336,7 +336,7 @@ static char* PythonRequirementCtx_WheelToStr(void* wheel){
 static char* PythonRequirementCtx_ToStr(void* val){
     PythonRequirementCtx* req = val;
     char* res;
-    char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr);
+    char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, ',');
     RedisGears_ASprintf(&res, "{'name':'%s', 'basePath':'%s', 'wheels':%s}", req->installName, req->basePath, wheelsStr);
     RG_FREE(wheelsStr);
     return res;
@@ -344,7 +344,7 @@ static char* PythonRequirementCtx_ToStr(void* val){
 
 static char* PythonSessionRequirements_ToString(void* arg){
     PythonRequirementCtx** req = arg;
-    return RedisGears_ArrToStr((void**)req, array_len(req), PythonRequirementCtx_ToStr);
+    return RedisGears_ArrToStr((void**)req, array_len(req), PythonRequirementCtx_ToStr, ',');
 }
 
 static void* PythonSessionRequirements_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
@@ -774,7 +774,7 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
 
 static char* PythonSessionCtx_ToString(void* arg){
     PythonSessionCtx* s = arg;
-    char* depsListStr = RedisGears_ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr);
+    char* depsListStr = RedisGears_ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr, ',');
     char* ret;
     RedisGears_ASprintf(&ret, "{'sessionId':'%s', 'depsList':%s}", s->sessionIdStr, depsListStr);
     RG_FREE(depsListStr);
@@ -1546,6 +1546,7 @@ static void* registerCreateCommandArgs(PyObject *kargs){
     const char* trigger = NULL;
     const char* keyPrefix = NULL;
     const char* hook = NULL;
+    int inOrder = 0;
     PyObject* pyTrigger = GearsPyDict_GetItemString(kargs, "trigger");
     if(pyTrigger){
         if(!PyUnicode_Check(pyTrigger)){
@@ -1553,6 +1554,15 @@ static void* registerCreateCommandArgs(PyObject *kargs){
             return NULL;
         }
         trigger = PyUnicode_AsUTF8AndSize(pyTrigger, NULL);
+    }
+
+    PyObject* pyInOrder = GearsPyDict_GetItemString(kargs, "inorder");
+    if(pyInOrder){
+        if(!PyBool_Check(pyInOrder)){
+            PyErr_SetString(GearsError, "inorder argument is be boolean");
+            return NULL;
+        }
+        inOrder = Py_True == pyInOrder ? 1 : 0;
     }
 
     PyObject* PykeyPrefix = GearsPyDict_GetItemString(kargs, "keyprefix");
@@ -1578,13 +1588,13 @@ static void* registerCreateCommandArgs(PyObject *kargs){
             PyErr_SetString(GearsError, "trigger argument can not be given with keyprefix or hook");
             return NULL;
         }
-        return RedisGears_CommandReaderTriggerArgsCreate(trigger);
+        return RedisGears_CommandReaderTriggerArgsCreate(trigger, inOrder);
     }else{
         if(!hook){
             PyErr_SetString(GearsError, "no trigger or hook argument was given");
             return NULL;
         }
-        return RedisGears_CommandReaderTriggerArgsCreateHook(hook, keyPrefix);
+        return RedisGears_CommandReaderTriggerArgsCreateHook(hook, keyPrefix, inOrder);
     }
 
 }
@@ -4374,6 +4384,16 @@ typedef struct BackgroundDepsInstallCtx{
 
 static Gears_threadpool installDepsPool = NULL;
 
+static void RedisGearsPy_ExectionRunningCallback(ExecutionPlan* ep, void* privateData) {
+    // privateData is the blocked client
+    RedisModule_BlockedClientMeasureTimeStart(privateData);
+}
+
+static void RedisGearsPy_ExectionHoldingCallback(ExecutionPlan* ep, void* privateData) {
+    // privateData is the blocked client
+    RedisModule_BlockedClientMeasureTimeEnd(privateData);
+}
+
 static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstallCtx* bdiCtx){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     ptctx->currentCtx = rctx;
@@ -4414,6 +4434,12 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
                 bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 0);
             }
             RedisGears_AddOnDoneCallback(ptctx->createdExecution, bdiCtx->doneFunction, bc);
+            // on async executions we will set running and holding callbacks to update slowlog stats
+            // but we do it only if we have the relevant api from Redis
+            if (RedisModule_BlockedClientMeasureTimeStart && RedisModule_BlockedClientMeasureTimeStart) {
+                RedisGears_AddOnRunningCallback(ptctx->createdExecution, RedisGearsPy_ExectionRunningCallback, bc);
+                RedisGears_AddOnHoldingCallback(ptctx->createdExecution, RedisGearsPy_ExectionHoldingCallback, bc);
+            }
         }else{
             const char* id = RedisGears_GetId(ptctx->createdExecution);
             RedisModule_ReplyWithStringBuffer(rctx, id, strlen(id));
@@ -6538,13 +6564,41 @@ static int Python_BeforeConfigChange(const char* key, const char* val, char** er
 #define REDISGEARSPYTHON_PLUGIN_VERSION \
   (REDISGEARSPYTHON_VERSION_MAJOR * 10000 + REDISGEARSPYTHON_VERSION_MINOR * 100 + REDISGEARSPYTHON_VERSION_PATCH)
 
+static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
+    if (RedisModule_InfoAddSection(ctx, "python_stats") == REDISMODULE_OK) {
+        RedisModule_InfoAddFieldULongLong(ctx, "TotalAllocated", totalAllocated);
+        RedisModule_InfoAddFieldULongLong(ctx, "PeakAllocated", peakAllocated);
+        RedisModule_InfoAddFieldULongLong(ctx, "CurrAllocated", currAllocated);
+    }
+
+    if (RedisModule_InfoAddSection(ctx, "python_requirements") == REDISMODULE_OK) {
+        Gears_dictIterator *iter = Gears_dictGetIterator(RequirementsDict);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            PythonRequirementCtx* req = Gears_dictGetVal(entry);
+            RedisModule_InfoBeginDictField(ctx, req->installName);
+            RedisModule_InfoAddFieldCString(ctx, "IsDownloaded", req->isDownloaded ? "yes" : "no");
+            RedisModule_InfoAddFieldCString(ctx, "IsInstalled", req->isInstalled ? "yes" : "no");
+            RedisModule_InfoAddFieldCString(ctx, "CompiledOs", (char*)RedisGears_GetCompiledOs());
+            char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, '|');
+            RedisModule_InfoAddFieldCString(ctx, "Wheels", wheelsStr);
+            RG_FREE(wheelsStr);
+            RedisModule_InfoEndDictField(ctx);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+}
+
 __attribute__ ((visibility ("default"))) 
 int RedisGears_OnLoad(RedisModuleCtx *ctx){
 
-    if(RedisGears_InitAsGearPlugin(ctx, REDISGEARSPYTHON_PLUGIN_NAME, REDISGEARSPYTHON_PLUGIN_VERSION) != REDISMODULE_OK){
+    Plugin* p = RedisGears_InitAsGearPlugin(ctx, REDISGEARSPYTHON_PLUGIN_NAME, REDISGEARSPYTHON_PLUGIN_VERSION);
+    if (!p) {
         RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
         return REDISMODULE_ERR;
     }
+
+    RedisGears_PluginSetInfoCallback(p, Python_Info);
 
     if(RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
         staticCtx = RedisModule_GetDetachedThreadSafeContext(ctx);

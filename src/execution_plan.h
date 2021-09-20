@@ -201,11 +201,6 @@ typedef struct WorkerData{
     ExecutionThreadPool* pool;
 }WorkerData;
 
-typedef struct OnDoneData{
-    RedisGears_OnExecutionDoneCallback callback;
-    void* privateData;
-}OnDoneData;
-
 #define ExecutionFlags int
 #define EFDone 0x01
 #define EFIsOnDoneCallback 0x02
@@ -229,6 +224,11 @@ typedef struct OnDoneData{
 #define FEPIsFlagOn(fep, f) (fep->flags & f)
 #define FEPIsFlagOff(fep, f) (!(fep->flags & f))
 
+typedef struct ExecutionCallbacData{
+    RedisGears_ExecutionCallback callback;
+    void* pd;
+}ExecutionCallbacData;
+
 typedef struct ExecutionPlan{
     char id[ID_LEN];
     char idStr[STR_ID_LEN];
@@ -240,9 +240,11 @@ typedef struct ExecutionPlan{
     Record** errors;
     volatile ExecutionPlanStatus status;
     ExecutionFlags flags;
-    OnDoneData* onDoneData; // Array of callbacks to run on done
+    ExecutionCallbacData* onDoneData; // Array of callbacks to run on done
     RedisGears_ExecutionOnStartCallback onStartCallback;
     RedisGears_ExecutionOnUnpausedCallback onUnpausedCallback;
+    ExecutionCallbacData* runCallbacks;
+    ExecutionCallbacData* holdCallbacks;
     void* executionPD;
     long long executionDuration;
     WorkerData* assignWorker;
@@ -372,6 +374,9 @@ void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
 void ExecutionPlan_Free(ExecutionPlan* ep);
 
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+size_t ExecutionPlan_NRegistrations();
+size_t ExecutionPlan_NExecutions();
+void ExecutionPlan_InfoRegistrations(RedisModuleInfoCtx *ctx, int for_crash_report);
 int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);

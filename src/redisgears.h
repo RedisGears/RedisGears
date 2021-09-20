@@ -41,6 +41,8 @@
  */
 #define Arr(x) x*
 
+typedef struct Plugin Plugin;
+
 /*
  * Opaque sturcts
  */
@@ -147,11 +149,13 @@ GEARS_API char* MODULE_API_FUNC(RedisGears_BRReadBuffer)(Gears_BufferReader* br,
 /**
  * On done callback definition
  */
-typedef void (*RedisGears_OnExecutionDoneCallback)(ExecutionPlan* ctx, void* privateData);
+typedef void (*RedisGears_ExecutionCallback)(ExecutionPlan* ctx, void* privateData);
 typedef void (*RedisGears_ExecutionOnStartCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_ExecutionOnUnpausedCallback)(ExecutionCtx* ctx, void* arg);
 typedef void (*RedisGears_FlatExecutionOnRegisteredCallback)(FlatExecutionPlan* fep, void* arg);
 typedef void (*RedisGears_FlatExecutionOnUnregisteredCallback)(FlatExecutionPlan* fep, void* arg);
+
+typedef RedisGears_ExecutionCallback RedisGears_OnExecutionDoneCallback;
 
 /**
  * Reader callbacks definition.
@@ -163,6 +167,7 @@ typedef void (*RedisGears_ReaderSerializeRegisterArgsCallback)(void* arg, Gears_
 typedef void* (*RedisGears_ReaderDeserializeRegisterArgsCallback)(Gears_BufferReader* br, int encver);
 typedef void (*RedisGears_ReaderFreeArgsCallback)(void* args);
 typedef void (*RedisGears_ReaderDumpRegistrationData)(RedisModuleCtx* ctx, FlatExecutionPlan* fep);
+typedef void (*RedisGears_ReaderDumpRegistrationInfo)(FlatExecutionPlan* fep, RedisModuleInfoCtx *ctx, int for_crash_report);
 typedef void (*RedisGears_ReaderRdbSave)(RedisModuleIO *rdb);
 typedef int (*RedisGears_ReaderRdbLoad)(RedisModuleIO *rdb, int encver);
 typedef void (*RedisGears_ReaderClear)();
@@ -180,6 +185,7 @@ typedef struct RedisGears_ReaderCallbacks{
     RedisGears_ReaderDeserializeRegisterArgsCallback deserializeTriggerArgs;
     RedisGears_ReaderFreeArgsCallback freeTriggerArgs;
     RedisGears_ReaderDumpRegistrationData dumpRegistratioData;
+    RedisGears_ReaderDumpRegistrationInfo dumpRegistratioInfo;
     RedisGears_ReaderRdbSave rdbSave;
     RedisGears_ReaderRdbLoad rdbLoad;
     RedisGears_ReaderClear clear;
@@ -240,8 +246,8 @@ GEARS_API int MODULE_API_FUNC(RedisGears_CommandCtxOverrideReply)(CommandCtx* cm
 GEARS_API RedisModuleString** MODULE_API_FUNC(RedisGears_CommandCtxGetCommand)(CommandCtx* cmdCtx, size_t* len);
 GEARS_API CommandCtx* MODULE_API_FUNC(RedisGears_CommandCtxGet)(ExecutionCtx* ectx);
 
-GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger);
-GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreateHook)(const char* hook, const char* prefix);
+GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreate)(const char* trigger, int inOrder);
+GEARS_API CommandReaderTriggerArgs* MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsCreateHook)(const char* hook, const char* prefix, int inOrder);
 GEARS_API void MODULE_API_FUNC(RedisGears_CommandReaderTriggerArgsFree)(CommandReaderTriggerArgs* args);
 
 /* will return trigger ctx that can be used to call the next command (the one that was overrided) */
@@ -491,6 +497,8 @@ typedef void (*AbortCallback)(void* abortPD);
 GEARS_API void MODULE_API_FUNC(RedisGears_SetAbortCallback)(ExecutionCtx* ctx, AbortCallback abort, void* abortPD);
 
 GEARS_API bool MODULE_API_FUNC(RedisGears_AddOnDoneCallback)(ExecutionPlan* ep, RedisGears_OnExecutionDoneCallback callback, void* privateData);
+GEARS_API bool MODULE_API_FUNC(RedisGears_AddOnRunningCallback)(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData);
+GEARS_API bool MODULE_API_FUNC(RedisGears_AddOnHoldingCallback)(ExecutionPlan* ep, RedisGears_ExecutionCallback callback, void* privateData);
 
 GEARS_API const char* MODULE_API_FUNC(RedisGears_GetMyHashTag)();
 
@@ -514,7 +522,8 @@ GEARS_API void MODULE_API_FUNC(RedisGears_LockHanlderAcquire)(RedisModuleCtx* ct
 GEARS_API void MODULE_API_FUNC(RedisGears_LockHanlderRelease)(RedisModuleCtx* ctx);
 GEARS_API int MODULE_API_FUNC(RedisGears_ExecuteCommand)(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, ...);
 
-GEARS_API int MODULE_API_FUNC(RedisGears_RegisterPlugin)(const char* name, int version);
+GEARS_API Plugin* MODULE_API_FUNC(RedisGears_RegisterPlugin)(const char* name, int version);
+GEARS_API void MODULE_API_FUNC(RedisGears_PluginSetInfoCallback)(Plugin*, RedisModuleInfoFunc infoFunc);
 
 GEARS_API const char* MODULE_API_FUNC(RedisGears_GetConfig)(const char* name);
 
@@ -527,7 +536,7 @@ GEARS_API int MODULE_API_FUNC(RedisGears_IsCrdt)();
 GEARS_API int MODULE_API_FUNC(RedisGears_IsEnterprise)();
 
 GEARS_API int MODULE_API_FUNC(RedisGears_ASprintf)(char **__ptr, const char *__restrict __fmt, ...);
-GEARS_API char* MODULE_API_FUNC(RedisGears_ArrToStr)(void** arr, size_t len, char*(*toStr)(void*));
+GEARS_API char* MODULE_API_FUNC(RedisGears_ArrToStr)(void** arr, size_t len, char*(*toStr)(void*), char sep);
 
 GEARS_API int MODULE_API_FUNC(RedisGears_IsClusterMode)();
 GEARS_API const char* MODULE_API_FUNC(RedisGears_GetNodeIdByKey)(const char* key);
@@ -549,7 +558,7 @@ GEARS_API void MODULE_API_FUNC(RedisGears_AddConfigHooks)(BeforeConfigSet before
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
             RedisModule_Log(ctx, "warning", "could not initialize RedisGears_" #name "\r\n");\
-            return REDISMODULE_ERR; \
+            return NULL; \
         }
 
 #define REDISMODULE_MODULE_INIT_FUNCTION(ctx, name) \
@@ -753,6 +762,8 @@ static int RedisGears_InitializeRedisModuleApi(RedisModuleCtx* ctx){
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetBlockedClientPrivateData);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, GetBlockedClientHandle);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, AbortBlock);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, BlockedClientMeasureTimeStart);
+    REDISMODULE_MODULE_INIT_FUNCTION(ctx, BlockedClientMeasureTimeEnd);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, SetDisconnectCallback);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, SubscribeToKeyspaceEvents);
     REDISMODULE_MODULE_INIT_FUNCTION(ctx, NotifyKeyspaceEvent);
@@ -795,15 +806,15 @@ static int RedisGears_InitializeRedisModuleApi(RedisModuleCtx* ctx){
     return REDISMODULE_OK;
 }
 
-static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int version, bool initRedisModuleAPI){
+static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int version, bool initRedisModuleAPI){
     if(initRedisModuleAPI){
         if(RedisGears_InitializeRedisModuleApi(ctx) != REDISMODULE_OK){
-            return REDISMODULE_ERR;
+            return NULL;
         }
     }
     if(!RedisModule_GetSharedAPI){
         RedisModule_Log(ctx, "warning", "redis version is not compatible with module shared api, use redis 5.0.4 or above.");
-        return REDISMODULE_ERR;
+        return NULL;
     }
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetCompiledOs);
@@ -928,6 +939,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RecordSendReply);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SetAbortCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnDoneCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnRunningCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddOnHoldingCallback);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetNullRecord);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetTotalDuration);
@@ -979,6 +992,7 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetConfig);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterPlugin);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, PluginSetInfoCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionPlanIsLocal);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetVersion);
@@ -997,14 +1011,10 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int vers
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterLoadingEvent);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
-        return REDISMODULE_ERR;
+        return NULL;
     }
 
-    if(RedisGears_RegisterPlugin(name, version) != REDISMODULE_OK){
-        return REDISMODULE_ERR;
-    }
-
-    return REDISMODULE_OK;
+    return RedisGears_RegisterPlugin(name, version);
 }
 
 #if defined(__GNUC__) && (__GNUC__ >= 7)

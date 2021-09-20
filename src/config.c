@@ -482,7 +482,7 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
             RedisModule_Log(staticCtx, "notice", "%s:%lf", val->name, v->val.doubleVal);
             break;
         case ARRAY:
-            arrayStr = ArrToStr((void**)v->val.vals, array_len(v->val.vals), GearsConfig_ArrayConfigValToStr);
+            arrayStr = ArrToStr((void**)v->val.vals, array_len(v->val.vals), GearsConfig_ArrayConfigValToStr, ',');
             RedisModule_Log(staticCtx, "notice", "%s:%s", val->name, arrayStr);
             RG_FREE(arrayStr);
             break;
