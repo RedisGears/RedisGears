@@ -806,3 +806,17 @@ def testSlowlogReportOnCommandReader(env):
 
     env.assertGreaterEqual(len(res), 1)
     env.assertEqual(res[0][3], ['RG.TRIGGER', 'test'])
+
+def test1651(env):
+    env.skipOnCluster()
+    script = '''
+gb = GB()
+gb.%s()
+gb.%s()
+    '''
+    for op1, op2 in tuple((t1, t2) for t1 in ('run', 'register') for t2 in ('map', 'filter', 'batchgroupby', 'groupby', 'localgroupby', 'collect', 'foreach', 'repartition', 'flatmap', 'limit', 'accumulate')):
+        env.expect('RG.PYEXECUTE', script % (op1, op2)).error().contains('execution was already run/registered')        
+
+    env.expect('RG.PYEXECUTE', 'gb = GB();gb.run(convertToStr=False, collect=False);gb.run(convertToStr=False, collect=False)').error().contains('execution was already run/registered')
+    env.expect('RG.PYEXECUTE', 'gb = GB();gb.register(convertToStr=False, collect=False);gb.register(convertToStr=False, collect=False)').error().contains('execution was already run/registered')
+

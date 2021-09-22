@@ -799,6 +799,10 @@ typedef struct PyFlatExecution{
 
 static PyObject* map(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "wrong number of args to map function");
         return NULL;
@@ -816,6 +820,10 @@ static PyObject* map(PyObject *self, PyObject *args){
 
 static PyObject* filter(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "wrong number of args to filter function");
         return NULL;
@@ -833,6 +841,10 @@ static PyObject* filter(PyObject *self, PyObject *args){
 
 static PyObject* localAccumulateby(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 2){
         PyErr_SetString(GearsError, "wrong number of args to groupby function");
         return NULL;
@@ -857,6 +869,10 @@ static PyObject* localAccumulateby(PyObject *self, PyObject *args){
 
 static PyObject* accumulateby(PyObject *self, PyObject *args){
 	PyFlatExecution* pfep = (PyFlatExecution*)self;
+	if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
 	if(PyTuple_Size(args) != 2){
 	    PyErr_SetString(GearsError, "wrong number of args to groupby function");
         return NULL;
@@ -881,6 +897,10 @@ static PyObject* accumulateby(PyObject *self, PyObject *args){
 
 static PyObject* groupby(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 2){
         PyErr_SetString(GearsError, "wrong number of args to batchgroupby function");
         return NULL;
@@ -909,6 +929,10 @@ static PyObject* collect(PyObject *self, PyObject *args){
         return NULL;
     }
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     RGM_Collect(pfep->fep);
     Py_INCREF(self);
     return self;
@@ -916,6 +940,10 @@ static PyObject* collect(PyObject *self, PyObject *args){
 
 static PyObject* foreach(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "wrong number of args to foreach function");
         return NULL;
@@ -933,6 +961,10 @@ static PyObject* foreach(PyObject *self, PyObject *args){
 
 static PyObject* repartition(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "wrong number of args to repartition function");
         return NULL;
@@ -950,6 +982,10 @@ static PyObject* repartition(PyObject *self, PyObject *args){
 
 static PyObject* flatmap(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "wrong number of args to flatmap function");
         return NULL;
@@ -967,6 +1003,10 @@ static PyObject* flatmap(PyObject *self, PyObject *args){
 
 static PyObject* limit(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) < 1 || PyTuple_Size(args) > 2){
         PyErr_SetString(GearsError, "wrong number of args to limit function");
         return NULL;
@@ -993,6 +1033,10 @@ static PyObject* limit(PyObject *self, PyObject *args){
 
 static PyObject* accumulate(PyObject *self, PyObject *args){
     PyFlatExecution* pfep = (PyFlatExecution*)self;
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
     if(PyTuple_Size(args) != 1){
         PyErr_SetString(GearsError, "wrong number of args to accumulate function");
         return NULL;
@@ -1099,6 +1143,11 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
 
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
+
     if(ptctx->createdExecution){
         // it is not possible to run 2 executions in single script currently
         PyErr_SetString(GearsError, "Can not run more then 1 executions in a single script");
@@ -1168,6 +1217,10 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         }
         return NULL;
     }
+    // execution ownership was given to RGM_Run, set execution to NULL to mark it as invalid.
+    RedisGears_FreeFlatExecution(pfep->fep);
+    pfep->fep = NULL;
+
     if(!ptctx->currentCtx){
         RedisGears_AddOnDoneCallback(ep, dropExecutionOnDone, NULL);
     }else{
@@ -1415,6 +1468,11 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyFlatExecution* pfep = (PyFlatExecution*)self;
 
+    if (pfep->fep == NULL) {
+        PyErr_SetString(GearsError, "invalid execution was used, execution was already run/registered");
+        return NULL;
+    }
+
     if(RGM_SetFlatExecutionOnUnpausedCallback(pfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
         PyErr_SetString(GearsError, "Failed setting on start callback");
         return NULL;
@@ -1471,7 +1529,9 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         }
         return NULL;
     }
-
+    // execution ownership was given to RGM_Register, set execution to NULL to mark it as invalid.
+    RedisGears_FreeFlatExecution(pfep->fep);
+    pfep->fep = NULL;
     Py_INCREF(Py_None);
     return Py_None;
 }
