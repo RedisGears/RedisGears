@@ -820,3 +820,12 @@ gb.%s()
     env.expect('RG.PYEXECUTE', 'gb = GB();gb.run(convertToStr=False, collect=False);gb.run(convertToStr=False, collect=False)').error().contains('execution was already run/registered')
     env.expect('RG.PYEXECUTE', 'gb = GB();gb.register(convertToStr=False, collect=False);gb.register(convertToStr=False, collect=False)').error().contains('execution was already run/registered')
 
+def test1676(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: test()).register(onFailedPolicy='abort')").equal('OK')
+    env.cmd('xadd', 's1', '*', 'foo', 'bar')
+    env.cmd('XTRIM', 's1', 'MAXLEN', '0')
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: test()).register(onFailedPolicy='abort')").equal('OK')
+
+    time.sleep(0.1) # make sure shard did not crash
+    env.expect('ping').equal(True)
