@@ -13,7 +13,7 @@
 #include "redisgears_python.h"
 #endif
 
-pthread_key_t _lockKey;
+static pthread_key_t _lockKey;
 
 typedef struct LockHandlerCtx{
     int lockCounter;
