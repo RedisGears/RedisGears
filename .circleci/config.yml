@@ -175,7 +175,7 @@ commands:
 jobs:
   build-linux-debian:
     docker:
-      - image: redisfab/rmbuilder:6.2.4-x64-buster
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     parameters:
       redis_version:
         type: string
@@ -187,7 +187,7 @@ jobs:
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.2.4-x64-buster
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     steps:
       - build-steps:
           platform: debian
@@ -200,7 +200,7 @@ jobs:
       platform:
         type: string
     docker:
-      - image: debian:buster
+      - image: debian:bullseye
     steps:
       - build-platforms-steps:
           platform: <<parameters.platform>>
@@ -247,7 +247,7 @@ jobs:
 
   deploy-snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.2.4-x64-buster
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -262,7 +262,7 @@ jobs:
 
   deploy-releases:
     docker:
-      - image: redisfab/rmbuilder:6.2.4-x64-buster
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -277,7 +277,7 @@ jobs:
 
   release-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.4-x64-buster
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -289,7 +289,7 @@ jobs:
 
   nightly-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.4-x64-buster
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
