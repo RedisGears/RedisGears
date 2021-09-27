@@ -779,6 +779,7 @@ static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
         pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
         pthread_detach(srctx->scanThread);
     }
+    Gears_listReleaseIterator(iter);
 
 }
 
