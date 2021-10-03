@@ -1054,3 +1054,36 @@ GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], 
         env.expect('lrange', 'l', '0', '-1').equal(['y', 'x'])
 
         env.cmd('flushall')
+
+def testStreamReaderNotTriggerEventsOnReplica(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: x['error']).register(onFailedPolicy='retry', onFailedRetryInterval=1)").equal('OK')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertTrue(res1 < res2)
+    
+    env.cmd('SLAVEOF', 'localhost', '6380')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertEqual(res1, res2)
+
+    env.cmd('SLAVEOF', 'no', 'one')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertTrue(res1 < res2)
+
+    env.cmd('SLAVEOF', 'localhost', '6380')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertEqual(res1, res2)
+
+    env.cmd('SLAVEOF', 'no', 'one')
