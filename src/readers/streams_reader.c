@@ -11,7 +11,8 @@
 #include <pthread.h>
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
-Gears_list* streamsRegistration = NULL;
+static Gears_list* streamsRegistration = NULL;
+static RedisModuleTimerID turnedMasterTimer;
 
 typedef struct StreamId{
         long first;
@@ -76,6 +77,7 @@ typedef struct SingleStreamReaderCtx{
 
 static void* StreamReader_ScanForStreams(void* pd);
 static void StreamReader_Free(void* ctx);
+static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data);
 
 static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallReply* reply, const char* msgPrefix, const char* logLevel){
     if (reply == NULL ||
@@ -402,21 +404,22 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
         RedisGears_HashSetRecordSet(r, "value", recordValues);
         RedisGears_HashSetRecordSet(r, "key", keyRecord);
         RedisModuleCallReply *values = RedisModule_CallReplyArrayElement(element, 1);
-        RedisModule_Assert(RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY);
-        RedisModule_Assert(RedisModule_CallReplyLength(values) % 2 == 0);
-        for(size_t j = 0 ; j < RedisModule_CallReplyLength(values) ; j+=2){
-            RedisModuleCallReply *key = RedisModule_CallReplyArrayElement(values, j);
-            const char* keyStr = RedisModule_CallReplyStringPtr(key, &len);
-            char keyCStr[len + 1];
-            memcpy(keyCStr, keyStr, len);
-            keyCStr[len] = '\0';
-            RedisModuleCallReply *val = RedisModule_CallReplyArrayElement(values, j + 1);
-            const char* valStr = RedisModule_CallReplyStringPtr(val, &len);
-            char* valCStr = RG_ALLOC((len + 1)* sizeof(char));
-            memcpy(valCStr, valStr, len);
-            valCStr[len] = '\0';
-            Record* valRecord = RedisGears_StringRecordCreate(valCStr, len);
-            RedisGears_HashSetRecordSet(recordValues, keyCStr, valRecord);
+        if (RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY) {
+            RedisModule_Assert(RedisModule_CallReplyLength(values) % 2 == 0);
+            for(size_t j = 0 ; j < RedisModule_CallReplyLength(values) ; j+=2){
+                RedisModuleCallReply *key = RedisModule_CallReplyArrayElement(values, j);
+                const char* keyStr = RedisModule_CallReplyStringPtr(key, &len);
+                char keyCStr[len + 1];
+                memcpy(keyCStr, keyStr, len);
+                keyCStr[len] = '\0';
+                RedisModuleCallReply *val = RedisModule_CallReplyArrayElement(values, j + 1);
+                const char* valStr = RedisModule_CallReplyStringPtr(val, &len);
+                char* valCStr = RG_ALLOC((len + 1)* sizeof(char));
+                memcpy(valCStr, valStr, len);
+                valCStr[len] = '\0';
+                Record* valRecord = RedisGears_StringRecordCreate(valCStr, len);
+                RedisGears_HashSetRecordSet(recordValues, keyCStr, valRecord);
+            }
         }
         Gears_listAddNodeHead(readerCtx->records, r);
     }
@@ -681,9 +684,16 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
 
             if(srctx->args->onFailedPolicy == OnFailedPolicyRetry){
-                // Set the status to WAITING_FOR_TIMEOUT_ON_FAILURE, the status will be reflected to the user.
-                srctx->status = StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE;
-                RedisModule_CreateTimer(staticCtx, srctx->args->retryInterval * 1000, StreamReader_StartScanThread, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+                int flags = RedisModule_GetContextFlags(staticCtx);
+                // only retrigger on master
+                if(flags & REDISMODULE_CTX_FLAGS_MASTER){
+                    // Set the status to WAITING_FOR_TIMEOUT_ON_FAILURE, the status will be reflected to the user.
+                    srctx->status = StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE;
+                    RedisModule_CreateTimer(staticCtx, srctx->args->retryInterval * 1000, StreamReader_StartScanThread, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+                } else {
+                    // set timmer to check if we turn master
+                    turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                }
             }else if(srctx->args->onFailedPolicy == OnFailedPolicyAbort){
                 srctx->status = StreamRegistrationStatus_ABORTED;
             }else{
@@ -749,7 +759,6 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
 }
 
 static bool turnedMasterTEOn = false;
-static RedisModuleTimerID turnedMasterTimer;
 
 static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
     int flags = RedisModule_GetContextFlags(ctx);
@@ -770,6 +779,7 @@ static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
         pthread_create(&srctx->scanThread, NULL, StreamReader_ScanForStreams, StreamReaderTriggerCtx_GetShallowCopy(srctx));
         pthread_detach(srctx->scanThread);
     }
+    Gears_listReleaseIterator(iter);
 
 }
 
