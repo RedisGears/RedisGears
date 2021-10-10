@@ -144,10 +144,10 @@ commands:
       - checkout-all
       - setup-automation
       - run:
-          name: Build for platform
+          name: Build for platform (dockers)
           command: |
             pushd build/docker
-            make build $(./version-params) OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
+            make -C build/docker build $(./version-params) OSNICK=<<parameters.platform>> PACK=1 TEST=1 SHOW=1
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
@@ -156,12 +156,10 @@ commands:
       - save-tests-logs
       - early-return-for-forked-pull-requests
       - run:
-          name: Deploy for platform
+          name: Deploy for platform (dockers)
           command: |
             docker login -u redisfab -p $DOCKER_REDISFAB_PWD
-            cd build/docker
-            make publish OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH OFFICIAL=0 SHOW=1 VERBOSE=1
-
+            make -C build/docker publish OSNICK=<<parameters.platform>> OFFICIAL=0 SHOW=1 VERBOSE=1
           no_output_timeout: 40m
       - persist-artifacts
 

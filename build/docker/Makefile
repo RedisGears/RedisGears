@@ -1,17 +1,9 @@
+REDIS_VERSION=6.2.5
+PRODUCT=redisgears
 
-ROOT=../..
-include $(ROOT)/deps/readies/mk/main
-
-# OSNICK=bullseye|centos7|centos8|xenial|bionic
 OSNICK ?= bullseye
+OSNICK_OFFICIAL = bullseye
 
-REPO=redisgears
-
-REDIS_VER=6.2.5
-
-INT_BRANCHES=1.2 1.0
-
-ART_DIR=$(ROOT)/artifacts
-ART_INT_DIR=/var/opt/redislabs/artifacts
-
-include $(MK)/docker.native
+ROOT=../../
+READIES=${ROOT}/deps/readies
+include ${READIES}/mk/docker.rules

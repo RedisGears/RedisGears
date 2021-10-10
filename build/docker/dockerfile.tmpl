@@ -1,0 +1,49 @@
+#----------------------------------------------------------------------------------------------
+FROM redisfab/redis:{{REDIS_VERSION}}-{{REDIS_ARCH}}-{{REDIS_OSNICK}} AS redis
+FROM {{REDIS_OS}} AS builder
+
+RUN echo "Building for {{REDIS_OSNICK}} ({{REDIS_OS}}) for {{REDIS_ARCH}} [with Redis {{REDIS_VERSION}}]"
+
+WORKDIR /build
+COPY --from=redis /usr/local/ /usr/local/
+
+ADD . /build
+
+RUN ./deps/readies/bin/getupdates
+RUN ./deps/readies/bin/getpy2
+RUN ./system-setup.py
+RUN bash -l -c "make fetch SHOW=1"
+RUN bash -l -c "make all SHOW=1"
+RUN ./getver > artifacts/VERSION
+
+
+{% if REDIS_PACK == "1" %}
+RUN set -e ; bash -l -c "make pack"
+{% endif %}
+
+RUN if [ "${{REDIS_TEST}}" = "1" ]; then \
+		bash -l -c "TEST= make test" ;\
+        tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-{{REDIS_ARCH}}-{{REDIS_OSNICK}}.tgz . ;\
+	fi
+
+#----------------------------------------------------------------------------------------------
+FROM redisfab/redis:{{REDIS_VER}}-{{REDIS_ARCH}}-{{REDIS_OSNICK}}
+
+{% set redis_module_dir="/var/opt/redislabs/lib/modules" %}
+
+RUN mkdir -p {{redis_module_dir}} /var/opt/redislabs/artifacts
+RUN chown -R redis:redis /var/opt/redislabs
+
+COPY --from=builder --chown=redis:redis /build/redisgears.so {{redis_module_dir}}
+COPY --from=builder --chown=redis:redis /build/bin/linux-{{REDIS_ARCH}}-release/python3_* /var/opt/redislabs/modules/rg/python3/
+COPY --from=builder --chown=redis:redis /build/bin/linux-{{REDIS_ARCH}}-release/gears_python/gears_python.so /var/opt/redislabs/modules/rg/plugin/
+
+COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts
+
+RUN	set -e ;\
+	cd /var/opt/redislabs/modules/rg/ ;\
+	ln -s python3 python3_`cat /var/opt/redislabs/artifacts/VERSION`
+
+RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
+
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so"]
