@@ -7,6 +7,7 @@ from includes import *
 from common import getConnectionByEnv
 from common import TimeLimit
 from common import verifyRegistrationIntegrity
+from common import Background
 
 
 class testUnregister:
@@ -425,23 +426,16 @@ def testBasicStreamProcessing(env):
         return
     time.sleep(0.5)  # make sure the registration reached to all shards
     env.cmd('XADD', 'stream1', '*', 'f1', 'v1', 'f2', 'v2')
-    res = []
-    while len(res) < 1:
-        res = env.cmd('rg.dumpexecutions')
-    for e in res:
-        env.broadcast('rg.getresultsblocking', e[1])
-        env.cmd('rg.dropexecution', e[1])
-    env.assertEqual(conn.get('f1'), 'v1')
-    env.assertEqual(conn.get('f2'), 'v2')
-
-    # delete all registrations and executions so valgrind check will pass
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for r in executions:
-         env.expect('RG.DROPEXECUTION', r[1]).equal('OK')
-
-    registrations = env.cmd('RG.DUMPREGISTRATIONS')
-    for r in registrations:
-         env.expect('RG.UNREGISTER', r[1]).equal('OK')
+    try:
+        with TimeLimit(5):
+            while True:
+                if conn.get('f1') != 'v1':
+                    continue
+                if conn.get('f2') != 'v2':
+                    continue
+                break
+    except Exception:
+        env.assertTrue(False, message='Failed waiting for keys to updated')
 
 def testRegistersOnPrefix(env):
     conn = getConnectionByEnv(env)
@@ -1372,3 +1366,97 @@ GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], com
 
         res = self.conn.execute_command('get', 'test1')
         self.env.assertEqual(res, 2)
+
+def testCommandReaderInOrder(env):
+    env.skipOnCluster()
+    script = '''
+import time
+
+def SleepIfNeeded(x):
+    if x[2] == 'x':
+        time.sleep(0.5)
+
+GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], x[2])).register(trigger='test_inorder', mode='async_local', inorder=True)
+
+GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], x[2])).register(trigger='test_not_inorder', mode='async_local')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    for _ in env.reloading_iterator():
+        conn1 = env.getConnection()
+        conn2 = env.getConnection()
+
+        def RunTestNotInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'x')
+
+        def RunTestNotInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'y')
+
+        try:
+            with Background(RunTestNotInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
+                with Background(RunTestNotInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:
+            env.assertTrue(False, message='Failed wait for RunTestNotInOrder to finish: %s' % str(e))
+
+        env.expect('lrange', 'l', '0', '-1').equal(['x', 'y'])
+
+        env.cmd('flushall')
+
+        def RunTestInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'x')
+
+        def RunTestInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'y')
+
+        try:
+            with Background(RunTestInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
+                with Background(RunTestInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:  
+            env.assertTrue(False, message='Failed wait for RunTestInOrder to finish: %s' % str(e))
+
+        env.expect('lrange', 'l', '0', '-1').equal(['y', 'x'])
+
+        env.cmd('flushall')
+
+def testStreamReaderNotTriggerEventsOnReplica(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: x['error']).register(onFailedPolicy='retry', onFailedRetryInterval=1)").equal('OK')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertTrue(res1 < res2)
+    
+    env.cmd('SLAVEOF', 'localhost', '6380')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertEqual(res1, res2)
+
+    env.cmd('SLAVEOF', 'no', 'one')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertTrue(res1 < res2)
+
+    env.cmd('SLAVEOF', 'localhost', '6380')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertEqual(res1, res2)
+
+    env.cmd('SLAVEOF', 'no', 'one')

@@ -5,14 +5,19 @@
  *      Author: root
  */
 
-#ifndef SRC_COMMON_H_
-#define SRC_COMMON_H_
+#pragma once
 
+#include "version.h"
 #include "utils/dict.h"
 #include "redismodule.h"
 #include "cluster.h"
-#include <stdio.h>
+
+#include "utils/arr_rm_alloc.h"
+
+#include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 
 #if defined(DEBUG) || !defined(NDEBUG)
 #include "readies/cetara/diag/gdb.h"
@@ -45,7 +50,10 @@ static inline int IsEnterprise() {
 
 extern RedisModuleCtx *staticCtx;
 
-#define VERIFY_CLUSTER_INITIALIZE(c) if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state")
+#define VERIFY_CLUSTER_INITIALIZE(c) \
+	do { \
+		if(!Cluster_IsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state"); \
+	} while(0)
 
 int GearsCompareVersions();
 int GearsCheckSupportedVestion();
@@ -53,11 +61,10 @@ void GearsGetRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);
 int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...);
-char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*));
+char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int), char sep);
+char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*), char sep);
 const char* GetShardUniqueId();
 int ExecCommand(RedisModuleCtx *ctx, const char* __fmt, ...);
 int IsKeyMatch(const char* prefix, const char* key, size_t prefixLen);
 int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fmt, va_list __arg);
-
-#endif /* SRC_COMMANDS_H_ */
 
