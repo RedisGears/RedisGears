@@ -94,6 +94,11 @@ For example, to load the module into a local Redis server after you've [built](#
 redis-server --loadmodule ./redisgears.so
 ```
 
+To make use of the RedisGears python plugin, load the module with the `PLUGIN` argument:
+```
+redis-server --loadmodule ./redisgears.so PLUGIN ./gears_python.so
+```
+
 If you've compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>`, should not be changed.
 
 ## Testing
