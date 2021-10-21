@@ -16,15 +16,15 @@ jobs:
     steps:
     - uses: actions/checkout@v2.1.1
     - name: Set up Python 3.x
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v2
       with:
-        python-version: '3.x'
+        python-version: '3.9'
     - name: Display Python version
       run: python -c "import sys; print(sys.version)"
     - name: Install docs dependencies
       run: pip install -r docs/requirements.txt
     - name: Spin up RedisGears container
-      run: docker run -d --rm --name redisgears -p 6379:6379 redislabs/redisgears:edge 
+      run: docker run -d --rm --name redisgears -p 6379:6379 redislabs/redisgears:edge
     - name: Test code snippets
       run: python -m pytest -s -v docs/snippets
     - name: Get entire project
