@@ -21,11 +21,11 @@ Use `import redisAI` to import RedisAI functionality to the runtime interpreter.
 
 ### Objects
 
-`redisAI` module contains pythonic representations of RedisAI objects (further explanations about these objects is available in RedisAI [docs](https://oss.redis.com/redisai/master/)):
+`redisAI` module contains pythonic wrappers of RedisAI objects (further explanations about these objects is available in RedisAI [docs](https://oss.redis.com/redisai/master/)):
 * PyTensor - represents a tensor - an n-dimensional array of values
-* PyModel - represents a model - computation graph by one of the supported DL/ML framework backends
-* PyScript - represents a [TorchScript](https://pytorch.org/docs/stable/jit.html) program
-* PyDAG - directional acyclic graph of RedisAI operations (further details below)
+* PyModelRunner - represents a context of model execution. A model in RedisAI is a computation graph by one of the supported DL/ML framework backends
+* PyScriptRunner - represents a context of [TorchScript](https://pytorch.org/docs/stable/jit.html) program execution
+* PyDAGRunner - directional acyclic graph of RedisAI operations (further details below)
 
 Execution requests for models, scripts and DAGs are queued and executed asynchronously.
 
@@ -51,13 +51,49 @@ create a tensor object from values.
 
 `def setTensorInKey(key: str, tensor: PyTensor)`
 
-sets a tensor object in Redis keyspace under the given key. This will acquire Redis GIL as it access the keyspace 
+sets a tensor object in Redis keyspace under the given key. The operation will acquire Redis GIL as it access the keyspace 
 * _key_ - string that represents the key. 
 * _tensor_ - PyTensor object that was created with `createTensorFromBlob` or `createTensorFromValue`.
 * _returns_ - None
 
 `def msetTensorsInKeyspace(tensors: dict[str, PyTensor])`
 
-sets multiple tensors in Redis keyspace under the given keys. This will acquire Redis GIL as it access the keyspace
+sets multiple tensors in Redis keyspace under the given keys. The operation will acquire Redis GIL as it access the keyspace.
 * _tensors_ - dictionary where the keys are the keys to store in Redis, and the value is the tensor value to store under each key
 * _returns_ - None
+
+`def getTensorFromKey(key: str)`
+
+get a tensor that is stored in Redis keyspace under the given key. The operation will acquire Redis GIL as it access the keyspace
+* _key_ - string that represents the key.
+* _returns_ - the PyTensor object that is stored in Redis under the given key. 
+
+`def mgetTensorsFromKeyspace(tensors: list[str])`
+
+get multiple tensors that are stored in Redis keyspace under the given keys. The operation will acquire Redis GIL as it access the keyspace.
+* _tensors_ - list of strings that are associated with keys stored in Redis, each key is holding a value of type tensor.
+* _returns_ - list of PyTensor objects that correspond to the tensors stored in Redis under the given keys, respectively. 
+
+`def tensorToFlatList(tensor: PyTensor)`
+
+get a "flat" list of a tensor's values
+* _tensor_ - PyTensor object.
+* _returns_ - list of the given tensor values
+
+`def tensorGetDataAsBlob(tensor: PyTensor)`
+
+get tensor's data in binary form
+* _tensor_ - PyTensor object.
+* _returns_ - the tensor's underline data as byte array
+
+`def tensorGetDims(tensor: PyTensor)`
+
+get tensor's shapes
+* _tensor_ - PyTensor object.
+* _returns_ - a tuple of the underline tensor' dimensions.
+
+`def createModelRunner(model_key: str)`
+
+creates a new run context for RedisAI model which is stored in Redis under the given key. To store a model in Redis, one should use [AI.MODELSTORE command](https://oss.redis.com/redisai/commands/#aimodelstore) before calling this function. This run context is used to hold the required data for the model execution. 
+* _model_key_ - string that represents the model key.
+* _returns_ - A new PyModelRunner object that can be used later on to execute the model over input tensors
