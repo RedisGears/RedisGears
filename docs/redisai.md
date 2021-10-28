@@ -12,7 +12,7 @@ The quickest way to try RedisGears with RedisAI is by launching `redismod` Docke
 Alternatively, you can build RedisAI from its source code by following the instruction [here](https://oss.redis.com/redisai/quickstart/).
 Then, you can run the following command to load the two modules (from RedisGears root directory):
 
-```redis-server --loadmodule ./redisgears.so Plugin gears_pyhton.so --loadmodule <path/to/RedisAI-repo>/install-cpu/redisai.so```
+```redis-server --loadmodule ./redisgears.so Plugin ./gears_python.so --loadmodule <path/to/RedisAI-repo>/install-cpu/redisai.so```
 
 ## Usage
 
@@ -94,6 +94,54 @@ get tensor's shapes
 
 `def createModelRunner(model_key: str)`
 
-creates a new run context for RedisAI model which is stored in Redis under the given key. To store a model in Redis, one should use [AI.MODELSTORE command](https://oss.redis.com/redisai/commands/#aimodelstore) before calling this function. This run context is used to hold the required data for the model execution. 
+creates a new run context for RedisAI model which is stored in Redis under the given key. To store a model in Redis, one should use the [AI.MODELSTORE command](https://oss.redis.com/redisai/commands/#aimodelstore) before calling this function. This run context is used to hold the required data for the model execution. 
 * _model_key_ - string that represents the model key.
 * _returns_ - A new PyModelRunner object that can be used later on to execute the model over input tensors
+
+`def modelRunnerAddInput(model_runner: PyModelRunner, tensor: PyTensor, name: str)`
+
+* Append an input tensor to a model execution context. The inputs number and order should match the expected order in underline model definition.
+* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
+* _tensor_ - PyTensor object that represents the input tensor to append to the model input list.
+* _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
+* _returns_ - always returns 1
+
+`def modelRunnerAddOutput(model_runner: PyModelRunner, name: str)`
+
+* Append a placeholder for an output tensor to return from the model execution. The outputs number and order should match the expected order in underline model definition.
+* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
+* _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
+* _returns_ - always returns 1
+
+`async def modelRunnerRunAsync(model_runner: PyModelRunner)`
+
+* Performs an execution of a model in RedisAI based on the given context. The execution is done asynchronously in RedisAI background thread.  
+* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call, and contains the inputs tensors along with the output placeholders. 
+* _returns_ - a list of PyTensor objects that contains the outputs of the execution. In case that an error has occurred during the execution, an exception with the appropriate error message will be raised.  
+
+`def createScriptRunner(script_key: str)`
+
+creates a new run context for RedisAI script (torch script) which is stored in Redis under the given key. To store a script in Redis, one should use the [AI.SCRIPTSTORE command](https://oss.redis.com/redisai/commands/#aiscriptstore) before calling this function. This run context is used to hold the required data for the script execution.
+* _script_key_ - string that represents the model key.
+* _returns_ - A new PyScriptRunner object that can be used later on to execute the script over input tensors
+
+`def modelRunnerAddInput(model_runner: PyModelRunner, tensor: PyTensor, name: str)`
+
+* Append an input tensor to a model execution context. The inputs number and order should match the expected order in underline model definition.
+* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
+* _tensor_ - PyTensor object that represents the input tensor to append to the model input list.
+* _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
+* _returns_ - always returns 1
+
+`def modelRunnerAddOutput(model_runner: PyModelRunner, name: str)`
+
+* Append a placeholder for an output tensor to return from the model execution. The outputs number and order should match the expected order in underline model definition.
+* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
+* _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
+* _returns_ - always returns 1
+
+`async def modelRunnerRunAsync(model_runner: PyModelRunner)`
+
+* Performs an execution of a model in RedisAI based on the given context. The execution is done asynchronously in RedisAI background thread.
+* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call, and contains the inputs tensors along with the output placeholders.
+* _returns_ - a list of PyTensor objects that contains the outputs of the execution. In case that an error has occurred during the execution, an exception with the appropriate error message will be raised.  
