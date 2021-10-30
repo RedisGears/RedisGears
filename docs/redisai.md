@@ -24,7 +24,9 @@ Use `import redisAI` to import RedisAI functionality to the runtime interpreter.
 `redisAI` module contains pythonic wrappers of RedisAI objects (further explanations about these objects is available in RedisAI [docs](https://oss.redis.com/redisai/master/)):
 * PyTensor - represents a tensor - an n-dimensional array of values
 * PyModelRunner - represents a context of model execution. A model in RedisAI is a computation graph by one of the supported DL/ML framework backends
-* PyScriptRunner - represents a context of [TorchScript](https://pytorch.org/docs/stable/jit.html) program execution
+* PyScriptRunner - represents a context of [TorchScript](https://pytorch.org/docs/stable/jit.html) program execution.
+  **Note:** RedisGears currently supports deprecated API in which the inputs to each entry point function within the script are tensors or a list of tensors only.
+
 * PyDAGRunner - directional acyclic graph of RedisAI operations (further details below)
 
 Execution requests for models, scripts and DAGs are queued and executed asynchronously.
@@ -100,7 +102,7 @@ creates a new run context for RedisAI model which is stored in Redis under the g
 
 `def modelRunnerAddInput(model_runner: PyModelRunner, tensor: PyTensor, name: str)`
 
-* Append an input tensor to a model execution context. The inputs number and order should match the expected order in underline model definition.
+* Append an input tensor to a model execution context. The inputs number and order should match the expected order in the underline model definition.
 * _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
 * _tensor_ - PyTensor object that represents the input tensor to append to the model input list.
 * _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
@@ -108,7 +110,7 @@ creates a new run context for RedisAI model which is stored in Redis under the g
 
 `def modelRunnerAddOutput(model_runner: PyModelRunner, name: str)`
 
-* Append a placeholder for an output tensor to return from the model execution. The outputs number and order should match the expected order in underline model definition.
+* Append a placeholder for an output tensor to return from the model execution. The outputs number and order should match the expected order in the underline model definition.
 * _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
 * _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
 * _returns_ - always returns 1
@@ -119,29 +121,35 @@ creates a new run context for RedisAI model which is stored in Redis under the g
 * _model_runner_ - PyModelRunner object that was created using `createModelRunner` call, and contains the inputs tensors along with the output placeholders. 
 * _returns_ - a list of PyTensor objects that contains the outputs of the execution. In case that an error has occurred during the execution, an exception with the appropriate error message will be raised.  
 
-`def createScriptRunner(script_key: str)`
+`def createScriptRunner(script_key: str, function: str)`
 
 creates a new run context for RedisAI script (torch script) which is stored in Redis under the given key. To store a script in Redis, one should use the [AI.SCRIPTSTORE command](https://oss.redis.com/redisai/commands/#aiscriptstore) before calling this function. This run context is used to hold the required data for the script execution.
-* _script_key_ - string that represents the model key.
+* _script_key_ - string that represents the script key.
+* _entry_point_ - string that represents the function to execute within the script.
 * _returns_ - A new PyScriptRunner object that can be used later on to execute the script over input tensors
 
-`def modelRunnerAddInput(model_runner: PyModelRunner, tensor: PyTensor, name: str)`
+`def scriptRunnerAddInput(script_runner: PyScriptRunner, tensor: PyTensor, name: str)`
 
-* Append an input tensor to a model execution context. The inputs number and order should match the expected order in underline model definition.
-* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
-* _tensor_ - PyTensor object that represents the input tensor to append to the model input list.
-* _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
+* Append an input tensor to a script execution context. The inputs number and order should match the expected order in the underline script entry point function signature.
+* _script_runner_ - PyScriptRunner object that was created using `createScriptRunner` call.
+* _tensor_ - PyTensor object that represents the input tensor to append to the script input list.
 * _returns_ - always returns 1
 
-`def modelRunnerAddOutput(model_runner: PyModelRunner, name: str)`
+`def scriptRunnerAddInputList(script_runner: PyScriptRunner, tensors: list[PyTensor])`
 
-* Append a placeholder for an output tensor to return from the model execution. The outputs number and order should match the expected order in underline model definition.
-* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call.
-* _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model.
+* Append an input tensor list to a script execution context. This input should match an expected list of type tensors in the entry point function signature.
+* _script_runner_ - PyScriptRunner object that was created using `createScriptRunner` call.
+* _tensors_ - a list of PyTensor objects that represents the variadic input to append to the script input list.
+* _returns_ - always returns 1
+* 
+`def scriptRunnerAddOutput(script_runner: PyScriptRunner, name: str)`
+
+* Append a placeholder for an output tensor to return from the script execution. The outputs number and order should match the expected order in underline script entry point function signature.
+* _script_runner_ - PyScriptRunner object that was created using `createScriptRunner` call.
 * _returns_ - always returns 1
 
-`async def modelRunnerRunAsync(model_runner: PyModelRunner)`
+`async def scriptRunnerRunAsync(script_runner: PyScriptRunner)`
 
-* Performs an execution of a model in RedisAI based on the given context. The execution is done asynchronously in RedisAI background thread.
-* _model_runner_ - PyModelRunner object that was created using `createModelRunner` call, and contains the inputs tensors along with the output placeholders.
+* Performs an execution of a torch script in RedisAI based on the given context. The execution is done asynchronously in RedisAI background thread.
+* _script_runner_ - PyScriptRunner object that was created using `createScriptRunner` call, and contains the inputs tensors along with the output placeholders.
 * _returns_ - a list of PyTensor objects that contains the outputs of the execution. In case that an error has occurred during the execution, an exception with the appropriate error message will be raised.  
