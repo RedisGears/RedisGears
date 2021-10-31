@@ -212,7 +212,7 @@ In our examples, we'll use one of the graphs that RedisAI uses in its tests, nam
 To load the model to Redis, we'll use command line and output pipes:
 ```
 cat graph.pb | redis-cli -x \
-               AI.MODELSTORE mymodel TF CPU INPUTS 2 a b OUTPUTS 1 c BLOB
+               AI.MODELSTORE my_model{1} TF CPU INPUTS 2 a b OUTPUTS 1 c BLOB
 ```
 ??? info "Downloading 'graph.pb'"
 Use a web browser or the command line to download 'graph.pb':
@@ -230,9 +230,9 @@ async def ModelRun(record):
     tensor_b = redisAI.createTensorFromValues('FLOAT', [2,2], [2.0, 3.0, 2.0, 3.0])
     redisAI.msetTensorsInKeyspace({'a{1}': tensor_a, 'b{1}': tensor_b})
 # assuming 'm{1}' is a model stored in Redis, receives 2 inputs and returns 1 output
-    modelRunner = redisAI.createModelRunner('m{1}')     
-    redisAI.modelRunnerAddInput(modelRunner, 'a', tensors[0])
-    redisAI.modelRunnerAddInput(modelRunner, 'b', tensors[1])
+    modelRunner = redisAI.createModelRunner('my_model{1}')     
+    redisAI.modelRunnerAddInput(modelRunner, 'a', tensor_a)
+    redisAI.modelRunnerAddInput(modelRunner, 'b', tensor_b)
     redisAI.modelRunnerAddOutput(modelRunner, 'c')
     try:
         res = await redisAI.modelRunnerRunAsync(modelRunner)
@@ -280,9 +280,9 @@ async def ScriptRun(record):
     tensors = redisAI.mgetTensorsFromKeyspace(keys)
     # assuming 'my_script{1}' is a script stored in Redis that returns 1 output, and `multiply` is one of its entry points.
     scriptRunner = redisAI.createScriptRunner('my_script{1}', 'multiply')     
-    redisAI.scriptRunnerAddInput(scriptRunner, 'a', tensors[0])
-    redisAI.scriptRunnerAddInput(scriptRunner, 'b', tensors[1])
-    redisAI.scriptRunnerAddOutput(scriptRunner, 'c')
+    redisAI.scriptRunnerAddInput(scriptRunner, tensors[0])
+    redisAI.scriptRunnerAddInput(scriptRunner, tensors[1])
+    redisAI.scriptRunnerAddOutput(scriptRunner)
     try:
         res = await redisAI.scriptRunnerRunAsync(scriptRunner)
         redisAI.setTensorInKey('c{1}', res[0])
@@ -312,7 +312,7 @@ We can create and run simple DAG objects by first calling `RG.PYEXECUTE` with th
 import redisAI
 
 async def DAGRun_TensorSetTensorGet(record):
-    tensor = redisAI.getTensorFromKeyspace('a{1}')
+    tensor = redisAI.getTensorFromKey('a{1}')
     DAGRunner = redisAI.createDAGRunner()
     DAGRunner.TensorSet('tensor_a', tensor)
     DAGRunner.TensorGet('tensor_a')
@@ -327,7 +327,7 @@ async def DAGRun_ModelRun(record):
     DAGRunner = redisAI.createDAGRunner()
     DAGRunner.Input('tensor_a', tensors[0])
     DAGRunner.Input('tensor_b', tensors[1])
-    DAGRunner.ModelRun(name='m{1}', inputs=['tensor_a', 'tensor_b'], outputs=['tensor_c'])
+    DAGRunner.ModelRun(name='my_model{1}', inputs=['tensor_a', 'tensor_b'], outputs=['tensor_c'])
     DAGRunner.TensorGet('tensor_c')
     res = await DAGRunner.Run()
     redisAI.setTensorInKey('res2{1}', res[0])
@@ -366,7 +366,7 @@ async def DAGRun_AddOpsFromString(record):
     tensors = redisAI.mgetTensorsFromKeyspace(keys)
     DAGRunner = redisAI.createDAGRunner()
     DAGRunner.Input('tensor_a', tensors[0]).Input('tensor_b', tensors[1])
-    DAGRunner.OpsFromString('|> AI.MODELEXECUTE m{1} INPUTS 2 tensor_a tensor_b OUTPUTS 1 tensor_c |> AI.TENSORGET tensor_c')
+    DAGRunner.OpsFromString('|> AI.MODELEXECUTE my_model{1} INPUTS 2 tensor_a tensor_b OUTPUTS 1 tensor_c |> AI.TENSORGET tensor_c')
     res = await DAGRunner.Run()
     redisAI.setTensorInKey('res5{1}', res[0])
     return "DAG5_OK"
@@ -378,37 +378,37 @@ GB("CommandReader").map(DAGRun_ScriptRunError).register(trigger="DAGRun4")
 GB("CommandReader").map(DAGRun_AddOpsFromString).register(trigger="DAGRun5")
 ```
 
-Then, you can execute these DAG examples one by one by running:
+Then, you can execute these DAG examples one by one, by running:
 ```
 redis> RG.TRIGGER DAGRun1
 1)  "DAG1_OK"
 redis> AI.TENSORGET res1{1} VALUES
-1) "2"
-2) "3"
-3) "2"
-4) "3"
+1) "1"
+2) "2"
+3) "3"
+4) "4"
 redis> RG.TRIGGER DAGRun2
 1)  "DAG2_OK"
 redis> AI.TENSORGET res2{1} VALUES
 1) "2"
 2) "6"
 3) "6"
-4) "8"
+4) "12"
 redis> RG.TRIGGER DAGRun3
 1)  "DAG3_OK"
 redis> AI.TENSORGET res3{1} VALUES
 1) "2"
 2) "6"
 3) "6"
-4) "8"
+4) "12"
 redis> RG.TRIGGER DAGRun4
-1)  Function does not exist: no_func
+1)  "Function does not exist: no_func"
 redis> RG.TRIGGER DAGRun5
 1)  "DAG5_OK"
 redis> AI.TENSORGET res5{1} VALUES
 1) "2"
 2) "6"
 3) "6"
-4) "8"
+4) "12"
 
 ```
