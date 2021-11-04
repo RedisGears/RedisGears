@@ -5496,30 +5496,23 @@ long long totalAllocated = 0;
 long long currAllocated = 0;
 long long peakAllocated = 0;
 
-typedef struct pymem{
-	size_t size;
-	char data[];
-}pymem;
-
-size_t dummyZero;
-
 static void* RedisGearsPy_AllocInternal(void* ctx, size_t size, bool useCalloc){
-    pymem* m = NULL;
+    void* m = NULL;
     if(size == 0){
-        return &dummyZero;
+        size = 1;
     }
     if(useCalloc){
-        m = RG_CALLOC(1, sizeof(pymem) + size);
+        m = RG_CALLOC(1, size);
     }else{
-        m = RG_ALLOC(sizeof(pymem) + size);
+        m = RG_ALLOC(size);
     }
-    m->size = size;
-    totalAllocated += size;
-    currAllocated += size;
+    size_t mallocSize = RedisModule_MallocSize(m);
+    totalAllocated += mallocSize;
+    currAllocated += mallocSize;
     if(currAllocated > peakAllocated){
         peakAllocated = currAllocated;
     }
-    return m->data;
+    return m;
 }
 
 static void* RedisGearsPy_Alloc(void* ctx, size_t size){
@@ -5531,33 +5524,32 @@ static void* RedisGearsPy_Calloc(void* ctx, size_t n_elements, size_t size){
 }
 
 static void* RedisGearsPy_Relloc(void* ctx, void * p, size_t size){
-	if(!p || p == &dummyZero){
+	if(!p){
 		return RedisGearsPy_Alloc(ctx, size);
 	}
-	pymem* m = p - sizeof(size_t);
-	currAllocated -= m->size;
-	totalAllocated -= m->size;
+	size_t mallocSize = RedisModule_MallocSize(p);
+	currAllocated -= mallocSize;
+	totalAllocated -= mallocSize;
 	if(size == 0){
-	    RG_FREE(m);
-	    return &dummyZero;
+	    size = 1;
 	}
-	m = RG_REALLOC(m, sizeof(pymem) + size);
-	m->size = size;
-	currAllocated += size;
-	totalAllocated += size;
+	void* m = RG_REALLOC(p, size);
+	mallocSize = RedisModule_MallocSize(m);
+	currAllocated += mallocSize;
+	totalAllocated += mallocSize;
 	if(currAllocated > peakAllocated){
 		peakAllocated = currAllocated;
 	}
-	return m->data;
+	return m;
 }
 
 static void RedisGearsPy_Free(void* ctx, void * p){
-	if(!p || p == &dummyZero){
+	if(!p){
 		return;
 	}
-	pymem* m = p - sizeof(size_t);
-	currAllocated -= m->size;
-	RG_FREE(m);
+	size_t mallocSize = RedisModule_MallocSize(p);
+	currAllocated -= mallocSize;
+	RG_FREE(p);
 }
 
 static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementCtx* req){
