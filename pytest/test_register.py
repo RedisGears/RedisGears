@@ -1087,3 +1087,17 @@ def testStreamReaderNotTriggerEventsOnReplica(env):
     env.assertEqual(res1, res2)
 
     env.cmd('SLAVEOF', 'no', 'one')
+
+def testMOD1960(env):
+    env.skipOnCluster()
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.expect('rg.pyexecute', "GB('StreamReader').foreach(lambda x: execute('set', 'x', '1')).register(mode='sync')").ok()
+    try:
+        with TimeLimit(4):
+            while True:
+                res = env.cmd('get', 'x')
+                if res == '1':
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for x to be updated')

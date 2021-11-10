@@ -19,8 +19,12 @@ typedef struct LockHandlerCtx{
     int lockCounter;
 }LockHandlerCtx;
 
+static void LockHandler_Destructor(void *p) {
+    RG_FREE(p);
+}
+
 int LockHandler_Initialize(){
-    int err = pthread_key_create(&_lockKey, NULL);
+    int err = pthread_key_create(&_lockKey, LockHandler_Destructor);
     if(err){
         return REDISMODULE_ERR;
     }

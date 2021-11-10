@@ -406,22 +406,21 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
         RedisGears_HashSetRecordSet(r, "value", recordValues);
         RedisGears_HashSetRecordSet(r, "key", keyRecord);
         RedisModuleCallReply *values = RedisModule_CallReplyArrayElement(element, 1);
-        if (RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY) {
-            RedisModule_Assert(RedisModule_CallReplyLength(values) % 2 == 0);
-            for(size_t j = 0 ; j < RedisModule_CallReplyLength(values) ; j+=2){
-                RedisModuleCallReply *key = RedisModule_CallReplyArrayElement(values, j);
-                const char* keyStr = RedisModule_CallReplyStringPtr(key, &len);
-                char keyCStr[len + 1];
-                memcpy(keyCStr, keyStr, len);
-                keyCStr[len] = '\0';
-                RedisModuleCallReply *val = RedisModule_CallReplyArrayElement(values, j + 1);
-                const char* valStr = RedisModule_CallReplyStringPtr(val, &len);
-                char* valCStr = RG_ALLOC((len + 1)* sizeof(char));
-                memcpy(valCStr, valStr, len);
-                valCStr[len] = '\0';
-                Record* valRecord = RedisGears_StringRecordCreate(valCStr, len);
-                RedisGears_HashSetRecordSet(recordValues, keyCStr, valRecord);
-            }
+        RedisModule_Assert(RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY);
+        RedisModule_Assert(RedisModule_CallReplyLength(values) % 2 == 0);
+        for(size_t j = 0 ; j < RedisModule_CallReplyLength(values) ; j+=2){
+            RedisModuleCallReply *key = RedisModule_CallReplyArrayElement(values, j);
+            const char* keyStr = RedisModule_CallReplyStringPtr(key, &len);
+            char keyCStr[len + 1];
+            memcpy(keyCStr, keyStr, len);
+            keyCStr[len] = '\0';
+            RedisModuleCallReply *val = RedisModule_CallReplyArrayElement(values, j + 1);
+            const char* valStr = RedisModule_CallReplyStringPtr(val, &len);
+            char* valCStr = RG_ALLOC((len + 1)* sizeof(char));
+            memcpy(valCStr, valStr, len);
+            valCStr[len] = '\0';
+            Record* valRecord = RedisGears_StringRecordCreate(valCStr, len);
+            RedisGears_HashSetRecordSet(recordValues, keyCStr, valRecord);
         }
         Gears_listAddNodeHead(readerCtx->records, r);
     }
@@ -903,9 +902,9 @@ static void* StreamReader_ScanForStreams(void* pd){
     do{
         // we do not use the lockhandler cause this thread is temporary
         // and we do not want to allocate any unneeded extra data.
-        RedisModule_ThreadSafeContextLock(staticCtx);
+        LockHandler_Acquire(staticCtx);
         RedisModuleCallReply *reply = RedisModule_Call(staticCtx, "SCAN", "lcccc", cursor, "COUNT", "10000", "MATCH", srctx->args->streamPrefix);
-        RedisModule_ThreadSafeContextUnlock(staticCtx);
+        LockHandler_Release(staticCtx);
 
         bool ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed scanning keys on background", "warning");
         RedisModule_Assert(ret);
@@ -933,10 +932,10 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModule_Assert(RedisModule_CallReplyType(keyReply) == REDISMODULE_REPLY_STRING);
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
 
-            RedisModule_ThreadSafeContextLock(staticCtx);
+            LockHandler_Acquire(staticCtx);
             RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
             if(kp == NULL){
-                RedisModule_ThreadSafeContextUnlock(staticCtx);
+                LockHandler_Release(staticCtx);
                 continue;
             }
 
@@ -954,7 +953,7 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModule_FreeString(staticCtx, key);
             RedisModule_CloseKey(kp);
 
-            RedisModule_ThreadSafeContextUnlock(staticCtx);
+            LockHandler_Release(staticCtx);
         }
 
         RedisModule_FreeCallReply(reply);
