@@ -406,21 +406,22 @@ static void StreamReader_ReadRecords(RedisModuleCtx* ctx, StreamReaderCtx* reade
         RedisGears_HashSetRecordSet(r, "value", recordValues);
         RedisGears_HashSetRecordSet(r, "key", keyRecord);
         RedisModuleCallReply *values = RedisModule_CallReplyArrayElement(element, 1);
-        RedisModule_Assert(RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY);
-        RedisModule_Assert(RedisModule_CallReplyLength(values) % 2 == 0);
-        for(size_t j = 0 ; j < RedisModule_CallReplyLength(values) ; j+=2){
-            RedisModuleCallReply *key = RedisModule_CallReplyArrayElement(values, j);
-            const char* keyStr = RedisModule_CallReplyStringPtr(key, &len);
-            char keyCStr[len + 1];
-            memcpy(keyCStr, keyStr, len);
-            keyCStr[len] = '\0';
-            RedisModuleCallReply *val = RedisModule_CallReplyArrayElement(values, j + 1);
-            const char* valStr = RedisModule_CallReplyStringPtr(val, &len);
-            char* valCStr = RG_ALLOC((len + 1)* sizeof(char));
-            memcpy(valCStr, valStr, len);
-            valCStr[len] = '\0';
-            Record* valRecord = RedisGears_StringRecordCreate(valCStr, len);
-            RedisGears_HashSetRecordSet(recordValues, keyCStr, valRecord);
+        if (RedisModule_CallReplyType(values) == REDISMODULE_REPLY_ARRAY) {
+            RedisModule_Assert(RedisModule_CallReplyLength(values) % 2 == 0);
+            for(size_t j = 0 ; j < RedisModule_CallReplyLength(values) ; j+=2){
+                RedisModuleCallReply *key = RedisModule_CallReplyArrayElement(values, j);
+                const char* keyStr = RedisModule_CallReplyStringPtr(key, &len);
+                char keyCStr[len + 1];
+                memcpy(keyCStr, keyStr, len);
+                keyCStr[len] = '\0';
+                RedisModuleCallReply *val = RedisModule_CallReplyArrayElement(values, j + 1);
+                const char* valStr = RedisModule_CallReplyStringPtr(val, &len);
+                char* valCStr = RG_ALLOC((len + 1)* sizeof(char));
+                memcpy(valCStr, valStr, len);
+                valCStr[len] = '\0';
+                Record* valRecord = RedisGears_StringRecordCreate(valCStr, len);
+                RedisGears_HashSetRecordSet(recordValues, keyCStr, valRecord);
+            }
         }
         Gears_listAddNodeHead(readerCtx->records, r);
     }
