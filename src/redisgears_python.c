@@ -4757,6 +4757,10 @@ void RedisGearsPy_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
     }
 }
 
+static void PythonThreadCtx_Destructor(void *p) {
+    RG_FREE(p);
+}
+
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
     installDepsPool = Gears_thpool_init(1);
     InitializeGlobalPaths();
@@ -4768,7 +4772,7 @@ int RedisGearsPy_Init(RedisModuleCtx *ctx){
 
     RedisGearsPy_CreateRequirementsDataType(ctx);
 
-    int err = pthread_key_create(&pythonThreadCtxKey, NULL);
+    int err = pthread_key_create(&pythonThreadCtxKey, PythonThreadCtx_Destructor);
     if(err){
         return REDISMODULE_ERR;
     }
