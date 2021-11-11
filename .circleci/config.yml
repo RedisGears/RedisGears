@@ -379,8 +379,7 @@ workflows:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
       - build-macos:
-          #@@ <<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
       - build-multiarch-docker:
           context: common
           <<: *never
