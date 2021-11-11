@@ -1,13 +1,16 @@
 #!/bin/bash
 
-error() {
-	>&2 echo "$0: There are errors."
-	exit 1
-}
+[[ $V == 1 || $VERBOSE == 1 ]] && set -x
+[[ $IGNERR == 1 ]] || set -e
 
-if [[ -z $_Dbg_DEBUGGER_LEVEL ]]; then
-	trap error ERR
-fi
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT=$HERE
+export READIES=$ROOT/deps/readies
+. $READIES/shibumi/defs
+
+cd $ROOT
+
+export PYTHONWARNINGS=ignore
 
 #----------------------------------------------------------------------------------------------
 
@@ -23,12 +26,13 @@ if [[ $1 == --help || $1 == help ]]; then
 		
 		RAMP=1        Generate RAMP package
 		DEPS=1        Generate dependency packages
+		SYM=1         Generate packages of debug symbols
 		RELEASE=1     Generate "release" packages (artifacts/release/)
 		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
 		JUST_PRINT=1  Only print package names, do not generate
 
 		VARIANT=name        Build variant (empty for standard packages)
-		BRANCH=name         Branch name for snapshot packages
+		BRANCH=name         Branch name for snapshot packages (also: GEARS_PACK_BRANCH=name)
 		GITSHA=1            Append Git SHA to shapshot package names
 		CPYTHON_PREFIX=dir  Python install dir
 
@@ -38,22 +42,30 @@ fi
 
 #----------------------------------------------------------------------------------------------
 
+MOD=$1
+
 RAMP=${RAMP:-1}
 DEPS=${DEPS:-1}
+SYM=${SYM:-0}
 
 RELEASE=${RELEASE:-1}
 SNAPSHOT=${SNAPSHOT:-1}
 
-[[ $VERBOSE == 1 ]] && set -x
-[[ $IGNERR == 1 ]] || set -e
+ARCH=$($READIES/bin/platform --arch)
+[[ $ARCH == x64 ]] && ARCH=x86_64
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-ROOT=$HERE
-. $HERE/deps/readies/shibumi/functions
+OS=$($READIES/bin/platform --os)
+[[ $OS == linux ]] && OS=Linux
 
-ARCH=$(./deps/readies/bin/platform --arch)
-OS=$(./deps/readies/bin/platform --os)
-OSNICK=$(./deps/readies/bin/platform --osnick)
+OSNICK=$($READIES/bin/platform --osnick)
+[[ $OSNICK == trusty ]]  && OSNICK=ubuntu14.04
+[[ $OSNICK == xenial ]]  && OSNICK=ubuntu16.04
+[[ $OSNICK == bionic ]]  && OSNICK=ubuntu18.04
+[[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
+[[ $OSNICK == centos7 ]] && OSNICK=rhel7
+[[ $OSNICK == centos8 ]] && OSNICK=rhel8
+
+OS_DESC=$(python2 $ROOT/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -63,18 +75,19 @@ pack() {
 	local pack_fname="$2"
 
 	cd $ROOT
-	local ramp="$(command -v python) -m RAMP.ramp" 
 	local packfile=artifacts/$artifact/$pack_fname
-	python2 ./deps/readies/bin/xtx \
+	python2 $READIES/bin/xtx \
 		-d GEARS_PYTHON3_NAME=python3_$SEMVER \
 		-d GEARS_PYTHON3_FNAME=$URL_FNAME \
 		-d GEARS_PYTHON3_SHA256=$(cat $DEPS.sha256) \
+		-d OS_DESC=$OS_DESC \
 		ramp.yml > /tmp/ramp.yml
 	rm -f /tmp/ramp.fname
-	GEARS_NO_DEPS=1 $ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname --verbose --debug -o $packfile $GEARS_SO >/tmp/ramp.err 2>&1 || true
+	GEARS_NO_DEPS=1 python2 -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
+		--verbose --debug -o $packfile $GEARS_SO --runcmdargs "$GEARS_OPT" >/tmp/ramp.err 2>&1 || true
 
 	if [[ ! -f /tmp/ramp.fname ]]; then
-		>&2 echo Failed to pack $artifact
+		eprint "Failed to pack $artifact"
 		cat /tmp/ramp.err >&2
 		exit 1
 	else
@@ -89,11 +102,11 @@ pack() {
 pack_deps() {
 	CPYTHON_PREFIX=${CPYTHON_PREFIX:-/var/opt/redislabs/lib/modules/python3}
 	if [[ -z $CPYTHON_PREFIX ]]; then
-		>&2 echo "$0: $CPYTHON_PREFIX is not defined"
+		eprint "$0: CPYTHON_PREFIX is not defined"
 		exit 1
 	fi
 	if [[ ! -d $CPYTHON_PREFIX ]]; then
-		>&2 echo "$0: $CPYTHON_PREFIX does not exist"
+		eprint "$0: CPYTHON_PREFIX does not exist"
 		exit 1
 	fi
 
@@ -102,10 +115,12 @@ pack_deps() {
 	cd $CPYTHON_PREFIX
 	# find . -name __pycache__ -type d -exec rm -rf {} \; 2>> /dev/null || true
 	export SEMVER
-	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' --transform "s,^./,python3_$SEMVER/," ./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
+	{ tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' \
+		--transform "s,^./,python3_$SEMVER/," \
+		./ 2>> /tmp/pack.err | gzip -n - > $TAR_PATH ; E=$?; } || true
 	[[ $E != 0 ]] && cat /tmp/pack.err; $(exit $E)
 	cd - > /dev/null
-	sha256sum $TAR | gawk '{print $1}' > $TAR.sha256
+	sha256sum $TAR | awk '{print $1}' > $TAR.sha256
 	echo "Created $TAR"
 
 	local TAR1=artifacts/snapshot/$SNAPSHOT_deps
@@ -117,10 +132,23 @@ pack_deps() {
 
 #----------------------------------------------------------------------------------------------
 
-# export ROOT=`git rev-parse --show-toplevel`
-export ROOT=$(realpath $HERE)
+pack_sym() {
+	echo "Building debug symbols dependencies ..."
+	echo $(dirname $RELEASE_SO) > artifacts/release/debug.dir
+	echo $(basename $RELEASE_SO).debug > artifacts/release/debug.files
+	echo "" > artifacts/release/debug.prefix
+	pack_deps debug artifacts/release $RELEASE_debug
 
-PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
+	echo $(dirname $SNAPSHOT_SO) > artifacts/snapshot/debug.dir
+	echo $(basename $SNAPSHOT_SO).debug > artifacts/snapshot/debug.files
+	echo "" > artifacts/snapshot/debug.prefix
+	pack_deps debug artifacts/snapshot $SNAPSHOT_debug
+	echo "Done."
+}
+
+#----------------------------------------------------------------------------------------------
+
+PACKAGE_NAME=redisgears
 
 [[ -z $BRANCH ]] && BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
 BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
@@ -129,20 +157,19 @@ if [[ $GITSHA == 1 ]]; then
 	BRANCH="${BRANCH}-${GIT_COMMIT}"
 fi
 
-export PYTHONWARNINGS=ignore
-
-cd $ROOT
-
 NUMVER=$(NUMERIC=1 $ROOT/getver)
 SEMVER=$($ROOT/getver)
 
 if [[ ! -z $VARIANT ]]; then
 	VARIANT=-${VARIANT}
 fi
-RELEASE_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.$SEMVER${VARIANT}.zip
-SNAPSHOT_ramp=${PACKAGE_NAME}.$OS-$OSNICK-$ARCH.${BRANCH}${VARIANT}.zip
-RELEASE_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$SEMVER.tgz
-SNAPSHOT_deps=${PACKAGE_NAME}-dependencies.$OS-$OSNICK-$ARCH.$BRANCH.tgz
+platform="$OS-$OSNICK-$ARCH"
+RELEASE_ramp=${PACKAGE_NAME}.$platform.${SEMVER}${VARIANT}.zip
+SNAPSHOT_ramp=${PACKAGE_NAME}.$platform.${BRANCH}${VARIANT}.zip
+RELEASE_deps=${PACKAGE_NAME}-dependencies.$platform.$SEMVER.tgz
+SNAPSHOT_deps=${PACKAGE_NAME}-dependencies.$platform.$BRANCH.tgz
+
+#----------------------------------------------------------------------------------------------
 
 if [[ $JUST_PRINT == 1 ]]; then
 	if [[ $RAMP == 1 ]]; then
@@ -156,19 +183,27 @@ if [[ $JUST_PRINT == 1 ]]; then
 	exit 0
 fi
 
+#----------------------------------------------------------------------------------------------
+
 mkdir -p artifacts/snapshot artifacts/release
+
+if [[ ! -z $MOD ]]; then
+	RELEASE_SO=$(realpath $MOD)
+	SNAPSHOT_SO=$(dirname $RELEASE_SO)/snapshot/$(basename $RELEASE_SO)
+fi
 
 if [[ $RAMP == 1 ]]; then
 	if ! command -v redis-server > /dev/null; then
-		>&2 echo "$0: Cannot find redis-server. Aborting."
+		eprint "$0: Cannot find redis-server. Aborting."
 		exit 1
 	fi
 
-	[[ -z $1 ]] && >&2 echo "$0: Nothing to pack. Aborting." && exit 1
-	[[ ! -f $1 ]] && >&2 echo "$0: $1 does not exist. Aborting." && exit 1
-	
-	RELEASE_SO=$(realpath $1)
-	SNAPSHOT_SO=$(dirname $RELEASE_SO)/snapshot/$(basename $RELEASE_SO)
+	[[ -z $MOD ]] && { eprint "$0: Nothing to pack. Aborting."; exit 1; }
+	[[ ! -f $MOD ]] && { eprint "$0: $MOD does not exist. Aborting."; exit 1; }
+fi
+
+if [[ $SYM == 1 ]]; then
+	pack_sym
 fi
 
 if [[ $DEPS == 1 ]]; then
