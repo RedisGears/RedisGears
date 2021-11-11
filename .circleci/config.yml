@@ -368,7 +368,8 @@ workflows:
             parameters:
               redis_version: ["6.0", "6.2"]
       - build-platforms:
-          <<: *on-integ-and-version-tags
+          #@@ <<: *on-integ-and-version-tags
+          <<: *on-any-branch
           context: common
           matrix:
             parameters:
@@ -377,7 +378,8 @@ workflows:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
       - build-macos:
-          <<: *on-integ-and-version-tags
+          #@@ <<: *on-integ-and-version-tags
+          <<: *on-any-branch
       - build-multiarch-docker:
           context: common
           <<: *never
