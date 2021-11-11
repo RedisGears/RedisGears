@@ -250,11 +250,11 @@ workflows:
             parameters:
               redis_version: ["6.0", "6.2"]
       - platform-build:
-          <<: *on-integ-and-version-tags
+          <<: *any-branch
           context: common
           matrix:
             parameters:
-              platform: [centos7, bionic, xenial, focal]
+              platform: [centos7, bionic, xenial, focal, centos8]
       - valgrind:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
