@@ -14,7 +14,7 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 
 #----------------------------------------------------------------------------------------------
 
-define HELP
+define HELPTEXT
 make setup      # install packages required for build
 make fetch      # download and prepare dependant modules (i.e., python, libevent)
 
