@@ -373,7 +373,8 @@ workflows:
           context: common
           matrix:
             parameters:
-              platform: [bionic, xenial, centos7, centos8]
+              platform: [centos8]
+              #@@ platform: [bionic, xenial, centos7, centos8]
       - valgrind:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
