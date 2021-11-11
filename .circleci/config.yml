@@ -250,7 +250,7 @@ workflows:
             parameters:
               redis_version: ["6.0", "6.2"]
       - platform-build:
-          <<: *any-branch
+          <<: *on-any-branch
           context: common
           matrix:
             parameters:
