@@ -1,5 +1,12 @@
-#ifndef SRC_REDISAI_H_
-#define SRC_REDISAI_H_
+#pragma once
+
+#ifdef REDISMODULE_MAIN
+#define REDISAI_API
+#endif
+
+#ifndef REDISAI_API
+#define REDISAI_API extern
+#endif
 
 #include <stdbool.h>
 #include "redismodule.h"
@@ -52,62 +59,62 @@ enum RedisAI_DataFmt {
   REDISAI_DATA_NONE
 };
 
-int MODULE_API_FUNC(RedisAI_InitError)(RAI_Error **err);
-void MODULE_API_FUNC(RedisAI_ClearError)(RAI_Error *err);
-void MODULE_API_FUNC(RedisAI_FreeError)(RAI_Error *err);
-const char* MODULE_API_FUNC(RedisAI_GetError)(RAI_Error *err);
-const char* MODULE_API_FUNC(RedisAI_GetErrorOneLine)(RAI_Error *err);
-RedisAI_ErrorCode MODULE_API_FUNC(RedisAI_GetErrorCode)(RAI_Error *err);
+REDISAI_API int MODULE_API_FUNC(RedisAI_InitError)(RAI_Error **err);
+REDISAI_API void MODULE_API_FUNC(RedisAI_ClearError)(RAI_Error *err);
+REDISAI_API void MODULE_API_FUNC(RedisAI_FreeError)(RAI_Error *err);
+REDISAI_API const char* MODULE_API_FUNC(RedisAI_GetError)(RAI_Error *err);
+REDISAI_API const char* MODULE_API_FUNC(RedisAI_GetErrorOneLine)(RAI_Error *err);
+REDISAI_API RedisAI_ErrorCode MODULE_API_FUNC(RedisAI_GetErrorCode)(RAI_Error *err);
 
-RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorCreate)(const char* dataTypeStr, long long* dims, int ndims);
-RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorCreateByConcatenatingTensors)(RAI_Tensor** ts, long long n);
-RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorCreateBySlicingTensor)(RAI_Tensor* t, long long offset, long long len);
-size_t MODULE_API_FUNC(RedisAI_TensorLength)(RAI_Tensor* t);
-size_t MODULE_API_FUNC(RedisAI_TensorDataSize)(RAI_Tensor* t);
-size_t MODULE_API_FUNC(RedisAI_TensorDataType)(RAI_Tensor* t);
-void MODULE_API_FUNC(RedisAI_TensorFree)(RAI_Tensor* t);
-int MODULE_API_FUNC(RedisAI_TensorSetData)(RAI_Tensor* tensor, const char* data, size_t len);
-int MODULE_API_FUNC(RedisAI_TensorSetValueFromLongLong)(RAI_Tensor* tensor, long long i, long long val);
-int MODULE_API_FUNC(RedisAI_TensorSetValueFromDouble)(RAI_Tensor* tensor, long long i, double val);
-int MODULE_API_FUNC(RedisAI_TensorGetValueAsDouble)(RAI_Tensor* t, long long i, double* val);
-int MODULE_API_FUNC(RedisAI_TensorGetValueAsLongLong)(RAI_Tensor* t, long long i, long long* val);
-RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorGetShallowCopy)(RAI_Tensor* t);
-int MODULE_API_FUNC(RedisAI_TensorNumDims)(RAI_Tensor* t);
-long long MODULE_API_FUNC(RedisAI_TensorDim)(RAI_Tensor* t, int dim);
-size_t MODULE_API_FUNC(RedisAI_TensorByteSize)(RAI_Tensor* t);
-char* MODULE_API_FUNC(RedisAI_TensorData)(RAI_Tensor* t);
-RedisModuleType* MODULE_API_FUNC(RedisAI_TensorRedisType)(void);
+REDISAI_API RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorCreate)(const char* dataTypeStr, long long* dims, int ndims);
+REDISAI_API RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorCreateByConcatenatingTensors)(RAI_Tensor** ts, long long n);
+REDISAI_API RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorCreateBySlicingTensor)(RAI_Tensor* t, long long offset, long long len);
+REDISAI_API size_t MODULE_API_FUNC(RedisAI_TensorLength)(RAI_Tensor* t);
+REDISAI_API size_t MODULE_API_FUNC(RedisAI_TensorDataSize)(RAI_Tensor* t);
+REDISAI_API size_t MODULE_API_FUNC(RedisAI_TensorDataType)(RAI_Tensor* t);
+REDISAI_API void MODULE_API_FUNC(RedisAI_TensorFree)(RAI_Tensor* t);
+REDISAI_API int MODULE_API_FUNC(RedisAI_TensorSetData)(RAI_Tensor* tensor, const char* data, size_t len);
+REDISAI_API int MODULE_API_FUNC(RedisAI_TensorSetValueFromLongLong)(RAI_Tensor* tensor, long long i, long long val);
+REDISAI_API int MODULE_API_FUNC(RedisAI_TensorSetValueFromDouble)(RAI_Tensor* tensor, long long i, double val);
+REDISAI_API int MODULE_API_FUNC(RedisAI_TensorGetValueAsDouble)(RAI_Tensor* t, long long i, double* val);
+REDISAI_API int MODULE_API_FUNC(RedisAI_TensorGetValueAsLongLong)(RAI_Tensor* t, long long i, long long* val);
+REDISAI_API RAI_Tensor* MODULE_API_FUNC(RedisAI_TensorGetShallowCopy)(RAI_Tensor* t);
+REDISAI_API int MODULE_API_FUNC(RedisAI_TensorNumDims)(RAI_Tensor* t);
+REDISAI_API long long MODULE_API_FUNC(RedisAI_TensorDim)(RAI_Tensor* t, int dim);
+REDISAI_API size_t MODULE_API_FUNC(RedisAI_TensorByteSize)(RAI_Tensor* t);
+REDISAI_API char* MODULE_API_FUNC(RedisAI_TensorData)(RAI_Tensor* t);
+REDISAI_API RedisModuleType* MODULE_API_FUNC(RedisAI_TensorRedisType)(void);
 
-RAI_Model* MODULE_API_FUNC(RedisAI_ModelCreate)(int backend, char* devicestr, char* tag, RAI_ModelOpts opts,
+REDISAI_API RAI_Model* MODULE_API_FUNC(RedisAI_ModelCreate)(int backend, char* devicestr, char* tag, RAI_ModelOpts opts,
                                                 size_t ninputs, const char **inputs,
                                                 size_t noutputs, const char **outputs,
                                                 const char *modeldef, size_t modellen, RAI_Error* err);
-void MODULE_API_FUNC(RedisAI_ModelFree)(RAI_Model* model, RAI_Error* err);
-RAI_ModelRunCtx* MODULE_API_FUNC(RedisAI_ModelRunCtxCreate)(RAI_Model* model);
-int MODULE_API_FUNC(RedisAI_ModelRunCtxAddInput)(RAI_ModelRunCtx* mctx, const char* inputName, RAI_Tensor* inputTensor);
-int MODULE_API_FUNC(RedisAI_ModelRunCtxAddOutput)(RAI_ModelRunCtx* mctx, const char* outputName);
-size_t MODULE_API_FUNC(RedisAI_ModelRunCtxNumOutputs)(RAI_ModelRunCtx* mctx);
-RAI_Tensor* MODULE_API_FUNC(RedisAI_ModelRunCtxOutputTensor)(RAI_ModelRunCtx* mctx, size_t index);
-void MODULE_API_FUNC(RedisAI_ModelRunCtxFree)(RAI_ModelRunCtx* mctx);
-int MODULE_API_FUNC(RedisAI_ModelRun)(RAI_ModelRunCtx** mctx, long long n, RAI_Error* err);
-RAI_Model* MODULE_API_FUNC(RedisAI_ModelGetShallowCopy)(RAI_Model* model);
-int MODULE_API_FUNC(RedisAI_ModelSerialize)(RAI_Model *model, char **buffer, size_t *len, RAI_Error *err);
-RedisModuleType* MODULE_API_FUNC(RedisAI_ModelRedisType)(void);
+REDISAI_API void MODULE_API_FUNC(RedisAI_ModelFree)(RAI_Model* model, RAI_Error* err);
+REDISAI_API RAI_ModelRunCtx* MODULE_API_FUNC(RedisAI_ModelRunCtxCreate)(RAI_Model* model);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ModelRunCtxAddInput)(RAI_ModelRunCtx* mctx, const char* inputName, RAI_Tensor* inputTensor);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ModelRunCtxAddOutput)(RAI_ModelRunCtx* mctx, const char* outputName);
+REDISAI_API size_t MODULE_API_FUNC(RedisAI_ModelRunCtxNumOutputs)(RAI_ModelRunCtx* mctx);
+REDISAI_API RAI_Tensor* MODULE_API_FUNC(RedisAI_ModelRunCtxOutputTensor)(RAI_ModelRunCtx* mctx, size_t index);
+REDISAI_API void MODULE_API_FUNC(RedisAI_ModelRunCtxFree)(RAI_ModelRunCtx* mctx);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ModelRun)(RAI_ModelRunCtx** mctx, long long n, RAI_Error* err);
+REDISAI_API RAI_Model* MODULE_API_FUNC(RedisAI_ModelGetShallowCopy)(RAI_Model* model);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ModelSerialize)(RAI_Model *model, char **buffer, size_t *len, RAI_Error *err);
+REDISAI_API RedisModuleType* MODULE_API_FUNC(RedisAI_ModelRedisType)(void);
 
-RAI_Script* MODULE_API_FUNC(RedisAI_ScriptCreate)(char* devicestr, char* tag, const char* scriptdef, RAI_Error* err);
-void MODULE_API_FUNC(RedisAI_ScriptFree)(RAI_Script* script, RAI_Error* err);
-RAI_ScriptRunCtx* MODULE_API_FUNC(RedisAI_ScriptRunCtxCreate)(RAI_Script* script, const char *fnname);
-int MODULE_API_FUNC(RedisAI_ScriptRunCtxAddInput)(RAI_ScriptRunCtx* sctx, RAI_Tensor* inputTensor, RAI_Error* err);
-int MODULE_API_FUNC(RedisAI_ScriptRunCtxAddInputList)(RAI_ScriptRunCtx* sctx, RAI_Tensor** inputTensors, size_t len, RAI_Error* err);
-int MODULE_API_FUNC(RedisAI_ScriptRunCtxAddOutput)(RAI_ScriptRunCtx* sctx);
-size_t MODULE_API_FUNC(RedisAI_ScriptRunCtxNumOutputs)(RAI_ScriptRunCtx* sctx);
-RAI_Tensor* MODULE_API_FUNC(RedisAI_ScriptRunCtxOutputTensor)(RAI_ScriptRunCtx* sctx, size_t index);
-void MODULE_API_FUNC(RedisAI_ScriptRunCtxFree)(RAI_ScriptRunCtx* sctx);
-int MODULE_API_FUNC(RedisAI_ScriptRun)(RAI_ScriptRunCtx* sctx, RAI_Error* err);
-RAI_Script* MODULE_API_FUNC(RedisAI_ScriptGetShallowCopy)(RAI_Script* script);
-RedisModuleType* MODULE_API_FUNC(RedisAI_ScriptRedisType)(void);
+REDISAI_API RAI_Script* MODULE_API_FUNC(RedisAI_ScriptCreate)(char* devicestr, char* tag, const char* scriptdef, RAI_Error* err);
+REDISAI_API void MODULE_API_FUNC(RedisAI_ScriptFree)(RAI_Script* script, RAI_Error* err);
+REDISAI_API RAI_ScriptRunCtx* MODULE_API_FUNC(RedisAI_ScriptRunCtxCreate)(RAI_Script* script, const char *fnname);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ScriptRunCtxAddInput)(RAI_ScriptRunCtx* sctx, RAI_Tensor* inputTensor, RAI_Error* err);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ScriptRunCtxAddInputList)(RAI_ScriptRunCtx* sctx, RAI_Tensor** inputTensors, size_t len, RAI_Error* err);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ScriptRunCtxAddOutput)(RAI_ScriptRunCtx* sctx);
+REDISAI_API size_t MODULE_API_FUNC(RedisAI_ScriptRunCtxNumOutputs)(RAI_ScriptRunCtx* sctx);
+REDISAI_API RAI_Tensor* MODULE_API_FUNC(RedisAI_ScriptRunCtxOutputTensor)(RAI_ScriptRunCtx* sctx, size_t index);
+REDISAI_API void MODULE_API_FUNC(RedisAI_ScriptRunCtxFree)(RAI_ScriptRunCtx* sctx);
+REDISAI_API int MODULE_API_FUNC(RedisAI_ScriptRun)(RAI_ScriptRunCtx* sctx, RAI_Error* err);
+REDISAI_API RAI_Script* MODULE_API_FUNC(RedisAI_ScriptGetShallowCopy)(RAI_Script* script);
+REDISAI_API RedisModuleType* MODULE_API_FUNC(RedisAI_ScriptRedisType)(void);
 
-int MODULE_API_FUNC(RedisAI_GetLLAPIVersion)();
+REDISAI_API int MODULE_API_FUNC(RedisAI_GetLLAPIVersion)();
 
 #define REDISAI_MODULE_INIT_FUNCTION(ctx, name) \
   RedisAI_ ## name = RedisModule_GetSharedAPI(ctx, "RedisAI_" #name);\
@@ -183,5 +190,3 @@ static int RedisAI_Initialize(RedisModuleCtx* ctx){
 
   return REDISMODULE_OK;
 }
-
-#endif /* SRC_REDISAI_H_ */

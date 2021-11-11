@@ -14,7 +14,7 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 
 #----------------------------------------------------------------------------------------------
 
-define HELP
+define HELPTEXT
 make setup      # install packages required for build
 make fetch      # download and prepare dependant modules (i.e., python, libevent)
 
@@ -85,13 +85,11 @@ endif # WITHPYTHON
 #----------------------------------------------------------------------------------------------
 
 LIBEVENT_BINDIR=bin/$(FULL_VARIANT.release)/libevent
-
 include build/libevent/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
 HIREDIS_BINDIR=bin/$(FULL_VARIANT.release)/hiredis
-
 include build/hiredis/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
@@ -99,11 +97,36 @@ include build/hiredis/Makefile.defs
 CC=gcc
 SRCDIR=src
 
-_SOURCES=utils/adlist.c utils/buffer.c utils/dict.c module.c execution_plan.c \
-	mgmt.c readers/keys_reader.c example.c filters.c mappers.c utils/thpool.c \
-	extractors.c reducers.c record.c cluster.c commands.c readers/streams_reader.c \
-	globals.c config.c lock_handler.c module_init.c slots_table.c common.c readers/command_reader.c \
-	readers/shardid_reader.c crc16.c
+define _SOURCES:=
+	cluster.c
+	commands.c
+	common.c
+	config.c
+	crc16.c
+	example.c
+	execution_plan.c
+	extractors.c
+	filters.c
+	global.c
+	globals.c
+	lock_handler.c
+	mappers.c
+	mgmt.c
+	module.c
+	module_init.c
+	readers/command_reader.c
+	readers/keys_reader.c
+	readers/shardid_reader.c
+	readers/streams_reader.c
+	record.c
+	reducers.c
+	slots_table.c
+	utils/adlist.c
+	utils/buffer.c
+	utils/dict.c
+	utils/thpool.c
+endef
+
 ifeq ($(WITHPYTHON),1)
 _SOURCES += redisgears_python.c
 endif
@@ -111,26 +134,32 @@ ifeq ($(DEBUG),1)
 _SOURCES += debug.c
 endif
 
-SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
+SOURCES=$(addprefix $(SRCDIR)/,$(filter %,$(subst $(__NL), ,$(_SOURCES))))
 OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
 
 CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
 
-CC_FLAGS += \
-	-fPIC -std=gnu99 \
-	-MMD -MF $(@:.o=.d) \
-	-include $(SRCDIR)/common.h \
-	-I$(SRCDIR) \
-	-I$(BINDIR) \
-	-Ideps \
-	-I. \
-	-I deps/libevent/include \
-	-Ibin/$(FULL_VARIANT.release)/libevent/include \
-	-Ideps/hiredis \
-	-Ideps/hiredis/adapters \
-	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\" \
-	-DREDISGEARS_OS_VERSION=\"$(OS_VERSION_DESC)\" \
+define _CC_FLAGS
+	-fPIC
+	-std=gnu99
+	-MMD
+	-MF $(@:.o=.d)
+
+	
+	-I$(SRCDIR)
+	-I$(BINDIR)
+	-Ideps
+	-I.
+	-Ideps/libevent/include
+	-Ibin/$(FULL_VARIANT.release)/libevent/include
+	-Ideps/hiredis
+	-Ideps/hiredis/adapters
+
+	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\"
+	-DREDISGEARS_OS_VERSION=\"$(OS_VERSION_DESC)\"
 	-DREDISMODULE_EXPERIMENTAL_API
+endef
+CC_FLAGS += $(filter %,$(subst $(__NL), ,$(_CC_FLAGS)))
 
 TARGET=$(BINROOT)/redisgears.so
 TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
@@ -196,6 +225,7 @@ ifeq ($(OS),macos)
 EMBEDDED_LIBS += $(LIBEVENT) $(HIREDIS)
 endif
 
+MISSING_DEPS:=
 ifeq ($(wildcard $(LIBEVENT)),)
 MISSING_DEPS += $(LIBEVENT)
 endif
@@ -224,9 +254,13 @@ include $(MK)/rules
 
 -include $(CC_DEPS)
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
+$(BINDIR)/global.o: $(SRCDIR)/global.c
 	@echo Compiling $<...
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
+
+$(BINDIR)/%.o: $(SRCDIR)/%.c
+	@echo Compiling $<...
+	$(SHOW)$(CC) $(CC_FLAGS) -c -include $(SRCDIR)/common.h $< -o $@
 
 $(SRCDIR)/redisgears_python.c : $(BINDIR)/GearsBuilder.auto.h $(BINDIR)/cloudpickle.auto.h
 
@@ -299,7 +333,7 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 setup:
 	@echo Setting up system...
 	$(SHOW)./deps/readies/bin/getpy2
-	$(SHOW)./system-setup.py
+	$(SHOW)python2 ./system-setup.py
 
 fetch get_deps:
 #	-$(SHOW)git submodule update --init --recursive
@@ -309,9 +343,9 @@ fetch get_deps:
 
 ifeq ($(DEPS),1)
 
-#----------------------------------------------------------------------------------------------
-
 deps: $(LIBPYTHON) $(LIBEVENT) $(HIREDIS)
+
+#----------------------------------------------------------------------------------------------
 
 cpython: $(LIBPYTHON)
 
@@ -416,9 +450,14 @@ endif
 
 test: __sep
 ifneq ($(TEST),)
-	@set -e; cd pytest; BB=1 $(TEST_FLAGS) RLTest --test $(TEST) $(TEST_ARGS) $(RLTEST_GDB) -s --module $(abspath $(ROOT)/redisgears.so)
+	@set -e; \
+	cd pytest; \
+	BB=1 $(TEST_FLAGS) RLTest --test $(TEST) $(TEST_ARGS) \
+		$(RLTEST_GDB) -s --module $(abspath $(ROOT)/redisgears.so)
 else
-	$(SHOW)set -e; cd pytest; $(TEST_FLAGS) ./run_tests.sh
+	$(SHOW)set -e; \
+	cd pytest; \
+	$(TEST_FLAGS) ./run_tests.sh
 endif
 
 #----------------------------------------------------------------------------------------------
