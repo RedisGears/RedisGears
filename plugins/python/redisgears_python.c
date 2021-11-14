@@ -5496,30 +5496,28 @@ long long totalAllocated = 0;
 long long currAllocated = 0;
 long long peakAllocated = 0;
 
-typedef struct pymem{
-	size_t size;
-	char data[];
-}pymem;
-
-size_t dummyZero;
-
 static void* RedisGearsPy_AllocInternal(void* ctx, size_t size, bool useCalloc){
-    pymem* m = NULL;
+    void* allocated_address = NULL;
     if(size == 0){
-        return &dummyZero;
+        size = 1;
     }
+    // 16-byte aligned is required
+    int offset = 15 + sizeof(void *);
+    size = size + offset;
     if(useCalloc){
-        m = RG_CALLOC(1, sizeof(pymem) + size);
+        allocated_address = RG_CALLOC(1, size);
     }else{
-        m = RG_ALLOC(sizeof(pymem) + size);
+        allocated_address = RG_ALLOC(size);
     }
-    m->size = size;
-    totalAllocated += size;
-    currAllocated += size;
+    size_t mallocSize = RedisModule_MallocSize(allocated_address);
+    totalAllocated += mallocSize;
+    currAllocated += mallocSize;
     if(currAllocated > peakAllocated){
         peakAllocated = currAllocated;
     }
-    return m->data;
+    void **aligned_address = (void **)(((size_t)(allocated_address) + offset) & (~15));
+    aligned_address[-1] = allocated_address;
+    return aligned_address;
 }
 
 static void* RedisGearsPy_Alloc(void* ctx, size_t size){
@@ -5530,34 +5528,31 @@ static void* RedisGearsPy_Calloc(void* ctx, size_t n_elements, size_t size){
     return RedisGearsPy_AllocInternal(ctx, n_elements * size, true);
 }
 
-static void* RedisGearsPy_Relloc(void* ctx, void * p, size_t size){
-	if(!p || p == &dummyZero){
-		return RedisGearsPy_Alloc(ctx, size);
-	}
-	pymem* m = p - sizeof(size_t);
-	currAllocated -= m->size;
-	totalAllocated -= m->size;
-	if(size == 0){
-	    RG_FREE(m);
-	    return &dummyZero;
-	}
-	m = RG_REALLOC(m, sizeof(pymem) + size);
-	m->size = size;
-	currAllocated += size;
-	totalAllocated += size;
-	if(currAllocated > peakAllocated){
-		peakAllocated = currAllocated;
-	}
-	return m->data;
+static void RedisGearsPy_Free(void* ctx, void * p){
+    if(!p){
+        return;
+    }
+    void *allocated_address = ((void **)p)[-1];
+    size_t mallocSize = RedisModule_MallocSize(allocated_address);
+    currAllocated -= mallocSize;
+    RG_FREE(allocated_address);
 }
 
-static void RedisGearsPy_Free(void* ctx, void * p){
-	if(!p || p == &dummyZero){
-		return;
+static void* RedisGearsPy_Relloc(void* ctx, void * p, size_t size){
+	if(!p){
+		return RedisGearsPy_Alloc(ctx, size);
 	}
-	pymem* m = p - sizeof(size_t);
-	currAllocated -= m->size;
-	RG_FREE(m);
+	void *allocated_address = ((void **)p)[-1];
+	size_t mallocSize = RedisModule_MallocSize(allocated_address);
+	size_t dataSize = mallocSize - (p - allocated_address);
+	if (size <= dataSize) {
+	    // we have enough space, we can return p
+	    return p;
+	}
+	void* new_add = RedisGearsPy_AllocInternal(ctx, size, false);
+	memcpy(new_add, p, dataSize);
+	RedisGearsPy_Free(ctx, p);
+	return new_add;
 }
 
 static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementCtx* req){
