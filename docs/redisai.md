@@ -53,7 +53,7 @@ Create a tensor object from blob.
 
 `def setTensorInKey(key: str, tensor: PyTensor) -> None`
 
-Sets a tensor object in Redis keyspace under the given key. The operation will acquire Redis GIL as it accesses the keyspace.
+Sets a tensor object in Redis keyspace under the given key.
 
 * _key_ - a string that represents the key
 * _tensor_ - a `PyTensor` object
@@ -61,21 +61,21 @@ Sets a tensor object in Redis keyspace under the given key. The operation will a
 
 `def msetTensorsInKeyspace(tensors: Dict[str, PyTensor]) -> None`
 
-Set multiple tensors in Redis keyspace under the given keys. The operation will acquire Redis GIL as it accesses the keyspace.
+Set multiple tensors in Redis keyspace under the given keys.
 
 * _tensors_ - a Python dictionary where the keys are the keys to store in Redis, and the value is the tensor value to store under each key.
 * _returns_ - `#!python None`
 
 `def getTensorFromKey(key: str) -> PyTensor`
 
-Get a tensor that is stored in Redis keyspace under the given key. The operation will acquire Redis GIL as it accesses the keyspace
+Get a tensor that is stored in Redis keyspace under the given key.
 
 * _key_ - a string that represents the key
 * _returns_ - the `PyTensor` object that is stored in Redis under the given key
 
 `def mgetTensorsFromKeyspace(tensors: List[str]) -> List[PyTensor]`
 
-Get multiple tensors that are stored in Redis keyspace under the given keys. The operation will acquire Redis GIL as it accesses the keyspace.
+Get multiple tensors that are stored in Redis keyspace under the given keys.
 
 * _tensors_ - a `List[str]` of keys stored in Redis, each key is holding a value of type tensor
 * _returns_ - a `List[PyTensor]` of the tensors stored in Redis under the given keys, respectively
