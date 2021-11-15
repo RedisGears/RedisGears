@@ -31,6 +31,7 @@ COPY --from=redis /usr/local/ /usr/local/
 ADD . /build
 
 RUN ./deps/readies/bin/getpy2
+RUN test -f /usr/bin/python || ln -s /usr/bin/python2 /usr/bin/python
 RUN ./system-setup.py
 RUN bash -l -c "make fetch SHOW=1"
 RUN bash -l -c "make all SHOW=1"
