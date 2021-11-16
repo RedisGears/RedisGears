@@ -3,9 +3,10 @@ from common import getConnectionByEnv
 from common import TimeLimit
 import uuid
 from includes import *
+from common import gearsTest
 
-def testDependenciesInstall():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesInstall(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redisgraph')))."
@@ -14,8 +15,8 @@ def testDependenciesInstall():
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redisgraph'", res[0][0])
 
-def testDependenciesInstallWithVersionGreater():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesInstallWithVersionGreater(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redis')))."
@@ -24,8 +25,8 @@ def testDependenciesInstallWithVersionGreater():
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redis'", res[0][0])
 
-def testDependenciesInstallWithVersionEqual():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesInstallWithVersionEqual(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
                             "map(lambda x: str(__import__('redis')))."
@@ -34,15 +35,15 @@ def testDependenciesInstallWithVersionEqual():
     env.assertEqual(len(res[1]), 0)
     env.assertContains("<module 'redis'", res[0][0])
 
-def testDependenciesInstallFailure():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesInstallFailure(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: __import__('redisgraph'))."
                                "collect().distinct().run()", 'REQUIREMENTS', str(uuid.uuid4())).error().contains('satisfy requirements')
 
-def testDependenciesWithRegister():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesWithRegister(env):
     env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB()."
                                "map(lambda x: __import__('redisgraph'))."
@@ -56,8 +57,8 @@ def testDependenciesWithRegister():
         env.assertEqual(len(res[1]), 0)
         env.assertContains("<module 'redisgraph'", res[0][0])
 
-def testDependenciesBasicExportImport():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesBasicExportImport(env):
     conn = getConnectionByEnv(env)
 
     #disable rdb save
@@ -78,8 +79,8 @@ def testDependenciesBasicExportImport():
     for r in res:
         env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)
 
-def testDependenciesReplicatedToSlave():
-    env = Env(useSlaves=True, env='oss', moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'useSlaves':True, 'env':'oss', 'moduleArgs':'CreateVenv 1'})
+def testDependenciesReplicatedToSlave(env):
     if env.envRunner.debugger is not None:
         env.skip() # valgrind is not working correctly with replication
 
@@ -97,8 +98,8 @@ def testDependenciesReplicatedToSlave():
     except Exception:
         env.assertTrue(False, message='Failed waiting for requirement to reach slave')
 
-def testDependenciesSavedToRDB():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesSavedToRDB(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
     for _ in env.reloading_iterator():
@@ -108,8 +109,8 @@ def testDependenciesSavedToRDB():
         for r in res:
             env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)
 
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1', 'useAof':True})
 def testAof(env):
-    env = Env(moduleArgs='CreateVenv 1', useAof=True)
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
 
@@ -127,10 +128,10 @@ def testAof(env):
     for r in res:
         env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)    
 
-def testDependenciesImportSerializationError():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesImportSerializationError(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson').ok()
+    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson', 'redis==3.0').ok()
     md, data = env.cmd('RG.PYEXPORTREQ', 'rejson')
     data = b''.join(data)
     for i in range(len(data) - 1):

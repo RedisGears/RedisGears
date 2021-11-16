@@ -746,8 +746,7 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         }
         return;
     }
-    RedisModule_Assert(srtctx->mode != ExecutionModeSync || EPIsFlagOn(ep, EFDone));
-    if(EPIsFlagOn(ep, EFIsLocal) && EPIsFlagOff(ep, EFDone)){
+    if(srtctx->mode != ExecutionModeSync && EPIsFlagOn(ep, EFIsLocal) && EPIsFlagOff(ep, EFDone)){
         // execution is local
         // If execution is SYNC it will be added to localDoneExecutions on done
         // Otherwise, save it to the registration pending execution list.
