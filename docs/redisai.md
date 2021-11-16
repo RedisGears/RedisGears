@@ -4,28 +4,28 @@
 RedisGears has built-in integration with RedisAI via a Python plugin that enables the registration of AI flows, and triggering it upon events.
 
 ## Setup
-To use RedisAI functionality with RedisGears, RedisAI module should be loaded to the Redis server along with RedisGears.
+To use RedisAI functionality with RedisGears, both the RedisGears and RedisAI modules should be loaded in the Redis server instance.
 The quickest way to try RedisGears with RedisAI is by launching the [`redismod`](https://hub.docker.com/r/redislabs/redismod) Docker container image that bundles together the latest stable releases of Redis and select Redis modules from Redis:
 
 ```docker run -p 6379:6379 redislabs/redismod:latest```
 
 Alternatively, you can build RedisAI from its source code by following the instruction [here](https://oss.redis.com/redisai/quickstart/).
-Then, you can run the following command to load the two modules (from RedisGears root directory):
+Then, you can run the following command to load the two modules (from the RedisGears root directory):
 
 ```redis-server --loadmodule ./redisgears.so Plugin ./gears_python.so --loadmodule <path/to/RedisAI-repo>/install-cpu/redisai.so```
 
 ## Usage
 
-The integration with RedisAI is enabled via RedisGears' embedded interpreter [Python plugin](runtime.md).
+This integration enabled via the RedisGears' embedded interpreter [Python plugin](runtime.md).
 Use `import redisAI` to import RedisAI functionality to the runtime interpreter.
 
 ### Objects
 
-The `redisAI` module contains Pythonic wrappers of RedisAI objects (further explanations about these objects is available in RedisAI [docs](https://oss.redis.com/redisai/master/)):
-* PyTensor - represents a tensor, which is an n-dimensional array of values
-* PyModelRunner - represents a context of model's execution. A model in RedisAI is a computation graph by one of the supported DL/ML framework backends
-* PyScriptRunner - represents a context of a [TorchScript](https://pytorch.org/docs/stable/jit.html) program's execution.
-  **Note:** The inputs and outputs of a function that is going to be executed within a script, can only be of type `tensor`, according to the deprecated [RedisAI 1.0 script API](https://oss.redis.com/redisai/commands/#aiscriptrun). Full support for the new [RedisAI 1.2 script API](https://oss.redis.com/redisai/commands/#aiscriptexecute) will be available soon.
+The `redisAI` module contains Pythonic wrappers of RedisAI objects (for more information see [here](https://oss.redis.com/redisai/master/)):
+* PyTensor - represents a tensor, an n-dimensional array of values
+* PyModelRunner - represents a context of model's execution. A model is a computation graph for a supported DL/ML framework backend
+* PyScriptRunner - represents a [TorchScript](https://pytorch.org/docs/stable/jit.html) program execution context.
+**Note:** The inputs and outputs of a function that will be executed within a script, must be of type `tensor` [RedisAI 1.0 script API](https://oss.redis.com/redisai/commands/#aiscriptrun). Full support for the new [RedisAI 1.2 script API](https://oss.redis.com/redisai/commands/#aiscriptexecute) will be available soon.
 
 * PyDAGRunner - a directional acyclic graph of RedisAI operations (further details below)
 
@@ -33,7 +33,7 @@ Execution requests for models, scripts and DAGs are queued and executed asynchro
 
 ### Methods
 
-The following sections describe the functional API of `redisAI` module.
+The following sections describe the functional API of the `redisAI` module.
 
 `def createTensorFromValues(type: str, shapes: List[long], values: List[double]) -> PyTensor`
 
@@ -110,7 +110,7 @@ Creates a new run context for RedisAI model which is stored in Redis under the g
 
 `def modelRunnerAddInput(model_runner: PyModelRunner, tensor: PyTensor, name: str) -> long`
 
-Append an input tensor to a model's execution context. The inputs number and order should match the expected order in the underline model definition.
+Append an input tensor to a model's execution context. The inputs number and order should match the expected order in the underlying model definition.
 
 * _model_runner_ - `PyModelRunner` object that was created using `createModelRunner` call
 * _tensor_ - `PyTensor` object that represents the input tensor to append to the model input list
@@ -119,7 +119,7 @@ Append an input tensor to a model's execution context. The inputs number and ord
 
 `def modelRunnerAddOutput(model_runner: PyModelRunner, name: str) -> long`
 
-Append a placeholder for an output tensor to return from the model execution. The outputs number and order should match the expected order in the underline model definition.
+Append a placeholder for an output tensor to return from the model execution. The outputs number and order should match the expected order in the underlying model definition.
 
 * _model_runner_ - `PyModelRunner` object that was created using `createModelRunner` call
 * _name_ - string that represents the input name. Note: the input name can be arbitrary, it should not match any name that is defined in the underline model
@@ -134,7 +134,7 @@ Execute a model in RedisAI based on the given context. The execution is done asy
 
 `def createScriptRunner(script_key: str, function: str) -> PyScriptRunner`
 
-Creates a new run context for RedisAI script (TorchScript) which is stored in Redis under the given key. To store a script in Redis, one should use the [AI.SCRIPTSTORE command](https://oss.redis.com/redisai/commands/#aiscriptstore) before calling this function. This run context is used to hold the required data for the script's execution.
+Creates a new run context for RedisAI script (TorchScript). This is stored in Redis under the given key. To store a script in Redis, one should use the [AI.SCRIPTSTORE command](https://oss.redis.com/redisai/commands/#aiscriptstore) prior to calling this function. This run context holds the required data for the script's execution.
 
 * _script_key_ - a string that represents the script key
 * _entry_point_ - a string that represents the function to execute within the script
@@ -142,7 +142,7 @@ Creates a new run context for RedisAI script (TorchScript) which is stored in Re
 
 `def scriptRunnerAddInput(script_runner: PyScriptRunner, tensor: PyTensor, name: str) -> long`
 
-Append an input tensor to a script's execution context. The inputs number and order should match the expected order in the underline script entry point function signature.
+Append an input tensor to a script's execution context. The inputs number and order should match the expected order in the underlying script entrypoint function signature.
 
 * _script_runner_ - a `PyScriptRunner` object that was created using `createScriptRunner` call
 * _tensor_ - a `PyTensor` object that represents the input tensor to append to the script input list
@@ -150,7 +150,7 @@ Append an input tensor to a script's execution context. The inputs number and or
 
 `def scriptRunnerAddInputList(script_runner: PyScriptRunner, tensors: List[PyTensor]) -> long`
 
-Append an input tensor list to a script's execution context. This input should match an expected list of type tensors in the entry point function signature.
+Append an input tensor list to a script's execution context. This input should match an expected list of type tensors in the entrypoint function signature.
 
 * _script_runner_ - a `PyScriptRunner` object that was created using `createScriptRunner` call
 * _tensors_ - a `List[PyTensor]` that represents the variadic input to append to the script input list
@@ -158,7 +158,7 @@ Append an input tensor list to a script's execution context. This input should m
 
 `def scriptRunnerAddOutput(script_runner: PyScriptRunner, name: str) -> long`
 
-Append a placeholder for an output tensor to return from the script's execution. The outputs number and order should match the expected order in underline script's entry point function signature.
+Append a placeholder for an output tensor to return from the script's execution. The outputs number and order should match the expected order in the underlying script's entrypoint function signature.
 
 * _script_runner_ - `PyScriptRunner` object that was created using `createScriptRunner` call
 * _returns_ - always returns 1
