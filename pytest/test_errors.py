@@ -29,7 +29,7 @@ GB().run()
     def testRegistrationFailureOnSerialization(self):
         script1 = '''
 import redis
-r = redis.Redis()
+r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
 
 def test(x):
     r.set('x', '1')
@@ -39,7 +39,7 @@ GB().map(test).register()
 '''
         script2 = '''
 import redis
-r = redis.Redis()
+r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
 
 def test(x):
     r.set('x', '1')
@@ -56,7 +56,7 @@ def testRunFailureOnSerialization(env):
     conn = getConnectionByEnv(env)
     script1 = '''
 import redis
-r = redis.Redis()
+r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
 
 def test(x):
     r.set('x', '1')
@@ -67,7 +67,7 @@ GB().map(test).run()
 
     script2 = '''
 import redis
-r = redis.Redis()
+r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
 
 def test(x):
     r.set('x', '1')
@@ -165,7 +165,7 @@ def testCommandReaderRegisterWithExcpetionCommand(env):
 def testNoSerializableRegistrationWithAllReaders(env):
     script = '''
 import redis
-r = redis.Redis()
+r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
 GB('%s').map(lambda x: r).register(trigger='test')
     '''
     env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis').error()
