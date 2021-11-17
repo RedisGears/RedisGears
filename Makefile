@@ -117,7 +117,9 @@ OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
 CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
 
 CC_FLAGS += \
-	-fPIC -std=gnu99 \
+	-fPIC \
+	-fcommon \
+	-std=gnu99 \
 	-MMD -MF $(@:.o=.d) \
 	-include $(SRCDIR)/common.h \
 	-I$(SRCDIR) \

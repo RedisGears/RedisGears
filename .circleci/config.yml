@@ -254,7 +254,7 @@ workflows:
           context: common
           matrix:
             parameters:
-              platform: [centos7, bionic, xenial, focal]
+              platform: [centos7, bionic, xenial, focal, centos8]
       - valgrind:
           <<: *on-integ-and-version-tags
           # <<: *on-any-branch
