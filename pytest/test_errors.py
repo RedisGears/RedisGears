@@ -29,7 +29,7 @@ GB().run()
     def testRegistrationFailureOnSerialization(self):
         script1 = '''
 import redis
-r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
+r = redis.Redis()
 
 def test(x):
     r.set('x', '1')
@@ -39,7 +39,7 @@ GB().map(test).register()
 '''
         script2 = '''
 import redis
-r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
+r = redis.Redis()
 
 def test(x):
     r.set('x', '1')
@@ -47,8 +47,8 @@ def test(x):
 
 GB('StreamReader').map(test).register()
 '''
-        self.env.expect('rg.pyexecute', script1, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
-        self.env.expect('rg.pyexecute', script2, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script1, 'REQUIREMENTS', 'redis==3.5.3').error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script2, 'REQUIREMENTS', 'redis==3.5.3').error().contains('Error occured when serialized a python callback')
 
 def testRunFailureOnSerialization(env):
     if env.shardsCount < 2:
@@ -165,12 +165,12 @@ def testCommandReaderRegisterWithExcpetionCommand(env):
 def testNoSerializableRegistrationWithAllReaders(env):
     script = '''
 import redis
-r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
+r = redis.Redis()
 GB('%s').map(lambda x: r).register(trigger='test')
     '''
-    env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis').error()
-    env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis').error()
-    env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis').error()
+    env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis==3.5.3').error()
+    env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis==3.5.3').error()
+    env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis==3.5.3').error()
 
 def testExtraUnknownArgumentsReturnError(env):
     env.expect('RG.PYEXECUTE', 'GB().run()', 'exta', 'unknown', 'arguments').error()
