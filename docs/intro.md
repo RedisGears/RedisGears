@@ -802,10 +802,10 @@ Then, after shuffling and summing, each worker executes the `foreach()` operatio
 ```
 
 ## Where Next?
-At this point you should be pretty much acquainted with the basic principles under the hood of the RedisGears engine. To extend your familiarity and gain more experience with RedisGears it is recommend that you also review the following at your leisure:
+At this point you should be pretty much acquainted with the basic principles under the hood of the RedisGears engine. To familiarize yourself with RedisGears, review the following:
 
   * The [Overview](glossary.md) page summarizes the concepts used by RedisGears
   * The reference pages about RedisGears' [Runtime](runtime.md), [Functions](functions.md), [Readers](readers.md) and [Operations](operations.md)
-  * The RedisGears [Commands](commands.md) reference
+  * The RedisGears [Commands](commands.md) reference and [RedisAI](redisai.md) integration reference.
   * The [Quickstart](quickstart.md) page provides information about getting, building, installing and running RedisGears
   * There are interesting uses and RedisGears recipes in the [Examples](examples.md)
