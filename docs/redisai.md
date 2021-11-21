@@ -22,8 +22,11 @@ Use `import redisAI` to import RedisAI functionality to the runtime interpreter.
 ### Objects
 
 The `redisAI` module contains Pythonic wrappers of RedisAI objects (for more information see [here](https://oss.redis.com/redisai/master/)):
+
 * PyTensor - represents a tensor, an n-dimensional array of values
+
 * PyModelRunner - represents a context of model's execution. A model is a computation graph for a supported DL/ML framework backend
+
 * PyScriptRunner - represents a [TorchScript](https://pytorch.org/docs/stable/jit.html) program execution context.
 **Note:** The inputs and outputs of a function that will be executed within a script, must be of type `tensor` [RedisAI 1.0 script API](https://oss.redis.com/redisai/commands/#aiscriptrun). Full support for the new [RedisAI 1.2 script API](https://oss.redis.com/redisai/commands/#aiscriptexecute) will be available soon.
 
@@ -38,6 +41,7 @@ The following sections describe the functional API of the `redisAI` module.
 `def createTensorFromValues(type: str, shapes: List[long], values: List[double]) -> PyTensor`
 
 Create a tensor object from values.
+
 * _type_ - the tensor type, can be either "FLOAT", "DOUBLE", "INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16" or "BOOL"
 * _shapes_ - the tensor dimensions. If empty, the tensor is considered to be a scalar
 * _values_ - the tensor values. The sequence length should match the tensor length (which is determined by the given _shapes_)
@@ -46,6 +50,7 @@ Create a tensor object from values.
 `def createTensorFromBlob(type: str, shapes: List[long], blob: Union[bytearray, bytes]) -> PyTensor`
 
 Create a tensor object from blob.
+
 * _type_ - the tensor type, can be either "FLOAT", "DOUBLE", "INT8", "INT16", "INT32", "INT64", "UINT8", "UINT16" or "BOOL"
 * _shapes_ - the tensor dimensions. If empty, the tensor is considered to be a scalar
 * _blob_ - the tensor data in binary format. The blob length should match the tensor data size (which is determined by the given _shapes_ and the _type_)
@@ -182,6 +187,7 @@ RedisGears' RedisAI plugin provides access to DAGs via the following methods:
 `def DAG.AddInput(tensor: PyTensor, name: str) -> PyDAGRunner`
 
 Append an input tensor to a DAG execution context under the given name. This method is equivalent to using the `LOAD` keyword in the `AI.DAGEXECUTE` command, except that the input tensor, in this case, is given directly, whereas `AI.DAGEXECUTE` command gets the input tensor from the keyspace.
+
 * _name_ - a string that represents the tensor name in the local DAG context (this name will use for specifying the given tensor as input to a DAG operation)
 * _tensor_ - a `PyTensor` that represents the input tensor to load into the DAG context
 * _returns_ - `#!python self` (the calling PyDAGRunner object)
@@ -189,6 +195,7 @@ Append an input tensor to a DAG execution context under the given name. This met
 `def DAG.TensorSet(tensor: PyTensor, name: str) -> PyDAGRunner`
 
 Append an [`AI.TENSORSET` operation](https://oss.redis.com/redisai/commands/#aitensorset) to the DAG.
+
 * _name_ - a string that represents the tensor name in the local DAG context (this name will use for specifying the given tensor as input to a DAG operation)
 * _tensor_ - a `PyTensor` that represents the tensor to load into the DAG context
 * _returns_ - `#!python self` (the calling PyDAGRunner object)
@@ -196,12 +203,14 @@ Append an [`AI.TENSORSET` operation](https://oss.redis.com/redisai/commands/#ait
 `def DAG.TensorGet(name: str) -> PyDAGRunner`
 
 Append an [`AI.TENSORGET` operation](https://oss.redis.com/redisai/commands/#aitensorget) to the DAG. This call will increase by 1 the number of results that will return from the `DAG.Run()` method.
+
 * _name_ - a string that represents the tensor name in the local DAG context (this name is usually an output of a previous DAG operation)
 * _returns_ - `#!python self` (the calling PyDAGRunner object)
 
 `def DAG.ModelRun(name= : str, inputs= : list[str], outputs= : list[str]) -> PyDAGRunner`
 
 Append an [`AI.MODELEXECUTE` operation](https://oss.redis.com/redisai/commands/#aimodelexecute) to the DAG. Note: this method uses the Python `#!python kwargs` syntax (i.e., arguments names should be specified explicitly).
+
 * _name_ - a string that represents a model to run within the DAG context (the model is assumed to be already stored in Redis under the given name)
 * _inputs_ - a `List[str]` of tensors names that were previously loaded to the DAG context (either by `DAG.AddInput()`/`DAG.SetTensor()` methods or as outputs of previous operations). The input tensor names order and length should match the expected inputs of the underline model
 * _outputs_ - a `List[str]` of names to be associated with the model output tensors. The output tensors are going to be stored in the DAG local context under these names. The output tensor names order and length should match the expected outputs of the underline model
@@ -210,6 +219,7 @@ Append an [`AI.MODELEXECUTE` operation](https://oss.redis.com/redisai/commands/#
 `def DAG.ScriptRun(name= : str, inputs= : list[str], outputs= : list[str]) -> PyDAGRunner`
 
 Append an [`AI.SCRIPTEXECUTE` operation](https://oss.redis.com/redisai/commands/#aiscriptexecute) to the DAG. Note: this method uses the Python `#!python kwargs` syntax (i.e., arguments names should be specified explicitly).
+
 * _name_ - a string that represents a script to run within the DAG context (the script is assumed to be already stored in Redis under the given name)
 * _func_ - a string that represents the function to run within the given script (an entry point)  
 * _inputs_ - a `List[str]` of names that were previously loaded to the DAG context (either by `DAG.AddInput()`/`DAG.SetTensor()` methods or as outputs of previous operations). The input tensor names order and length should match the expected inputs of the entry point function
@@ -219,12 +229,14 @@ Append an [`AI.SCRIPTEXECUTE` operation](https://oss.redis.com/redisai/commands/
 `def DAG.OpsFromString(ops : str) -> PyDAGRunner`
 
 Append a sequence of operations to the DAG, based on the [`AI.DAGEXECUTE` command](https://oss.redis.com/redisai/commands/#aidagexecute) syntax.
+
 * _ops_ - a string that describes the DAG operations (in particular, should start with `|>`)
 * _returns_ - `#!python self` (the calling PyDAGRunner object)
 
 `def DAG.Run() -> List[PyTensor]`
 
 Executes the DAG in RedisAI. Execution is done asynchronously and in parallel when possible.
+
 * _returns_ - a `List[PyTensor]` whose size is the number of `DAG.TensorGet()` operations in the DAG. The `i`-th result in the list corresponds to the output of the `i`-th call to `DAG.TensorGet()`. If an error was detected in the DAG structure or in one of the DAG operations' execution, an exception is raised.
 
 ### Examples
@@ -242,7 +254,7 @@ cat graph.pb | redis-cli -x \
 ```
 
 ??? info "Downloading 'graph.pb'"
-Use a web browser or the command line to download 'graph.pb':
+    Use a web browser or the command line to download 'graph.pb':
 
     ```
     wget https://github.com/RedisAI/RedisAI/raw/master/tests/flow/test_data/graph.pb
@@ -257,7 +269,8 @@ async def ModelRun(record):
     tensor_a = redisAI.createTensorFromValues('FLOAT', [2,2], [1.0, 2.0, 3.0, 4.0])
     tensor_b = redisAI.createTensorFromValues('FLOAT', [2,2], [2.0, 3.0, 2.0, 3.0])
     redisAI.msetTensorsInKeyspace({'a{1}': tensor_a, 'b{1}': tensor_b})
-# assuming 'm{1}' is a model stored in Redis, receives 2 inputs and returns 1 output
+
+    # assuming 'my_model{1}' is a model stored in Redis, receives 2 inputs and returns 1 output
     modelRunner = redisAI.createModelRunner('my_model{1}')     
     redisAI.modelRunnerAddInput(modelRunner, 'a', tensor_a)
     redisAI.modelRunnerAddInput(modelRunner, 'b', tensor_b)
@@ -308,6 +321,7 @@ async def ScriptRun(record):
     # assuming 'a{1}' and 'b{1}' are tensors stored in Redis
     keys = ['a{1}', 'b{1}']    
     tensors = redisAI.mgetTensorsFromKeyspace(keys)
+    
     # assuming 'my_script{1}' is a script stored in Redis that returns 1 output, and `multiply` is one of its entry points.
     scriptRunner = redisAI.createScriptRunner('my_script{1}', 'multiply')     
     redisAI.scriptRunnerAddInput(scriptRunner, tensors[0])
