@@ -5806,11 +5806,11 @@ static int RedisGearsPy_SessionStrIdToId(RedisModuleCtx *ctx, const char* strId,
 }
 
 static int RedisGearsPy_ProfileReset(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if (argc != 2){
+    if (argc != 1){
         return RedisModule_WrongArity(ctx);
     }
 
-    const char* strId = RedisModule_StringPtrLen(argv[1], NULL);
+    const char* strId = RedisModule_StringPtrLen(argv[0], NULL);
 
     char realId[ID_LEN] = {0};
     if (RedisGearsPy_SessionStrIdToId(ctx, strId, realId) != REDISMODULE_OK) {
@@ -5833,14 +5833,14 @@ static int RedisGearsPy_ProfileReset(RedisModuleCtx *ctx, RedisModuleString **ar
 }
 
 static int RedisGearsPy_ProfileStats(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    if (argc < 2 || argc > 3){
+    if (argc < 0 || argc > 2){
         return RedisModule_WrongArity(ctx);
     }
 
-    const char* strId = RedisModule_StringPtrLen(argv[1], NULL);
+    const char* strId = RedisModule_StringPtrLen(argv[0], NULL);
     const char* order = "tottime";
     if (argc == 3) {
-        order = RedisModule_StringPtrLen(argv[2], NULL);
+        order = RedisModule_StringPtrLen(argv[1], NULL);
     }
 
     char realId[ID_LEN] = {0};
@@ -5878,6 +5878,21 @@ static int RedisGearsPy_ProfileStats(RedisModuleCtx *ctx, RedisModuleString **ar
     RedisGearsPy_Unlock(&pectx);
 
     return REDISMODULE_OK;
+}
+
+static int RedisGearsPy_Profile(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+	if (argc < 2) {
+		return RedisModule_WrongArity(ctx);
+	}
+	const char* subCommand = RedisModule_StringPtrLen(argv[1], NULL);
+	if (strcasecmp(subCommand, "stats") == 0) {
+		return RedisGearsPy_ProfileStats(ctx, argv + 2, argc - 2);
+	} else if (strcasecmp(subCommand, "reset") == 0) {
+		return RedisGearsPy_ProfileReset(ctx, argv + 2, argc - 2);
+	}
+
+	RedisModule_ReplyWithError(ctx, "Wrong subcommand given to RG.PYPROFILE");
+	return REDISMODULE_OK;
 }
 
 static int RedisGearsPy_DumpRequirements(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -7082,13 +7097,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "rg.pyprofilestats", RedisGearsPy_ProfileStats, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, "rg.pyprofile", RedisGearsPy_Profile, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(staticCtx, "warning", "could not register command rg.pyprofilestats");
-        return REDISMODULE_ERR;
-    }
-
-    if (RedisModule_CreateCommand(ctx, "rg.pyprofilereset", RedisGearsPy_ProfileReset, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(staticCtx, "warning", "could not register command rg.pyprofilereset");
         return REDISMODULE_ERR;
     }
 

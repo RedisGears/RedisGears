@@ -1,7 +1,8 @@
 import redisgears
 import copy
 import redisgears as rg
-import cProfile, pstats
+import cProfile
+import pstats
 import io
 from redisgears import executeCommand as execute
 from redisgears import callNext as call_next

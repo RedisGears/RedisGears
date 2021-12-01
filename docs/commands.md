@@ -19,8 +19,8 @@ The following sections describe the supported commands.
 | [`RG.PYEXECUTE`](#rgpyexecute) | Executes Python functions and registers functions for event-driven processing |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
 | [`RG.PYDUMPSESSIONS`](#rgpydumpsessions) | Returns a summery of existing python sessions |
-| [`RG.PYPROFILESTATS`](#rgpyprofilestats) | Returns a profiling statistics for a given session id |
-| [`RG.PYPROFILERESET`](#rgpyprofilereset) | Reset profiling statistics for a given session id |
+| [`RG.PYPROFILE STATS`](#rgpyprofilestats) | Returns a profiling statistics for a given session id |
+| [`RG.PYPROFILE RESET`](#rgpyprofilereset) | Reset profiling statistics for a given session id |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes a node's view of the cluster |
 | [`RG.PYDUMPREQS`](#rgpydumpreqs) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
@@ -559,15 +559,15 @@ An array that consists of alternating key name and value entries as follows:
          10) 1) "redis-3.5.3-py2.py3-none-any.whl"
 ```
 
-## RG.PYPROFILESTATS
-The **RG.PYPROFILESTATS** command returns a profiling statistics for a given session id. Profiling information are automatically collected when [ProfileExecutions](configuration.md#profileexecutions) are on.
+## RG.PYPROFILE STATS
+The **RG.PYPROFILE STATS** command returns a profiling statistics for a given session id. Profiling information are automatically collected when [ProfileExecutions](configuration.md#profileexecutions) are on.
 
 **Redis API**
 
 !!! note "The command is available as of version 1.0.8"
 
 ```
-RG.PYPROFILESTATS <session_id> [<order_by>]
+RG.PYPROFILE STATS <session_id> [<order_by>]
 ```
 
 _Arguments_
@@ -620,15 +620,15 @@ Function                                          called...
 {method 'disable' of '_lsprof.Profiler' objects}  -> 
 ```
 
-## RG.PYPROFILERESET
-The **RG.PYPROFILERESET** command resets profiling statistics for a given session id.
+## RG.PYPROFILE RESET
+The **RG.PYPROFILE RESET** command resets profiling statistics for a given session id.
 
 **Redis API**
 
 !!! note "The command is available as of version 1.0.8"
 
 ```
-RG.PYPROFILERESET <session_id>
+RG.PYPROFILE RESET <session_id>
 ```
 
 _Return_
@@ -638,7 +638,7 @@ A simple 'OK' string.
 **Examples**
 
 ```
-redis> RG.PYPROFILERESET 0000000000000000000000000000000000000000-0
+redis> RG.PYPROFILE RESET 0000000000000000000000000000000000000000-0
 OK
 ```
 

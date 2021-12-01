@@ -29,7 +29,7 @@ GB('CommandReader').map(map_func).filter(filter_func).flatmap(flat_map_func).for
 
 	env.cmd('RG.TRIGGER', 'test')
 
-	res = env.cmd('RG.PYPROFILESTATS', '0000000000000000000000000000000000000000-0')
+	res = env.cmd('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0')
 	env.assertContains('map_func', res)
 	env.assertContains('filter_func', res)
 	env.assertContains('flat_map_func', res)
@@ -38,7 +38,7 @@ GB('CommandReader').map(map_func).filter(filter_func).flatmap(flat_map_func).for
 	env.assertContains('extractor_func', res)
 	env.assertContains('aggregateby_func', res)
 
-	res = env.cmd('RG.PYPROFILESTATS', '0000000000000000000000000000000000000000-0', 'ncalls')
+	res = env.cmd('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0', 'ncalls')
 	env.assertContains('map_func', res)
 	env.assertContains('filter_func', res)
 	env.assertContains('flat_map_func', res)
@@ -51,15 +51,15 @@ def testProfileWithoutProfileInfo(env):
 	env.skipOnCluster()
 	env.expect('RG.CONFIGSET', 'ProfileExecutions', '1').equal(['OK'])
 	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')").ok()
-	env.expect('RG.PYPROFILESTATS', '0000000000000000000000000000000000000000-0').error()
+	env.expect('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0').error()
 
 def testProfileReset(env):
 	env.skipOnCluster()
 	env.expect('RG.CONFIGSET', 'ProfileExecutions', '1').equal(['OK'])
 	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')").ok()
 	env.cmd('RG.TRIGGER', 'test')
-	env.expect('RG.PYPROFILERESET', '0000000000000000000000000000000000000000-0').ok()
-	env.expect('RG.PYPROFILESTATS', '0000000000000000000000000000000000000000-0').error()
+	env.expect('RG.PYPROFILE', 'RESET', '0000000000000000000000000000000000000000-0').ok()
+	env.expect('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0').error()
 
 def testPyDumpSessions(env):
 	env.skipOnCluster()
