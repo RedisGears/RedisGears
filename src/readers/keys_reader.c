@@ -1154,6 +1154,47 @@ static const char* KeysReader_GetKeyTypeStr(int keyType){
     }
 }
 
+static char* KeysReader_keyTypeToStr(int keyType){
+    return RG_STRDUP(KeysReader_GetKeyTypeStr(keyType));
+}
+
+static char* KeysReader_StrToStr(void* str){
+    return RG_STRDUP((char*)str);
+}
+
+static void KeysReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModuleInfoCtx *ctx, int for_crash_report) {
+    KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, 0);
+
+    if(rData->mode == ExecutionModeSync){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "sync");
+    } else if(rData->mode == ExecutionModeAsync){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "async");
+    } else if(rData->mode == ExecutionModeAsyncLocal){
+        RedisModule_InfoAddFieldCString(ctx, "mode", "async_local");
+    } else{
+        RedisModule_InfoAddFieldCString(ctx, "mode", "unknown");
+    }
+
+    RedisModule_InfoAddFieldULongLong(ctx, "numTriggered", rData->numTriggered);
+    RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", rData->numSuccess);
+    RedisModule_InfoAddFieldULongLong(ctx, "numFailures", rData->numFailures);
+    RedisModule_InfoAddFieldULongLong(ctx, "numAborted", rData->numAborted);
+    RedisModule_InfoAddFieldCString(ctx, "lastError", rData->lastError ? rData->lastError : "None");
+    RedisModule_InfoAddFieldCString(ctx, "regex", rData->args->prefix);
+
+    char* eventTypesStr = rData->args->eventTypes? ArrToStr((void**)rData->args->eventTypes, array_len(rData->args->eventTypes), KeysReader_StrToStr, '|') : NULL;
+    RedisModule_InfoAddFieldCString(ctx, "eventTypes", eventTypesStr? eventTypesStr : "None");
+    RG_FREE(eventTypesStr);
+
+    char* keyTypesStr = rData->args->keyTypes? IntArrToStr(rData->args->keyTypes, array_len(rData->args->keyTypes), KeysReader_keyTypeToStr, '|') : NULL;
+    RedisModule_InfoAddFieldCString(ctx, "keyTypes", keyTypesStr? keyTypesStr : "None");
+    RG_FREE(keyTypesStr);
+
+    char* hookCommandsStr = rData->args->hookCommands? ArrToStr((void**)rData->args->hookCommands, array_len(rData->args->hookCommands), KeysReader_StrToStr, '|') : NULL;
+    RedisModule_InfoAddFieldCString(ctx, "hookCommands", hookCommandsStr? hookCommandsStr : "None");
+    RG_FREE(hookCommandsStr);
+}
+
 static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, 0);
     RedisModule_Assert(rData);
@@ -1464,6 +1505,7 @@ RedisGears_ReaderCallbacks KeysReader = {
         .deserializeTriggerArgs = KeysReader_DeserializeArgs,
         .freeTriggerArgs = KeysReader_FreeArgs,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
+        .dumpRegistratioInfo = KeysReader_DumpRegistrationInfo,
         .rdbSave = KeysReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,
         .clear = KeysReader_Clear,

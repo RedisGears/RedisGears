@@ -7,6 +7,7 @@ from includes import *
 from common import getConnectionByEnv
 from common import TimeLimit
 from common import verifyRegistrationIntegrity
+from common import Background
 
 
 class testUnregister:
@@ -1365,3 +1366,111 @@ GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], com
 
         res = self.conn.execute_command('get', 'test1')
         self.env.assertEqual(res, 2)
+
+def testCommandReaderInOrder(env):
+    env.skipOnCluster()
+    script = '''
+import time
+
+def SleepIfNeeded(x):
+    if x[2] == 'x':
+        time.sleep(0.5)
+
+GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], x[2])).register(trigger='test_inorder', mode='async_local', inorder=True)
+
+GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], x[2])).register(trigger='test_not_inorder', mode='async_local')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    for _ in env.reloading_iterator():
+        conn1 = env.getConnection()
+        conn2 = env.getConnection()
+
+        def RunTestNotInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'x')
+
+        def RunTestNotInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_not_inorder', 'l', 'y')
+
+        try:
+            with Background(RunTestNotInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
+                with Background(RunTestNotInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:
+            env.assertTrue(False, message='Failed wait for RunTestNotInOrder to finish: %s' % str(e))
+
+        env.expect('lrange', 'l', '0', '-1').equal(['x', 'y'])
+
+        env.cmd('flushall')
+
+        def RunTestInOrderX():
+            conn1.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'x')
+
+        def RunTestInOrderY():
+            conn2.execute_command('RG.TRIGGER', 'test_inorder', 'l', 'y')
+
+        try:
+            with Background(RunTestInOrderX) as bk1:
+                time.sleep(0.1) # make sure X is sent first
+                with Background(RunTestInOrderY) as bk2:
+                    with TimeLimit(50):
+                        while bk1.isAlive or bk2.isAlive:
+                            time.sleep(0.1)
+        except Exception as e:  
+            env.assertTrue(False, message='Failed wait for RunTestInOrder to finish: %s' % str(e))
+
+        env.expect('lrange', 'l', '0', '-1').equal(['y', 'x'])
+
+        env.cmd('flushall')
+
+def testStreamReaderNotTriggerEventsOnReplica(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: x['error']).register(onFailedPolicy='retry', onFailedRetryInterval=1)").equal('OK')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertTrue(res1 < res2)
+    
+    env.cmd('SLAVEOF', 'localhost', '6380')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertEqual(res1, res2)
+
+    env.cmd('SLAVEOF', 'no', 'one')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertTrue(res1 < res2)
+
+    env.cmd('SLAVEOF', 'localhost', '6380')
+    time.sleep(2)
+    res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    time.sleep(2)
+    res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
+    env.assertEqual(res1, res2)
+
+    env.cmd('SLAVEOF', 'no', 'one')
+
+def testMOD1960(env):
+    env.skipOnCluster()
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.expect('rg.pyexecute', "GB('StreamReader').foreach(lambda x: execute('set', 'x', '1')).register(mode='sync')").ok()
+    try:
+        with TimeLimit(4):
+            while True:
+                res = env.cmd('get', 'x')
+                if res == '1':
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for x to be updated')

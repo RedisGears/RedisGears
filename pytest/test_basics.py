@@ -3,7 +3,7 @@ import os
 from RLTest import Env
 import yaml
 import time
-from common import TimeLimit
+from common import TimeLimit, verifyRegistrationIntegrity
 from includes import *
 
 
@@ -771,3 +771,60 @@ GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(
 def testConfigGetSet(env):
     env.expect('RG.CONFIGSET', 'test', 'test').contains('OK - value was saved in extra config dictionary')
     env.expect('RG.CONFIGGET', 'test').equal(['test'])
+
+
+def testInfo(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').foreach(lambda x: __import__('time').sleep(2)).register(trigger='test')", 'REQUIREMENTS', 'redis').equal('OK')
+    env.expect('RG.PYEXECUTE', "GB().foreach(lambda x: __import__('time').sleep(2)).register(eventTypes=['set','hset'], keyTypes=['string', 'hash'], commands=['set', 'hset'])").equal('OK')
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').foreach(lambda x: __import__('time').sleep(2)).register(prefix='s*')").equal('OK')
+    res = env.cmd('info', 'rg')
+    # basic checks on the reply
+    env.assertTrue(res.has_key('rg_TotalAllocated'))
+    env.assertTrue(res.has_key('rg_PeakAllocated'))
+    env.assertTrue(res.has_key('rg_CurrAllocated'))
+    env.assertTrue(res.has_key('rg_nexecutions'))
+    env.assertTrue(res.has_key('rg_nregistrations'))
+
+def testSlowlogReportOnRun(env):
+    info = env.cmd('info')
+    redis_version = info['redis_version'].split('.')
+    redis_version = int(redis_version[0]) * 1000000 + int(redis_version[1]) * 1000 + int(redis_version[2])
+    if redis_version < 6002000:
+        # skip on version older then 6.2
+        env.skip()
+
+    env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").foreach(lambda x: __import__("time").sleep(1)).run()')
+
+    res = env.cmd('SLOWLOG', 'GET')
+
+    env.assertGreaterEqual(len(res), 1)
+    env.assertEqual(res[0][3], ['RG.PYEXECUTE', 'GB("ShardsIDReader").foreach(lambda x: __import__("time").sleep(1)).run()'])
+
+def testSlowlogReportOnCommandReader(env):
+    info = env.cmd('info')
+    redis_version = info['redis_version'].split('.')
+    redis_version = int(redis_version[0]) * 1000000 + int(redis_version[1]) * 1000 + int(redis_version[2])
+    if redis_version < 6002000:
+        # skip on version older then 6.2
+        env.skip()
+
+    env.expect('RG.PYEXECUTE', 'GB("CommandReader").foreach(lambda x: __import__("time").sleep(1)).register(trigger="test")').equal('OK')
+    verifyRegistrationIntegrity(env)
+
+    env.cmd('RG.TRIGGER', 'test')
+
+    res = env.cmd('SLOWLOG', 'GET')
+
+    env.assertGreaterEqual(len(res), 1)
+    env.assertEqual(res[0][3], ['RG.TRIGGER', 'test'])
+
+def test1676(env):
+    env.skipOnCluster()
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: test()).register(onFailedPolicy='abort')").equal('OK')
+    env.cmd('xadd', 's1', '*', 'foo', 'bar')
+    env.cmd('XTRIM', 's1', 'MAXLEN', '0')
+    env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: test()).register(onFailedPolicy='abort')").equal('OK')
+
+    time.sleep(0.1) # make sure shard did not crash
+    env.expect('ping').equal(True)
