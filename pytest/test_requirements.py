@@ -130,7 +130,7 @@ def testAof(env):
 def testDependenciesImportSerializationError():
     env = Env(moduleArgs='CreateVenv 1')
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson').ok()
+    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson', 'redis==3').ok()
     md, data = env.cmd('RG.PYEXPORTREQ', 'rejson')
     data = b''.join(data)
     for i in range(len(data) - 1):
