@@ -1,6 +1,9 @@
 import redisgears
 import copy
 import redisgears as rg
+import cProfile
+import pstats
+import io
 from redisgears import executeCommand as execute
 from redisgears import callNext as call_next
 from redisgears import getCommand as get_command
@@ -277,6 +280,25 @@ def runCoroutine(cr, f, s):
             return
         f.continueRun(res)
     asyncio.run_coroutine_threadsafe(runInternal(), loop)
+    
+def profilerCreate():
+    return cProfile.Profile()
+
+def profileStart(p):
+    p.enable()
+    
+def profileStop(p):
+    p.disable()
+    
+def profileGetInfo(p, order):
+    s = io.StringIO()
+    ps = pstats.Stats(p, stream=s)
+    ps.sort_stats(order)
+    ps.print_stats()
+    ps.print_callers()
+    ps.print_callees()
+    return s.getvalue()
+    
 
 genDeprecated('Log', 'log', log)
 genDeprecated('ConfigGet', 'configGet', configGet)
