@@ -183,7 +183,11 @@ jobs:
   valgrind:
     docker:
       - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+    resource_class: large
     steps:
+      - setup_remote_docker:
+          version: 20.10.11
+          docker_layer_caching: true
       - build-steps:
           platform: debian
           build_params: VALGRIND=1
@@ -374,8 +378,8 @@ workflows:
             parameters:
               platform: [hirsute, focal, bionic, xenial, centos7, centos8]
       - valgrind:
-          <<: *on-integ-and-version-tags
-          # <<: *on-any-branch
+          # <<: *on-integ-and-version-tags
+          <<: *on-any-branch
       - build-macos:
           <<: *on-integ-and-version-tags
       - build-multiarch-docker:
