@@ -378,8 +378,8 @@ workflows:
             parameters:
               platform: [hirsute, focal, bionic, xenial, centos7, centos8]
       - valgrind:
-          # <<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
+          # <<: *on-any-branch
       - build-macos:
           <<: *on-integ-and-version-tags
       - build-multiarch-docker:
