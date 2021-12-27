@@ -18,10 +18,12 @@ The following sections describe the supported commands.
 | [`RG.INFOCLUSTER`](#rginfocluster) | Returns cluster information |
 | [`RG.PYEXECUTE`](#rgpyexecute) | Executes Python functions and registers functions for event-driven processing |
 | [`RG.PYSTATS`](#rgpystats) | Returns memory usage statistics |
+| [`RG.PYDUMPSESSIONS`](#rgpydumpsessions) | Returns a summery of existing python sessions |
+| [`RG.PYPROFILE STATS`](#rgpyprofilestats) | Returns a profiling statistics for a given session id |
+| [`RG.PYPROFILE RESET`](#rgpyprofilereset) | Reset profiling statistics for a given session id |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes a node's view of the cluster |
-| [`RG.PYDUMPREQS`](#rgpystats) | Returns detailed information about requirements |
+| [`RG.PYDUMPREQS`](#rgpydumpreqs) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
->>>>>>> master
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
 
@@ -504,6 +506,140 @@ redis> RG.PYSTATS
 4) (integer) 8432603
 5) "CurrAllocated"
 6) (integer) 5745816
+```
+
+## RG.PYDUMPSESSIONS
+The **RG.PYDUMPSESSIONS** command returns a summery of existing python sessions, python session is created whenever [RG.PYEXECUTE](#rgpyexecute) command is invoked and are shared with all the registration/execution created by this command.
+
+**Redis API**
+
+!!! note "The command is available as of version 1.0.8"
+
+```
+RG.PYDUMPSESSIONS
+```
+
+_Return_
+
+An array that consists of alternating key name and value entries as follows:
+
+* **id**: the session id
+* **refCount**: how many registrations/executions are using this session
+* **requirementInstallationNeeded**: whether or not the session installed requirements
+* **requirements**: list of requirements used by this session
+
+**Examples**
+
+```
+127.0.0.1:6379> RG.PYDUMPSESSIONS
+1) 1) "id"
+   2) "0000000000000000000000000000000000000000-0"
+   3) "refCount"
+   4) (integer) 1
+   5) "requirementInstallationNeeded"
+   6) (integer) 0
+   7) "requirements"
+   8) (empty array)
+2) 1) "id"
+   2) "0000000000000000000000000000000000000000-2"
+   3) "refCount"
+   4) (integer) 1
+   5) "requirementInstallationNeeded"
+   6) (integer) 0
+   7) "requirements"
+   8) 1)  1) "name"
+          2) "redis"
+          3) "refCount"
+          4) (integer) 2
+          5) "isDownloaded"
+          6) (integer) 1
+          7) "isInstalled"
+          8) (integer) 1
+          9) "wheels"
+         10) 1) "redis-3.5.3-py2.py3-none-any.whl"
+```
+
+## RG.PYPROFILE STATS
+The **RG.PYPROFILE STATS** command returns a profiling statistics for a given session id. Profiling information are automatically collected when [ProfileExecutions](configuration.md#profileexecutions) are on.
+
+**Redis API**
+
+!!! note "The command is available as of version 1.0.8"
+
+```
+RG.PYPROFILE STATS <session_id> [<order_by>]
+```
+
+_Arguments_
+
+* _session_id_: the [session id](#rgpydumpsessions) to get the profiling statistics on.
+* _order_by_: column by which to order the results, for more information please refer to [cProfile](https://docs.python.org/3.7/library/profile.html#pstats.Stats).
+
+_Return_
+
+String contains the collected profiling information.
+
+**Output Example**
+
+```
+16 function calls in 2.003 seconds
+
+   Ordered by: internal time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        2    2.002    1.001    2.002    1.001 {built-in method time.sleep}
+        4    0.000    0.000    0.000    0.000 <string>:289(profileStop)
+        2    0.000    0.000    0.000    0.000 <string>:173(<lambda>)
+        2    0.000    0.000    2.002    1.001 <string>:1(<lambda>)
+        2    0.000    0.000    0.000    0.000 {built-in method builtins.__import__}
+        4    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+
+
+   Ordered by: internal time
+
+Function                                          was called by...
+                                                      ncalls  tottime  cumtime
+{built-in method time.sleep}                      <-       2    2.002    2.002  <string>:1(<lambda>)
+<string>:289(profileStop)                         <- 
+<string>:173(<lambda>)                            <- 
+<string>:1(<lambda>)                              <- 
+{built-in method builtins.__import__}             <-       2    0.000    0.000  <string>:1(<lambda>)
+{method 'disable' of '_lsprof.Profiler' objects}  <-       4    0.000    0.000  <string>:289(profileStop)
+
+
+   Ordered by: internal time
+
+Function                                          called...
+                                                      ncalls  tottime  cumtime
+{built-in method time.sleep}                      -> 
+<string>:289(profileStop)                         ->       4    0.000    0.000  {method 'disable' of '_lsprof.Profiler' objects}
+<string>:173(<lambda>)                            -> 
+<string>:1(<lambda>)                              ->       2    0.000    0.000  {built-in method builtins.__import__}
+                                                           2    2.002    2.002  {built-in method time.sleep}
+{built-in method builtins.__import__}             -> 
+{method 'disable' of '_lsprof.Profiler' objects}  -> 
+```
+
+## RG.PYPROFILE RESET
+The **RG.PYPROFILE RESET** command resets profiling statistics for a given session id.
+
+**Redis API**
+
+!!! note "The command is available as of version 1.0.8"
+
+```
+RG.PYPROFILE RESET <session_id>
+```
+
+_Return_
+
+A simple 'OK' string.
+
+**Examples**
+
+```
+redis> RG.PYPROFILE RESET 0000000000000000000000000000000000000000-0
+OK
 ```
 
 ## RG.PYDUMPREQS
