@@ -264,7 +264,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     env.cmd('xadd', 's', '*', 'foo', 'bar')
 
     # we have this part to make sure no two events will enter the same execution
-    # because the first write triggers the background event that reads all the data 
+    # because the first write triggers the background event that reads all the data
     # from the stream.
     try:
         with TimeLimit(4):
@@ -536,7 +536,7 @@ def testRegistersReplicatedToSlave():
                 numOfKeys = conn.get('NumOfKeys')
     except Exception:
         env.assertTrue(False, message='Failed waiting for keys to update')
-    
+
 
     ## make sure registrations did not run on slave (if it did NumOfKeys would get to 200)
     try:
@@ -593,7 +593,7 @@ def testSyncRegister(env):
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
-    
+
 def testOnRegisteredCallback(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB()."
@@ -734,7 +734,7 @@ def FailedOnMaster(r):
     if currNum is not None:
         currNum = int(currNum)
     if currNum == 5 and numSlaves == 1:
-        execute('set', 'inside_loop', '1')    
+        execute('set', 'inside_loop', '1')
         while True:
             time.sleep(1)
     execute('incr', 'NumOfElements')
@@ -808,7 +808,7 @@ def testKeysReaderEventTypeFilter(env):
                 counter = conn.get('counter')
                 time.sleep(0.1)
     except Exception as e:
-        print e
+        print(e)
         env.assertTrue(False, message='Failed waiting for counter to reach 2')
 
     ## make sure other commands are not triggers executions
@@ -911,7 +911,7 @@ def testStreamTrimming(env):
 
     env.cmd('XADD s2{06S} * foo bar')
     env.cmd('XADD s1{06S} * foo bar')
-    
+
 
     try:
         with TimeLimit(2):
@@ -1248,7 +1248,7 @@ GB().foreach(lambda x: override_reply('key does not exists')).register(eventType
         self.env.expect('rg.pyexecute', script).ok()
 
         verifyRegistrationIntegrity(self.env)
-        
+
         res = self.conn.execute_command('get', 'x')
         self.env.assertEqual(res, 'key does not exists')
 
@@ -1259,7 +1259,7 @@ GB().foreach(lambda x: override_reply('key does not exists')).register(eventType
         self.env.expect('rg.pyexecute', script).ok()
 
         verifyRegistrationIntegrity(self.env)
-        
+
         res = self.conn.execute_command('get', 'x')
         self.env.assertEqual(res, 'key does not exists')
 
@@ -1270,7 +1270,7 @@ GB().foreach(lambda x: override_reply('key does not exists')).register(eventType
         self.env.expect('rg.pyexecute', script).ok()
 
         verifyRegistrationIntegrity(self.env)
-        
+
         res = self.conn.execute_command('get', 'x')
         self.env.assertEqual(res, 'key does not exists')
 
@@ -1313,7 +1313,7 @@ GB().foreach(OverrideReply).register(eventTypes=['keymiss'], commands=['get', 'm
         self.env.expect('rg.pyexecute', script).ok()
 
         verifyRegistrationIntegrity(self.env)
-        
+
         res = self.conn.execute_command('get', 'x')
         self.env.assertEqual(res, 2)
 
@@ -1328,7 +1328,7 @@ GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], com
         self.env.expect('rg.pyexecute', script).ok()
 
         verifyRegistrationIntegrity(self.env)
-        
+
         res = self.conn.execute_command('get', 'x')
         self.env.assertEqual(res, None)
 
@@ -1346,7 +1346,7 @@ GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], com
         self.env.expect('rg.pyexecute', script).ok()
 
         verifyRegistrationIntegrity(self.env)
-        
+
         res = self.conn.execute_command('get', 'x')
         self.env.assertEqual(res, None)
 
@@ -1421,7 +1421,7 @@ GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], 
                     with TimeLimit(50):
                         while bk1.isAlive or bk2.isAlive:
                             time.sleep(0.1)
-        except Exception as e:  
+        except Exception as e:
             env.assertTrue(False, message='Failed wait for RunTestInOrder to finish: %s' % str(e))
 
         env.expect('lrange', 'l', '0', '-1').equal(['y', 'x'])
@@ -1432,12 +1432,12 @@ def testStreamReaderNotTriggerEventsOnReplica(env):
     env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: x['error']).register(onFailedPolicy='retry', onFailedRetryInterval=1)").equal('OK')
     env.expect('xadd', 's', '*', 'foo', 'bar')
-    
+
     res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     time.sleep(2)
     res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     env.assertTrue(res1 < res2)
-    
+
     env.cmd('SLAVEOF', 'localhost', '6380')
     time.sleep(2)
     res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]

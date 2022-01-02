@@ -298,12 +298,12 @@ def testMaxExecutions():
     res = env.execute_command('RG.DUMPEXECUTIONS')
     # res is a list of the form ['executionId', '0000000000000000000000000000000000000000-0', 'status', 'done']
     env.assertTrue(len(res) == 3)
-    env.assertTrue(set(map(lambda x: int(x[1].split('-')[1]), res)) == set([0, 1, 2]))
+    env.assertTrue(set([int(x[1].split('-')[1]) for x in res]) == set([0, 1, 2]))
     conn.execute_command('set', 'x', '3')
     time.sleep(1)
     res = env.execute_command('RG.DUMPEXECUTIONS')
-    env.assertTrue(set(map(lambda x: int(x[1].split('-')[1]), res)) == set([1, 2, 3]))
-    map(lambda x: env.cmd('rg.dropexecution', x[1]), res)
+    env.assertTrue(set([int(x[1].split('-')[1]) for x in res]) == set([1, 2, 3]))
+    list([env.cmd('rg.dropexecution', x[1]) for x in res])
 
     # delete all registrations so valgrind check will pass
     registrations = env.cmd('RG.DUMPREGISTRATIONS')
@@ -436,7 +436,7 @@ class testConfig:
 
     def testMaxExecutions(self):
         max_exe = self.env.execute_command('RG.CONFIGGET', 'MaxExecutions')
-        n = long(max_exe[0]) + 1
+        n = int(max_exe[0]) + 1
         self.env.expect('RG.CONFIGSET', 'MaxExecutions', n).equal(['OK'])
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([n])
 
@@ -456,7 +456,7 @@ class testConfig:
         self.env.assertTrue(str(res[0]).startswith('(error)') and not str(res[1]).startswith('(error)'))
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
         self.env.assertTrue(str(res[0]) == 'OK - value was saved in extra config dictionary')
-        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
+        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10])
 
 
 class testGetExecution:
@@ -780,11 +780,11 @@ def testInfo(env):
     env.expect('RG.PYEXECUTE', "GB('StreamReader').foreach(lambda x: __import__('time').sleep(2)).register(prefix='s*')").equal('OK')
     res = env.cmd('info', 'rg')
     # basic checks on the reply
-    env.assertTrue(res.has_key('rg_TotalAllocated'))
-    env.assertTrue(res.has_key('rg_PeakAllocated'))
-    env.assertTrue(res.has_key('rg_CurrAllocated'))
-    env.assertTrue(res.has_key('rg_nexecutions'))
-    env.assertTrue(res.has_key('rg_nregistrations'))
+    env.assertTrue('rg_TotalAllocated' in res)
+    env.assertTrue('rg_PeakAllocated' in res)
+    env.assertTrue('rg_CurrAllocated' in res)
+    env.assertTrue('rg_nexecutions' in res)
+    env.assertTrue('rg_nregistrations' in res)
 
 def testSlowlogReportOnRun(env):
     info = env.cmd('info')

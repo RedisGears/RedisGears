@@ -17,13 +17,13 @@ export PYTHONWARNINGS=ignore
 if [[ $1 == --help || $1 == help ]]; then
 	cat <<-END
 		Generate RedisGears distribution packages.
-	
+
 		[ARGVARS...] pack.sh [--help|help] [<module-so-path>]
-		
+
 		Argument variables:
 		VERBOSE=1     Print commands
 		IGNERR=1      Do not abort on error
-		
+
 		RAMP=1        Generate RAMP package
 		GEARSPY=1     Generate Gears Python plugin package
 		SYM=1         Generate packages of debug symbols
@@ -66,7 +66,8 @@ OSNICK=$($READIES/bin/platform --osnick)
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
 
-OS_DESC=$(python2 $ROOT/getos.py)
+PYTHON_BIN=python3
+OS_DESC=$(${PYTHON_BIN} $ROOT/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -77,8 +78,8 @@ pack() {
 
 	cd $ROOT
 	local packfile=artifacts/$artifact/$pack_fname
-	python2 $READIES/bin/xtx \
-		-d GEARS_PYTHON_NAME=python3_$SEMVER \
+	${PYTHON_BIN} $READIES/bin/xtx \
+		-d GEARS_PYTHON_NAME=${PYTHON3}_$SEMVER \
 		-d GEARS_PYTHON_FNAME=$URL_FNAME \
 		-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
 		-d OS_DESC=$OS_DESC \
@@ -87,7 +88,7 @@ pack() {
 	if [[ ! -z $GEARSPY_PATH ]]; then
 		GEARS_OPT="Plugin $GEARSPY_PATH"
 	fi
-	GEARS_NO_DEPS=1 python2 -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
+	GEARS_NO_DEPS=1 ${PYTHON_BIN} -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
 		--verbose --debug -o $packfile $GEARS_SO --runcmdargs "$GEARS_OPT" >/tmp/ramp.err 2>&1 || true
 
 	if [[ ! -f /tmp/ramp.fname ]]; then
@@ -146,13 +147,13 @@ pack_deps() {
 	local dep="$1"
 	local artdir="$2"
 	local package="$3"
-	
+
 	artdir=$(realpath $artdir)
 	local depdir=$(cat $artdir/$dep.dir)
 
 	local tar_path=$artdir/$package
 	local dep_prefix_dir=$(cat $artdir/$dep.prefix)
-	
+
 	{ cd $depdir ;\
 	  cat $artdir/$dep.files | \
 	  xargs tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' \
