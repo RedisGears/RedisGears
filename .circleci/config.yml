@@ -79,8 +79,8 @@ commands:
       - run:
           name: Install RLTest
           command: |
-            python2 -m pip uninstall rltest
-            python2 -m pip install git+https://github.com/RedisLabsModules/RLTest.git@parallel_test_execution
+            python2 -m pip uninstall -y rltest
+            python2 -m pip install -y git+https://github.com/RedisLabsModules/RLTest.git@parallel_test_execution
 
   save-tests-logs:
     steps:
