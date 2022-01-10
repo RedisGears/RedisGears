@@ -681,6 +681,10 @@ static const char* RG_GetConfig(const char* name) {
     return GearsConfig_GetExtraConfigVals(name);
 }
 
+static bool RG_ProfileEnabled() {
+    return GearsConfig_GetProfileExecutions();
+}
+
 static const int RG_ExecutionPlanIsLocal(ExecutionPlan* ep) {
     return EPIsFlagOn(ep, EFIsLocal);
 }
@@ -1118,6 +1122,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(GetNullRecordType, ctx);
 
     REGISTER_API(GetConfig, ctx);
+    REGISTER_API(ProfileEnabled, ctx);
 
     REGISTER_API(RegisterPlugin, ctx);
     REGISTER_API(PluginSetInfoCallback, ctx);
