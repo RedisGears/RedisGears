@@ -876,6 +876,12 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
                 size_t nameLen;
                 char* name = RedisModule_LoadStringBuffer(rdb, &nameLen);
                 int version = RedisModule_LoadUnsigned(rdb);
+                if (!strcmp(name, "timeseries")){
+                    // special branch for Mikhail to fix issue https://github.com/RedisGears/RedisGears/issues/648
+                    // we ignore RedisTS module here, its OK but RedisTS should not register any registrations.
+                    RedisModule_Free(name);
+                    continue;
+                }
                 Plugin* p = Gears_dictFetchValue(plugins, name);
                 if(!p){
                     RedisModule_LogIOError(rdb, "warning", "Plugin %s does not exists and required to load rdb", name);
