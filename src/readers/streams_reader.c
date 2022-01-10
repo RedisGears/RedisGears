@@ -9,6 +9,8 @@
 #include "record.h"
 #include "config.h"
 #include <pthread.h>
+#include <errno.h>
+#include <unistd.h>
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 static Gears_list* streamsRegistration = NULL;
@@ -94,7 +96,7 @@ static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallRep
         if(reply && RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ERROR){
             err = RedisModule_CallReplyStringPtr(reply, NULL);
         }
-        RedisModule_Log(ctx, logLevel, "%s : %s", msgPrefix, err);
+        RedisModule_Log(staticCtx, logLevel, "%s : %s (errno=%d, errono_str=%s)", msgPrefix, err, errno, strerror(errno));
         if(reply) RedisModule_FreeCallReply(reply);
         return false;
     }
@@ -155,10 +157,11 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_GetShallowCopy(StreamReade
     return srtctx;
 }
 
-static void StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx* ssrctx){
+static int StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx* ssrctx){
     RedisModuleCallReply *reply = RedisModule_Call(rctx, "XINFO", "cc", "STREAM", ssrctx->keyName);
-    bool ret = StreamReader_VerifyCallReply(rctx, reply, "Failed on XINFO command", "warning");
-    RedisModule_Assert(ret);
+    if(!StreamReader_VerifyCallReply(rctx, reply, "Failed on XINFO command", "warning")){
+    	return false;
+    }
     RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
     size_t lastGeneratedIdIndex = 0;
     for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; i+=2){
@@ -176,6 +179,7 @@ static void StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx*
     const char* idStr = RedisModule_CallReplyStringPtr(idReply, NULL);
     ssrctx->lastId = StreamReader_ParseStreamId(idStr);
     RedisModule_FreeCallReply(reply);
+    return true;
 }
 
 #define GEARS_CONSUMER_GROUP "__gears_consumer_group__"
@@ -196,7 +200,11 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     ssrctx->keyName = RG_STRDUP(keyName);
     ssrctx->timerIsSet = false;
     ssrctx->freeOnNextTimeEvent = false;
-    StreamReader_ReadLastId(ctx, ssrctx);
+    if(!StreamReader_ReadLastId(ctx, ssrctx)){
+    	RG_FREE(ssrctx->keyName);
+    	RG_FREE(ssrctx);
+    	return NULL;
+    }
     Gears_dictAdd(srtctx->singleStreamData, (char*)keyName, ssrctx);
 
     // The moment we create the SingleStreamReaderCtx we must trigger execution to read
@@ -841,6 +849,7 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
             if(!ssrctx){
                 ssrctx = SingleStreamReaderCtx_Create(ctx, keyName, srctx);
+                RedisModule_Assert(ssrctx);
             }
             if(srctx->args->batchSize <= ++ssrctx->numTriggered){
                 StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
@@ -948,7 +957,20 @@ static void* StreamReader_ScanForStreams(void* pd){
                 const char* keyName = RedisModule_StringPtrLen(key, NULL);
                 SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
                 if(!ssrctx){
-                    ssrctx = SingleStreamReaderCtx_Create(staticCtx, keyName, srctx);
+                	size_t retries = 0;
+                    while(!(ssrctx = SingleStreamReaderCtx_Create(staticCtx, keyName, srctx))) {
+                    	// creating stream reader ctx can failed if cluster is not initialized.
+                    	// sleep for 1 second and retry (but not more than 10 retries)
+                    	if(++retries > 10) {
+                    		RedisModule_Log(staticCtx, "warning", "Failed creating stream reader ctx for key %s, for more than 10 times, abort.", keyName);
+                    		break;
+                    	}
+                    	LockHandler_Release(staticCtx);
+                    	RedisModule_Log(staticCtx, "warning", "Failed creating stream reader ctx for key %s, will retry in 5 seconds.", keyName);
+                    	sleep(5);
+                    	LockHandler_Acquire(staticCtx);
+
+                    }
                 }
             }
             RedisModule_FreeString(staticCtx, key);

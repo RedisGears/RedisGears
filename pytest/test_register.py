@@ -1101,3 +1101,56 @@ def testMOD1960(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for x to be updated')
+
+def testStreamReaderOnUninitializedCluster(env):
+    if env.shardsCount != 3:
+        env.skip()
+
+    conn = getConnectionByEnv(env)
+
+    # we know that s3 goes to the second shard
+    conn.execute_command('xadd', 's3', '*', 'foo', 'bar')
+
+    env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '100')
+
+    conn1 = env.getConnection(shardId=1)
+    conn2 = env.getConnection(shardId=2)
+
+    # close shard 1 to get cluster to a down state
+    env.envRunner.shards[0].stopEnv()
+
+    try:
+        with TimeLimit(1):
+            while True:
+                res = conn2.execute_command('CLUSTER', 'INFO')
+                if 'cluster_state:fail' in str(res):
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for down cluster state (%s)' % (str(e)))
+
+    conn2.execute_command('RG.PYEXECUTE', "GB('StreamReader').register()")
+
+    # make sure no executions are created
+    try:
+        with TimeLimit(1):
+            while True:
+                res = conn2.execute_command('RG.DUMPEXECUTIONS')
+                env.assertEqual(len(res), 0)
+    except Exception as e:
+        pass
+
+    # restart the shard
+    env.envRunner.shards[0].startEnv()
+    conn1.execute_command('RG.REFRESHCLUSTER')
+
+    # make sure execution is eventually created
+    try:
+        with TimeLimit(5):
+            while True:
+                res = conn2.execute_command('RG.DUMPEXECUTIONS')
+                if len(res) == 1:
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
