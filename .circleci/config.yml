@@ -76,6 +76,10 @@ commands:
           command: |
             bash -l -c "python2 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>"
             redis-server --version
+      - run:
+          name: Install RLTest
+          command: |
+            python2 -m pip install git+https://github.com/RedisLabsModules/RLTest.git@parallel_test_execution
 
   save-tests-logs:
     steps:
