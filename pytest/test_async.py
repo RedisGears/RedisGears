@@ -383,9 +383,8 @@ GB('CommandReader').map(unbc).register(trigger='unblock', mode='async_local')
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testStreamReaderAsync(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     script = '''
 fdata = []
@@ -452,9 +451,8 @@ GB('StreamReader').map(bc).foreach(lambda x: execute('set', x['value']['key'], x
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testKeysReaderAsync(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     script = '''
 fdata = None
@@ -1005,9 +1003,8 @@ GB('ShardsIDReader').map(c).run()
     res = env.cmd('RG.PYEXECUTE', script)[1][0]
     env.assertContains('failed', res)
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testUnregisterDuringAsyncExectuion(env):
-    env.skipOnCluster()
     script = '''
 import asyncio
 

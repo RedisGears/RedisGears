@@ -1,8 +1,9 @@
 import signal
 from includes import *
 from threading import Thread
-from RLTest import Env
+from RLTest import Env, Defaults
 import inspect
+import unittest
 
 class Colors(object):
     @staticmethod
@@ -142,18 +143,32 @@ def restoreDefaultConfig(env):
     env.broadcast('RG.CONFIGSET', 'PythonInstallReqMaxIdleTime', '30000')
     env.broadcast('RG.CONFIGSET', 'SendMsgRetries', '3')
 
-def gearsTest(skipTest=False, envArgs={}):
+def gearsTest(skipTest=False,
+              skipOnCluster=False,
+              skipCleanups=False,
+              skipOnSingleShard=False,
+              skipCallback=None,
+              envArgs={}):
     def test_func_generator(test_function):
         def test_func():
-            test_name = '%s %s' % (inspect.getfile(test_function), test_function.__name__)
-            print(Colors.Cyan('\tRunning: %s' % test_name))
             if skipTest:
-                print('\tskipping test : %s' % test_name)
-                return
+                raise unittest.SkipTest()
+            if skipOnCluster:
+                env = Defaults.env
+                if 'env' in envArgs.keys():
+                    env = envArgs['env']
+                if 'cluster' in env:
+                    raise unittest.SkipTest()
+            if skipOnSingleShard and Defaults.num_shards == 1:
+                raise unittest.SkipTest()
+            if skipCallback is not None:
+                if skipCallback():
+                    raise unittest.SkipTest()
             env = Env(testName = test_function.__name__, **envArgs)
             getConnectionByEnv(env)
             test_function(env)
-            dropRegistrationsAndExecutions(env)
-            restoreDefaultConfig(env)
+            if not skipCleanups:
+                dropRegistrationsAndExecutions(env)
+                restoreDefaultConfig(env)
         return test_func
     return test_func_generator

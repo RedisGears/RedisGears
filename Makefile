@@ -161,7 +161,7 @@ ifeq ($(DEBUG),1)
 CC_FLAGS += -g -O0
 LD_FLAGS += -g
 else
-CC_FLAGS += -O2 -Wno-unused-result
+CC_FLAGS += -O3 -Wno-unused-result
 endif
 
 ifeq ($(OS),macos)
@@ -425,7 +425,7 @@ ifneq ($(TEST),)
 else
 	$(SHOW)set -e; \
 	cd pytest; \
-	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh
+	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism 6
 endif
 
 #----------------------------------------------------------------------------------------------

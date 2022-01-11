@@ -3,7 +3,6 @@ import time
 from includes import *
 from common import gearsTest
 
-
 class testGenericErrors:
     def __init__(self):
         self.env = Env()
@@ -48,8 +47,8 @@ def test(x):
 
 GB('StreamReader').map(test).register()
 '''
-        self.env.expect('rg.pyexecute', script1, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
-        self.env.expect('rg.pyexecute', script2, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script1, 'REQUIREMENTS', 'redis==3.5.3').error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script2, 'REQUIREMENTS', 'redis==3.5.3').error().contains('Error occured when serialized a python callback')
 
 @gearsTest()
 def testRunFailureOnSerialization(env):
@@ -58,7 +57,7 @@ def testRunFailureOnSerialization(env):
     conn = getConnectionByEnv(env)
     script1 = '''
 import redis
-r = redis.Redis()
+r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
 
 def test(x):
     r.set('x', '1')
@@ -69,7 +68,7 @@ GB().map(test).run()
 
     script2 = '''
 import redis
-r = redis.Redis()
+r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
 
 def test(x):
     r.set('x', '1')
@@ -189,9 +188,9 @@ import redis
 r = redis.Redis('localhost', 6381)
 GB('%s').map(lambda x: r).register(trigger='test')
     '''
-    env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis').error()
-    env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis').error()
-    env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis').error()
+    env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis==3.5.3').error()
+    env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis==3.5.3').error()
+    env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis==3.5.3').error()
 
 @gearsTest()
 def testExtraUnknownArgumentsReturnError(env):

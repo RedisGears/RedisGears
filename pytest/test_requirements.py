@@ -42,9 +42,8 @@ def testDependenciesInstallFailure(env):
                                "map(lambda x: __import__('redisgraph'))."
                                "collect().distinct().run()", 'REQUIREMENTS', str(uuid.uuid4())).error().contains('satisfy requirements')
 
-@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+@gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesWithRegister(env):
-    env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB()."
                                "map(lambda x: __import__('redisgraph'))."
                                "collect().distinct().register()", 'REQUIREMENTS', 'redisgraph').ok()
@@ -131,7 +130,7 @@ def testAof(env):
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesImportSerializationError(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson', 'redis==3.0').ok()
+    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson', 'redis==3').ok()
     md, data = env.cmd('RG.PYEXPORTREQ', 'rejson')
     data = b''.join(data)
     for i in range(len(data) - 1):

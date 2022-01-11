@@ -1,4 +1,4 @@
-from RLTest import Env
+from RLTest import Env, Defaults
 import sys
 import os
 import time
@@ -126,9 +126,8 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         for r in registrations:
             self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testMaxExecutionPerRegistrationStreamReader(env):
-    env.skipOnCluster()
     env.cmd('RG.CONFIGSET', 'MaxExecutionsPerRegistration', 1)
     env.expect('rg.pyexecute', "GB('StreamReader').register('s')").ok()
 
@@ -148,9 +147,8 @@ def testMaxExecutionPerRegistrationStreamReader(env):
     for r in registrations:
         env.expect('RG.UNREGISTER', r[1], ).equal('OK')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testMaxExecutionPerRegistrationKeysReader(env):
-    env.skipOnCluster()
     env.cmd('RG.CONFIGSET', 'MaxExecutionsPerRegistration', 1)
     env.expect('rg.pyexecute', "GB().register('*')").ok()
 
@@ -170,9 +168,8 @@ def testMaxExecutionPerRegistrationKeysReader(env):
     for r in registrations:
         env.expect('RG.UNREGISTER', r[1], ).equal('OK')
 
-@gearsTest(envArgs={'moduleArgs': 'executionThreads 1'})
+@gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'executionThreads 1'})
 def testUnregisterKeysReaderWithAbortExecutions(env):
-    env.skipOnCluster()
     infinitScript = '''
 counter = 0
 def InfinitLoop(r):
@@ -247,9 +244,8 @@ GB().map(InfinitLoop).register('*', mode='async_local')
 
     env.cmd('RG.DROPEXECUTION', eid)
 
-@gearsTest(envArgs={'moduleArgs': 'executionThreads 1'})
+@gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'executionThreads 1'})
 def testUnregisterStreamReaderWithAbortExecutions(env):
-    env.skipOnCluster()
     infinitScript = '''
 counter = 0
 def InfinitLoop(r):
@@ -579,9 +575,8 @@ def testRegistersReplicatedToSlave(env):
     except Exception:
         env.assertTrue(False, message='Failed waiting for registration to unregister on slave')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testSyncRegister(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB().filter(lambda x: x['key'] != 'NumOfKeys')."
                             "foreach(lambda x: execute('incrby', 'NumOfKeys', ('1' if 'value' in x.keys() else '-1')))."
@@ -616,9 +611,8 @@ def testOnRegisteredCallback(env):
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testStreamReaderDoNotLoseValues(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB('StreamReader')."
                             "foreach(lambda x: execute('incr', 'NumOfElements'))."
@@ -705,9 +699,8 @@ def testStreamReaderWithAof(env):
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testStreamReaderTrimming(env):
-    env.skipOnCluster()
     env.cmd('rg.pyexecute', "GB('StreamReader')."
                             "foreach(lambda x: execute('incr', 'NumOfElements'))."
                             "register(regex='stream', batch=3)")
@@ -886,9 +879,8 @@ def testKeysReaderKeyTypeFilter(env):
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testSteamReaderAbortOnFailure(env):
-    env.skipOnCluster()
 
     # count how many lpush and rpush happened
     env.cmd('rg.pyexecute', "GB('StreamReader').foreach(lambda r: blalala)."
@@ -973,9 +965,8 @@ def testCommandReaderCluster(env):
     env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='GetNumShard')").ok()
     env.expect('RG.TRIGGER', 'GetNumShard').equal([str(env.shardsCount)])
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testCommandReaderWithCountBy(env):
-    env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('CommandReader').flatmap(lambda x: x[1:]).countby(lambda x: x).register(trigger='test1')").ok()
     env.expect('RG.TRIGGER', 'test1', 'a', 'a', 'a').equal(["{'key': 'a', 'value': 3}"])
 
@@ -1232,9 +1223,8 @@ gb.register(hook='hmset', mode='sync')
     env.assertNotEqual(conn.execute_command('hget', 'h1', '_time'), None)
     env.assertNotEqual(conn.execute_command('hget', 'h2', '_time'), None)
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testDeleteStreamDurringRun(env):
-    env.skipOnCluster()
     script = '''
 import time
 
@@ -1390,9 +1380,8 @@ GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], com
         res = self.conn.execute_command('get', 'test1')
         self.env.assertEqual(res, 2)
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testCommandReaderInOrder(env):
-    env.skipOnCluster()
     script = '''
 import time
 
@@ -1452,9 +1441,8 @@ GB('CommandReader').foreach(SleepIfNeeded).map(lambda x: execute('lpush', x[1], 
 
         env.cmd('flushall')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testStreamReaderNotTriggerEventsOnReplica(env):
-    env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: x['error']).register(onFailedPolicy='retry', onFailedRetryInterval=1)").equal('OK')
     env.expect('xadd', 's', '*', 'foo', 'bar')
     
@@ -1486,9 +1474,8 @@ def testStreamReaderNotTriggerEventsOnReplica(env):
 
     env.cmd('SLAVEOF', 'no', 'one')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testMOD1960(env):
-    env.skipOnCluster()
     env.cmd('xadd', 's', '*', 'foo', 'bar')
     env.expect('rg.pyexecute', "GB('StreamReader').foreach(lambda x: execute('set', 'x', '1')).register(mode='sync')").ok()
     try:
@@ -1500,3 +1487,54 @@ def testMOD1960(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for x to be updated')
+
+@gearsTest(skipCleanups=True, skipCallback=lambda: Defaults.num_shards != 3)
+def testStreamReaderOnUninitializedCluster(env):
+    conn = getConnectionByEnv(env)
+
+    # we know that s3 goes to the second shard
+    conn.execute_command('xadd', 's3', '*', 'foo', 'bar')
+
+    env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '100')
+
+    conn1 = env.getConnection(shardId=1)
+    conn2 = env.getConnection(shardId=2)
+
+    # close shard 1 to get cluster to a down state
+    env.envRunner.shards[0].stopEnv()
+
+    try:
+        with TimeLimit(1):
+            while True:
+                res = conn2.execute_command('CLUSTER', 'INFO')
+                if 'cluster_state:fail' in str(res):
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for down cluster state (%s)' % (str(e)))
+
+    conn2.execute_command('RG.PYEXECUTE', "GB('StreamReader').register()")
+
+    # make sure no executions are created
+    try:
+        with TimeLimit(1):
+            while True:
+                res = conn2.execute_command('RG.DUMPEXECUTIONS')
+                env.assertEqual(len(res), 0)
+    except Exception as e:
+        pass
+
+    # restart the shard
+    env.envRunner.shards[0].startEnv()
+    conn1.execute_command('RG.REFRESHCLUSTER')
+
+    # make sure execution is eventually created
+    try:
+        with TimeLimit(5):
+            while True:
+                res = conn2.execute_command('RG.DUMPEXECUTIONS')
+                if len(res) == 1:
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
