@@ -1,6 +1,11 @@
 from common import gearsTest
 
-@gearsTest()
+def getSession(env):
+	res = env.cmd('RG.PYDUMPSESSIONS')
+	env.assertEqual(len(res), 1)
+	return res[0][1]
+
+@gearsTest(skipOnCluster=True)
 def testProfile(env):
 	script = '''
 def map_func(r):
@@ -26,13 +31,14 @@ def extractor_func(a):
 
 GB('CommandReader').map(map_func).filter(filter_func).flatmap(flat_map_func).foreach(foreach_func).aggregate(0, aggregate_func, aggregate_func).aggregateby(extractor_func, 0, aggregateby_func, aggregateby_func).register(trigger='test')
 	'''
-	env.skipOnCluster()
 	env.expect('RG.CONFIGSET', 'ProfileExecutions', '1').equal(['OK'])
 	env.expect('RG.PYEXECUTE', script).ok()
 
 	env.cmd('RG.TRIGGER', 'test')
 
-	res = env.cmd('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0')
+	sessionId = getSession(env)
+
+	res = env.cmd('RG.PYPROFILE', 'STATS', sessionId)
 	env.assertContains('map_func', res)
 	env.assertContains('filter_func', res)
 	env.assertContains('flat_map_func', res)
@@ -41,7 +47,7 @@ GB('CommandReader').map(map_func).filter(filter_func).flatmap(flat_map_func).for
 	env.assertContains('extractor_func', res)
 	env.assertContains('aggregateby_func', res)
 
-	res = env.cmd('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0', 'ncalls')
+	res = env.cmd('RG.PYPROFILE', 'STATS', sessionId, 'ncalls')
 	env.assertContains('map_func', res)
 	env.assertContains('filter_func', res)
 	env.assertContains('flat_map_func', res)
@@ -50,24 +56,23 @@ GB('CommandReader').map(map_func).filter(filter_func).flatmap(flat_map_func).for
 	env.assertContains('extractor_func', res)
 	env.assertContains('aggregateby_func', res)
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testProfileWithoutProfileInfo(env):
-	env.skipOnCluster()
 	env.expect('RG.CONFIGSET', 'ProfileExecutions', '1').equal(['OK'])
 	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')").ok()
 	env.expect('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0').error()
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testProfileReset(env):
-	env.skipOnCluster()
 	env.expect('RG.CONFIGSET', 'ProfileExecutions', '1').equal(['OK'])
 	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')").ok()
 	env.cmd('RG.TRIGGER', 'test')
-	env.expect('RG.PYPROFILE', 'RESET', '0000000000000000000000000000000000000000-0').ok()
-	env.expect('RG.PYPROFILE', 'STATS', '0000000000000000000000000000000000000000-0').error()
+	sessionId = getSession(env)
+	env.expect('RG.PYPROFILE', 'RESET', sessionId).ok()
+	env.expect('RG.PYPROFILE', 'STATS', sessionId).error()
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testPyDumpSessions(env):
-	env.skipOnCluster()
 	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'REQUIREMENTS', 'redis==3.5.3').ok()
-	env.expect('RG.PYDUMPSESSIONS').equal([['id', '0000000000000000000000000000000000000000-0', 'refCount', 1L, 'requirementInstallationNeeded', 1L, 'requirements', [['name', 'redis==3.5.3', 'refCount', 2L, 'isDownloaded', 1L, 'isInstalled', 1L, 'wheels', ['redis-3.5.3-py2.py3-none-any.whl']]]]])
+	sessionId = getSession(env)
+	env.expect('RG.PYDUMPSESSIONS').equal([['id', sessionId, 'refCount', 1L, 'requirementInstallationNeeded', 1L, 'requirements', [['name', 'redis==3.5.3', 'refCount', 2L, 'isDownloaded', 1L, 'isInstalled', 1L, 'wheels', ['redis-3.5.3-py2.py3-none-any.whl']]]]])

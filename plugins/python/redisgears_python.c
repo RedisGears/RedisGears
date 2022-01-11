@@ -579,8 +579,8 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
 
         FILE *f = fopen(filePath, "rb");
         if(!f){
-            RG_FREE(filePath);
             RedisGears_ASprintf(err, "Could not open file %s", filePath);
+            RG_FREE(filePath);
             RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
@@ -591,9 +591,9 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         char *data = RG_ALLOC(fsize);
         size_t readData = fread(data, 1, fsize, f);
         if(readData != fsize){
+            RedisGears_ASprintf(err, "Could read data from file %s", filePath);
             RG_FREE(data);
             RG_FREE(filePath);
-            RedisGears_ASprintf(err, "Could read data from file %s", filePath);
             RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }

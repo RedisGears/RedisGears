@@ -1520,7 +1520,10 @@ def testStreamReaderOnUninitializedCluster(env):
         with TimeLimit(1):
             while True:
                 res = conn2.execute_command('RG.DUMPEXECUTIONS')
-                env.assertEqual(len(res), 0)
+                if len(res) != 0:
+                    print(res)
+                    env.assertEqual(len(res), 0)
+                    break
     except Exception as e:
         pass
 

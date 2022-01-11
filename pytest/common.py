@@ -100,10 +100,15 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect
         env.assertTrue(env.isUp())
 
 def dropRegistrationsAndExecutions(env):
+    script1 = '''
+GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).filter(lambda x: x > 0).run()
+'''
+    script2 = '''
+GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lambda x: x > 0).run()
+'''
     try:
-        with TimeLimit(20):
+        with TimeLimit(40):
             while True:
-
                 try:
                     executions = env.cmd('RG.DUMPEXECUTIONS')
                     for e in executions:
@@ -116,22 +121,16 @@ def dropRegistrationsAndExecutions(env):
                     print(Colors.Gray(str(e)))
                     time.sleep(0.5)
                     continue
-
-                script1 = '''
-GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).filter(lambda x: x > 0).run()
-'''
-                script2 = '''
-GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lambda x: x > 0).run()
-'''
                 res1 = env.cmd('RG.PYEXECUTE', script1)
                 res2 = env.cmd('RG.PYEXECUTE', script2)
-
-                if len(res1[0]) == 0 and len(res2[0]):
+                if len(res1[0]) == 0 and len([a for a in res2[0] if a != '1']) == 0:
                     break
                 time.sleep(0.5)
     except Exception as e:
         print(Colors.Bred(str(e)))
         env.assertTrue(False, message='Registrations/Executions dropping failed')
+        print(env.cmd('RG.PYEXECUTE', script1))
+        print(env.cmd('RG.PYEXECUTE', script2))
 
 def restoreDefaultConfig(env):
     env.broadcast('RG.CONFIGSET', 'MaxExecutions', '1000')
