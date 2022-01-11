@@ -436,7 +436,7 @@ def testBasicStreamProcessing(env):
     except Exception:
         env.assertTrue(False, message='Failed waiting for keys to updated')
 
-@gearsTest(envArgs={'moduleArgs': 'MaxExecutionsPerRegistrations 1000'})
+@gearsTest()
 def testRegistersOnPrefix(env):
     conn = getConnectionByEnv(env)
     env.cmd('rg.pyexecute', "GB()."
