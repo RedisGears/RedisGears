@@ -166,7 +166,9 @@ def gearsTest(skipTest=False,
             env = Env(testName = test_function.__name__, **envArgs)
             getConnectionByEnv(env)
             test_function(env)
-            if not skipCleanups:
+            if Env.RTestInstance is not None and not skipCleanups:
+                # We do the cleanup only if we might reuse the env
+                # and skipCleanups is not true
                 dropRegistrationsAndExecutions(env)
                 restoreDefaultConfig(env)
         return test_func
