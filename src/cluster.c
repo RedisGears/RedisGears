@@ -738,17 +738,27 @@ void Cluster_SendMsg(const char* id, char* function, char* msg, size_t len){
 }
 
 bool Cluster_IsInitialized(){
-    if(!IsEnterprise()){
-        // on open source, the user need to send cluster refresh.
-        // if no cluster refresh was sent we assume single shard database.
+    if (CurrCluster){
         return true;
     }
-    // on enterprise we will always get the cluster set command so until we get it
-    // we assume cluster is not initialized.
-    // when cluster is not initialized we will not allow almost all operations.
-    // the only operations we will allows are sync registrations that can not be
-    // postpond.
-    return CurrCluster? true : false;
+    if(IsEnterprise()){
+        // on enterprise we will always get the cluster set command so until we get it
+        // we assume cluster is not initialized.
+        // when cluster is not initialized we will not allow almost all operations.
+        // the only operations we will allows are sync registrations that can not be
+        // postpond.
+        return true;
+    }
+    // On oss we need to check if Redis in configured to be cluster,
+    // if so, we will wait for RG.CLUSTERREFRESH command, otherwise we will
+    // assume we are on a single shard.
+    bool res = true;
+    LockHandler_Acquire(staticCtx);
+    if(RedisModule_GetContextFlags(staticCtx) & REDISMODULE_CTX_FLAGS_CLUSTER){
+		res = true;
+	}
+    LockHandler_Release(staticCtx);
+    return res;
 }
 
 bool Cluster_IsClusterMode(){
