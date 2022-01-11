@@ -12,7 +12,7 @@ from common import gearsTest
 
 class testUnregister:
     def __init__(self):
-        self.env = Env()
+        self.env = Env(freshEnv=True)
         self.conn = getConnectionByEnv(self.env)
 
     def cleanUp(self):
@@ -80,6 +80,8 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         for r in registrations:
             self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
+        self.cleanUp()
+
     def testUnregisterWithStreamReader(self):
         res = self.env.cmd('rg.pyexecute', "GearsBuilder('StreamReader')."
                                       "map(lambda x: x['value'])."
@@ -125,6 +127,8 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         registrations = self.env.cmd('RG.DUMPREGISTRATIONS')
         for r in registrations:
             self.env.expect('RG.UNREGISTER', r[1]).equal('OK')
+
+        self.cleanUp()
 
 @gearsTest(skipOnCluster=True)
 def testMaxExecutionPerRegistrationStreamReader(env):

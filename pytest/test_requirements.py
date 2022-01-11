@@ -97,7 +97,7 @@ def testDependenciesReplicatedToSlave(env):
     except Exception:
         env.assertTrue(False, message='Failed waiting for requirement to reach slave')
 
-@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1', 'freshEnv': True})
 def testDependenciesSavedToRDB(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
