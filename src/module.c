@@ -1267,6 +1267,13 @@ static void RedisGears_InfoFunc(RedisModuleInfoCtx *ctx, int for_crash_report) {
 
 static bool isInitiated = false;
 
+void RedisGears_OnShutDown(RedisModuleCtx *ctx, RedisModuleEvent e, uint64_t sub, void *data){
+#ifdef VALGRIND
+    ExecutionPlan_Clean();
+    LockHandler_Release(ctx);
+#endif
+}
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if(RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
         staticCtx = RedisModule_GetDetachedThreadSafeContext(ctx);
@@ -1325,6 +1332,10 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if(CommandReader_Initialize(ctx) != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "could not initialize default keys reader.");
         return REDISMODULE_ERR;
+    }
+
+    if (RMAPI_FUNC_SUPPORTED(RedisModule_SubscribeToServerEvent)) {
+        RedisModule_SubscribeToServerEvent(ctx, RedisModuleEvent_Shutdown, RedisGears_OnShutDown);
     }
 
     Mgmt_Init();
@@ -1457,20 +1468,3 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     isInitiated = true;
     return REDISMODULE_OK;
 }
-
-#ifdef VALGRIND
-static void __attribute__((destructor)) RedisGears_Clean(void) {
-    // for valgrind check perposes, here we will free memory
-    // that confuses the valgrind.
-    if(!isInitiated){
-        return;
-    }
-    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    LockHandler_Acquire(ctx);
-//    RedisGearsPy_Clean();
-    ExecutionPlan_Clean();
-    LockHandler_Release(ctx);
-    RedisModule_FreeThreadSafeContext(ctx);
-}
-#endif
-
