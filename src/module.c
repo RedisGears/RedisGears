@@ -1270,7 +1270,6 @@ static bool isInitiated = false;
 void RedisGears_OnShutDown(RedisModuleCtx *ctx, RedisModuleEvent e, uint64_t sub, void *data){
 #ifdef VALGRIND
     ExecutionPlan_Clean();
-    LockHandler_Release(ctx);
 #endif
 }
 
