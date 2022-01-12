@@ -59,7 +59,7 @@ MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
 include $(MK)/defs
 
 GEARS_VERSION:=$(shell $(ROOT)/getver)
-OS_VERSION_DESC:=$(shell python $(ROOT)/getos.py)
+OS_VERSION_DESC:=$(shell python2 $(ROOT)/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -100,6 +100,7 @@ define _SOURCES:=
 	config.c
 	crc16.c
 	execution_plan.c
+	global.c
 	lock_handler.c
 	mappers.c
 	mgmt.c
@@ -133,7 +134,7 @@ define _CC_FLAGS
 	-MMD
 	-MF $(@:.o=.d)
 
-	-include $(SRCDIR)/common.h
+	
 	-I$(SRCDIR)
 	-I$(BINDIR)
 	-Ideps
@@ -160,7 +161,7 @@ ifeq ($(DEBUG),1)
 CC_FLAGS += -g -O0
 LD_FLAGS += -g
 else
-CC_FLAGS += -O2 -Wno-unused-result
+CC_FLAGS += -O3 -Wno-unused-result
 endif
 
 ifeq ($(OS),macos)
@@ -212,9 +213,13 @@ include $(MK)/rules
 
 -include $(CC_DEPS)
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
+$(BINDIR)/global.o: $(SRCDIR)/global.c
 	@echo Compiling $<...
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
+
+$(BINDIR)/%.o: $(SRCDIR)/%.c
+	@echo Compiling $<...
+	$(SHOW)$(CC) $(CC_FLAGS) -c -include $(SRCDIR)/common.h $< -o $@
 
 #----------------------------------------------------------------------------------------------
 
@@ -420,7 +425,7 @@ ifneq ($(TEST),)
 else
 	$(SHOW)set -e; \
 	cd pytest; \
-	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh
+	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism 6
 endif
 
 #----------------------------------------------------------------------------------------------

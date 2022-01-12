@@ -2,32 +2,9 @@ from RLTest import Env
 from common import getConnectionByEnv
 from common import TimeLimit
 from common import verifyRegistrationIntegrity
-from threading import Thread
+from common import Background
 import time
 from includes import *
-
-
-class Background(object):
-    """
-    A context manager that fires a TimeExpired exception if it does not
-    return within the specified amount of time.
-    """
-
-    def doJob(self):
-        self.f()
-        self.isAlive = False
-
-    def __init__(self, f):
-        self.f = f
-        self.isAlive = True
-
-    def __enter__(self):
-        self.t = Thread(target = self.doJob)
-        self.t.start()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        pass
 
 def testSimpleAsync(env):
     conn = getConnectionByEnv(env)

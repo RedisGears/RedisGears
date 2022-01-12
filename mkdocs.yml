@@ -36,6 +36,7 @@ nav:
     - 'Readers': 'readers.md'
     - 'Operations': 'operations.md'
     - 'Commands': 'commands.md'
+    - 'RedisAI': 'redisai.md'
     - 'Configuration': 'configuration.md'
   - 'Examples': 'examples.md'
   - 'Clients': 'clients.md'

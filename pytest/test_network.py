@@ -3,6 +3,7 @@ import gevent.queue
 import gevent.socket
 import signal
 import time
+import random
 from RLTest import Env
 from common import TimeLimit
 from includes import *
@@ -205,11 +206,12 @@ class ShardMock():
                      '8193',
                      '16383',
                      'NO-USED',
-                     'password@localhost:10000'
+                     'password@localhost:%d' % self.port
                      )
 
     def __enter__(self):
-        self.stream_server = gevent.server.StreamServer(('localhost', 10000), self._handle_conn)
+        self.port = random.randint(10000,20000)
+        self.stream_server = gevent.server.StreamServer(('localhost', self.port), self._handle_conn)
         self.stream_server.start()
         self._send_cluster_set()
         self.runId = self.env.cmd('RG.INFOCLUSTER')[3]
@@ -235,7 +237,7 @@ class ShardMock():
         self.stream_server.stop()
 
     def StartListening(self):
-        self.stream_server = gevent.server.StreamServer(('localhost', 10000), self._handle_conn)
+        self.stream_server = gevent.server.StreamServer(('localhost', self.port), self._handle_conn)
         self.stream_server.start()
 
 
@@ -404,7 +406,7 @@ def testSendTopology(env):
         conn = shardMock.GetConnection(sendHelloResponse=False)
 
         # should recieve the topology
-        env.assertEqual(conn.read_request(), ['RG.CLUSTERSETFROMSHARD', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', '0000000000000000000000000000000000000002', 'NO-USED', '2', 'NO-USED', '1', 'NO-USED', '0', '8192', 'NO-USED', 'password@localhost:6379', 'NO-USED', 'NO-USED', '2', 'NO-USED', '8193', '16383', 'NO-USED', 'password@localhost:10000'])
+        env.assertEqual(conn.read_request(), ['RG.CLUSTERSETFROMSHARD', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', '0000000000000000000000000000000000000002', 'NO-USED', '2', 'NO-USED', '1', 'NO-USED', '0', '8192', 'NO-USED', 'password@localhost:6379', 'NO-USED', 'NO-USED', '2', 'NO-USED', '8193', '16383', 'NO-USED', 'password@localhost:%d' % shardMock.port])
 
 
 
@@ -585,5 +587,5 @@ def testMassiveClusterSetFromShard(env):
                      '8193',
                      '16383',
                      'NO-USED',
-                     'password@localhost:10000'
+                     'password@localhost:%d' % shardMock.port
                      )
