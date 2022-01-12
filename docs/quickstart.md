@@ -84,14 +84,14 @@ make fetch
 make all
 ```
 
-You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbolic link to it in the main directory (called `redisgears.os`).
+You will find the compiled binaries `bin/linux-x64-release/redisgears.so` and `bin/linux-x64-release/gears_python.so` with a symbolic link to it with the same name in the main directory.
 
 ## Loading
 To load the module on the same server it was compiled on, use the `--loadmodule` command line switch, the `loadmodule` configuration directive, or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
 For example, to load the module into a local Redis server after you've [built](#building) it, run:
 ```
-redis-server --loadmodule ./redisgears.so
+redis-server --loadmodule ./redisgears.so Plugin ./gears_python.so
 ```
 
 If you've compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>`, should not be changed.

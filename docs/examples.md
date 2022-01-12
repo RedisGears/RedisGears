@@ -12,6 +12,7 @@ This is a list of RedisGears recipes that can be used as-is or as a source of in
 | AnimalRecognitionDemo | An example of using Redis Streams, RedisGears and RedisAI for Realtime Video Analytics (i.e. filtering cats) | [RedisLabs](https://redislabs.com/) | BSD-3-Clause | [git](https://github.com/RedisGears/AnimalRecognitionDemo) |
 | EdgeRealtimeVideoAnalytics | An example of using Redis Streams, RedisGears, RedisAI and RedisTimeSeries for Realtime Video Analytics (i.e. counting people) | [RedisLabs](https://redislabs.com/) | Apache-2.0 | [git](https://github.com/RedisGears/EdgeRealtimeVideoAnalytics) |
 | FraudDetectionDemo | An example that combines several Redis data structures and along with RedisGears and RedisAI to showcase the advantage of data locality during transaction scoring | [RedisLabs](https://redislabs.com) | BSD-3-Clause | [git](https://github.com/RedisAI/FraudDetectionDemo)|
+| AdGears | Using RedisGears to maximize advertising revenue example.  Utilizes RedisGears, RedisTimeSeries and RedisBloom.| [RedisLabs](https://redislabs.com) | BSD-3-Clause | [git](https://github.com/Redislabs-Solution-Architects/AdGears)|
 
 ## Word Count
 The counting of words.
