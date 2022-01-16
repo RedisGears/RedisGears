@@ -1038,10 +1038,22 @@ GB("ShardsIDReader").map(doTest).run()
     '''
 
     env.cmd('rg.pyexecute', script, 'UNBLOCKING')
-    
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for e in executions:
-        env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
+
+    wait_for_execution = True
+    with TimeLimit(5, env, 'Failed waiting for execution to start running'):
+        while wait_for_execution:
+            executions = env.cmd('RG.DUMPEXECUTIONS')
+            for e in executions:
+                if e[3] == 'running':
+                    wait_for_execution = False
+                    env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
+                    break
+                if e[3] == 'done':
+                    env.debugPrint('execution finished before aborting, test is not testing what it was supposed to test.')
+                    wait_for_execution = False
+                    env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
+                    break
+            time.sleep(0.1)
 
     # let wait for the coro to continue, make sure there is no issues.
     time.sleep(2)

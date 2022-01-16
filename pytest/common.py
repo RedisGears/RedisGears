@@ -66,8 +66,10 @@ class TimeLimit(object):
     return within the specified amount of time.
     """
 
-    def __init__(self, timeout):
+    def __init__(self, timeout, env=None, msg=None):
         self.timeout = timeout
+        self.env = env
+        self.msg = msg
 
     def __enter__(self):
         signal.signal(signal.SIGALRM, self.handler)
@@ -78,6 +80,8 @@ class TimeLimit(object):
         signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
     def handler(self, signum, frame):
+        if self.env is not None:
+            self.env.assertTrue(False, message='Timedout %s' % (str(self.msg) if self.msg is not None else 'Error'))
         raise Exception('timeout')
 
 def verifyRegistrationIntegrity(env):
