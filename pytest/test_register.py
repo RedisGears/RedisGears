@@ -1546,11 +1546,8 @@ def testStreamReaderOnUninitializedCluster(env):
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
 
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
 def testRGTriggerOnKey(env):
-    if env.shardsCount != 2:
-        env.skip()
-
-    conn = getConnectionByEnv(env)
     conn2 = env.getConnection(shardId=2)
     env.expect('rg.pyexecute', "GB('CommandReader').foreach(lambda x: print('fooooooooooooo')).map(lambda x: execute('set', x[1], x[2])).register(trigger='my_set', mode='sync')").ok()
     verifyRegistrationIntegrity(env)
