@@ -79,17 +79,19 @@ static int PyInitializeRedisAI(){
     if (globals.redisAILoaded){
         return REDISMODULE_OK;
     }
+    // If this API is not supported, we cannot initialize RedisAI low-level API using staticCtx.
+    // Todo: use the MODULE_LOADED event to register redisAI API for older redis versions.
     if(!RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)) {
         RedisModule_Log(staticCtx, "warning",
           "Redis version is to old, please upgrade to a newer version.");
         return REDISMODULE_ERR;
     }
-    RedisModule_ThreadSafeContextLock(staticCtx);
+    RedisGears_LockHanlderAcquire(staticCtx);
     int ret = RedisAI_Initialize(staticCtx);
     if(ret == REDISMODULE_OK){
         globals.redisAILoaded = true;
     }
-    RedisModule_ThreadSafeContextUnlock(staticCtx);
+    RedisGears_LockHanlderRelease(staticCtx);
     return ret;
 }
 
