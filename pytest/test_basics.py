@@ -3,6 +3,7 @@ import os
 from RLTest import Env
 import yaml
 import time
+from common import gearsTest
 from common import TimeLimit, verifyRegistrationIntegrity
 from includes import *
 
@@ -106,20 +107,21 @@ class testBasic:
         self.env.assertEqual(sum([a for a in range(100)]), int(res[0]))
         self.env.cmd('rg.dropexecution', id)
 
+@gearsTest()
 def testBytes(env):
     conn = getConnectionByEnv(env)
     conn.set("x", 1)
     conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytes([1,2,3]))).run("x")')
     env.assertTrue(conn.exists("y"))
 
-
+@gearsTest()
 def testBytearray(env):
     conn = getConnectionByEnv(env)
     conn.set("x", 1)
     conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytearray([1,2,3]))).run("x")')
     env.assertTrue(conn.exists("y"))
 
-
+@gearsTest()
 def testKeysOnlyReader(env):
     conn = getConnectionByEnv(env)
 
@@ -154,7 +156,7 @@ def testKeysOnlyReader(env):
     res = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run("xx")')[0]
     env.assertEqual(set(res), set(['xx']))
 
-
+@gearsTest()
 def testFlatMap(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
@@ -165,7 +167,7 @@ def testFlatMap(env):
     env.assertEqual(set(res[0]), set(['1', '2', '3']))
     env.cmd('rg.dropexecution', id)
 
-
+@gearsTest()
 def testLimit(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3')
@@ -176,7 +178,7 @@ def testLimit(env):
     env.assertEqual(len(res[0]), 1)
     env.cmd('rg.dropexecution', id)
 
-
+@gearsTest()
 def testLimitWithOffset(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('lpush', 'l', '1', '2', '3', '4', '5')
@@ -187,7 +189,7 @@ def testLimitWithOffset(env):
     env.assertEqual(res[0], ['4'])
     env.cmd('rg.dropexecution', id)
 
-
+@gearsTest()
 def testRepartitionAndWriteOption(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -209,7 +211,7 @@ def testRepartitionAndWriteOption(env):
     env.assertEqual(conn.execute_command('get', '3'), 'z')
     env.cmd('rg.dropexecution', id)
 
-
+@gearsTest()
 def testBasicWithRun(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('xadd', 'stream', '*', 'test', '1')
@@ -219,6 +221,7 @@ def testBasicWithRun(env):
     res = eval(res[0][0])
     env.assertEqual(res['value']['test'], '1')
 
+@gearsTest(skipOnCluster=True)
 def testTimeEvent(env):
     conn = getConnectionByEnv(env)
     conn.set('x', '1')
@@ -229,9 +232,9 @@ def func(x):
     var = int(redisgears.executeCommand('get',x['key'])) + 1
     redisgears.executeCommand('set',x['key'], var)
 def OnTime():
-    GearsBuilder().foreach(func).collect().run()
+    GearsBuilder().filter(lambda x: x['key'] != 'key1').foreach(func).collect().run()
 def start():
-    redisgears.registerTimeEvent(2, OnTime)
+    redisgears.registerTimeEvent(2, OnTime, 'key1')
 start()
     '''
     env.cmd('rg.pyexecute', script)
@@ -243,9 +246,8 @@ start()
     env.assertTrue(int(conn.get('y')) >= 2)
     env.assertTrue(int(conn.get('z')) >= 2)
 
-
+@gearsTest(skipOnCluster=True)
 def testTimeEventSurrviveRestart(env):
-    env.skipOnCluster()
     env.execute_command('set', 'x', '1')
     script = '''
 def func():
@@ -270,24 +272,23 @@ redisgears.registerTimeEvent(1, func, 'timeEvent')
     res2 = env.cmd('get', 'x')
     env.assertTrue(int(res2) >= int(res1))
 
-
+@gearsTest(skipOnCluster=True)
 def testExecuteCommandWithNullTerminated(env):
-    env.skipOnCluster()
     env.expect('set', 'x', 'test\x00test').equal(True)
     env.expect('get', 'x').equal('test\x00test')
     env.cmd('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: redisgears.executeCommand('SET', 'bar', str(x['value']))).map(lambda x: str(x)).run()")
     env.expect('get', 'bar').equal('test\x00test')
 
-
+@gearsTest()
 def testKeyWithUnparsedValue(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('sadd', 'x', '1', '2', '3')
     env.expect('RG.PYEXECUTE', "GB().map(lambda x: execute('smembers', x['key'])).flatmap(lambda x:x).sort().run()").contains(['1', '2', '3'])
 
-def testMaxExecutions():
+@gearsTest(envArgs={'moduleArgs': 'MaxExecutions 3'})
+def testMaxExecutions(env):
     ## todo: currently there is a problem with MaxExecutions which might cause running executions to be drop and the redis server
     ##       to crash, this is why I increased the sleep interval, we should fix it ASAP.
-    env = Env(moduleArgs="MaxExecutions 3")
     conn = getConnectionByEnv(env)
     conn.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
     time.sleep(1)
@@ -310,8 +311,8 @@ def testMaxExecutions():
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
+@gearsTest(skipOnCluster=True)
 def testOneKeyScan(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     p = conn.pipeline()
     for i in range(2000):
@@ -322,6 +323,7 @@ def testOneKeyScan(env):
     env.expect('rg.pyexecute', "GB().count().run('pref*')").contains(['2000'])
     env.expect('rg.pyexecute', "GB().count().run('x*')").contains(['1'])
 
+@gearsTest()
 def testGlobalsSharedBetweenFunctions(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -342,8 +344,8 @@ GB('ShardsIDReader').map(func1).map(func2).collect().distinct().run()
     env.expect('rg.pyexecute', script).equal([['2'], []])
     env.expect('rg.pyexecute', script).equal([['2'], []])
 
+@gearsTest(skipOnCluster=True)
 def testSubinterpreterIsolation(env):
-    env.skipOnCluster()
     env.cmd('set', 'x', '1')
     script = '''
 if 'x' not in globals().keys():
@@ -359,9 +361,8 @@ GB().map(returnX).run()
     env.expect('rg.pyexecute', script).equal([['2'], []])
     env.expect('rg.pyexecute', script).equal([['2'], []])
 
-def testAbortExecution():
-    env = Env(moduleArgs='executionThreads 1')
-    env.skipOnCluster()
+@gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'executionThreads 1'})
+def testAbortExecution(env):
     infinitScript = '''
 def InfinitLoop(r):
     import time
@@ -398,8 +399,8 @@ GB().map(InfinitLoop).run()
     env.expect('rg.dropexecution', executionId1).ok()
     env.expect('rg.dropexecution', executionId2).ok()
 
+@gearsTest(skipOnCluster=True)
 def testTimeEventSubinterpreterIsolation(env):
-    env.skipOnCluster()
     script1 = '''
 if 'x' not in globals().keys():
     x = 1
@@ -408,7 +409,7 @@ def OnTime():
     x += 1
     execute('set', 'x', str(x))
 def start():
-    redisgears.registerTimeEvent(2, OnTime)
+    redisgears.registerTimeEvent(2, OnTime, 'key1')
 start()
     '''
     script2 = '''
@@ -419,7 +420,7 @@ def OnTime():
     x += 1
     execute('set', 'y', str(x))
 def start():
-    redisgears.registerTimeEvent(2, OnTime)
+    redisgears.registerTimeEvent(2, OnTime, 'key2')
 start()
     '''
     env.cmd('rg.pyexecute', script1)
@@ -532,15 +533,14 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(res))
         self.env.cmd('RG.DROPEXECUTION', id)
 
-def testConfigGet():
-    env = Env(moduleArgs='TestConfig TestVal')
-    env.skipOnCluster()
+@gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'TestConfig TestVal'})
+def testConfigGet(env):
     env.expect('RG.PYEXECUTE', "GB('ShardsIDReader')."
                                "map(lambda x: (GearsConfigGet('TestConfig'), GearsConfigGet('NotExists', 'default')))."
                                "collect().distinct().run()").equal([["('TestVal', 'default')"],[]])
 
-def testRecordSerializationFailure():
-    env = Env(moduleArgs='CreateVenv 1')
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testRecordSerializationFailure(env):
     if env.shardsCount < 2:  # TODO: RedisGears_IsClusterMode reports false for clusters with 1 shard
         env.skip()
     conn = getConnectionByEnv(env)
@@ -549,6 +549,7 @@ def testRecordSerializationFailure():
                   "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
     env.assertEqual(len(res[1]), env.shardsCount - 1) # the initiator will not raise error
 
+@gearsTest()
 def testAtomic(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -560,6 +561,7 @@ GB('ShardsIDReader').foreach(test).flatmap(lambda r: execute('mget', 'x{%s}' % h
     '''
     env.expect('RG.PYEXECUTE', script).equal([['1', '2'],[]])
 
+@gearsTest()
 def testParallelExecutions(env):
     conn = getConnectionByEnv(env)
     infinitScript = '''
@@ -576,6 +578,7 @@ GB('ShardsIDReader').foreach(InifinitLoop).run()
     env.expect('RG.ABORTEXECUTION', executionId).ok()
     env.expect('RG.DROPEXECUTION', executionId).ok()
 
+@gearsTest()
 def testMaxIdle(env):
     if env.shardsCount == 1:
         env.skip()
@@ -598,6 +601,7 @@ GB('ShardsIDReader').map(Loop).run()
 '''
     env.expect('RG.PYEXECUTE', longExecution).equal([['1'], ['Execution max idle reached']])
 
+@gearsTest()
 def testStreamReaderFromId(env):
     conn = getConnectionByEnv(env)
 
@@ -616,6 +620,7 @@ def testStreamReaderFromId(env):
 
     env.assertEqual([r['value'] for r in res], [{'foo2': 'bar2', 'foo3': 'bar3'}])
 
+@gearsTest()
 def testKeysReaderKeyType(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'r', '1')
@@ -626,10 +631,12 @@ def testKeysReaderKeyType(env):
 
     env.expect('RG.PYEXECUTE', 'GB().map(lambda x: x["type"]).sort().run()').equal([['hash', 'list', 'set', 'string', 'zset'],[]])
 
+@gearsTest()
 def testKeysReaderNoScan(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', "GB().map(lambda x: x['type']).distinct().run('test', noScan=True)").equal([['empty'],[]])
 
+@gearsTest()
 def testKeysReaderDontReadValue(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -637,6 +644,7 @@ def testKeysReaderDontReadValue(env):
     res = [eval(r) for r in res[0]]
     env.assertEqual(res, [{'key':'x', 'event': None}])
 
+@gearsTest()
 def testKeysOnlyReader(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -644,6 +652,7 @@ def testKeysOnlyReader(env):
     conn.execute_command('set', 'y', '1')
     env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run()").equal([['x', 'y', 'z'],[]])
 
+@gearsTest()
 def testKeysOnlyReaderWithPattern(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -651,6 +660,7 @@ def testKeysOnlyReaderWithPattern(env):
     conn.execute_command('set', 'y', '1')
     env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run('x')").equal([['x'],[]])
 
+@gearsTest()
 def testKeysOnlyReaderWithCount(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -658,6 +668,7 @@ def testKeysOnlyReaderWithCount(env):
     conn.execute_command('set', 'y', '1')
     env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').sort().run(count=1)").equal([['x', 'y', 'z'],[]])
 
+@gearsTest()
 def testKeysOnlyReaderWithNoScan(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -665,6 +676,7 @@ def testKeysOnlyReaderWithNoScan(env):
     conn.execute_command('set', 'x2', '1')
     env.expect('RG.PYEXECUTE', "GB('KeysOnlyReader').run('x', noScan=True)").equal([['x'],[]])
 
+@gearsTest()
 def testKeysOnlyReaderWithPatternGenerator(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -675,8 +687,8 @@ GB('KeysOnlyReader').count().run(patternGenerator=Generator)
     env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('set', 'x{%s}' % hashtag(), '1')).run()")
     env.expect('RG.PYEXECUTE', script).equal([[str(env.shardsCount)],[]])
 
+@gearsTest(skipOnCluster=True)
 def testWithMultiExec(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     conn.execute_command('multi')
     conn.execute_command('rg.pyexecute', 'GB().run()')
@@ -686,6 +698,7 @@ def testWithMultiExec(env):
     except Exception:
         env.assertTrue(True, message='Got error when running gear in multi exec')
 
+@gearsTest()
 def testAggregateWithSameZeroValue(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x', '1')
@@ -707,7 +720,7 @@ GB().map(lambda x: int(x['value'])).aggregate({'sum':0, 'mul':1}, SumMulLocal, S
     '''
     res = env.expect('RG.PYEXECUTE', script).equal([["('mul', 6)", "('sum', 6)"], []])
 
-
+@gearsTest()
 def testAggregateByWithSameZeroValue(env):
     conn = getConnectionByEnv(env)
     conn.execute_command('set', 'x1', '1')
@@ -732,6 +745,7 @@ GB().aggregateby(lambda r: r['key'][0], {'sum':0, 'mul':1}, SumMulLocal, SumMulG
     '''
     env.expect('RG.PYEXECUTE', script).equal([["{'key': 'x', 'value': {'sum': 6, 'mul': 6}}", "{'key': 'y', 'value': {'sum': 6, 'mul': 6}}"], []])
 
+@gearsTest()
 def testClusterRefreshOnOnlySingleNode(env):
     if env.shardsCount <= 1:
         env.skip()
@@ -745,6 +759,7 @@ def testClusterRefreshOnOnlySingleNode(env):
     except Exception as e:  
         env.assertTrue(False, message='Failed waiting for execution to finish')
 
+@gearsTest()
 def testAccumulateNotCrashingOnEPReuse(env):
     if env.shardsCount <= 1:
         env.skip()
@@ -768,13 +783,13 @@ GB('CommandReader').flatmap(ReverseList).foreach(WaitIfNeeded).count().register(
     env.expect('RG.TRIGGER', 'test', 'error').equal('Execution max idle reached')
     env.expect('RG.TRIGGER', 'test', 'noerror').equal('Execution max idle reached')
 
+@gearsTest()
 def testConfigGetSet(env):
     env.expect('RG.CONFIGSET', 'test', 'test').contains('OK - value was saved in extra config dictionary')
     env.expect('RG.CONFIGGET', 'test').equal(['test'])
 
-
+@gearsTest(skipOnCluster=True)
 def testInfo(env):
-    env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('CommandReader').foreach(lambda x: __import__('time').sleep(2)).register(trigger='test')", 'REQUIREMENTS', 'redis').equal('OK')
     env.expect('RG.PYEXECUTE', "GB().foreach(lambda x: __import__('time').sleep(2)).register(eventTypes=['set','hset'], keyTypes=['string', 'hash'], commands=['set', 'hset'])").equal('OK')
     env.expect('RG.PYEXECUTE', "GB('StreamReader').foreach(lambda x: __import__('time').sleep(2)).register(prefix='s*')").equal('OK')
@@ -786,6 +801,7 @@ def testInfo(env):
     env.assertTrue(res.has_key('rg_nexecutions'))
     env.assertTrue(res.has_key('rg_nregistrations'))
 
+@gearsTest()
 def testSlowlogReportOnRun(env):
     info = env.cmd('info')
     redis_version = info['redis_version'].split('.')
@@ -801,6 +817,7 @@ def testSlowlogReportOnRun(env):
     env.assertGreaterEqual(len(res), 1)
     env.assertEqual(res[0][3], ['RG.PYEXECUTE', 'GB("ShardsIDReader").foreach(lambda x: __import__("time").sleep(1)).run()'])
 
+@gearsTest()
 def testSlowlogReportOnCommandReader(env):
     info = env.cmd('info')
     redis_version = info['redis_version'].split('.')
@@ -819,8 +836,8 @@ def testSlowlogReportOnCommandReader(env):
     env.assertGreaterEqual(len(res), 1)
     env.assertEqual(res[0][3], ['RG.TRIGGER', 'test'])
 
+@gearsTest(skipOnCluster=True)
 def test1676(env):
-    env.skipOnCluster()
     env.expect('RG.PYEXECUTE', "GB('StreamReader').map(lambda x: test()).register(onFailedPolicy='abort')").equal('OK')
     env.cmd('xadd', 's1', '*', 'foo', 'bar')
     env.cmd('XTRIM', 's1', 'MAXLEN', '0')
