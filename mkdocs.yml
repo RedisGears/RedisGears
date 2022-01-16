@@ -40,9 +40,10 @@ nav:
     - 'Configuration': 'configuration.md'
   - 'Examples': 'examples.md'
   - 'Clients': 'clients.md'
-  - 'Design':
+  - 'Advence Topics':
     - 'Isolation Technics': 'isolation.md'
     - 'Async Await Advance Topics': 'async_await_advance_topics.md'
+    - 'Commands Hook': 'commands_hook.md'
   - 'Glossary': 'glossary.md'
   - 'Contributing': 'contrib.md'
 

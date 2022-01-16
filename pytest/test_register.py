@@ -1367,6 +1367,33 @@ GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], com
         res = self.conn.execute_command('get', 'test1')
         self.env.assertEqual(res, 2)
 
+def testCommandHookWithExecute(env):
+    env.skipOnCluster()
+    script1 = '''
+def my_hset(r):
+    t = str(execute('time')[0])
+    new_args = r[1:] + ['_last_modified_', t]
+    return call_next(*new_args)
+
+GB('CommandReader').map(my_hset).register(hook='hset', mode='sync')
+    '''
+    script2 = '''
+def my_hset(r):
+    execute('hincrby', r[1], '_times_modified_', 1)
+    return call_next(*r[1:])
+
+GB('CommandReader').map(my_hset).register(hook='hset', mode='sync')
+    '''
+
+    env.expect('rg.pyexecute', script1).ok()
+    env.expect('rg.pyexecute', script2).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    env.expect('hset', 'k1', 'foo', 'bar').equal('2')
+    env.expect('hget', 'k1', '_times_modified_').equal('1')
+    env.expect('HEXISTS', 'k1', '_last_modified_').equal(True)
+
 def testCommandReaderInOrder(env):
     env.skipOnCluster()
     script = '''

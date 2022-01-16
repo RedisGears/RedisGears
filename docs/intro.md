@@ -832,6 +832,9 @@ In the last section we mentioned that the [run](functions.md#run) function retur
 The example registers two registrations on [CommandReader](readers.md#commandreader), the first is triggered using MSG_PUBLISH, and the second using MSG_CONSUME. The publish registration will basically call the `publish` function which will check if there are any consumers waiting on the consumer's list. If there are such, it will set the message as the result of the last consumer's future object, which will cause the message to reach this consumer. If there are no waiting consumers, it will create a future object and put it (together with the message) on the publisher's list. When a consumer will arrive, it will first check if there is a publisher waiting and if there is, it will take its message and release it with some OK reply. If there is no publisher waiting it will create a future object and will put it in the consumer's list, waiting for the next publisher to take it. Notice that all this code is protected under a mutex. We do not want race a condition on setting the future object and getting it by either publisher or consumer.
 !!! important "Notice"
     Mutex must be initialized inside the onRegistered callback because it's not serializable.
+!!! important "Notice"
+    Using mutex could be risky and can cause deadlocks with Redis Global Lock. Make sure to use
+    Mutex carefull and if not sure please consult.
 !!! example "Example: publisher"
     ````
     127.0.0.1:6379> RG.TRIGGER MSG_PUBLISH "this is a message"

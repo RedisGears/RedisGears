@@ -995,7 +995,8 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
 
 #define GEARS_OVERRIDE_COMMAND "rg.trigger"
 static RedisModuleString* GearsOverrideCommand = NULL;
-static Gears_listNode* startNode = NULL;
+static Gears_dict* startNodes = NULL;
+static Gears_listNode noOveride;
 
 void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
     if(!HookRegistrations){
@@ -1006,11 +1007,15 @@ void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
         return;
     }
 
-    Gears_listNode* node = startNode;
+    const RedisModuleString* cmd = RedisModule_CommandFilterArgGet(filter, 0);
+    const char* cmdCStr = RedisModule_StringPtrLen(cmd, NULL);
+    Gears_listNode* node = Gears_dictFetchValue(startNodes, cmdCStr);
+
+    if (node == &noOveride) {
+        return;
+    }
 
     if(!node){
-        const RedisModuleString* cmd = RedisModule_CommandFilterArgGet(filter, 0);
-        const char* cmdCStr = RedisModule_StringPtrLen(cmd, NULL);
         Gears_list* l = Gears_dictFetchValue(HookRegistrations, cmdCStr);
         if(!l){
             // command not found
@@ -1081,6 +1086,7 @@ void CommandReader_CommandFilter(RedisModuleCommandFilterCtx *filter){
 }
 
 int CommandReader_Initialize(RedisModuleCtx* ctx){
+    startNodes = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     GearsOverrideCommand = RedisModule_CreateString(NULL, GEARS_OVERRIDE_COMMAND, strlen(GEARS_OVERRIDE_COMMAND));
     RedisModuleCommandFilter *cmdFilter = RedisModule_RegisterCommandFilter(ctx, CommandReader_CommandFilter, 0);
 
@@ -1098,12 +1104,14 @@ RedisModuleCallReply* CommandReaderTriggerCtx_CallNext(CommandReaderTriggerCtx* 
     if(!crtCtx->listNode){
         return NULL;
     }
-    startNode = Gears_listNextNode(crtCtx->listNode);
-    if(!startNode){
-        noOverride = true;
+    Gears_listNode* oldStartNode = Gears_dictFetchValue(startNodes, crtCtx->args->hookData.hook);
+    Gears_listNode* startNode = Gears_listNextNode(crtCtx->listNode);
+    if (startNode) {
+        Gears_dictReplace(startNodes, crtCtx->args->hookData.hook, startNode);
+    } else {
+        Gears_dictReplace(startNodes, crtCtx->args->hookData.hook, &noOveride);
     }
-    RedisModuleCallReply *rep = RedisModule_Call(staticCtx, crtCtx->args->trigger, "!v", argv, argc);
-    startNode = NULL;
-    noOverride = false;
+    RedisModuleCallReply *rep = RedisModule_Call(staticCtx, crtCtx->args->hookData.hook, "!v", argv, argc);
+    Gears_dictReplace(startNodes, crtCtx->args->hookData.hook, oldStartNode);
     return rep;
 }

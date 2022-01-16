@@ -342,13 +342,18 @@ The reader returns a list record with elements being the trigger's name followed
 **_Event Mode_**
 
 ```python
-class GearsBuilder('CommandReader').register(trigger=None, inorder=True/False)
+class GearsBuilder('CommandReader').register(trigger=None, inorder=True/False hook=None, keyprefix=None)
 ```
 
 _Arguments_
 
 * _trigger_: the trigger's name
 * _inorder_: if `True`, the commands will run one after the other in the order they came (this option is only relevant for [`async_local`](functions.md#register) executions, on [`sync`](functions.md#register) executions you get it by default from the sync property, and its currently not possible to promise this property on [`async`](functions.md#register) executions ). Supported only on v1.0.7 and above.
+* _hook_: A Redis command to hook. (for further reading about command hook, please refer to [Commands Hook](commands_hook.md))
+* _keyprefix_: When hooking a command, specify the key prefix on which the hook will be triggered. (for further reading about command hook, please refer to [Commands Hook](commands_hook.md))
+
+!!! important "Notice"
+    It is not possible to mix `trigger` parameter with `hook` parameter, an attempt to do so will result in an error.
 
 **Examples**
 

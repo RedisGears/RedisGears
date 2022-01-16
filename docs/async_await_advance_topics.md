@@ -2,7 +2,7 @@
 
 RedisGears v1.2 introduces async-await support. Generally, RedisGears runs executions in background threads, the number of threads used for executions is configurable (using [ExecutionThreads](configuration.md#executionthreads) config value). When all the execution threads are busy, new execution will wait until an execution thread will take them and run them. So we do not want to get into a busy loop waiting for something to happen, such a loop will consume an execution thread and will not allow this thread to run new executions. This is what async-await is meant to solve. Async await allows us to wait for something to happen without consuming a thread from the executions thread pool.
 
-Using async-await, it is possible to give a python coroutine as a function step. The coroutine execution goes to a dedicated thread that runs a dedicated event loop to schedule all coroutines. Once the coroutine finished, the execution goes back to normal processing. For a full introduction to async-await please refer to [Async Await Support](intro.md#Async-Await-Support). We are going to cover some advanced topics related to async-await and its interaction with RedisGears.
+Using async-await, it is possible to give a python coroutine as a function step. The coroutine execution goes to a dedicated thread that runs a dedicated event loop to schedule all coroutines. Once the coroutine finished, the execution goes back to normal processing. For a full introduction to async-await please refer to [Async Await Support](intro.md#async-await-support). We are going to cover some advanced topics related to async-await and its interaction with RedisGears.
 
 ## Async Await on Sync executions
 

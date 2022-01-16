@@ -316,7 +316,7 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
     if(hook->info.commandFlags & COMMAND_FLAG_DENYOOM && RedisModule_GetUsedMemoryRatio){
         float memoryRetio = RedisModule_GetUsedMemoryRatio();
         if(memoryRetio > 1){
-            // we are our of memory and should deny the command
+            // we are out of memory and should deny the command
             RedisModule_ReplyWithError(ctx, "OOM command not allowed when used memory > 'maxmemory'");
             noFilter = false;
             return REDISMODULE_OK;
