@@ -12,8 +12,8 @@ except:
 
 def getConnectionByEnv(env):
     conn = None
+    env.broadcast('rg.refreshcluster')
     if env.env == 'oss-cluster' and env.shardsCount > 1:
-        env.broadcast('rg.refreshcluster')
         conn = env.envRunner.getClusterConnection()
         for s in range(1, env.shardsCount + 1):
             while True:
