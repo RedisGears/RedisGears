@@ -235,15 +235,17 @@ def isAsyncAllow()
 
 ## call_next
 The `call_next` function is imported to the runtime's environment by default.
-
-This function allows to call the next hook registered on the command or the original Redis command (for further reading about command hook, please refer to [Commands Hook](commands_hook.md)). It is only possible to call this API when hooking a command. Any attempt to call this API on the wrong context will result in an error.
-
+ 
+This function allows you to call the next hook registered on the command or the original Redis command (for further reading about command hook, please refer to [Commands Hook](commands_hook.md)). It is only possible to call this API when hooking a command. Any attempt to call this API in the wrong context will result in an error.
+ 
 **Python API**
-
+ 
 ```python
 def call_next(*args)
 ```
-
+ 
 _Arguments_
-
+ 
 * args: arguments with which to invoke the next hook.
+ 
+
