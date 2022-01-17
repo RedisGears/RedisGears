@@ -260,4 +260,4 @@ def override_reply(reply)
 
 _Arguments_
 
-* reply: the new reply to send to the client.
+* reply: the new reply to send to the client. If the reply starts with `-` it will be returned as error reply. If the reply starts with `+` it will be returned as a status reply.
