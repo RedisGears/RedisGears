@@ -19,4 +19,4 @@ def CountStudents(r):
 		return c
 	return AsyncCountStudents()
 
-GB('CommandReader').map(CountStudents).register(trigger='COUNT_STUDENTS', mode='sync')
+GB('CommandReader').map(CountStudents).register(trigger='COUNT_STUDENTS1', mode='sync')

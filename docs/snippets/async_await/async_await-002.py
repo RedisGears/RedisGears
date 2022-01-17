@@ -49,5 +49,5 @@ def initializeMutex():
     global mutex
     mutex = MyMutex()
 
-GB('CommandReader').map(publish).register(trigger='MSG_PUBLISH')
-GB('CommandReader').map(consume).register(trigger='MSG_CONSUME', onRegistered=initializeMutex)
+GB('CommandReader').map(publish).register(trigger='MSG_PUBLISH1')
+GB('CommandReader').map(consume).register(trigger='MSG_CONSUME1', onRegistered=initializeMutex)

@@ -291,7 +291,7 @@ def runCoroutine(cr, f=None, delay=0, s=None):
             return
         if f is not None:
             f.continueRun(res)
-    asyncio.run_coroutine_threadsafe(runInternal(), loop)
+    asyncio.run_coroutine_threadsafe(runInternal(), globals()['loop'])
     
 def profilerCreate():
     return cProfile.Profile()
