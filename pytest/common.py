@@ -164,6 +164,11 @@ def gearsTest(skipTest=False,
                 if skipCallback():
                     raise unittest.SkipTest()
             env = Env(testName = test_function.__name__, **envArgs)
+            if env.isCluster():
+                # make sure cluster will not turn to failed state and we will not be 
+                # able to execute commands on shards, on slow envs, run with valgrind,
+                # or mac, it is needed.
+                env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
             getConnectionByEnv(env)
             test_function(env)
             if not skipCleanups:
