@@ -1,7 +1,7 @@
 # Commands Hook (experimental API)
  
 !!! important "Notice"
-   Command hook API is considered experimental, which means that it's not yet stable and might change in the future, use it with caution and at your own risk.
+    Command hook API is considered experimental, which means that it's not yet stable and might change in the future, use it with caution and at your own risk.
  
 RedisGears v1.2 introduces the ability to hook vanila Redis commands with a custom implementation. This can be done using the new [`hook`]() parameter to the [CommandReader](readers.md#commandreader). The following allows to overide the `hset` command and add the current time as `_last_modified_` field:
 ```python
@@ -83,8 +83,8 @@ You can see that on `person:1` both hooks were triggered while on `k1` only the 
 On the following cases, it is not possible to hook a command:
  
 * It is **not** possible to hook a command on the following cases:
-   * If the **command has movable keys**
-   * If the **command is marked with noscript flag**
+    * If the **command has movable keys** and `keyprefix` was used
+    * If the **command is marked with noscript flag**
 * It is possible to hook a command with a none sync execution (see [execution mode](file:///home/meir/work/RedisGears/site/async_await_doc/functions.html#register)). but once its done, it is not possible to hook it again (perform a nested hook). Also, **hooking a command with none sync execution will cause it to not be invokable from within a Lua script on MULTI EXEC**.
  
 

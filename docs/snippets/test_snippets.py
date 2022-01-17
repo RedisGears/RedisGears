@@ -106,6 +106,9 @@ def standalone(image):
         ('docs/snippets/command_hook/command_hook-000.py', b'OK'),
         ('docs/snippets/command_hook/command_hook-001.py', b'OK'),
         ('docs/snippets/command_hook/command_hook-002.py', b'OK'),
+        ('docs/snippets/miss_event/miss_event-000.py', b'OK'),
+        ('docs/snippets/miss_event/miss_event-001.py', b'OK'),
+        ('docs/snippets/miss_event/miss_event-002.py', b'OK'),
     ],
 )
 

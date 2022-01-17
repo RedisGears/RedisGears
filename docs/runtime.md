@@ -248,4 +248,16 @@ _Arguments_
  
 * args: arguments with which to invoke the next hook.
  
+## override_reply
+The `override_reply` function is imported to the runtime's environment by default.
+This function allows to override the reply of the client linked to the execution. It is only possible to use it on [`KeysReader`](readers.md#keysreader) with combination of the `commands` argument. For further reading please refer to [key miss event](miss_event.md) taturial.
 
+**Python API**
+
+```python
+def override_reply(reply)
+```
+
+_Arguments_
+
+* reply: the new reply to send to the client.

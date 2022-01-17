@@ -53,6 +53,7 @@ You can control the reader's event operation as follows:
   * Prefix: generates records only for key names that start with the prefix
   * Events: same, but only for whitelisted events
   * Types: same, but only for whitelisted data types
+  * Commands: same, but only for whitelisted commands
   * Read value: a Boolean specifying whether the value is read or not
 
 **Python API**
@@ -73,18 +74,19 @@ _Arguments_
 
 ```python
 class GearsBuilder('KeysReader').register(prefix='*', eventTypes=None,
-  keyTypes=None, readValue=True)
+  keyTypes=None, commands=None, readValue=True)
 ```
 
 _Arguments_
 
 * _prefix_: a prefix of key names
 * _eventTypes_: a whitelist of event types that trigger execution when the [KeysReader](readers.md#keysreader) are used. The list may contain one or more:
-    * Any Redis or module command
     * Any [Redis event](https://redis.io/topics/notifications)
+    * Modules events are depends on the events the module expose.
 * _keyTypes_: a whitelist of key types that trigger execution when using the [KeysReader](readers.md#keysreader) or [KeysOnlyReader](readers.md#keysonlyreaders) readers. The list may contain one or more from the following:
     * Redis core types: 'string', 'hash', 'list', 'set', 'zset' or 'stream'
     * Redis module types: 'module'
+* _commands_: a whitelist of commands to fire the events on, in such case the client that executed the command is linked to the trigged executions and it is possible to use [`override_reply`](runtime.md#override_reply) to change the reply to the client. For further reading please refer to [key miss event](miss_event.md) taturial.
 * _readValue_: when `#!python False` the value will not be read, so the **'type'** and **'value'** of the record will be set to `#!python None`
 
 _Return_
