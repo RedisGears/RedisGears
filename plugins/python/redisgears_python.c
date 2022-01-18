@@ -77,17 +77,19 @@ static int PyInitializeRedisAI(){
     if (globals.redisAILoaded){
         return REDISMODULE_OK;
     }
+    // If this API is not supported, we cannot initialize RedisAI low-level API using staticCtx.
+    // Todo: use the MODULE_LOADED event to register redisAI API for older redis versions.
     if(!RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)) {
         RedisModule_Log(staticCtx, "warning",
           "Redis version is to old, please upgrade to a newer version.");
         return REDISMODULE_ERR;
     }
-    RedisModule_ThreadSafeContextLock(staticCtx);
+    RedisGears_LockHanlderAcquire(staticCtx);
     int ret = RedisAI_Initialize(staticCtx);
     if(ret == REDISMODULE_OK){
         globals.redisAILoaded = true;
     }
-    RedisModule_ThreadSafeContextUnlock(staticCtx);
+    RedisGears_LockHanlderRelease(staticCtx);
     return ret;
 }
 
@@ -579,8 +581,8 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
 
         FILE *f = fopen(filePath, "rb");
         if(!f){
-            RG_FREE(filePath);
             RedisGears_ASprintf(err, "Could not open file %s", filePath);
+            RG_FREE(filePath);
             RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
@@ -591,9 +593,9 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         char *data = RG_ALLOC(fsize);
         size_t readData = fread(data, 1, fsize, f);
         if(readData != fsize){
+            RedisGears_ASprintf(err, "Could read data from file %s", filePath);
             RG_FREE(data);
             RG_FREE(filePath);
-            RedisGears_ASprintf(err, "Could read data from file %s", filePath);
             RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
