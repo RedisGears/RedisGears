@@ -35,6 +35,8 @@ PythonConfig pythonConfig;
 
 static RedisModuleCtx *staticCtx = NULL;
 
+static RedisVersion *redisVersion = NULL;
+
 #define PY_OBJECT_TYPE_VERSION 1
 
 #define PY_SESSION_TYPE_VERSION 1
@@ -1816,7 +1818,15 @@ static PyObject* atomicEnter(PyObject *self, PyObject *args){
     ptctx->flags |= PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
     RedisGears_LockHanlderAcquire(pyAtomic->ctx);
-    RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* Before Redis 7 we need to manually wrap the atomic
+         * execution with multi exec to make sure the replica
+         * will also perform the commands atomically.
+         * On Redis 7 and above, thanks to this PR:
+         * https://github.com/redis/redis/pull/9890
+         * It is not needed anymore. */
+        RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    }
     Py_INCREF(self);
     return self;
 }
@@ -1829,7 +1839,10 @@ static PyObject* atomicExit(PyObject *self, PyObject *args){
     }
     ptctx->flags &= ~PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
-    RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* see comment on atomicEnter */
+        RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    }
     RedisGears_LockHanlderRelease(pyAtomic->ctx);
     Py_INCREF(Py_None);
     return Py_None;
@@ -6815,6 +6828,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
         return REDISMODULE_ERR;
     }
+
+    redisVersion = RedisGears_GetRedisVersion();
 
     RedisGears_PluginSetInfoCallback(p, Python_Info);
 
