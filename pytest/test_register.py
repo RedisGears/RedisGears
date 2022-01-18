@@ -1545,3 +1545,29 @@ def testStreamReaderOnUninitializedCluster(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
+
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
+def testMissEventOnClusterKeepsClusterErrors(env):
+    env.expect('RG.PYEXECUTE', "GB().register(commands=['get'], eventTypes=['keymiss'])").equal('OK')
+    verifyRegistrationIntegrity(env)
+
+    conn1 = env.getConnection(shardId=1)
+
+    try:
+        conn1.execute_command('get', 'x')
+    except Exception as e:
+        env.assertContains('MOVED', str(e))
+
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
+def testCommandHookOnClusterKeepsClusterErrors(env):
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').register(hook='get', mode='sync')").equal('OK')
+    verifyRegistrationIntegrity(env)
+
+    conn1 = env.getConnection(shardId=1)
+
+    try:
+        conn1.execute_command('get', 'x')
+        env.assertTrue(False, message='No error raised')
+    except Exception as e:
+        print(str(e))
+        env.assertContains('MOVED', str(e))
