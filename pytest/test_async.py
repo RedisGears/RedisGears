@@ -1048,7 +1048,7 @@ GB("ShardsIDReader").map(doTest).run()
                     wait_for_execution = False
                     env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
                     break
-                if e[3] == 'done':
+                elif e[3] == 'done':
                     env.debugPrint('execution finished before aborting, test is not testing what it was supposed to test.')
                     wait_for_execution = False
                     env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
