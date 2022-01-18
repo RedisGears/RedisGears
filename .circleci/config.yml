@@ -56,6 +56,7 @@ commands:
           command: |
             git submodule update --init deps/readies
             ./deps/readies/bin/getpy2
+            ./deps/readies/bin/getpy3
 
   install-prerequisites:
     parameters:
@@ -128,7 +129,12 @@ commands:
             bash -l -c "make get_deps"
             bash -l -c "make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1"
       - run:
-          name: Test
+          name: Build JVMPlugin
+          command: |
+            ./plugins/jvmplugin/system-setup.py
+            bash -l -c "make jvmplugin"
+      - run:
+          name: Gears Tests
           command: make test <<parameters.test_params>>
           no_output_timeout: 30m
       - save-tests-logs

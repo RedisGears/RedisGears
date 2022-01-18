@@ -10,6 +10,3 @@
 [submodule "deps/hiredis"]
 	path = deps/hiredis
 	url = https://github.com/redis/hiredis.git
-[submodule "deps/jvmplugin"]
-	path = deps/jvmplugin
-	url = https://github.com/redisgears/jvmplugin
