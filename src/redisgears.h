@@ -29,6 +29,12 @@
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
 
+typedef struct RedisVersion{
+    int redisMajorVersion;
+    int redisMinorVersion;
+    int redisPatchVersion;
+}RedisVersion;
+
 #define ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
 #define STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
 
@@ -559,6 +565,8 @@ typedef void (*AfterConfigSet)(const char* key, const char* val);
 typedef int (*GetConfig)(const char* key, RedisModuleCtx* ctx);
 GEARS_API void MODULE_API_FUNC(RedisGears_AddConfigHooks)(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig);
 
+GEARS_API RedisVersion* MODULE_API_FUNC(RedisGears_GetRedisVersion)();
+
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
@@ -1017,6 +1025,8 @@ static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddLockStateHandler);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddConfigHooks);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterLoadingEvent);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRedisVersion);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return NULL;

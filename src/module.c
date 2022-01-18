@@ -23,6 +23,7 @@
 #include "mappers.h"
 #include "lock_handler.h"
 #include "command_hook.h"
+#include "../plugins/python/redisgears_python.h"
 
 #include <unistd.h>
 #include <dlfcn.h>
@@ -832,6 +833,10 @@ static void RG_RegisterLoadingEvent(RedisModuleEventCallback pluginLoadingCallba
 
 }
 
+static RedisVersion* RG_GetRedisVersion() {
+    return &currVesion;
+}
+
 static void RedisGears_OnLoadingEvent(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
     if(pluginLoadingCallbacks){
         for(size_t i = 0 ; i < array_len(pluginLoadingCallbacks) ; ++i){
@@ -896,6 +901,16 @@ static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when
                     return REDISMODULE_ERR;
                 }
                 RedisModule_Free(name);
+            }
+        } else {
+            // RDB was save on version without plugins (v1.0.x)
+            // on this version we have the python plugin by default.
+            // We need to verify that we have the python plugin loaded
+            // otherwise we can not load this RDB
+            if (!Gears_dictFetchValue(plugins, REDISGEARSPYTHON_PLUGIN_NAME)) {
+                // we do not have the python plugin, we can not load the RDB.
+                RedisModule_LogIOError(rdb, "warning", "RDB created on RedisGears v1.0.x require the python plugin which is currently not loaded.");
+                return REDISMODULE_ERR;
             }
         }
 
@@ -1158,6 +1173,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(KeysReaderSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderRegisterReadRecordCallback, ctx);
+
+    REGISTER_API(GetRedisVersion, ctx);
 
     return REDISMODULE_OK;
 }

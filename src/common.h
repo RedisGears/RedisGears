@@ -10,6 +10,7 @@
 #include "version.h"
 #include "utils/dict.h"
 #include "redismodule.h"
+#include "redisgears.h"
 #include "cluster.h"
 
 #include "utils/arr_rm_alloc.h"
@@ -27,12 +28,6 @@
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
 extern Gears_dictType* dictTypeHeapIdsPtr;
-
-typedef struct RedisVersion{
-    int redisMajorVersion;
-    int redisMinorVersion;
-    int redisPatchVersion;
-}RedisVersion;
 
 extern RedisVersion currVesion;
 extern RedisVersion supportedVersion;
