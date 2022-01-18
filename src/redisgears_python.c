@@ -23,6 +23,8 @@
 #include "cluster.h"
 
 
+static RedisVersion *redisVersion = NULL;
+
 #define PY_OBJECT_TYPE_VERSION 1
 
 #define PY_SESSION_TYPE_VERSION 1
@@ -1544,17 +1546,28 @@ typedef struct PyAtomic{
 static PyObject* atomicEnter(PyObject *self, PyObject *args){
     PyAtomic* pyAtomic = (PyAtomic*)self;
     LockHandler_Acquire(pyAtomic->ctx);
-    RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* Before Redis 7 we need to manually wrap the atomic
+         * execution with multi exec to make sure the replica
+         * will also perform the commands atomically.
+         * On Redis 7 and above, thanks to this PR:
+         * https://github.com/redis/redis/pull/9890
+         * It is not needed anymore. */
+        RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    }
     Py_INCREF(self);
     return self;
 }
 
 static PyObject* atomicExit(PyObject *self, PyObject *args){
     PyAtomic* pyAtomic = (PyAtomic*)self;
+    if (redisVersion->redisMajorVersion < 7) {
+        /* see comment on atomicEnter */
+        RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    }
     LockHandler_Release(pyAtomic->ctx);
-    RedisModule_Replicate(pyAtomic->ctx, "exec", "");
-    Py_INCREF(self);
-    return self;
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 static void PyAtomic_Destruct(PyObject *pyObj){
@@ -4762,6 +4775,7 @@ static void PythonThreadCtx_Destructor(void *p) {
 }
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
+    redisVersion = RedisGears_GetRedisVersion();
     installDepsPool = Gears_thpool_init(1);
     InitializeGlobalPaths();
     PrintGlobalPaths(ctx);

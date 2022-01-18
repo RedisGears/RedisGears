@@ -530,6 +530,10 @@ static void RedisGears_SaveRegistrations(RedisModuleIO *rdb, int when){
     RedisModule_SaveStringBuffer(rdb, "", 1); // empty str mean the end!
 }
 
+static RedisVersion* RG_GetRedisVersion() {
+    return &currVesion;
+}
+
 static int RedisGears_LoadRegistrations(RedisModuleIO *rdb, int encver, int when){
     if(encver > REDISGEARS_DATATYPE_VERSION){
         RedisModule_LogIOError(rdb, "warning", "could not load rdb created with higher RedisGears version!");
@@ -714,6 +718,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(WorkerDataGetShallowCopy, ctx);
     REGISTER_API(GetCompiledOs, ctx);
     REGISTER_API(ReturnResultsAndErrors, ctx);
+
+    REGISTER_API(GetRedisVersion, ctx);
 
     return REDISMODULE_OK;
 }
