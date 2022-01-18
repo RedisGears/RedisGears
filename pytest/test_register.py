@@ -1569,5 +1569,4 @@ def testCommandHookOnClusterKeepsClusterErrors(env):
         conn1.execute_command('get', 'x')
         env.assertTrue(False, message='No error raised')
     except Exception as e:
-        print(str(e))
         env.assertContains('MOVED', str(e))
