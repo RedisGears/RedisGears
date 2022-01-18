@@ -824,6 +824,10 @@ static void RG_RegisterLoadingEvent(RedisModuleEventCallback pluginLoadingCallba
 
 }
 
+static RedisVersion* RG_GetRedisVersion() {
+    return &currVesion;
+}
+
 static void RedisGears_OnLoadingEvent(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
     if(pluginLoadingCallbacks){
         for(size_t i = 0 ; i < array_len(pluginLoadingCallbacks) ; ++i){
@@ -1149,6 +1153,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(KeysReaderTriggerArgsSetReadRecordCallback, ctx);
     REGISTER_API(KeysReaderRegisterReadRecordCallback, ctx);
 
+    REGISTER_API(GetRedisVersion, ctx);
+
     return REDISMODULE_OK;
 }
 
@@ -1294,7 +1300,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
                         gearsRlecMajorVersion, gearsRlecMinorVersion, gearsRlecPatchVersion, gearsRlecBuild);
     }
 
-    if(GearsCheckSupportedVestion() != REDISMODULE_OK){
+    if(GearsCheckSupportedVersion() != REDISMODULE_OK){
         RedisModule_Log(staticCtx, "warning", "Redis version is to old, please upgrade to redis %d.%d.%d and above.", supportedVersion.redisMajorVersion,
                                                                                                                 supportedVersion.redisMinorVersion,
                                                                                                                 supportedVersion.redisPatchVersion);
