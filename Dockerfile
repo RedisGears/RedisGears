@@ -38,7 +38,7 @@ RUN bash -l -c "make fetch SHOW=1"
 RUN bash -l -c "make all SHOW=1"
 
 RUN ./plugins/jvmplugin/system-setup.py
-RUN make jvmplugin
+RUN bash -l -c "make jvmplugin"
 RUN ./getver > artifacts/VERSION
 
 ARG PACK

@@ -380,7 +380,7 @@ workflows:
           context: common
           matrix:
             parameters:
-              platform: [hirsute, focal, bionic, xenial, centos7, centos8]
+              platform: [hirsute, focal, bionic, xenial, centos7, centos8, bullseye]
       - valgrind:
          #<<: *on-integ-and-version-tags
           <<: *on-any-branch
