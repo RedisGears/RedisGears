@@ -17,6 +17,24 @@ void* CommandHook_Unhook(CommandHookCtx* hook);
  */
 CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err);
 
+/*
+ * Used when `getkeys-api` flag is set on a command, calling RedisModule_GetCommandKeys to get
+ * command keys, and then declare it to Redis.
+ */
+void CommandHook_DeclareKeys(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+
+/*
+ * Used when `getkeys-api` flag is set on a command and RedisModule_GetCommandKeys is not exists (on
+ * old Redis version). In this case we need to get:
+ * * first key
+ * * last key
+ * * jump
+ * * number of arguments
+ *
+ * Base on this parameters, use RedisModule_KeyAtPos to declare the keys.
+ */
+void CommandHook_DeclareKeysLegacy(RedisModuleCtx *ctx, size_t nArgs, int first, int last, int jump);
+
 int CommandHook_Init();
 
 #endif /* SRC_COMMAND_HOOK_H_ */

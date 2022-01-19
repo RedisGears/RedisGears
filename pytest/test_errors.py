@@ -487,7 +487,7 @@ GB("CommandReader").map(doTest).register(trigger='test', mode='sync')
     env.cmd('rg.pyexecute', script)
     env.expect('rg.trigger', 'test').error().contains('Can not create gearsFuture on sync execution')
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testCommandOverrideWithMoreThenSingleResultReturnError(env):
     script = '''
 GB("CommandReader").flatmap(lambda x: x).register(hook='hset', mode='sync')
