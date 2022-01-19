@@ -2,6 +2,7 @@
 #define REDISMODULE_MAIN
 
 #include <Python.h>
+#include "redisgears_python.h"
 #include "redisai.h"
 #include "globals.h"
 #include "redisgears.h"
@@ -33,6 +34,8 @@ typedef struct PythonConfig{
 PythonConfig pythonConfig;
 
 static RedisModuleCtx *staticCtx = NULL;
+
+static RedisVersion *redisVersion = NULL;
 
 #define PY_OBJECT_TYPE_VERSION 1
 
@@ -1815,7 +1818,15 @@ static PyObject* atomicEnter(PyObject *self, PyObject *args){
     ptctx->flags |= PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
     RedisGears_LockHanlderAcquire(pyAtomic->ctx);
-    RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* Before Redis 7 we need to manually wrap the atomic
+         * execution with multi exec to make sure the replica
+         * will also perform the commands atomically.
+         * On Redis 7 and above, thanks to this PR:
+         * https://github.com/redis/redis/pull/9890
+         * It is not needed anymore. */
+        RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    }
     Py_INCREF(self);
     return self;
 }
@@ -1828,7 +1839,10 @@ static PyObject* atomicExit(PyObject *self, PyObject *args){
     }
     ptctx->flags &= ~PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
-    RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* see comment on atomicEnter */
+        RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    }
     RedisGears_LockHanlderRelease(pyAtomic->ctx);
     Py_INCREF(Py_None);
     return Py_None;
@@ -6781,18 +6795,6 @@ static int Python_BeforeConfigChange(const char* key, const char* val, char** er
     return REDISMODULE_OK;
 }
 
-#define REDISGEARSPYTHON_PLUGIN_NAME "GearsPythonPlugin"
-
-#define REDISGEARSPYTHON_VERSION_MAJOR 1
-#define REDISGEARSPYTHON_VERSION_MINOR 0
-#define REDISGEARSPYTHON_VERSION_PATCH 0
-
-#define STR1(a) #a
-#define STR(e) STR1(e)
-
-#define REDISGEARSPYTHON_PLUGIN_VERSION \
-  (REDISGEARSPYTHON_VERSION_MAJOR * 10000 + REDISGEARSPYTHON_VERSION_MINOR * 100 + REDISGEARSPYTHON_VERSION_PATCH)
-
 static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
     if (RedisModule_InfoAddSection(ctx, "python_stats") == REDISMODULE_OK) {
         RedisModule_InfoAddFieldULongLong(ctx, "TotalAllocated", totalAllocated);
@@ -6826,6 +6828,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
         return REDISMODULE_ERR;
     }
+
+    redisVersion = RedisGears_GetRedisVersion();
 
     RedisGears_PluginSetInfoCallback(p, Python_Info);
 

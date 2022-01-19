@@ -1540,8 +1540,44 @@ def testStreamReaderOnUninitializedCluster(env):
         with TimeLimit(5):
             while True:
                 res = conn2.execute_command('RG.DUMPEXECUTIONS')
-                if len(res) == 1:
+                if len(res) >= 1:
                     break
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
+
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
+def testMissEventOnClusterKeepsClusterErrors(env):
+    env.expect('RG.PYEXECUTE', "GB().register(commands=['get'], eventTypes=['keymiss'])").equal('OK')
+    verifyRegistrationIntegrity(env)
+
+    conn1 = env.getConnection(shardId=1)
+
+    try:
+        conn1.execute_command('get', 'x')
+    except Exception as e:
+        env.assertContains('MOVED', str(e))
+
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
+def testCommandHookOnClusterKeepsClusterErrors(env):
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').register(hook='get', mode='sync')").equal('OK')
+    verifyRegistrationIntegrity(env)
+
+    conn1 = env.getConnection(shardId=1)
+
+    try:
+        conn1.execute_command('get', 'x')
+        env.assertTrue(False, message='No error raised')
+    except Exception as e:
+        env.assertContains('MOVED', str(e))
+
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
+def testRGTriggerOnKey(env):
+    conn2 = env.getConnection(shardId=2)
+    env.expect('rg.pyexecute', "GB('CommandReader').foreach(lambda x: print('fooooooooooooo')).map(lambda x: execute('set', x[1], x[2])).register(trigger='my_set', mode='sync')").ok()
+    verifyRegistrationIntegrity(env)
+
+    env.expect('RG.TRIGGERONKEY', 'my_set', 'x', '1').error().contains('')
+    conn2.execute_command('RG.TRIGGERONKEY', 'my_set', 'x', '1')
+
+    env.assertEqual(conn2.execute_command('get', 'x'), '1')

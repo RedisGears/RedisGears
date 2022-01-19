@@ -5,6 +5,7 @@
 #include "lock_handler.h"
 #include "version.h"
 #include "cluster.h"
+#include "command_hook.h"
 
 #include <string.h>
 
@@ -894,6 +895,23 @@ static void CommandReader_ExectionHoldingCallback(ExecutionPlan* ep, void* priva
 }
 
 static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    /* Handle getkeys-api introspection */
+    if (RedisModule_IsKeysPositionRequest(ctx)) {
+        if (currTCtx) {
+            // Only on command hook we want to check for keys
+            if (RMAPI_FUNC_SUPPORTED(RedisModule_GetCommandKeys)) {
+                CommandHook_DeclareKeys(ctx, argv + 1, argc - 1);
+            } else {
+                // fallback to calculate key ourself to support old redis versions.
+                CommandReaderTriggerArgs* triggerArgs = currTCtx->args;
+
+                CommandReaderTriggerInfo* info = &(triggerArgs->hookData.info);
+                CommandHook_DeclareKeysLegacy(ctx, argc - 1, info->firstKey, info->lastKey, info->jump);
+            }
+        }
+        return REDISMODULE_OK;
+    }
+
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
@@ -1082,11 +1100,16 @@ int CommandReader_Initialize(RedisModuleCtx* ctx){
     GearsOverrideCommand = RedisModule_CreateString(NULL, GEARS_OVERRIDE_COMMAND, strlen(GEARS_OVERRIDE_COMMAND));
     RedisModuleCommandFilter *cmdFilter = RedisModule_RegisterCommandFilter(ctx, CommandReader_CommandFilter, 0);
 
-    // this command is considered readonly but it might actaully write data to redis
+    // this command is considered readonly but it might actually write data to Redis
     // using rm_call. In this case the effect of the execution is replicated
     // and not the execution itself.
-    if (RedisModule_CreateCommand(ctx, GEARS_OVERRIDE_COMMAND, CommandReader_Trigger, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(staticCtx, "warning", "could not register command rg.command");
+    if (RedisModule_CreateCommand(ctx, GEARS_OVERRIDE_COMMAND, CommandReader_Trigger, "getkeys-api readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command "GEARS_OVERRIDE_COMMAND);
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.triggeronkey", CommandReader_Trigger, "readonly", 2, 2, 1) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.triggeronkey");
         return REDISMODULE_ERR;
     }
     return REDISMODULE_OK;
