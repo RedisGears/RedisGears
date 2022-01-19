@@ -1545,3 +1545,14 @@ def testStreamReaderOnUninitializedCluster(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
+
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
+def testRGTriggerOnKey(env):
+    conn2 = env.getConnection(shardId=2)
+    env.expect('rg.pyexecute', "GB('CommandReader').foreach(lambda x: print('fooooooooooooo')).map(lambda x: execute('set', x[1], x[2])).register(trigger='my_set', mode='sync')").ok()
+    verifyRegistrationIntegrity(env)
+
+    env.expect('RG.TRIGGERONKEY', 'my_set', 'x', '1').error().contains('')
+    conn2.execute_command('RG.TRIGGERONKEY', 'my_set', 'x', '1')
+
+    env.assertEqual(conn2.execute_command('get', 'x'), '1')

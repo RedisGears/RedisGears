@@ -1086,7 +1086,12 @@ int CommandReader_Initialize(RedisModuleCtx* ctx){
     // using rm_call. In this case the effect of the execution is replicated
     // and not the execution itself.
     if (RedisModule_CreateCommand(ctx, GEARS_OVERRIDE_COMMAND, CommandReader_Trigger, "readonly", 0, 0, 0) != REDISMODULE_OK) {
-        RedisModule_Log(staticCtx, "warning", "could not register command rg.command");
+        RedisModule_Log(staticCtx, "warning", "could not register command "GEARS_OVERRIDE_COMMAND);
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.triggeronkey", CommandReader_Trigger, "readonly", 2, 2, 1) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.triggeronkey");
         return REDISMODULE_ERR;
     }
     return REDISMODULE_OK;
