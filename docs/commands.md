@@ -25,6 +25,7 @@ The following sections describe the supported commands.
 | [`RG.PYDUMPREQS`](#rgpydumpreqs) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
+| [`RG.TRIGGERONKEY`](#rgtriggeronkey) | Triggers execution of registration on a given key |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
 
 **Syntax Conventions**
@@ -725,6 +726,36 @@ redis> RG.PYEXECUTE "GB('CommandReader').register(trigger='mytrigger')"
 OK
 redis> RG.TRIGGER mytrigger foo bar
 1) "['mytrigger', 'foo', 'bar']"
+```
+
+## RG.TRIGGERONKEY
+The **RG.TRIGGERONKEY** command is the same as **RG.TRIGGER**, the difference is that the third argument is considered a key so client will know how to direct the command to the correct shard.
+
+**Redis API**
+
+```
+RG.TRIGGERONKEY <trigger> key [arg ...]
+```
+
+_Arguments_
+
+* **trigger**: the trigger's name
+* **key**: a key on which the trigger is executed on
+* **arg**: any additional arguments
+
+_Return_
+
+An array containing the function's output records.
+
+**Examples**
+
+```
+redis> RG.PYEXECUTE "GB('CommandReader').map(lambda x: execute('set', x[1], x[2])).register(trigger='my_set')"
+OK
+redis> RG.TRIGGERONKEY my_set foo bar
+1) "OK"
+redis> get foo
+bar
 ```
 
 ## RG.UNREGISTER
