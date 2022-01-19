@@ -140,6 +140,29 @@ commands:
       - save-tests-logs
       - persist-artifacts
 
+  build-with-redis-versions:
+    parameters:
+      platform:
+        type: string
+      redis_version:
+        type: string
+    steps:
+      - early-returns
+      - setup-executor
+      - checkout-all
+      - setup-automation
+      - run:
+          name: Build for platform
+          command: |
+            pushd build/docker
+            make build $(./version-params) REDIS_VER=<<parameters.redis_version>> OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
+            popd
+            logs_d=pytest/logs/<<parameters.platform>>
+            mkdir -p $logs_d
+            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
+          no_output_timeout: 40m
+      - save-tests-logs
+
   build-platforms-steps:
     parameters:
       platform:
@@ -174,7 +197,7 @@ commands:
 #----------------------------------------------------------------------------------------------------------------------------------
 
 jobs:
-  build-linux-debian:
+  build-redis-versions:
     docker:
       - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     parameters:
@@ -182,8 +205,8 @@ jobs:
         type: string
         default: "6"
     steps:
-      - build-steps:
-          platform: debian
+      - build-with-redis-versions:
+          platform: bionic
           redis_version: <<parameters.redis_version>>
 
   valgrind:
@@ -365,15 +388,13 @@ workflows:
   version: 2
   default-flow:
     jobs:
-      - build-linux-debian:
-          <<: *not-on-integ-branch
-      - build-linux-debian:
+      - build-redis-versions:
           name: build-with-redis-<< matrix.redis_version >>
          #<<: *on-integ-branch
           <<: *on-any-branch
           matrix:
             parameters:
-              redis_version: ["6.0", "6.2"]
+              redis_version: ["6.0.9", "6.2.6"]
       - build-platforms:
          #<<: *on-integ-and-version-tags
           <<: *on-any-branch
@@ -418,8 +439,8 @@ workflows:
     jobs:
       - build-macos
       - valgrind
-      - build-linux-debian:
+      - build-redis-versions:
           name: build-with-redis-<< matrix.redis_version >>
           matrix:
             parameters:
-              redis_version: ["6.0", "6.2"]
+              redis_version: ["6.0.9", "6.2.6"]
