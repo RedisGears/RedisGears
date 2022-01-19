@@ -1581,3 +1581,13 @@ def testRGTriggerOnKey(env):
     conn2.execute_command('RG.TRIGGERONKEY', 'my_set', 'x', '1')
 
     env.assertEqual(conn2.execute_command('get', 'x'), '1')
+
+@gearsTest()
+def testCaseInsensetiveEventTypes(env):
+    env.expect('rg.pyexecute', "GB().foreach(lambda x: execute('set', '{%s}1' % x['key'], '1')).register(eventTypes=['SET'], mode='sync')").ok()
+    verifyRegistrationIntegrity(env)
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('set', 'x', '1')
+    env.assertEqual(conn.execute_command('get', '{x}1'), '1')
