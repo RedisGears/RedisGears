@@ -1545,3 +1545,29 @@ def testStreamReaderOnUninitializedCluster(env):
                 time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
+
+@gearsTest(skipOnCluster=True)
+def testStreamReaderOnUninitializedCluster(env):
+    script = '''
+g = 1
+def f1():
+    global g
+    g = g + 1
+    print(id(globals()))
+    return g
+
+def f(x):
+    global g
+    g = g + 1
+    print(id(globals()))
+    return f1()
+
+GB('CommandReader').map(f).register(trigger='test', convertToStr=False)
+GB('CommandReader').map(f).register(trigger='test1', convertToStr=False)
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    for _ in env.reloading_iterator():
+        env.expect('RG.TRIGGER', 'test').equal([3])
+        env.expect('RG.TRIGGER', 'test1').equal([5])
