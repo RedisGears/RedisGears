@@ -280,12 +280,48 @@ CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCal
 
 #define GEARS_HOOK_COMMAND "RG.INNERHOOK"
 
+void CommandHook_DeclareKeys(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    int numKeys = 0;
+    int *keys = RedisModule_GetCommandKeys(ctx, argv, argc, &numKeys);
+    for (int i = 0 ; i < numKeys ; ++i) {
+        // the +1 is because the command actually starts at position 1.
+        RedisModule_KeyAtPos(ctx, keys[i] + 1);
+    }
+}
+
+void CommandHook_DeclareKeysLegacy(RedisModuleCtx *ctx, size_t nArgs, int first, int last, int jump) {
+    if (last < 0) {
+        last = nArgs + last;
+    }
+
+    if (first > last) {
+        return;
+    }
+
+    for(size_t i = first ; i <= last ; i+=jump){
+        // the +1 is because the command actually starts at position 1.
+        RedisModule_KeyAtPos(ctx, i + 1);
+    }
+}
+
 int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    /* Handle getkeys-api introspection */
+    if (RedisModule_IsKeysPositionRequest(ctx)) {
+        if (RMAPI_FUNC_SUPPORTED(RedisModule_GetCommandKeys)) {
+            CommandHook_DeclareKeys(ctx, argv + 1, argc - 1);
+        } else {
+            // fallback to calculate key ourself to support old redis versions.
+            RedisModule_Assert(currHook);
+            CommandHook_DeclareKeysLegacy(ctx, currHook->info.firstKey, argc - 1, currHook->info.lastKey, currHook->info.jump);
+        }
+        return REDISMODULE_OK;
+    }
+
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
 
-    // we need to protect ourself from recursive hooks, unfortunatly we can not trust redis here
+    // we need to protect ourself from recursive hooks, unfortunately we can not trust Redis here
     noFilter = true;
 
     CommandHookCtx* hook = currHook;
@@ -313,7 +349,7 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
         return REDISMODULE_OK;
     }
 
-    if(hook->info.commandFlags & COMMAND_FLAG_DENYOOM && RedisModule_GetUsedMemoryRatio){
+    if((hook->info.commandFlags & COMMAND_FLAG_DENYOOM) && RedisModule_GetUsedMemoryRatio){
         float memoryRetio = RedisModule_GetUsedMemoryRatio();
         if(memoryRetio > 1){
             // we are our of memory and should deny the command
@@ -332,7 +368,7 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 int CommandHook_Init(RedisModuleCtx* ctx){
     HookRegistrations = Gears_dictCreate(&Gears_dictTypeHeapStringsCaseInsensitive, NULL);
     GearsHookCommand = RedisModule_CreateString(NULL, GEARS_HOOK_COMMAND, strlen(GEARS_HOOK_COMMAND));
-    if (RedisModule_CreateCommand(ctx, GEARS_HOOK_COMMAND, CommandHook_HookCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, GEARS_HOOK_COMMAND, CommandHook_HookCommand, "getkeys-api readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(staticCtx, "warning", "could not register command "GEARS_HOOK_COMMAND);
         return REDISMODULE_ERR;
     }
