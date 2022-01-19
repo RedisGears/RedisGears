@@ -2,6 +2,7 @@
 #define REDISMODULE_MAIN
 
 #include <Python.h>
+#include "redisgears_python.h"
 #include "redisai.h"
 #include "globals.h"
 #include "redisgears.h"
@@ -6793,18 +6794,6 @@ static int Python_BeforeConfigChange(const char* key, const char* val, char** er
     }
     return REDISMODULE_OK;
 }
-
-#define REDISGEARSPYTHON_PLUGIN_NAME "GearsPythonPlugin"
-
-#define REDISGEARSPYTHON_VERSION_MAJOR 1
-#define REDISGEARSPYTHON_VERSION_MINOR 0
-#define REDISGEARSPYTHON_VERSION_PATCH 0
-
-#define STR1(a) #a
-#define STR(e) STR1(e)
-
-#define REDISGEARSPYTHON_PLUGIN_VERSION \
-  (REDISGEARSPYTHON_VERSION_MAJOR * 10000 + REDISGEARSPYTHON_VERSION_MINOR * 100 + REDISGEARSPYTHON_VERSION_PATCH)
 
 static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
     if (RedisModule_InfoAddSection(ctx, "python_stats") == REDISMODULE_OK) {
