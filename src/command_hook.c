@@ -287,6 +287,9 @@ void CommandHook_DeclareKeys(RedisModuleCtx *ctx, RedisModuleString **argv, int 
         // the +1 is because the command actually starts at position 1.
         RedisModule_KeyAtPos(ctx, keys[i] + 1);
     }
+    /* keys was allocated by Redis, we always want to free it using
+     * using RedisModule_Free, so avoid using RG_FREE here */
+    RedisModule_Free(keys);
 }
 
 void CommandHook_DeclareKeysLegacy(RedisModuleCtx *ctx, size_t nArgs, int first, int last, int jump) {
