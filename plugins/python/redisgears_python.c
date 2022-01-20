@@ -5570,6 +5570,15 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         return NULL;
     }
     RedisGearsPy_LOCK
+
+    if(fep){
+        /* set requested_base_globals, cloud pickle was modified to look at this
+         * variable and if set, use is as the global dictionary for the deserialized
+         * functions. */
+        PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+        PyDict_SetItemString(pyGlobals, "requested_base_globals", sctx->globalsDict);
+    }
+
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject *dataStr = PyBytes_FromStringAndSize(data, len);
@@ -5592,15 +5601,9 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
     }
     GearsPyDecRef(args);
 
-    if(fep){
-        // replace the global dictionary with the session global dictionary
-        PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
-        PyFunctionObject* callback_func = (PyFunctionObject*)callback;
-        PyDict_Merge(sctx->globalsDict, callback_func->func_globals, 0);
-        GearsPyDecRef(callback_func->func_globals);
-        callback_func->func_globals = sctx->globalsDict;
-        Py_INCREF(callback_func->func_globals);
-    }
+    /* restore requested_base_globals */
+    Py_INCREF(Py_None);
+    PyDict_SetItemString(pyGlobals, "requested_base_globals", Py_None);
 
     RedisGearsPy_UNLOCK
     return callback;

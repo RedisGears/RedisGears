@@ -788,7 +788,7 @@ def testConfigGetSet(env):
     env.expect('RG.CONFIGSET', 'test', 'test').contains('OK - value was saved in extra config dictionary')
     env.expect('RG.CONFIGGET', 'test').equal(['test'])
 
-@gearsTest(skipOnCluster=True)
+@gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testInfo(env):
     env.expect('RG.PYEXECUTE', "GB('CommandReader').foreach(lambda x: __import__('time').sleep(2)).register(trigger='test')", 'REQUIREMENTS', 'redis').equal('OK')
     env.expect('RG.PYEXECUTE', "GB().foreach(lambda x: __import__('time').sleep(2)).register(eventTypes=['set','hset'], keyTypes=['string', 'hash'], commands=['set', 'hset'])").equal('OK')

@@ -490,7 +490,7 @@ GB("CommandReader").map(doTest).register(trigger='test', mode='sync')
     res = env.cmd('exec')
     env.assertContains('Creating async record is not allow', str(res[0]))
 
-@gearsTest()
+@gearsTest(skipOnCluster=True)
 def testCommandOverrideWithMoreThenSingleResultReturnError(env):
     script = '''
 GB("CommandReader").flatmap(lambda x: x).register(hook='hset', mode='sync')
