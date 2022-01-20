@@ -300,10 +300,6 @@ deps: $(LIBPYTHON) $(LIBEVENT) $(HIREDIS) $(GEARS_PYTHON)
 
 cpython: $(LIBPYTHON)
 
-jvmplugin:
-	@echo Building jvmplugin...
-	${MAKE} -C plugins/jvmplugin PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
-
 $(LIBPYTHON):
 	@echo Building cpython...
 	$(SHOW)$(MAKE) --no-print-directory -C build/cpython DEBUG=
@@ -360,6 +356,10 @@ ifeq ($(DEPS),1)
 	${MAKE} -C plugins/python clean
 	${MAKE} -C plugins/jvmplugin/src clean
 endif
+
+jvmplugin:
+	@echo Building jvmplugin...
+	${MAKE} -C plugins/jvmplugin PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 
 clean-gears-python:
 	$(SHOW)make clean -C plugins/python
