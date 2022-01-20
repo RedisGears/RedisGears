@@ -473,7 +473,7 @@ GB("ShardsIDReader").map(doTest).run()
     env.assertContains(err, 'await is not allow inside atomic block')
 
 @gearsTest()
-def testAwaitIsNotAllowedInsideSyncExecution(env):
+def testAwaitIsNotAllowedInsideMultiExecExecution(env):
     script = '''
 import asyncio
 
@@ -485,7 +485,10 @@ GB("CommandReader").map(doTest).register(trigger='test', mode='sync')
     '''
 
     env.cmd('rg.pyexecute', script)
-    env.expect('rg.trigger', 'test').error().contains('Can not create gearsFuture on sync execution')
+    env.cmd('multi')
+    env.cmd('rg.trigger', 'test')
+    res = env.cmd('exec')
+    env.assertContains('Creating async record is not allow', str(res[0]))
 
 @gearsTest(skipOnCluster=True)
 def testCommandOverrideWithMoreThenSingleResultReturnError(env):

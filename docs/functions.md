@@ -90,7 +90,7 @@ The **Execution Status** describes the function's current execution status. The 
 * **done**: the execution is done
 * **aborted**: the execution has been aborted
 * **pending_cluster**: the initiator is waiting for all workers to finish
-* **pending_run**: worker is pending ok from initiator to execute
+* **pending_run**: worker is pending OK from initiator to execute
 * **pending_receive**: the initiator is pending acknowledgement from workers on receiving execution
 * **pending_termination**: worker is pending a termination messaging from the initiator
 

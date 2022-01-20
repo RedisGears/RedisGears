@@ -1385,6 +1385,33 @@ GB().foreach(OverrideReply).register(prefix='test*', eventTypes=['keymiss'], com
         self.env.assertEqual(res, 2)
 
 @gearsTest(skipOnCluster=True)
+def testCommandHookWithExecute(env):
+    script1 = '''
+def my_hset(r):
+    t = str(execute('time')[0])
+    new_args = r[1:] + ['_last_modified_', t]
+    return call_next(*new_args)
+
+GB('CommandReader').map(my_hset).register(hook='hset', mode='sync')
+    '''
+    script2 = '''
+def my_hset(r):
+    execute('hincrby', r[1], '_times_modified_', 1)
+    return call_next(*r[1:])
+
+GB('CommandReader').map(my_hset).register(hook='hset', mode='sync')
+    '''
+
+    env.expect('rg.pyexecute', script1).ok()
+    env.expect('rg.pyexecute', script2).ok()
+
+    verifyRegistrationIntegrity(env)
+
+    env.expect('hset', 'k1', 'foo', 'bar').equal('2')
+    env.expect('hget', 'k1', '_times_modified_').equal('1')
+    env.expect('HEXISTS', 'k1', '_last_modified_').equal(True)
+
+@gearsTest(skipOnCluster=True)
 def testCommandReaderInOrder(env):
     script = '''
 import time
@@ -1581,3 +1608,39 @@ def testRGTriggerOnKey(env):
     conn2.execute_command('RG.TRIGGERONKEY', 'my_set', 'x', '1')
 
     env.assertEqual(conn2.execute_command('get', 'x'), '1')
+
+@gearsTest(skipOnCluster=True)
+def testGlobalsDictionaryOnDeserialization(env):
+    script = '''
+g = 1
+def f1():
+    global g
+    g = g + 1
+    print(id(globals()))
+    return g
+
+def f(x):
+    global g
+    g = g + 1
+    print(id(globals()))
+    return f1()
+
+GB('CommandReader').map(f).register(trigger='test', convertToStr=False)
+GB('CommandReader').map(f).register(trigger='test1', convertToStr=False)
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    for _ in env.reloading_iterator():
+        env.expect('RG.TRIGGER', 'test').equal([3])
+        env.expect('RG.TRIGGER', 'test1').equal([5])
+
+@gearsTest()
+def testCaseInsensetiveEventTypes(env):
+    env.expect('rg.pyexecute', "GB().foreach(lambda x: execute('set', '{%s}1' % x['key'], '1')).register(eventTypes=['SET'], mode='sync')").ok()
+    verifyRegistrationIntegrity(env)
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('set', 'x', '1')
+    env.assertEqual(conn.execute_command('get', '{x}1'), '1')

@@ -9,7 +9,7 @@ This is a list of RedisGears recipes that can be used as-is or as a source of in
 | Recipe | Description | Author | License | URL |
 | --- | --- | --- | --- | --- |
 | WriteBehind | Write-Behind and Write-Through from Redis to other SQL/No-SQL databases | [RedisLabs](https://redislabs.com/) | BSD-3-Clause | [git](https://github.com/RedisGears/WriteBehind/) |
-| AnimalRecognitionDemo | An example of using Redis Streams, RedisGears and RedisAI for Realtime Video Analytics (i.e. filtering cats) | [RedisLabs](https://redislabs.com/) | BSD-3-Clause | [git](https://github.com/RedisGears/AnimalRecognitionDemo) |
+| AnimalRecognitionDemo | An example of using Redis Streams, RedisGears and RedisAI for Real-time Video Analytics (i.e. filtering cats) | [RedisLabs](https://redislabs.com/) | BSD-3-Clause | [git](https://github.com/RedisGears/AnimalRecognitionDemo) |
 | EdgeRealtimeVideoAnalytics | An example of using Redis Streams, RedisGears, RedisAI and RedisTimeSeries for Realtime Video Analytics (i.e. counting people) | [RedisLabs](https://redislabs.com/) | Apache-2.0 | [git](https://github.com/RedisGears/EdgeRealtimeVideoAnalytics) |
 | FraudDetectionDemo | An example that combines several Redis data structures and along with RedisGears and RedisAI to showcase the advantage of data locality during transaction scoring | [RedisLabs](https://redislabs.com) | BSD-3-Clause | [git](https://github.com/RedisAI/FraudDetectionDemo)|
 | AdGears | Using RedisGears to maximize advertising revenue example.  Utilizes RedisGears, RedisTimeSeries and RedisBloom.| [RedisLabs](https://redislabs.com) | BSD-3-Clause | [git](https://github.com/Redislabs-Solution-Architects/AdGears)|
@@ -51,7 +51,7 @@ Calculates the average `age` scanning all JSON docs keys that start with prefix 
 
 **Assumptions**
 
-[Json module](https://oss.redislabs.com/redisjson/) is also loaded to Redis
+[JSON module](https://oss.redislabs.com/redisjson/) is also loaded to Redis
 
 **Python API**
 

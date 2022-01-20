@@ -268,7 +268,7 @@ static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, ch
     return res;
 }
 
-static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
+static ExecutionPlan* RG_RunWithFlags(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags flags){
     if(!LockHandler_IsRedisGearsThread()){
         *err = RG_STRDUP("Can only run execution on registered gears thread");
         return NULL;
@@ -279,9 +279,13 @@ static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* a
         LockHandler_Release(staticCtx);
         return NULL;
     }
-    ExecutionPlan* res = FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err);
+    ExecutionPlan* res = FlatExecutionPlan_Run(fep, mode, arg, callback, privateData, worker, err, flags);
     LockHandler_Release(staticCtx);
     return res;
+}
+
+static ExecutionPlan* RG_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err){
+    return RG_RunWithFlags(fep, mode, arg, callback, privateData, worker, err, 0);
 }
 
 static const char* RG_GetReader(FlatExecutionPlan* fep){
@@ -511,6 +515,10 @@ static void RG_DropExecution(ExecutionPlan* ep){
 static ExecutionPlan* RG_GetExecution(const char* id){
 	ExecutionPlan* ep =	ExecutionPlan_FindByStrId(id);
 	return ep;
+}
+
+static RunFlags RG_GetRunFlags(ExecutionCtx* ectx){
+    return ectx->ep->runFlags;
 }
 
 static ArgType* RG_CreateType(char* name, int version, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring){
@@ -1013,6 +1021,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(ForEach, ctx);
     REGISTER_API(Limit, ctx);
     REGISTER_API(Run, ctx);
+    REGISTER_API(RunWithFlags, ctx);
     REGISTER_API(Register, ctx);
     REGISTER_API(FreeFlatExecution, ctx);
     REGISTER_API(GetReader, ctx);
@@ -1040,6 +1049,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(CommandReaderTriggerCtxFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
+    REGISTER_API(GetRunFlags, ctx);
     REGISTER_API(GetFep, ctx);
     REGISTER_API(IsDone, ctx);
     REGISTER_API(GetRecordsLen, ctx);

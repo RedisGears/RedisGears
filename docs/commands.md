@@ -157,7 +157,7 @@ An array with an entry per execution. Each entry is made of alternating key name
 
 * **executionId**: the [execution ID](functions.md#execution-id)
 * **status**: the [status](functions.md#execution-status)
-* **registered**: indicates whether this is a [registered execution](functions.html#registration)
+* **registered**: indicates whether this is a [registered execution](functions.md#registration)
 
 **Examples**
 
@@ -514,8 +514,6 @@ The **RG.PYDUMPSESSIONS** command returns a summery of existing python sessions,
 
 **Redis API**
 
-!!! note "The command is available as of version 1.0.8"
-
 ```
 RG.PYDUMPSESSIONS
 ```
@@ -564,8 +562,6 @@ An array that consists of alternating key name and value entries as follows:
 The **RG.PYPROFILE STATS** command returns a profiling statistics for a given session id. Profiling information are automatically collected when [ProfileExecutions](configuration.md#profileexecutions) are on.
 
 **Redis API**
-
-!!! note "The command is available as of version 1.0.8"
 
 ```
 RG.PYPROFILE STATS <session_id> [<order_by>]
@@ -625,8 +621,6 @@ Function                                          called...
 The **RG.PYPROFILE RESET** command resets profiling statistics for a given session id.
 
 **Redis API**
-
-!!! note "The command is available as of version 1.0.8"
 
 ```
 RG.PYPROFILE RESET <session_id>

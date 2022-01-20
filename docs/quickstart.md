@@ -1,5 +1,5 @@
 # RedisGears Quickstart
-RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module). To run it, you'll need a Redis server (v5 or greater) and the module's shared library.
+RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module). To run it, you'll need a Redis server (v6 or greater) and the module's shared library.
 
 The following sections describe how to get started with RedisGears.
 
