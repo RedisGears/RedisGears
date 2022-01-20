@@ -69,6 +69,7 @@ COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/python3
 COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/bin/OpenJDK /var/opt/redislabs/modules/rg/OpenJDK/
 COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/gears_python/gears_python.so /var/opt/redislabs/modules/rg/plugin/
 COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/src/gears_jvm.so /var/opt/redislabs/modules/rg/plugin/
+COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/gears_runtime/target/gear_runtime-jar-with-dependencies.jar /var/opt/redislabs/modules/rg/
 
 # This is needed in order to allow extraction of artifacts from platform-specific build
 # There is no use in removing this directory if $PACK !=1, because image side will only
@@ -85,4 +86,4 @@ RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q insta
 RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
 RUN rm -rf /var/cache/apt /var/cache/yum
 
-CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so"]
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_jvm.so", "JvmOptions", "-Djava.class.path=/var/opt/redislabs/modules/rg/gear_runtime-jar-with-dependencies.jar", "JvmPath", "/var/opt/redislabs/modules/rg/OpenJDK/jdk-11.0.9.1+1/"]

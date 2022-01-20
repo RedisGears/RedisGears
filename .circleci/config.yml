@@ -390,28 +390,20 @@ workflows:
     jobs:
       - build-redis-versions:
           name: build-with-redis-<< matrix.redis_version >>
-         #<<: *on-integ-branch
           <<: *on-any-branch
           matrix:
             parameters:
               redis_version: ["6.0.9", "6.2.6"]
       - build-platforms:
-         #<<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
           context: common
           matrix:
             parameters:
               platform: [hirsute, focal, bionic, xenial, centos7, centos8, bullseye]
       - valgrind:
-         #<<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
       - build-macos:
-         #<<: *on-integ-and-version-tags
-          <<: *on-any-branch
-      - build-multiarch-docker:
-          context: common
-          <<: *never
-          # <<: *on-integ-and-version-tags
+          <<: *on-integ-and-version-tags
       - deploy-snapshots:
           context: common
           requires:
@@ -428,19 +420,3 @@ workflows:
           <<: *on-version-tags
           requires:
             - deploy-releases
-
-  nightly:
-    triggers:
-      - schedule:
-          cron: "20 17 * * 0,3"
-          filters:
-            branches:
-              only: master
-    jobs:
-      - build-macos
-      - valgrind
-      - build-redis-versions:
-          name: build-with-redis-<< matrix.redis_version >>
-          matrix:
-            parameters:
-              redis_version: ["6.0.9", "6.2.6"]
