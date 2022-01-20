@@ -1,0 +1,1 @@
+GB().foreach(lambda x: log('key %s was fetched and missed' % x['key'])).register(eventTypes=['keymiss'], mode="async_local")

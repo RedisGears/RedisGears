@@ -4251,6 +4251,20 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
+static PyObject* isAsyncAllow(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyObject* ret = Py_False;
+    if(ptctx->currEctx){
+        RunFlags runFlags = RedisGears_GetRunFlags(ptctx->currEctx);
+        if(!(runFlags & RFNoAsync)){
+            ret = Py_True;
+        }
+    }
+
+    Py_INCREF(ret);
+    return ret;
+}
+
 static PyObject* overrideReply(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
@@ -4357,6 +4371,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"callNext", callNext, METH_VARARGS, "call the next command registration or the original command (will raise error when used outside on CommandHook scope)"},
     {"getCommand", getCommand, METH_VARARGS, "return the current running command, raise error if command is not available"},
     {"overrideReply", overrideReply, METH_VARARGS, "override the reply with the given python value, raise error if there is no command to override its reply"},
+    {"isAsyncAllow", isAsyncAllow, METH_VARARGS, "return true iff async await is allow"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -4738,9 +4753,10 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
 
    Py_INCREF(ptctx->pyfutureCreated);
 
-   PyObject* pArgs = PyTuple_New(3);
+   PyObject* pArgs = PyTuple_New(4);
    PyTuple_SetItem(pArgs, 0, coro);
    PyTuple_SetItem(pArgs, 1, (PyObject*)pyfuture);
+   PyTuple_SetItem(pArgs, 2, PyLong_FromLong(0));
 
    /* Create session object */
    PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
@@ -4753,12 +4769,15 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
    if(pyExSes->cmdCtx){
        pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
    }
-   PyTuple_SetItem(pArgs, 2, (PyObject*)pyExSes);
+   PyTuple_SetItem(pArgs, 3, (PyObject*)pyExSes);
 
    PyObject* nn = PyObject_CallObject(runCoroutineFunction, pArgs);
    GearsPyDecRef(pArgs);
 
    if(!nn){
+       char* err = getPyError();
+       RedisModule_Log(staticCtx, "warning", "Error when runnong coroutine, error='%s'", err);
+       RG_FREE(err);
        GearsPyDecRef((PyObject*)pyfuture);
        return NULL;
    }
