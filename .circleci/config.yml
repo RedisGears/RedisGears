@@ -126,13 +126,13 @@ commands:
       - run:
           name: Build
           command: |
-            bash -l -c "make get_deps"
+            bash -l -c "make -j `nproc` fetch"
             bash -l -c "make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1"
       - run:
           name: Build JVMPlugin
           command: |
             ./plugins/jvmplugin/system-setup.py
-            bash -l -c "make jvmplugin"
+            bash -l -c "make -j `nproc` jvmplugin"
       - run:
           name: Gears Tests
           command: make test <<parameters.test_params>>

@@ -38,7 +38,7 @@ RUN bash -l -c "make -j `nproc` fetch SHOW=1"
 RUN bash -l -c "make all SHOW=1"
 
 RUN ./plugins/jvmplugin/system-setup.py
-RUN bash -l -c "make `j nproc` jvmplugin"
+RUN bash -l -c "make -j `nproc` jvmplugin"
 RUN ./getver > artifacts/VERSION
 
 ARG PACK
