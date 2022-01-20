@@ -1608,3 +1608,12 @@ GB('CommandReader').map(f).register(trigger='test1', convertToStr=False)
         env.expect('RG.TRIGGER', 'test').equal([3])
         env.expect('RG.TRIGGER', 'test1').equal([5])
 
+@gearsTest()
+def testCaseInsensetiveEventTypes(env):
+    env.expect('rg.pyexecute', "GB().foreach(lambda x: execute('set', '{%s}1' % x['key'], '1')).register(eventTypes=['SET'], mode='sync')").ok()
+    verifyRegistrationIntegrity(env)
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('set', 'x', '1')
+    env.assertEqual(conn.execute_command('get', '{x}1'), '1')
