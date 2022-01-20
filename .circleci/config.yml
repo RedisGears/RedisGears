@@ -205,8 +205,8 @@ jobs:
         type: string
         default: "6"
     steps:
-      - build-with-redis-versions:
-          platform: bionic
+      - build-steps:
+          platform: debian
           redis_version: <<parameters.redis_version>>
 
   valgrind:
