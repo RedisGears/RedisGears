@@ -3,7 +3,7 @@
 !!! important "Notice"
     Command hook API is considered experimental, which means that it's not yet stable and might change in the future, use it with caution and at your own risk.
  
-RedisGears v1.2 introduces the ability to hook vanila Redis commands with a custom implementation. This can be done using the new [`hook`]() parameter to the [CommandReader](readers.md#commandreader). The following allows to overide the `hset` command and add the current time as `_last_modified_` field:
+RedisGears v1.2 introduces the ability to hook vanilla Redis commands with a custom implementation. This can be done using the new [`hook`]() parameter to the [CommandReader](readers.md#commandreader). The following allows to override the `hset` command and add the current time as `_last_modified_` field:
 ```python
 {{ include('command_hook/command_hook-000.py')}}
 ```

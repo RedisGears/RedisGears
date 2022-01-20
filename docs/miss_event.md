@@ -48,7 +48,7 @@ So it looks good, the client tries to fetch key `x`, we get key miss notificatio
  
 ## Commands Argument to `KeyReader`
  
-In order to improve client experience RedisGears 1.2 introduce a new argument to [`KeysReader`](readers.md#keysreader) called `commands`. The new argument allows us to specify a list of commands on which we want to fire events, when the `commands` argument is used, RedisGears will only fire the events on those commands and will link the client executing the command with the executions that were triggered. This means that the client that executed the command will not get the reply until all the executions that were triggered as a result of the command were finished. In addition, RedisGears allows to veride the command reply using [`override_reply`](runtime.md#override_reply) function. Using those capabilities, we can change the example to give a much better user experience:
+In order to improve client experience RedisGears 1.2 introduce a new argument to [`KeysReader`](readers.md#keysreader) called `commands`. The new argument allows us to specify a list of commands on which we want to fire events, when the `commands` argument is used, RedisGears will only fire the events on those commands and will link the client executing the command with the executions that were triggered. This means that the client that executed the command will not get the reply until all the executions that were triggered as a result of the command were finished. In addition, RedisGears allows to override the command reply using [`override_reply`](runtime.md#override_reply) function. Using those capabilities, we can change the example to give a much better user experience:
  
  
 ```python

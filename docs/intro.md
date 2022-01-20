@@ -55,7 +55,7 @@ Let us start by writing and executing the simplest possible RedisGears function.
 docker exec -it redisgears redis-cli
 ```
 
-Once at cli's the prompt, type in the following and then hit the `<ENTER>` on your keyboard to execute it:
+Once at the redis-cli prompt, type in the following and then hit the `<ENTER>` on your keyboard to execute it:
 
 ```
 RG.PYEXECUTE "GearsBuilder().run()"

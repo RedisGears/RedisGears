@@ -28,7 +28,7 @@ You can set your configuration options when the module is loaded. The options ar
 
 **Runtime Configuration**
 
-You may set certain configuration options at runtime. Refer to each option's description for runtime configurability.
+You may set certain configuration options at runtime. Refer to each option's description for runtime configuration.
 
 !!! abstract "Related commands"
     The following RedisGears commands are related to configuration:

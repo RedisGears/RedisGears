@@ -642,7 +642,7 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
 
     ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ectx);
     if(ep->runFlags & RFNoAsync){
-        *err = RG_STRDUP("Creating async record is not allow");
+        *err = RG_STRDUP("Creating async record is not allowed");
         return NULL;
     }
     size_t maxSize;
