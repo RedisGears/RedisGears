@@ -851,7 +851,7 @@ static int KeysReader_ShouldFire(RedisModuleCtx *ctx, KeysReaderTriggerArgs* arg
     if(args->eventTypes){
         bool evenFound = false;
         for(size_t i = 0 ; i < array_len(args->eventTypes) ; i++){
-            if(strcmp(args->eventTypes[i], event) == 0){
+            if(strcasecmp(args->eventTypes[i], event) == 0){
                 evenFound = true;
                 break;
             }
