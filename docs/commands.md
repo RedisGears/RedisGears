@@ -90,7 +90,7 @@ redis> RG.CONFIGGET foo
 ```
 
 ## RG.CONFIGSET
-The **`RG.CONFIGGET`** command sets the value of one ore more built-in [configuration](configuration.md) or a user-defined options.
+The **`RG.CONFIGSET`** command sets the value of one ore more built-in [configuration](configuration.md) or a user-defined options.
 
 **Redis API**
 
