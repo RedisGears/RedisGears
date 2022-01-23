@@ -200,6 +200,7 @@ jobs:
   build-redis-versions:
     docker:
       - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+    resource_class: medium+
     parameters:
       redis_version:
         type: string
