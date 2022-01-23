@@ -4,6 +4,7 @@ from threading import Thread
 from RLTest import Env, Defaults
 import inspect
 import unittest
+import json
 
 class Colors(object):
     @staticmethod
@@ -103,6 +104,18 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect
 
         env.assertTrue(env.isUp())
 
+def extractInfoOnfailure(env):
+    for i in range(1, env.shardsCount + 1):
+        conn = env.getConnection(shardId=i)
+        shardInfo = {}
+        shardInfo['RG.DUMPREGISTRATIONS'] = conn.execute_command('RG.DUMPREGISTRATIONS')
+        shardInfo['RG.DUMPEXECUTIONS'] = conn.execute_command('RG.DUMPEXECUTIONS')
+        shardInfo['info_everything'] = conn.execute_command('info', 'everything')
+        directory = conn.execute_command('config', 'get', 'dir')[1]
+        fileName = conn.execute_command('config', 'get', 'logfile')[1]
+        with open(os.path.join(directory, '%s.failure_logs.txt' % fileName), 'wt') as f:
+            f.write(json.dumps(shardInfo, indent=4, sort_keys=True))
+
 def dropRegistrationsAndExecutions(env):
     script1 = '''
 GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).filter(lambda x: x > 0).run()
@@ -133,8 +146,6 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lam
     except Exception as e:
         print(Colors.Bred(str(e)))
         env.assertTrue(False, message='Registrations/Executions dropping failed')
-        print(env.cmd('RG.PYEXECUTE', script1))
-        print(env.cmd('RG.PYEXECUTE', script2))
 
 def restoreDefaultConfig(env):
     env.broadcast('RG.CONFIGSET', 'MaxExecutions', '1000')
@@ -178,5 +189,7 @@ def gearsTest(skipTest=False,
             if not skipCleanups:
                 dropRegistrationsAndExecutions(env)
                 restoreDefaultConfig(env)
+            if len(env.assertionFailedSummary) > 0:
+                extractInfoOnfailure(env)
         return test_func
     return test_func_generator
