@@ -210,6 +210,10 @@ CommandReaderTriggerCtx* CommandReaderTriggerCtx_GetShallowCopy(CommandReaderTri
     return crtCtx;
 }
 
+static void CommandReaderTriggerCtx_ResetStats(CommandReaderTriggerCtx* crtCtx){
+    resetStats(crtCtx);
+}
+
 void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
     if(__atomic_sub_fetch(&crtCtx->refCount, 1, __ATOMIC_SEQ_CST) > 0){
         return;
@@ -762,6 +766,36 @@ static int CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
     return REDISMODULE_OK;
 }
 
+static void CommandReader_ClearStats(){
+    // clear triggers
+    if(CommandRegistrations){
+        Gears_dictIterator *iter = Gears_dictGetIterator(CommandRegistrations);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            CommandReaderTriggerCtx* crtCtx = Gears_dictGetVal(entry);
+            CommandReaderTriggerCtx_ResetStats(crtCtx);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+
+    // clear hooks
+    if(HookRegistrations){
+        Gears_dictIterator *iter = Gears_dictGetIterator(HookRegistrations);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            Gears_list* l = Gears_dictGetVal(entry);
+            Gears_listIter* listIter = Gears_listGetIterator(l, AL_START_HEAD);
+            Gears_listNode* node = NULL;
+            while((node = Gears_listNext(listIter))){
+                CommandReaderTriggerCtx* crtCtx = Gears_listNodeValue(node);
+                CommandReaderTriggerCtx_ResetStats(crtCtx);
+            }
+            Gears_listReleaseIterator(listIter);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+}
+
 static void CommandReader_Clear(){
     // clear triggers
     if(CommandRegistrations){
@@ -815,6 +849,7 @@ RedisGears_ReaderCallbacks CommandReader = {
         .rdbSave = CommandReader_RdbSave,
         .rdbLoad = CommandReader_RdbLoad,
         .clear = CommandReader_Clear,
+        .clearStats = CommandReader_ClearStats,
 };
 
 typedef enum RctxType{

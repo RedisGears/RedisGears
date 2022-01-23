@@ -177,6 +177,7 @@ typedef void (*RedisGears_ReaderDumpRegistrationInfo)(FlatExecutionPlan* fep, Re
 typedef void (*RedisGears_ReaderRdbSave)(RedisModuleIO *rdb);
 typedef int (*RedisGears_ReaderRdbLoad)(RedisModuleIO *rdb, int encver);
 typedef void (*RedisGears_ReaderClear)();
+typedef void (*RedisGears_ReaderClearStats)();
 
 /**
  * callbacks for reader implementation.
@@ -195,6 +196,7 @@ typedef struct RedisGears_ReaderCallbacks{
     RedisGears_ReaderRdbSave rdbSave;
     RedisGears_ReaderRdbLoad rdbLoad;
     RedisGears_ReaderClear clear;
+    RedisGears_ReaderClearStats clearStats;
 }RedisGears_ReaderCallbacks;
 
 

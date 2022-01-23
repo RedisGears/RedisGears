@@ -1288,6 +1288,21 @@ static int StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
     return REDISMODULE_OK;
 }
 
+static void StreamReader_ClearStats(){
+    if(!streamsRegistration){
+        return;
+    }
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        StreamReaderTriggerCtx* srtctx = Gears_listNodeValue(node);
+        resetStats(srtctx);
+        srtctx->lastBatchLag = 0;
+        srtctx->totalBatchLag = 0;
+    }
+    Gears_listReleaseIterator(iter);
+}
+
 static void StreamReader_Clear(){
     if(!streamsRegistration){
         return;
@@ -1319,4 +1334,5 @@ RedisGears_ReaderCallbacks StreamReader = {
         .rdbSave = StreamReader_RdbSave,
         .rdbLoad = StreamReader_RdbLoad,
         .clear = StreamReader_Clear,
+        .clearStats = StreamReader_ClearStats,
 };

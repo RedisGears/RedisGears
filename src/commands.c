@@ -93,6 +93,26 @@ int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, in
 	return REDISMODULE_OK;
 }
 
+Record* Command_FlushRegistrationsStatsMap(ExecutionCtx* rctx, Record *data, void* arg){
+    RedisGears_FreeRecord(data);
+    RedisModuleCtx* ctx = RedisGears_GetRedisModuleCtx(rctx);
+    LockHandler_Acquire(ctx);
+    // clear registrations
+    Gears_dictIterator* iter = Gears_dictGetIterator(Readerdict);
+    Gears_dictEntry *curr = NULL;
+    while((curr = Gears_dictNext(iter))){
+        MgmtDataHolder* holder = Gears_dictGetVal(curr);
+        RedisGears_ReaderCallbacks* callbacks = holder->callback;
+        if(!callbacks->clearStats){
+            continue;
+        }
+        callbacks->clearStats();
+    }
+    Gears_dictReleaseIterator(iter);
+    LockHandler_Release(ctx);
+    return RedisGears_StringRecordCreate(RG_STRDUP("OK"), strlen("OK"));
+}
+
 Record* Command_AbortExecutionMap(ExecutionCtx* rctx, Record *data, void* arg){
     const char* executionId = arg;
     RedisGears_FreeRecord(data);
@@ -158,7 +178,7 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 	return REDISMODULE_OK;
 }
 
-static void Command_AbortDone(ExecutionPlan* gearsCtx, void *privateData){
+static void Command_Done(ExecutionPlan* gearsCtx, void *privateData){
     RedisModuleBlockedClient* bc = privateData;
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bc);
     if(RedisGears_GetErrorsLen(gearsCtx) > 0){
@@ -171,6 +191,39 @@ static void Command_AbortDone(ExecutionPlan* gearsCtx, void *privateData){
     RedisModule_FreeThreadSafeContext(rctx);
 
     RedisGears_DropExecution(gearsCtx);
+}
+
+int Command_FlushRegistrationsStats(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 1){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    VERIFY_CLUSTER_INITIALIZE(ctx);
+
+    RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
+
+    char* err = NULL;
+    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader, &err);
+    if(!fep){
+        if(!err){
+            err = RG_STRDUP("Failed creating abort Flat Execution Plan");
+        }
+        RedisModule_ReplyWithError(ctx, err);
+        RG_FREE(err);
+        return REDISMODULE_OK;
+    }
+    RGM_Map(fep, Command_FlushRegistrationsStatsMap, NULL);
+    RGM_Collect(fep);
+    ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, NULL, Command_Done, bc, mgmtWorker, &err);
+    if(!ep){
+        RedisModule_AbortBlock(bc);
+        RedisModule_ReplyWithError(ctx, err);
+        RG_FREE(err);
+    }
+
+    RedisGears_FreeFlatExecution(fep);
+
+    return REDISMODULE_OK;
 }
 
 int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -196,7 +249,7 @@ int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     }
     RGM_Map(fep, Command_AbortExecutionMap, RG_STRDUP(id));
     RGM_Collect(fep);
-    ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, NULL, Command_AbortDone, bc, mgmtWorker, &err);
+    ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, NULL, Command_Done, bc, mgmtWorker, &err);
     if(!ep){
         RedisModule_AbortBlock(bc);
         RedisModule_ReplyWithError(ctx, err);
@@ -474,6 +527,7 @@ int Command_Init(){
                                                 Command_StringDeserialize,
                                                 Command_StringToString);
     RGM_RegisterMap(Command_AbortExecutionMap, stringType);
+    RGM_RegisterMap(Command_FlushRegistrationsStatsMap, NULL);
     RGM_RegisterMap(Command_SingleShardGetter, stringType);
     RGM_RegisterMap(Command_MirrorMapper, NULL);
     return REDISMODULE_OK;

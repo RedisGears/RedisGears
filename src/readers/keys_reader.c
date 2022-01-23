@@ -1488,6 +1488,22 @@ static int KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
     return REDISMODULE_OK;
 }
 
+static void GenricKeysReader_ClearStats(bool (*shouldClear)(FlatExecutionPlan*)){
+    if(!keysReaderRegistration){
+        return;
+    }
+    Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        KeysReaderRegisterData* rData = Gears_listNodeValue(node);
+        if(!shouldClear(rData->fep)){
+            continue;
+        }
+        resetStats(rData);
+    }
+    Gears_listReleaseIterator(iter);
+}
+
 static void GenricKeysReader_Clear(bool (*shouldClear)(FlatExecutionPlan*)){
     if(!keysReaderRegistration){
         return;
@@ -1504,6 +1520,10 @@ static void GenricKeysReader_Clear(bool (*shouldClear)(FlatExecutionPlan*)){
         Gears_listDelNode(keysReaderRegistration, node);
     }
     Gears_listReleaseIterator(iter);
+}
+
+static void KeysReader_ClearStats(){
+    GenricKeysReader_ClearStats(KeysReader_ShouldContinue);
 }
 
 static void KeysReader_Clear(){
@@ -1526,4 +1546,5 @@ RedisGears_ReaderCallbacks KeysReader = {
         .rdbSave = KeysReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,
         .clear = KeysReader_Clear,
+        .clearStats = KeysReader_ClearStats,
 };
