@@ -133,8 +133,6 @@ define _CC_FLAGS
 	-std=gnu99
 	-MMD
 	-MF $(@:.o=.d)
-
-	
 	-I$(SRCDIR)
 	-I$(BINDIR)
 	-Ideps
@@ -205,7 +203,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs platform
+.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs platform jvmplugin
 
 include $(MK)/rules
 
@@ -348,16 +346,20 @@ $(info *** MISSING_DEPS=$(MISSING_DEPS))
 endif
 
 clean: clean-gears-python
-ifeq ($(ALL),1)
 	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(TARGET.snapshot) $(notdir $(TARGET)) $(BINROOT)/redislabs
-else
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET.snapshot) $(TARGET:.so=.a) $(notdir $(TARGET)) \
 		artifacts/release/$(GEARS_PYTHON_TAR.release)* artifacts/snapshot/$(DGEARS_PYTHON_TAR.snapshot)*
-endif
 ifeq ($(DEPS),1)
-	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean;)
+	${MAKE} -C build/hiredis clean
+	${MAKE} -C build/libevent clean
+	${MAKE} -C plugins/python clean
+	${MAKE} -C plugins/jvmplugin/src clean
 endif
+
+jvmplugin:
+	@echo Building jvmplugin...
+	${MAKE} -C plugins/jvmplugin PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 
 clean-gears-python:
 	$(SHOW)make clean -C plugins/python
@@ -378,8 +380,10 @@ artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_
 
 ramp ramp-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 
+# keeping jvmplugin in case it's called explicitly. worst case it regenerates
 pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
-		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot)
+		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot) \
+		jvmplugin
 
 verify-packs:
 	@set -e ;\
@@ -426,6 +430,7 @@ else
 	$(SHOW)set -e; \
 	cd pytest; \
 	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism 6
+	${MAKE} -C plugins/jvmplugin tests PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 endif
 
 #----------------------------------------------------------------------------------------------

@@ -56,6 +56,7 @@ commands:
           command: |
             git submodule update --init deps/readies
             ./deps/readies/bin/getpy2
+            ./deps/readies/bin/getpy3
 
   install-prerequisites:
     parameters:
@@ -125,14 +126,42 @@ commands:
       - run:
           name: Build
           command: |
-            bash -l -c "make get_deps"
+            bash -l -c "make -j `nproc` fetch"
             bash -l -c "make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1"
       - run:
-          name: Test
+          name: Build JVMPlugin
+          command: |
+            ./plugins/jvmplugin/system-setup.py
+            bash -l -c "make -j `nproc` jvmplugin"
+      - run:
+          name: Gears Tests
           command: make test <<parameters.test_params>>
-          no_output_timeout: 30m
+          no_output_timeout: 55m
       - save-tests-logs
       - persist-artifacts
+
+  build-with-redis-versions:
+    parameters:
+      platform:
+        type: string
+      redis_version:
+        type: string
+    steps:
+      - early-returns
+      - setup-executor
+      - checkout-all
+      - setup-automation
+      - run:
+          name: Build for platform
+          command: |
+            pushd build/docker
+            make build $(./version-params) REDIS_VER=<<parameters.redis_version>> OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
+            popd
+            logs_d=pytest/logs/<<parameters.platform>>
+            mkdir -p $logs_d
+            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
+          no_output_timeout: 40m
+      - save-tests-logs
 
   build-platforms-steps:
     parameters:
@@ -168,9 +197,10 @@ commands:
 #----------------------------------------------------------------------------------------------------------------------------------
 
 jobs:
-  build-linux-debian:
+  build-redis-versions:
     docker:
       - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+    resource_class: medium+
     parameters:
       redis_version:
         type: string
@@ -359,29 +389,22 @@ workflows:
   version: 2
   default-flow:
     jobs:
-      - build-linux-debian:
-          <<: *not-on-integ-branch
-      - build-linux-debian:
+      - build-redis-versions:
           name: build-with-redis-<< matrix.redis_version >>
-          <<: *on-integ-branch
+          <<: *on-any-branch
           matrix:
             parameters:
-              redis_version: ["6.0", "6.2"]
+              redis_version: ["6.0.9", "6.2.6"]
       - build-platforms:
           <<: *on-integ-and-version-tags
           context: common
           matrix:
             parameters:
-              platform: [hirsute, focal, bionic, xenial, centos7, centos8]
+              platform: [hirsute, focal, bionic, xenial, centos7, centos8, bullseye]
       - valgrind:
           <<: *on-integ-and-version-tags
-          # <<: *on-any-branch
       - build-macos:
           <<: *on-integ-and-version-tags
-      - build-multiarch-docker:
-          context: common
-          <<: *never
-          # <<: *on-integ-and-version-tags
       - deploy-snapshots:
           context: common
           requires:
@@ -398,19 +421,3 @@ workflows:
           <<: *on-version-tags
           requires:
             - deploy-releases
-
-  nightly:
-    triggers:
-      - schedule:
-          cron: "20 17 * * 0,3"
-          filters:
-            branches:
-              only: master
-    jobs:
-      - build-macos
-      - valgrind
-      - build-linux-debian:
-          name: build-with-redis-<< matrix.redis_version >>
-          matrix:
-            parameters:
-              redis_version: ["6.0", "6.2"]

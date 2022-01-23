@@ -40,3 +40,6 @@ dependencies:
     gears_python:
         url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_PYTHON_FNAME}}
         sha256: {{GEARS_PYTHON_SHA256}}
+    gears_java:
+        url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_JAVA_FNAME}}
+        sha256: {{GEARS_JAVA_SHA256}}
