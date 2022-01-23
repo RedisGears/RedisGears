@@ -136,7 +136,7 @@ commands:
       - run:
           name: Gears Tests
           command: make test <<parameters.test_params>>
-          no_output_timeout: 30m
+          no_output_timeout: 55m
       - save-tests-logs
       - persist-artifacts
 
