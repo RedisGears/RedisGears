@@ -1,0 +1,4 @@
+#!/bin/bash
+
+cd `dirname ${BASH_SOURCE}`
+git rev-parse --abbrev-ref HEAD

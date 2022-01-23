@@ -378,15 +378,12 @@ artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_
 	@echo Packing Python plugin...
 	$(SHOW)RAMP=0 GEARSPY=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./pack.sh $(TARGET)
 
-artifacts/release/$(GEARS_JVM_TAR.release) artifacts/snapshot/$(GEARS_JVM_TAR.snapshot): jvmplugin
-	@echo Packing JVM plugin...
-	$(SHOW)RAMP=0 $(MAKE) -C plugins/jvmplugin pack PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
-
 ramp ramp-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 
+# keeping jvmplugin in case it's called explicitly. worst case it regenerates
 pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
 		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot) \
-		artifacts/release/$(GEARS_JVM_TAR.release) artifacts/snapshot/$(GEARS_JVM_TAR.snapshot)
+		jvmplugin
 
 verify-packs:
 	@set -e ;\

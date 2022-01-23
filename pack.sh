@@ -17,13 +17,13 @@ export PYTHONWARNINGS=ignore
 if [[ $1 == --help || $1 == help ]]; then
 	cat <<-END
 		Generate RedisGears distribution packages.
-	
+
 		[ARGVARS...] pack.sh [--help|help] [<module-so-path>]
-		
+
 		Argument variables:
 		VERBOSE=1     Print commands
 		IGNERR=1      Do not abort on error
-		
+
 		RAMP=1        Generate RAMP package
 		GEARSPY=1     Generate Gears Python plugin package
 		SYM=1         Generate packages of debug symbols
@@ -81,6 +81,8 @@ pack() {
 		-d GEARS_PYTHON_NAME=python3_$SEMVER \
 		-d GEARS_PYTHON_FNAME=$URL_FNAME \
 		-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
+		-d GEARS_JAVA_FNAME=$JAVA_URL_FNAME \
+		-d GEARS_JAVA_SHA256=$(cat $GEARSJVM_PKG.sha256) \
 		-d OS_DESC=$OS_DESC \
 		ramp.yml > /tmp/ramp.yml
 	rm -f /tmp/ramp.fname
@@ -146,13 +148,13 @@ pack_deps() {
 	local dep="$1"
 	local artdir="$2"
 	local package="$3"
-	
+
 	artdir=$(realpath $artdir)
 	local depdir=$(cat $artdir/$dep.dir)
 
 	local tar_path=$artdir/$package
 	local dep_prefix_dir=$(cat $artdir/$dep.prefix)
-	
+
 	{ cd $depdir ;\
 	  cat $artdir/$dep.files | \
 	  xargs tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' \
@@ -208,6 +210,8 @@ RELEASE_gearspy=${PACKAGE_NAME}-python.$platform.$SEMVER.tgz
 SNAPSHOT_gearspy=${PACKAGE_NAME}-python.$platform.$BRANCH.tgz
 RELEASE_debug=${PACKAGE_NAME}-debug.$platform.$SEMVER.tgz
 SNAPSHOT_debug=${PACKAGE_NAME}-debug.$platform.$BRANCH.tgz
+RELEASE_jvm=${PACKAGE_NAME}-jvm.$platform.$SEMVER.tgz
+SNAPSHOT_jvm=${PACKAGE_NAME}-jvm.$platform.$BRANCH.tgz
 
 #----------------------------------------------------------------------------------------------
 
@@ -251,6 +255,6 @@ if [[ $GEARSPY == 1 ]]; then
 fi
 
 if [[ $RAMP == 1 ]]; then
-	GEARS_SO=$RELEASE_SO GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
-	GEARS_SO=$SNAPSHOT_SO GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
+	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
+	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshot/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
 fi
