@@ -370,7 +370,7 @@ ifeq ($(WITH_PYTHON),1)
 RAMP_OPT += GEARSPY_PATH=$(abspath $(GEARS_PYTHON))
 endif
 
-artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml
+artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml jvmplugin
 	@echo Packing module...
 	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) $(RAMP_OPT) ./pack.sh $(TARGET)
 
