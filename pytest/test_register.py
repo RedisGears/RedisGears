@@ -899,7 +899,7 @@ def testSteamReaderAbortOnFailure(env):
         with TimeLimit(2):
             while True:
                 registrations = env.cmd('rg.DUMPREGISTRATIONS')
-                if registrations[0][7][15] == 'ABORTED':
+                if registrations[0][7][25] == 'ABORTED':
                     break
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for registration to abort')
@@ -1644,3 +1644,63 @@ def testCaseInsensetiveEventTypes(env):
 
     conn.execute_command('set', 'x', '1')
     env.assertEqual(conn.execute_command('get', '{x}1'), '1')
+
+@gearsTest(skipOnCluster=True)
+def testRegistrationRunDurationOnKeysReader(env):
+    script = '''
+import time
+def test(x):
+    time.sleep(0.01)
+
+GB('KeysReader').foreach(test).register(mode='sync')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.execute_command('set', 'x', '1')
+
+    res = env.cmd('RG.DUMPREGISTRATIONS')
+
+    env.assertContains('lastRunDurationMS', res[0][7])
+    env.assertContains('totalRunDurationMS', res[0][7])
+    env.assertContains('avgRunDurationMS', res[0][7])
+
+
+@gearsTest(skipOnCluster=True)
+def testRegistrationRunDurationOnStreamReader(env):
+    script = '''
+import time
+def test(x):
+    time.sleep(0.01)
+
+GB('StreamReader').foreach(test).register(mode='sync')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.execute_command('xadd', 'x', '*', 'foo', 'bar')
+    
+    res = env.cmd('RG.DUMPREGISTRATIONS')
+    
+    env.assertContains('lastRunDurationMS', res[0][7])
+    env.assertContains('totalRunDurationMS', res[0][7])
+    env.assertContains('avgRunDurationMS', res[0][7])
+    env.assertContains('lastEstimatedLagMS', res[0][7])
+    env.assertContains('avgEstimatedLagMS', res[0][7])
+
+@gearsTest(skipOnCluster=True)
+def testRegistrationRunDurationOnCommandReader(env):
+    script = '''
+import time
+def test(x):
+    time.sleep(0.01)
+
+GB('CommandReader').foreach(test).register(trigger='test', mode='sync')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.execute_command('RG.TRIGGER', 'test')
+
+    res = env.cmd('RG.DUMPREGISTRATIONS')
+
+    env.assertContains('lastRunDurationMS', res[0][7])
+    env.assertContains('totalRunDurationMS', res[0][7])
+    env.assertContains('avgRunDurationMS', res[0][7])

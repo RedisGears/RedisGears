@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include "../command_hook.h"
+#include "readers_common.h"
 
 #define KEYS_NAME_FIELD "key_name"
 #define KEYS_SPEC_NAME "keys_spec"
@@ -32,6 +33,8 @@ typedef struct KeysReaderRegisterData{
     unsigned long long numSuccess;
     unsigned long long numFailures;
     unsigned long long numAborted;
+    long long lastRunDuration;
+    long long totalRunDuration;
     Gears_dict* localPendingExecutions;
     Gears_list* localDoneExecutions;
     WorkerData* wd;
@@ -263,6 +266,8 @@ static KeysReaderRegisterData* KeysReaderRegisterData_Create(FlatExecutionPlan* 
         .numSuccess = 0,
         .numFailures = 0,
         .numAborted = 0,
+        .lastRunDuration = 0,
+        .totalRunDuration = 0,
         .localPendingExecutions = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .localDoneExecutions = Gears_listCreate(),
         .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
@@ -814,6 +819,9 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
     }
 
+    rData->lastRunDuration = FlatExecutionPlan_GetExecutionDuration(ctx);
+    rData->totalRunDuration += rData->lastRunDuration;
+
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
 
     if(errorsLen > 0){
@@ -1179,6 +1187,9 @@ static void KeysReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModuleI
     RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", rData->numSuccess);
     RedisModule_InfoAddFieldULongLong(ctx, "numFailures", rData->numFailures);
     RedisModule_InfoAddFieldULongLong(ctx, "numAborted", rData->numAborted);
+    RedisModule_InfoAddFieldULongLong(ctx, "lastRunDurationMS", DURATION2MS(rData->lastRunDuration));
+    RedisModule_InfoAddFieldULongLong(ctx, "totalRunDurationMS", totalDurationMS(rData));
+    RedisModule_InfoAddFieldDouble(ctx, "avgRunDurationMS", avgDurationMS(rData));
     RedisModule_InfoAddFieldCString(ctx, "lastError", rData->lastError ? rData->lastError : "None");
     RedisModule_InfoAddFieldCString(ctx, "regex", rData->args->prefix);
 
@@ -1198,7 +1209,7 @@ static void KeysReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModuleI
 static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, 0);
     RedisModule_Assert(rData);
-    RedisModule_ReplyWithArray(ctx, 14);
+    RedisModule_ReplyWithArray(ctx, 20);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(rData->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -1217,6 +1228,12 @@ static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPl
     RedisModule_ReplyWithLongLong(ctx, rData->numFailures);
     RedisModule_ReplyWithStringBuffer(ctx, "numAborted", strlen("numAborted"));
     RedisModule_ReplyWithLongLong(ctx, rData->numAborted);
+    RedisModule_ReplyWithStringBuffer(ctx, "lastRunDurationMS", strlen("lastRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, DURATION2MS(rData->lastRunDuration));
+    RedisModule_ReplyWithStringBuffer(ctx, "totalRunDurationMS", strlen("totalRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, totalDurationMS(rData));
+    RedisModule_ReplyWithStringBuffer(ctx, "avgRunDurationMS", strlen("avgRunDurationMS"));
+    RedisModule_ReplyWithDouble(ctx, avgDurationMS(rData));
     RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
     if(rData->lastError){
         RedisModule_ReplyWithStringBuffer(ctx, rData->lastError, strlen(rData->lastError));
