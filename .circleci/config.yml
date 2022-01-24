@@ -170,7 +170,7 @@ commands:
           name: Build for platform
           command: |
             pushd build/docker
-            make build $(./version-params) OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
+            make build $(./version-params) OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 SHOW=1
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
