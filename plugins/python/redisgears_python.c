@@ -4605,7 +4605,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     int ctxFlags = RedisModule_GetContextFlags(ctx);
 
     if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI|REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
-        RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec, lua, or if blocking is not allowed");
+        RedisModule_ReplyWithError(ctx, "Can not run gears inside a multi exec, lua, or when blocking is not allowed");
         return REDISMODULE_OK;
     }
 
