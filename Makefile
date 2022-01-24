@@ -17,8 +17,6 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 #----------------------------------------------------------------------------------------------
 
 define HELP
-make setup      # install packages required for build
-make fetch      # download and prepare dependant modules (i.e., python, libevent)
 
 make build
   DEBUG=1         # build debug variant
@@ -203,7 +201,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs platform jvmplugin
+.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup verify-packs platform jvmplugin
 
 include $(MK)/rules
 
@@ -286,10 +284,6 @@ setup:
 	$(SHOW)./deps/readies/bin/getpy2
 	$(SHOW)python2 ./system-setup.py
 
-fetch get_deps:
-#	-$(SHOW)git submodule update --init --recursive
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
-
 #----------------------------------------------------------------------------------------------
 
 ifeq ($(DEPS),1)
@@ -359,7 +353,7 @@ endif
 
 jvmplugin:
 	@echo Building jvmplugin...
-	${MAKE} -C plugins/jvmplugin PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
+	${MAKE} -C plugins/jvmplugin PYTHONDIR=$(BINROOT)/python3_$(GEARS_VERSION)
 
 clean-gears-python:
 	$(SHOW)make clean -C plugins/python
@@ -429,7 +423,7 @@ ifneq ($(TEST),)
 else
 	$(SHOW)set -e; \
 	cd pytest; \
-	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism 6
+	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism 4
 	${MAKE} -C plugins/jvmplugin tests PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 endif
 

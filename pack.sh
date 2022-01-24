@@ -100,7 +100,7 @@ pack() {
 		local packname=`cat /tmp/ramp.fname`
 	fi
 
-	echo "Created artifacts/$artifact/$packname"
+	echo "Created $packname"
 }
 
 #----------------------------------------------------------------------------------------------
