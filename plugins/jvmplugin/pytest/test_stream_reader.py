@@ -17,4 +17,4 @@ def testStreamReaderFromId(env, conn, results, **kargs):
 @jvmTestDecorator()
 def testStreamRegisterArgs(env, **kargs):
 	res = env.cmd('RG.DUMPREGISTRATIONS')
-	env.assertEqual(res[0][7][13], ['batchSize', 100, 'durationMS', 1000, 'stream', 's'])
+	env.assertEqual(res[0][7][23], ['batchSize', 100, 'durationMS', 1000, 'stream', 's'])
