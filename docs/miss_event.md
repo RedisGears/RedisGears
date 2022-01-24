@@ -54,7 +54,7 @@ When the client tries to fetch the key `x`, it gets a key miss notification and 
  
 In order to improve the client experience, RedisGears 1.2 introduce a new argument to [`KeysReader`](readers.md#keysreader) called `commands`. It allows you to specify a list of commands on which to fire events. When the `commands` argument is used, RedisGears will only fire the events on those commands and will link the client executing the command with the executions that were triggered. The client that executed the command will not get the reply until all the executions that were triggered as a result of the command finish. In addition, RedisGears allows you to override the command reply using the [`override_reply`](runtime.md#override_reply) function.
 
-With these capabilities, you can change the example to give a much better user experience:
+With these capabilities, you can change the example to give a better user experience:
  
  
 ```python
@@ -85,10 +85,10 @@ Although this Redis server has no keys, executing the `get x` command returns th
  
 As with the [command hook](commands_hook.md), you cannot use the `commands` argument in the following cases:
  
-* If the **command has movable keys** and `prefix` argument was used
-* If the **command is marked with noscript flag**
+* If the **command has movable keys** and the `prefix` argument was used
+* If the **command is marked with the noscript flag**
  
-Also, the example above will not work inside a Lua script or MULTI EXEC (because in those cases it's not possible to run in the background). In such cases, RedisGears will not link the client with the executions, and the client will simply get the reply:
+The example above will also not work inside a Lua script or MULTI EXEC (because in those cases it's not possible to run in the background). In such cases, RedisGears will not link the client with the executions, and the client will simply get the reply:
  
 ```
 127.0.0.1:6379> keys *
@@ -101,7 +101,7 @@ QUEUED
 1) (nil)
 ```
  
-Also notice that in such case, [`override_reply`](runtime.md#override_reply) will raise an exception. In our example you can see the exception on [`RG.DUMPREGISTRATION`](commands.md#rgdumpregistrations) output (`['Traceback (most recent call last):\\n', '  File \"<string>\", line 8, in fetch_data\\n', 'gears.error: Can not get command ctx\\n`):
+Also notice that in such cases, [`override_reply`](runtime.md#override_reply) will raise an exception. In this example, you can see the exception on [`RG.DUMPREGISTRATION`](commands.md#rgdumpregistrations) output (`['Traceback (most recent call last):\\n', '  File \"<string>\", line 8, in fetch_data\\n', 'gears.error: Can not get command ctx\\n`):
  
 ```
 127.0.0.1:6379> RG.DUMPREGISTRATIONS
