@@ -504,6 +504,15 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         VERIFY_CLUSTER_INITIALIZE(ctx);
     }
 
+    if (crtCtx->mode != ExecutionModeSync) {
+        int ctxFlags = RedisModule_GetContextFlags(ctx);
+
+        if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI|REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
+            RedisModule_ReplyWithError(ctx, "ERR blocking is not allowed, can not run async execution.");
+            return REDISMODULE_OK;
+        }
+    }
+
     CommandPD* pd = CommandPD_Create(ctx, crtCtx);
 
     char* err = NULL;
