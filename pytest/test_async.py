@@ -1141,7 +1141,7 @@ GB('CommandReader').map(c).register(trigger='test')
     env.expect('MULTI').equal('OK')
     env.expect('RG.TRIGGER', 'test').equal('QUEUED')
     res = env.cmd('EXEC')
-    env.assertIn('can not run a none sync execution inside MULTI/LUA', str(res[0]))
+    env.assertIn('can not run a non-sync execution inside a MULTI/LUA', str(res[0]))
     
 @gearsTest()
 def testAsyncWithoutWait(env):
