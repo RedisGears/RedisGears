@@ -10,7 +10,7 @@ The following code overrides the `hset` command and adds the current time as the
 {{ include('command_hook/command_hook-000.py')}}
 ```
  
-This example uses [`call_next`]() to call the original Redis `hset` command and adds the `_last_modified_` as the last argument. 
+This example uses [`call_next`]() to call the original Redis `hset` command and adds `_last_modified_` as the last argument. 
 
 Running this example will give the following output:
 ```
@@ -65,7 +65,7 @@ Extend the example above to add another field that counts how many times the has
 {{ include('command_hook/command_hook-001.py')}}
 ```
  
-This example registers another execution that overrides the `hset` command and performs `hincrby` on the `_times_modified_` field. Then it calls [`call_next`]() to call, either the next hook or the original command.
+This example registers another execution that overrides the `hset` command and performs `hincrby` on the `_times_modified_` field. Then it calls [`call_next`]() to call either the next hook or the original command.
 
 Run this example (alongside the example above) to get the following output:
 ```
@@ -93,6 +93,6 @@ Both hooks triggered for `person:1` while only the second hook triggered for `k1
 * You **cannot** use command hooks in the following cases:
     * If the **command has movable keys** and `keyprefix` was used
     * If the **command is marked with the noscript flag**
-* You can hook a command with a none sync execution (see [execution mode](file:///home/meir/work/RedisGears/site/async_await_doc/functions.html#register)). However, once it's done, it is not possible to hook it again (perform a nested hook). Also, **hooking a command with none sync execution will prevent its invocation from within a Lua script on MULTI EXEC**.
+* You can hook a command with a non-sync execution (see [execution mode](file:///home/meir/work/RedisGears/site/async_await_doc/functions.html#register)). However, once it's done, it is not possible to hook it again (perform a nested hook). Also, **hooking a command with non-sync execution will prevent its invocation from within a Lua script on MULTI EXEC**.
  
 
