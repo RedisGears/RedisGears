@@ -1,4 +1,4 @@
-
+MK.pyver:=3
 ROOT=../..
 include $(ROOT)/deps/readies/mk/main
 

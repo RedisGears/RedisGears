@@ -98,10 +98,8 @@ commands:
       - persist_to_workspace:
           root: artifacts
           paths:
-            - 'snapshot/*.zip'
-            - 'snapshot/*.tgz'
-            - 'release/*.zip'
-            - 'release/*.tgz'
+            - 'snapshot/*'
+            - 'release/*'
 
   build-steps:
     parameters:
@@ -151,7 +149,7 @@ commands:
           name: Build for platform
           command: |
             pushd build/docker
-            make build $(./version-params) REDIS_VER=<<parameters.redis_version>> OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
+            make build $(./version-params) REDIS_VER=<<parameters.redis_version>> OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 SHOW=1
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
@@ -277,7 +275,8 @@ jobs:
       - run:
           name: Deploy Snapshots to S3
           command: |
-            for f in artifacts/snapshot/*.zip artifacts/snapshot/*.tgz; do
+            ls -lR artifacts
+            for f in artifacts/snapshot/*; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
             done
 
@@ -292,7 +291,7 @@ jobs:
       - run:
           name: Deploy Releases to S3
           command: |
-            for f in artifacts/release/*.zip artifacts/release/*.tgz; do
+            for f in artifacts/release/*; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
 
