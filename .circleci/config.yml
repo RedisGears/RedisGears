@@ -406,13 +406,13 @@ workflows:
           context: common
           requires:
             - build-platforms
-            - build-macos
+              #- build-macos
           <<: *on-integ-branch
       - deploy-releases:
           context: common
           requires:
             - build-platforms
-            - build-macos
+              #- build-macos
           <<: *on-version-tags
       - release-automation:
           <<: *on-version-tags
