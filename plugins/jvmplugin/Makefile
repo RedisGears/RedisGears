@@ -1,6 +1,20 @@
 OS?=$(shell uname -s)
 ARCH?=$(shell uname -m)
 OSNICK?=$(shell ../../deps/readies/bin/platform --osnick)
+OS?=$(shell ../../deps/readies/bin/platform --os)
+ifeq ($(OS),macos)
+JVM_OS=mac
+endif
+ifeq ($(OS),Linux)
+JVM_OS=linux
+endif
+ifeq ($(OS),linux)
+JVM_OS=linux
+endif
+ifndef JVM_OS
+$(error No supported jdk. Exiting)
+endif
+
 GIT_BRANCH=$(shell ../../getbranch)
 VERSION=$(shell ../../getver)
 
@@ -26,7 +40,7 @@ gears_jvm: InstallOpenJDK
 	make -C ./src/
 
 /tmp/openjdk-hotspot.zip:
-	test -f /tmp/opendjk-hotspot.zip || wget -q "https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz" -O /tmp/openjdk-hotspot.zip
+	test -f /tmp/opendjk-hotspot.zip || wget -q "https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_${JVM_OS}_hotspot_11.0.9.1_1.tar.gz" -O /tmp/openjdk-hotspot.zip
 
 InstallOpenJDK: bin/OpenJDK
 

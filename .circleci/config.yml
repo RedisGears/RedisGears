@@ -401,7 +401,8 @@ workflows:
       - valgrind:
           <<: *on-integ-and-version-tags
       - build-macos:
-          <<: *on-integ-and-version-tags
+        #<<: *on-integ-and-version-tags
+          <<: *on-any-branch
       - deploy-snapshots:
           context: common
           requires:
