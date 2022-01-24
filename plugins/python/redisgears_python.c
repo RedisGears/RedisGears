@@ -4604,8 +4604,8 @@ static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     int ctxFlags = RedisModule_GetContextFlags(ctx);
 
-    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI)){
-        RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec or lua");
+    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI|REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
+        RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec, lua, or if blocking is not allowed");
         return REDISMODULE_OK;
     }
 

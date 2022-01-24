@@ -1008,9 +1008,10 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
     int runFlags = 0;
     int ctxFlags = RedisModule_GetContextFlags(ctx);
     if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
-                    (ctxFlags & REDISMODULE_CTX_FLAGS_LUA)){
+       (ctxFlags & REDISMODULE_CTX_FLAGS_LUA) ||
+       (ctxFlags & REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
         if(crtCtx->mode != ExecutionModeSync){
-            RedisModule_ReplyWithError(ctx, "ERR can not run a none sync execution inside MULTI/LUA or on loading.");
+            RedisModule_ReplyWithError(ctx, "ERR can not run a none sync execution inside MULTI/LUA (blocking is not allowed) or on loading.");
             return REDISMODULE_OK;
         }
         runFlags |= RFNoAsync;
@@ -1043,7 +1044,9 @@ static int CommandReader_Trigger(RedisModuleCtx *ctx, RedisModuleString **argv, 
         replyCallback(ep, ctx);
         RedisGears_DropExecution(ep);
     } else {
-        RedisModule_Assert(!(ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) && !(ctxFlags & REDISMODULE_CTX_FLAGS_LUA));
+        RedisModule_Assert(!(ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) &&
+                           !(ctxFlags & REDISMODULE_CTX_FLAGS_LUA) &&
+                           !(ctxFlags & REDISMODULE_CTX_FLAGS_DENY_BLOCKING));
         if(EPIsFlagOn(ep, EFIsLocal)){
             Gears_dictAdd(crtCtx->pendingExections, ep->idStr, NULL);
         }
