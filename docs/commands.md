@@ -27,7 +27,7 @@ The following sections describe the supported commands.
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.TRIGGERONKEY`](#rgtriggeronkey) | Triggers execution of registration on a given key |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
-| [`RG.CLEARREGISTRATIONSSTATS`](#rgunregister) | Clears stats from all registrations |
+| [`RG.CLEARREGISTRATIONSSTATS`](#rgclearregistrationsstats) | Clears stats from all registrations |
 
 **Syntax Conventions**
 
