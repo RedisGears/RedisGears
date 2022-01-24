@@ -30,15 +30,12 @@ COPY --from=redis /usr/local/ /usr/local/
 
 ADD . /build
 
-RUN ./deps/readies/bin/getupdates
 RUN ./deps/readies/bin/getpy2
 RUN ./deps/readies/bin/getpy3
 RUN ./system-setup.py
+RUN ./plugins/jvmplugin/system-setup.py
 RUN bash -l -c "make -j `nproc` fetch SHOW=1"
 RUN bash -l -c "make all SHOW=1"
-
-RUN ./plugins/jvmplugin/system-setup.py
-RUN bash -l -c "make -j `nproc` jvmplugin"
 RUN ./getver > artifacts/VERSION
 
 ARG PACK
