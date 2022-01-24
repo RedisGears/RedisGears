@@ -174,7 +174,7 @@ commands:
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
-            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
+            #tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
       - save-tests-logs
       - early-return-for-forked-pull-requests
