@@ -134,29 +134,6 @@ commands:
       - save-tests-logs
       - persist-artifacts
 
-  build-with-redis-versions:
-    parameters:
-      platform:
-        type: string
-      redis_version:
-        type: string
-    steps:
-      - early-returns
-      - setup-executor
-      - checkout-all
-      - setup-automation
-      - run:
-          name: Build for platform
-          command: |
-            pushd build/docker
-            make build $(./version-params) REDIS_VER=<<parameters.redis_version>> OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 SHOW=1
-            popd
-            logs_d=pytest/logs/<<parameters.platform>>
-            mkdir -p $logs_d
-            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
-          no_output_timeout: 40m
-      - save-tests-logs
-
   build-platforms-steps:
     parameters:
       platform:
@@ -170,11 +147,11 @@ commands:
           name: Build for platform
           command: |
             pushd build/docker
-            make build $(./version-params) OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 SHOW=1
+            make build $(./version-params) OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
             popd
             logs_d=pytest/logs/<<parameters.platform>>
             mkdir -p $logs_d
-            #tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
+            tar -C $logs_d -xzf artifacts/pytest-logs*.tgz
           no_output_timeout: 40m
       - save-tests-logs
       - early-return-for-forked-pull-requests
@@ -384,38 +361,35 @@ workflows:
   version: 2
   default-flow:
     jobs:
-#      - build-redis-versions:
-#          name: build-with-redis-<< matrix.redis_version >>
-#          <<: *on-any-branch
-#          matrix:
-#            parameters:
-#              redis_version: ["6.0.9", "6.2.6"]
+      - build-redis-versions:
+          name: build-with-redis-<< matrix.redis_version >>
+          <<: *on-any-branch
+          matrix:
+            parameters:
+              redis_version: ["6.0.9", "6.2.6"]
       - build-platforms:
-        #<<: *on-integ-and-version-tags
           <<: *on-any-branch
           context: common
           matrix:
             parameters:
               platform: [hirsute, focal, bionic, xenial, centos7, centos8, bullseye]
-#      - valgrind:
-#          <<: *on-integ-and-version-tags
+      - valgrind:
+          <<: *on-integ-and-version-tags
       - build-macos:
-        #<<: *on-integ-and-version-tags
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
       - deploy-snapshots:
           context: common
           requires:
             - build-platforms
               #- build-macos
-          <<: *on-any-branch
-            #<<: *on-integ-branch
-#      - deploy-releases:
-#          context: common
-#          requires:
-#            - build-platforms
-#              #- build-macos
-#          <<: *on-version-tags
-#      - release-automation:
-#          <<: *on-version-tags
-#          requires:
-#            - deploy-releases
+          <<: *on-integ-branch
+      - deploy-releases:
+          context: common
+          requires:
+            - build-platforms
+              #- build-macos
+          <<: *on-version-tags
+      - release-automation:
+          <<: *on-version-tags
+          requires:
+            - deploy-releases
