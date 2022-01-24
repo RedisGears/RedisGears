@@ -70,7 +70,9 @@ commands:
       - setup-automation
       - run:
           name: System setup
-          command: ./system-setup.py
+          command: |
+            ./system-setup.py
+            ./plugins/jvmplugin/system-setup.py
           no_output_timeout: 30m
       - run:
           name: Install Redis
@@ -128,11 +130,6 @@ commands:
           command: |
             bash -l -c "make -j `nproc` fetch"
             bash -l -c "make all OS_VERSION=<<parameters.platform>> <<parameters.build_params>> SHOW=1"
-      - run:
-          name: Build JVMPlugin
-          command: |
-            ./plugins/jvmplugin/system-setup.py
-            bash -l -c "make -j `nproc` jvmplugin"
       - run:
           name: Gears Tests
           command: make test <<parameters.test_params>>
