@@ -899,7 +899,7 @@ def testSteamReaderAbortOnFailure(env):
         with TimeLimit(2):
             while True:
                 registrations = env.cmd('rg.DUMPREGISTRATIONS')
-                if registrations[0][7][15] == 'ABORTED':
+                if registrations[0][7][25] == 'ABORTED':
                     break
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for registration to abort')
@@ -1644,3 +1644,107 @@ def testCaseInsensetiveEventTypes(env):
 
     conn.execute_command('set', 'x', '1')
     env.assertEqual(conn.execute_command('get', '{x}1'), '1')
+
+@gearsTest(skipOnCluster=True)
+def testRegistrationRunDurationOnKeysReader(env):
+    script = '''
+import time
+def test(x):
+    time.sleep(0.01)
+
+GB('KeysReader').foreach(test).register(mode='sync')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.execute_command('set', 'x', '1')
+
+    res = env.cmd('RG.DUMPREGISTRATIONS')
+
+    env.assertContains('lastRunDurationMS', res[0][7])
+    env.assertContains('totalRunDurationMS', res[0][7])
+    env.assertContains('avgRunDurationMS', res[0][7])
+
+
+@gearsTest(skipOnCluster=True)
+def testRegistrationRunDurationOnStreamReader(env):
+    script = '''
+import time
+def test(x):
+    time.sleep(0.01)
+
+GB('StreamReader').foreach(test).register(mode='sync')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.execute_command('xadd', 'x', '*', 'foo', 'bar')
+    
+    res = env.cmd('RG.DUMPREGISTRATIONS')
+    
+    env.assertContains('lastRunDurationMS', res[0][7])
+    env.assertContains('totalRunDurationMS', res[0][7])
+    env.assertContains('avgRunDurationMS', res[0][7])
+    env.assertContains('lastEstimatedLagMS', res[0][7])
+    env.assertContains('avgEstimatedLagMS', res[0][7])
+
+@gearsTest(skipOnCluster=True)
+def testRegistrationRunDurationOnCommandReader(env):
+    script = '''
+import time
+def test(x):
+    time.sleep(0.01)
+
+GB('CommandReader').foreach(test).register(trigger='test', mode='sync')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+
+    env.execute_command('RG.TRIGGER', 'test')
+
+    res = env.cmd('RG.DUMPREGISTRATIONS')
+
+    env.assertContains('lastRunDurationMS', res[0][7])
+    env.assertContains('totalRunDurationMS', res[0][7])
+    env.assertContains('avgRunDurationMS', res[0][7])
+
+
+@gearsTest()
+def testRegistrationClearStats(env):
+    script = '''
+import time
+def test(x):
+    time.sleep(0.01)
+
+GB('KeysReader').foreach(test).register(mode='sync')
+GB('CommandReader').foreach(test).register(trigger='test', mode='sync')
+GB('StreamReader').foreach(test).register(mode='sync')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('set', 'x', '1')
+    conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
+    conn.execute_command('RG.TRIGGER', 'test')
+
+    env.expect('RG.CLEARREGISTRATIONSSTATS').equal('OK')
+
+    for i in range(1, env.shardsCount + 1):
+        conn = env.getConnection(shardId=i)
+        res = conn.execute_command('RG.DUMPREGISTRATIONS')
+        for r in res:
+            d = {}
+            r = r[7]
+            for i in range(0, len(r), 2):
+                d[r[i]] = r[i + 1]
+            env.assertEqual(d['numTriggered'], 0)
+            env.assertEqual(d['numSuccess'], 0)
+            env.assertEqual(d['numFailures'], 0)
+            env.assertEqual(d['numAborted'], 0)
+            env.assertEqual(d['lastRunDurationMS'], 0)
+            env.assertEqual(d['avgRunDurationMS'], '-nan')
+            env.assertEqual(d['lastError'], None)
+            if 'lastEstimatedLagMS' in d.keys():
+                env.assertEqual(d['lastEstimatedLagMS'], 0)
+            if 'avgEstimatedLagMS' in d.keys():
+                env.assertEqual(d['avgEstimatedLagMS'], '-nan')
+            

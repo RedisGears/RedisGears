@@ -8,9 +8,11 @@
 #include "execution_plan.h"
 #include "record.h"
 #include "config.h"
+#include "readers_common.h"
 #include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 
 #define STREAM_REGISTRATION_INIT_SIZE 10
 static Gears_list* streamsRegistration = NULL;
@@ -31,6 +33,7 @@ typedef struct StreamReaderCtx{
     bool isDone;
     RedisModuleString** batchIds;
     StreamId lastReadId;
+    long long batchStartTime;
 }StreamReaderCtx;
 
 typedef struct StreamReaderTriggerArgs{
@@ -60,6 +63,10 @@ typedef struct StreamReaderTriggerCtx{
     long long numAborted;
     long long numSuccess;
     long long numFailures;
+    long long lastRunDuration;
+    long long totalRunDuration;
+    long long lastBatchLag;
+    long long totalBatchLag;
     char* lastError;
     pthread_t scanThread;
     Gears_dict* localPendingExecutions;
@@ -69,6 +76,7 @@ typedef struct StreamReaderTriggerCtx{
 
 typedef struct SingleStreamReaderCtx{
     size_t numTriggered;
+    long long batchStartTime;
     bool timerIsSet;
     bool freeOnNextTimeEvent;
     RedisModuleTimerID lastTimerId;
@@ -198,6 +206,7 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     ssrctx->keyName = RG_STRDUP(keyName);
     ssrctx->timerIsSet = false;
     ssrctx->freeOnNextTimeEvent = false;
+    ssrctx->batchStartTime = 0;
     if(!StreamReader_ReadLastId(ctx, ssrctx)){
     	RG_FREE(ssrctx->keyName);
     	RG_FREE(ssrctx);
@@ -278,6 +287,10 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .numAborted = 0,
         .numSuccess = 0,
         .numFailures = 0,
+        .lastRunDuration = 0,
+        .totalRunDuration = 0,
+        .lastBatchLag = 0,
+        .totalBatchLag = 0,
         .lastError = NULL,
         .localPendingExecutions = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .localDoneExecutions = Gears_listCreate(),
@@ -298,6 +311,7 @@ StreamReaderCtx* StreamReaderCtx_Create(const char* streamName, const char* stre
             .batchSize = 0,
             .readPenging = false,
             .lastReadId = StreamIdZero,
+            .batchStartTime = 0,
     };
     return readerCtx;
 }
@@ -306,7 +320,7 @@ void StreamReaderCtx_Free(StreamReaderCtx* readerCtx){
     StreamReader_Free(readerCtx);
 }
 
-StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* streamName, const char* consumerGroup, size_t batchSize, bool readPenging){
+static StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* streamName, const char* consumerGroup, size_t batchSize, bool readPenging, long long batchStartTime){
     StreamReaderCtx* readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
     *readerCtx = (StreamReaderCtx){
             .streamKeyName = streamName ? RG_STRDUP(streamName) : NULL,
@@ -318,6 +332,7 @@ StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* streamName,
             .batchSize = batchSize,
             .readPenging = readPenging,
             .lastReadId = StreamIdZero,
+            .batchStartTime = batchStartTime,
     };
     return readerCtx;
 }
@@ -671,6 +686,9 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
     }
 
+    srctx->lastRunDuration = FlatExecutionPlan_GetExecutionDuration(ctx);
+    srctx->totalRunDuration += srctx->lastRunDuration;
+
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
     bool ackAndTrim = false;
 
@@ -720,7 +738,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     if(ackAndTrim && EPIsFlagOn(ctx, EFIsLocal)){
         // we only ack and trim local executions.
         // distributed executions on stream is tricky and should be considered
-        // carefully cause order (and in rare situations process only once) can not be promissed.
+        // carefully cause order (and in rare situations process only once) can not be promised.
         // why?
         // 1. oreder can not be promised because because execution might take longer on
         //    another shard and so the finished while be delayed.
@@ -735,12 +753,28 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
     }
 
+    /* calculate lag */
+    Reader* reader = ExecutionPlan_GetReader(ctx);
+    StreamReaderCtx* readerCtx = reader->ctx;
+    if (readerCtx->batchStartTime) {
+        /* no need to calculate lag if batchStartTime is not set.
+         * In such case its either:
+         * 1. Batch operation on the stream
+         * 2. Run logic on data already exists in the stream */
+        struct timespec currTimeSpec = {0};
+        clock_gettime(CLOCK_REALTIME, &currTimeSpec);
+        long long currTime = ((long long)1000000000 * (currTimeSpec.tv_sec) + (currTimeSpec.tv_nsec));
+        srctx->lastBatchLag = currTime - readerCtx->batchStartTime;
+        srctx->totalBatchLag += srctx->lastBatchLag;
+    }
+
+
     StreamReaderTriggerCtx_Free(srctx);
 }
 
 static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch, bool readPending){
     StreamReaderTriggerCtx* srtctx = ssrctx->srtctx;
-    StreamReaderCtx* readerCtx = StreamReaderCtx_CreateWithConsumerGroup(ssrctx->keyName, GEARS_CONSUMER_GROUP, batch, readPending);
+    StreamReaderCtx* readerCtx = StreamReaderCtx_CreateWithConsumerGroup(ssrctx->keyName, GEARS_CONSUMER_GROUP, batch, readPending, ssrctx->batchStartTime);
     RedisGears_OnExecutionDoneCallback callback = StreamReader_ExecutionDone;
     void* privateData = StreamReaderTriggerCtx_GetShallowCopy(srtctx);
     ++srtctx->numTriggered;
@@ -835,6 +869,12 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             if(!ssrctx){
                 ssrctx = SingleStreamReaderCtx_Create(ctx, keyName, srctx);
                 RedisModule_Assert(ssrctx);
+            }
+            if (ssrctx->numTriggered == 0) {
+                /* first element in a batch save current time for lag calculation */
+                struct timespec t = {0};
+                clock_gettime(CLOCK_REALTIME, &t);
+                ssrctx->batchStartTime = ((long long)1000000000 * (t.tv_sec) + (t.tv_nsec));
             }
             if(srctx->args->batchSize <= ++ssrctx->numTriggered){
                 StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
@@ -1063,6 +1103,11 @@ static void StreamReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModul
     RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", srctx->numSuccess);
     RedisModule_InfoAddFieldULongLong(ctx, "numFailures", srctx->numFailures);
     RedisModule_InfoAddFieldULongLong(ctx, "numAborted", srctx->numAborted);
+    RedisModule_InfoAddFieldULongLong(ctx, "lastRunDurationMS", DURATION2MS(srctx->lastRunDuration));
+    RedisModule_InfoAddFieldULongLong(ctx, "totalRunDurationMS", totalDurationMS(srctx));
+    RedisModule_InfoAddFieldDouble(ctx, "avgRunDurationMS", avgDurationMS(srctx));
+    RedisModule_InfoAddFieldLongLong(ctx, "lastEstimatedLagMS", DURATION2MS(srctx->lastBatchLag));
+    RedisModule_InfoAddFieldDouble(ctx, "avgEstimatedLagMS", ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
     RedisModule_InfoAddFieldCString(ctx, "lastError", srctx->lastError ? srctx->lastError : "None");
     RedisModule_InfoAddFieldULongLong(ctx, "batchSize", srctx->args->batchSize);
     RedisModule_InfoAddFieldULongLong(ctx, "durationMS", srctx->args->durationMS);
@@ -1102,7 +1147,7 @@ static void StreamReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModul
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
     RedisModule_Assert(srctx);
-    RedisModule_ReplyWithArray(ctx, 16);
+    RedisModule_ReplyWithArray(ctx, 26);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(srctx->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -1121,6 +1166,16 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     RedisModule_ReplyWithLongLong(ctx, srctx->numFailures);
     RedisModule_ReplyWithStringBuffer(ctx, "numAborted", strlen("numAborted"));
     RedisModule_ReplyWithLongLong(ctx, srctx->numAborted);
+    RedisModule_ReplyWithStringBuffer(ctx, "lastRunDurationMS", strlen("lastRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, DURATION2MS(srctx->lastRunDuration));
+    RedisModule_ReplyWithStringBuffer(ctx, "totalRunDurationMS", strlen("totalRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, totalDurationMS(srctx));
+    RedisModule_ReplyWithStringBuffer(ctx, "avgRunDurationMS", strlen("avgRunDurationMS"));
+    RedisModule_ReplyWithDouble(ctx, avgDurationMS(srctx));
+    RedisModule_ReplyWithStringBuffer(ctx, "lastEstimatedLagMS", strlen("lastEstimatedLagMS"));
+    RedisModule_ReplyWithLongLong(ctx, DURATION2MS(srctx->lastBatchLag));
+    RedisModule_ReplyWithStringBuffer(ctx, "avgEstimatedLagMS", strlen("avgEstimatedLagMS"));
+    RedisModule_ReplyWithDouble(ctx, ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
     RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
     if(srctx->lastError){
         RedisModule_ReplyWithStringBuffer(ctx, srctx->lastError, strlen(srctx->lastError));
@@ -1233,6 +1288,21 @@ static int StreamReader_RdbLoad(RedisModuleIO *rdb, int encver){
     return REDISMODULE_OK;
 }
 
+static void StreamReader_ClearStats(){
+    if(!streamsRegistration){
+        return;
+    }
+    Gears_listIter *iter = Gears_listGetIterator(streamsRegistration, AL_START_HEAD);
+    Gears_listNode* node = NULL;
+    while((node = Gears_listNext(iter))){
+        StreamReaderTriggerCtx* srtctx = Gears_listNodeValue(node);
+        resetStats(srtctx);
+        srtctx->lastBatchLag = 0;
+        srtctx->totalBatchLag = 0;
+    }
+    Gears_listReleaseIterator(iter);
+}
+
 static void StreamReader_Clear(){
     if(!streamsRegistration){
         return;
@@ -1264,4 +1334,5 @@ RedisGears_ReaderCallbacks StreamReader = {
         .rdbSave = StreamReader_RdbSave,
         .rdbLoad = StreamReader_RdbLoad,
         .clear = StreamReader_Clear,
+        .clearStats = StreamReader_ClearStats,
 };

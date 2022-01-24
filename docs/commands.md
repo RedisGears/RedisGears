@@ -27,6 +27,7 @@ The following sections describe the supported commands.
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.TRIGGERONKEY`](#rgtriggeronkey) | Triggers execution of registration on a given key |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
+| [`RG.CLEARREGISTRATIONSSTATS`](#rgclearregistrationsstats) | Clears stats from all registrations |
 
 **Syntax Conventions**
 
@@ -199,6 +200,11 @@ An array with an entry per registration. Each entry is made of alternating key n
     * **numSuccess**: a counter of successful executions
     * **numFailures**: a counter of failed executions
     * **numAborted**: a counter of aborted executions
+    * **lastRunDurationMS**: duration in milisecond of the last execution
+    * **totalRunDurationMS**: total run time in milisecod
+    * **avgRunDurationMS**: average execution runtime in milisecond
+    * **lastEstimatedLagMS**: Only on Streams, give the last batch lag (the time difference from the moment the first batch entry enters the stream to the time the batch was finished processing)
+    * **avgEstimatedLagMS**: Only on Streams, average lag. 
     * **lastError**: the last error returned
     * **args**: reader-specific arguments
 * **PD**: private data
@@ -768,3 +774,27 @@ _Arguments_
 _Return_
 
 A simple 'OK' string, or an error. An error is returned if the registration ID doesn't exist or if the function's reader doesn't support the unregister operation.
+
+## RG.CREARREGISTRATIONSSTATS
+The **RG.CREARREGISTRATIONSSTATS** command clear stats from all the registrations, cleared stats:
+
+* numTriggered
+* numSuccess
+* numFailures
+* numAborted
+* lastRunDurationMS
+* avgRunDurationMS
+* avgRunDurationMS
+* lastEstimatedLagMS (on streams)
+* avgEstimatedLagMS (on streams)
+
+**Redis API**
+
+```
+RG.CREARREGISTRATIONSSTATS
+```
+
+_Return_
+
+A simple 'OK' string.
+

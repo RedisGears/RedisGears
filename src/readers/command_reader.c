@@ -6,6 +6,7 @@
 #include "version.h"
 #include "cluster.h"
 #include "command_hook.h"
+#include "readers_common.h"
 
 #include <string.h>
 
@@ -47,6 +48,8 @@ typedef struct CommandReaderTriggerCtx{
     size_t numSuccess;
     size_t numFailures;
     size_t numAborted;
+    size_t lastRunDuration;
+    size_t totalRunDuration;
     char* lastError;
     Gears_dict* pendingExections;
     Gears_listNode* listNode;
@@ -177,6 +180,8 @@ static CommandReaderTriggerCtx* CommandReaderTriggerCtx_Create(FlatExecutionPlan
             .numSuccess = 0,
             .numFailures = 0,
             .numAborted = 0,
+            .lastRunDuration = 0,
+            .totalRunDuration = 0,
             .lastError = NULL,
             .pendingExections = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
             .listNode = NULL,
@@ -203,6 +208,10 @@ CommandReaderTriggerCtx* CommandReaderTriggerCtx_Get(ExecutionCtx* eCtx){
 CommandReaderTriggerCtx* CommandReaderTriggerCtx_GetShallowCopy(CommandReaderTriggerCtx* crtCtx){
     __atomic_add_fetch(&crtCtx->refCount, 1, __ATOMIC_SEQ_CST);
     return crtCtx;
+}
+
+static void CommandReaderTriggerCtx_ResetStats(CommandReaderTriggerCtx* crtCtx){
+    resetStats(crtCtx);
 }
 
 void CommandReaderTriggerCtx_Free(CommandReaderTriggerCtx* crtCtx){
@@ -577,6 +586,9 @@ static void CommandReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModu
     RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", crtCtx->numSuccess);
     RedisModule_InfoAddFieldULongLong(ctx, "numFailures", crtCtx->numFailures);
     RedisModule_InfoAddFieldULongLong(ctx, "numAborted", crtCtx->numAborted);
+    RedisModule_InfoAddFieldULongLong(ctx, "lastRunDurationMS", DURATION2MS(crtCtx->lastRunDuration));
+    RedisModule_InfoAddFieldULongLong(ctx, "totalRunDurationMS", totalDurationMS(crtCtx));
+    RedisModule_InfoAddFieldDouble(ctx, "avgRunDurationMS", avgDurationMS(crtCtx));
     RedisModule_InfoAddFieldCString(ctx, "lastError", crtCtx->lastError ? crtCtx->lastError : "None");
     RedisModule_InfoAddFieldCString(ctx, "trigger", crtCtx->args->trigger);
     RedisModule_InfoAddFieldULongLong(ctx, "inorder", crtCtx->args->inOrder);
@@ -585,7 +597,7 @@ static void CommandReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModu
 static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     CommandReaderTriggerCtx* crtCtx = CommandReader_FindByFep(fep);
     RedisModule_Assert(crtCtx);
-    RedisModule_ReplyWithArray(ctx, 14);
+    RedisModule_ReplyWithArray(ctx, 20);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(crtCtx->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -604,6 +616,12 @@ static void CommandReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutio
     RedisModule_ReplyWithLongLong(ctx, crtCtx->numFailures);
     RedisModule_ReplyWithStringBuffer(ctx, "numAborted", strlen("numAborted"));
     RedisModule_ReplyWithLongLong(ctx, crtCtx->numAborted);
+    RedisModule_ReplyWithStringBuffer(ctx, "lastRunDurationMS", strlen("lastRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, DURATION2MS(crtCtx->lastRunDuration));
+    RedisModule_ReplyWithStringBuffer(ctx, "totalRunDurationMS", strlen("totalRunDurationMS"));
+    RedisModule_ReplyWithLongLong(ctx, totalDurationMS(crtCtx));
+    RedisModule_ReplyWithStringBuffer(ctx, "avgRunDurationMS", strlen("avgRunDurationMS"));
+    RedisModule_ReplyWithDouble(ctx, avgDurationMS(crtCtx));
     RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
     if(crtCtx->lastError){
         RedisModule_ReplyWithStringBuffer(ctx, crtCtx->lastError, strlen(crtCtx->lastError));
@@ -748,6 +766,36 @@ static int CommandReader_RdbLoad(RedisModuleIO *rdb, int encver){
     return REDISMODULE_OK;
 }
 
+static void CommandReader_ClearStats(){
+    // clear triggers
+    if(CommandRegistrations){
+        Gears_dictIterator *iter = Gears_dictGetIterator(CommandRegistrations);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            CommandReaderTriggerCtx* crtCtx = Gears_dictGetVal(entry);
+            CommandReaderTriggerCtx_ResetStats(crtCtx);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+
+    // clear hooks
+    if(HookRegistrations){
+        Gears_dictIterator *iter = Gears_dictGetIterator(HookRegistrations);
+        Gears_dictEntry *entry = NULL;
+        while((entry = Gears_dictNext(iter))){
+            Gears_list* l = Gears_dictGetVal(entry);
+            Gears_listIter* listIter = Gears_listGetIterator(l, AL_START_HEAD);
+            Gears_listNode* node = NULL;
+            while((node = Gears_listNext(listIter))){
+                CommandReaderTriggerCtx* crtCtx = Gears_listNodeValue(node);
+                CommandReaderTriggerCtx_ResetStats(crtCtx);
+            }
+            Gears_listReleaseIterator(listIter);
+        }
+        Gears_dictReleaseIterator(iter);
+    }
+}
+
 static void CommandReader_Clear(){
     // clear triggers
     if(CommandRegistrations){
@@ -801,6 +849,7 @@ RedisGears_ReaderCallbacks CommandReader = {
         .rdbSave = CommandReader_RdbSave,
         .rdbLoad = CommandReader_RdbLoad,
         .clear = CommandReader_Clear,
+        .clearStats = CommandReader_ClearStats,
 };
 
 typedef enum RctxType{
@@ -861,6 +910,8 @@ static void CommandReader_OnDone(ExecutionPlan* ep, void* privateData){
     CommandReaderTriggerCtx* crtCtx = privateData;
 
     long long errorsLen = RedisGears_GetErrorsLen(ep);
+    crtCtx->lastRunDuration = FlatExecutionPlan_GetExecutionDuration(ep);
+    crtCtx->totalRunDuration += crtCtx->lastRunDuration;
 
     Gears_dictDelete(crtCtx->pendingExections, ep->idStr);
 
