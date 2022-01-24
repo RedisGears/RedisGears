@@ -21,7 +21,6 @@ The following sections describe the supported commands.
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes a node's view of the cluster |
 | [`RG.PYDUMPREQS`](#rgpystats) | Returns detailed information about requirements |
 | [`RG.REFRESHCLUSTER`](#rgrefreshcluster) | Refreshes node's view of the cluster |
->>>>>>> master
 | [`RG.TRIGGER`](#rgtrigger) | Triggers execution of registration |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
 
