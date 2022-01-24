@@ -971,7 +971,8 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
                     // check if we are allow to block
                     int ctxFlags = RedisModule_GetContextFlags(currCmdCtx->clientCtx);
                     if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
-                            (ctxFlags & REDISMODULE_CTX_FLAGS_LUA)){
+                       (ctxFlags & REDISMODULE_CTX_FLAGS_LUA) ||
+                       (ctxFlags & REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
                         // we are not allow to block, we will free the cmdCtx
                         KeyReader_CommandCtxFree(cmdCtx);
                         arg->cmdCtx = NULL;

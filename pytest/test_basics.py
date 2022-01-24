@@ -845,3 +845,21 @@ def test1676(env):
 
     time.sleep(0.1) # make sure shard did not crash
     env.expect('ping').equal(True)
+
+@gearsTest(skipOnCluster=True, skipOnRedis6=True)
+def testRecursiveGearsBuilder(env):
+    env.cmd('set', 'x', '1')
+    res = env.cmd('RG.PYEXECUTE', "GearsBuilder().map(lambda x: execute('RG.PYEXECUTE', 'GearsBuilder().run()')).run()")
+    env.assertContains('blocking is not allowed', res[1][0])
+
+@gearsTest(skipOnCluster=True, skipOnRedis6=True)
+def testOverrideSetWithAsyncExecution(env):
+    env.expect('RG.PYEXECUTE', "GearsBuilder('CommandReader').register(hook='set')").equal('OK')
+    res = env.cmd('RG.PYEXECUTE', "GearsBuilder('ShardsIDReader').map(lambda x: execute('set', 'x', '1')).run()")
+    env.assertContains('blocking is not allowed', res[1][0])
+
+@gearsTest(skipOnCluster=True, skipOnRedis6=True)
+def testKeysReaderCommandsOptionWithAsyncExecution(env):
+    env.expect('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: override_reply('-no allowed')).register(commands=['set'])").equal('OK')
+    env.expect('set', 'x', '1').error().equal('no allowed')
+    env.expect('RG.PYEXECUTE', "GearsBuilder('ShardsIDReader').map(lambda x: execute('ping')).run()").equal([['PONG'], []])
