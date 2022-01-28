@@ -19,6 +19,8 @@
 #include <time.h>
 #include <event2/event.h>
 
+static void ExecutionPlan_LocalUnregisterExecutionInternal(FlatExecutionPlan* fep, bool abortPending);
+
 #define INIT_TIMER  struct timespec _ts = {0}, _te = {0}; \
                     bool timerInitialized = false;
 #define GETTIME(t)  clock_gettime(CLOCK_REALTIME, t);
@@ -61,11 +63,11 @@ typedef struct LimitExecutionStepArg{
     size_t len;
 }LimitExecutionStepArg;
 
-static void FreeLimitArg(void* arg){
+static void FreeLimitArg(FlatExecutionPlan *fep, void* arg){
     RG_FREE(arg);
 }
 
-static void* DupLimitArg(void* arg){
+static void* DupLimitArg(FlatExecutionPlan *fep, void* arg){
     LimitExecutionStepArg* limitArg = arg;
     LimitExecutionStepArg* ret = RG_ALLOC(sizeof(*ret));
     ret->len = limitArg->len;
@@ -359,7 +361,7 @@ static FlatExecutionPlan* FlatExecutionPlan_FindId(const char* id){
     return fep;
 }
 
-static FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id){
+FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id){
     char realId[ID_LEN] = {0};
     if(strlen(id) < REDISMODULE_NODE_ID_LEN + 2){
         return NULL;
@@ -688,16 +690,17 @@ error:
 FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br, char** err, int encver){
     FlatExecutionPlan* ret = FlatExecutionPlan_New();
     
+    ArgType* pdType = NULL;
     bool PDExists = RedisGears_BRReadLong(br);
     if(PDExists){
         ret->PDType = RG_STRDUP(RedisGears_BRReadString(br));
-        ArgType* type = FepPrivateDatasMgmt_GetArgType(ret->PDType);
-        RedisModule_Assert(type);
+        pdType = FepPrivateDatasMgmt_GetArgType(ret->PDType);
+        RedisModule_Assert(pdType);
         int version = 0;
         if(encver >= VERSION_WITH_ARG_TYPE){
             version = RedisGears_BRReadLong(br);
         }
-        ret->PD = type->deserialize(ret, br, version, err);
+        ret->PD = pdType->deserialize(ret, br, version, err);
         if(!ret->PD){
             goto error;
         }
@@ -708,6 +711,10 @@ FlatExecutionPlan* FlatExecutionPlan_Deserialize(Gears_BufferReader* br, char** 
 
     if(FlatExecutionPlan_DeserializeInternal(ret, data, len, err, encver) != REDISMODULE_OK){
         goto error;
+    }
+
+    if (pdType && pdType->onDeserialized) {
+        pdType->onDeserialized(ret);
     }
 
     return ret;
@@ -2011,46 +2018,73 @@ static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const c
     };
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &buff);
-    char* err = NULL;
-    // this reached from another shard it safe to assume it the same as our version
-    FlatExecutionPlan* fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
-    if(!fep){
-        if(!err){
-            err = RG_STRDUP("Unknown error");
+    long nextOpCode;
+    char *id;
+    FlatExecutionPlan* fep;
+    char* err;
+    RedisGears_ReaderCallbacks* callbacks;
+    void* args;
+    ExecutionMode mode;
+    const char* pluginName = Gears_BufferReaderReadString(&br);
+    Plugin *p = Gears_dictFetchValue(plugins, pluginName);
+    RedisModule_Assert(p);
+    while ((nextOpCode = Gears_BufferReaderReadLong(&br)) != SESSION_REGISTRATION_OP_CODE_DONE) {
+        switch (nextOpCode) {
+        case SESSION_REGISTRATION_OP_CODE_SESSION_UNLINK:
+            id = Gears_BufferReaderReadString(&br);
+            p->unlinkSession(id);
+            break;
+        case SESSION_REGISTRATION_OP_CODE_UNREGISTER:
+            id = Gears_BufferReaderReadString(&br);
+            fep = FlatExecutionPlan_FindByStrId(id);
+            if(!fep){
+                RedisModule_Log(staticCtx, "warning", "Failed finding execution to unregister %s", id);
+                continue;
+            }
+            ExecutionPlan_LocalUnregisterExecutionInternal(fep, 1);
+            break;
+        case SESSION_REGISTRATION_OP_CODE_REGISTER:
+            err = NULL;
+            // this reached from another shard it safe to assume it the same as our version
+            fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
+            if(!fep){
+                if(!err){
+                    err = RG_STRDUP("Unknown error");
+                }
+                RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+                RG_FREE(err);
+                return;
+            }
+            callbacks = ReadersMgmt_Get(fep->reader->reader);
+            RedisModule_Assert(callbacks);
+            RedisModule_Assert(callbacks->deserializeTriggerArgs);
+
+            // we got it from another shard that must run the same version as we are
+            args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
+            if(!args){
+                if(!err){
+                    err = RG_STRDUP("Unknown error");
+                }
+                RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan args sent by another shard : %s, error='%s'", sender_id, err);
+                RG_FREE(err);
+                FlatExecutionPlan_Free(fep);
+                return;
+            }
+            mode = RedisGears_BRReadLong(&br);
+            if(FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args, &err) != REDISMODULE_OK){
+                RedisModule_Log(staticCtx, "warning", "Could not register flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
+                if(err){
+                    RG_FREE(err);
+                }
+                FlatExecutionPlan_Free(fep);
+                callbacks->freeTriggerArgs(args);
+                return;
+            }
+            break;
+        default:
+            RedisModule_Assert(0);
         }
-        RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
-        RG_FREE(err);
-        return;
     }
-
-    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-    RedisModule_Assert(callbacks);
-    RedisModule_Assert(callbacks->deserializeTriggerArgs);
-
-    // we got it from another shard that must run the same version as we are
-    void* args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
-    if(!args){
-        if(!err){
-            err = RG_STRDUP("Unknown error");
-        }
-        RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan args sent by another shard : %s, error='%s'", sender_id, err);
-        RG_FREE(err);
-        FlatExecutionPlan_Free(fep);
-        return;
-    }
-    ExecutionMode mode = RedisGears_BRReadLong(&br);
-
-
-    if(FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args, &err) != REDISMODULE_OK){
-        RedisModule_Log(staticCtx, "warning", "Could not register flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
-        if(err){
-            RG_FREE(err);
-        }
-        FlatExecutionPlan_Free(fep);
-        callbacks->freeTriggerArgs(args);
-        return;
-    }
-
     // replicate to oaf and slaves
     RedisModule_SelectDb(ctx, 0);
     RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", payload, len);
@@ -2390,17 +2424,9 @@ static void ExecutionPlan_NotifyRun(RedisModuleCtx *ctx, const char *sender_id, 
 	ExecutionPlan_RegisterForRun(ep);
 }
 
-static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatExecutionPlan* fep, bool abortPending){
+static void ExecutionPlan_LocalUnregisterExecutionInternal(FlatExecutionPlan* fep, bool abortPending) {
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     RedisModule_Assert(callbacks->unregisterTrigger);
-
-    // replicate to slave and aof
-    RedisModule_SelectDb(ctx, 0);
-    if(abortPending){
-        RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "cc", fep->idStr, "abortpending");
-    }else{
-        RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "c", fep->idStr);
-    }
 
     // call unregister callback
     if(fep->onUnregisteredStep.stepName){
@@ -2411,6 +2437,18 @@ static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatE
 
     FlatExecutionPlan_RemoveFromRegisterDict(fep);
     callbacks->unregisterTrigger(fep, abortPending);
+}
+
+static void ExecutionPlan_UnregisterExecutionInternal(RedisModuleCtx *ctx, FlatExecutionPlan* fep, bool abortPending){
+    // replicate to slave and aof
+    RedisModule_SelectDb(ctx, 0);
+    if(abortPending){
+        RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "cc", fep->idStr, "abortpending");
+    }else{
+        RedisModule_Replicate(ctx, RG_INNER_UNREGISTER_COMMAND, "c", fep->idStr);
+    }
+
+    ExecutionPlan_LocalUnregisterExecutionInternal(fep, abortPending);
 }
 
 static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
@@ -2915,48 +2953,100 @@ const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep){
     return fep->reader->reader;
 }
 
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
+void FlatExecutionPlan_AddRegistrationToUnregister(SessionRegistrationCtx *srctx, const char *id){
+    srctx->idsToUnregister = array_append(srctx->idsToUnregister, RG_STRDUP(id));
+    RedisGears_BWWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_UNREGISTER);
+    RedisGears_BWWriteString(&srctx->bw, id);
+}
+
+void FlatExecutionPlan_AddSessionToUnlink(SessionRegistrationCtx *srctx, const char *id){
+    srctx->sessionsToUnlink = array_append(srctx->sessionsToUnlink, RG_STRDUP(id));
+    RedisGears_BWWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_SESSION_UNLINK);
+    RedisGears_BWWriteString(&srctx->bw, id);
+}
+
+int FlatExecutionPlan_PrepareForRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
     RedisModule_Assert(callbacks); // todo: handle as error in future
     if(!callbacks->registerTrigger){
+        *err = RG_STRDUP("reader does not support register");
         return 0;
     }
 
     RedisModule_Assert(callbacks->serializeTriggerArgs);
 
-    Gears_Buffer* buff = Gears_BufferCreate();
-    Gears_BufferWriter bw;
-    Gears_BufferWriterInit(&bw, buff);
+    // if callbacks->verifyRegister is not given for a reader, we assume it can not failed.
+    if(callbacks->verifyRegister && callbacks->verifyRegister(srctx, fep, mode, args, err) != REDISMODULE_OK){
+        callbacks->freeTriggerArgs(args);
+        return 0;
+    }
 
-    size_t len;
-    int res = FlatExecutionPlan_Serialize(&bw, fep, err);
+    RedisGears_BWWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_REGISTER);
+
+    int res = FlatExecutionPlan_Serialize(&srctx->bw, fep, err);
     if(res != REDISMODULE_OK){
-        Gears_BufferFree(buff);
         callbacks->freeTriggerArgs(args);
         return 0;
     }
 
-    callbacks->serializeTriggerArgs(args, &bw);
-    RedisGears_BWWriteLong(&bw, mode);
+    callbacks->serializeTriggerArgs(args, &srctx->bw);
+    RedisGears_BWWriteLong(&srctx->bw, mode);
 
-    if(FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(fep), callbacks, mode, args, err) != REDISMODULE_OK){
-        Gears_BufferFree(buff);
-        FlatExecutionPlan_Free(fep);
-        callbacks->freeTriggerArgs(args);
-        return 0;
-    }
+    RegistrationData rd = {
+            .fep = fep,
+            .args = args,
+            .mode = mode,
+    };
 
-    if(Cluster_IsClusterMode()){
-        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, buff->buff, buff->size);
-    }
+    srctx->registrationsData = array_append(srctx->registrationsData, rd);
 
-    // replicating to slave and aof
-    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(NULL);
-    RedisModule_SelectDb(ctx, 0);
-    RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", buff->buff, buff->size);
-    RedisModule_FreeThreadSafeContext(ctx);
-    Gears_BufferFree(buff);
     return 1;
+}
+
+void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx){
+    Gears_BufferWriterWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_DONE);
+    int operationPerformed = 0;
+
+    for (size_t i = 0 ; i < array_len(srctx->sessionsToUnlink) ; ++i) {
+        // unlink sessions, this is the plugin responsibility.
+        srctx->p->unlinkSession(srctx->sessionsToUnlink[i]);
+        operationPerformed = 1;
+    }
+
+    for (size_t i = 0 ; i < array_len(srctx->idsToUnregister) ; ++i) {
+        FlatExecutionPlan* fep = FlatExecutionPlan_FindByStrId(srctx->idsToUnregister[i]);
+        if(!fep){
+            RedisModule_Log(staticCtx, "warning", "Failed finding execution to unregister %s", srctx->idsToUnregister[i]);
+            continue;
+        }
+        ExecutionPlan_LocalUnregisterExecutionInternal(fep, 1);
+        operationPerformed = 1;
+    }
+
+    for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
+        RegistrationData *rd = srctx->registrationsData + i;
+        RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
+        char* err = NULL;
+        if (FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(rd->fep), callbacks, rd->mode, rd->args, &err) != REDISMODULE_OK){
+            RedisModule_Log(staticCtx, "warning", "Failed register: %s", err);
+            RedisModule_Assert(false);
+        }
+        rd->args = NULL;
+        operationPerformed = 1;
+    }
+
+    if (operationPerformed) {
+        // distribute to cluster
+        if(Cluster_IsClusterMode()){
+            Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, srctx->buff->buff, srctx->buff->size);
+        }
+
+        // replicating to slave and aof
+        RedisModule_SelectDb(staticCtx, 0);
+        RedisModule_Replicate(staticCtx, RG_INNER_REGISTER_COMMAND, "b", srctx->buff->buff, srctx->buff->size);
+    }
+
+    SessionRegistrationCtx_Free(srctx);
 }
 
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags runFlags){
@@ -3288,9 +3378,9 @@ FlatExecutionPlan* FlatExecutionPlan_New(){
     return res;
 }
 
-void FlatExecutionPlan_FreeArg(FlatExecutionStep* step){
+void FlatExecutionPlan_FreeArg(FlatExecutionPlan* fep, FlatExecutionStep* step){
     if (step->bStep.arg.type && step->bStep.arg.type->free){
-        step->bStep.arg.type->free(step->bStep.arg.stepArg);
+        step->bStep.arg.type->free(fep, step->bStep.arg.stepArg);
     }
 }
 
@@ -3313,7 +3403,7 @@ FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep){
         ArgType* t = FlatExecutionPlan_GetArgTypeByStepType(s->type, s->bStep.stepName);
         void* argDup = NULL;
         if(s->bStep.arg.stepArg){
-            argDup = t->dup(s->bStep.arg.stepArg);
+            argDup = t->dup(fep, s->bStep.arg.stepArg);
         }
         FlatExecutionPlan_AddBasicStep(ret, s->bStep.stepName, argDup, s->type);
     }
@@ -3322,7 +3412,7 @@ FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep){
         ArgType* PDType = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         void* PDDup = NULL;
         if(fep->PD){
-            PDDup = PDType->dup(fep->PD);
+            PDDup = PDType->dup(fep, fep->PD);
         }
         FlatExecutionPlan_SetPrivateData(ret, fep->PDType, PDDup);
     }
@@ -3331,7 +3421,7 @@ FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep){
         ArgType* onStartType = ExecutionOnStartsMgmt_GetArgType(fep->onExecutionStartStep.stepName);
         void* onStartArgDup = NULL;
         if(fep->onExecutionStartStep.arg.stepArg){
-            onStartArgDup = onStartType->dup(fep->onExecutionStartStep.arg.stepArg);
+            onStartArgDup = onStartType->dup(fep, fep->onExecutionStartStep.arg.stepArg);
         }
         FlatExecutionPlan_SetOnStartStep(ret, fep->onExecutionStartStep.stepName, onStartArgDup);
     }
@@ -3340,7 +3430,7 @@ FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep){
         ArgType* onUnpauseType = ExecutionOnUnpausedsMgmt_GetArgType(fep->onUnpausedStep.stepName);
         void* onUnpauseArgDup = NULL;
         if(fep->onUnpausedStep.arg.stepArg){
-            onUnpauseArgDup = onUnpauseType->dup(fep->onUnpausedStep.arg.stepArg);
+            onUnpauseArgDup = onUnpauseType->dup(fep, fep->onUnpausedStep.arg.stepArg);
         }
         FlatExecutionPlan_SetOnUnPausedStep(ret, fep->onUnpausedStep.stepName, onUnpauseArgDup);
     }
@@ -3349,7 +3439,7 @@ FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep){
         ArgType* onRegisteredType = FlatExecutionOnRegisteredsMgmt_GetArgType(fep->onRegisteredStep.stepName);
         void* onRegisteredArgDup = NULL;
         if(fep->onRegisteredStep.arg.stepArg){
-            onRegisteredArgDup = onRegisteredType->dup(fep->onRegisteredStep.arg.stepArg);
+            onRegisteredArgDup = onRegisteredType->dup(fep, fep->onRegisteredStep.arg.stepArg);
         }
         FlatExecutionPlan_SetOnRegisteredStep(ret, fep->onRegisteredStep.stepName, onRegisteredArgDup);
     }
@@ -3358,7 +3448,7 @@ FlatExecutionPlan* FlatExecutionPlan_DeepCopy(FlatExecutionPlan* fep){
         ArgType* onUnregisteredType = FlatExecutionOnUnregisteredsMgmt_GetArgType(fep->onUnregisteredStep.stepName);
         void* onUnregisteredArgDup = NULL;
         if(fep->onUnregisteredStep.arg.stepArg){
-            onUnregisteredArgDup = onUnregisteredType->dup(fep->onUnregisteredStep.arg.stepArg);
+            onUnregisteredArgDup = onUnregisteredType->dup(fep, fep->onUnregisteredStep.arg.stepArg);
         }
         FlatExecutionPlan_SetOnUnregisteredStep(ret, fep->onUnregisteredStep.stepName, onUnregisteredArgDup);
     }
@@ -3386,7 +3476,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     if(fep->PD){
         ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
         if(type && type->free){
-            type->free(fep->PD);
+            type->free(fep, fep->PD);
         }
         RG_FREE(fep->PDType);
     }
@@ -3397,7 +3487,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
     for(size_t i = 0 ; i < array_len(fep->steps) ; ++i){
         FlatExecutionStep* step = fep->steps + i;
         RG_FREE(step->bStep.stepName);
-        FlatExecutionPlan_FreeArg(step);
+        FlatExecutionPlan_FreeArg(fep, step);
     }
     array_free(fep->steps);
     if(fep->serializedFep){
@@ -3411,7 +3501,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         RG_FREE(fep->onExecutionStartStep.stepName);
         if(fep->onExecutionStartStep.arg.stepArg){
             RedisModule_Assert(fep->onExecutionStartStep.arg.type);
-            fep->onExecutionStartStep.arg.type->free(fep->onExecutionStartStep.arg.stepArg);
+            fep->onExecutionStartStep.arg.type->free(fep, fep->onExecutionStartStep.arg.stepArg);
         }
     }
 
@@ -3419,7 +3509,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         RG_FREE(fep->onRegisteredStep.stepName);
         if(fep->onRegisteredStep.arg.stepArg){
             RedisModule_Assert(fep->onRegisteredStep.arg.type);
-            fep->onRegisteredStep.arg.type->free(fep->onRegisteredStep.arg.stepArg);
+            fep->onRegisteredStep.arg.type->free(fep, fep->onRegisteredStep.arg.stepArg);
         }
     }
 
@@ -3427,7 +3517,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         RG_FREE(fep->onUnregisteredStep.stepName);
         if(fep->onUnregisteredStep.arg.stepArg){
             RedisModule_Assert(fep->onUnregisteredStep.arg.type);
-            fep->onUnregisteredStep.arg.type->free(fep->onUnregisteredStep.arg.stepArg);
+            fep->onUnregisteredStep.arg.type->free(fep, fep->onUnregisteredStep.arg.stepArg);
         }
     }
 
@@ -3435,7 +3525,7 @@ void FlatExecutionPlan_Free(FlatExecutionPlan* fep){
         RG_FREE(fep->onUnpausedStep.stepName);
         if(fep->onUnpausedStep.arg.stepArg){
             RedisModule_Assert(fep->onUnpausedStep.arg.type);
-            fep->onUnpausedStep.arg.type->free(fep->onUnpausedStep.arg.stepArg);
+            fep->onUnpausedStep.arg.type->free(fep, fep->onUnpausedStep.arg.stepArg);
         }
     }
 
@@ -3574,6 +3664,18 @@ void ExecutionPlan_InfoRegistrations(RedisModuleInfoCtx *ctx, int for_crash_repo
             callbacks->dumpRegistratioInfo(fep, ctx, for_crash_report);
         }
 
+        if (fep->PD) {
+            ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+            char* str = type->tostring(fep, fep->PD);
+            for(char *c = str ; *c ; ++c) {
+                if (*c == ',') {
+                    *c = '|';
+                }
+            }
+            RedisModule_InfoAddFieldCString(ctx, "PD", str);
+            RG_FREE(str);
+        }
+
         RedisModule_InfoEndDictField(ctx);
     }
     Gears_dictReleaseIterator(iter);
@@ -3582,6 +3684,45 @@ void ExecutionPlan_InfoRegistrations(RedisModuleInfoCtx *ctx, int for_crash_repo
 
 size_t ExecutionPlan_NExecutions() {
     return Gears_dictSize(epData.epDict);
+}
+
+void ExecutionPlan_DumpSingleRegistration(RedisModuleCtx *ctx, FlatExecutionPlan* fep, int flags) {
+    int withPD = !(flags & REGISTRATION_DUMP_NO_PD);
+    RedisModule_ReplyWithArray(ctx, withPD ? 12 : 10);
+    RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
+    RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
+    RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
+    RedisModule_ReplyWithStringBuffer(ctx, fep->reader->reader, strlen(fep->reader->reader));
+    RedisModule_ReplyWithStringBuffer(ctx, "desc", strlen("desc"));
+    if(fep->desc){
+        RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
+    }else{
+        RedisModule_ReplyWithNull(ctx);
+    }
+    RedisModule_ReplyWithStringBuffer(ctx, "RegistrationData", strlen("RegistrationData"));
+
+    RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+
+    if(!callbacks->dumpRegistratioData){
+        RedisModule_ReplyWithNull(ctx);
+    } else {
+        callbacks->dumpRegistratioData(ctx, fep);
+    }
+    if (withPD) {
+        RedisModule_ReplyWithStringBuffer(ctx, "PD", strlen("PD"));
+        if(fep->PD){
+            ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
+            char* pdStr = type->tostring(fep, fep->PD);
+            RedisModule_ReplyWithStringBuffer(ctx, pdStr, strlen(pdStr));
+            RG_FREE(pdStr);
+        }else{
+            RedisModule_ReplyWithNull(ctx);
+        }
+    }
+
+    RedisModule_ReplyWithStringBuffer(ctx, "ExecutionThreadPool", strlen("ExecutionThreadPool"));
+    const char* executionThreadPool = fep->executionThreadPool ?  fep->executionThreadPool->name : "DefaultPool";
+    RedisModule_ReplyWithStringBuffer(ctx, executionThreadPool, strlen(executionThreadPool));
 }
 
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -3594,39 +3735,7 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     RedisModule_ReplyWithArray(ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
     while((curr = Gears_dictNext(iter))){
         FlatExecutionPlan* fep = Gears_dictGetVal(curr);
-        RedisModule_ReplyWithArray(ctx, 12);
-        RedisModule_ReplyWithStringBuffer(ctx, "id", strlen("id"));
-        RedisModule_ReplyWithStringBuffer(ctx, fep->idStr, strlen(fep->idStr));
-        RedisModule_ReplyWithStringBuffer(ctx, "reader", strlen("reader"));
-        RedisModule_ReplyWithStringBuffer(ctx, fep->reader->reader, strlen(fep->reader->reader));
-        RedisModule_ReplyWithStringBuffer(ctx, "desc", strlen("desc"));
-        if(fep->desc){
-            RedisModule_ReplyWithStringBuffer(ctx, fep->desc, strlen(fep->desc));
-        }else{
-            RedisModule_ReplyWithNull(ctx);
-        }
-        RedisModule_ReplyWithStringBuffer(ctx, "RegistrationData", strlen("RegistrationData"));
-
-        RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-
-        if(!callbacks->dumpRegistratioData){
-            RedisModule_ReplyWithNull(ctx);
-        } else {
-            callbacks->dumpRegistratioData(ctx, fep);
-        }
-        RedisModule_ReplyWithStringBuffer(ctx, "PD", strlen("PD"));
-        if(fep->PD){
-            ArgType* type = FepPrivateDatasMgmt_GetArgType(fep->PDType);
-            char* pdStr = type->tostring(fep->PD);
-            RedisModule_ReplyWithStringBuffer(ctx, pdStr, strlen(pdStr));
-            RG_FREE(pdStr);
-        }else{
-            RedisModule_ReplyWithNull(ctx);
-        }
-
-        RedisModule_ReplyWithStringBuffer(ctx, "ExecutionThreadPool", strlen("ExecutionThreadPool"));
-        const char* executionThreadPool = fep->executionThreadPool ?  fep->executionThreadPool->name : "DefaultPool";
-        RedisModule_ReplyWithStringBuffer(ctx, executionThreadPool, strlen(executionThreadPool));
+        ExecutionPlan_DumpSingleRegistration(ctx, fep, 0);
         ++numElements;
     }
     Gears_dictReleaseIterator(iter);
@@ -3635,32 +3744,19 @@ int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **arg
     return REDISMODULE_OK;
 }
 
-static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool sendOnCluster){
-    if(argc < 2 || argc > 3){
-        return RedisModule_WrongArity(ctx);
-    }
-
-    const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+int ExecutionPlan_UnregisterSingleReigstration(RedisModuleCtx *ctx, const char* id, int abortPending, bool sendOnCluster, char** err) {
     FlatExecutionPlan* fep = FlatExecutionPlan_FindByStrId(id);
 
     if(!fep){
-        RedisModule_ReplyWithError(ctx, "execution is not registered");
-        return REDISMODULE_OK;
+        *err = RG_STRDUP("execution is not registered");
+        return REDISMODULE_ERR;
     }
 
     RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
 
     if(!callbacks->unregisterTrigger){
-        RedisModule_ReplyWithError(ctx, "reader does not support unregister");
-        return REDISMODULE_OK;
-    }
-
-    bool abortPending = false;
-    if(argc == 3){
-        const char* abortPendingStr = RedisModule_StringPtrLen(argv[2], NULL);
-        if(strcasecmp(abortPendingStr, "abortpending") == 0){
-            abortPending = true;
-        }
+        *err = RG_STRDUP("reader does not support unregister");
+        return REDISMODULE_ERR;
     }
 
     if(sendOnCluster && Cluster_IsClusterMode()){
@@ -3675,7 +3771,30 @@ static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString
 
     ExecutionPlan_UnregisterExecutionInternal(ctx, fep, abortPending);
 
-    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
+}
+
+static int ExecutionPlan_UnregisterCommon(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, bool sendOnCluster){
+    if(argc < 2 || argc > 3){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* id = RedisModule_StringPtrLen(argv[1], NULL);
+    bool abortPending = false;
+    if(argc == 3){
+        const char* abortPendingStr = RedisModule_StringPtrLen(argv[2], NULL);
+        if(strcasecmp(abortPendingStr, "abortpending") == 0){
+            abortPending = true;
+        }
+    }
+
+    char *err = NULL;
+    if (ExecutionPlan_UnregisterSingleReigstration(ctx, id, abortPending, sendOnCluster, &err) != REDISMODULE_OK) {
+        RedisModule_ReplyWithError(ctx, err);
+        RG_FREE(err);
+    }else {
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    }
 
     return REDISMODULE_OK;
 }
@@ -3760,3 +3879,41 @@ void ExecutionPlan_Clean() {
     array_free(epToFree);
 }
 
+SessionRegistrationCtx* SessionRegistrationCtx_Create(Plugin *p) {
+    SessionRegistrationCtx *ret = RG_ALLOC(sizeof(*ret));
+    ret->p = p;
+    ret->registrationsData = array_new(RegistrationData, 10);
+    ret->idsToUnregister = array_new(char*, 10);
+    ret->sessionsToUnlink = array_new(char*, 10);
+    ret->buff = Gears_BufferCreate();
+    Gears_BufferWriterInit(&ret->bw, ret->buff);
+    Gears_BufferWriterWriteString(&ret->bw, p->name);
+    return ret;
+}
+
+void SessionRegistrationCtx_Free(SessionRegistrationCtx* srctx) {
+    for (size_t i = 0 ; i < array_len(srctx->idsToUnregister) ; ++i) {
+        RG_FREE(srctx->idsToUnregister[i]);
+    }
+    array_free(srctx->idsToUnregister);
+
+    for (size_t i = 0 ; i < array_len(srctx->sessionsToUnlink) ; ++i) {
+        RG_FREE(srctx->sessionsToUnlink[i]);
+    }
+    array_free(srctx->sessionsToUnlink);
+
+    for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
+        RegistrationData *rd = srctx->registrationsData + i;
+        if (rd->args) {
+            RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
+            if (callbacks->freeTriggerArgs) {
+                callbacks->freeTriggerArgs(rd->args);
+            }
+        }
+        FlatExecutionPlan_Free(rd->fep);
+    }
+    array_free(srctx->registrationsData);
+
+    Gears_BufferFree(srctx->buff);
+    RG_FREE(srctx);
+}

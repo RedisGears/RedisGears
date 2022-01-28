@@ -261,11 +261,11 @@ int Command_AbortExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     return REDISMODULE_OK;
 }
 
-static void Command_StringFree(void* arg){
+static void Command_StringFree(FlatExecutionPlan* fep, void* arg){
     RG_FREE(arg);
 }
 
-static void* Command_StringDup(void* arg){
+static void* Command_StringDup(FlatExecutionPlan* fep, void* arg){
     return RG_STRDUP(arg);
 }
 
@@ -282,7 +282,7 @@ static void* Command_StringDeserialize(FlatExecutionPlan* fep, Gears_BufferReade
     return RG_STRDUP(id);
 }
 
-static char* Command_StringToString(void* arg){
+static char* Command_StringToString(FlatExecutionPlan* fep, void* arg){
     return RG_STRDUP(arg);
 }
 
@@ -502,7 +502,7 @@ int Command_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
             if(arg.stepArg){
                 ArgType* type = arg.type;
                 if(type && type->tostring){
-                    char* argCstr = type->tostring(arg.stepArg);
+                    char* argCstr = type->tostring(ep->fep, arg.stepArg);
                     RedisModule_ReplyWithStringBuffer(ctx, argCstr, strlen(argCstr));
                     RG_FREE(argCstr);
                 }else{
@@ -525,7 +525,8 @@ int Command_Init(){
                                                 Command_StringDup,
                                                 Command_StringSerialize,
                                                 Command_StringDeserialize,
-                                                Command_StringToString);
+                                                Command_StringToString,
+                                                NULL);
     RGM_RegisterMap(Command_AbortExecutionMap, stringType);
     RGM_RegisterMap(Command_FlushRegistrationsStatsMap, NULL);
     RGM_RegisterMap(Command_SingleShardGetter, stringType);

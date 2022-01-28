@@ -107,6 +107,11 @@ else
 CC_FLAGS += -O2 -Wno-unused-result
 endif
 
+ifeq ($(GCOV),1)
+CC_FLAGS += -fprofile-arcs -ftest-coverage
+LD_FLAGS += -fprofile-arcs -ftest-coverage
+endif
+
 ifeq ($(OS),macos)
 LD_FLAGS += -undefined dynamic_lookup
 endif

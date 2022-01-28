@@ -4,8 +4,10 @@ else
 	GCC_FLAGS=-o2
 endif
 
-SOURCES=gears_jvm.c utils/adlist.c
-HEADERS=jni.h jni_md.h jvm_memory.h redisgears.h redismodule.h version.h utils/adlist.h utils/arr.h utils/arr_rm_alloc.h
+GCC_FLAGS+=-I ../../../src/ -I ./
+
+SOURCES=gears_jvm.c ../../../src/utils/adlist.c
+HEADERS=jni.h jni_md.h ../../../src/redisgears.h ../../../src/redismodule.h version.h ../../../src/utils/adlist.h ../../../src/utils/arr.h ../../../src/utils/arr_rm_alloc.h
 
 ARTIFACT_NAME=gears_jvm.so
 
