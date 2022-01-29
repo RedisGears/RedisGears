@@ -104,7 +104,7 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect
 
         env.assertTrue(env.isUp())
 
-def extractInfoOnfailure(env):
+def extractInfoOnfailure(env, suffixFileName):
     for i in range(1, env.shardsCount + 1):
         conn = env.getConnection(shardId=i)
         shardInfo = {}
@@ -113,7 +113,7 @@ def extractInfoOnfailure(env):
         shardInfo['info_everything'] = conn.execute_command('info', 'everything')
         directory = conn.execute_command('config', 'get', 'dir')[1]
         fileName = conn.execute_command('config', 'get', 'logfile')[1]
-        with open(os.path.join(directory, '%s.failure_logs.txt' % fileName), 'wt') as f:
+        with open(os.path.join(directory, '%s.failure_logs_%s.txt' % (fileName, suffixFileName)), 'wt') as f:
             f.write(json.dumps(shardInfo, indent=4, sort_keys=True))
 
 def dropRegistrationsAndExecutions(env):
@@ -190,10 +190,12 @@ def gearsTest(skipTest=False,
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             test_function(env)
+            if len(env.assertionFailedSummary) > 0:
+                extractInfoOnfailure(env, 'before_cleanups')
             if not skipCleanups:
                 dropRegistrationsAndExecutions(env)
                 restoreDefaultConfig(env)
             if len(env.assertionFailedSummary) > 0:
-                extractInfoOnfailure(env)
+                extractInfoOnfailure(env, 'after_cleanups')
         return test_func
     return test_func_generator

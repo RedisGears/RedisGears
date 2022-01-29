@@ -142,7 +142,9 @@ def testRegisterInsideRegister(env):
         c = env.getConnection(i)
         res = c.execute_command('RG.PYDUMPSESSIONS')
         env.assertEqual(len(res[0][-1]), 1)
-    env.expect('RG.TRIGGER', 'test', 'test1').equal(['OK'])
+    c = env.getConnection(env.shardsCount)
+    res = c.execute_command('RG.TRIGGER', 'test', 'test1')
+    env.assertEqual(res, ['OK'])
     verifyRegistrationIntegrity(env)
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)

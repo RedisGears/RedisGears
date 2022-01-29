@@ -773,7 +773,7 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const cha
             .isInstallationNeeded = false,
             .profiler = PyObject_CallFunction(profileCreateFunction, NULL),
             .registrations = array_new(char*, 10),
-            .srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx),
+            .srctx = NULL,
             .linked = 0,
             .tsNode = NULL,
 
@@ -813,7 +813,7 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const cha
 static PythonSessionCtx* PythonSessionCtx_Create(const char *id, const char *desc, const char** requirementsList, size_t requirementsListLen){
 
     PythonSessionCtx* session = PythonSessionCtx_CreateWithId(id, desc, requirementsList, requirementsListLen);
-
+    session->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
     return session;
 }
 
