@@ -697,7 +697,7 @@ static void PythonSessionCtx_Free(PythonSessionCtx* session){
     }
 }
 
-#define PythonSessionCtx_WithRegistrationsLock(s, code) \
+#define PythonSessionCtx_RunWithRegistrationsLock(s, code) \
     pthread_mutex_lock(&s->registrationsLock); \
     do{ \
     	code \
@@ -921,7 +921,7 @@ static char* PythonSessionCtx_ToString(void* arg){
     PythonSessionCtx* s = arg;
     char* depsListStr = RedisGears_ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr, ',');
     char* registrationsListStr = NULL;
-    PythonSessionCtx_WithRegistrationsLock(s, {
+    PythonSessionCtx_RunWithRegistrationsLock(s, {
             registrationsListStr = RedisGears_ArrToStr((void**)s->registrations, array_len(s->registrations), PythonStringArray_ToStr, ',');
     });
     char* ret;
@@ -4929,7 +4929,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     if (oldSession) {
         RedisGears_AddSessionToUnlink(session->srctx, oldSession->sessionId);
-        PythonSessionCtx_WithRegistrationsLock(oldSession, {
+        PythonSessionCtx_RunWithRegistrationsLock(oldSession, {
             for (size_t i = 0 ; i < array_len(oldSession->registrations) ; ++i) {
                 RedisGears_AddRegistrationToUnregister(session->srctx, oldSession->registrations[i]);
             }
@@ -6118,7 +6118,7 @@ static void RedisGearsPy_DumpSingleSession(RedisModuleCtx *ctx, PythonSessionCtx
     }
     RedisModule_ReplyWithCString(ctx, "registrations");
 
-    PythonSessionCtx_WithRegistrationsLock(s, {
+    PythonSessionCtx_RunWithRegistrationsLock(s, {
         RedisModule_ReplyWithArray(ctx, array_len(s->registrations));
         for(size_t i = 0 ; i < array_len(s->registrations) ; ++i) {
             const char *registrationId = s->registrations[i];
