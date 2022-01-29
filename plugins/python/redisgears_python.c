@@ -217,6 +217,7 @@ typedef struct PythonSessionCtx{
     PythonRequirementCtx** requirements;
     bool isInstallationNeeded;
     char **registrations;
+    pthread_mutex_t registrationsLock;
     SessionRegistrationCtx *srctx;
     int linked;
     Gears_listNode *tsNode;
@@ -684,6 +685,7 @@ static void PythonSessionCtx_Free(PythonSessionCtx* session){
             RG_FREE(session->registrations[i]);
         }
         array_free(session->registrations);
+        pthread_mutex_destroy(&session->registrationsLock);
         RedisGearsPy_LOCK
         PyDict_Clear(session->globalsDict);
         GearsPyDecRef(session->globalsDict);
@@ -695,17 +697,36 @@ static void PythonSessionCtx_Free(PythonSessionCtx* session){
     }
 }
 
+#define PythonSessionCtx_WithRegistrationsLock(s, code) \
+    pthread_mutex_lock(&s->registrationsLock); \
+    do{ \
+    	code \
+    } while (0); \
+    pthread_mutex_unlock(&s->registrationsLock);
+
+static void PythonSessionCtx_AddFep(PythonSessionCtx* session, char *id){
+    pthread_mutex_lock(&session->registrationsLock);
+    session->registrations = array_append(session->registrations, RG_STRDUP(id));
+    pthread_mutex_unlock(&session->registrationsLock);
+}
+
+static void PythonSessionCtx_DelFep(PythonSessionCtx* session, const char *id){
+    pthread_mutex_lock(&session->registrationsLock);
+    for (size_t i = 0 ; i < array_len(session->registrations) ; ++i) {
+        if (strcmp(id, session->registrations[i]) == 0) {
+            RG_FREE(session->registrations[i]);
+            array_del_fast(session->registrations, i);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&session->registrationsLock);
+}
+
 static void PythonSessionCtx_FreeWithFep(FlatExecutionPlan* fep, void* arg){
     PythonSessionCtx* session = arg;
     if (fep) {
         const char *id = RedisGears_FepGetId(fep);
-        for (size_t i = 0 ; i < array_len(session->registrations) ; ++i) {
-            if (strcmp(id, session->registrations[i]) == 0) {
-                RG_FREE(session->registrations[i]);
-                array_del_fast(session->registrations, i);
-                break;
-            }
-        }
+        PythonSessionCtx_DelFep(session, id);
     }
     PythonSessionCtx_Free(session);
 }
@@ -755,7 +776,9 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const cha
             .srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx),
             .linked = 0,
             .tsNode = NULL,
+
     };
+    pthread_mutex_init(&session->registrationsLock, NULL);
 
     session->requirements = array_new(PythonRequirementCtx*, 10);
 
@@ -891,13 +914,16 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
 static void PythonSessionCtx_OnFepDeserialized(FlatExecutionPlan *fep){
     PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
     const char *id = RedisGears_FepGetId(fep);
-    sctx->registrations = array_append(sctx->registrations, RG_STRDUP(id));
+    PythonSessionCtx_AddFep(sctx, RG_STRDUP(id));
 }
 
 static char* PythonSessionCtx_ToString(void* arg){
     PythonSessionCtx* s = arg;
     char* depsListStr = RedisGears_ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr, ',');
-    char* registrationsListStr = RedisGears_ArrToStr((void**)s->registrations, array_len(s->registrations), PythonStringArray_ToStr, ',');
+    char* registrationsListStr = NULL;
+    PythonSessionCtx_WithRegistrationsLock(s, {
+            registrationsListStr = RedisGears_ArrToStr((void**)s->registrations, array_len(s->registrations), PythonStringArray_ToStr, ',');
+    });
     char* ret;
     RedisGears_ASprintf(&ret, "{'sessionName':'%s',"
                               " 'sessionDescription':'%s',"
@@ -1840,7 +1866,7 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         return NULL;
     }
 
-    ptctx->currSession->registrations = array_append(ptctx->currSession->registrations, registrationId);
+    PythonSessionCtx_AddFep(ptctx->currSession, registrationId);
 
     PyObject *ret = PyUnicode_FromString(registrationId);
 
@@ -4903,9 +4929,11 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     if (oldSession) {
         RedisGears_AddSessionToUnlink(session->srctx, oldSession->sessionId);
-        for (size_t i = 0 ; i < array_len(oldSession->registrations) ; ++i) {
-            RedisGears_AddRegistrationToUnregister(session->srctx, oldSession->registrations[i]);
-        }
+        PythonSessionCtx_WithRegistrationsLock(oldSession, {
+            for (size_t i = 0 ; i < array_len(oldSession->registrations) ; ++i) {
+                RedisGears_AddRegistrationToUnregister(session->srctx, oldSession->registrations[i]);
+            }
+        });
     }
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -6089,20 +6117,23 @@ static void RedisGearsPy_DumpSingleSession(RedisModuleCtx *ctx, PythonSessionCtx
         }
     }
     RedisModule_ReplyWithCString(ctx, "registrations");
-    RedisModule_ReplyWithArray(ctx, array_len(s->registrations));
-    for(size_t i = 0 ; i < array_len(s->registrations) ; ++i) {
-        const char *registrationId = s->registrations[i];
-        if (verbose) {
-            FlatExecutionPlan *fep = RedisGears_GetFepById(registrationId);
-            if (!fep) {
-                RedisModule_ReplyWithCString(ctx, registrationId);
+
+    PythonSessionCtx_WithRegistrationsLock(s, {
+        RedisModule_ReplyWithArray(ctx, array_len(s->registrations));
+        for(size_t i = 0 ; i < array_len(s->registrations) ; ++i) {
+            const char *registrationId = s->registrations[i];
+            if (verbose) {
+                FlatExecutionPlan *fep = RedisGears_GetFepById(registrationId);
+                if (!fep) {
+                    RedisModule_ReplyWithCString(ctx, registrationId);
+                } else {
+                    RedisGears_DumpRegistration(ctx, fep, REGISTRATION_DUMP_NO_PD);
+                }
             } else {
-                RedisGears_DumpRegistration(ctx, fep, REGISTRATION_DUMP_NO_PD);
+                RedisModule_ReplyWithCString(ctx, registrationId);
             }
-        } else {
-            RedisModule_ReplyWithCString(ctx, registrationId);
         }
-    }
+    });
 }
 
 static int RedisGearsPy_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){

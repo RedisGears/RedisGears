@@ -165,6 +165,7 @@ typedef struct JVMRunSession{
     Gears_listNode* tsNode;
     SessionRegistrationCtx *srctx;
     char **registrations;
+    pthread_mutex_t registrationsLock;
 }JVMRunSession;
 
 typedef struct JVMFlatExecutionSession{
@@ -550,10 +551,36 @@ static void JVM_SessionFreeMemory(JVMRunSession* s){
         RG_FREE(s->registrations[i]);
     }
     array_free(s->registrations);
+    pthread_mutex_destroy(&s->registrationsLock);
 
     RG_FREE(s->jarFilePath);
     RG_FREE(s->mainClassName);
     RG_FREE(s);
+}
+
+#define JVM_SessionWithRegistrationsLock(s, code) \
+		pthread_mutex_lock(&s->registrationsLock); \
+		do { \
+			code \
+		} while (0) ; \
+		pthread_mutex_unlock(&s->registrationsLock);
+
+static void JVM_SessionDelRegistration(JVMRunSession* s, const char *id){
+    pthread_mutex_lock(&s->registrationsLock);
+    for (size_t i = 0 ; i < array_len(s->registrations) ; ++i) {
+        if (strcmp(id, s->registrations[i]) == 0) {
+            RG_FREE(s->registrations[i]);
+            array_del_fast(s->registrations, i);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s->registrationsLock);
+}
+
+static void JVM_SessionAddRegistration(JVMRunSession* s, char *id){
+    pthread_mutex_lock(&s->registrationsLock);
+    s->registrations = array_append(s->registrations, id);
+    pthread_mutex_unlock(&s->registrationsLock);
 }
 
 static void JVM_SessionFree(JVMRunSession* s){
@@ -606,13 +633,7 @@ static void JVM_FepSessionFreeWithFep(FlatExecutionPlan *fep, void* arg){
     if (fep) {
         JVMRunSession* session = fepSession->session;
         const char *id = RedisGears_FepGetId(fep);
-        for (size_t i = 0 ; i < array_len(session->registrations) ; ++i) {
-            if (strcmp(id, session->registrations[i]) == 0) {
-                RG_FREE(session->registrations[i]);
-                array_del_fast(session->registrations, i);
-                break;
-            }
-        }
+        JVM_SessionDelRegistration(session, id);
     }
     JVM_FepSessionFree(fepSession);
 }
@@ -734,7 +755,10 @@ static char* JVM_ToStr(void* wheel){
 
 static char* JVM_SessionToString(JVMRunSession* session){
     char* res;
-    char* registrationsListStr = RedisGears_ArrToStr((void**)session->registrations, array_len(session->registrations), JVM_ToStr, ',');
+    char* registrationsListStr = NULL;
+    JVM_SessionWithRegistrationsLock(session, {
+            registrationsListStr = RedisGears_ArrToStr((void**)session->registrations, array_len(session->registrations), JVM_ToStr, ',');
+    });
     JVM_asprintf(&res, "{'MainClassName': '%s',"
                        " 'Version': %d,"
                        " 'Description': '%s',"
@@ -764,7 +788,7 @@ static char* JVM_FepSessionToString(FlatExecutionPlan *fep, void* arg){
 static void JVM_OnFepDeserialized(FlatExecutionPlan* fep) {
     JVMFlatExecutionSession* fepSession = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
     const char *id = RedisGears_FepGetId(fep);
-    fepSession->session->registrations = array_append(fepSession->session->registrations, RG_STRDUP(id));
+    JVM_SessionAddRegistration(fepSession->session, RG_STRDUP(id));
 }
 
 static JVMFlatExecutionSession* JVM_FepSessionCreate(JNIEnv *env, JVMRunSession* s, char** err){
@@ -814,6 +838,7 @@ static JVMRunSession* JVM_SessionCreate(const char* mainClassName, const char* j
     s->tsNode = NULL;
     s->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
     s->registrations = array_new(char*, 10);
+    pthread_mutex_init(&s->registrationsLock, NULL);
 
 #define JAR_RANDOM_NAME 40
     char randomName[JAR_RANDOM_NAME + 1];
@@ -2651,7 +2676,7 @@ static jstring JVM_GBRegister(JNIEnv *env, jobject objectOrClass, jobject reader
         return NULL;
     }
 
-    tld->currSession->registrations = array_append(tld->currSession->registrations, RG_STRDUP(registrationId));
+    JVM_SessionAddRegistration(tld->currSession, registrationId);
 
     jstring regId = (*env)->NewStringUTF(env, registrationId);
     return regId;
@@ -2769,20 +2794,22 @@ static void JVM_DumpSingleSession(RedisModuleCtx *ctx, JVMRunSession* s, int ver
     RedisModule_ReplyWithCString(ctx, "ts");
     RedisModule_ReplyWithCString(ctx, s->tsNode? "true" : "false");
     RedisModule_ReplyWithCString(ctx, "registrations");
-    RedisModule_ReplyWithArray(ctx, array_len(s->registrations));
-    for(size_t i = 0 ; i < array_len(s->registrations) ; ++i) {
-        const char *registrationId = s->registrations[i];
-        if (verbose) {
-            FlatExecutionPlan *fep = RedisGears_GetFepById(registrationId);
-            if (!fep) {
-                RedisModule_ReplyWithCString(ctx, registrationId);
+    JVM_SessionWithRegistrationsLock(s, {
+        RedisModule_ReplyWithArray(ctx, array_len(s->registrations));
+        for(size_t i = 0 ; i < array_len(s->registrations) ; ++i) {
+            const char *registrationId = s->registrations[i];
+            if (verbose) {
+                FlatExecutionPlan *fep = RedisGears_GetFepById(registrationId);
+                if (!fep) {
+                    RedisModule_ReplyWithCString(ctx, registrationId);
+                } else {
+                    RedisGears_DumpRegistration(ctx, fep, REGISTRATION_DUMP_NO_PD);
+                }
             } else {
-                RedisGears_DumpRegistration(ctx, fep, REGISTRATION_DUMP_NO_PD);
+                RedisModule_ReplyWithCString(ctx, registrationId);
             }
-        } else {
-            RedisModule_ReplyWithCString(ctx, registrationId);
         }
-    }
+    });
 }
 
 static int JVM_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -2953,9 +2980,11 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     jobject upgradeData = NULL;
     if (oldSession) {
         RedisGears_AddSessionToUnlink(s->srctx, oldSession->mainClassName);
-        for (size_t i = 0 ; i < array_len(oldSession->registrations) ; ++i) {
-            RedisGears_AddRegistrationToUnregister(s->srctx, oldSession->registrations[i]);
-        }
+        JVM_SessionWithRegistrationsLock(s, {
+            for (size_t i = 0 ; i < array_len(oldSession->registrations) ; ++i) {
+                RedisGears_AddRegistrationToUnregister(s->srctx, oldSession->registrations[i]);
+            }
+        });
         s->upgradeData = JVM_GetUpgradeData(oldSession, clsName, &err);
         if (err) {
             RedisModule_ReplyWithError(ctx, err);
