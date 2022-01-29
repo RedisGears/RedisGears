@@ -128,3 +128,12 @@ def testNullExtractorToLocalAccumulateby(env, executionError, **kargs):
 @jvmTestDecorator()
 def testNullAccumulatorToLocalAccumulateby(env, executionError, **kargs):
 	env.assertIn('Null accumulator given', executionError)
+
+@jvmTestDecorator(jarFile=None)
+def testNoJarPayload(env, executionError, **kargs):
+	env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithUpgradeData', 'UPGRADE').error().contains('jar payload was not provided')
+	env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithUpgradeData').error().contains('wrong number of arguments')
+
+@jvmTestDecorator()
+def testNoMainClass(env, executionError, **kargs):
+	env.assertContains('NoSuchMethodError: main', executionError)

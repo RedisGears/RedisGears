@@ -2910,15 +2910,13 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
 
     int upgrade = 0;
     size_t currArg = 2;
-    if (argc > 3) {
-        for(; currArg < argc ; ++currArg) {
-            const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
-            if(strcasecmp(option, "UPGRADE") == 0){
-                upgrade = 1;
-                continue;
-            }
-            break;
+    for(; currArg < argc ; ++currArg) {
+        const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
+        if(strcasecmp(option, "UPGRADE") == 0){
+            upgrade = 1;
+            continue;
         }
+        break;
     }
 
     if (currArg >= argc){

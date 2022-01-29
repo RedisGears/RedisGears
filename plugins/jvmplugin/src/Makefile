@@ -4,6 +4,10 @@ else
 	GCC_FLAGS=-o2
 endif
 
+ifeq ($(GCOV),1)
+	GCC_FLAGS+=-fprofile-arcs -ftest-coverage
+endif
+
 GCC_FLAGS+=-I ../../../src/ -I ./
 
 SOURCES=gears_jvm.c ../../../src/utils/adlist.c
