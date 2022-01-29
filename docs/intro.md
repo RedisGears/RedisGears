@@ -466,7 +466,7 @@ The event handler employs a new step type after mapping the input records to age
 
 ## Code Upgrades
 
-The above example (maintaintime max age) has one issue, getting the age value and reseting it is not atomic. We might end up with wrong maximus age. RedisGears has 2 ways to achieve atomicity:
+The above example (maintaining max age) has one issue, getting the age value and reseting it is not atomic. We might end up with wrong maximus age. RedisGears has 2 ways to achieve atomicity:
 
 1. Using [atomic block](runtime.md#atomic)
 2. Using sync [execution mode](functions.md#register)
@@ -545,7 +545,7 @@ Although working just fine, this approach has some disadvantage:
 * It is hard to find the registrations that need to be removed (require a hard and frustrated manual process).
 * The process is not atomic, which means that you must stop your traffic during this process otherwise you might lose events.
 
-RedisGears 1.2 comes with an easier and safer way to upgrade your code using a new cencept called [sessions](glossary.md#session). Whenever [`RG.PYEXECUTE`](commands.md#rgpyexecute) is invoked, a new [session](glossary.md#session) is created. The session accumulates everything that was created during invocation of the session code ([registrations](glossary.md#registration) and [executions](glossary.md#execution)). Each session has a unique ID, sessions unique ID can be set by the user so it will have meaning and will be easy to find. The above upgarede example can be done easier by taking adventage of RedisGears sessions:
+RedisGears 1.2 comes with an easier and safer way to upgrade your code using a new cencept called [sessions](glossary.md#session). Whenever [`RG.PYEXECUTE`](commands.md#rgpyexecute) is invoked, a new [session](glossary.md#session) is created. The session accumulates everything that was created during invocation of the session code ([registrations](glossary.md#registration) and [executions](glossary.md#execution)). Each session has a unique ID, sessions unique ID can be set by the user so it will have meaning and will be easy to find. The above upgrade example can be done easier by taking adventage of RedisGears sessions:
 
 * Register old code with user provided session ID:
 ```
@@ -559,7 +559,7 @@ OK
 failed running gear function (Session example already exists)
 ```
 
-* New we can upgrade to the new code using `UPGRADE` argument, RedisGears will automatically unregister all the registrations that belongs to the upgraded session and only then execute the new code:
+* Now we can upgrade to the new code using `UPGRADE` argument, RedisGears will automatically unregister all the registrations that belongs to the upgraded session and only then execute the new code:
 ```
 > gears-cli run ./new_fix_code.py ID example UPGRADE
 OK
@@ -597,11 +597,11 @@ It is also possible to see information about sessions using [`RG.PYDUMPSESSION`]
 
 ### Upgrades Limitation
 
-Upgrading your python code will not upgrade your requirements, the python interpreter already loaded the requirements code into the memory and changing them on the file system will not help. Currently upgrade requirements require full restart of the Redis processes. We do plane to make this processes simpler on future versions, For more information about this topic please refer to [Isolation Technics](isolation.md) page.
+Upgrading your python code will not upgrade your requirements, the python interpreter already loaded the requirements code into the memory and changing them on the file system will not help. Currently upgrade requirements require full restart of the Redis processes. We do plane to make this processes simpler on future versions, for more information about this topic please refer to [Isolation Technics](isolation.md) page.
 
 ### Code Upgrades from RedisGears V1.0
 
-On RedisGears V1, the session concept was not yet exists. If you upgrade from RedisGears V1.0 and use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command, you will see that all the session has some rangom generated session ID. It is still possible to upgrade those session using [`REPLACE_WITH`](commands.md#rgpyexecute) option, example:
+On RedisGears V1, the session concept was not yet exists. If you upgrade from RedisGears V1.0 and use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command, you will see that all the sessions has some random generated session ID. It is still possible to upgrade those sessions using [`REPLACE_WITH`](commands.md#rgpyexecute) option, example:
 
 Use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command to find the session we want to upgrade (It is possible to spot the session by the registrations list. It is also possible to use the `VERBOSE` option to see full details about the registrations and find the relevant session by registration decription given to the [gears builder](functions.md#context-builder)):
 ```
@@ -625,7 +625,7 @@ Use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command to find the sessi
 
 ```
 
-Using [`REPLACE_WITH`](commands.md#rgpyexecute) to upgrade this session with the new code:
+Use [`REPLACE_WITH`](commands.md#rgpyexecute) to upgrade this session with the new code:
 ```
 > gears-cli run ./new_fix_code.py ID example REPLACE_WITH 0e04c5f540d2885cdb3408370fb6fa7d98f1e1c1
 OK
