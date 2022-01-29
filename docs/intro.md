@@ -595,6 +595,10 @@ It is also possible to see information about sessions using [`RG.PYDUMPSESSION`]
 ??? note "Notice"
     Revert is only done on the initiator. If the initiator decided that the upgrade successed, there will be no revert even if the upgrade failed on some other shards. Such scenario can only happened if upgrading the same session on 2 different shards simultanuasly. RedisGears make no attempt to achieve consensus between shards and assume the user will send the upgrade command only to a single shard.
 
+### Upgrades Limitation
+
+Upgrading your python code will not upgrade your requirements, the python interpreter already loaded the requirements code into the memory and changing them on the file system will not help. Currently upgrade requirements require full restart of the Redis processes. We do plane to make this processes simpler on future versions, For more information about this topic please refer to [Isolation Technics](isolation.md) page.
+
 ### Code Upgrades from RedisGears V1.0
 
 On RedisGears V1, the session concept was not yet exists. If you upgrade from RedisGears V1.0 and use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command, you will see that all the session has some rangom generated session ID. It is still possible to upgrade those session using [`REPLACE_WITH`](commands.md#rgpyexecute) option, example:
