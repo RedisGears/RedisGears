@@ -706,7 +706,7 @@ static void PythonSessionCtx_Free(PythonSessionCtx* session){
 
 static void PythonSessionCtx_AddFep(PythonSessionCtx* session, char *id){
     pthread_mutex_lock(&session->registrationsLock);
-    session->registrations = array_append(session->registrations, RG_STRDUP(id));
+    session->registrations = array_append(session->registrations, id);
     pthread_mutex_unlock(&session->registrationsLock);
 }
 
@@ -4895,8 +4895,16 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         sessionName = id;
     }
 
-    PythonSessionCtx* oldSession = NULL;
+    PythonSessionCtx* oldSession = PythonSessionCtx_Get(sessionName);;
     if (replaceWith) {
+        if (oldSession) {
+            char* msg;
+            RedisGears_ASprintf(&msg, "Can not replace an existing session %s with %s", sessionName, replaceWith);
+            RedisModule_ReplyWithError(ctx, msg);
+            RG_FREE(msg);
+            PythonSessionCtx_Free(oldSession);
+            return REDISMODULE_OK;
+        }
         upgrade = true;
         oldSession = PythonSessionCtx_Get(replaceWith);
         if (!oldSession) {
@@ -4906,8 +4914,6 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
             RG_FREE(msg);
             return REDISMODULE_OK;
         }
-    } else {
-        oldSession = PythonSessionCtx_Get(sessionName);
     }
     if (oldSession) {
         if (!upgrade) {

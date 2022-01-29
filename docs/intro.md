@@ -254,6 +254,12 @@ Instead of using the interactive mode, you can store your functions' code in a r
 cat mygear.py | docker exec -i redisgears redis-cli -x RG.PYEXECUTE
 ```
 
+Another option is to use [gears-cli](https://github.com/RedisGears/gears-cli) that gets a file name as input and sends its content to Redis:
+
+```
+gears-cli run mygear.py
+```
+
 ## Processing Data
 We saw how input records are read and then filtered using a step, but that's literally just the beginning. By adding more steps to the function, we can manipulate the data in any way needed using different operations and the language's capabilities.
 
@@ -457,6 +463,191 @@ The event handler employs a new step type after mapping the input records to age
 
 ??? note "Disclaimer"
     In reality, Shrimply Pibbles' age is unknown, so the above is only an estimate and may be inaccurate. Luckily, he no longer requires a heart transplant.
+
+## Code Upgrades
+
+The above example (maintaintime max age) has one issue, getting the age value and reseting it is not atomic. We might end up with wrong maximus age. RedisGears has 2 ways to achieve atomicity:
+
+1. Using [atomic block](runtime.md#atomic)
+2. Using sync [execution mode](functions.md#register)
+
+To fix the example, all we need to do is adding `mode='sync'` argument to the [`register`](functions.md#register) function. The new code will look like this:
+
+```python
+{{ include('intro/intro-008-1.py') }}
+```
+
+If we will register this new code now using [gears-cli](https://github.com/RedisGears/gears-cli) we will end up with 2 [registrations](glossary.md#registration), the old one (with the bug) and the new one (fixed). How can we upgrade our code? one way is to unregister the old registration (using [`RG.UNREGISTER`](commands.md#rgunregister)) and then send the new code, example:
+
+* Register old code and find out we have a bug:
+```
+> gears-cli run ./code_with_bug.py
+OK
+```
+
+* find old code registration id
+```
+> redis-cli RG.DUMPREGISTRATIONS
+1)  1) "id"
+    1) "0000000000000000000000000000000000000000-1"
+    2) "reader"
+    3) "KeysReader"
+    4) "desc"
+    5) (nil)
+    6) "RegistrationData"
+    7)  1) "mode"
+        1) "async"
+        2) "numTriggered"
+        3) (integer) 0
+        4) "numSuccess"
+        5) (integer) 0
+        6) "numFailures"
+        7) (integer) 0
+        8) "numAborted"
+       1)  (integer) 0
+       2)  "lastRunDurationMS"
+       3)  (integer) 0
+       4)  "totalRunDurationMS"
+       5)  (integer) 0
+       6)  "avgRunDurationMS"
+       7)  "-nan"
+       8)  "lastError"
+       9)  (nil)
+       10) "args"
+       11) 1) "regex"
+           1) "person:*"
+           2) "eventTypes"
+           3) (nil)
+           4) "keyTypes"
+           5) (nil)
+           6) "hookCommands"
+           7) (nil)
+    8) "PD"
+   1)  "{'sessionName':'3c29e67c13d85b55c46c736f5072751367802e93', 'sessionDescription':'null', 'refCount': 2, 'linked': true, 'ts': false, 'isInstallationNeeded':0, 'registrationsList':['0000000000000000000000000000000000000000-1'], 'depsList':[]}"
+   2)  "ExecutionThreadPool"
+   3)  "DefaultPool"
+```
+
+* unregister old code
+```
+> redis-cli RG.UNREGISTER 0000000000000000000000000000000000000000-1
+OK
+```
+
+* send the new fixed code
+```
+> gears-cli run ./new_fix_code.py # send the new fixed code
+OK
+```
+
+Although working just fine, this approach has some disadvantage:
+
+* It is hard to find the registrations that need to be removed (require a hard and frustrated manual process).
+* The process is not atomic, which means that you must stop your traffic during this process otherwise you might lose events.
+
+RedisGears 1.2 comes with an easier and safer way to upgrade your code using a new cencept called [sessions](glossary.md#session). Whenever [`RG.PYEXECUTE`](commands.md#rgpyexecute) is invoked, a new [session](glossary.md#session) is created. The session accumulates everything that was created during invocation of the session code ([registrations](glossary.md#registration) and [executions](glossary.md#execution)). Each session has a unique ID, sessions unique ID can be set by the user so it will have meaning and will be easy to find. The above upgarede example can be done easier by taking adventage of RedisGears sessions:
+
+* Register old code with user provided session ID:
+```
+> gears-cli run ./code_with_bug.py ID example
+OK
+```
+
+* If we will try to send a new code with the same session ID, we will get an error indicating that the session already exists:
+```
+> gears-cli run ./new_fix_code.py ID example
+failed running gear function (Session example already exists)
+```
+
+* New we can upgrade to the new code using `UPGRADE` argument, RedisGears will automatically unregister all the registrations that belongs to the upgraded session and only then execute the new code:
+```
+> gears-cli run ./new_fix_code.py ID example UPGRADE
+OK
+```
+
+RedisGears will make this entire upgrade process atomically on all the shards and will make sure to revert the entire process on failure (so if the new code fails for some reason your old registrations stay untouched).
+
+It is also possible to see information about sessions using [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command:
+```
+> redis-cli RG.PYDUMPSESSIONS
+1)  1) "ID"
+    2) "example"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 2
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1) "0000000000000000000000000000000000000000-5"
+
+```
+
+??? note "Notice"
+    Upgrade atomicity is promised on the shard level and not on the cluster level. There might be a moment in time where one shard runs the old version while another shard runs the new version, but **it is promised** that on each moment each shard will have either the new registrations or the old registrations.
+
+??? note "Notice"
+    Revert is only done on the initiator. If the initiator decided that the upgrade successed, there will be no revert even if the upgrade failed on some other shards. Such scenario can only happened if upgrading the same session on 2 different shards simultanuasly. RedisGears make no attempt to achieve consensus between shards and assume the user will send the upgrade command only to a single shard.
+
+### Code Upgrades from RedisGears V1.0
+
+On RedisGears V1, the session concept was not yet exists. If you upgrade from RedisGears V1.0 and use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command, you will see that all the session has some rangom generated session ID. It is still possible to upgrade those session using [`REPLACE_WITH`](commands.md#rgpyexecute) option, example:
+
+Use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command to find the session we want to upgrade (It is possible to spot the session by the registrations list. It is also possible to use the `VERBOSE` option to see full details about the registrations and find the relevant session by registration decription given to the [gears builder](functions.md#context-builder)):
+```
+> redis-cli RG.PYDUMPSESSIONS
+1)  1) "ID"
+    2) "0e04c5f540d2885cdb3408370fb6fa7d98f1e1c1"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 2
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1) "0000000000000000000000000000000000000000-1"
+
+```
+
+Using [`REPLACE_WITH`](commands.md#rgpyexecute) to upgrade this session with the new code:
+```
+> gears-cli run ./new_fix_code.py ID example REPLACE_WITH 0e04c5f540d2885cdb3408370fb6fa7d98f1e1c1
+OK
+```
+
+On [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) output, we will see that the old session was removed and the new session was added:
+```
+> redis-cli RG.PYDUMPSESSIONS
+1)  1) "ID"
+    2) "example"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 2
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1) "0000000000000000000000000000000000000000-3"
+
+```
 
 ## Cluster 101
 Redis can be used in one of two modes: **Stand-alone** or [**Cluster**](glossary.md#cluster).

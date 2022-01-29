@@ -61,6 +61,12 @@ def testUnknownArgument(env):
 def testBadSessionId(env):
     env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='test')", 'ID', 'test@a').error().contains('must be compose of')
 
+@gearsTest(skipOnCluster=True)
+def testBadReplaceWith(env):
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='test')", 'ID', 'test').ok()
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='test1')", 'ID', 'test1').ok()
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='test')", 'ID', 'test', 'REPLACE_WITH', 'test1').error().contains('Can not replace an existing session test with test1')
+
 @gearsTest()
 def testRequirementsWithZeroRequirementsAreSimplyIgnored(env):
     env.expect('RG.PYEXECUTE', "GB('CommandReader').count().register(trigger='test')", 'ID', 'test', 'REQUIREMENTS').ok()

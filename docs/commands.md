@@ -459,13 +459,17 @@ The **RG.PYEXECUTE** command executes a Python [function](functions.md#function)
 **Redis API**
 
 ```
-RG.PYEXECUTE "<function>" [UNBLOCKING] [REQUIREMENTS "<dep> ..."]
+RG.PYEXECUTE "<function>" [UNBLOCKING] [ID <id>] [DESCRIPTION <description>] [UPGRADE] [REPLACE_WITH id] [REQUIREMENTS "<dep> ..."]
 ```
 
 _Arguments_
 
 * _function_: the Python function
 * _UNBLOCKING_: doesn't block the client during execution
+* _ID_: [Session](glossary.html#session) unique ID (if not given, RedisGears will generate one)
+* _DESCRIPTION_: Optional [Session](glossary.html#session) description
+* _UPGRADE_: If the session with this name already exists, replace it.
+* _REPLACE_WITH_: Set the new [Session]() as a replacement of the session give by this argument.
 * _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 
 _Return_
@@ -516,56 +520,96 @@ redis> RG.PYSTATS
 ```
 
 ## RG.PYDUMPSESSIONS
-The **RG.PYDUMPSESSIONS** command returns a summery of existing python sessions, python session is created whenever [RG.PYEXECUTE](#rgpyexecute) command is invoked and are shared with all the registration/execution created by this command.
+The **RG.PYDUMPSESSIONS** command returns a summary of existing python [sessions](glossary.html#session), python session is created whenever [RG.PYEXECUTE](#rgpyexecute) command is invoked and are shared with all the registration/execution created by this command.
 
 **Redis API**
 
 ```
-RG.PYDUMPSESSIONS
+RG.PYDUMPSESSIONS [TS] [VERBOSE] [SESSIONS s1 s2 ...]
 ```
+
+_Arguments_
+
+* _TS_: see session which was deleted but not yet freed (because there is still executions which created by the session and was not yet finished).
+* _VERBOSE_: see a full information about requirements and registrations.
+* _SESSIONS_: must be given last. If given, return only sessions that appears in the given list.
 
 _Return_
 
-An array that consists of alternating key name and value entries as follows:
-
-* **id**: the session id
-* **refCount**: how many registrations/executions are using this session
-* **requirementInstallationNeeded**: whether or not the session installed requirements
-* **requirements**: list of requirements used by this session
+An array that consists of alternating key name and value entries representing information about the session.
 
 **Examples**
 
 ```
 127.0.0.1:6379> RG.PYDUMPSESSIONS
-1) 1) "id"
-   2) "0000000000000000000000000000000000000000-0"
-   3) "refCount"
-   4) (integer) 1
-   5) "requirementInstallationNeeded"
-   6) (integer) 0
-   7) "requirements"
-   8) (empty array)
-2) 1) "id"
-   2) "0000000000000000000000000000000000000000-2"
-   3) "refCount"
-   4) (integer) 1
-   5) "requirementInstallationNeeded"
-   6) (integer) 0
-   7) "requirements"
-   8) 1)  1) "name"
-          2) "redis"
-          3) "refCount"
-          4) (integer) 2
-          5) "isDownloaded"
-          6) (integer) 1
-          7) "isInstalled"
-          8) (integer) 1
-          9) "wheels"
-         10) 1) "redis-3.5.3-py2.py3-none-any.whl"
+1)  1) "ID"
+    1) "test"
+    2) "sessionDescription"
+    3) (nil)
+    4) "refCount"
+    5) (integer) 1
+    6) "Linked"
+    7) "true"
+    8) "TS"
+   1)  "false"
+   2)  "requirementInstallationNeeded"
+   3)  (integer) 0
+   4)  "requirements"
+   5)  (empty array)
+   6)  "registrations"
+   7)  1) "0000000000000000000000000000000000000000-3"
+127.0.0.1:6379> RG.PYDUMPSESSIONS VERBOSE SESSIONS test
+1)  1) "ID"
+    2) "test"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 1
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1)  1) "id"
+           2) "0000000000000000000000000000000000000000-3"
+           3) "reader"
+           4) "CommandReader"
+           5) "desc"
+           6) (nil)
+           7) "RegistrationData"
+           8)  1) "mode"
+               2) "async"
+               3) "numTriggered"
+               4) (integer) 1
+               5) "numSuccess"
+               6) (integer) 1
+               7) "numFailures"
+               8) (integer) 0
+               9) "numAborted"
+              10) (integer) 0
+              11) "lastRunDurationMS"
+              12) (integer) 0
+              13) "totalRunDurationMS"
+              14) (integer) 0
+              15) "avgRunDurationMS"
+              16) "0"
+              17) "lastError"
+              18) (nil)
+              19) "args"
+              20) 1) "trigger"
+                  2) "test"
+                  3) "inorder"
+                  4) (integer) 0
+           9) "ExecutionThreadPool"
+          10) "DefaultPool"
 ```
 
 ## RG.PYPROFILE STATS
-The **RG.PYPROFILE STATS** command returns a profiling statistics for a given session id. Profiling information are automatically collected when [ProfileExecutions](configuration.md#profileexecutions) are on.
+The **RG.PYPROFILE STATS** command returns a profiling statistics for a given [session](glossary.html#session) id. Profiling information are automatically collected when [ProfileExecutions](configuration.md#profileexecutions) are on.
 
 **Redis API**
 
@@ -624,7 +668,7 @@ Function                                          called...
 ```
 
 ## RG.PYPROFILE RESET
-The **RG.PYPROFILE RESET** command resets profiling statistics for a given session id.
+The **RG.PYPROFILE RESET** command resets profiling statistics for a given [session](glossary.html#session) id.
 
 **Redis API**
 

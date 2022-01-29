@@ -145,6 +145,9 @@ A RedisGears **registration** is a stored function that is triggered by events.
 ??? info "Further reference"
     Registrations are described at the [Functions page](functions.md#registration).
 
+## Session
+A RedisGears **session** is an entity that is shared between all the executions and registrations created on the same [RG.PYEXECUTE](commands.md#rgpyexecute) command. A session maintains everything that it created and droped when **all** the registrations and execution that belongs to has dropped. It is possible to see information about sessions using [RG.PYDUMPSESSIONS](commands.md#rgpydumpsessions) command.
+
 ## Initiator
 In the context of a clustered environment, the **initiator** is the shard's engine in which a function is originally executed.
 
