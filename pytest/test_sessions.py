@@ -108,12 +108,12 @@ def testBasicPyDumpSessionsList(env):
 def testBasicPyDumpSessionsUnknowArg(env):
     env.expect('RG.PYDUMPSESSIONS', 'foo').error().contains('Unknown option')
 
-@gearsTest()
+@gearsTest(skipCleanups=True)
 def testBasicPyDumpSessionsTS(env):
     script = '''
 import asyncio
 async def test(r):
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(20)
     return 'OK'
 
 GB('ShardsIDReader').map(test).run()
@@ -122,8 +122,11 @@ GB('ShardsIDReader').map(test).run()
     env.expect('RG.PYEXECUTE', script, 'ID', 'test1', 'DESCRIPTION', 'desc', 'UNBLOCKING', 'UPGRADE')
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
-        res = c.execute_command('RG.PYDUMPSESSIONS', 'TS')
-        env.assertEqual(len(res), 1)
+        with TimeLimit(1, env, 'Failed waiting for session to become TS'):
+            res = c.execute_command('RG.PYDUMPSESSIONS', 'TS')
+            if len(res) == 1:
+                break
+            time.sleep(0.1)
 
 @gearsTest()
 def testRegisterInsideRegister(env):
