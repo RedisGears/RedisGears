@@ -134,7 +134,7 @@ commands:
       - run:
           name: publish jvmplugin to maven central
           command: |
-            if [[ redis_version == '6.0.9' ]]; then
+            if [[ '<<parameters.redis_version>>' == '6.0.9' ]]; then
               bash -l -c "make -C plugin/jvmplugin publish PYTHONDIR=.."
             fi
       - save-tests-logs
