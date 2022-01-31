@@ -80,7 +80,7 @@ def testBasicPyDumpSessions(env):
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
         res = c.execute_command('RG.PYDUMPSESSIONS')
-        env.assertEqual(res[0][0:-1], ['ID', 'test', 'sessionDescription', 'desc', 'refCount', 1L, 'Linked', 'primary', 'TS', 'false', 'requirementInstallationNeeded', 0L, 'requirements', [], 'registrations'])
+        env.assertEqual(res[0][0:-1], ['ID', 'test', 'sessionDescription', 'desc', 'refCount', 1L, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 0L, 'requirements', [], 'registrations'])
         res = c.execute_command('RG.PYDUMPSESSIONS VERBOSE')
         if env.shardsCount == 1:
             env.assertEqual(res[0][-1][0][1], '0000000000000000000000000000000000000000-1')
@@ -92,7 +92,7 @@ def testBasicPyDumpSessionsWithRequirements(env):
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
         res = c.execute_command('RG.PYDUMPSESSIONS')
-        env.assertEqual(res[0][0:-1], ['ID', 'test', 'sessionDescription', 'desc', 'refCount', 1L, 'Linked', 'primary', 'TS', 'false', 'requirementInstallationNeeded', 0L, 'requirements', ['redis'], 'registrations'])
+        env.assertEqual(res[0][0:-1], ['ID', 'test', 'sessionDescription', 'desc', 'refCount', 1L, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 0L, 'requirements', ['redis'], 'registrations'])
         res = c.execute_command('RG.PYDUMPSESSIONS VERBOSE')
         env.assertEqual(res[0][13][0][1], 'redis')
 
@@ -128,8 +128,8 @@ GB('ShardsIDReader').map(test).run()
     env.expect('RG.PYEXECUTE', script, 'ID', 'test1', 'DESCRIPTION', 'desc', 'UNBLOCKING', 'UPGRADE')
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
-        with TimeLimit(1, env, 'Failed waiting for session to become TS'):
-            res = c.execute_command('RG.PYDUMPSESSIONS', 'TS')
+        with TimeLimit(2, env, 'Failed waiting for session to become TS'):
+            res = c.execute_command('RG.PYDUMPSESSIONS', 'DEAD')
             if len(res) == 1:
                 break
             time.sleep(0.1)

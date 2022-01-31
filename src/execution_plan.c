@@ -107,7 +107,6 @@ typedef struct ExecutionPlansData{
     Gears_dict* epDict;
     Gears_list* epList;
     Gears_dict* registeredFepDict;
-    Gears_dict* prepareForRegisteredFepDict; // used to find registration on register processes.
 
     ExecutionThreadPool* defaultPool;
 }ExecutionPlansData;
@@ -3057,6 +3056,32 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
             }
         }
     } else {
+        /* Simulate adding the registrations back to the srctx to catch errors */
+        int error = 0;
+        RegistrationData *registrationsData = srctx->registrationsData;
+        srctx->registrationsData = array_new(RegistrationData, 10);
+        size_t i = 0;
+        for (; i < array_len(registrationsData) ; ++i) {
+            RegistrationData *rd = registrationsData + i;
+            RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
+            char* inner_err = NULL;
+            if(callbacks->verifyRegister && callbacks->verifyRegister(srctx, rd->fep, rd->mode, rd->args, &inner_err) != REDISMODULE_OK){
+                RedisGears_ASprintf(err, "-ERR shard-%s: %s", Cluster_GetMyId(), inner_err);
+                RG_FREE(inner_err);
+                error = 1;
+                break;
+            }
+            srctx->registrationsData = array_append(srctx->registrationsData, *rd);
+        }
+        for (; i < array_len(registrationsData) ; ++i) {
+            // put whatever left back in srctx
+            RegistrationData *rd = registrationsData + i;
+            srctx->registrationsData = array_append(srctx->registrationsData, *rd);
+        }
+        array_free(registrationsData);
+        if (error) {
+            goto done;
+        }
         if (srctx->usedSession) {
             srctx->p->setCurrSession(srctx->usedSession, false);
         }

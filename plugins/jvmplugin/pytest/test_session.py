@@ -37,7 +37,7 @@ def testSessionUpgradeWithVersionAndDescription(env, results, errs, **kargs):
         env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', data).ok()
         env.expect('RG.CONFIGSET', 'REQUESTED_VERSION', '1').equal(['OK - value was saved in extra config dictionary'])
         env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', data).error().contains('Session with higher (or equal) version already exists')
-        env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', 'SKIP_VERSION_CHECK', data).ok()
+        env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', 'FORCE', data).ok()
 
 @jvmTestDecorator()
 def testSessionUpgradeWithUpgradeData(env, results, errs, **kargs):
@@ -92,6 +92,6 @@ def testJDumpSessions(env, results, errs, **kargs):
         res = env.expect('RG.JEXECUTE', 'gears_tests.testJDumpSessions', 'UPGRADE', data).ok()
         for i in range(1, env.shardsCount + 1, 1):
             c = env.getConnection(i)
-            res = toDictionary(c.execute_command('RG.JDUMPSESSIONS', 'TS')[0])
+            res = toDictionary(c.execute_command('RG.JDUMPSESSIONS', 'DEAD')[0])
             env.assertEqual(res['mainClass'], 'gears_tests.testJDumpSessions')
             env.assertEqual(len(res['registrations']), 0)

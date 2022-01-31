@@ -1309,7 +1309,7 @@ static int KeysReader_CommandHook(RedisModuleCtx* ctx, RedisModuleString** argv,
     return REDISMODULE_OK;
 }
 
-static int KeysReader_VerifyRegisrter(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
+static int KeysReader_VerifyRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     KeysReaderTriggerArgs* readerArgs = args;
     if(readerArgs->hookCommands){
         for(size_t i = 0 ; i < array_len(readerArgs->hookCommands) ; ++i){
@@ -1549,7 +1549,7 @@ static void KeysReader_FreeArgs(void* args){
 
 RedisGears_ReaderCallbacks KeysReader = {
         .create = KeysReader_Create,
-        .verifyRegister = KeysReader_VerifyRegisrter,
+        .verifyRegister = KeysReader_VerifyRegister,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
         .serializeTriggerArgs = KeysReader_SerializeArgs,

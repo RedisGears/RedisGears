@@ -8,10 +8,12 @@ ifeq ($(GCOV),1)
 	GCC_FLAGS+=-fprofile-arcs -ftest-coverage
 endif
 
-GCC_FLAGS+=-I ../../../src/ -I ./
+BASE_DIR=../../../
 
-SOURCES=gears_jvm.c ../../../src/utils/adlist.c
-HEADERS=jni.h jni_md.h ../../../src/redisgears.h ../../../src/redismodule.h version.h ../../../src/utils/adlist.h ../../../src/utils/arr.h ../../../src/utils/arr_rm_alloc.h
+GCC_FLAGS+=-I $(BASE_DIR)/src/ -I ./
+
+SOURCES=gears_jvm.c $(BASE_DIR)/src/utils/adlist.c
+HEADERS=jni.h jni_md.h $(BASE_DIR)/src/redisgears.h $(BASE_DIR)/src/redismodule.h version.h $(BASE_DIR)/src/utils/adlist.h $(BASE_DIR)/src/utils/arr.h $(BASE_DIR)/src/utils/arr_rm_alloc.h
 
 ARTIFACT_NAME=gears_jvm.so
 

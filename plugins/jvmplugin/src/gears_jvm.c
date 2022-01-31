@@ -162,7 +162,7 @@ typedef struct JVMRunSession{
     jobject sessionClsLoader;
     char *upgradeData;
     bool linked;
-    Gears_listNode* tsNode;
+    Gears_listNode* deadNode;
     SessionRegistrationCtx *srctx;
     char **registrations;
     pthread_mutex_t registrationsLock;
@@ -197,7 +197,7 @@ typedef struct JVM_ThreadLocalData{
 pthread_mutex_t JVMSessionsLock;
 JVMRunSession* currSession = NULL;
 RedisModuleDict* JVMSessions = NULL;
-Gears_list* JVMTSSessions = NULL;
+Gears_list* JVMDeadSessions = NULL;
 
 pthread_key_t threadLocalData;
 
@@ -516,8 +516,8 @@ static void JVM_SessionUnlink(JVMRunSession* s){
     if (s->linked) {
         RedisModule_DictDelC(JVMSessions, s->mainClassName, strlen(s->mainClassName), NULL);
         s->linked = false;
-        Gears_listAddNodeHead(JVMTSSessions, s);
-        s->tsNode = Gears_listFirst(JVMTSSessions);
+        Gears_listAddNodeHead(JVMDeadSessions, s);
+        s->deadNode = Gears_listFirst(JVMDeadSessions);
     }
 }
 
@@ -534,9 +534,9 @@ static JVMRunSession* JVM_SessionGet(const char* uuid){
 static void JVM_SessionFreeMemory(JVMRunSession* s){
     RedisModule_Assert(!s->sessionClsLoader);
     RedisModule_Assert(s->refCount == 0);
-    if(s->tsNode){
+    if(s->deadNode){
         pthread_mutex_lock(&JVMSessionsLock);
-        Gears_listDelNode(JVMTSSessions, s->tsNode);
+        Gears_listDelNode(JVMDeadSessions, s->deadNode);
         pthread_mutex_unlock(&JVMSessionsLock);
     }
     int ret = RedisGears_ExecuteCommand(NULL, "verbose", "rm -rf %s", s->jarFilePath);
@@ -756,9 +756,9 @@ static void* JVM_FepSessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReade
     return JVM_FepSessionCreate(env, s, err);
 }
 
-static char* JVM_ToStr(void* wheel){
+static char* JVM_ToStr(void* s){
     char* str;
-    RedisGears_ASprintf(&str, "'%s'", (char*)wheel);
+    RedisGears_ASprintf(&str, "'%s'", (char*)s);
     return str;
 }
 
@@ -768,20 +768,20 @@ static char* JVM_SessionToString(JVMRunSession* session){
     JVM_SessionRunWithRegistrationsLock(session, {
             registrationsListStr = RedisGears_ArrToStr((void**)session->registrations, array_len(session->registrations), JVM_ToStr, ',');
     });
-    JVM_asprintf(&res, "{'MainClassName': '%s',"
-                       " 'Version': %d,"
-                       " 'Description': '%s',"
-                       " 'UpgradeData': '%s',"
-                       " 'Linked': '%s',"
-                       " 'TS': '%s',"
-                       " 'JarFilePath': '%s',"
-                       " 'Registrations': '%s'}",
+    JVM_asprintf(&res, "{'mainClassName': '%s',"
+                       " 'version': %d,"
+                       " 'description': '%s',"
+                       " 'upgradeData': '%s',"
+                       " 'linked': '%s',"
+                       " 'dead': '%s',"
+                       " 'jarFilePath': '%s',"
+                       " 'registrations': '%s'}",
                        session->mainClassName,
                        session->version,
                        session->desc ? session->desc : "Null",
                        session->upgradeData ? session->upgradeData : "Null",
                        session->linked? "true" : "false",
-                       session->tsNode? "true" : "false",
+                       session->deadNode? "true" : "false",
                        session->jarFilePath,
                        registrationsListStr);
 
@@ -844,7 +844,7 @@ static JVMRunSession* JVM_SessionCreate(const char* mainClassName, const char* j
     s->refCount = 1;
     s->sessionClsLoader = NULL;
     s->linked = false;
-    s->tsNode = NULL;
+    s->deadNode = NULL;
     s->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
     s->registrations = array_new(char*, 10);
     pthread_mutex_init(&s->registrationsLock, NULL);
@@ -2619,7 +2619,7 @@ static jobject JVM_GBExecute(JNIEnv *env, jobject objectOrClass, jobjectArray co
     return res;
 }
 
-void RG_FREERegisterReaderArgs(FlatExecutionPlan* fep, void* triggerCtx){
+void RG_FreeRegisterReaderArgs(FlatExecutionPlan* fep, void* triggerCtx){
     if(strcmp(RedisGears_GetReader(fep), "KeysReader") == 0){
         RedisGears_KeysReaderTriggerArgsFree(triggerCtx);
     }else if(strcmp(RedisGears_GetReader(fep), "StreamReader") == 0){
@@ -2800,8 +2800,8 @@ static void JVM_DumpSingleSession(RedisModuleCtx *ctx, JVMRunSession* s, int ver
     RedisModule_ReplyWithLongLong(ctx, s->refCount);
     RedisModule_ReplyWithCString(ctx, "linked");
     RedisModule_ReplyWithCString(ctx, s->linked ? "true" : "false");
-    RedisModule_ReplyWithCString(ctx, "ts");
-    RedisModule_ReplyWithCString(ctx, s->tsNode? "true" : "false");
+    RedisModule_ReplyWithCString(ctx, "dead");
+    RedisModule_ReplyWithCString(ctx, s->deadNode? "true" : "false");
     RedisModule_ReplyWithCString(ctx, "registrations");
     JVM_SessionRunWithRegistrationsLock(s, {
         RedisModule_ReplyWithArray(ctx, array_len(s->registrations));
@@ -2835,7 +2835,7 @@ static int JVM_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **argv, int a
                 verbose = 1;
                 continue;
             }
-            if(strcasecmp(option, "TS") == 0){
+            if(strcasecmp(option, "DEAD") == 0){
                 ts = 1;
                 continue;
             }
@@ -2869,8 +2869,8 @@ static int JVM_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **argv, int a
             return REDISMODULE_OK;
         }
         if (ts) {
-            RedisModule_ReplyWithArray(ctx, Gears_listLength(JVMTSSessions));
-            Gears_listIter *iter = Gears_listGetIterator(JVMTSSessions, AL_START_HEAD);
+            RedisModule_ReplyWithArray(ctx, Gears_listLength(JVMDeadSessions));
+            Gears_listIter *iter = Gears_listGetIterator(JVMDeadSessions, AL_START_HEAD);
             Gears_listNode *n = NULL;
             while((n = Gears_listNext(iter))) {
                 JVMRunSession* s = Gears_listNodeValue(n);
@@ -2960,7 +2960,7 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     const char* clsName = RedisModule_StringPtrLen(argv[1], &clsNameLen);
 
     int upgrade = 0;
-    int skipVersionCheck = 0;
+    int force = 0;
     size_t currArg = 2;
     for(; currArg < argc ; ++currArg) {
         const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
@@ -2968,8 +2968,8 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
             upgrade = 1;
             continue;
         }
-        if(strcasecmp(option, "SKIP_VERSION_CHECK") == 0){
-            skipVersionCheck = 1;
+        if(strcasecmp(option, "FORCE") == 0){
+            force = 1;
             continue;
         }
         break;
@@ -3058,7 +3058,7 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         s->version = (*env)->GetStaticIntField(env, cls, versionField);
     }
 
-    if (!skipVersionCheck &&
+    if (!force &&
         oldSession &&
         s->version >= 0 &&
         oldSession->version >= s->version)
@@ -4137,9 +4137,9 @@ static void JVM_OnLoadedEvent(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_
         size_t keyLen;
         JVMRunSession* session;
         while((key = RedisModule_DictNextC(iter,&keyLen,(void**)&session))) {
-            Gears_listAddNodeHead(JVMTSSessions, session);
+            Gears_listAddNodeHead(JVMDeadSessions, session);
             session->linked = false;
-            session->tsNode = Gears_listFirst(JVMTSSessions);
+            session->deadNode = Gears_listFirst(JVMDeadSessions);
         }
 
         RedisModule_DictIteratorStop(iter);
@@ -4166,7 +4166,7 @@ static void JVM_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
         }
         RedisModule_DictIteratorStop(iter);
 
-        Gears_listIter *tsIter = Gears_listGetIterator(JVMTSSessions, AL_START_HEAD);
+        Gears_listIter *tsIter = Gears_listGetIterator(JVMDeadSessions, AL_START_HEAD);
         Gears_listNode *n = NULL;
         while ((n = Gears_listNext(tsIter))) {
             JVMRunSession* s = Gears_listNodeValue(n);
@@ -4273,7 +4273,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
 
     pthread_mutex_init(&JVMSessionsLock, NULL);
     JVMSessions = RedisModule_CreateDict(ctx);
-    JVMTSSessions = Gears_listCreate();
+    JVMDeadSessions = Gears_listCreate();
 
     JVMRecordType = RedisGears_RecordTypeCreate("JVMRecord",
                                                 sizeof(JVMRecord),

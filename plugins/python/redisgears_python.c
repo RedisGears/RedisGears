@@ -193,7 +193,7 @@ static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData);
 
 
 RedisModuleDict* SessionsDict = NULL;
-Gears_list *SessionsTS = NULL;
+Gears_list *DeadSessionsList = NULL;
 
 static char* venvDir = NULL;
 
@@ -225,7 +225,7 @@ typedef struct PythonSessionCtx{
     pthread_mutex_t registrationsLock;
     SessionRegistrationCtx *srctx;
     LinkedTo linkedTo;
-    Gears_listNode *tsNode;
+    Gears_listNode *deadNode;
 }PythonSessionCtx;
 
 static PythonSessionCtx* currentSession = NULL;
@@ -419,7 +419,7 @@ static void PythonSessionRequirements_Free(FlatExecutionPlan* fep, void* arg){
     array_free(reqs);
 }
 
-static PythonRequirementCtx* PythonRequirementCtx_ShellowCopy(PythonRequirementCtx* req){
+static PythonRequirementCtx* PythonRequirementCtx_ShallowCopy(PythonRequirementCtx* req){
     ++req->refCount;
     return req;
 }
@@ -428,7 +428,7 @@ static void* PythonSessionRequirements_Dup(void* arg){
     PythonRequirementCtx** reqs = arg;
     PythonRequirementCtx** res = array_new(PythonRequirementCtx*, 10);
     for(size_t i = 0 ; i < array_len(reqs) ; ++i){
-        res = array_append(res, PythonRequirementCtx_ShellowCopy(reqs[i]));
+        res = array_append(res, PythonRequirementCtx_ShallowCopy(reqs[i]));
     }
     return res;
 }
@@ -640,14 +640,14 @@ static int PythonRequirement_Serialize(PythonRequirementCtx* req, Gears_BufferWr
     return PythonRequirementCtx_Serialize(req, bw, err);
 }
 
-static void* PythonSessionCtx_ShellowCopy(void* arg){
+static void* PythonSessionCtx_ShallowCopy(void* arg){
     PythonSessionCtx* session = arg;
     ++session->refCount;
     return session;
 }
 
-static void* PythonSessionCtx_ShellowCopyWithFep(FlatExecutionPlan* fep, void* arg){
-    return PythonSessionCtx_ShellowCopy(arg);
+static void* PythonSessionCtx_ShallowCopyWithFep(FlatExecutionPlan* fep, void* arg){
+    return PythonSessionCtx_ShallowCopy(arg);
 }
 
 static void PythonSessionCtx_FreeRequirementsList(PythonRequirementCtx** requirementsList){
@@ -661,16 +661,16 @@ static void PythonSessionCtx_Del(PythonSessionCtx* session){
     if (session->linkedTo == LinkedTo_PrimaryDict) {
         RedisModule_DictDelC(SessionsDict, session->sessionId, strlen(session->sessionId), NULL);
         session->linkedTo = LinkedTo_None;
-    } else if (session->tsNode) {
-        Gears_listDelNode(SessionsTS, session->tsNode);
+    } else if (session->deadNode) {
+        Gears_listDelNode(DeadSessionsList, session->deadNode);
     }
 }
 
 static void PythonSessionCtx_Unlink(PythonSessionCtx* session){
     pthread_mutex_lock(&PySessionsLock);
     PythonSessionCtx_Del(session);
-    Gears_listAddNodeTail(SessionsTS, session);
-    session->tsNode = Gears_listLast(SessionsTS);
+    Gears_listAddNodeTail(DeadSessionsList, session);
+    session->deadNode = Gears_listLast(DeadSessionsList);
     pthread_mutex_unlock(&PySessionsLock);
 }
 
@@ -742,7 +742,7 @@ static PythonSessionCtx* PythonSessionCtx_Get(const char* id){
     pthread_mutex_lock(&PySessionsLock);
     PythonSessionCtx* ret = RedisModule_DictGetC(SessionsDict, (char*)id, strlen(id), NULL);
     if (ret) {
-        ret = PythonSessionCtx_ShellowCopy(ret);
+        ret = PythonSessionCtx_ShallowCopy(ret);
     }
     pthread_mutex_unlock(&PySessionsLock);
     return ret;
@@ -783,7 +783,7 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const cha
             .registrations = array_new(char*, 10),
             .srctx = NULL,
             .linkedTo = LinkedTo_None,
-            .tsNode = NULL,
+            .deadNode = NULL,
 
     };
     pthread_mutex_init(&session->registrationsLock, NULL);
@@ -868,7 +868,7 @@ static void* PythonSessionCtx_Deserialize(Gears_BufferReader* br, int version, c
 
     PythonSessionCtx* s = currentSession;
     if (s) {
-        s = PythonSessionCtx_ShellowCopy(s);
+        s = PythonSessionCtx_ShallowCopy(s);
     }
     if (!s && useSessionsDict) {
         s = PythonSessionCtx_Get(id);
@@ -949,7 +949,7 @@ static char* PythonSessionCtx_ToString(void* arg){
                               " 'sessionDescription':'%s',"
                               " 'refCount': %d,"
                               " 'linkedTo': %s,"
-                              " 'ts': %s,"
+                              " 'dead': %s,"
                               " 'isInstallationNeeded':%d,"
                               " 'registrationsList':%s,"
                               " 'depsList':%s}",
@@ -957,7 +957,7 @@ static char* PythonSessionCtx_ToString(void* arg){
                               s->sessionDesc ? s->sessionDesc : "null",
                               s->refCount,
                               s->linkedTo == LinkedTo_None? "None" : s->linkedTo == LinkedTo_PrimaryDict ? "primary" : "temprary",
-                              s->tsNode ? "true" : "false",
+                              s->deadNode ? "true" : "false",
                               s->isInstallationNeeded,
                               registrationsListStr,
                               depsListStr);
@@ -2826,7 +2826,7 @@ static PyObject* getGearsSession(PyObject *cls, PyObject *args){
         res = Py_None;
     }else{
         PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
-        pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+        pyExSes->s = PythonSessionCtx_ShallowCopy(ptctx->currSession);
         pyExSes->crtCtx = getCommandReaderTriggerCtx(ptctx);
         pyExSes->cmdCtx = getCommandCtx(ptctx);
 
@@ -2919,7 +2919,7 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
         RedisGears_SetDesc(pyfep->fep, descStr);
     }
     RGM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
-    RedisGears_SetFlatExecutionPrivateData(pyfep->fep, "PySessionType", PythonSessionCtx_ShellowCopy(ptctx->currSession));
+    RedisGears_SetFlatExecutionPrivateData(pyfep->fep, "PySessionType", PythonSessionCtx_ShallowCopy(ptctx->currSession));
 
     if(RGM_SetFlatExecutionOnUnpausedCallback(pyfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
         GearsPyDecRef((PyObject*)pyfep);
@@ -4422,7 +4422,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     td->status = TE_STATUS_RUNNING;
     td->period = period;
     td->callback = callback;
-    td->session = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+    td->session = PythonSessionCtx_ShallowCopy(ptctx->currSession);
     Py_INCREF(callback);
 
     RedisGears_LockHanlderAcquire(ctx);
@@ -4990,7 +4990,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         return REDISMODULE_OK;
     }
     // we gave the session to srctx so we need another copy of it.
-    session = PythonSessionCtx_ShellowCopy(session);
+    session = PythonSessionCtx_ShallowCopy(session);
 
     if (oldSession) {
         RedisGears_AddSessionToUnlink(session->srctx, oldSession->sessionId);
@@ -5119,7 +5119,7 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
 
    /* Create session object */
    PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
-   pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+   pyExSes->s = PythonSessionCtx_ShallowCopy(ptctx->currSession);
    pyExSes->crtCtx = RedisGears_GetCommandReaderTriggerCtx(rctx);
    pyExSes->cmdCtx = RedisGears_CommandCtxGet(rctx);
    if(pyExSes->crtCtx){
@@ -6151,10 +6151,10 @@ static void RedisGearsPy_DumpSingleSession(RedisModuleCtx *ctx, PythonSessionCtx
     }
     RedisModule_ReplyWithCString(ctx, "refCount");
     RedisModule_ReplyWithLongLong(ctx, s->refCount);
-    RedisModule_ReplyWithCString(ctx, "Linked");
+    RedisModule_ReplyWithCString(ctx, "linked");
     RedisModule_ReplyWithCString(ctx, s->linkedTo == LinkedTo_None ? "None" : s->linkedTo == LinkedTo_PrimaryDict ? "primary" : "temprary");
-    RedisModule_ReplyWithCString(ctx, "TS");
-    RedisModule_ReplyWithCString(ctx, s->tsNode ? "true" : "false");
+    RedisModule_ReplyWithCString(ctx, "dead");
+    RedisModule_ReplyWithCString(ctx, s->deadNode ? "true" : "false");
     RedisModule_ReplyWithCString(ctx, "requirementInstallationNeeded");
     RedisModule_ReplyWithLongLong(ctx, s->isInstallationNeeded);
     RedisModule_ReplyWithCString(ctx, "requirements");
@@ -6215,7 +6215,7 @@ static int RedisGearsPy_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **ar
                 verbose = 1;
                 continue;
             }
-            if(strcasecmp(option, "TS") == 0){
+            if(strcasecmp(option, "DEAD") == 0){
                 ts = 1;
                 continue;
             }
@@ -6249,8 +6249,8 @@ static int RedisGearsPy_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **ar
             return REDISMODULE_OK;
         }
         if (ts) {
-            RedisModule_ReplyWithArray(ctx, Gears_listLength(SessionsTS));
-            Gears_listIter *iter = Gears_listGetIterator(SessionsTS, AL_START_HEAD);
+            RedisModule_ReplyWithArray(ctx, Gears_listLength(DeadSessionsList));
+            Gears_listIter *iter = Gears_listGetIterator(DeadSessionsList, AL_START_HEAD);
             Gears_listNode *n = NULL;
             while((n = Gears_listNext(iter))) {
                 PythonSessionCtx* s = Gears_listNodeValue(n);
@@ -7311,7 +7311,7 @@ static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
         }
         RedisModule_DictIteratorStop(iter);
 
-        Gears_listIter *tsIter = Gears_listGetIterator(SessionsTS, AL_START_HEAD);
+        Gears_listIter *tsIter = Gears_listGetIterator(DeadSessionsList, AL_START_HEAD);
         Gears_listNode *n = NULL;
         while ((n = Gears_listNext(tsIter))) {
             PythonSessionCtx* s = Gears_listNodeValue(n);
@@ -7376,7 +7376,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     }
 
     SessionsDict = RedisModule_CreateDict(ctx);
-    SessionsTS = Gears_listCreate();
+    DeadSessionsList = Gears_listCreate();
     RequirementsDict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
     PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
@@ -7546,7 +7546,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     ArgType* pySessionType = RedisGears_CreateType("PySessionType",
                                                     PY_SESSION_TYPE_VERSION,
                                                     PythonSessionCtx_FreeWithFep,
-                                                    PythonSessionCtx_ShellowCopyWithFep,
+                                                    PythonSessionCtx_ShallowCopyWithFep,
                                                     PythonSessionCtx_Serialize,
                                                     PythonSessionCtx_DeserializeWithFep,
                                                     PythonSessionCtx_ToStringWithFep,

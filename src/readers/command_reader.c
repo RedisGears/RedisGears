@@ -358,7 +358,7 @@ static int CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mod
     return REDISMODULE_OK;
 }
 
-static int CommandReader_VerifyRegisrter(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
+static int CommandReader_VerifyRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     CommandReaderTriggerArgs* crtArgs = args;
     switch(crtArgs->triggerType){
     case TriggerType_Trigger:
@@ -385,7 +385,7 @@ static int CommandReader_VerifyRegisrter(SessionRegistrationCtx *srctx, FlatExec
             for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
                 RegistrationData *rd = srctx->registrationsData + i;
                 RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-                if (callbacks->verifyRegister == CommandReader_VerifyRegisrter) {
+                if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
                     // another command reader found, check its arguments.
                     CommandReaderTriggerArgs* crtArgs2 = rd->args;
                     if (crtArgs2->triggerType == TriggerType_Trigger){
@@ -443,7 +443,7 @@ static int CommandReader_VerifyRegisrter(SessionRegistrationCtx *srctx, FlatExec
             for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
                 RegistrationData *rd = srctx->registrationsData + i;
                 RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
-                if (callbacks->verifyRegister == CommandReader_VerifyRegisrter) {
+                if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
                     // another command reader found, check its arguments.
                     CommandReaderTriggerArgs* crtArgs2 = rd->args;
                     if (crtArgs2->triggerType == TriggerType_Hook){
@@ -465,7 +465,7 @@ static int CommandReader_VerifyRegisrter(SessionRegistrationCtx *srctx, FlatExec
 }
 
 static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
-    if (CommandReader_VerifyRegisrter(NULL, fep, mode, args, err) != REDISMODULE_OK) {
+    if (CommandReader_VerifyRegister(NULL, fep, mode, args, err) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
@@ -906,7 +906,7 @@ static void CommandReader_FreeArgs(void* args){
 
 RedisGears_ReaderCallbacks CommandReader = {
         .create = CommandReader_Create,
-        .verifyRegister = CommandReader_VerifyRegisrter,
+        .verifyRegister = CommandReader_VerifyRegister,
         .registerTrigger = CommandReader_RegisrterTrigger,
         .unregisterTrigger = CommandReader_UnregisterTrigger,
         .serializeTriggerArgs = CommandReader_SerializeArgs,
