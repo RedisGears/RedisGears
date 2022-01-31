@@ -92,6 +92,13 @@
    ...
 }
 {
+   <ignore_Cluster_SendMsg_false_leak>
+   Memcheck:Leak
+   ...
+   fun:Cluster_SendMsg
+   ...
+}
+{
    <ignore_connection_leak_for_now>
    Memcheck:Leak
    ...

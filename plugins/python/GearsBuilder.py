@@ -1,6 +1,9 @@
 import redisgears
 import copy
 import redisgears as rg
+import cProfile
+import pstats
+import io
 from redisgears import executeCommand as execute
 from redisgears import callNext as call_next
 from redisgears import getCommand as get_command
@@ -17,6 +20,7 @@ from redisgears import registerGearsThread
 from redisgears import isInAtomicBlock
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
+from redisgears import isAsyncAllow as isAsyncAllow
 import asyncio
 from asyncio.futures import Future
 from threading import Thread
@@ -244,17 +248,22 @@ loop = asyncio.new_event_loop()
 loop.create_future = lambda: GearsFuture(loop=loop, gearsSession=getGearsSession())
 
 def createFuture():
-    return loop.create_future()
+    # we need to use globals()['loop'] so the function will not break serialization
+    return globals()['loop'].create_future()
 
 def setFutureResults(f, res):
+    # we need to use globals()['loop'] so the function will not break serialization
     async def setFutureRes():
         f.set_result(res)
-    asyncio.run_coroutine_threadsafe(setFutureRes(), loop)    
+    asyncio.run_coroutine_threadsafe(setFutureRes(), globals()['loop'])    
 
 def setFutureException(f, exception):
     async def setException():
-        f.set_exception(Exception(str(exception)))
-    asyncio.run_coroutine_threadsafe(setException(), loop)
+        if isinstance(exception, Exception):
+            f.set_exception(exception)
+        else:
+            f.set_exception(Exception(str(exception)))
+    asyncio.run_coroutine_threadsafe(setException(), globals()['loop'])
 
 def f(loop):
     registerGearsThread()
@@ -264,19 +273,44 @@ def f(loop):
 t = Thread(target=f, args=(loop,))
 t.start()
 
-def runCoroutine(cr, f, s):
+def runCoroutine(cr, f=None, delay=0, s=None):
+    if s is None:
+        s = getGearsSession()
     async def runInternal():
         try:
             with GearsSession(s):
+                if delay:
+                    await asyncio.sleep(delay)
                 res = await cr
         except Exception as e:
             try:
-                f.continueFailed(e)
+                if f is not None:
+                    f.continueFailed(e)
             except Exception as e1:
                 log(str(e1))
             return
-        f.continueRun(res)
-    asyncio.run_coroutine_threadsafe(runInternal(), loop)
+        if f is not None:
+            f.continueRun(res)
+    asyncio.run_coroutine_threadsafe(runInternal(), globals()['loop'])
+    
+def profilerCreate():
+    return cProfile.Profile()
+
+def profileStart(p):
+    p.enable()
+    
+def profileStop(p):
+    p.disable()
+    
+def profileGetInfo(p, order):
+    s = io.StringIO()
+    ps = pstats.Stats(p, stream=s)
+    ps.sort_stats(order)
+    ps.print_stats()
+    ps.print_callers()
+    ps.print_callees()
+    return s.getvalue()
+    
 
 genDeprecated('Log', 'log', log)
 genDeprecated('ConfigGet', 'configGet', configGet)
