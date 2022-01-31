@@ -4,12 +4,14 @@ OSNICK?=$(shell ../../deps/readies/bin/platform --osnick)
 GIT_BRANCH=$(shell ../../getbranch)
 VERSION=$(shell ../../getver)
 
+ifndef NOGEARS
 ifndef PYTHONDIR
 $(error Specify the path to python as PYTHONDIR)
 endif
 
 ifeq ($(shell test -e ../../gears_python.so && echo yes),)
 $(error Build redisgears first)
+endif
 endif
 
 # in case you want to specifcy
