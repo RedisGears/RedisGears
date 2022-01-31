@@ -20,6 +20,7 @@
 #include <event2/event.h>
 
 static void ExecutionPlan_LocalUnregisterExecutionInternal(FlatExecutionPlan* fep, bool abortPending);
+static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistrationCtx* srctx, char **err);
 
 #define INIT_TIMER  struct timespec _ts = {0}, _te = {0}; \
                     bool timerInitialized = false;
@@ -102,12 +103,11 @@ static ArgType LimitArgType = {
 };
 
 typedef struct ExecutionPlansData{
-    // protected by mutex, mutex must be acquire when access those vars
+    // protected by the GIL, GIL must be acquire when access this dict
     Gears_dict* epDict;
     Gears_list* epList;
-
-    // protected by the GIL, GIL must be acquire when access this dict
     Gears_dict* registeredFepDict;
+    Gears_dict* prepareForRegisteredFepDict; // used to find registration on register processes.
 
     ExecutionThreadPool* defaultPool;
 }ExecutionPlansData;
@@ -2010,86 +2010,6 @@ static int FlatExecutionPlan_RegisterInternal(FlatExecutionPlan* fep, RedisGears
     return REDISMODULE_OK;
 }
 
-static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
-    Gears_Buffer buff = (Gears_Buffer){
-        .buff = (char*)payload,
-        .size = len,
-        .cap = len,
-    };
-    Gears_BufferReader br;
-    Gears_BufferReaderInit(&br, &buff);
-    long nextOpCode;
-    char *id;
-    FlatExecutionPlan* fep;
-    char* err;
-    RedisGears_ReaderCallbacks* callbacks;
-    void* args;
-    ExecutionMode mode;
-    const char* pluginName = Gears_BufferReaderReadString(&br);
-    Plugin *p = Gears_dictFetchValue(plugins, pluginName);
-    RedisModule_Assert(p);
-    while ((nextOpCode = Gears_BufferReaderReadLong(&br)) != SESSION_REGISTRATION_OP_CODE_DONE) {
-        switch (nextOpCode) {
-        case SESSION_REGISTRATION_OP_CODE_SESSION_UNLINK:
-            id = Gears_BufferReaderReadString(&br);
-            p->unlinkSession(id);
-            break;
-        case SESSION_REGISTRATION_OP_CODE_UNREGISTER:
-            id = Gears_BufferReaderReadString(&br);
-            fep = FlatExecutionPlan_FindByStrId(id);
-            if(!fep){
-                RedisModule_Log(staticCtx, "warning", "Failed finding execution to unregister %s", id);
-                continue;
-            }
-            ExecutionPlan_LocalUnregisterExecutionInternal(fep, 1);
-            break;
-        case SESSION_REGISTRATION_OP_CODE_REGISTER:
-            err = NULL;
-            // this reached from another shard it safe to assume it the same as our version
-            fep = FlatExecutionPlan_Deserialize(&br, &err, REDISGEARS_DATATYPE_VERSION);
-            if(!fep){
-                if(!err){
-                    err = RG_STRDUP("Unknown error");
-                }
-                RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
-                RG_FREE(err);
-                return;
-            }
-            callbacks = ReadersMgmt_Get(fep->reader->reader);
-            RedisModule_Assert(callbacks);
-            RedisModule_Assert(callbacks->deserializeTriggerArgs);
-
-            // we got it from another shard that must run the same version as we are
-            args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
-            if(!args){
-                if(!err){
-                    err = RG_STRDUP("Unknown error");
-                }
-                RedisModule_Log(staticCtx, "warning", "Could not deserialize flat execution plan args sent by another shard : %s, error='%s'", sender_id, err);
-                RG_FREE(err);
-                FlatExecutionPlan_Free(fep);
-                return;
-            }
-            mode = RedisGears_BRReadLong(&br);
-            if(FlatExecutionPlan_RegisterInternal(fep, callbacks, mode, args, &err) != REDISMODULE_OK){
-                RedisModule_Log(staticCtx, "warning", "Could not register flat execution plan sent by another shard : %s, error='%s'", sender_id, err);
-                if(err){
-                    RG_FREE(err);
-                }
-                FlatExecutionPlan_Free(fep);
-                callbacks->freeTriggerArgs(args);
-                return;
-            }
-            break;
-        default:
-            RedisModule_Assert(0);
-        }
-    }
-    // replicate to oaf and slaves
-    RedisModule_SelectDb(ctx, 0);
-    RedisModule_Replicate(ctx, RG_INNER_REGISTER_COMMAND, "b", payload, len);
-}
-
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep){
     ExecutionStep* readerStep = ep->steps[array_len(ep->steps) - 1];
     RedisModule_Assert(readerStep->type == READER);
@@ -2928,6 +2848,16 @@ WorkerData* ExecutionPlan_WorkerGetShallowCopy(WorkerData* wd){
     return wd;
 }
 
+static void FlatExecutionPlan_RegisterKeySpaceEvent(RedisModuleCtx *ctx, const char *sender_id, uint8_t type, const unsigned char *payload, uint32_t len){
+    char *err = NULL;
+    SessionRegistrationCtx* srctx = SessionRegistrationCtx_CreateFromBuff(payload, len);
+    if (FlatExecutionPlane_RegistrationCtxUpgradeInternal(srctx, &err) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "Failed register session on replica, %s", err);
+        RG_FREE(err);
+    }
+    SessionRegistrationCtx_Free(srctx);
+}
+
 void ExecutionPlan_Initialize(){
     poolDictionary = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     epData.epDict = Gears_dictCreate(dictTypeHeapIdsPtr, NULL);
@@ -3003,14 +2933,10 @@ int FlatExecutionPlan_PrepareForRegister(SessionRegistrationCtx *srctx, FlatExec
     return 1;
 }
 
-void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx){
-    Gears_BufferWriterWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_DONE);
-    int operationPerformed = 0;
-
+static void FlatExecutionPlane_RegistrationCtxApply(SessionRegistrationCtx* srctx){
     for (size_t i = 0 ; i < array_len(srctx->sessionsToUnlink) ; ++i) {
         // unlink sessions, this is the plugin responsibility.
         srctx->p->unlinkSession(srctx->sessionsToUnlink[i]);
-        operationPerformed = 1;
     }
 
     for (size_t i = 0 ; i < array_len(srctx->idsToUnregister) ; ++i) {
@@ -3020,7 +2946,6 @@ void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx){
             continue;
         }
         ExecutionPlan_LocalUnregisterExecutionInternal(fep, 1);
-        operationPerformed = 1;
     }
 
     for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
@@ -3028,22 +2953,157 @@ void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx){
         RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
         char* err = NULL;
         if (FlatExecutionPlan_RegisterInternal(FlatExecutionPlan_ShallowCopy(rd->fep), callbacks, rd->mode, rd->args, &err) != REDISMODULE_OK){
-            RedisModule_Log(staticCtx, "warning", "Failed register: %s", err);
+            char *verboseErr;
+            RedisGears_ASprintf(&verboseErr, "Failed register on shard %s (This can only happened if registering the same session on two shards at the same time): %s", Cluster_GetMyId(),  err);
+            RG_FREE(err);
+            RedisModule_Log(staticCtx, "warning", "%s", verboseErr);
             RedisModule_Assert(false);
+        } else {
+            rd->args = NULL;
         }
-        rd->args = NULL;
-        operationPerformed = 1;
     }
 
-    if (operationPerformed) {
-        // distribute to cluster
-        if(Cluster_IsClusterMode()){
-            Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, srctx->buff->buff, srctx->buff->size);
+    if (srctx->usedSession) {
+        srctx->p->setCurrSession(NULL, false);
+        srctx->usedSession = NULL;
+    }
+
+    // replicating to slave and aof
+    RedisModule_SelectDb(staticCtx, 0);
+    RedisModule_Replicate(staticCtx, RG_INNER_REGISTER_COMMAND, "b", srctx->buff->buff, srctx->buff->size);
+}
+
+static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistrationCtx* srctx, char **err){
+    int ret = REDISMODULE_ERR;
+    LockHandler_Acquire(staticCtx);
+
+    if (srctx->requireDeserialization) {
+        Gears_BufferReader br;
+        Gears_BufferReaderInit(&br, srctx->buff);
+        long nextOpCode;
+        char *id;
+        FlatExecutionPlan* fep;
+        char* inner_err;
+        RedisGears_ReaderCallbacks* callbacks;
+        void* args;
+        ExecutionMode mode;
+        RegistrationData rd;
+        const char* pluginName = Gears_BufferReaderReadString(&br);
+        srctx->p = Gears_dictFetchValue(plugins, pluginName);
+        RedisModule_Assert(srctx->p);
+        while ((nextOpCode = Gears_BufferReaderReadLong(&br)) != SESSION_REGISTRATION_OP_CODE_DONE) {
+            switch (nextOpCode) {
+            case SESSION_REGISTRATION_OP_CODE_SESSION_UNLINK:
+                id = Gears_BufferReaderReadString(&br);
+                srctx->sessionsToUnlink = array_append(srctx->sessionsToUnlink, RG_STRDUP(id));
+                break;
+            case SESSION_REGISTRATION_OP_CODE_UNREGISTER:
+                id = Gears_BufferReaderReadString(&br);
+                fep = FlatExecutionPlan_FindByStrId(id);
+                if(!fep){
+                    RedisGears_ASprintf(err, "-ERR shard-%s: failed finding registration to unregister %s", Cluster_GetMyId(), id);
+                    goto done;
+                }
+                srctx->idsToUnregister = array_append(srctx->idsToUnregister, RG_STRDUP(id));
+                break;
+            case SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE:
+                inner_err = NULL;
+                srctx->usedSession = srctx->p->deserializeSession(&br, &inner_err);
+                if (!srctx->usedSession) {
+                    RedisGears_ASprintf(err, "-ERR shard-%s: Failed deserializing session, %s", Cluster_GetMyId(), inner_err);
+                    RG_FREE(inner_err);
+                    goto done;
+                }
+                srctx->p->setCurrSession(srctx->usedSession, false);
+                break;
+            case SESSION_REGISTRATION_OP_CODE_REGISTER:
+                inner_err = NULL;
+                // this reached from another shard it safe to assume it the same as our version
+                fep = FlatExecutionPlan_Deserialize(&br, &inner_err, REDISGEARS_DATATYPE_VERSION);
+                if(!fep){
+                    if(!inner_err){
+                        inner_err = RG_STRDUP("Unknown error");
+                    }
+                    RedisGears_ASprintf(err, "-ERR shard-%s: Failed deserializing flat execution, %s", Cluster_GetMyId(), inner_err);
+                    RG_FREE(inner_err);
+                    goto done;
+                }
+                callbacks = ReadersMgmt_Get(fep->reader->reader);
+                RedisModule_Assert(callbacks);
+                RedisModule_Assert(callbacks->deserializeTriggerArgs);
+
+                // we got it from another shard that must run the same version as we are
+                args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
+                if(!args){
+                    RedisGears_ASprintf(err, "-ERR shard-%s: Could not deserialize flat execution plan args, %s", Cluster_GetMyId());
+                    goto done;
+                }
+                mode = RedisGears_BRReadLong(&br);
+
+                // verify its ok to register
+                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+                RedisModule_Assert(callbacks->serializeTriggerArgs);
+                if(callbacks->verifyRegister && callbacks->verifyRegister(srctx, fep, mode, args, &inner_err) != REDISMODULE_OK){
+                    RedisGears_ASprintf(err, "-ERR shard-%s: %s", Cluster_GetMyId(), inner_err);
+                    RG_FREE(inner_err);
+                    goto done;
+                }
+
+                RegistrationData rd = {
+                        .fep = fep,
+                        .args = args,
+                        .mode = mode,
+                };
+
+                srctx->registrationsData = array_append(srctx->registrationsData, rd);
+                break;
+            default:
+                RedisModule_Assert(0);
+            }
+        }
+    } else {
+        if (srctx->usedSession) {
+            srctx->p->setCurrSession(srctx->usedSession, false);
         }
 
-        // replicating to slave and aof
-        RedisModule_SelectDb(staticCtx, 0);
-        RedisModule_Replicate(staticCtx, RG_INNER_REGISTER_COMMAND, "b", srctx->buff->buff, srctx->buff->size);
+    }
+
+    // we know for sure we are going to successes, lets apply the changes.
+    FlatExecutionPlane_RegistrationCtxApply(srctx);
+
+    ret = REDISMODULE_OK;
+
+done:
+    LockHandler_Release(staticCtx);
+    return ret;
+}
+
+Record* FlatExecutionPlane_RegistrationCtxUpgrade(ExecutionCtx* rctx, Record *data, void* arg){
+
+    SessionRegistrationCtx* srctx = arg;
+    Record *ret = NULL;
+    RedisGears_FreeRecord(data);
+
+    char *err = NULL;
+    if (FlatExecutionPlane_RegistrationCtxUpgradeInternal(srctx, &err)) {
+        ret = RedisGears_StringRecordCreate(err, strlen(err));
+    } else {
+        char *okMsg = NULL;
+        RedisGears_ASprintf(&okMsg, "+OK %s", RedisGears_GetMyHashTag());
+        ret = RedisGears_StringRecordCreate(okMsg, strlen(okMsg));
+    }
+    return ret;
+}
+
+void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx){
+    char *err;
+    if (FlatExecutionPlane_RegistrationCtxUpgradeInternal(srctx, &err) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "Failed register session on replica, %s", err);
+        RG_FREE(err);
+    }
+
+    if(Cluster_IsClusterMode()){
+        Cluster_SendMsgM(NULL, FlatExecutionPlan_RegisterKeySpaceEvent, srctx->buff->buff, srctx->buff->size);
     }
 
     SessionRegistrationCtx_Free(srctx);
@@ -3814,7 +3874,13 @@ int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, i
     }
     size_t len;
     const char* val = RedisModule_StringPtrLen(argv[1], &len);
-    FlatExecutionPlan_RegisterKeySpaceEvent(ctx, NULL, 0, val, len);
+    char *err = NULL;
+    SessionRegistrationCtx* srctx = SessionRegistrationCtx_CreateFromBuff(val, len);
+    if (FlatExecutionPlane_RegistrationCtxUpgradeInternal(srctx, &err) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "Failed register session on replica, %s", err);
+        RG_FREE(err);
+    }
+    SessionRegistrationCtx_Free(srctx);
     return REDISMODULE_OK;
 }
 
@@ -3879,13 +3945,29 @@ void ExecutionPlan_Clean() {
     array_free(epToFree);
 }
 
+SessionRegistrationCtx* SessionRegistrationCtx_CreateFromBuff(const char *buff, size_t len) {
+    SessionRegistrationCtx *ret = RG_ALLOC(sizeof(*ret));
+    ret->p = NULL;
+    ret->registrationsData = array_new(RegistrationData, 10);
+    ret->idsToUnregister = array_new(char*, 10);
+    ret->sessionsToUnlink = array_new(char*, 10);
+    ret->usedSession = NULL;
+    ret->buff = Gears_BufferCreate();
+    ret->requireDeserialization = 1;
+    Gears_BufferAdd(ret->buff, buff, len);
+    Gears_BufferWriterInit(&ret->bw, ret->buff);
+    return ret;
+}
+
 SessionRegistrationCtx* SessionRegistrationCtx_Create(Plugin *p) {
     SessionRegistrationCtx *ret = RG_ALLOC(sizeof(*ret));
     ret->p = p;
     ret->registrationsData = array_new(RegistrationData, 10);
     ret->idsToUnregister = array_new(char*, 10);
     ret->sessionsToUnlink = array_new(char*, 10);
+    ret->usedSession = NULL;
     ret->buff = Gears_BufferCreate();
+    ret->requireDeserialization = 0;
     Gears_BufferWriterInit(&ret->bw, ret->buff);
     Gears_BufferWriterWriteString(&ret->bw, p->name);
     return ret;
@@ -3901,6 +3983,10 @@ void SessionRegistrationCtx_Free(SessionRegistrationCtx* srctx) {
         RG_FREE(srctx->sessionsToUnlink[i]);
     }
     array_free(srctx->sessionsToUnlink);
+
+    if (srctx->usedSession) {
+        srctx->p->setCurrSession(srctx->usedSession, true);
+    }
 
     for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
         RegistrationData *rd = srctx->registrationsData + i;

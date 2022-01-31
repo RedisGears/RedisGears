@@ -270,8 +270,9 @@ static int RG_PrepareForRegister(SessionRegistrationCtx* srctx, FlatExecutionPla
     return ret;
 }
 
-static void RG_Register(SessionRegistrationCtx* srctx){
-    FlatExecutionPlan_Register(srctx);
+static int RG_Register(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDone onDone, void *pd, char **err){
+    Gears_BufferWriterWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_DONE);
+    return Command_Register(srctx, onDone, pd, err);
 }
 
 static int RG_RegisterFep(Plugin *p, FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId){
@@ -286,11 +287,13 @@ static int RG_RegisterFep(Plugin *p, FlatExecutionPlan* fep, ExecutionMode mode,
         return 0;
     }
 
-    RG_Register(srctx);
+    Gears_BufferWriterWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_DONE);
+    FlatExecutionPlan_Register(srctx);
 
     LockHandler_Release(staticCtx);
 
     return 1;
+    return 0;
 }
 
 static ExecutionPlan* RG_RunWithFlags(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags flags){
@@ -770,6 +773,27 @@ static void RG_PluginSetUnlinkSessionCallback(Plugin* p, GearsPlugin_UnlinkSessi
     p->unlinkSession = unlinkSession;
 }
 
+static void RG_PluginSetSerializeSessionCallback(Plugin* p, GearsPlugin_SerializeSession serializeSession) {
+    p->serializeSession = serializeSession;
+}
+
+static void RG_PluginSetDeserializeSessionCallback(Plugin* p, GearsPlugin_DeserializeSession deserializeSession) {
+    p->deserializeSession = deserializeSession;
+}
+
+static int RG_PutUsedSession(SessionRegistrationCtx* srctx, void *session, char **err) {
+    RedisGears_BWWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE);
+    int ret = srctx->p->serializeSession(session, &srctx->bw, err);
+    if (ret == REDISMODULE_OK) {
+        srctx->usedSession = session;
+    }
+    return ret;
+}
+
+static void RG_PluginSetSetCurrSessionCallback(Plugin* p, GearsPlugin_SetCurrSession setCurrSession) {
+    p->setCurrSession = setCurrSession;
+}
+
 static int RG_KeysReaderSetReadRecordCallback(KeysReaderCtx* krCtx, const char* name){
     return KeysReaderCtx_SetReadRecordCallback(krCtx, name);
 }
@@ -1206,6 +1230,10 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(RegisterPlugin, ctx);
     REGISTER_API(PluginSetInfoCallback, ctx);
     REGISTER_API(PluginSetUnlinkSessionCallback, ctx);
+    REGISTER_API(PluginSetSerializeSessionCallback, ctx);
+    REGISTER_API(PluginSetDeserializeSessionCallback, ctx);
+    REGISTER_API(PluginSetSetCurrSessionCallback, ctx);
+    REGISTER_API(PutUsedSession, ctx);
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
     REGISTER_API(GetVersion, ctx);

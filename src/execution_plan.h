@@ -284,11 +284,14 @@ typedef struct RegistrationData {
 #define SESSION_REGISTRATION_OP_CODE_UNREGISTER 1
 #define SESSION_REGISTRATION_OP_CODE_REGISTER 2
 #define SESSION_REGISTRATION_OP_CODE_SESSION_UNLINK 3
-#define SESSION_REGISTRATION_OP_CODE_DONE 4
+#define SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE 4
+#define SESSION_REGISTRATION_OP_CODE_DONE 5
 typedef struct SessionRegistrationCtx {
+    int requireDeserialization;
     Plugin *p;
     char **sessionsToUnlink;
     char **idsToUnregister;
+    void *usedSession;
     RegistrationData *registrationsData;
     Gears_Buffer* buff;
     Gears_BufferWriter bw;
@@ -384,6 +387,7 @@ void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* ex
 int FlatExecutionPlan_PrepareForRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err);
 void FlatExecutionPlan_AddRegistrationToUnregister(SessionRegistrationCtx *srctx, const char *id);
 void FlatExecutionPlan_AddSessionToUnlink(SessionRegistrationCtx *srctx, const char *id);
+Record* FlatExecutionPlane_RegistrationCtxUpgrade(ExecutionCtx* rctx, Record *data, void* arg);
 void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags runFlags);
@@ -426,4 +430,5 @@ void ExecutionPlan_PendingCtxFree(StepPendingCtx* pctx);
 StepPendingCtx* ExecutionPlan_PendingCtxCreate(ExecutionPlan* ep, ExecutionStep* step, size_t maxSize);
 
 SessionRegistrationCtx* SessionRegistrationCtx_Create();
+SessionRegistrationCtx* SessionRegistrationCtx_CreateFromBuff(const char *buff, size_t len);
 void SessionRegistrationCtx_Free(SessionRegistrationCtx* srctx);

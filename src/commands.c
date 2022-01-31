@@ -4,6 +4,8 @@
 #include "execution_plan.h"
 #include "lock_handler.h"
 #include "mgmt.h"
+#include "execution_plan.h"
+#include "utils/arr_rm_alloc.h"
 
 #include <unistd.h>
 
@@ -516,6 +518,90 @@ int Command_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     return REDISMODULE_OK;
 }
 
+typedef struct RegisterDoneCtx {
+    SessionRegistrationCtx_OnDone onDone;
+    void *pd;
+} RegisterDoneCtx ;
+
+static void Command_RegistrationSessionFree(FlatExecutionPlan* fep, void* arg){
+    SessionRegistrationCtx *rsctx = arg;
+    SessionRegistrationCtx_Free(rsctx);
+}
+
+static int Command_RegistrationSessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
+    SessionRegistrationCtx *rsctx = arg;
+    RedisGears_BWWriteBuffer(bw, rsctx->buff->buff, rsctx->buff->size);
+    return REDISMODULE_OK;
+}
+
+static void* Command_RegistrationSessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+    size_t len;
+    const char* buff = RedisGears_BRReadBuffer(br, &len);
+    return SessionRegistrationCtx_CreateFromBuff(buff, len);
+}
+
+static char* Command_RegistrationSessionToString(FlatExecutionPlan* fep, void* arg){
+    return RG_STRDUP("RegistrationSessionCtx");
+}
+
+static void Command_RegisterOnDone(ExecutionPlan* gearsCtx, void *privateData){
+    RegisterDoneCtx *onDoneCtx = privateData;
+    if (onDoneCtx->onDone) {
+        array_new_on_stack(char*, 10, errors);
+        for (size_t i = 0 ; i < RedisGears_GetErrorsLen(gearsCtx) ; ++i){
+            Record *error = RedisGears_GetError(gearsCtx, i);
+            const char *err = RedisGears_StringRecordGet(error, NULL);
+            errors = array_append(errors, RG_STRDUP(err));
+        }
+
+        for (size_t i = 0 ; i < RedisGears_GetRecordsLen(gearsCtx) ; ++i){
+            Record *errorRecord = RedisGears_GetRecord(gearsCtx, i);
+            RedisModule_Assert(RedisGears_RecordGetType(errorRecord) == RedisGears_GetStringRecordType());
+            const char *errStr = RedisGears_StringRecordGet(errorRecord, NULL);
+            if (errStr[0] == '-') {
+                errors = array_append(errors, RG_STRDUP(errStr));
+            }
+        }
+
+        onDoneCtx->onDone(errors, array_len(errors), onDoneCtx->pd);
+
+        for (size_t i = 0 ; i < array_len(errors) ; ++i) {
+            RG_FREE(errors[i]);
+        }
+        array_free(errors);
+    }
+    RG_FREE(onDoneCtx);
+    RedisGears_DropExecution(gearsCtx);
+}
+
+int Command_Register(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDone onDone, void *pd, char **err){
+    // This is not actaully a command but it makes sense to put it here because it performs
+    // a distributed calculation
+
+    FlatExecutionPlan* fep = RedisGears_CreateCtx("ShardIDReader", err);
+    if (!fep) {
+        RedisGears_SessionRegisterCtxFree(srctx);
+        return REDISMODULE_ERR;
+    }
+    RGM_Map(fep, FlatExecutionPlane_RegistrationCtxUpgrade, srctx);
+    RGM_Collect(fep);
+
+    ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, NULL, NULL, NULL, mgmtWorker, err);
+    RedisGears_FreeFlatExecution(fep);
+    if (!ep) {
+        return REDISMODULE_ERR;
+    }
+
+    RegisterDoneCtx *onDoneCtx = RG_ALLOC(sizeof(*onDoneCtx));
+    *onDoneCtx = (RegisterDoneCtx){
+            .onDone = onDone,
+            .pd = pd,
+    };
+    RedisGears_AddOnDoneCallback(ep, Command_RegisterOnDone, onDoneCtx);
+
+    return REDISMODULE_OK;
+}
+
 int Command_Init(){
     mgmtPool = ExecutionPlan_CreateThreadPool("MgmtPool", 1);
     mgmtWorker = ExecutionPlan_CreateWorker(mgmtPool);
@@ -531,6 +617,16 @@ int Command_Init(){
     RGM_RegisterMap(Command_FlushRegistrationsStatsMap, NULL);
     RGM_RegisterMap(Command_SingleShardGetter, stringType);
     RGM_RegisterMap(Command_MirrorMapper, NULL);
+
+    ArgType* registrationSessionType = RedisGears_CreateType("RegistrationSessionDT",
+                                                    STRING_TYPE_VERSION,
+                                                    Command_RegistrationSessionFree,
+                                                    NULL,
+                                                    Command_RegistrationSessionSerialize,
+                                                    Command_RegistrationSessionDeserialize,
+                                                    Command_RegistrationSessionToString,
+                                                    NULL);
+    RGM_RegisterMap(FlatExecutionPlane_RegistrationCtxUpgrade, registrationSessionType);
     return REDISMODULE_OK;
 }
 

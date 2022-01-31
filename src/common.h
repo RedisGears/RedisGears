@@ -48,6 +48,9 @@ typedef struct Plugin{
     int version;
     RedisModuleInfoFunc infoFunc;
     GearsPlugin_UnlinkSession unlinkSession;
+    GearsPlugin_SerializeSession serializeSession;
+    GearsPlugin_DeserializeSession deserializeSession;
+    GearsPlugin_SetCurrSession setCurrSession;
 }Plugin;
 
 extern Gears_dict* plugins;

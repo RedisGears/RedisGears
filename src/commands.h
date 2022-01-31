@@ -21,6 +21,7 @@ int Command_DropExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 int Command_GetResults(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_GetResultsBlocking(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int Command_ExecutionGet(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+int Command_Register(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDone onDone, void *pd, char **err);
 
 int Command_Init();
 
