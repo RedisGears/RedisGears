@@ -134,6 +134,9 @@ commands:
       - run:
           name: publish jvmplugin to maven central
           command: |
+            if [[ ! -z "$CIRCLE_PR_NUMBER" ]]; then
+                exit 0
+            fi
             if [[ '<<parameters.redis_version>>' == '6.0.9' ]]; then
               bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
             fi
