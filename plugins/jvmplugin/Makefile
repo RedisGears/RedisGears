@@ -51,3 +51,6 @@ run_valgrind:
 
 pack: gears_jvm
 	OSNICK=$(OSNICK) GIT_BRANCH=$(GIT_BRANCH) VERSION=$(VERSION) ./pack.sh
+
+publish:
+	cd gears_runtime; mvn -s .circleci.settings.xml -DskipTests deploy
