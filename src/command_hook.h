@@ -18,6 +18,12 @@ void* CommandHook_Unhook(CommandHookCtx* hook);
 CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err);
 
 /*
+ * Verify that it is possible to hook the command
+ * On success return REDISMODULE_OK and REDISMODULE_ERR on error.
+ */
+int CommandHook_VerifyHook(const char* cmd, const char* keyPrefix, char** err);
+
+/*
  * Used when `getkeys-api` flag is set on a command, calling RedisModule_GetCommandKeys to get
  * command keys, and then declare it to Redis.
  */

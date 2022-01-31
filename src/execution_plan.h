@@ -40,6 +40,7 @@ enum StepType{
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct ExecutionPlan ExecutionPlan;
+typedef struct SessionRegistrationCtx SessionRegistrationCtx;
 
 typedef struct ExecutionStepArg{
     void* stepArg;
@@ -274,6 +275,28 @@ typedef struct FlatExecutionReader{
     char* reader;
 }FlatExecutionReader;
 
+typedef struct RegistrationData {
+    FlatExecutionPlan *fep;
+    void* args;
+    ExecutionMode mode;
+} RegistrationData;
+
+#define SESSION_REGISTRATION_OP_CODE_UNREGISTER 1
+#define SESSION_REGISTRATION_OP_CODE_REGISTER 2
+#define SESSION_REGISTRATION_OP_CODE_SESSION_UNLINK 3
+#define SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE 4
+#define SESSION_REGISTRATION_OP_CODE_DONE 5
+typedef struct SessionRegistrationCtx {
+    int requireDeserialization;
+    Plugin *p;
+    char **sessionsToUnlink;
+    char **idsToUnregister;
+    void *usedSession;
+    RegistrationData *registrationsData;
+    Gears_Buffer* buff;
+    Gears_BufferWriter bw;
+} SessionRegistrationCtx;
+
 #define EXECUTION_POOL_SIZE 1
 typedef struct FlatExecutionPlan{
     char id[ID_LEN];
@@ -361,7 +384,11 @@ void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err);
+int FlatExecutionPlan_PrepareForRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err);
+void FlatExecutionPlan_AddRegistrationToUnregister(SessionRegistrationCtx *srctx, const char *id);
+void FlatExecutionPlan_AddSessionToUnlink(SessionRegistrationCtx *srctx, const char *id);
+Record* FlatExecutionPlane_RegistrationCtxUpgrade(ExecutionCtx* rctx, Record *data, void* arg);
+void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags runFlags);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
@@ -374,6 +401,7 @@ void ExecutionPlan_Initialize();
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
 void ExecutionPlan_Free(ExecutionPlan* ep);
 
+void ExecutionPlan_DumpSingleRegistration(RedisModuleCtx *ctx, FlatExecutionPlan* fep, int flags);
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 size_t ExecutionPlan_NRegistrations();
 size_t ExecutionPlan_NExecutions();
@@ -382,6 +410,7 @@ int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleStrin
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
+FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
@@ -399,3 +428,7 @@ void ExecutionPlan_Clean();
 StepPendingCtx* ExecutionPlan_PendingCtxGetShallowCopy(StepPendingCtx* pctx);
 void ExecutionPlan_PendingCtxFree(StepPendingCtx* pctx);
 StepPendingCtx* ExecutionPlan_PendingCtxCreate(ExecutionPlan* ep, ExecutionStep* step, size_t maxSize);
+
+SessionRegistrationCtx* SessionRegistrationCtx_Create();
+SessionRegistrationCtx* SessionRegistrationCtx_CreateFromBuff(const char *buff, size_t len);
+void SessionRegistrationCtx_Free(SessionRegistrationCtx* srctx);

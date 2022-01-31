@@ -46,3 +46,7 @@ def testAccumulateby(env, results, errs, **kargs):
     env.assertEqual(len(results), 2)
     env.assertEqual(results, [{'bar':1}, {'foo':2}])
 
+@jvmTestDecorator(mainArgs=['foo', 'bar'])
+def testMainArguments(env, results, errs, **kargs):
+    env.assertEqual(results, 'OK')
+    env.expect('RG.TRIGGER', 'test').equal(['bar', 'foo'])

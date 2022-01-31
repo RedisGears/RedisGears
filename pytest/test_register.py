@@ -1519,59 +1519,62 @@ def testMOD1960(env):
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for x to be updated')
 
-@gearsTest(skipCleanups=True, skipCallback=lambda: Defaults.num_shards != 3)
-def testStreamReaderOnUninitializedCluster(env):
-    conn = getConnectionByEnv(env)
+# test is no longer relevant, register execution will not start and nothing will registered
+# keep it so maybe in the future we will have a better was to test it
+# @gearsTest(skipCleanups=True, skipCallback=lambda: Defaults.num_shards != 3)
+# def testStreamReaderOnUninitializedCluster(env):
+#     conn = getConnectionByEnv(env)
 
-    # we know that s3 goes to the second shard
-    conn.execute_command('xadd', 's3', '*', 'foo', 'bar')
+#     # we know that s3 goes to the second shard
+#     conn.execute_command('xadd', 's3', '*', 'foo', 'bar')
 
-    env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '100')
+#     env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '100')
 
-    conn1 = env.getConnection(shardId=1)
-    conn2 = env.getConnection(shardId=2)
+#     conn1 = env.getConnection(shardId=1)
+#     conn2 = env.getConnection(shardId=2)
 
-    # close shard 1 to get cluster to a down state
-    env.envRunner.shards[0].stopEnv()
+#     # close shard 1 to get cluster to a down state
+#     env.envRunner.shards[0].stopEnv()
 
-    try:
-        with TimeLimit(1):
-            while True:
-                res = conn2.execute_command('CLUSTER', 'INFO')
-                if 'cluster_state:fail' in str(res):
-                    break
-                time.sleep(0.1)
-    except Exception as e:
-        env.assertTrue(False, message='Failed waiting for down cluster state (%s)' % (str(e)))
+#     try:
+#         with TimeLimit(1):
+#             while True:
+#                 res = conn2.execute_command('CLUSTER', 'INFO')
+#                 if 'cluster_state:fail' in str(res):
+#                     break
+#                 time.sleep(0.1)
+#     except Exception as e:
+#         env.assertTrue(False, message='Failed waiting for down cluster state (%s)' % (str(e)))
 
-    conn2.execute_command('RG.PYEXECUTE', "GB('StreamReader').register()")
+#     print(conn2.execute_command('RG.PYEXECUTE', "GB('StreamReader').register()"))
 
-    # make sure no executions are created
-    try:
-        with TimeLimit(1):
-            while True:
-                res = conn2.execute_command('RG.DUMPEXECUTIONS')
-                if len(res) != 0:
-                    print(res)
-                    env.assertEqual(len(res), 0)
-                    break
-    except Exception as e:
-        pass
+#     # make sure no executions are created
+#     try:
+#         with TimeLimit(1):
+#             while True:
+#                 res = conn2.execute_command('RG.DUMPEXECUTIONS')
+#                 if len(res) != 0:
+#                     print(res)
+#                     env.assertEqual(len(res), 0)
+#                     break
+#     except Exception as e:
+#         pass
 
-    # restart the shard
-    env.envRunner.shards[0].startEnv()
-    conn1.execute_command('RG.REFRESHCLUSTER')
+#     # restart the shard
+#     env.envRunner.shards[0].startEnv()
+#     conn1.execute_command('RG.REFRESHCLUSTER')
 
-    # make sure execution is eventually created
-    try:
-        with TimeLimit(5):
-            while True:
-                res = conn2.execute_command('RG.DUMPEXECUTIONS')
-                if len(res) >= 1:
-                    break
-                time.sleep(0.1)
-    except Exception as e:
-        env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
+#     # make sure execution is eventually created
+#     try:
+#         with TimeLimit(5):
+#             while True:
+#                 res = conn2.execute_command('RG.DUMPEXECUTIONS')
+#                 if len(res) >= 1:
+#                     break
+#                 time.sleep(0.1)
+#     except Exception as e:
+#         raw_input('stopped')
+#         env.assertTrue(False, message='Failed waiting for execution to start (%s)' % (str(e)))
 
 @gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
 def testMissEventOnClusterKeepsClusterErrors(env):

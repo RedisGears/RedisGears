@@ -299,11 +299,11 @@ def testMaxExecutions(env):
     res = env.execute_command('RG.DUMPEXECUTIONS')
     # res is a list of the form ['executionId', '0000000000000000000000000000000000000000-0', 'status', 'done']
     env.assertTrue(len(res) == 3)
-    env.assertTrue(set(map(lambda x: int(x[1].split('-')[1]), res)) == set([0, 1, 2]))
+    env.assertTrue(set(map(lambda x: int(x[1].split('-')[1]), res)) == set([1, 2, 3]))
     conn.execute_command('set', 'x', '3')
     time.sleep(1)
     res = env.execute_command('RG.DUMPEXECUTIONS')
-    env.assertTrue(set(map(lambda x: int(x[1].split('-')[1]), res)) == set([1, 2, 3]))
+    env.assertTrue(set(map(lambda x: int(x[1].split('-')[1]), res)) == set([2, 3, 4]))
     map(lambda x: env.cmd('rg.dropexecution', x[1]), res)
 
     # delete all registrations so valgrind check will pass

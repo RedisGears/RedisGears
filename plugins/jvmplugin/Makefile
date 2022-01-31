@@ -46,6 +46,9 @@ tests: gears_jvm
 run: gears_jvm
 	redis-server --loadmodule ${GEARSLIB} Plugin ./src/gears_jvm.so JvmOptions "-Djava.class.path=./gears_runtime/target/gear_runtime-jar-with-dependencies.jar" JvmPath ./bin/OpenJDK/jdk-11.0.9.1+1/
 
+debug_run: gears_jvm
+	redis-server --loadmodule ${GEARSLIB} Plugin ./src/gears_jvm.so JvmOptions "-Djava.class.path=./gears_runtime/target/gear_runtime-jar-with-dependencies.jar -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=8000" JvmPath ./bin/OpenJDK/jdk-11.0.9.1+1/
+
 run_valgrind:
 	valgrind --leak-check=full --log-file=output.val redis-server --loadmodule ${GEARSLIB} Plugin ./src/gears_jvm.so JvmOptions "-Djava.class.path=./gears_runtime/target/gear_runtime-jar-with-dependencies.jar" JvmPath ./bin/OpenJDK/jdk-11.0.9.1+1/
 

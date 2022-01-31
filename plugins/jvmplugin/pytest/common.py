@@ -62,6 +62,17 @@ class Colors(object):
 
 BASE_JAR_FILE = './gears_tests/build/gears_tests.jar'
 
+def toDictionary(l, recursive=False):
+    res = {}
+    for i in range(0, len(l), 2):
+        k = l[i]
+        v = l[i + 1]
+        if recursive and type(v) == list:
+            res[k] = toDictionary(v)
+        else:
+            res[k] = v
+    return res
+
 def getConnectionByEnv(env):
     conn = None
     if env.env == 'oss-cluster':
@@ -135,7 +146,11 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lam
         env.assertTrue(False, message='Registrations/Executions dropping failed')
 
 
-def jvmTestDecorator(preExecute=None, postExecution=None, envArgs={}):
+def jvmTestDecorator(preExecute=None,
+                     postExecution=None,
+                     jarFile=BASE_JAR_FILE,
+                     mainArgs=[],
+                     envArgs={}):
     def jvmTest(testFunc):
         def jvmTestFunc():
             testName = 'gears_tests.%s' % testFunc.__name__ 
@@ -155,23 +170,27 @@ def jvmTestDecorator(preExecute=None, postExecution=None, envArgs={}):
                     'env': env
                 }
                 preExecute(**kargs)
-            with open(BASE_JAR_FILE, 'rb') as f:
-                data = f.read()
-                try:
-                    res = env.cmd('RG.JEXECUTE', testName, data)
-                    verifyRegistrationIntegrity(env)
-                except Exception as e:
-                    executionError = str(e)
-                    print(Colors.Gray('\tExceptionError (not test failure): %s' % executionError))
-            if res == 'OK':
-                results = 'OK'
-                errs = []
-            else:
-                results = [json.loads(r) for r in res[0]]
-                errs = res[1]
-            if len(errs) > 0:
-                for e in errs:
-                    print(Colors.Gray('\tError (not test failure): %s' % str(e)))
+            results = None
+            errs = None
+            executionError = None
+            if jarFile is not None:
+                with open(jarFile, 'rb') as f:
+                    data = f.read()
+                    try:
+                        res = env.cmd('RG.JEXECUTE', testName, data, *mainArgs)
+                        verifyRegistrationIntegrity(env)
+                    except Exception as e:
+                        executionError = str(e)
+                        print(Colors.Gray('\tExceptionError (not test failure): %s' % executionError))
+                if res == 'OK':
+                    results = 'OK'
+                    errs = []
+                else:
+                    results = [json.loads(r) for r in res[0]]
+                    errs = res[1]
+                if len(errs) > 0:
+                    for e in errs:
+                        print(Colors.Gray('\tError (not test failure): %s' % str(e)))
             kargs = {
                 'env': env,
                 'results': results,

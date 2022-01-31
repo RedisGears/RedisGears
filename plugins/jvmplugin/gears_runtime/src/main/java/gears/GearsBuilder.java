@@ -12,7 +12,9 @@ import java.util.List;
 
 import javax.management.MBeanServer;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.sun.management.HotSpotDiagnosticMXBean;
 
 import gears.operations.AccumulateByOperation;
@@ -519,7 +521,7 @@ public class GearsBuilder<T extends Serializable>{
 	 * @param sessionId
 	 * @return
 	 */
-	public static native String getSessionUpgradeData(String sessionId);
+	public static native String getUpgradeData();
 	
 	/**
 	 * Runs the current built pipe
@@ -531,7 +533,10 @@ public class GearsBuilder<T extends Serializable>{
 		if(jsonSerialize) {
 			this.map(r->{
 				ObjectMapper objectMapper = new ObjectMapper();
-				return objectMapper.writeValueAsString(r);
+				String res = objectMapper.writeValueAsString(r);
+				objectMapper.getTypeFactory().clearCache();
+			        TypeFactory.defaultInstance().clearCache();
+                 	        return res;
 			});
 		}
 		if(collect) {
@@ -725,9 +730,10 @@ public class GearsBuilder<T extends Serializable>{
 	
 	/**
 	 * Internal use, information about the JVM.
+	 * @throws JsonProcessingException 
 	 * @throws IOException
 	 */
-	private static Object getStats() {
+	private static Object getStats(boolean strRep) throws JsonProcessingException {
 		long totalAllocatedMemory = 0;
 		
 		List<Object> res = new ArrayList<>();
@@ -775,6 +781,14 @@ public class GearsBuilder<T extends Serializable>{
         res.add("totalAllocatedMemoryHuman");
         res.add((totalAllocatedMemory / (1024.0 * 1024.0)) + "mb");
         
-        return res;		
+        if (strRep) {
+        	ObjectMapper objectMapper = new ObjectMapper();
+			String ret = objectMapper.writeValueAsString(res);
+			objectMapper.getTypeFactory().clearCache();
+		        TypeFactory.defaultInstance().clearCache();
+                       return ret;
+        } else {
+        	return res;
+        }		
 	}
 }
