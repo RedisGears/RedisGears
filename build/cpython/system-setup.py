@@ -19,25 +19,26 @@ class Python3Setup(paella.Setup):
     def common_first(self):
         self.install_downloaders()
 
+        self.setup_pip()
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
 
         self.install("git openssl")
 
     def debian_compat(self):
-        self.run("%s/bin/getgcc" % READIES)
-        self.install("autotools-dev autoconf libtool gawk")
+        self.install("build-essential autotools-dev autoconf libtool gawk")
         self.install("libbz2-dev liblzma-dev lzma-dev libncurses5-dev libsqlite3-dev uuid-dev zlib1g-dev libssl-dev libreadline-dev libffi-dev")
         if sh("apt-cache search libgdbm-compat-dev") != "":
             self.install("libgdbm-compat-dev")
         self.install("libgdbm-dev")
         self.install("tcl-dev tix-dev tk-dev")
 
+        self.install("vim-common") # for xxd
         self.install("lsb-release")
+        self.install("zip unzip")
 
     def redhat_compat(self):
-        self.run("%s/bin/getepel" % READIES)
-        self.run("%s/bin/getgcc --modern" % READIES)
+        self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
 
         self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
@@ -45,23 +46,40 @@ class Python3Setup(paella.Setup):
         self.install("tcl-devel tix-devel tk-devel")
 
         self.install("redhat-lsb-core")
+        self.install("vim-common") # for xxd
+        self.install("zip unzip")
+        self.install("which") # required by pipenv (on docker)
         self.install("libatomic file")
 
+        self.run("%s/bin/getepel" % READIES)
+
         if self.arch == 'x64':
-            self.install_linux_gnu_tar()
+            self.run("""
+                dir=$(mktemp -d /tmp/tar.XXXXXX)
+                (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
+                rm -rf $dir
+                """)
+
+        # uninstall and install psutil (order is important), otherwise RLTest fails
+        self.run("pip uninstall -y psutil || true")
+        self.install("python2-psutil")
 
     def fedora(self):
-        self.run("%s/bin/getgcc" % READIES)
+        self.group_install("'Development Tools'")
         self.install("autoconf automake libtool")
         self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libnsl2-devel libuuid-devel ncurses-devel "
             "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
         self.install("tcl-devel tix-devel tk-devel")
 
-        self.install("libatomic file")
+        self.install("vim-common") # for xxd
+        self.install("which libatomic file")
+
+        # uninstall and install psutil (order is important), otherwise RLTest fails
+        self.run("pip uninstall -y psutil || true")
+        self.install("python2-psutil")
 
     def linux_last(self):
-        self.install("vim-common") # for xxd
-        self.install("zip unzip")
+        pass
 
     def macos(self):
         self.install("libtool autoconf automake")

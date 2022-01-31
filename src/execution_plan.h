@@ -5,14 +5,16 @@
  *      Author: meir
  */
 
-#pragma once
+#ifndef SRC_EXECUTION_PLAN_H_
+#define SRC_EXECUTION_PLAN_H_
 
+#include <stdbool.h>
 #include "redisgears.h"
 #include "commands.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
 #include "utils/buffer.h"
-
+#include "common.h"
 #define STEP_TYPES \
     X(NONE, "none") \
     X(MAP, "map") \
@@ -40,7 +42,6 @@ enum StepType{
 
 typedef struct FlatExecutionPlan FlatExecutionPlan;
 typedef struct ExecutionPlan ExecutionPlan;
-typedef struct SessionRegistrationCtx SessionRegistrationCtx;
 
 typedef struct ExecutionStepArg{
     void* stepArg;
@@ -202,6 +203,11 @@ typedef struct WorkerData{
     ExecutionThreadPool* pool;
 }WorkerData;
 
+typedef struct OnDoneData{
+    RedisGears_OnExecutionDoneCallback callback;
+    void* privateData;
+}OnDoneData;
+
 #define ExecutionFlags int
 #define EFDone 0x01
 #define EFIsOnDoneCallback 0x02
@@ -225,11 +231,6 @@ typedef struct WorkerData{
 #define FEPIsFlagOn(fep, f) (fep->flags & f)
 #define FEPIsFlagOff(fep, f) (!(fep->flags & f))
 
-typedef struct ExecutionCallbacData{
-    RedisGears_ExecutionCallback callback;
-    void* pd;
-}ExecutionCallbacData;
-
 typedef struct ExecutionPlan{
     char id[ID_LEN];
     char idStr[STR_ID_LEN];
@@ -241,12 +242,9 @@ typedef struct ExecutionPlan{
     Record** errors;
     volatile ExecutionPlanStatus status;
     ExecutionFlags flags;
-    RunFlags runFlags;
-    ExecutionCallbacData* onDoneData; // Array of callbacks to run on done
+    OnDoneData* onDoneData; // Array of callbacks to run on done
     RedisGears_ExecutionOnStartCallback onStartCallback;
     RedisGears_ExecutionOnUnpausedCallback onUnpausedCallback;
-    ExecutionCallbacData* runCallbacks;
-    ExecutionCallbacData* holdCallbacks;
     void* executionPD;
     long long executionDuration;
     WorkerData* assignWorker;
@@ -274,28 +272,6 @@ typedef struct FlatExecutionStep{
 typedef struct FlatExecutionReader{
     char* reader;
 }FlatExecutionReader;
-
-typedef struct RegistrationData {
-    FlatExecutionPlan *fep;
-    void* args;
-    ExecutionMode mode;
-} RegistrationData;
-
-#define SESSION_REGISTRATION_OP_CODE_UNREGISTER 1
-#define SESSION_REGISTRATION_OP_CODE_REGISTER 2
-#define SESSION_REGISTRATION_OP_CODE_SESSION_UNLINK 3
-#define SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE 4
-#define SESSION_REGISTRATION_OP_CODE_DONE 5
-typedef struct SessionRegistrationCtx {
-    int requireDeserialization;
-    Plugin *p;
-    char **sessionsToUnlink;
-    char **idsToUnregister;
-    void *usedSession;
-    RegistrationData *registrationsData;
-    Gears_Buffer* buff;
-    Gears_BufferWriter bw;
-} SessionRegistrationCtx;
 
 #define EXECUTION_POOL_SIZE 1
 typedef struct FlatExecutionPlan{
@@ -384,13 +360,9 @@ void FlatExecutionPlan_AddLocalAccumulateByKeyStep(FlatExecutionPlan* fep, const
 void FlatExecutionPlan_AddCollectStep(FlatExecutionPlan* fep);
 void FlatExecutionPlan_AddLimitStep(FlatExecutionPlan* fep, size_t offset, size_t len);
 void FlatExecutionPlan_AddRepartitionStep(FlatExecutionPlan* fep, const char* extraxtorName, void* extractorArg);
-int FlatExecutionPlan_PrepareForRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err);
-void FlatExecutionPlan_AddRegistrationToUnregister(SessionRegistrationCtx *srctx, const char *id);
-void FlatExecutionPlan_AddSessionToUnlink(SessionRegistrationCtx *srctx, const char *id);
-Record* FlatExecutionPlane_RegistrationCtxUpgrade(ExecutionCtx* rctx, Record *data, void* arg);
-void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx);
+int FlatExecutionPlan_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err);
 const char* FlatExecutionPlan_GetReader(FlatExecutionPlan* fep);
-ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags runFlags);
+ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
 long long FlatExecutionPlan_GetExecutionDuration(ExecutionPlan* ep);
 long long FlatExecutionPlan_GetReadDuration(ExecutionPlan* ep);
 void FlatExecutionPlan_Free(FlatExecutionPlan* fep);
@@ -401,16 +373,11 @@ void ExecutionPlan_Initialize();
 void ExecutionPlan_SendFreeMsg(ExecutionPlan* ep);
 void ExecutionPlan_Free(ExecutionPlan* ep);
 
-void ExecutionPlan_DumpSingleRegistration(RedisModuleCtx *ctx, FlatExecutionPlan* fep, int flags);
 int ExecutionPlan_DumpRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-size_t ExecutionPlan_NRegistrations();
-size_t ExecutionPlan_NExecutions();
-void ExecutionPlan_InfoRegistrations(RedisModuleInfoCtx *ctx, int for_crash_report);
 int ExecutionPlan_InnerUnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_UnregisterExecution(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_ExecutionsDump(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
 int ExecutionPlan_InnerRegister(RedisModuleCtx *ctx, RedisModuleString **argv, int argc);
-FlatExecutionPlan* FlatExecutionPlan_FindByStrId(const char* id);
 ExecutionPlan* ExecutionPlan_FindById(const char* id);
 ExecutionPlan* ExecutionPlan_FindByStrId(const char* id);
 Reader* ExecutionPlan_GetReader(ExecutionPlan* ep);
@@ -429,6 +396,4 @@ StepPendingCtx* ExecutionPlan_PendingCtxGetShallowCopy(StepPendingCtx* pctx);
 void ExecutionPlan_PendingCtxFree(StepPendingCtx* pctx);
 StepPendingCtx* ExecutionPlan_PendingCtxCreate(ExecutionPlan* ep, ExecutionStep* step, size_t maxSize);
 
-SessionRegistrationCtx* SessionRegistrationCtx_Create();
-SessionRegistrationCtx* SessionRegistrationCtx_CreateFromBuff(const char *buff, size_t len);
-void SessionRegistrationCtx_Free(SessionRegistrationCtx* srctx);
+#endif /* SRC_EXECUTION_PLAN_H_ */

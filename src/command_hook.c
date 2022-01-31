@@ -1,10 +1,10 @@
 #include "command_hook.h"
 
+#include "common.h"
 #include "redisgears_memory.h"
 #include "lock_handler.h"
 #include "utils/dict.h"
 #include "utils/adlist.h"
-
 #include <errno.h>
 
 static RedisModuleCommandFilter *cmdFilter = NULL;
@@ -217,56 +217,40 @@ void* CommandHook_Unhook(CommandHookCtx* hook){
     return ret;
 }
 
-static int CommandHook_VerifyHookInternal(const char* cmd, const char* keyPrefix, char** err, CommandInfo *retInfo) {
+CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err){
     CommandInfo info = CommandHook_CreateInfo(cmd, err);
     if(*err){
-        return REDISMODULE_ERR;
+        return NULL;
     }
 
     if(info.commandFlags & COMMAND_FLAG_NOSCRIPT){
         *err = RG_STRDUP("Can not hook a command which are not allowed inside a script");
-        return REDISMODULE_ERR;
+        return NULL;
     }
 
     if((info.commandFlags & COMMAND_FLAG_MOVEABLEKEYS) && keyPrefix){
         // we can not override a command by key prefix and moveable keys
         *err = RG_STRDUP("Can not hook a command with moveable keys by key prefix");
-        return REDISMODULE_ERR;
+        return NULL;
     }
 
     if(keyPrefix){
         if(info.firstKey <= 0){
             // should not really happened
             *err = RG_STRDUP("Can not hook a command by key prefix with none positive first key");
-            return REDISMODULE_ERR;
+            return NULL;
         }
 
         if(info.jump <= 0){
             // should not really happened
             *err = RG_STRDUP("Can not override a command by key prefix with none positive jump");
-            return REDISMODULE_ERR;
+            return NULL;
         }
     }
 
     if(keyPrefix && strlen(keyPrefix) == 0){
         // should not really happened
         *err = RG_STRDUP("Empty perfix given to command hooker");
-        return REDISMODULE_ERR;
-    }
-
-    if (retInfo) {
-        *retInfo = info;
-    }
-    return REDISMODULE_OK;
-}
-
-int CommandHook_VerifyHook(const char* cmd, const char* keyPrefix, char** err) {
-    return CommandHook_VerifyHookInternal(cmd, keyPrefix, err, NULL);
-}
-
-CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err){
-    CommandInfo info;
-    if (CommandHook_VerifyHookInternal(cmd, keyPrefix, err, &info) != REDISMODULE_OK) {
         return NULL;
     }
 
@@ -296,51 +280,12 @@ CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCal
 
 #define GEARS_HOOK_COMMAND "RG.INNERHOOK"
 
-void CommandHook_DeclareKeys(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    int numKeys = 0;
-    int *keys = RedisModule_GetCommandKeys(ctx, argv, argc, &numKeys);
-    for (int i = 0 ; i < numKeys ; ++i) {
-        // the +1 is because the command actually starts at position 1.
-        RedisModule_KeyAtPos(ctx, keys[i] + 1);
-    }
-    /* keys was allocated by Redis, we always want to free it using
-     * using RedisModule_Free, so avoid using RG_FREE here */
-    RedisModule_Free(keys);
-}
-
-void CommandHook_DeclareKeysLegacy(RedisModuleCtx *ctx, size_t nArgs, int first, int last, int jump) {
-    if (last < 0) {
-        last = nArgs + last;
-    }
-
-    if (first > last) {
-        return;
-    }
-
-    for(size_t i = first ; i <= last ; i+=jump){
-        // the +1 is because the command actually starts at position 1.
-        RedisModule_KeyAtPos(ctx, i + 1);
-    }
-}
-
 int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
-    /* Handle getkeys-api introspection */
-    if (RedisModule_IsKeysPositionRequest(ctx)) {
-        if (RMAPI_FUNC_SUPPORTED(RedisModule_GetCommandKeys)) {
-            CommandHook_DeclareKeys(ctx, argv + 1, argc - 1);
-        } else {
-            // fallback to calculate key ourself to support old redis versions.
-            RedisModule_Assert(currHook);
-            CommandHook_DeclareKeysLegacy(ctx, currHook->info.firstKey, argc - 1, currHook->info.lastKey, currHook->info.jump);
-        }
-        return REDISMODULE_OK;
-    }
-
     if(argc < 2){
         return RedisModule_WrongArity(ctx);
     }
 
-    // we need to protect ourself from recursive hooks, unfortunately we can not trust Redis here
+    // we need to protect ourself from recursive hooks, unfortunatly we can not trust redis here
     noFilter = true;
 
     CommandHookCtx* hook = currHook;
@@ -368,10 +313,10 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
         return REDISMODULE_OK;
     }
 
-    if((hook->info.commandFlags & COMMAND_FLAG_DENYOOM) && RedisModule_GetUsedMemoryRatio){
+    if(hook->info.commandFlags & COMMAND_FLAG_DENYOOM && RedisModule_GetUsedMemoryRatio){
         float memoryRetio = RedisModule_GetUsedMemoryRatio();
         if(memoryRetio > 1){
-            // we are out of memory and should deny the command
+            // we are our of memory and should deny the command
             RedisModule_ReplyWithError(ctx, "OOM command not allowed when used memory > 'maxmemory'");
             noFilter = false;
             return REDISMODULE_OK;
@@ -387,7 +332,7 @@ int CommandHook_HookCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int a
 int CommandHook_Init(RedisModuleCtx* ctx){
     HookRegistrations = Gears_dictCreate(&Gears_dictTypeHeapStringsCaseInsensitive, NULL);
     GearsHookCommand = RedisModule_CreateString(NULL, GEARS_HOOK_COMMAND, strlen(GEARS_HOOK_COMMAND));
-    if (RedisModule_CreateCommand(ctx, GEARS_HOOK_COMMAND, CommandHook_HookCommand, "getkeys-api readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, GEARS_HOOK_COMMAND, CommandHook_HookCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(staticCtx, "warning", "could not register command "GEARS_HOOK_COMMAND);
         return REDISMODULE_ERR;
     }

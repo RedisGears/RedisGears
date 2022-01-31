@@ -3,17 +3,16 @@ ROOT=../..
 
 DOCKER ?= docker
 
-PLATFORMS=centos7 centos8 fedora xenial bionic bullseye rhel7.4
+PLATFORMS=centos7 fedora xenial bionic stretch buster rhel7.4
 
 REPO=localhost/redisgears
 
 OS.centos7=centos:7.6.1810
-OS.centos8=centos:8
-OS.fedora=fedora:32
+OS.fedora=fedora:30
 OS.xenial=ubuntu:xenial
 OS.bionic=ubuntu:bionic
 OS.stretch=debian:stretch
-OS.bullseye=debian:bullseye
+OS.buster=debian:buster
 OS.rhel7.4=rhel:7.4
 
 ARCH=x64

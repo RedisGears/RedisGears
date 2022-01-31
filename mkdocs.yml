@@ -36,15 +36,11 @@ nav:
     - 'Readers': 'readers.md'
     - 'Operations': 'operations.md'
     - 'Commands': 'commands.md'
-    - 'RedisAI': 'redisai.md'
     - 'Configuration': 'configuration.md'
   - 'Examples': 'examples.md'
   - 'Clients': 'clients.md'
-  - 'Advanced Topics':
-    - 'Isolation Techniques': 'isolation.md'
-    - 'Async Await Advanced Topics': 'async_await_advance_topics.md'
-    - 'Commands Hook': 'commands_hook.md'
-    - 'Key Miss Event': 'miss_event.md'
+  - 'Design':
+    - 'Isolation Technics': 'isolation.md'
   - 'Glossary': 'glossary.md'
   - 'Contributing': 'contrib.md'
 
@@ -62,26 +58,6 @@ plugins:
   - search
   - include:
       src_path: docs/snippets
-  - modules-template:
-      try-for-free: false
-      modules:
-        - name: 'Search'
-          link: '/redisearch'
-
-        - name: 'Time Series'
-          link: '/redistimeseries'
-
-        - name: 'Bloom'
-          link: '/redisbloom'
-
-        - name: 'Graph'
-          link: '/redisgraph'
-
-        - name: 'JSON'
-          link: '/redisjson'
-
-        - name: 'AI'
-          link: '/redisai'
   - versions-menu:
       exclude-regexes:
         - '0\.[1-4]'

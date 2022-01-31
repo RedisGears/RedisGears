@@ -21,7 +21,6 @@ typedef struct ArgType{
     ArgSerialize serialize;
     ArgDeserialize deserialize;
     ArgToString tostring;
-    ArgOnFepDeserialized onDeserialized;
 }ArgType;
 
 extern Gears_dict* Readerdict;
