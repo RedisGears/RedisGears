@@ -131,12 +131,6 @@ commands:
           name: Gears Tests
           command: make test <<parameters.test_params>>
           no_output_timeout: 55m
-      - run:
-          name: publish jvmplugin to maven central
-          command: |
-            if [[ '<<parameters.redis_version>>' == '6.0.9' ]]; then
-              bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
-            fi
       - save-tests-logs
       - persist-artifacts
 
@@ -206,6 +200,17 @@ jobs:
     steps:
       - build-platforms-steps:
           platform: <<parameters.platform>>
+
+  jvmpublish:
+    docker:
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+    steps:
+      - early-returns
+      - checkout-all
+      - install-prerequisites
+      - run:
+          name: publish jvmplugin to maven central
+          command: bash -l -c "make -C plugins/jvmplugin publish NOGEARS=1"
 
   build-macos:
     macos:
@@ -384,6 +389,11 @@ workflows:
           <<: *on-integ-and-version-tags
       - build-macos:
           <<: *on-integ-and-version-tags
+      - jvmpublish:
+          context: common
+          <<: *on-integ-and-version-tags
+          requires:
+            - build-redis-versions
       - deploy-snapshots:
           context: common
           requires:
