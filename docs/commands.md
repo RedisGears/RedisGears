@@ -200,9 +200,9 @@ An array with an entry per registration. Each entry is made of alternating key n
     * **numSuccess**: a counter of successful executions
     * **numFailures**: a counter of failed executions
     * **numAborted**: a counter of aborted executions
-    * **lastRunDurationMS**: duration in milisecond of the last execution
-    * **totalRunDurationMS**: total run time in milisecod
-    * **avgRunDurationMS**: average execution runtime in milisecond
+    * **lastRunDurationMS**: duration in millisecond of the last execution
+    * **totalRunDurationMS**: total run time in millisecond
+    * **avgRunDurationMS**: average execution runtime in millisecond
     * **lastEstimatedLagMS**: Only on Streams, give the last batch lag (the time difference from the moment the first batch entry enters the stream to the time the batch was finished processing)
     * **avgEstimatedLagMS**: Only on Streams, average lag. 
     * **lastError**: the last error returned
