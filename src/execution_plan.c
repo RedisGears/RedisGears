@@ -2385,7 +2385,7 @@ static void ExecutionPlan_UnregisterExecutionReceived(RedisModuleCtx *ctx, const
     bool abortPendind = RedisGears_BRReadLong(&br);
     FlatExecutionPlan* fep = FlatExecutionPlan_FindId(id);
     if(!fep){
-        printf("warning: execution not found %s !!!\r\n", id);
+        RedisModule_Log(staticCtx, "warning", "execution not found %s !!!\r\n", id);
         return;
     }
     ExecutionPlan_UnregisterExecutionInternal(ctx, fep, abortPendind);
@@ -2963,11 +2963,6 @@ static void FlatExecutionPlane_RegistrationCtxApply(SessionRegistrationCtx* srct
         }
     }
 
-    if (srctx->usedSession) {
-        srctx->p->setCurrSession(NULL, false);
-        srctx->usedSession = NULL;
-    }
-
     // replicating to slave and aof
     RedisModule_SelectDb(staticCtx, 0);
     RedisModule_Replicate(staticCtx, RG_INNER_REGISTER_COMMAND, "b", srctx->buff->buff, srctx->buff->size);
@@ -3074,6 +3069,10 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
     ret = REDISMODULE_OK;
 
 done:
+    if (srctx->usedSession) {
+        srctx->p->setCurrSession(NULL, false);
+        srctx->usedSession = NULL;
+    }
     LockHandler_Release(staticCtx);
     return ret;
 }

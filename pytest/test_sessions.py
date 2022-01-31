@@ -1,4 +1,4 @@
-from RLTest import Env
+from RLTest import Env, Defaults
 from common import getConnectionByEnv, verifyRegistrationIntegrity
 from common import TimeLimit
 import uuid
@@ -200,3 +200,17 @@ GB('CommandReader').count().map(lambda x: 'test1 reports %s shards' % str(x)).re
 GB('CommandReader').count().map(lambda x: 'test2 reports %s shards' % str(x)).register(hook='set')
     '''
     env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'DESCRIPTION', 'desc').error().contains('Can not override a none sync registration which already created on this session')
+
+@gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
+def testSessionUpgradeFailureOnOneShard(env):
+    env.expect('RG.PYEXECUTE', 'GB().register()', 'ID', 'test', 'DESCRIPTION', 'desc').ok()
+    # restart shard 2
+    conn1 = env.getConnection(shardId=1)
+    conn2 = env.getConnection(shardId=2)
+    conn2.execute_command('config', 'set', 'save', '')
+    env.envRunner.shards[1].stopEnv()
+    env.envRunner.shards[1].startEnv()
+    env.envRunner.waitCluster()
+    getConnectionByEnv(env) # will make sure to re-enable the cluster
+    res = env.cmd('RG.PYEXECUTE', 'GB().register()', 'ID', 'test', 'DESCRIPTION', 'desc1', 'UPGRADE')
+    env.assertContains('failed finding registration to unregister', str(res[0]))
