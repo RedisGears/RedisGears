@@ -4719,6 +4719,8 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
         }else{
             RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
         }
+        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+        bdiCtx->session->srctx = NULL;
     }
     RedisGearsPy_Unlock(&pectx);
 
