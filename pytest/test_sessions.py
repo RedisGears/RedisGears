@@ -123,16 +123,18 @@ async def test(r):
     return 'OK'
 
 GB('ShardsIDReader').map(test).run()
+GB().register()
     '''
     env.expect('RG.PYEXECUTE', script, 'ID', 'test1', 'DESCRIPTION', 'desc', 'UNBLOCKING')
     env.expect('RG.PYEXECUTE', script, 'ID', 'test1', 'DESCRIPTION', 'desc', 'UNBLOCKING', 'UPGRADE')
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
         with TimeLimit(2, env, 'Failed waiting for session to become TS'):
-            res = c.execute_command('RG.PYDUMPSESSIONS', 'DEAD')
-            if len(res) == 1:
-                break
-            time.sleep(0.1)
+            while True:
+                res = c.execute_command('RG.PYDUMPSESSIONS', 'DEAD')
+                if len(res) == 1:
+                    break
+                time.sleep(0.1)
 
 @gearsTest()
 def testRegisterInsideRegister(env):
@@ -145,11 +147,14 @@ def testRegisterInsideRegister(env):
     c = env.getConnection(env.shardsCount)
     res = c.execute_command('RG.TRIGGER', 'test', 'test1')
     env.assertEqual(res, ['OK'])
-    verifyRegistrationIntegrity(env)
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
-        res = c.execute_command('RG.PYDUMPSESSIONS')
-        env.assertEqual(len(res[0][-1]), 2)
+        with TimeLimit(2, env, 'Failed waiting for registration to arrive shard %d' % i):
+            while True:
+                res = c.execute_command('RG.PYDUMPSESSIONS')
+                if len(res[0][-1]) == 2:
+                    break
+                time.sleep(0.1)
     env.expect('RG.TRIGGER', 'test1').equal(['OK'])
 
 @gearsTest()
