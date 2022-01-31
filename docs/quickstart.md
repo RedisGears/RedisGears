@@ -1,5 +1,5 @@
 # RedisGears Quickstart
-RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module). To run it, you'll need a Redis server (v5 or greater) and the module's shared library.
+RedisGears is a [Redis](glossary.md#redis) [module](glossary.md#module). To run it, you'll need a Redis server (v6 or greater) and the module's shared library.
 
 The following sections describe how to get started with RedisGears.
 
@@ -21,7 +21,7 @@ docker run -p 30001:30001 -p 30002:30002 -p 30003:30003 redislabs/rgcluster:late
 
 ## Download
 
-A pre-compiled version can be downloaded from [RedisLabs download center](https://redislabs.com/download-center/modules/).
+A pre-compiled version can be downloaded from the [Redis download center](https://redis.com/download-center/modules/).
 
 **Notice** in order to support running Python based recipes on enviornments without an internet connection you should also download the relevant `Redisgears Dependencies`.
 
@@ -50,12 +50,12 @@ yum install devtoolset-7
 scl enable devtoolset-7 bash
 ```
 
-* Install [Redis 6.0.1 or higher](https://redis.io/) on your machine.
+* Install [Redis 6.2.1 or higher](https://redis.io/) on your machine.
 
 ```
 git clone https://github.com/redis/redis.git
 cd redis
-git checkout 6.0
+git checkout 6.2
 make
 make install
 ```
@@ -84,14 +84,14 @@ make fetch
 make all
 ```
 
-You will find the compiled binary under `bin/linux-x64-release/redisgears.so` with a symbolic link to it in the main directory (called `redisgears.os`).
+You will find the compiled binaries `bin/linux-x64-release/redisgears.so` and `bin/linux-x64-release/gears_python.so` with a symbolic link to it with the same name in the main directory.
 
 ## Loading
 To load the module on the same server it was compiled on, use the `--loadmodule` command line switch, the `loadmodule` configuration directive, or the [Redis `MODULE LOAD` command](https://redis.io/commands/module-load) with the path to module's library.
 
 For example, to load the module into a local Redis server after you've [built](#building) it, run:
 ```
-redis-server --loadmodule ./redisgears.so
+redis-server --loadmodule ./redisgears.so Plugin ./gears_python.so
 ```
 
 If you've compiled the module on a different server than the one loading it (or downloaded the module), copy the directory `bin/linux-x64-release/python3_<version>` (where `<version>` is the version compiled) to the target server. Use the [PythonInstallationDir](configuration.md#pythoninstallationdir) configuration parameter to specify the path of the copied directory on the target to RedisGears. **Important:** the directory's name, that is `python3_<version>`, should not be changed.

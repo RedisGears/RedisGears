@@ -17,8 +17,6 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 #----------------------------------------------------------------------------------------------
 
 define HELP
-make setup      # install packages required for build
-make fetch      # download and prepare dependant modules (i.e., python, libevent)
 
 make build
   DEBUG=1         # build debug variant
@@ -47,6 +45,11 @@ make ramp-pack     # only build ramp package
 make verify-packs  # verify signatures of packages vs module so
 
 make show-version  # show module version
+
+make platform      # build for given platform
+  OSNICK=nick      # OS/distribution to build for
+  ARTIFACTS=1      # copy artifacts from builder container
+  TEST=1           # run tests
 endef
 
 MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
@@ -54,7 +57,7 @@ MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
 include $(MK)/defs
 
 GEARS_VERSION:=$(shell $(ROOT)/getver)
-OS_VERSION_DESC:=$(shell python $(ROOT)/getos.py)
+OS_VERSION_DESC:=$(shell python2 $(ROOT)/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -95,6 +98,7 @@ define _SOURCES:=
 	config.c
 	crc16.c
 	execution_plan.c
+	global.c
 	lock_handler.c
 	mappers.c
 	mgmt.c
@@ -127,8 +131,6 @@ define _CC_FLAGS
 	-std=gnu99
 	-MMD
 	-MF $(@:.o=.d)
-
-	-include $(SRCDIR)/common.h
 	-I$(SRCDIR)
 	-I$(BINDIR)
 	-Ideps
@@ -155,7 +157,12 @@ ifeq ($(DEBUG),1)
 CC_FLAGS += -g -O0
 LD_FLAGS += -g
 else
-CC_FLAGS += -O2 -Wno-unused-result
+CC_FLAGS += -O3 -Wno-unused-result
+endif
+
+ifeq ($(GCOV),1)
+CC_FLAGS += -fprofile-arcs -ftest-coverage
+LD_FLAGS += -fprofile-arcs -ftest-coverage
 endif
 
 ifeq ($(OS),macos)
@@ -199,7 +206,7 @@ endif
 
 MK_CUSTOM_CLEAN=1
 
-.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup fetch verify-packs
+.PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup verify-packs platform jvmplugin
 
 include $(MK)/rules
 
@@ -207,9 +214,13 @@ include $(MK)/rules
 
 -include $(CC_DEPS)
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
+$(BINDIR)/global.o: $(SRCDIR)/global.c
 	@echo Compiling $<...
 	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
+
+$(BINDIR)/%.o: $(SRCDIR)/%.c
+	@echo Compiling $<...
+	$(SHOW)$(CC) $(CC_FLAGS) -c -include $(SRCDIR)/common.h $< -o $@
 
 #----------------------------------------------------------------------------------------------
 
@@ -278,10 +289,6 @@ setup:
 	$(SHOW)./deps/readies/bin/getpy2
 	$(SHOW)python2 ./system-setup.py
 
-fetch get_deps:
-#	-$(SHOW)git submodule update --init --recursive
-	$(SHOW)$(MAKE) --no-print-directory -C build/libevent source
-
 #----------------------------------------------------------------------------------------------
 
 ifeq ($(DEPS),1)
@@ -338,16 +345,20 @@ $(info *** MISSING_DEPS=$(MISSING_DEPS))
 endif
 
 clean: clean-gears-python
-ifeq ($(ALL),1)
 	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(TARGET.snapshot) $(notdir $(TARGET)) $(BINROOT)/redislabs
-else
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET.snapshot) $(TARGET:.so=.a) $(notdir $(TARGET)) \
 		artifacts/release/$(GEARS_PYTHON_TAR.release)* artifacts/snapshot/$(DGEARS_PYTHON_TAR.snapshot)*
-endif
 ifeq ($(DEPS),1)
-	$(SHOW)$(foreach DEP,$(DEPENDENCIES),$(MAKE) --no-print-directory -C build/$(DEP) clean;)
+	${MAKE} -C build/hiredis clean
+	${MAKE} -C build/libevent clean
+	${MAKE} -C plugins/python clean
+	${MAKE} -C plugins/jvmplugin/src clean
 endif
+
+jvmplugin:
+	@echo Building jvmplugin...
+	${MAKE} -C plugins/jvmplugin PYTHONDIR=$(BINROOT)/python3_$(GEARS_VERSION)
 
 clean-gears-python:
 	$(SHOW)make clean -C plugins/python
@@ -358,7 +369,7 @@ ifeq ($(WITH_PYTHON),1)
 RAMP_OPT += GEARSPY_PATH=$(abspath $(GEARS_PYTHON))
 endif
 
-artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml
+artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml jvmplugin
 	@echo Packing module...
 	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) $(RAMP_OPT) ./pack.sh $(TARGET)
 
@@ -368,8 +379,10 @@ artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_
 
 ramp ramp-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
 
+# keeping jvmplugin in case it's called explicitly. worst case it regenerates
 pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
-		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot)
+		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot) \
+		jvmplugin
 
 verify-packs:
 	@set -e ;\
@@ -410,10 +423,20 @@ ifneq ($(TEST),)
 	@set -e; \
 	cd pytest; \
 	BB=1 $(TEST_FLAGS) python2 -m RLTest --test $(TEST) $(TEST_ARGS) \
-		$(RLTEST_GDB) -s --module $(abspath $(TARGET)) \
+		$(RLTEST_GDB) -s -v --module $(abspath $(TARGET)) \
 		--module-args "Plugin $(abspath $(GEARS_PYTHON))"
 else
 	$(SHOW)set -e; \
 	cd pytest; \
-	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh
+	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism 4
+	${MAKE} -C plugins/jvmplugin tests PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 endif
+
+#----------------------------------------------------------------------------------------------
+
+platform:
+	$(SHOW)make -C build/docker build $(shell ./build/docker/version-params) OSNICK=$(OSNICK) \
+		TEST=$(TEST) ARTIFACTS=$(ARTIFACTS)
+
+coverage_report:
+	gcovr -r . --html --html-details -o result.html -e "src/utils/*" -e "src/*.h" -e "deps/*" -e "plugins/python/redisai.h"

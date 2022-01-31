@@ -2,33 +2,12 @@ from RLTest import Env
 from common import getConnectionByEnv
 from common import TimeLimit
 from common import verifyRegistrationIntegrity
-from threading import Thread
+from common import Background
+from common import gearsTest
 import time
 from includes import *
 
-
-class Background(object):
-    """
-    A context manager that fires a TimeExpired exception if it does not
-    return within the specified amount of time.
-    """
-
-    def doJob(self):
-        self.f()
-        self.isAlive = False
-
-    def __init__(self, f):
-        self.f = f
-        self.isAlive = True
-
-    def __enter__(self):
-        self.t = Thread(target = self.doJob)
-        self.t.start()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        pass
-
+@gearsTest()
 def testSimpleAsync(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -80,6 +59,7 @@ GB().foreach(ForEach).register(mode='async_local')
     except Exception as e:  
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
+@gearsTest()
 def testSimpleAsyncWithNoneAsyncResult(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -204,6 +184,7 @@ GB().foreach(ForEachFailed).register('y', mode='async_local')
         except Exception as e:  
             env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
+@gearsTest()
 def testCreateAsyncRecordMoreThenOnceRaiseError(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -253,10 +234,11 @@ GB().foreach(ForEach).register(mode='async_local')
             with TimeLimit(50):
                 while bk.isAlive:
                     conn.execute_command('set', 'x', '1')
-                    time.sleep(0.1)
+                    time.sleep(1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
+@gearsTest()
 def testCreateAsyncWithoutFree(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -272,6 +254,7 @@ GB('CommandReader').map(WaitForKeyChangeReturnSame).register(trigger='WaitForKey
 
     env.expect('RG.TRIGGER', 'WaitForKeyChangeMap').error().contains('Async record did not called continue')
 
+@gearsTest()
 def testSetFutureResultsBeforeReturnIt(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -288,6 +271,7 @@ GB('CommandReader').map(test).register(trigger='test', mode='async_local')
 
     env.expect('RG.TRIGGER', 'test').error().contains('Can not handle future untill it returned from the callback')
 
+@gearsTest()
 def testSetFutureErrorOnAggregateByResultsBeforeReturnIt(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -343,7 +327,8 @@ GB().foreach(ForEachFailed).register('y', mode='async_local')
     except Exception as e:  
         env.assertTrue(False, message='Failed waiting for WaitForKeyChange to reach unblock')
 
-def testSimpleAsyncOnSyncExecution(env):
+@gearsTest()
+def testSimpleAsyncOnLocalExecutions(env):
     conn = getConnectionByEnv(env)
     script = '''
 fdata = []
@@ -369,16 +354,26 @@ def bc(r):
 
 def unbc_internal(r):
     global fdata
-    [a[0].continueRun(a[1]) for a in fdata]
+    try:
+        while len(fdata) > 0:
+            a = fdata.pop()
+            a[0].continueRun(a[1])
+    except Exception as e:
+        print(e)
     return r
 
 def unbc(r):
     f = BlockHolder(gearsFuture())
-    GB('ShardsIDReader').foreach(unbc_internal).count().foreach(lambda r: f.continueRun(r)).run()
+    def c(re):
+        f.continueRun(r)
+    GB('ShardsIDReader').foreach(unbc_internal).count().foreach(c).run()
     return f.bc
 
 GB('CommandReader').map(bc).register(trigger='block', mode='async_local')
 GB('CommandReader').map(unbc).register(trigger='unblock', mode='async_local')
+
+GB('CommandReader').map(bc).register(trigger='block_sync', mode='sync')
+GB('CommandReader').map(unbc).register(trigger='unblock_sync', mode='sync')
     '''
 
     env.expect('RG.PYEXECUTE', script).ok()
@@ -396,10 +391,24 @@ GB('CommandReader').map(unbc).register(trigger='unblock', mode='async_local')
                     conn.execute_command('RG.TRIGGER', 'unblock')
                     time.sleep(0.1)
     except Exception as e:
+        print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+    def Block2():
+        env.expect('RG.TRIGGER', 'block_sync', 'arg').equal(["['block_sync', 'arg']"])
+
+    try:
+        with Background(Block2) as bk:
+            with TimeLimit(50):
+                while bk.isAlive:
+                    conn.execute_command('RG.TRIGGER', 'unblock_sync')
+                    time.sleep(0.1)
+    except Exception as e:
+        print(e)
+        env.assertTrue(False, message='Failed waiting to reach unblock')
+
+@gearsTest(skipOnCluster=True)
 def testStreamReaderAsync(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     script = '''
 fdata = []
@@ -466,8 +475,8 @@ GB('StreamReader').map(bc).foreach(lambda x: execute('set', x['value']['key'], x
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+@gearsTest(skipOnCluster=True)
 def testKeysReaderAsync(env):
-    env.skipOnCluster()
     conn = getConnectionByEnv(env)
     script = '''
 fdata = None
@@ -538,6 +547,7 @@ GB().map(bc).foreach(lambda x: execute('del', x)).register(mode='async_local', r
     for r in registrations:
          env.expect('RG.UNREGISTER', r[1]).equal('OK')
 
+@gearsTest()
 def testAsyncWithRepartition(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -592,7 +602,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
-
+@gearsTest()
 def testAsyncWithRepartition2(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -650,6 +660,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+@gearsTest()
 def testSimpleAsyncOnFilter(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -710,6 +721,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+@gearsTest()
 def testSimpleAsyncOnFlatMap(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -763,6 +775,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+@gearsTest()
 def testSimpleAsyncOnForeach(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -816,6 +829,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+@gearsTest()
 def testSimpleAsyncOnAggregate(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -869,6 +883,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+@gearsTest()
 def testSimpleAsyncOnAggregateBy(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -933,6 +948,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         print(e)
         env.assertTrue(False, message='Failed waiting to reach unblock')
 
+@gearsTest()
 def testAsyncError(env):
     conn = getConnectionByEnv(env)
 
@@ -943,6 +959,7 @@ def testAsyncError(env):
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').batchgroupby(lambda x: x, lambda k, l: gearsFuture()).run()")[1][0]
     env.assertContains('Step does not support async', res)
 
+@gearsTest()
 def testAsyncAwait(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -957,6 +974,49 @@ GB('ShardsIDReader').map(c).flatmap(c).foreach(c).filter(c).count().run()
 
     env.expect('RG.PYEXECUTE', script).equal([[str(env.shardsCount)], []])
 
+@gearsTest()
+def testAsyncAwaitWithSyncExecution(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+import asyncio
+
+async def c(r):
+    await asyncio.sleep(0.1)
+    return r
+
+GB('CommandReader').map(c).flatmap(c).foreach(c).filter(c).count().register(trigger='test', mode='sync')
+        '''
+
+    env.expect('RG.PYEXECUTE', script).equal('OK')
+    verifyRegistrationIntegrity(env)    
+
+    env.expect('RG.TRIGGER', 'test').equal(['1'])    
+
+@gearsTest()
+def testAsyncAwaitWithSyncExecutionInMultiExec(env):
+    conn = getConnectionByEnv(env)
+    script = '''
+
+def c(r):
+    if isAsyncAllow():
+        async def f():
+            return 'no multi'
+        return f()
+    return 'multi'
+
+GB('CommandReader').map(c).register(trigger='test', mode='sync')
+        '''
+
+    env.expect('RG.PYEXECUTE', script).equal('OK')
+    verifyRegistrationIntegrity(env)    
+
+    env.expect('RG.TRIGGER', 'test').equal(['no multi'])
+
+    env.cmd('multi')
+    env.cmd('RG.TRIGGER', 'test')
+    env.expect('exec').equal([['multi']])    
+
+@gearsTest()
 def testAsyncAwaitOnUnallowRepartitionStep(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -972,6 +1032,7 @@ GB('ShardsIDReader').map(c).flatmap(c).foreach(c).filter(c).repartition(c).run()
     res = env.cmd('RG.PYEXECUTE', script)[1][0]
     env.assertContains('coroutine are not allow on', res)
 
+@gearsTest()
 def testAsyncAwaitOnUnallowReduceStep(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -991,6 +1052,7 @@ GB('ShardsIDReader').map(c).flatmap(c).foreach(c).filter(c).batchgroupby(lambda 
     res = env.cmd('RG.PYEXECUTE', script)[1][0]
     env.assertContains('coroutine are not allow on', res)
 
+@gearsTest()
 def testAsyncAwaitThatRaiseException(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -1007,6 +1069,7 @@ GB('ShardsIDReader').map(c).run()
     res = env.cmd('RG.PYEXECUTE', script)[1][0]
     env.assertContains('failed', res)
 
+@gearsTest(skipOnCluster=True)
 def testUnregisterDuringAsyncExectuion(env):
     script = '''
 import asyncio
@@ -1022,10 +1085,12 @@ GB("CommandReader").map(doTest).register(trigger='test')
     '''
 
     env.cmd('rg.pyexecute', script)
+    verifyRegistrationIntegrity(env)
     env.expect('rg.trigger', 'test').equal(["['test']"])
 
     env.expect('RG.DUMPREGISTRATIONS').equal([])
 
+@gearsTest()
 def testAbortDuringAsyncExectuion(env):
     script = '''
 import asyncio
@@ -1039,14 +1104,27 @@ GB("ShardsIDReader").map(doTest).run()
     '''
 
     env.cmd('rg.pyexecute', script, 'UNBLOCKING')
-    
-    executions = env.cmd('RG.DUMPEXECUTIONS')
-    for e in executions:
-        env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
+
+    wait_for_execution = True
+    with TimeLimit(5, env, 'Failed waiting for execution to start running'):
+        while wait_for_execution:
+            executions = env.cmd('RG.DUMPEXECUTIONS')
+            for e in executions:
+                if e[3] == 'running':
+                    wait_for_execution = False
+                    env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
+                    break
+                elif e[3] == 'done':
+                    env.debugPrint('execution finished before aborting, test is not testing what it was supposed to test.')
+                    wait_for_execution = False
+                    env.expect('RG.ABORTEXECUTION', e[1]).equal('OK')
+                    break
+            time.sleep(0.1)
 
     # let wait for the coro to continue, make sure there is no issues.
     time.sleep(2)
 
+@gearsTest()
 def testAsyncExecutionOnMulti(env):
     conn = getConnectionByEnv(env)
     script = '''
@@ -1063,9 +1141,9 @@ GB('CommandReader').map(c).register(trigger='test')
     env.expect('MULTI').equal('OK')
     env.expect('RG.TRIGGER', 'test').equal('QUEUED')
     res = env.cmd('EXEC')
-    env.assertIn('can not run a none sync execution inside MULTI/LUA', str(res[0]))
+    env.assertIn('can not run a non-sync execution inside a MULTI/LUA', str(res[0]))
     
-
+@gearsTest()
 def testAsyncWithoutWait(env):
     conn = getConnectionByEnv(env)
     script = '''
