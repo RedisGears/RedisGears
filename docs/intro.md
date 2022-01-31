@@ -590,14 +590,19 @@ It is also possible to see information about sessions using [`RG.PYDUMPSESSION`]
 ```
 
 ??? note "Notice"
-    Upgrade atomicity is promised on the shard level and not on the cluster level. There might be a moment in time where one shard runs the old version while another shard runs the new version, but **it is promised** that on each moment each shard will have either the new registrations or the old registrations.
-
-??? note "Notice"
-    Revert is only done on the initiator. If the initiator decided that the upgrade successed, there will be no revert even if the upgrade failed on some other shards. Such scenario can only happened if upgrading the same session on 2 different shards simultanuasly. RedisGears make no attempt to achieve consensus between shards and assume the user will send the upgrade command only to a single shard.
+    Revert is per shard, if one shard. If the initiator decided that the upgrade successed, there will be no revert even if the upgrade failed on some other shards. Such scenario can only happened if upgrading the same session on 2 different shards simultanuasly. RedisGears make no attempt to achieve consensus between shards and assume the user will send the upgrade command only to a single shard.
 
 ### Upgrades Limitation
 
-Upgrading your python code will not upgrade your requirements, the python interpreter already loaded the requirements code into the memory and changing them on the file system will not help. Currently upgrade requirements require full restart of the Redis processes. We do plane to make this processes simpler on future versions, for more information about this topic please refer to [Isolation Technics](isolation.md) page.
+* Upgrading your python code will not upgrade your requirements, the python interpreter already loaded the requirements code into the memory and changing them on the file system will not help. Currently upgrade requirements require full restart of the Redis processes. We do plane to make this processes simpler on future versions, for more information about this topic please refer to [Isolation Technics](isolation.md) page.
+
+* Upgrade atomicity is promised on the shard level and not on the cluster level. There might be a moment in time where one shard runs the old version while another shard runs the new version, but **it is promised** that on each moment each shard will have either the new registrations or the old registrations.
+
+* Revert is perfromed per shard (not on a cluster level). It might be that one shard will failed the upgrade and another will succussed, in this case one shard will run the old code while another shard will run the new code. In such case `RG.PYEXECUTE` will return with an error messages indicating which shard failed and why, it is possible to fix the error and repeate the upgrade processes. Possible errors are:
+    * One of the shards crashed durring the upgrade process (if the shard crashed before the upgrade, the entire upgrade will failed).
+    * Shards are at inconsistent state when the upgrade started. This can happened if the upgrade perform on 2 shards simultaniusly. RedisGears make no attempt to reach consensus, performing simultanius upgrade to the same session will cause cluster inconsistency.
+
+**If your upgrade requires a stronger requirements then what RedisGears provides you are highly recomended to stop the traffic durring the upgrade, complete the upgrade, and restart the traffic.**
 
 ### Code Upgrades from RedisGears V1.0
 
