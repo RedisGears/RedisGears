@@ -195,6 +195,7 @@ typedef struct JVM_ThreadLocalData{
 }JVM_ThreadLocalData;
 
 pthread_mutex_t JVMSessionsLock;
+JVMRunSession* currSession = NULL;
 RedisModuleDict* JVMSessions = NULL;
 Gears_list* JVMTSSessions = NULL;
 
@@ -651,7 +652,7 @@ static void* JVM_FepSessionDup(FlatExecutionPlan *fep, void* arg){
     return newFepSession;
 }
 
-static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
+static int JVM_SessionSerialize(void* arg, Gears_BufferWriter* bw, char** err){
     JVMRunSession* s = arg;
 
     RedisGears_BWWriteString(bw, s->mainClassName);
@@ -698,10 +699,10 @@ static int JVM_SessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferW
 
 static int JVM_FepSessionSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     JVMFlatExecutionSession* fepSession = arg;
-    return JVM_SessionSerialize(fep, fepSession->session, bw, err);
+    return JVM_SessionSerialize(fepSession->session, bw, err);
 }
 
-static void* JVM_SessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+static void* JVM_SessionDeserialize(Gears_BufferReader* br, int version, char** err, bool useSessionDict){
     if(version > JSESSION_TYPE_VERSION){
         *err = RG_STRDUP("Missmatch jvm session version, update to newest JVM module");
         return NULL;
@@ -722,10 +723,18 @@ static void* JVM_SessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* 
     size_t dataLen;
     const char* data = RedisGears_BRReadBuffer(br, &dataLen);
 
-    JVMRunSession* s = JVM_SessionGet(mainClassName);
+    JVMRunSession* s = currSession;
+    if (s) {
+        s = JVM_SessionDup(s);
+    }
+    if (!s && useSessionDict){
+        s = JVM_SessionGet(mainClassName);
+    }
     if(!s){
         s = JVM_SessionCreate(mainClassName, data, dataLen, err);
-        JVM_SessionLink(s);
+        if (useSessionDict) {
+            JVM_SessionLink(s);
+        }
         s->version = sessionVersion;
         if (desc) {
             s->desc =RG_STRDUP(desc);
@@ -738,7 +747,7 @@ static void* JVM_SessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* 
 }
 
 static void* JVM_FepSessionDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
-    JVMRunSession* s = JVM_SessionDeserialize(fep, br, version, err);
+    JVMRunSession* s = JVM_SessionDeserialize(br, version, err, true);
     if(!s){
         return NULL;
     }
@@ -2927,6 +2936,21 @@ done:
     return upgradeData;
 }
 
+static void JVM_SessionDistributionDone(char **errors, size_t len, void *pd) {
+    RedisModuleBlockedClient* bc = pd;
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(bc);
+    if (len == 0) {
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    } else {
+        RedisModule_ReplyWithArray(ctx, len);
+        for (size_t i = 0 ; i < len ; ++i) {
+            RedisModule_ReplyWithError(ctx, errors[i]);
+        }
+    }
+    RedisModule_UnblockClient(bc, bc);
+    RedisModule_FreeThreadSafeContext(ctx);
+}
+
 static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if(argc < 3){
         return RedisModule_WrongArity(ctx);
@@ -2990,6 +3014,9 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
             RedisModule_ReplyWithError(ctx, err);
             RG_FREE(err);
             JVM_SessionFree(oldSession);
+            RedisGears_SessionRegisterCtxFree(s->srctx);
+            s->srctx = NULL;
+            JVM_SessionFree(s);
             return REDISMODULE_OK;
         }
     }
@@ -3048,6 +3075,10 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         (*env)->ReleaseStringUTFChars(env, descJStr, descStr);
     }
 
+    if (RedisGears_PutUsedSession(s->srctx, s, &err) != REDISMODULE_OK) {
+        goto error;
+    }
+
     jmethodID mid = (*env)->GetStaticMethodID(env, cls, "main", "([Ljava/lang/String;)V");
 
     if(!(err = JVM_GetException(env))){
@@ -3076,12 +3107,26 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         goto error;
     }
 
-    // here we are not going to failed, we can distribute the session.
-    RedisGears_Register(s->srctx);
-    s->srctx = NULL;
-    JVM_SessionLink(s);
-
+    RedisModuleBlockedClient *bc = NULL;
+    SessionRegistrationCtx_OnDone onDoneDistribute = NULL;
     if(!jvm_ltd->isBlocked){
+        bc = RedisModule_BlockClient(jvm_ltd->rctx, NULL, NULL, NULL, 0);
+        onDoneDistribute = JVM_SessionDistributionDone;
+    }
+
+    if (array_len(s->registrations) > 0) {
+        char *err;
+        if (RedisGears_Register(s->srctx, JVM_SessionDistributionDone, bc, &err) != REDISMODULE_OK) {
+            if (bc) {
+                RedisModule_AbortBlock(bc);
+                RedisModule_ReplyWithError(ctx, err);
+            } else {
+                RedisModule_Log(staticCtx, "warning", "error happened when trying to register functions %s", err);
+            }
+            RG_FREE(err);
+        }
+        s->srctx = NULL;
+    } else if(!jvm_ltd->isBlocked) {
         RedisModule_ReplyWithSimpleString(ctx, "OK");
     }
 
@@ -3118,6 +3163,8 @@ error:
     JVM_PopFrame(env);
 
     if (oldSession) JVM_SessionFree(oldSession);
+    RedisGears_SessionRegisterCtxFree(s->srctx);
+    s->srctx = NULL;
     JVM_SessionFree(s);
 
     jvm_ltd->rctx = NULL;
@@ -4157,6 +4204,30 @@ static void JVM_UnlinkSession(const char* sessionId) {
     }
 }
 
+static void* JVM_DeserializeSession(Gears_BufferReader *br, char **err) {
+    long version = RedisGears_BRReadLong(br);
+    return JVM_SessionDeserialize(br, version, err, false);
+}
+
+static int JVM_SerializeSession(void* session, Gears_BufferWriter *bw, char **err) {
+    RedisGears_BWWriteLong(bw, JSESSION_TYPE_VERSION);
+    return JVM_SessionSerialize(session, bw, err);
+}
+
+static void JVM_SetCurrSession(void *s, bool onlyFree) {
+    if (onlyFree) {
+        JVM_SessionFree(s);
+        return;
+    }
+    if (!s) {
+        JVM_SessionLink(currSession);
+        JVM_SessionFree(currSession);
+        currSession = NULL;
+    } else {
+        currSession = s;
+    }
+}
+
 int RedisGears_OnLoad(RedisModuleCtx *ctx) {
     pluginCtx = RedisGears_InitAsGearPlugin(ctx, REDISGEARSJVM_PLUGIN_NAME, REDISGEARSJVM_PLUGIN_VERSION);
     if (!pluginCtx) {
@@ -4166,6 +4237,9 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx) {
 
     RedisGears_PluginSetInfoCallback(pluginCtx, JVM_Info);
     RedisGears_PluginSetUnlinkSessionCallback(pluginCtx, JVM_UnlinkSession);
+    RedisGears_PluginSetDeserializeSessionCallback(pluginCtx, JVM_DeserializeSession);
+    RedisGears_PluginSetSerializeSessionCallback(pluginCtx, JVM_SerializeSession);
+    RedisGears_PluginSetSetCurrSessionCallback(pluginCtx, JVM_SetCurrSession);
 
     if(RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
         staticCtx = RedisModule_GetDetachedThreadSafeContext(ctx);

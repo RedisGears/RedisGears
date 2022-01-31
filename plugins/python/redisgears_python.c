@@ -4982,6 +4982,8 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     char *err;
     if (RedisGears_PutUsedSession(session->srctx, session, &err) != REDISMODULE_OK) {
         if (oldSession) PythonSessionCtx_Free(oldSession);
+        RedisGears_SessionRegisterCtxFree(session->srctx);
+        session->srctx = NULL;
         PythonSessionCtx_Free(session);
         RedisModule_ReplyWithError(ctx, "Failed serializing session");
         RG_FREE(err);
