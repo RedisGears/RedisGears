@@ -372,13 +372,13 @@ workflows:
   version: 2
   default-flow:
     jobs:
-#      - build-redis-versions:
-#          name: build-with-redis-<< matrix.redis_version >>
-#          context: common
-#          <<: *on-any-branch
-#          matrix:
-#            parameters:
-#              redis_version: ["6.0.9", "6.2.6"]
+      - build-redis-versions:
+          name: build-with-redis-<< matrix.redis_version >>
+          context: common
+          <<: *on-any-branch
+          matrix:
+            parameters:
+              redis_version: ["6.0.9", "6.2.6"]
       - build-platforms:
           <<: *on-integ-and-version-tags
           context: common
@@ -391,9 +391,9 @@ workflows:
           <<: *on-integ-and-version-tags
       - jvmpublish:
           context: common
-          <<: *on-any-branch
-#          requires:
-#            - build-redis-versions
+          <<: *on-integ-and-version-tags
+          requires:
+            - build-redis-versions
       - deploy-snapshots:
           context: common
           requires:
