@@ -217,40 +217,56 @@ void* CommandHook_Unhook(CommandHookCtx* hook){
     return ret;
 }
 
-CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err){
+static int CommandHook_VerifyHookInternal(const char* cmd, const char* keyPrefix, char** err, CommandInfo *retInfo) {
     CommandInfo info = CommandHook_CreateInfo(cmd, err);
     if(*err){
-        return NULL;
+        return REDISMODULE_ERR;
     }
 
     if(info.commandFlags & COMMAND_FLAG_NOSCRIPT){
         *err = RG_STRDUP("Can not hook a command which are not allowed inside a script");
-        return NULL;
+        return REDISMODULE_ERR;
     }
 
     if((info.commandFlags & COMMAND_FLAG_MOVEABLEKEYS) && keyPrefix){
         // we can not override a command by key prefix and moveable keys
         *err = RG_STRDUP("Can not hook a command with moveable keys by key prefix");
-        return NULL;
+        return REDISMODULE_ERR;
     }
 
     if(keyPrefix){
         if(info.firstKey <= 0){
             // should not really happened
             *err = RG_STRDUP("Can not hook a command by key prefix with none positive first key");
-            return NULL;
+            return REDISMODULE_ERR;
         }
 
         if(info.jump <= 0){
             // should not really happened
             *err = RG_STRDUP("Can not override a command by key prefix with none positive jump");
-            return NULL;
+            return REDISMODULE_ERR;
         }
     }
 
     if(keyPrefix && strlen(keyPrefix) == 0){
         // should not really happened
         *err = RG_STRDUP("Empty perfix given to command hooker");
+        return REDISMODULE_ERR;
+    }
+
+    if (retInfo) {
+        *retInfo = info;
+    }
+    return REDISMODULE_OK;
+}
+
+int CommandHook_VerifyHook(const char* cmd, const char* keyPrefix, char** err) {
+    return CommandHook_VerifyHookInternal(cmd, keyPrefix, err, NULL);
+}
+
+CommandHookCtx* CommandHook_Hook(const char* cmd, const char* keyPrefix, HookCallback callback, void* pd, char** err){
+    CommandInfo info;
+    if (CommandHook_VerifyHookInternal(cmd, keyPrefix, err, &info) != REDISMODULE_OK) {
         return NULL;
     }
 
