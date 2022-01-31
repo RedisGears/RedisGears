@@ -131,17 +131,17 @@ commands:
           name: Gears Tests
           command: make test <<parameters.test_params>>
           no_output_timeout: 55m
-      - run:
-          name: publish jvmplugin to maven central
-          command: |
-            if [[ ! -z "$CIRCLE_PR_NUMBER" ]]; then
-                exit 0
-            fi
-            if [[ '<<parameters.redis_version>>' == '6.0.9' ]]; then
-              bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
-            fi
       - save-tests-logs
       - persist-artifacts
+
+  jvmpublish:
+    steps:
+      - early-returns
+      - checkout-all
+      - install-prerequisites
+      - run:
+          name: publish jvmplugin to maven central
+          command: bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
 
   build-platforms-steps:
     parameters:
@@ -387,6 +387,11 @@ workflows:
           <<: *on-integ-and-version-tags
       - build-macos:
           <<: *on-integ-and-version-tags
+      - jvmplublish:
+          context: common
+          <<: *on-any-branch
+          requires:
+            - build-redis-versions
       - deploy-snapshots:
           context: common
           requires:
