@@ -35,6 +35,9 @@ def testSessionUpgradeWithVersionAndDescription(env, results, errs, **kargs):
         res = env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', data).error().contains('Session with higher (or equal) version already exists')
         env.expect('RG.CONFIGSET', 'REQUESTED_VERSION', '2').equal(['OK - value was saved in extra config dictionary'])
         env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', data).ok()
+        env.expect('RG.CONFIGSET', 'REQUESTED_VERSION', '1').equal(['OK - value was saved in extra config dictionary'])
+        env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', data).error().contains('Session with higher (or equal) version already exists')
+        env.expect('RG.JEXECUTE', 'gears_tests.testSessionUpgradeWithVersionAndDescription', 'UPGRADE', 'SKIP_VERSION_CHECK', data).ok()
 
 @jvmTestDecorator()
 def testSessionUpgradeWithUpgradeData(env, results, errs, **kargs):

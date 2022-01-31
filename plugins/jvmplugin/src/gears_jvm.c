@@ -2960,11 +2960,16 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     const char* clsName = RedisModule_StringPtrLen(argv[1], &clsNameLen);
 
     int upgrade = 0;
+    int skipVersionCheck = 0;
     size_t currArg = 2;
     for(; currArg < argc ; ++currArg) {
         const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
         if(strcasecmp(option, "UPGRADE") == 0){
             upgrade = 1;
+            continue;
+        }
+        if(strcasecmp(option, "SKIP_VERSION_CHECK") == 0){
+            skipVersionCheck = 1;
             continue;
         }
         break;
@@ -3053,7 +3058,11 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         s->version = (*env)->GetStaticIntField(env, cls, versionField);
     }
 
-    if (oldSession && s->version >= 0 && oldSession->version >= s->version) {
+    if (!skipVersionCheck &&
+        oldSession &&
+        s->version >= 0 &&
+        oldSession->version >= s->version)
+    {
         RedisGears_ASprintf(&err, "Session with higher (or equal) version already exists, current version is %d and new version is %d", oldSession->version, s->version);
         goto error;
     }
