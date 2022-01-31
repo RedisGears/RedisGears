@@ -134,15 +134,6 @@ commands:
       - save-tests-logs
       - persist-artifacts
 
-  jvmpublish:
-    steps:
-      - early-returns
-      - checkout-all
-      - install-prerequisites
-      - run:
-          name: publish jvmplugin to maven central
-          command: bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
-
   build-platforms-steps:
     parameters:
       platform:
@@ -209,6 +200,17 @@ jobs:
     steps:
       - build-platforms-steps:
           platform: <<parameters.platform>>
+
+  jvmpublish:
+    docker:
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+    steps:
+      - early-returns
+      - checkout-all
+      - install-prerequisites
+      - run:
+          name: publish jvmplugin to maven central
+          command: bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
 
   build-macos:
     macos:
@@ -387,7 +389,7 @@ workflows:
           <<: *on-integ-and-version-tags
       - build-macos:
           <<: *on-integ-and-version-tags
-      - jvmplublish:
+      - jvmpublish:
           context: common
           <<: *on-any-branch
           requires:
