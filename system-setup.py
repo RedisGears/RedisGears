@@ -19,56 +19,48 @@ class RedisGearsSetup(paella.Setup):
     def common_first(self):
         self.install_downloaders()
 
-        self.setup_pip()
         self.pip_install("wheel")
         self.pip_install("setuptools --upgrade")
 
         self.install("git openssl")
 
     def debian_compat(self):
-        self.install("build-essential autotools-dev autoconf libtool gawk")
+        self.run("%s/bin/getgcc" % READIES)
+        self.install("autotools-dev autoconf libtool")
 
         self.install("lsb-release")
-        self.install("zip unzip")
+        self.install("zip unzip gawk")
+        self.install("python-dev")
 
         # pip cannot build gevent on ARM
-        self.install("python-psutil")
-        if self.dist == 'ubuntu' and int(self.ver.split('.')[0]) < 20:
+        if self.platform.is_arm() and self.dist == 'ubuntu' and self.os_version[0] < 20:
             self.install("python-gevent")
         else:
             self.pip_install("gevent")
 
     def redhat_compat(self):
-        self.group_install("'Development Tools'")
+        self.run("%s/bin/getgcc --modern" % READIES)
         self.install("autoconf automake libtool")
 
         self.install("redhat-lsb-core")
         self.install("zip unzip")
         self.install("libatomic file")
+        self.install("python2-devel")
 
         self.run("%s/bin/getepel" % READIES)
+
         if self.arch == 'x64':
-            self.run("""
-                dir=$(mktemp -d /tmp/tar.XXXXXX)
-                (cd $dir; wget -q -O tar.tgz http://redismodules.s3.amazonaws.com/gnu/gnu-tar-1.32-x64-centos7.tgz; tar -xzf tar.tgz -C /; )
-                rm -rf $dir
-                """)
+            self.install_linux_gnu_tar()
 
-        # pip cannot build gevent on ARM
-        self.install("python-gevent python-ujson")
-
-        # uninstall and install psutil (order is important), otherwise RLTest fails
-        self.run("pip uninstall -y psutil || true")
-        self.install("python2-psutil")
+        if self.platform.is_arm():
+            self.install("python-gevent python-ujson")
+        else:
+            self.pip_install("gevent ujson")
 
     def fedora(self):
-        self.group_install("'Development Tools'")
+        self.run("%s/bin/getgcc" % READIES)
 
         self.install("libatomic file")
-
-        # uninstall and install psutil (order is important), otherwise RLTest fails
-        self.run("pip uninstall -y psutil || true")
-        self.install("python2-psutil")
 
         self.install("python2-ujson")
         self.pip_install("gevent")
@@ -91,14 +83,14 @@ class RedisGearsSetup(paella.Setup):
         if self.with_python:
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
-                     output=True)
+                     nop=False, output=True)
         self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
 
 #----------------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description='Set up system for RedisGears build.')
 parser.add_argument('-n', '--nop', action="store_true", help='no operation')
-parser.add_argument('--with-python', action="store_true", default=True, help='no operation')
+parser.add_argument('--with-python', action="store_true", default=True, help='with Python')
 args = parser.parse_args()
 
 RedisGearsSetup(nop = args.nop, with_python=args.with_python).setup()

@@ -17,13 +17,13 @@ export PYTHONWARNINGS=ignore
 if [[ $1 == --help || $1 == help ]]; then
 	cat <<-END
 		Generate RedisGears distribution packages.
-	
+
 		[ARGVARS...] pack.sh [--help|help] [<module-so-path>]
-		
+
 		Argument variables:
 		VERBOSE=1     Print commands
 		IGNERR=1      Do not abort on error
-		
+
 		RAMP=1        Generate RAMP package
 		GEARSPY=1     Generate Gears Python plugin package
 		SYM=1         Generate packages of debug symbols
@@ -32,7 +32,7 @@ if [[ $1 == --help || $1 == help ]]; then
 		JUST_PRINT=1  Only print package names, do not generate
 
 		VARIANT=name        Build variant (empty for standard packages)
-		BRANCH=name         Branch name for snapshot packages
+		BRANCH=name         Branch name for snapshot packages (also: GEARS_PACK_BRANCH=name)
 		GITSHA=1            Append Git SHA to shapshot package names
 		CPYTHON_PREFIX=dir  Python install dir
 		GEARSPY_PATH=path   Path of gears_python.so
@@ -53,8 +53,18 @@ RELEASE=${RELEASE:-1}
 SNAPSHOT=${SNAPSHOT:-1}
 
 ARCH=$($READIES/bin/platform --arch)
+[[ $ARCH == x64 ]] && ARCH=x86_64
+
 OS=$($READIES/bin/platform --os)
+[[ $OS == linux ]] && OS=Linux
+
 OSNICK=$($READIES/bin/platform --osnick)
+[[ $OSNICK == trusty ]]  && OSNICK=ubuntu14.04
+[[ $OSNICK == xenial ]]  && OSNICK=ubuntu16.04
+[[ $OSNICK == bionic ]]  && OSNICK=ubuntu18.04
+[[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
+[[ $OSNICK == centos7 ]] && OSNICK=rhel7
+[[ $OSNICK == centos8 ]] && OSNICK=rhel8
 
 OS_DESC=$(python2 $ROOT/getos.py)
 
@@ -71,6 +81,8 @@ pack() {
 		-d GEARS_PYTHON_NAME=python3_$SEMVER \
 		-d GEARS_PYTHON_FNAME=$URL_FNAME \
 		-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
+		-d GEARS_JAVA_FNAME=$JAVA_URL_FNAME \
+		-d GEARS_JAVA_SHA256=$(cat $GEARSJVM_PKG.sha256) \
 		-d OS_DESC=$OS_DESC \
 		ramp.yml > /tmp/ramp.yml
 	rm -f /tmp/ramp.fname
@@ -88,7 +100,7 @@ pack() {
 		local packname=`cat /tmp/ramp.fname`
 	fi
 
-	echo "Created artifacts/$artifact/$packname"
+	echo "Created $packname"
 }
 
 #----------------------------------------------------------------------------------------------
@@ -136,13 +148,13 @@ pack_deps() {
 	local dep="$1"
 	local artdir="$2"
 	local package="$3"
-	
+
 	artdir=$(realpath $artdir)
 	local depdir=$(cat $artdir/$dep.dir)
 
 	local tar_path=$artdir/$package
 	local dep_prefix_dir=$(cat $artdir/$dep.prefix)
-	
+
 	{ cd $depdir ;\
 	  cat $artdir/$dep.files | \
 	  xargs tar -c --sort=name --owner=root:0 --group=root:0 --mtime='UTC 1970-01-01' \
@@ -176,9 +188,9 @@ pack_sym() {
 
 #----------------------------------------------------------------------------------------------
 
-PACKAGE_NAME=${PACKAGE_NAME:-redisgears}
+PACKAGE_NAME=redisgears
 
-[[ -z $BRANCH ]] && BRANCH=${CIRCLE_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
+[[ -z $BRANCH ]] && BRANCH=${GEARS_PACK_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
 BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
 if [[ $GITSHA == 1 ]]; then
 	GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)
@@ -198,6 +210,8 @@ RELEASE_gearspy=${PACKAGE_NAME}-python.$platform.$SEMVER.tgz
 SNAPSHOT_gearspy=${PACKAGE_NAME}-python.$platform.$BRANCH.tgz
 RELEASE_debug=${PACKAGE_NAME}-debug.$platform.$SEMVER.tgz
 SNAPSHOT_debug=${PACKAGE_NAME}-debug.$platform.$BRANCH.tgz
+RELEASE_jvm=${PACKAGE_NAME}-jvm.$platform.$SEMVER.tgz
+SNAPSHOT_jvm=${PACKAGE_NAME}-jvm.$platform.$BRANCH.tgz
 
 #----------------------------------------------------------------------------------------------
 
@@ -241,6 +255,6 @@ if [[ $GEARSPY == 1 ]]; then
 fi
 
 if [[ $RAMP == 1 ]]; then
-	GEARS_SO=$RELEASE_SO GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
-	GEARS_SO=$SNAPSHOT_SO GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
+	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
+	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
 fi
