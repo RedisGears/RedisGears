@@ -37,12 +37,6 @@
 #define REDISGEARS_OS_VERSION "unknown"
 #endif
 
-typedef struct Plugin{
-    char* name;
-    int version;
-    RedisModuleInfoFunc infoFunc;
-}Plugin;
-
 Gears_dict* plugins = NULL;
 
 #define REGISTER_API(name, ctx) \
@@ -241,31 +235,65 @@ static int RG_Limit(FlatExecutionPlan* fep, size_t offset, size_t len){
     return 1;
 }
 
-static int RG_Register(FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId){
-    if(!LockHandler_IsRedisGearsThread()){
-        *err = RG_STRDUP("Can only register execution on registered gears thread");
-        return 0;
-    }
-    LockHandler_Acquire(staticCtx);
+static SessionRegistrationCtx* RG_SessionRegisterCtxCreate(Plugin *p) {
+    return SessionRegistrationCtx_Create(p);
+}
 
+static void RG_SessionRegisterCtxFree(SessionRegistrationCtx* s) {
+    return SessionRegistrationCtx_Free(s);
+}
+
+static void RG_AddRegistrationToUnregister(SessionRegistrationCtx* srctx, const char* registrationId) {
+    FlatExecutionPlan_AddRegistrationToUnregister(srctx, registrationId);
+}
+
+static void RG_AddSessionToUnlink(SessionRegistrationCtx* srctx, const char* sessionId) {
+    FlatExecutionPlan_AddSessionToUnlink(srctx, sessionId);
+}
+
+static int RG_PrepareForRegister(SessionRegistrationCtx* srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId){
     // we need a deep copy in case this fep will be registered again with different args
     // this is a hack because a fep represent registration, we need create
     // a registration object that will hold a shared reference of the fep for future.
     // The plane is to reimplement this all API so its not worth inve
     fep = FlatExecutionPlan_DeepCopy(fep);
 
-    int res = FlatExecutionPlan_Register(fep, mode, key, err);
+    int ret = FlatExecutionPlan_PrepareForRegister(srctx, fep, mode, key, err);
 
-    if(registrationId){
-        *registrationId = RG_STRDUP(fep->idStr);
+    if(!ret) {
+        FlatExecutionPlan_Free(fep);
+    } else {
+        if(registrationId){
+            *registrationId = RG_STRDUP(fep->idStr);
+        }
+    }
+    return ret;
+}
+
+static int RG_Register(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDone onDone, void *pd, char **err){
+    Gears_BufferWriterWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_DONE);
+    return Command_Register(srctx, onDone, pd, err);
+}
+
+static int RG_RegisterFep(Plugin *p, FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId){
+    if(!LockHandler_IsRedisGearsThread()){
+        *err = RG_STRDUP("Can only register execution on registered gears thread");
+        return 0;
+    }
+    LockHandler_Acquire(staticCtx);
+    SessionRegistrationCtx* srctx = SessionRegistrationCtx_Create(p);
+    if (!RG_PrepareForRegister(srctx, fep, mode, key, err, registrationId)) {
+        SessionRegistrationCtx_Free(srctx);
+        return 0;
     }
 
-    // we need to free it on success or failure, on success a shared copy
-    // of the fep will be taken by the reader.
-    FlatExecutionPlan_Free(fep);
+    Gears_BufferWriterWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_DONE);
+    FlatExecutionPlan_Register(srctx);
 
     LockHandler_Release(staticCtx);
-    return res;
+
+    return 1;
+    return 0;
 }
 
 static ExecutionPlan* RG_RunWithFlags(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags flags){
@@ -517,11 +545,26 @@ static ExecutionPlan* RG_GetExecution(const char* id){
 	return ep;
 }
 
+static FlatExecutionPlan* RG_GetFepById(const char* id){
+    return FlatExecutionPlan_FindByStrId(id);
+}
+
+static void RG_DumpRegistration(RedisModuleCtx *ctx, FlatExecutionPlan *fep, int flags) {
+    ExecutionPlan_DumpSingleRegistration(ctx, fep, flags);
+}
+
 static RunFlags RG_GetRunFlags(ExecutionCtx* ectx){
     return ectx->ep->runFlags;
 }
 
-static ArgType* RG_CreateType(char* name, int version, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring){
+static ArgType* RG_CreateType(char* name,
+                              int version,
+                              ArgFree free,
+                              ArgDuplicate dup,
+                              ArgSerialize serialize,
+                              ArgDeserialize deserialize,
+                              ArgToString tostring,
+                              ArgOnFepDeserialized onDeserialized){
     ArgType* ret = RG_ALLOC(sizeof(*ret));
     *ret = (ArgType){
         .type = RG_STRDUP(name),
@@ -531,6 +574,7 @@ static ArgType* RG_CreateType(char* name, int version, ArgFree free, ArgDuplicat
         .serialize = serialize,
         .deserialize = deserialize,
         .tostring = tostring,
+        .onDeserialized = onDeserialized,
     };
     return ret;
 }
@@ -715,6 +759,7 @@ static Plugin* RG_RegisterPlugin(const char* name, int version) {
     plugin->name = RG_STRDUP(name);
     plugin->version = version;
     plugin->infoFunc = NULL;
+    plugin->unlinkSession = NULL;
     Gears_dictAdd(plugins, (char*)name, plugin);
     RedisModule_Log(staticCtx, "warning", "Loading plugin %s version %d ", name, version);
     return plugin;
@@ -722,6 +767,31 @@ static Plugin* RG_RegisterPlugin(const char* name, int version) {
 
 static void RG_PluginSetInfoCallback(Plugin* p, RedisModuleInfoFunc infoFunc) {
     p->infoFunc = infoFunc;
+}
+
+static void RG_PluginSetUnlinkSessionCallback(Plugin* p, GearsPlugin_UnlinkSession unlinkSession) {
+    p->unlinkSession = unlinkSession;
+}
+
+static void RG_PluginSetSerializeSessionCallback(Plugin* p, GearsPlugin_SerializeSession serializeSession) {
+    p->serializeSession = serializeSession;
+}
+
+static void RG_PluginSetDeserializeSessionCallback(Plugin* p, GearsPlugin_DeserializeSession deserializeSession) {
+    p->deserializeSession = deserializeSession;
+}
+
+static int RG_PutUsedSession(SessionRegistrationCtx* srctx, void *session, char **err) {
+    RedisGears_BWWriteLong(&srctx->bw, SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE);
+    int ret = srctx->p->serializeSession(session, &srctx->bw, err);
+    if (ret == REDISMODULE_OK) {
+        srctx->usedSession = session;
+    }
+    return ret;
+}
+
+static void RG_PluginSetSetCurrSessionCallback(Plugin* p, GearsPlugin_SetCurrSession setCurrSession) {
+    p->setCurrSession = setCurrSession;
 }
 
 static int RG_KeysReaderSetReadRecordCallback(KeysReaderCtx* krCtx, const char* name){
@@ -1023,6 +1093,12 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(Run, ctx);
     REGISTER_API(RunWithFlags, ctx);
     REGISTER_API(Register, ctx);
+    REGISTER_API(PrepareForRegister, ctx);
+    REGISTER_API(RegisterFep, ctx);
+    REGISTER_API(AddRegistrationToUnregister, ctx);
+    REGISTER_API(AddSessionToUnlink, ctx);
+    REGISTER_API(SessionRegisterCtxCreate, ctx);
+    REGISTER_API(SessionRegisterCtxFree, ctx);
     REGISTER_API(FreeFlatExecution, ctx);
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
@@ -1049,6 +1125,8 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(CommandReaderTriggerCtxFree, ctx);
 
     REGISTER_API(GetExecution, ctx);
+    REGISTER_API(GetFepById, ctx);
+    REGISTER_API(DumpRegistration, ctx);
     REGISTER_API(GetRunFlags, ctx);
     REGISTER_API(GetFep, ctx);
     REGISTER_API(IsDone, ctx);
@@ -1151,6 +1229,11 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
 
     REGISTER_API(RegisterPlugin, ctx);
     REGISTER_API(PluginSetInfoCallback, ctx);
+    REGISTER_API(PluginSetUnlinkSessionCallback, ctx);
+    REGISTER_API(PluginSetSerializeSessionCallback, ctx);
+    REGISTER_API(PluginSetDeserializeSessionCallback, ctx);
+    REGISTER_API(PluginSetSetCurrSessionCallback, ctx);
+    REGISTER_API(PutUsedSession, ctx);
 
     REGISTER_API(ExecutionPlanIsLocal, ctx);
     REGISTER_API(GetVersion, ctx);

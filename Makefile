@@ -160,6 +160,11 @@ else
 CC_FLAGS += -O3 -Wno-unused-result
 endif
 
+ifeq ($(GCOV),1)
+CC_FLAGS += -fprofile-arcs -ftest-coverage
+LD_FLAGS += -fprofile-arcs -ftest-coverage
+endif
+
 ifeq ($(OS),macos)
 LD_FLAGS += \
 	-framework CoreFoundation \
@@ -432,3 +437,6 @@ endif
 platform:
 	$(SHOW)make -C build/docker build $(shell ./build/docker/version-params) OSNICK=$(OSNICK) \
 		TEST=$(TEST) ARTIFACTS=$(ARTIFACTS)
+
+coverage_report:
+	gcovr -r . --html --html-details -o result.html -e "src/utils/*" -e "src/*.h" -e "deps/*" -e "plugins/python/redisai.h"

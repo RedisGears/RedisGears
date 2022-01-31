@@ -184,7 +184,7 @@ The following visualization summarizes what we've achieved so far:
 ```
 
 ## Keys Pattern
-By default, the KeysReader reads all keys in the database. This behavior can be controlled by providing the reader with a glob-like pattern that, upon the function's execution, is matched against every key name. The reader generates input records only for the keys with names that successfully match the pattern.
+By default, the KeysReader reads all keys in the database. This behaviour can be controlled by providing the reader with a glob-like pattern that, upon the function's execution, is matched against every key name. The reader generates input records only for the keys with names that successfully match the pattern.
 
 The reader's key names' pattern is set to "*" by default, so any key name matches it. One way to override the default pattern is from the context's `run()` method. To have input records consisting only of persons, we can use the pattern `person:*` to discard keys that don't match it by providing it like so:
 
@@ -252,6 +252,12 @@ Instead of using the interactive mode, you can store your functions' code in a r
 
 ```
 cat mygear.py | docker exec -i redisgears redis-cli -x RG.PYEXECUTE
+```
+
+Another option is to use [gears-cli](https://github.com/RedisGears/gears-cli) that gets a file name as input and sends its content to Redis:
+
+```
+gears-cli run mygear.py
 ```
 
 ## Processing Data
@@ -341,7 +347,7 @@ Instead of using a single value for the accumulator, we opt for a Pythonic tuple
 ## Blocking vs. Nonblocking Execution
 The time it takes to execute a function depends on both its input and its complexity. RedisGears executes batch functions asynchronously in a thread running in the background, thus allowing the main Redis process to continue serving requests while the engine is processing.
 
-The default behavior for `RG.PYEXECUTE` is to block the client that had called. A blocked client waits for the server's reply before continuing, and in the case of a RedisGears function, that means until processing is complete. Then, any results generated are returned to the client and it is unblocked.
+The default behaviour for `RG.PYEXECUTE` is to block the client that had called. A blocked client waits for the server's reply before continuing, and in the case of a RedisGears function, that means until processing is complete. Then, any results generated are returned to the client and it is unblocked.
 
 Blocking greatly simplifies the client's logic, but for long-running tasks, it is sometimes desired to have the client continue its work while the function is executed. RedisGears batch functions can be executed in this non-client-blocking mode by adding the `UNBLOCKING` argument to the `RG.PYEXECUTE` command. For example, we can run the first version of our simple function in a nonblocking fashion like so:
 
@@ -458,6 +464,200 @@ The event handler employs a new step type after mapping the input records to age
 ??? note "Disclaimer"
     In reality, Shrimply Pibbles' age is unknown, so the above is only an estimate and may be inaccurate. Luckily, he no longer requires a heart transplant.
 
+## Code Upgrades
+
+The above example (maintaining max age) has one issue, getting the age value and resetting it is not atomic. We might end up with wrong maximus age. RedisGears has 2 ways to achieve atomicity:
+
+1. Using [atomic block](runtime.md#atomic)
+2. Using sync [execution mode](functions.md#register)
+
+To fix the example, all we need to do is adding `mode='sync'` argument to the [`register`](functions.md#register) function. The new code will look like this:
+
+```python
+{{ include('intro/intro-008-1.py') }}
+```
+
+If we will register this new code now using [gears-cli](https://github.com/RedisGears/gears-cli) we will end up with 2 [registrations](glossary.md#registration), the old one (with the bug) and the new one (fixed). How can we upgrade our code? one way is to unregister the old registration (using [`RG.UNREGISTER`](commands.md#rgunregister)) and then send the new code, example:
+
+* Register old code and find out we have a bug:
+```
+> gears-cli run ./code_with_bug.py
+OK
+```
+
+* find old code registration id
+```
+> redis-cli RG.DUMPREGISTRATIONS
+1)  1) "id"
+    1) "0000000000000000000000000000000000000000-1"
+    2) "reader"
+    3) "KeysReader"
+    4) "desc"
+    5) (nil)
+    6) "RegistrationData"
+    7)  1) "mode"
+        1) "async"
+        2) "numTriggered"
+        3) (integer) 0
+        4) "numSuccess"
+        5) (integer) 0
+        6) "numFailures"
+        7) (integer) 0
+        8) "numAborted"
+       1)  (integer) 0
+       2)  "lastRunDurationMS"
+       3)  (integer) 0
+       4)  "totalRunDurationMS"
+       5)  (integer) 0
+       6)  "avgRunDurationMS"
+       7)  "-nan"
+       8)  "lastError"
+       9)  (nil)
+       10) "args"
+       11) 1) "regex"
+           1) "person:*"
+           2) "eventTypes"
+           3) (nil)
+           4) "keyTypes"
+           5) (nil)
+           6) "hookCommands"
+           7) (nil)
+    8) "PD"
+   1)  "{'sessionName':'3c29e67c13d85b55c46c736f5072751367802e93', 'sessionDescription':'null', 'refCount': 2, 'linked': true, 'ts': false, 'isInstallationNeeded':0, 'registrationsList':['0000000000000000000000000000000000000000-1'], 'depsList':[]}"
+   2)  "ExecutionThreadPool"
+   3)  "DefaultPool"
+```
+
+* unregister old code
+```
+> redis-cli RG.UNREGISTER 0000000000000000000000000000000000000000-1
+OK
+```
+
+* send the new fixed code
+```
+> gears-cli run ./new_fix_code.py # send the new fixed code
+OK
+```
+
+Although working just fine, this approach has some disadvantage:
+
+* It is hard to find the registrations that need to be removed (require a hard and frustrated manual process).
+* The process is not atomic, which means that you must stop your traffic during this process otherwise you might lose events.
+
+RedisGears 1.2 comes with an easier and safer way to upgrade your code using a new concept called [sessions](glossary.md#session). Whenever [`RG.PYEXECUTE`](commands.md#rgpyexecute) is invoked, a new [session](glossary.md#session) is created. The session accumulates everything that was created during invocation of the session code ([registrations](glossary.md#registration) and [executions](glossary.md#execution)). Each session has a unique ID, sessions unique ID can be set by the user so it will have meaning and will be easy to find. The above upgrade example can be done easier by taking advantage of RedisGears sessions:
+
+* Register old code with user provided session ID:
+```
+> gears-cli run ./code_with_bug.py ID example
+OK
+```
+
+* If we will try to send a new code with the same session ID, we will get an error indicating that the session already exists:
+```
+> gears-cli run ./new_fix_code.py ID example
+failed running gear function (Session example already exists)
+```
+
+* Now we can upgrade to the new code using `UPGRADE` argument, RedisGears will automatically unregister all the registrations that belongs to the upgraded session and only then execute the new code:
+```
+> gears-cli run ./new_fix_code.py ID example UPGRADE
+OK
+```
+
+RedisGears will make this entire upgrade process atomically on all the shards and will make sure to revert the entire process on failure (so if the new code fails for some reason your old registrations stay untouched).
+
+It is also possible to see information about sessions using [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command:
+```
+> redis-cli RG.PYDUMPSESSIONS
+1)  1) "ID"
+    2) "example"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 2
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1) "0000000000000000000000000000000000000000-5"
+
+```
+
+??? note "Notice"
+    Revert is per shard, if one shard. If the initiator decided that the upgrade succeeded, there will be no revert even if the upgrade failed on some other shards. Such scenario can only happened if upgrading the same session on 2 different shards simultaneously. RedisGears make no attempt to achieve consensus between shards and assume the user will send the upgrade command only to a single shard.
+
+### Upgrades Limitation
+
+* Upgrading your python code will not upgrade your requirements, the python interpreter already loaded the requirements code into the memory and changing them on the file system will not help. Currently upgrade requirements require full restart of the Redis processes. We do plane to make this processes simpler on future versions, for more information about this topic please refer to [Isolation Technics](isolation.md) page.
+
+* Upgrade atomicity is promised on the shard level and not on the cluster level. There might be a moment in time where one shard runs the old version while another shard runs the new version, but **it is promised** that on each moment each shard will have either the new registrations or the old registrations.
+
+* Revert is performed per shard (not on a cluster level). It might be that one shard will failed the upgrade and another will succeeded, in this case one shard will run the old code while another shard will run the new code. In such case `RG.PYEXECUTE` will return with an error messages indicating which shard failed and why, it is possible to fix the error and repeat the upgrade processes. Possible errors are:
+    * One of the shards crashed during the upgrade process (if the shard crashed before the upgrade, the entire upgrade will failed).
+    * Shards are at inconsistent state when the upgrade started. This can happened if the upgrade perform on 2 shards simultaneously. RedisGears make no attempt to reach consensus, performing simultaneous upgrade to the same session will cause cluster inconsistency.
+
+**If your upgrade requires a stronger requirements then what RedisGears provides you are highly recommended to stop the traffic during the upgrade, complete the upgrade, and restart the traffic.**
+
+### Code Upgrades from RedisGears V1.0
+
+On RedisGears V1, the session concept was not yet exists. If you upgrade from RedisGears V1.0 and use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command, you will see that all the sessions has some random generated session ID. It is still possible to upgrade those sessions using [`REPLACE_WITH`](commands.md#rgpyexecute) option, example:
+
+Use [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) command to find the session we want to upgrade (It is possible to spot the session by the registrations list. It is also possible to use the `VERBOSE` option to see full details about the registrations and find the relevant session by registration description given to the [gears builder](functions.md#context-builder)):
+```
+> redis-cli RG.PYDUMPSESSIONS
+1)  1) "ID"
+    2) "0e04c5f540d2885cdb3408370fb6fa7d98f1e1c1"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 2
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1) "0000000000000000000000000000000000000000-1"
+
+```
+
+Use [`REPLACE_WITH`](commands.md#rgpyexecute) to upgrade this session with the new code:
+```
+> gears-cli run ./new_fix_code.py ID example REPLACE_WITH 0e04c5f540d2885cdb3408370fb6fa7d98f1e1c1
+OK
+```
+
+On [`RG.PYDUMPSESSION`](commands.md#rgpydumpsessions) output, we will see that the old session was removed and the new session was added:
+```
+> redis-cli RG.PYDUMPSESSIONS
+1)  1) "ID"
+    2) "example"
+    3) "sessionDescription"
+    4) (nil)
+    5) "refCount"
+    6) (integer) 2
+    7) "Linked"
+    8) "true"
+    9) "TS"
+   10) "false"
+   11) "requirementInstallationNeeded"
+   12) (integer) 0
+   13) "requirements"
+   14) (empty array)
+   15) "registrations"
+   16) 1) "0000000000000000000000000000000000000000-3"
+
+```
+
 ## Cluster 101
 Redis can be used in one of two modes: **Stand-alone** or [**Cluster**](glossary.md#cluster).
 
@@ -495,7 +695,7 @@ docker exec -i rgcluster redis-cli -c -p 30001 < data.txt
 ```
 
 !!! important "Use `redis-cli -c` for cluster mode"
-    The cli, by default, does not follow the cluster's redirections. To have the cli automagically hop between shards, start it with the `-c` command line switch.
+    The cli, by default, does not follow the cluster's redirection. To have the cli automatically hop between shards, start it with the `-c` command line switch.
 
 The output should resemble the following:
 
@@ -577,7 +777,7 @@ An illustration may help in explaining what had happened:
  +----------------------+ +------------+--------------------------+
 ```
 
-Before returning the results, the coordinator of the originating shard collects the local results from each shard. This is the default behavior and using it implicitly adds a [`collect()`](operations.md#collect) operation to the function as its last step.
+Before returning the results, the coordinator of the originating shard collects the local results from each shard. This is the default behaviour and using it implicitly adds a [`collect()`](operations.md#collect) operation to the function as its last step.
 
 This can be disabled by providing the `collect=False` argument to the `run()` action. When no collection is performed, the results will consist only of the shard's local records:
 
@@ -730,7 +930,7 @@ That's an efficient processing pattern because data is first reduced locally, wh
 
 Using only our limited dataset it is unlikely that we'll be able to discern any difference in performance. Instead of collecting two records we'll be collecting three and that's hardly significant.
 
-Consider, however, what will happen once we start adding Revolio Clockberg Jr. (a.k.a Gearhead), Mr. Poopybutthole, Birdperson, Fart and the rest of the multiverse to the database. The number of input records and the number of families will increase accordingly, causing more and more records to be moved across the network and resulting in higher latencies.
+Consider, however, what will happen once we start adding Revolio Clockberg Jr. (a.k.a Gearhead), Mr. Poopybutthole, Birdperson, Fart and the rest of the multiverse to the database. The number of input records and the number of families will increase accordingly, causing more and more records to be moved across the network and resulting in higher latency.
 
 ## Repartitioning Data
 !!! important "Important reminder"
@@ -834,7 +1034,7 @@ The example registers two registrations on [CommandReader](readers.md#commandrea
     Mutex must be initialized inside the onRegistered callback because it's not serializable.
 !!! important "Notice"
     Using mutex could be risky and can cause deadlocks with Redis Global Lock. Make sure to use
-    Mutex carefull and if not sure please consult.
+    Mutex careful and if not sure please consult.
 !!! example "Example: publisher"
     ````
     127.0.0.1:6379> RG.TRIGGER MSG_PUBLISH "this is a message"

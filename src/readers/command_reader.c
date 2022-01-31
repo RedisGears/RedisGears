@@ -7,6 +7,7 @@
 #include "cluster.h"
 #include "command_hook.h"
 #include "readers_common.h"
+#include "mgmt.h"
 
 #include <string.h>
 
@@ -357,14 +358,43 @@ static int CommandReader_InnerRegister(FlatExecutionPlan* fep, ExecutionMode mod
     return REDISMODULE_OK;
 }
 
-static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
+static int CommandReader_VerifyRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
     CommandReaderTriggerArgs* crtArgs = args;
     switch(crtArgs->triggerType){
     case TriggerType_Trigger:
         if(CommandRegistrations){
-            if(Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger)){
-                *err = RG_STRDUP("trigger already registered");
-                return REDISMODULE_ERR;
+            CommandReaderTriggerCtx* crtCtx = Gears_dictFetchValue(CommandRegistrations, crtArgs->trigger);
+            if(crtCtx) {
+                // verify that this registration is not going to be removed, if it does we will allow it.
+                if (srctx) {
+                    int found = 0;
+                    for (size_t i = 0 ; i < array_len(srctx->idsToUnregister) ; ++i) {
+                        if (strcmp(srctx->idsToUnregister[i], crtCtx->fep->idStr) == 0) {
+                            found = 1;
+                        }
+                    }
+                    if (!found) {
+                        *err = RG_STRDUP("trigger already registered");
+                        return REDISMODULE_ERR;
+                    }
+                }
+            }
+        }
+        // verify that we do not have another registration on this session with this same trigger
+        if (srctx) {
+            for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
+                RegistrationData *rd = srctx->registrationsData + i;
+                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+                if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
+                    // another command reader found, check its arguments.
+                    CommandReaderTriggerArgs* crtArgs2 = rd->args;
+                    if (crtArgs2->triggerType == TriggerType_Trigger){
+                        if (strcmp(crtArgs2->trigger, crtArgs->trigger) == 0) {
+                            *err = RG_STRDUP("trigger already registered in this session");
+                            return REDISMODULE_ERR;
+                        }
+                    }
+                }
             }
         }
         break;
@@ -398,11 +428,48 @@ static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode 
                 return REDISMODULE_ERR;
             }
         }
+        if (HookRegistrations) {
+            Gears_list* list = Gears_dictFetchValue(HookRegistrations, crtArgs->trigger);
+            if (list) {
+                CommandReaderTriggerCtx* next = Gears_listNodeValue(Gears_listFirst(list));
+                if(next->mode != ExecutionModeSync){
+                    *err = RG_STRDUP("Can not override a none sync registration");
+                    return REDISMODULE_ERR;
+                }
+            }
+        }
+        // lets also verify that we do not have another none sync registration that hook this command
+        if (srctx) {
+            for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
+                RegistrationData *rd = srctx->registrationsData + i;
+                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+                if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
+                    // another command reader found, check its arguments.
+                    CommandReaderTriggerArgs* crtArgs2 = rd->args;
+                    if (crtArgs2->triggerType == TriggerType_Hook){
+                        if (strcmp(crtArgs2->hookData.hook, crtArgs->hookData.hook) == 0) {
+                            if (rd->mode != ExecutionModeSync){
+                                *err = RG_STRDUP("Can not override a none sync registration which already created on this session");
+                                return REDISMODULE_ERR;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         break;
     default:
         RedisModule_Assert(false);
     }
+    return REDISMODULE_OK;
+}
 
+static int CommandReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
+    if (CommandReader_VerifyRegister(NULL, fep, mode, args, err) != REDISMODULE_OK) {
+        return REDISMODULE_ERR;
+    }
+
+    CommandReaderTriggerArgs* crtArgs = args;
     return CommandReader_InnerRegister(fep, mode, crtArgs, err);
 }
 
@@ -839,6 +906,7 @@ static void CommandReader_FreeArgs(void* args){
 
 RedisGears_ReaderCallbacks CommandReader = {
         .create = CommandReader_Create,
+        .verifyRegister = CommandReader_VerifyRegister,
         .registerTrigger = CommandReader_RegisrterTrigger,
         .unregisterTrigger = CommandReader_UnregisterTrigger,
         .serializeTriggerArgs = CommandReader_SerializeArgs,

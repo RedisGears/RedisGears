@@ -43,6 +43,18 @@ static inline int IsEnterprise() {
   return gearsRlecMajorVersion != -1;
 }
 
+typedef struct Plugin{
+    char* name;
+    int version;
+    RedisModuleInfoFunc infoFunc;
+    GearsPlugin_UnlinkSession unlinkSession;
+    GearsPlugin_SerializeSession serializeSession;
+    GearsPlugin_DeserializeSession deserializeSession;
+    GearsPlugin_SetCurrSession setCurrSession;
+}Plugin;
+
+extern Gears_dict* plugins;
+
 extern RedisModuleCtx *staticCtx;
 
 #define VERIFY_CLUSTER_INITIALIZE(c) \
