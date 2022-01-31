@@ -210,7 +210,7 @@ jobs:
       - install-prerequisites
       - run:
           name: publish jvmplugin to maven central
-          command: bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
+          command: bash -l -c "make -C plugins/jvmplugin publish NOGEARS=1"
 
   build-macos:
     macos:
@@ -372,13 +372,13 @@ workflows:
   version: 2
   default-flow:
     jobs:
-      - build-redis-versions:
-          name: build-with-redis-<< matrix.redis_version >>
-          context: common
-          <<: *on-any-branch
-          matrix:
-            parameters:
-              redis_version: ["6.0.9", "6.2.6"]
+#      - build-redis-versions:
+#          name: build-with-redis-<< matrix.redis_version >>
+#          context: common
+#          <<: *on-any-branch
+#          matrix:
+#            parameters:
+#              redis_version: ["6.0.9", "6.2.6"]
       - build-platforms:
           <<: *on-integ-and-version-tags
           context: common
@@ -392,8 +392,8 @@ workflows:
       - jvmpublish:
           context: common
           <<: *on-any-branch
-          requires:
-            - build-redis-versions
+#          requires:
+#            - build-redis-versions
       - deploy-snapshots:
           context: common
           requires:
