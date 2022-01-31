@@ -131,6 +131,12 @@ commands:
           name: Gears Tests
           command: make test <<parameters.test_params>>
           no_output_timeout: 55m
+      - run:
+          name: publish jvmplugin to maven central
+          command: |
+            if [[ '<<parameters.redis_version>>' == '6.0.9' ]]; then
+              bash -l -c "make -C plugins/jvmplugin publish PYTHONDIR=.."
+            fi
       - save-tests-logs
       - persist-artifacts
 
@@ -363,6 +369,7 @@ workflows:
     jobs:
       - build-redis-versions:
           name: build-with-redis-<< matrix.redis_version >>
+          context: common
           <<: *on-any-branch
           matrix:
             parameters:
