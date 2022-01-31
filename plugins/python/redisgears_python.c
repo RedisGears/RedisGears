@@ -4366,6 +4366,7 @@ static void TimeEvent_Free(void *value){
     RedisGearsPy_Unlock(&pectx);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_StopTimer(ctx, td->id, NULL);
+    PythonSessionCtx_Free(td->session);
     RedisModule_FreeThreadSafeContext(ctx);
     RG_FREE(td);
 }
