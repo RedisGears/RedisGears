@@ -5,14 +5,15 @@
  *      Author: root
  */
 
+#include "common.h"
 #include "cluster.h"
 #include "redisgears_memory.h"
-#include "redisgears.h"
-
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
 #include <uuid/uuid.h>
+#include "utils/arr_rm_alloc.h"
+#include "redisgears.h"
 
 RedisModuleCtx *staticCtx = NULL;
 
@@ -55,7 +56,7 @@ int GearsCompareVersions(RedisVersion v1, RedisVersion v2) {
     return 0;
 }
 
-int GearsCheckSupportedVersion(){
+int GearsCheckSupportedVestion(){
     if (GearsCompareVersions(currVesion, supportedVersion) < 0) {
         return REDISMODULE_ERR;
     }
@@ -138,7 +139,7 @@ int rg_asprintf(char **__ptr, const char *__restrict __fmt, ...) {
   return res;
 }
 
-char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int), char sep) {
+char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*)) {
     char* res = array_new(char, 100);
     res = array_append(res, '[');
     if(len == 0){
@@ -155,34 +156,7 @@ char* IntArrToStr(int* arr, size_t len, char*(*toStr)(int), char sep) {
             res = array_append(res, *c);
             ++c;
         }
-        res = array_append(res, sep);
-        RG_FREE(elementStr);
-    }
-    res[array_len(res) - 1] = ']';
-    res = array_append(res, '\0');
-    char* ret = RG_STRDUP(res);
-    array_free(res);
-    return ret;
-}
-
-char* ArrToStr(void** arr, size_t len, char*(*toStr)(void*), char sep) {
-    char* res = array_new(char, 100);
-    res = array_append(res, '[');
-    if(len == 0){
-        res = array_append(res, ']');
-        res = array_append(res, '\0');
-        char* ret = RG_STRDUP(res);
-        array_free(res);
-        return ret;
-    }
-    for(size_t i = 0 ; i < len ; ++i){
-        char* elementStr = toStr(arr[i]);
-        char* c = elementStr;
-        while(*c){
-            res = array_append(res, *c);
-            ++c;
-        }
-        res = array_append(res, sep);
+        res = array_append(res, ',');
         RG_FREE(elementStr);
     }
     res[array_len(res) - 1] = ']';

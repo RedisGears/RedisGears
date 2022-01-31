@@ -4,12 +4,9 @@
 [[ $IGNERR == 1 ]] || set -e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-ROOT=$(cd $HERE/.. && pwd)
+ROOT=$(cd $HERE/..; pwd)
 READIES=$ROOT/deps/readies
 . $READIES/shibumi/defs
-
-OP=""
-[[ $NOP == 1 ]] && OP=echo
 
 [[ -z $MOD ]] && MOD="$ROOT/redisgears.so"
 if [[ ! -f $MOD ]]; then
@@ -47,16 +44,12 @@ run_tests() {
 		local shards_arg="--shards-count $shards"
 		local env="${ENV_PREFIX}-cluster"
 	fi
-	$OP python2 -m RLTest --clear-logs --module $MOD --module-args "ExecutionMaxIdleTime 10000 Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
+	python2 -m RLTest --clear-logs --module $MOD --module-args "Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
 }
 
 cd $HERE
 mkdir -p logs
-if [[ -z $SHARDS ]]; then
-	run_tests 0 "$@"
-	run_tests 1 "$@"
-	run_tests 2 "$@"
-	run_tests 3 "$@"
-else
-	run_tests $SHARDS "$@"
-fi
+run_tests 0 "$@"
+run_tests 1 "$@"
+run_tests 2 "$@"
+run_tests 3 "$@"

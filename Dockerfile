@@ -1,12 +1,12 @@
 # BUILD redisfab/redisgears:${VERSION}-${ARCH}-${OSNICK}
 
-ARG REDIS_VER=6.2.5
+ARG REDIS_VER=6.0.9
 
-# OSNICK=bullseye|centos7|centos8|xenial|bionic
-ARG OSNICK=bullseye
+# OSNICK=bionic|stretch|buster
+ARG OSNICK=buster
 
-# OS=debian:bullseye-slim|centos:7|centos:8|ubuntu:xenial|ubuntu:bionic
-ARG OS=debian:bullseye-slim
+# OS=debian:buster-slim|debian:stretch-slim|ubuntu:bionic
+ARG OS=debian:buster-slim
 
 # ARCH=x64|arm64v8|arm32v7
 ARG ARCH=x64
@@ -31,18 +31,17 @@ COPY --from=redis /usr/local/ /usr/local/
 ADD . /build
 
 RUN ./deps/readies/bin/getpy2
-RUN ./deps/readies/bin/getpy3
 RUN ./system-setup.py
-RUN ./plugins/jvmplugin/system-setup.py
-RUN bash -l -c "make all SHOW=1"
+RUN make fetch SHOW=1
+RUN make all SHOW=1
 RUN ./getver > artifacts/VERSION
 
 ARG PACK
 ARG TEST
 
-RUN if [ "$PACK" = "1" ]; then bash -l -c "make pack"; fi
+RUN if [ "$PACK" = "1" ]; then make pack; fi
 RUN if [ "$TEST" = "1" ]; then \
-		bash -l -c "TEST= make test" ;\
+		TEST= make test ;\
 		tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-${ARCH}-${OSNICK}.tgz . ;\
 	fi
 
@@ -62,10 +61,7 @@ RUN chown -R redis:redis /var/opt/redislabs
 
 COPY --from=builder --chown=redis:redis /build/redisgears.so $REDIS_MODULES/
 COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/python3_* /var/opt/redislabs/modules/rg/python3/
-COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/bin/OpenJDK /var/opt/redislabs/modules/rg/OpenJDK/
 COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/gears_python/gears_python.so /var/opt/redislabs/modules/rg/plugin/
-COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/src/gears_jvm.so /var/opt/redislabs/modules/rg/plugin/
-COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/gears_runtime/target/gear_runtime-jar-with-dependencies.jar /var/opt/redislabs/modules/rg/
 
 # This is needed in order to allow extraction of artifacts from platform-specific build
 # There is no use in removing this directory if $PACK !=1, because image side will only
@@ -80,6 +76,5 @@ RUN	set -e ;\
 
 RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
 RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
-RUN rm -rf /var/cache/apt /var/cache/yum
 
-CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_jvm.so", "JvmOptions", "-Djava.class.path=/var/opt/redislabs/modules/rg/gear_runtime-jar-with-dependencies.jar", "JvmPath", "/var/opt/redislabs/modules/rg/OpenJDK/jdk-11.0.9.1+1/"]
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so"]

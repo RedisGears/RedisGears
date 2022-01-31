@@ -8,7 +8,7 @@
 #include "config.h"
 #include "redisgears_memory.h"
 #include "utils/arr.h"
-
+#include <stdbool.h>
 #include <assert.h>
 
 typedef struct ConfigHook{
@@ -405,13 +405,8 @@ static int GearsConfig_Get_with_iterator(RedisModuleCtx *ctx, ArgsIterator *iter
             }
 
             if(!foundInPlugin){
-                const char* val = Gears_dictFetchValue(Gears_ExtraConfig, (char*)configName);
-                if (val) {
-                    RedisModule_ReplyWithCString(ctx, val);
-                }else{
-                    config_error(ctx, "Unsupported config parameter: %s", configName, true);
-                    error = true;
-                }
+                config_error(ctx, "Unsupported config parameter: %s", configName, true);
+                error = true;
             }
 
         }
@@ -482,7 +477,7 @@ static void GearsConfig_Print(RedisModuleCtx* ctx){
             RedisModule_Log(staticCtx, "notice", "%s:%lf", val->name, v->val.doubleVal);
             break;
         case ARRAY:
-            arrayStr = ArrToStr((void**)v->val.vals, array_len(v->val.vals), GearsConfig_ArrayConfigValToStr, ',');
+            arrayStr = ArrToStr((void**)v->val.vals, array_len(v->val.vals), GearsConfig_ArrayConfigValToStr);
             RedisModule_Log(staticCtx, "notice", "%s:%s", val->name, arrayStr);
             RG_FREE(arrayStr);
             break;

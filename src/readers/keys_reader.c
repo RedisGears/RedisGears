@@ -14,7 +14,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include "../command_hook.h"
-#include "readers_common.h"
 
 #define KEYS_NAME_FIELD "key_name"
 #define KEYS_SPEC_NAME "keys_spec"
@@ -33,8 +32,6 @@ typedef struct KeysReaderRegisterData{
     unsigned long long numSuccess;
     unsigned long long numFailures;
     unsigned long long numAborted;
-    long long lastRunDuration;
-    long long totalRunDuration;
     Gears_dict* localPendingExecutions;
     Gears_list* localDoneExecutions;
     WorkerData* wd;
@@ -266,8 +263,6 @@ static KeysReaderRegisterData* KeysReaderRegisterData_Create(FlatExecutionPlan* 
         .numSuccess = 0,
         .numFailures = 0,
         .numAborted = 0,
-        .lastRunDuration = 0,
-        .totalRunDuration = 0,
         .localPendingExecutions = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .localDoneExecutions = Gears_listCreate(),
         .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
@@ -524,20 +519,14 @@ static Record* KeysReader_ReadKey(RedisModuleCtx* rctx, KeysReaderCtx* readerCtx
 
     if(readerCtx->readValue){
         int oldAvoidEvents = KeyReader_SetAvoidEvents(1);
-        RedisModuleKey *keyHandler = keyPtr;
-        if (!keyHandler) {
-            keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
-        }
+        RedisModuleKey *keyHandler = RedisModule_OpenKey(rctx, key, REDISMODULE_READ);
         KeyReader_SetAvoidEvents(oldAvoidEvents);
         if(keyHandler){
             Record* keyType = GetTypeRecord(keyHandler);
             Record* val = GetValueRecord(rctx, keyCStr, keyHandler);
             RedisGears_HashSetRecordSet(record, "value", val);
             RedisGears_HashSetRecordSet(record, "type", keyType);
-            if (!keyPtr) {
-                // we open the key so we also need to close it
-                RedisModule_CloseKey(keyHandler);
-            }
+            RedisModule_CloseKey(keyHandler);
         }else{
             RedisGears_HashSetRecordSet(record, "value", NULL);
             RedisGears_HashSetRecordSet(record, "type", RedisGears_StringRecordCreate(RG_STRDUP("empty"), strlen("empty")));
@@ -819,9 +808,6 @@ static void KeysReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
     }
 
-    rData->lastRunDuration = FlatExecutionPlan_GetExecutionDuration(ctx);
-    rData->totalRunDuration += rData->lastRunDuration;
-
     long long errorsLen = RedisGears_GetErrorsLen(ctx);
 
     if(errorsLen > 0){
@@ -859,7 +845,7 @@ static int KeysReader_ShouldFire(RedisModuleCtx *ctx, KeysReaderTriggerArgs* arg
     if(args->eventTypes){
         bool evenFound = false;
         for(size_t i = 0 ; i < array_len(args->eventTypes) ; i++){
-            if(strcasecmp(args->eventTypes[i], event) == 0){
+            if(strcmp(args->eventTypes[i], event) == 0){
                 evenFound = true;
                 break;
             }
@@ -971,8 +957,7 @@ static int KeysReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *ev
                     // check if we are allow to block
                     int ctxFlags = RedisModule_GetContextFlags(currCmdCtx->clientCtx);
                     if((ctxFlags & REDISMODULE_CTX_FLAGS_MULTI) ||
-                       (ctxFlags & REDISMODULE_CTX_FLAGS_LUA) ||
-                       (ctxFlags & REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
+                            (ctxFlags & REDISMODULE_CTX_FLAGS_LUA)){
                         // we are not allow to block, we will free the cmdCtx
                         KeyReader_CommandCtxFree(cmdCtx);
                         arg->cmdCtx = NULL;
@@ -1163,54 +1148,10 @@ static const char* KeysReader_GetKeyTypeStr(int keyType){
     }
 }
 
-static char* KeysReader_keyTypeToStr(int keyType){
-    return RG_STRDUP(KeysReader_GetKeyTypeStr(keyType));
-}
-
-static char* KeysReader_StrToStr(void* str){
-    return RG_STRDUP((char*)str);
-}
-
-static void KeysReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModuleInfoCtx *ctx, int for_crash_report) {
-    KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, 0);
-
-    if(rData->mode == ExecutionModeSync){
-        RedisModule_InfoAddFieldCString(ctx, "mode", "sync");
-    } else if(rData->mode == ExecutionModeAsync){
-        RedisModule_InfoAddFieldCString(ctx, "mode", "async");
-    } else if(rData->mode == ExecutionModeAsyncLocal){
-        RedisModule_InfoAddFieldCString(ctx, "mode", "async_local");
-    } else{
-        RedisModule_InfoAddFieldCString(ctx, "mode", "unknown");
-    }
-
-    RedisModule_InfoAddFieldULongLong(ctx, "numTriggered", rData->numTriggered);
-    RedisModule_InfoAddFieldULongLong(ctx, "numSuccess", rData->numSuccess);
-    RedisModule_InfoAddFieldULongLong(ctx, "numFailures", rData->numFailures);
-    RedisModule_InfoAddFieldULongLong(ctx, "numAborted", rData->numAborted);
-    RedisModule_InfoAddFieldULongLong(ctx, "lastRunDurationMS", DURATION2MS(rData->lastRunDuration));
-    RedisModule_InfoAddFieldULongLong(ctx, "totalRunDurationMS", totalDurationMS(rData));
-    RedisModule_InfoAddFieldDouble(ctx, "avgRunDurationMS", avgDurationMS(rData));
-    RedisModule_InfoAddFieldCString(ctx, "lastError", rData->lastError ? rData->lastError : "None");
-    RedisModule_InfoAddFieldCString(ctx, "regex", rData->args->prefix);
-
-    char* eventTypesStr = rData->args->eventTypes? ArrToStr((void**)rData->args->eventTypes, array_len(rData->args->eventTypes), KeysReader_StrToStr, '|') : NULL;
-    RedisModule_InfoAddFieldCString(ctx, "eventTypes", eventTypesStr? eventTypesStr : "None");
-    RG_FREE(eventTypesStr);
-
-    char* keyTypesStr = rData->args->keyTypes? IntArrToStr(rData->args->keyTypes, array_len(rData->args->keyTypes), KeysReader_keyTypeToStr, '|') : NULL;
-    RedisModule_InfoAddFieldCString(ctx, "keyTypes", keyTypesStr? keyTypesStr : "None");
-    RG_FREE(keyTypesStr);
-
-    char* hookCommandsStr = rData->args->hookCommands? ArrToStr((void**)rData->args->hookCommands, array_len(rData->args->hookCommands), KeysReader_StrToStr, '|') : NULL;
-    RedisModule_InfoAddFieldCString(ctx, "hookCommands", hookCommandsStr? hookCommandsStr : "None");
-    RG_FREE(hookCommandsStr);
-}
-
 static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     KeysReaderRegisterData* rData = KeysReader_FindRegistrationData(fep, 0);
     RedisModule_Assert(rData);
-    RedisModule_ReplyWithArray(ctx, 20);
+    RedisModule_ReplyWithArray(ctx, 14);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(rData->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -1229,12 +1170,6 @@ static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPl
     RedisModule_ReplyWithLongLong(ctx, rData->numFailures);
     RedisModule_ReplyWithStringBuffer(ctx, "numAborted", strlen("numAborted"));
     RedisModule_ReplyWithLongLong(ctx, rData->numAborted);
-    RedisModule_ReplyWithStringBuffer(ctx, "lastRunDurationMS", strlen("lastRunDurationMS"));
-    RedisModule_ReplyWithLongLong(ctx, DURATION2MS(rData->lastRunDuration));
-    RedisModule_ReplyWithStringBuffer(ctx, "totalRunDurationMS", strlen("totalRunDurationMS"));
-    RedisModule_ReplyWithLongLong(ctx, totalDurationMS(rData));
-    RedisModule_ReplyWithStringBuffer(ctx, "avgRunDurationMS", strlen("avgRunDurationMS"));
-    RedisModule_ReplyWithDouble(ctx, avgDurationMS(rData));
     RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
     if(rData->lastError){
         RedisModule_ReplyWithStringBuffer(ctx, rData->lastError, strlen(rData->lastError));
@@ -1306,18 +1241,6 @@ static int KeysReader_CommandHook(RedisModuleCtx* ctx, RedisModuleString** argv,
     KeyReader_CommandCtxFree(currCmdCtx);
     currCmdCtx = NULL;
 
-    return REDISMODULE_OK;
-}
-
-static int KeysReader_VerifyRegister(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* args, char** err){
-    KeysReaderTriggerArgs* readerArgs = args;
-    if(readerArgs->hookCommands){
-        for(size_t i = 0 ; i < array_len(readerArgs->hookCommands) ; ++i){
-            if (CommandHook_VerifyHook(readerArgs->hookCommands[i], readerArgs->prefix, err) != REDISMODULE_OK) {
-                return REDISMODULE_ERR;
-            }
-        }
-    }
     return REDISMODULE_OK;
 }
 
@@ -1501,22 +1424,6 @@ static int KeysReader_RdbLoad(RedisModuleIO *rdb, int encver){
     return REDISMODULE_OK;
 }
 
-static void GenricKeysReader_ClearStats(bool (*shouldClear)(FlatExecutionPlan*)){
-    if(!keysReaderRegistration){
-        return;
-    }
-    Gears_listIter *iter = Gears_listGetIterator(keysReaderRegistration, AL_START_HEAD);
-    Gears_listNode* node = NULL;
-    while((node = Gears_listNext(iter))){
-        KeysReaderRegisterData* rData = Gears_listNodeValue(node);
-        if(!shouldClear(rData->fep)){
-            continue;
-        }
-        resetStats(rData);
-    }
-    Gears_listReleaseIterator(iter);
-}
-
 static void GenricKeysReader_Clear(bool (*shouldClear)(FlatExecutionPlan*)){
     if(!keysReaderRegistration){
         return;
@@ -1535,10 +1442,6 @@ static void GenricKeysReader_Clear(bool (*shouldClear)(FlatExecutionPlan*)){
     Gears_listReleaseIterator(iter);
 }
 
-static void KeysReader_ClearStats(){
-    GenricKeysReader_ClearStats(KeysReader_ShouldContinue);
-}
-
 static void KeysReader_Clear(){
     GenricKeysReader_Clear(KeysReader_ShouldContinue);
 }
@@ -1549,16 +1452,13 @@ static void KeysReader_FreeArgs(void* args){
 
 RedisGears_ReaderCallbacks KeysReader = {
         .create = KeysReader_Create,
-        .verifyRegister = KeysReader_VerifyRegister,
         .registerTrigger = KeysReader_RegisrterTrigger,
         .unregisterTrigger = KeysReader_UnregisterTrigger,
         .serializeTriggerArgs = KeysReader_SerializeArgs,
         .deserializeTriggerArgs = KeysReader_DeserializeArgs,
         .freeTriggerArgs = KeysReader_FreeArgs,
         .dumpRegistratioData = KeysReader_DumpRegistrationData,
-        .dumpRegistratioInfo = KeysReader_DumpRegistrationInfo,
         .rdbSave = KeysReader_RdbSave,
         .rdbLoad = KeysReader_RdbLoad,
         .clear = KeysReader_Clear,
-        .clearStats = KeysReader_ClearStats,
 };
