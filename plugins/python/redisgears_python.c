@@ -4740,6 +4740,8 @@ static void RedisGears_OnRequirementInstallationDone(ExecutionPlan* ep, void* pr
         size_t errorLen;
         const char* errorStr = RedisGears_StringRecordGet(errorRecord, &errorLen);
         RedisModule_ReplyWithError(rctx, errorStr);
+        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+        bdiCtx->session->srctx = NULL;
     }else{
         bdiCtx->session->isInstallationNeeded = false;
         RedisGearsPy_InnerExecute(rctx, bdiCtx);
@@ -4799,7 +4801,8 @@ static void RedisGearsPy_DownloadWheelsAndDistribute(void* ctx){
 
 error:
     // free bdiCtx
-
+    RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+    bdiCtx->session->srctx = NULL;
     PythonSessionCtx_Free(bdiCtx->session);
     if (bdiCtx->oldSession) PythonSessionCtx_Free(bdiCtx->oldSession);
     RG_FREE(bdiCtx->script);
