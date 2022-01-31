@@ -10,6 +10,7 @@
 #include "version.h"
 #include "utils/dict.h"
 #include "redismodule.h"
+#include "redisgears.h"
 #include "cluster.h"
 
 #include "utils/arr_rm_alloc.h"
@@ -28,12 +29,6 @@
 
 extern Gears_dictType* dictTypeHeapIdsPtr;
 
-typedef struct RedisVersion{
-    int redisMajorVersion;
-    int redisMinorVersion;
-    int redisPatchVersion;
-}RedisVersion;
-
 extern RedisVersion currVesion;
 extern RedisVersion supportedVersion;
 
@@ -48,6 +43,18 @@ static inline int IsEnterprise() {
   return gearsRlecMajorVersion != -1;
 }
 
+typedef struct Plugin{
+    char* name;
+    int version;
+    RedisModuleInfoFunc infoFunc;
+    GearsPlugin_UnlinkSession unlinkSession;
+    GearsPlugin_SerializeSession serializeSession;
+    GearsPlugin_DeserializeSession deserializeSession;
+    GearsPlugin_SetCurrSession setCurrSession;
+}Plugin;
+
+extern Gears_dict* plugins;
+
 extern RedisModuleCtx *staticCtx;
 
 #define VERIFY_CLUSTER_INITIALIZE(c) \
@@ -56,7 +63,7 @@ extern RedisModuleCtx *staticCtx;
 	} while(0)
 
 int GearsCompareVersions();
-int GearsCheckSupportedVestion();
+int GearsCheckSupportedVersion();
 void GearsGetRedisVersion();
 void SetId(char* finalId, char* idBuf, char* idStrBuf, long long* lastID);
 int rg_vasprintf(char **__restrict __ptr, const char *__restrict __fmt, va_list __arg);

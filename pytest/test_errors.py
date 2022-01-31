@@ -1,7 +1,7 @@
 from RLTest import Env
 import time
 from includes import *
-
+from common import gearsTest
 
 class testGenericErrors:
     def __init__(self):
@@ -29,7 +29,7 @@ GB().run()
     def testRegistrationFailureOnSerialization(self):
         script1 = '''
 import redis
-r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
+r = redis.Redis('localhost', '6381')
 
 def test(x):
     r.set('x', '1')
@@ -39,7 +39,7 @@ GB().map(test).register()
 '''
         script2 = '''
 import redis
-r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
+r = redis.Redis('localhost', '6381')
 
 def test(x):
     r.set('x', '1')
@@ -47,9 +47,10 @@ def test(x):
 
 GB('StreamReader').map(test).register()
 '''
-        self.env.expect('rg.pyexecute', script1, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
-        self.env.expect('rg.pyexecute', script2, 'REQUIREMENTS', 'redis').error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script1, 'REQUIREMENTS', 'redis==3.5.3').error().contains('Error occured when serialized a python callback')
+        self.env.expect('rg.pyexecute', script2, 'REQUIREMENTS', 'redis==3.5.3').error().contains('Error occured when serialized a python callback')
 
+@gearsTest()
 def testRunFailureOnSerialization(env):
     if env.shardsCount < 2:
         env.skip()
@@ -161,32 +162,37 @@ GearsBuilder().aggregateby(lambda x: 'test', 0, secondCallFailed, secondCallFail
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
         self.env.assertLessEqual(1, res[1])
 
-
+@gearsTest()
 def testCommandReaderWithRun(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").run()').error().contains('reader do not support run')
 
+@gearsTest()
 def testCommandReaderWithBadArgs(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register("test")').error().contains('no trigger or hook argument was given')
     env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger=1)').error().contains('trigger argument is not string')
 
+@gearsTest()
 def testCommandReaderRegisterSameCommand(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').ok()
     env.expect('rg.pyexecute', 'GB("CommandReader").register(trigger="command")').error().contains('trigger already registered')
 
+@gearsTest()
 def testCommandReaderRegisterWithExcpetionCommand(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(trigger="command")').ok()
     env.expect('rg.trigger', 'command').error().contains("'noexists' is not defined")
 
+@gearsTest()
 def testNoSerializableRegistrationWithAllReaders(env):
     script = '''
 import redis
-r = redis.Redis('localhost', 6381) # set none existing port to avoid deadlock
+r = redis.Redis('localhost', 6381)
 GB('%s').map(lambda x: r).register(trigger='test')
     '''
-    env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis').error()
-    env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis').error()
-    env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis').error()
+    env.expect('RG.PYEXECUTE', script % 'KeysReader', 'REQUIREMENTS', 'redis==3.5.3').error()
+    env.expect('RG.PYEXECUTE', script % 'StreamReader', 'REQUIREMENTS', 'redis==3.5.3').error()
+    env.expect('RG.PYEXECUTE', script % 'CommandReader', 'REQUIREMENTS', 'redis==3.5.3').error()
 
+@gearsTest()
 def testExtraUnknownArgumentsReturnError(env):
     env.expect('RG.PYEXECUTE', 'GB().run()', 'exta', 'unknown', 'arguments').error()
 
@@ -361,63 +367,81 @@ class testGetExecutionErrorReporting:
         self.env.cmd('RG.DROPEXECUTION', id)
         self.env.cmd('RG.CONFIGSET', 'PythonAttemptTraceback', 1)
 
+@gearsTest()
 def testCommandReaderWithPrefixRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="test", keyprefix="foo")').error().contains('Can not override an unexisting command')
 
+@gearsTest()
 def testCommandReaderOverrideCommandWithMovableKeysRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="xread", keyprefix="foo")').error().contains('Can not override a command with moveable keys by key prefix')
 
+@gearsTest()
 def testCommandReaderOverrideMultiRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="multi")').error().contains('Can not override a command which are not allowed inside a script')
     
+@gearsTest()
 def testCommandReaderOverrideExecRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="exec")').error().contains('Can not override a command which are not allowed inside a script')
 
+@gearsTest()
 def testCommandReaderOverrideBlpopRaiseError(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").register(hook="blpop")').error().contains('Can not override a command which are not allowed inside a script')
 
+@gearsTest()
 def testKeysReaderWithUnexistingCommandRaiseError(env):
     env.expect('rg.pyexecute', 'GB().register(commands=["test"])').error().contains('bad reply')
 
+@gearsTest()
 def testKeysReaderOverrideCommandWithMovableKeysRaiseError(env):
     env.expect('rg.pyexecute', 'GB().register(commands=["xread"])').error().contains('Can not hook a command with moveable keys by key prefix')
-
+    
+@gearsTest()
 def testKeysReaderOverrideMultiRaiseError(env):
     env.expect('rg.pyexecute', 'GB().register(commands=["multi"])').error().contains('Can not hook a command which are not allowed inside a script')
-    
+
+@gearsTest()    
 def testKeysReaderOverrideExecRaiseError(env):
     env.expect('rg.pyexecute', 'GB().register(commands=["exec"])').error().contains('Can not hook a command which are not allowed inside a script')
 
+@gearsTest()
 def testKeysReaderOverrideBlpopRaiseError(env):
     env.expect('rg.pyexecute', 'GB().register(commands=["blpop"])').error().contains('Can not hook a command which are not allowed inside a script')
 
+@gearsTest()
 def testCallNextOnMapWrongScopes(env):
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').map(lambda r: call_next(r)).run()")
     env.assertIn('Can not get CommandHook ctx', res[1][0])
 
+@gearsTest()
 def testCallNextOnFilterWrongScopes(env):
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').filter(lambda r: call_next(r)).run()")
     env.assertIn('Can not get CommandHook ctx', res[1][0])
 
+@gearsTest()
 def testCallNextOnForeachWrongScopes(env):
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').foreach(lambda r: call_next(r)).run()")
     env.assertIn('Can not get CommandHook ctx', res[1][0])
 
+@gearsTest()
 def testCallNextOnFlatmapWrongScopes(env):
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').flatmap(lambda r: call_next(r)).run()")
     env.assertIn('Can not get CommandHook ctx', res[1][0])
 
+@gearsTest()
 def testCallNextOnAccumulateWrongScopes(env):
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').accumulate(lambda a,r: call_next(r)).run()")
     env.assertIn('Can not get CommandHook ctx', res[1][0])
 
+@gearsTest()
 def testCallNextOnAccumulatebyWrongScopes(env):
     res = env.cmd('rg.pyexecute', "GB('ShardsIDReader').groupby(lambda x: x, lambda k,a,r: call_next(r)).run()")
     env.assertIn('Can not get CommandHook ctx', res[1][0])
 
+@gearsTest()
 def testCallNextOnWrongScopes(env):
     env.expect('rg.pyexecute', 'call_next()').error().contains('Can not get CommandHook ctx')
 
+@gearsTest()
 def testCallNextOnCoroWrongScope(env):
     script = '''
 import asyncio
@@ -432,7 +456,7 @@ GB("ShardsIDReader").map(doTest).run()
     err = res[1][0]
     env.assertContains(err, 'Can not get CommandHook ctx')
 
-
+@gearsTest()
 def testAwaitIsNotAllowedInsideAtomicBlock(env):
     script = '''
 import asyncio
@@ -448,7 +472,8 @@ GB("ShardsIDReader").map(doTest).run()
     err = res[1][0]
     env.assertContains(err, 'await is not allow inside atomic block')
 
-def testAwaitIsNotAllowedInsideSyncExecution(env):
+@gearsTest()
+def testAwaitIsNotAllowedInsideMultiExecExecution(env):
     script = '''
 import asyncio
 
@@ -460,8 +485,12 @@ GB("CommandReader").map(doTest).register(trigger='test', mode='sync')
     '''
 
     env.cmd('rg.pyexecute', script)
-    env.expect('rg.trigger', 'test').error().contains('Can not create gearsFuture on sync execution')
+    env.cmd('multi')
+    env.cmd('rg.trigger', 'test')
+    res = env.cmd('exec')
+    env.assertContains('Creating async record is not allow', str(res[0]))
 
+@gearsTest(skipOnCluster=True)
 def testCommandOverrideWithMoreThenSingleResultReturnError(env):
     script = '''
 GB("CommandReader").flatmap(lambda x: x).register(hook='hset', mode='sync')
@@ -470,6 +499,7 @@ GB("CommandReader").flatmap(lambda x: x).register(hook='hset', mode='sync')
     env.cmd('rg.pyexecute', script)
     env.expect('hset', 'h', 'foo', 'bar').error().contains('Command hook must return exactly one result')
 
+@gearsTest()
 def testCannotOverrideNoneSyncRegisration(env):
     script = '''
 GB("CommandReader").flatmap(lambda x: x).register(hook='hset')

@@ -200,8 +200,9 @@ static int NullRecord_Serialize(ExecutionCtx* ctx, Gears_BufferWriter* bw, Recor
 static Record* StringRecord_Deserialize(ExecutionCtx* ctx, Gears_BufferReader* br){
     size_t size;
     const char* temp = RedisGears_BRReadBuffer(br, &size);
-    char* temp1 = RG_ALLOC(size);
+    char* temp1 = RG_ALLOC(size + 1);
     memcpy(temp1, temp, size);
+    temp1[size] = '\0';
     return RG_StringRecordCreate(temp1, size);
 }
 
@@ -641,8 +642,8 @@ Record* RG_AsyncRecordCreate(ExecutionCtx* ectx, char** err){
     }
 
     ExecutionPlan* ep = RedisGears_GetExecutionFromCtx(ectx);
-    if(ep->mode == ExecutionModeSync){
-        *err = RG_STRDUP("Can not create gearsFuture on sync execution");
+    if(ep->runFlags & RFNoAsync){
+        *err = RG_STRDUP("Creating async record is not allowed");
         return NULL;
     }
     size_t maxSize;

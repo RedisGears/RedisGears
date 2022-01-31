@@ -2,6 +2,7 @@
 #define REDISMODULE_MAIN
 
 #include <Python.h>
+#include "redisgears_python.h"
 #include "redisai.h"
 #include "globals.h"
 #include "redisgears.h"
@@ -10,6 +11,7 @@
 #include "cloudpickle.auto.h"
 #include "utils/arr_rm_alloc.h"
 #include "utils/dict.h"
+#include "utils/adlist.h"
 #include "utils/thpool.h"
 #include "utils/buffer.h"
 
@@ -30,13 +32,19 @@ typedef struct PythonConfig{
     char* pythonInstallationDir;
 }PythonConfig;
 
+Plugin* pluginCtx;
+
 PythonConfig pythonConfig;
 
 static RedisModuleCtx *staticCtx = NULL;
 
+static RedisVersion *redisVersion = NULL;
+
 #define PY_OBJECT_TYPE_VERSION 1
 
-#define PY_SESSION_TYPE_VERSION 1
+#define PY_SESSION_TYPE_VERSION 2
+#define PY_SESSION_TYPE_WITH_NAMES 2
+#define PY_SESSION_TYPE_WITH_DESC 2
 #define PY_SESSION_TYPE_WITH_REQ_NAMES_ONLY 1
 
 #define PY_REQ_VERSION 1
@@ -52,12 +60,18 @@ static PyObject* runCoroutineFunction;
 static PyObject* createFutureFunction;
 static PyObject* setFutureResultsFunction;
 static PyObject* setFutureExceptionFunction;
+static PyObject* profileCreateFunction;
+static PyObject* profileStartFunction;
+static PyObject* profileStopFunction;
+static PyObject* profileGetInfoFunction;
 PyObject* GearsError;
 PyObject* ForceStoppedError;
 
 RecordType* pythonRecordType;
 
 RedisModuleType* GearsPyRequirementDT;
+
+pthread_mutex_t PySessionsLock;
 
 typedef struct PythonRecord{
     Record base;
@@ -73,17 +87,19 @@ static int PyInitializeRedisAI(){
     if (globals.redisAILoaded){
         return REDISMODULE_OK;
     }
+    // If this API is not supported, we cannot initialize RedisAI low-level API using staticCtx.
+    // Todo: use the MODULE_LOADED event to register redisAI API for older redis versions.
     if(!RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)) {
         RedisModule_Log(staticCtx, "warning",
           "Redis version is to old, please upgrade to a newer version.");
         return REDISMODULE_ERR;
     }
-    RedisModule_ThreadSafeContextLock(staticCtx);
+    RedisGears_LockHanlderAcquire(staticCtx);
     int ret = RedisAI_Initialize(staticCtx);
     if(ret == REDISMODULE_OK){
         globals.redisAILoaded = true;
     }
-    RedisModule_ThreadSafeContextUnlock(staticCtx);
+    RedisGears_LockHanlderRelease(staticCtx);
     return ret;
 }
 
@@ -175,9 +191,9 @@ static PythonThreadCtx* GetPythonThreadCtx();
 static void continueFutureOnDone(ExecutionPlan* ep, void* privateData);
 static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData);
 
-static long long CurrSessionId = 0;
 
 RedisModuleDict* SessionsDict = NULL;
+Gears_list *DeadSessionsList = NULL;
 
 static char* venvDir = NULL;
 
@@ -193,14 +209,26 @@ typedef struct PythonRequirementCtx{
 
 Gears_dict* RequirementsDict = NULL;
 
+typedef enum {
+    LinkedTo_PrimaryDict, LinkedTo_TempDict, LinkedTo_None,
+} LinkedTo;
+
 typedef struct PythonSessionCtx{
     size_t refCount;
-    char sessionId[ID_LEN];
-    char sessionIdStr[STR_ID_LEN];
+    char *sessionId;
+    char *sessionDesc;
     PyObject* globalsDict;
+    PyObject* profiler;
     PythonRequirementCtx** requirements;
     bool isInstallationNeeded;
+    char **registrations;
+    pthread_mutex_t registrationsLock;
+    SessionRegistrationCtx *srctx;
+    LinkedTo linkedTo;
+    Gears_listNode *deadNode;
 }PythonSessionCtx;
+
+static PythonSessionCtx* currentSession = NULL;
 
 static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader* br, int version, char** err);
 static PythonRequirementCtx* PythonRequirement_Deserialize(Gears_BufferReader* br, char** err);
@@ -327,7 +355,7 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
     RG_FREE(reqCtx);
 }
 
-static char* PythonRequirementCtx_WheelToStr(void* wheel){
+static char* PythonStringArray_ToStr(void* wheel){
     char* str;
     RedisGears_ASprintf(&str, "'%s'", (char*)wheel);
     return str;
@@ -336,13 +364,13 @@ static char* PythonRequirementCtx_WheelToStr(void* wheel){
 static char* PythonRequirementCtx_ToStr(void* val){
     PythonRequirementCtx* req = val;
     char* res;
-    char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, ',');
+    char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonStringArray_ToStr, ',');
     RedisGears_ASprintf(&res, "{'name':'%s', 'basePath':'%s', 'wheels':%s}", req->installName, req->basePath, wheelsStr);
     RG_FREE(wheelsStr);
     return res;
 }
 
-static char* PythonSessionRequirements_ToString(void* arg){
+static char* PythonSessionRequirements_ToString(FlatExecutionPlan* fep, void* arg){
     PythonRequirementCtx** req = arg;
     return RedisGears_ArrToStr((void**)req, array_len(req), PythonRequirementCtx_ToStr, ',');
 }
@@ -383,7 +411,7 @@ static int PythonSessionRequirements_Serialize(FlatExecutionPlan* fep, void* arg
     return REDISMODULE_OK;
 }
 
-static void PythonSessionRequirements_Free(void* arg){
+static void PythonSessionRequirements_Free(FlatExecutionPlan* fep, void* arg){
     PythonRequirementCtx** reqs = arg;
     for(size_t i = 0 ; i < array_len(reqs) ; ++i){
         PythonRequirementCtx_Free(reqs[i]);
@@ -391,7 +419,7 @@ static void PythonSessionRequirements_Free(void* arg){
     array_free(reqs);
 }
 
-static PythonRequirementCtx* PythonRequirementCtx_ShellowCopy(PythonRequirementCtx* req){
+static PythonRequirementCtx* PythonRequirementCtx_ShallowCopy(PythonRequirementCtx* req){
     ++req->refCount;
     return req;
 }
@@ -400,9 +428,13 @@ static void* PythonSessionRequirements_Dup(void* arg){
     PythonRequirementCtx** reqs = arg;
     PythonRequirementCtx** res = array_new(PythonRequirementCtx*, 10);
     for(size_t i = 0 ; i < array_len(reqs) ; ++i){
-        res = array_append(res, PythonRequirementCtx_ShellowCopy(reqs[i]));
+        res = array_append(res, PythonRequirementCtx_ShallowCopy(reqs[i]));
     }
     return res;
+}
+
+static void* PythonSessionRequirements_DupWithFep(FlatExecutionPlan* fep, void* arg){
+    return PythonSessionRequirements_Dup(arg);
 }
 
 static PythonRequirementCtx* PythonRequirementCtx_Get(const char* requirement){
@@ -574,8 +606,8 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
 
         FILE *f = fopen(filePath, "rb");
         if(!f){
-            RG_FREE(filePath);
             RedisGears_ASprintf(err, "Could not open file %s", filePath);
+            RG_FREE(filePath);
             RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
@@ -586,9 +618,9 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
         char *data = RG_ALLOC(fsize);
         size_t readData = fread(data, 1, fsize, f);
         if(readData != fsize){
+            RedisGears_ASprintf(err, "Could read data from file %s", filePath);
             RG_FREE(data);
             RG_FREE(filePath);
-            RedisGears_ASprintf(err, "Could read data from file %s", filePath);
             RedisModule_Log(staticCtx, "warning", "%s", *err);
             return REDISMODULE_ERR;
         }
@@ -608,10 +640,14 @@ static int PythonRequirement_Serialize(PythonRequirementCtx* req, Gears_BufferWr
     return PythonRequirementCtx_Serialize(req, bw, err);
 }
 
-static void* PythonSessionCtx_ShellowCopy(void* arg){
+static void* PythonSessionCtx_ShallowCopy(void* arg){
     PythonSessionCtx* session = arg;
     ++session->refCount;
     return session;
+}
+
+static void* PythonSessionCtx_ShallowCopyWithFep(FlatExecutionPlan* fep, void* arg){
+    return PythonSessionCtx_ShallowCopy(arg);
 }
 
 static void PythonSessionCtx_FreeRequirementsList(PythonRequirementCtx** requirementsList){
@@ -621,22 +657,103 @@ static void PythonSessionCtx_FreeRequirementsList(PythonRequirementCtx** require
     array_free(requirementsList);
 }
 
-static void PythonSessionCtx_Free(void* arg){
-    PythonSessionCtx* session = arg;
-    if(--session->refCount == 0){
-        // delete the session working dir
-        RedisModule_DictDelC(SessionsDict, session->sessionId, ID_LEN, NULL);
-        PythonSessionCtx_FreeRequirementsList(session->requirements);
-        RedisGearsPy_LOCK
-        PyDict_Clear(session->globalsDict);
-        GearsPyDecRef(session->globalsDict);
-        RedisGearsPy_UNLOCK
-        RG_FREE(session);
+static void PythonSessionCtx_Del(PythonSessionCtx* session){
+    if (session->linkedTo == LinkedTo_PrimaryDict) {
+        RedisModule_DictDelC(SessionsDict, session->sessionId, strlen(session->sessionId), NULL);
+        session->linkedTo = LinkedTo_None;
+    } else if (session->deadNode) {
+        Gears_listDelNode(DeadSessionsList, session->deadNode);
     }
 }
 
-static PythonSessionCtx* PythonSessionCtx_Get(char* id){
-    return RedisModule_DictGetC(SessionsDict, id, ID_LEN, NULL);
+static void PythonSessionCtx_Unlink(PythonSessionCtx* session){
+    pthread_mutex_lock(&PySessionsLock);
+    PythonSessionCtx_Del(session);
+    Gears_listAddNodeTail(DeadSessionsList, session);
+    session->deadNode = Gears_listLast(DeadSessionsList);
+    pthread_mutex_unlock(&PySessionsLock);
+}
+
+static void PythonSessionCtx_Free(PythonSessionCtx* session){
+    pthread_mutex_lock(&PySessionsLock);
+    if(--session->refCount == 0){
+        // delete the session working dir
+        PythonSessionCtx_Del(session);
+        pthread_mutex_unlock(&PySessionsLock);
+        if (session->srctx) {
+            RedisGears_SessionRegisterCtxFree(session->srctx);
+        }
+        RG_FREE(session->sessionId);
+        if (session->sessionDesc) {
+            RG_FREE(session->sessionDesc);
+        }
+        PythonSessionCtx_FreeRequirementsList(session->requirements);
+        for (size_t i = 0 ; i < array_len(session->registrations) ; ++i) {
+            RG_FREE(session->registrations[i]);
+        }
+        array_free(session->registrations);
+        pthread_mutex_destroy(&session->registrationsLock);
+        RedisGearsPy_LOCK
+        PyDict_Clear(session->globalsDict);
+        GearsPyDecRef(session->globalsDict);
+        GearsPyDecRef(session->profiler);
+        RedisGearsPy_UNLOCK
+        RG_FREE(session);
+    } else {
+        pthread_mutex_unlock(&PySessionsLock);
+    }
+}
+
+#define PythonSessionCtx_RunWithRegistrationsLock(s, code) \
+    pthread_mutex_lock(&s->registrationsLock); \
+    do{ \
+    	code \
+    } while (0); \
+    pthread_mutex_unlock(&s->registrationsLock);
+
+static void PythonSessionCtx_AddFep(PythonSessionCtx* session, char *id){
+    pthread_mutex_lock(&session->registrationsLock);
+    session->registrations = array_append(session->registrations, id);
+    pthread_mutex_unlock(&session->registrationsLock);
+}
+
+static void PythonSessionCtx_DelFep(PythonSessionCtx* session, const char *id){
+    pthread_mutex_lock(&session->registrationsLock);
+    for (size_t i = 0 ; i < array_len(session->registrations) ; ++i) {
+        if (strcmp(id, session->registrations[i]) == 0) {
+            RG_FREE(session->registrations[i]);
+            array_del_fast(session->registrations, i);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&session->registrationsLock);
+}
+
+static void PythonSessionCtx_FreeWithFep(FlatExecutionPlan* fep, void* arg){
+    PythonSessionCtx* session = arg;
+    if (fep) {
+        const char *id = RedisGears_FepGetId(fep);
+        PythonSessionCtx_DelFep(session, id);
+    }
+    PythonSessionCtx_Free(session);
+}
+
+static PythonSessionCtx* PythonSessionCtx_Get(const char* id){
+    pthread_mutex_lock(&PySessionsLock);
+    PythonSessionCtx* ret = RedisModule_DictGetC(SessionsDict, (char*)id, strlen(id), NULL);
+    if (ret) {
+        ret = PythonSessionCtx_ShallowCopy(ret);
+    }
+    pthread_mutex_unlock(&PySessionsLock);
+    return ret;
+}
+
+static void PythonSessionCtx_Set(PythonSessionCtx* s){
+    pthread_mutex_lock(&PySessionsLock);
+    PythonSessionCtx_Del(s);
+    RedisModule_DictSetC(SessionsDict, s->sessionId, strlen(s->sessionId), s);
+    s->linkedTo = LinkedTo_PrimaryDict;
+    pthread_mutex_unlock(&PySessionsLock);
 }
 
 static int PythonSessionCtx_DownloadWheels(PythonSessionCtx* session){
@@ -649,7 +766,7 @@ static int PythonSessionCtx_DownloadWheels(PythonSessionCtx* session){
     return true;
 }
 
-static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** requirementsList, size_t requirementsListLen){
+static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const char* desc, const char** requirementsList, size_t requirementsListLen){
     // creating a new global dict for this session
     RedisGearsPy_LOCK
 
@@ -657,15 +774,21 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** re
 
     PythonSessionCtx* session = RG_ALLOC(sizeof(*session));
     *session = (PythonSessionCtx){
+            .sessionId = RG_STRDUP(id),
+            .sessionDesc = desc? RG_STRDUP(desc) : NULL,
             .refCount = 1,
             .globalsDict = globalDict,
             .isInstallationNeeded = false,
+            .profiler = PyObject_CallFunction(profileCreateFunction, NULL),
+            .registrations = array_new(char*, 10),
+            .srctx = NULL,
+            .linkedTo = LinkedTo_None,
+            .deadNode = NULL,
+
     };
-    RedisGears_GetShardUUID(id, session->sessionId, session->sessionIdStr, &CurrSessionId);
+    pthread_mutex_init(&session->registrationsLock, NULL);
 
     session->requirements = array_new(PythonRequirementCtx*, 10);
-
-    RedisModule_DictSetC(SessionsDict, session->sessionId, ID_LEN, session);
 
     for(size_t i = 0 ; i < requirementsListLen ; ++i){
         PythonRequirementCtx* req = PythonRequirementCtx_Get(requirementsList[i]);
@@ -695,16 +818,22 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(char* id, const char** re
     return session;
 }
 
-static PythonSessionCtx* PythonSessionCtx_Create(const char** requirementsList, size_t requirementsListLen){
+static PythonSessionCtx* PythonSessionCtx_Create(const char *id, const char *desc, const char** requirementsList, size_t requirementsListLen){
 
-    PythonSessionCtx* session = PythonSessionCtx_CreateWithId(NULL, requirementsList, requirementsListLen);
-
+    PythonSessionCtx* session = PythonSessionCtx_CreateWithId(id, desc, requirementsList, requirementsListLen);
+    session->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
     return session;
 }
 
 static int PythonSessionCtx_Serialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
     PythonSessionCtx* session = arg;
-    RedisGears_BWWriteBuffer(bw, session->sessionId, ID_LEN);
+    RedisGears_BWWriteString(bw, session->sessionId);
+    if (session->sessionDesc) {
+        RedisGears_BWWriteLong(bw, 1); // description exists
+        RedisGears_BWWriteString(bw, session->sessionDesc);
+    } else {
+        RedisGears_BWWriteLong(bw, 0); // description do not exists
+    }
     RedisGears_BWWriteLong(bw, array_len(session->requirements));
     for(size_t i = 0 ; i < array_len(session->requirements) ; ++i){
         RedisGears_BWWriteString(bw, session->requirements[i]->installName);
@@ -713,27 +842,53 @@ static int PythonSessionCtx_Serialize(FlatExecutionPlan* fep, void* arg, Gears_B
     return REDISMODULE_OK;
 }
 
-static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+static void* PythonSessionCtx_Deserialize(Gears_BufferReader* br, int version, char** err, bool useSessionsDict){
     if(version > PY_SESSION_TYPE_VERSION){
         *err = RG_STRDUP("unsupported session version");
         return NULL;
     }
-    size_t len;
-    char* id = RedisGears_BRReadBuffer(br, &len);
 
-    PythonSessionCtx* s = PythonSessionCtx_Get(id);
+    char *id;
+    char *desc = NULL;
+    if (version < PY_SESSION_TYPE_WITH_NAMES) {
+        /* legacy id convert to str */
+        size_t len;
+        id = RedisGears_BRReadBuffer(br, &len);
+        RedisGears_ASprintf(&id, "%.*s-%lld", REDISMODULE_NODE_ID_LEN, id, *(long long*)&id[REDISMODULE_NODE_ID_LEN]);
+    } else {
+        id = RG_STRDUP(RedisGears_BRReadString(br));
+    }
+
+    if (version >= PY_SESSION_TYPE_WITH_DESC) {
+        if (RedisGears_BRReadLong(br)) {
+            // description exists
+            desc = RG_STRDUP(RedisGears_BRReadString(br));
+        }
+    }
+
+    PythonSessionCtx* s = currentSession;
+    if (s) {
+        s = PythonSessionCtx_ShallowCopy(s);
+    }
+    if (!s && useSessionsDict) {
+        s = PythonSessionCtx_Get(id);
+    }
     bool sessionExists;
     if(!s){
-        s = PythonSessionCtx_CreateWithId(id, NULL, 0);
+        s = PythonSessionCtx_CreateWithId(id, desc, NULL, 0);
+        if (useSessionsDict) {
+            PythonSessionCtx_Set(s);
+        }
         if(!s){
             *err = RG_STRDUP("Could not create session");
             return NULL;
         }
         sessionExists = false;
     }else{
-        s = PythonSessionCtx_ShellowCopy(s);
         sessionExists = true;
     }
+    RG_FREE(id);
+    RG_FREE(desc);
     size_t requirementsLen = RedisGears_BRReadLong(br);
     for(size_t i = 0 ; i < requirementsLen ; ++i){
         PythonRequirementCtx* req;
@@ -772,13 +927,47 @@ static void* PythonSessionCtx_Deserialize(FlatExecutionPlan* fep, Gears_BufferRe
     return s;
 }
 
+static void* PythonSessionCtx_DeserializeWithFep(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+    return PythonSessionCtx_Deserialize(br, version, err, true);
+}
+
+static void PythonSessionCtx_OnFepDeserialized(FlatExecutionPlan *fep){
+    PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+    const char *id = RedisGears_FepGetId(fep);
+    PythonSessionCtx_AddFep(sctx, RG_STRDUP(id));
+}
+
 static char* PythonSessionCtx_ToString(void* arg){
     PythonSessionCtx* s = arg;
     char* depsListStr = RedisGears_ArrToStr((void**)s->requirements, array_len(s->requirements), PythonRequirementCtx_ToStr, ',');
+    char* registrationsListStr = NULL;
+    PythonSessionCtx_RunWithRegistrationsLock(s, {
+            registrationsListStr = RedisGears_ArrToStr((void**)s->registrations, array_len(s->registrations), PythonStringArray_ToStr, ',');
+    });
     char* ret;
-    RedisGears_ASprintf(&ret, "{'sessionId':'%s', 'depsList':%s}", s->sessionIdStr, depsListStr);
+    RedisGears_ASprintf(&ret, "{'sessionName':'%s',"
+                              " 'sessionDescription':'%s',"
+                              " 'refCount': %d,"
+                              " 'linkedTo': %s,"
+                              " 'dead': %s,"
+                              " 'isInstallationNeeded':%d,"
+                              " 'registrationsList':%s,"
+                              " 'depsList':%s}",
+                              s->sessionId,
+                              s->sessionDesc ? s->sessionDesc : "null",
+                              s->refCount,
+                              s->linkedTo == LinkedTo_None? "None" : s->linkedTo == LinkedTo_PrimaryDict ? "primary" : "temprary",
+                              s->deadNode ? "true" : "false",
+                              s->isInstallationNeeded,
+                              registrationsListStr,
+                              depsListStr);
     RG_FREE(depsListStr);
+    RG_FREE(registrationsListStr);
     return ret;
+}
+
+static char* PythonSessionCtx_ToStringWithFep(FlatExecutionPlan* fep, void* arg){
+    return PythonSessionCtx_ToString(arg);
 }
 
 static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
@@ -793,7 +982,15 @@ static void RedisGearsPy_OnRegistered(FlatExecutionPlan* fep, void* arg){
     RedisModule_Assert(PyFunction_Check(callback));
 
     PyObject* pArgs = PyTuple_New(0);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* ret = PyObject_CallObject(callback, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     if(!ret){
@@ -1670,8 +1867,15 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         return NULL;
     }
 
-    char* err = NULL;
-    int status = RGM_Register(pfep->fep, mode, executionArgs, &err);
+    char *err = NULL;
+    char *registrationId = NULL;
+    int status;
+    if (ptctx->currSession->srctx) {
+        status = RedisGears_PrepareForRegister(ptctx->currSession->srctx, pfep->fep, mode, executionArgs, &err, &registrationId);
+    } else {
+        // we do not have session registration ctx, we will register and stand alone registration.
+        status = RedisGears_RegisterFep(pluginCtx, pfep->fep, mode, executionArgs, &err, &registrationId);
+    }
     if(!status){
         if(err){
             PyErr_SetString(GearsError, err);
@@ -1682,8 +1886,11 @@ static PyObject* registerExecution(PyObject *self, PyObject *args, PyObject *kar
         return NULL;
     }
 
-    Py_INCREF(Py_None);
-    return Py_None;
+    PythonSessionCtx_AddFep(ptctx->currSession, registrationId);
+
+    PyObject *ret = PyUnicode_FromString(registrationId);
+
+    return ret;
 }
 
 #define ContinueType_Default 1
@@ -1798,7 +2005,15 @@ static PyObject* atomicEnter(PyObject *self, PyObject *args){
     ptctx->flags |= PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
     RedisGears_LockHanlderAcquire(pyAtomic->ctx);
-    RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* Before Redis 7 we need to manually wrap the atomic
+         * execution with multi exec to make sure the replica
+         * will also perform the commands atomically.
+         * On Redis 7 and above, thanks to this PR:
+         * https://github.com/redis/redis/pull/9890
+         * It is not needed anymore. */
+        RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    }
     Py_INCREF(self);
     return self;
 }
@@ -1811,11 +2026,16 @@ static PyObject* atomicExit(PyObject *self, PyObject *args){
     }
     ptctx->flags &= ~PythonThreadCtxFlag_InsideAtomic;
     PyAtomic* pyAtomic = (PyAtomic*)self;
-    RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* see comment on atomicEnter */
+        RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    }
     RedisGears_LockHanlderRelease(pyAtomic->ctx);
     Py_INCREF(Py_None);
     return Py_None;
 }
+
+// LCOV_EXCL_START
 
 typedef struct PyTensor{
     PyObject_HEAD
@@ -2339,6 +2559,7 @@ static PyObject* DAGRun(PyObject *self){
     return future;
 }
 
+// LCOV_EXCL_STOP
 
 static void PyAtomic_Destruct(PyObject *pyObj){
     PyAtomic* pyAtomic = (PyAtomic*)pyObj;
@@ -2605,7 +2826,7 @@ static PyObject* getGearsSession(PyObject *cls, PyObject *args){
         res = Py_None;
     }else{
         PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
-        pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+        pyExSes->s = PythonSessionCtx_ShallowCopy(ptctx->currSession);
         pyExSes->crtCtx = getCommandReaderTriggerCtx(ptctx);
         pyExSes->cmdCtx = getCommandCtx(ptctx);
 
@@ -2698,7 +2919,7 @@ static PyObject* gearsCtx(PyObject *cls, PyObject *args){
         RedisGears_SetDesc(pyfep->fep, descStr);
     }
     RGM_Map(pyfep->fep, RedisGearsPy_ToPyRecordMapper, NULL);
-    RedisGears_SetFlatExecutionPrivateData(pyfep->fep, "PySessionType", PythonSessionCtx_ShellowCopy(ptctx->currSession));
+    RedisGears_SetFlatExecutionPrivateData(pyfep->fep, "PySessionType", PythonSessionCtx_ShallowCopy(ptctx->currSession));
 
     if(RGM_SetFlatExecutionOnUnpausedCallback(pyfep->fep, RedisGearsPy_OnExecutionUnpausedCallback, NULL) != REDISMODULE_OK){
         GearsPyDecRef((PyObject*)pyfep);
@@ -2925,6 +3146,8 @@ static PyObject* executeCommand(PyObject *cls, PyObject *args){
     RedisModule_FreeThreadSafeContext(rctx);
     return res;
 }
+
+// LCOV_EXCL_START
 
 static PyObject* tensorGetDims(PyObject *cls, PyObject *args){
     verifyRedisAILoaded();
@@ -4019,6 +4242,8 @@ static PyObject* scriptRunnerRunAsync(PyObject *cls, PyObject *args){
 	return future;
 }
 
+// LCOV_EXCL_STOP
+
 #define TIME_EVENT_ENCVER 2
 #define TIME_EVENT_ENCVER_WITH_VERSIONED_SESSION_PYCALLBACK 2
 
@@ -4076,7 +4301,7 @@ static void *TimeEvent_RDBLoad(RedisModuleIO *rdb, int encver){
     Gears_BufferReader br;
     Gears_BufferReaderInit(&br, &sessionBuff);
     char* err = NULL;
-    td->session = PythonSessionCtx_Deserialize(NULL, &br, version, &err);
+    td->session = PythonSessionCtx_Deserialize(&br, version, &err, true);
     if(!td->session){
         RedisModule_Log(staticCtx, "warning", "Could not deserialize TimeEven Session, error='%s'", err);
     }
@@ -4141,6 +4366,7 @@ static void TimeEvent_Free(void *value){
     RedisGearsPy_Unlock(&pectx);
     RedisModuleCtx* ctx = RedisModule_GetThreadSafeContext(NULL);
     RedisModule_StopTimer(ctx, td->id, NULL);
+    PythonSessionCtx_Free(td->session);
     RedisModule_FreeThreadSafeContext(ctx);
     RG_FREE(td);
 }
@@ -4197,7 +4423,7 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     td->status = TE_STATUS_RUNNING;
     td->period = period;
     td->callback = callback;
-    td->session = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+    td->session = PythonSessionCtx_ShallowCopy(ptctx->currSession);
     Py_INCREF(callback);
 
     RedisGears_LockHanlderAcquire(ctx);
@@ -4218,6 +4444,20 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     RedisGears_LockHanlderRelease(ctx);
     RedisModule_FreeThreadSafeContext(ctx);
     return Py_True;
+}
+
+static PyObject* isAsyncAllow(PyObject *cls, PyObject *args){
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+    PyObject* ret = Py_False;
+    if(ptctx->currEctx){
+        RunFlags runFlags = RedisGears_GetRunFlags(ptctx->currEctx);
+        if(!(runFlags & RFNoAsync)){
+            ret = Py_True;
+        }
+    }
+
+    Py_INCREF(ret);
+    return ret;
 }
 
 static PyObject* overrideReply(PyObject *cls, PyObject *args){
@@ -4326,6 +4566,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"callNext", callNext, METH_VARARGS, "call the next command registration or the original command (will raise error when used outside on CommandHook scope)"},
     {"getCommand", getCommand, METH_VARARGS, "return the current running command, raise error if command is not available"},
     {"overrideReply", overrideReply, METH_VARARGS, "override the reply with the given python value, raise error if there is no command to override its reply"},
+    {"isAsyncAllow", isAsyncAllow, METH_VARARGS, "return true iff async await is allow"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -4376,6 +4617,7 @@ static void RedisGearsPy_GetRequirementsList(const char** requirementsList, Redi
 
 typedef struct BackgroundDepsInstallCtx{
     PythonSessionCtx* session;
+    PythonSessionCtx* oldSession;
     RedisModuleBlockedClient *bc;
     char* script;
     DoneCallbackFunction doneFunction;
@@ -4392,6 +4634,21 @@ static void RedisGearsPy_ExectionRunningCallback(ExecutionPlan* ep, void* privat
 static void RedisGearsPy_ExectionHoldingCallback(ExecutionPlan* ep, void* privateData) {
     // privateData is the blocked client
     RedisModule_BlockedClientMeasureTimeEnd(privateData);
+}
+
+static void RedisGearsPy_RegisterOnDone(char **errors, size_t len, void *pd){
+    RedisModuleBlockedClient* bc = pd;
+    RedisModuleCtx *ctx = RedisModule_GetThreadSafeContext(bc);
+    if (len == 0) {
+        RedisModule_ReplyWithSimpleString(ctx, "OK");
+    } else {
+        RedisModule_ReplyWithArray(ctx, len);
+        for (size_t i = 0 ; i < len ; ++i) {
+            RedisModule_ReplyWithError(ctx, errors[i]);
+        }
+    }
+    RedisModule_UnblockClient(bc, bc);
+    RedisModule_FreeThreadSafeContext(ctx);
 }
 
 static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstallCtx* bdiCtx){
@@ -4423,29 +4680,48 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
 
         ptctx->createdExecution = NULL;
         ptctx->currentCtx = NULL;
+        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+        bdiCtx->session->srctx = NULL;
         return;
     }
 
-    if(ptctx->createdExecution){
-        if(bdiCtx->isBlocking){
-            RedisModuleBlockedClient* bc = bdiCtx->bc;
-            bdiCtx->bc = NULL; // we are taking ownership of the blocked client
-            if(!bc){
-                bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 0);
-            }
-            RedisGears_AddOnDoneCallback(ptctx->createdExecution, bdiCtx->doneFunction, bc);
-            // on async executions we will set running and holding callbacks to update slowlog stats
-            // but we do it only if we have the relevant api from Redis
-            if (RedisModule_BlockedClientMeasureTimeStart && RedisModule_BlockedClientMeasureTimeStart) {
-                RedisGears_AddOnRunningCallback(ptctx->createdExecution, RedisGearsPy_ExectionRunningCallback, bc);
-                RedisGears_AddOnHoldingCallback(ptctx->createdExecution, RedisGearsPy_ExectionHoldingCallback, bc);
+    if (array_len(bdiCtx->session->registrations) > 0){
+        // we have registrations, lets register them!
+        RedisModuleBlockedClient* bc = bdiCtx->bc;
+        bdiCtx->bc = NULL; // we are taking ownership of the blocked client
+        if(!bc){
+            bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 0);
+        }
+        char *err = NULL;
+        if (RedisGears_Register(bdiCtx->session->srctx, RedisGearsPy_RegisterOnDone, bc, &err) != REDISMODULE_OK) {
+            RedisModule_AbortBlock(bc);
+            RedisModule_ReplyWithError(ptctx->currentCtx, err);
+        }
+        bdiCtx->session->srctx = NULL;
+    } else {
+        if(ptctx->createdExecution){
+            if(bdiCtx->isBlocking){
+                RedisModuleBlockedClient* bc = bdiCtx->bc;
+                bdiCtx->bc = NULL; // we are taking ownership of the blocked client
+                if(!bc){
+                    bc = RedisModule_BlockClient(ptctx->currentCtx, NULL, NULL, NULL, 0);
+                }
+                RedisGears_AddOnDoneCallback(ptctx->createdExecution, bdiCtx->doneFunction, bc);
+                // on async executions we will set running and holding callbacks to update slowlog stats
+                // but we do it only if we have the relevant api from Redis
+                if (RedisModule_BlockedClientMeasureTimeStart && RedisModule_BlockedClientMeasureTimeStart) {
+                    RedisGears_AddOnRunningCallback(ptctx->createdExecution, RedisGearsPy_ExectionRunningCallback, bc);
+                    RedisGears_AddOnHoldingCallback(ptctx->createdExecution, RedisGearsPy_ExectionHoldingCallback, bc);
+                }
+            }else{
+                const char* id = RedisGears_GetId(ptctx->createdExecution);
+                RedisModule_ReplyWithStringBuffer(rctx, id, strlen(id));
             }
         }else{
-            const char* id = RedisGears_GetId(ptctx->createdExecution);
-            RedisModule_ReplyWithStringBuffer(rctx, id, strlen(id));
+            RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
         }
-    }else{
-        RedisModule_ReplyWithSimpleString(ptctx->currentCtx, "OK");
+        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+        bdiCtx->session->srctx = NULL;
     }
     RedisGearsPy_Unlock(&pectx);
 
@@ -4465,7 +4741,10 @@ static void RedisGears_OnRequirementInstallationDone(ExecutionPlan* ep, void* pr
         size_t errorLen;
         const char* errorStr = RedisGears_StringRecordGet(errorRecord, &errorLen);
         RedisModule_ReplyWithError(rctx, errorStr);
+        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+        bdiCtx->session->srctx = NULL;
     }else{
+        bdiCtx->session->isInstallationNeeded = false;
         RedisGearsPy_InnerExecute(rctx, bdiCtx);
     }
 
@@ -4473,6 +4752,7 @@ static void RedisGears_OnRequirementInstallationDone(ExecutionPlan* ep, void* pr
 
     // free bdiCtx
     PythonSessionCtx_Free(bdiCtx->session);
+    if (bdiCtx->oldSession) PythonSessionCtx_Free(bdiCtx->oldSession);
     RG_FREE(bdiCtx->script);
     if(bdiCtx->bc){
         RedisModule_UnblockClient(bdiCtx->bc, NULL);
@@ -4522,8 +4802,10 @@ static void RedisGearsPy_DownloadWheelsAndDistribute(void* ctx){
 
 error:
     // free bdiCtx
-
+    RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+    bdiCtx->session->srctx = NULL;
     PythonSessionCtx_Free(bdiCtx->session);
+    if (bdiCtx->oldSession) PythonSessionCtx_Free(bdiCtx->oldSession);
     RG_FREE(bdiCtx->script);
     if(bdiCtx->bc){
         RedisModule_UnblockClient(bdiCtx->bc, NULL);
@@ -4535,6 +4817,7 @@ error:
 }
 
 static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
+                                    PythonSessionCtx* oldSession,
                                     RedisModuleBlockedClient *bc,
                                     const char* script,
                                     DoneCallbackFunction doneFunction,
@@ -4543,6 +4826,7 @@ static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
     BackgroundDepsInstallCtx* bdiCtx = RG_ALLOC(sizeof(*bdiCtx));
     *bdiCtx = (BackgroundDepsInstallCtx){
             .session = session,
+            .oldSession = oldSession,
             .bc = bc,
             .script = RG_STRDUP(script),
             .doneFunction = doneFunction,
@@ -4555,11 +4839,36 @@ static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
 #define CLUSTER_ERROR "ERRCLUSTER"
 #define VERIFY_CLUSTER_INITIALIZE(c) if(!RedisGears_ClusterIsInitialized()) return RedisModule_ReplyWithError(c, CLUSTER_ERROR" Uninitialized cluster state")
 
+static int RedisGearsPy_VerifySessionId(const char *id) {
+    for (; *id ; ++id) {
+        if (*id >= 'a' && *id <= 'z') {
+            continue;
+        }
+        if (*id >= 'A' && *id <= 'Z') {
+            continue;
+        }
+        if (*id >= '0' && *id <= '9') {
+            continue;
+        }
+        if (*id == '_') {
+            continue;
+        }
+        if (*id == '-') {
+            continue;
+        }
+        return REDISMODULE_ERR;
+    }
+    return REDISMODULE_OK;
+}
+
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+#define ID_SIZE 40
+    char id[ID_SIZE + 1] = {0}; // buffer to generate session id
+
     int ctxFlags = RedisModule_GetContextFlags(ctx);
 
-    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI)){
-        RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec or lua");
+    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI|REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
+        RedisModule_ReplyWithError(ctx, "Can not run gears inside a multi exec, lua, or when blocking is not allowed");
         return REDISMODULE_OK;
     }
 
@@ -4570,44 +4879,145 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     VERIFY_CLUSTER_INITIALIZE(ctx);
 
     const char* script = RedisModule_StringPtrLen(argv[1], NULL);
+    char *sessionName = NULL;
+    char *replaceWith = NULL;
+    char *sessionDesc = NULL;
     bool isBlocking = true;
-    size_t requirementsArg = 3;
-    if(argc >= 3){
-        const char* block = RedisModule_StringPtrLen(argv[2], NULL);
-        if(strcasecmp(block, "UNBLOCKING") == 0){
+    bool upgrade = false;
+    size_t currArg = 2;
+    for(; currArg < argc ; ++currArg) {
+        const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
+        if(strcasecmp(option, "UNBLOCKING") == 0){
             isBlocking = false;
-            requirementsArg = 4;
+            continue;
         }
+        if(strcasecmp(option, "UPGRADE") == 0){
+            upgrade = true;
+            continue;
+        }
+        if(strcasecmp(option, "REPLACE_WITH") == 0){
+            if (++currArg >= argc) {
+                RedisModule_ReplyWithError(ctx, "REPLACE_WITH is missing");
+                return REDISMODULE_OK;
+            }
+            replaceWith = (char*)RedisModule_StringPtrLen(argv[currArg], NULL);
+            continue;
+        }
+        if(strcasecmp(option, "ID") == 0){
+            if (++currArg >= argc) {
+                RedisModule_ReplyWithError(ctx, "ID is missing");
+                return REDISMODULE_OK;
+            }
+            sessionName = (char*)RedisModule_StringPtrLen(argv[currArg], NULL);
+            if (RedisGearsPy_VerifySessionId(sessionName) != REDISMODULE_OK) {
+                RedisModule_ReplyWithError(ctx, "ID must be compose of: ['A'-'Z' | 'a'-'z' | '0' - '9' | '-' | '_']");
+                return REDISMODULE_OK;
+            }
+            continue;
+        }
+        if(strcasecmp(option, "DESCRIPTION") == 0){
+            if (++currArg >= argc) {
+                RedisModule_ReplyWithError(ctx, "DESCRIPTION is missing");
+                return REDISMODULE_OK;
+            }
+            sessionDesc = (char*)RedisModule_StringPtrLen(argv[currArg], NULL);
+            continue;
+        }
+        break;
     }
 
-    size_t reqLen = argc >= requirementsArg ? argc - requirementsArg : 0;
+    size_t reqLen = (argc > currArg) ? argc - currArg - 1 : 0;
     const char* requirementsList[reqLen];
-    if(argc >= requirementsArg){
-        const char* requirements = RedisModule_StringPtrLen(argv[requirementsArg - 1], NULL);
+    if (currArg < argc) {
+        // last arguments must be requirements
+        const char* requirements = RedisModule_StringPtrLen(argv[currArg++], NULL);
         if(strcasecmp(requirements, "REQUIREMENTS") == 0){
-            RedisGearsPy_GetRequirementsList(requirementsList, argv + requirementsArg, reqLen);
+            RedisGearsPy_GetRequirementsList(requirementsList, argv + currArg, reqLen);
         }else{
-            RedisModule_ReplyWithError(ctx, "Extra unknown arguments were given.");
+            char* msg;
+            RedisGears_ASprintf(&msg, "Unknown arguments were given: %s", requirements);
+            RedisModule_ReplyWithError(ctx, msg);
+            RG_FREE(msg);
             return REDISMODULE_OK;
         }
     }
 
-    PythonSessionCtx* session = PythonSessionCtx_Create(requirementsList, reqLen);
+    if (!sessionName) {
+        RedisModule_GetRandomHexChars(id, ID_SIZE);
+        sessionName = id;
+    }
+
+    PythonSessionCtx* oldSession = PythonSessionCtx_Get(sessionName);;
+    if (replaceWith) {
+        if (oldSession) {
+            char* msg;
+            RedisGears_ASprintf(&msg, "Can not replace an existing session %s with %s", sessionName, replaceWith);
+            RedisModule_ReplyWithError(ctx, msg);
+            RG_FREE(msg);
+            PythonSessionCtx_Free(oldSession);
+            return REDISMODULE_OK;
+        }
+        upgrade = true;
+        oldSession = PythonSessionCtx_Get(replaceWith);
+        if (!oldSession) {
+            char* msg;
+            RedisGears_ASprintf(&msg, "Can not replace with %s, session does not exists.", replaceWith);
+            RedisModule_ReplyWithError(ctx, msg);
+            RG_FREE(msg);
+            return REDISMODULE_OK;
+        }
+    }
+    if (oldSession) {
+        if (!upgrade) {
+            char* msg;
+            RedisGears_ASprintf(&msg, "Session %s already exists", sessionName);
+            RedisModule_ReplyWithError(ctx, msg);
+            RG_FREE(msg);
+            PythonSessionCtx_Free(oldSession);
+            return REDISMODULE_OK;
+        }
+    }
+
+    PythonSessionCtx* session = PythonSessionCtx_Create(sessionName, sessionDesc, requirementsList, reqLen);
     if(!session){
+        if (oldSession) PythonSessionCtx_Free(oldSession);
         RedisModule_ReplyWithError(ctx, "Could not satisfy requirements, look at the log file for more information.");
         return REDISMODULE_OK;
+    }
+
+    char *err;
+    if (RedisGears_PutUsedSession(session->srctx, session, &err) != REDISMODULE_OK) {
+        if (oldSession) PythonSessionCtx_Free(oldSession);
+        RedisGears_SessionRegisterCtxFree(session->srctx);
+        session->srctx = NULL;
+        PythonSessionCtx_Free(session);
+        RedisModule_ReplyWithError(ctx, "Failed serializing session");
+        RG_FREE(err);
+        return REDISMODULE_OK;
+    }
+    // we gave the session to srctx so we need another copy of it.
+    session = PythonSessionCtx_ShallowCopy(session);
+
+    if (oldSession) {
+        RedisGears_AddSessionToUnlink(session->srctx, oldSession->sessionId);
+        PythonSessionCtx_RunWithRegistrationsLock(oldSession, {
+            for (size_t i = 0 ; i < array_len(oldSession->registrations) ; ++i) {
+                RedisGears_AddRegistrationToUnregister(session->srctx, oldSession->registrations[i]);
+            }
+        });
     }
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
 
     if(session->isInstallationNeeded){
         RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
-        RedisGearsPy_BackgroundExecute(session, bc, script, ptctx->doneFunction, isBlocking);
+        RedisGearsPy_BackgroundExecute(session, oldSession, bc, script, ptctx->doneFunction, isBlocking);
         return REDISMODULE_OK;
     }
 
     BackgroundDepsInstallCtx bdiCtx = (BackgroundDepsInstallCtx){
             .session = session,
+            .oldSession = oldSession,
             .bc = NULL,
             .script = (char*)script,
             .doneFunction = ptctx->doneFunction,
@@ -4617,6 +5027,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     RedisGearsPy_InnerExecute(ctx, &bdiCtx);
 
     PythonSessionCtx_Free(session);
+    if (oldSession) PythonSessionCtx_Free(oldSession);
 
     return REDISMODULE_OK;
 }
@@ -4707,13 +5118,14 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
 
    Py_INCREF(ptctx->pyfutureCreated);
 
-   PyObject* pArgs = PyTuple_New(3);
+   PyObject* pArgs = PyTuple_New(4);
    PyTuple_SetItem(pArgs, 0, coro);
    PyTuple_SetItem(pArgs, 1, (PyObject*)pyfuture);
+   PyTuple_SetItem(pArgs, 2, PyLong_FromLong(0));
 
    /* Create session object */
    PyExecutionSession* pyExSes = PyObject_New(PyExecutionSession, &PyExecutionSessionType);
-   pyExSes->s = PythonSessionCtx_ShellowCopy(ptctx->currSession);
+   pyExSes->s = PythonSessionCtx_ShallowCopy(ptctx->currSession);
    pyExSes->crtCtx = RedisGears_GetCommandReaderTriggerCtx(rctx);
    pyExSes->cmdCtx = RedisGears_CommandCtxGet(rctx);
    if(pyExSes->crtCtx){
@@ -4722,12 +5134,15 @@ PyObject* RedisGearsPy_PyCallbackHandleCoroutine(ExecutionCtx* rctx, PyObject* c
    if(pyExSes->cmdCtx){
        pyExSes->cmdCtx = RedisGears_CommandCtxGetShallowCopy(pyExSes->cmdCtx);
    }
-   PyTuple_SetItem(pArgs, 2, (PyObject*)pyExSes);
+   PyTuple_SetItem(pArgs, 3, (PyObject*)pyExSes);
 
    PyObject* nn = PyObject_CallObject(runCoroutineFunction, pArgs);
    GearsPyDecRef(pArgs);
 
    if(!nn){
+       char* err = getPyError();
+       RedisModule_Log(staticCtx, "warning", "Error when runnong coroutine, error='%s'", err);
+       RG_FREE(err);
        GearsPyDecRef((PyObject*)pyfuture);
        return NULL;
    }
@@ -4752,7 +5167,15 @@ int RedisGearsPy_PyCallbackForEach(ExecutionCtx* rctx, Record *record, void* arg
     PyObject* obj = PyObjRecordGet(record);
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* ret = PyObject_CallObject(callback, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // stop profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -4822,7 +5245,15 @@ static Record* RedisGearsPy_PyCallbackAccumulateByKey(ExecutionCtx* rctx, char* 
 	PyTuple_SetItem(pArgs, 0, keyPyStr);
 	PyTuple_SetItem(pArgs, 1, oldAccumulateObj);
 	PyTuple_SetItem(pArgs, 2, currObj);
+	if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
 	PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
+	if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
 	GearsPyDecRef(pArgs);
 
 	PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -4896,7 +5327,15 @@ static Record* RedisGearsPy_PyCallbackAccumulate(ExecutionCtx* rctx, Record *acc
     PyObjRecordSet(accumulate, NULL);
     PyTuple_SetItem(pArgs, 0, oldAccumulateObj);
     PyTuple_SetItem(pArgs, 1, currObj);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* newAccumulateObj = PyObject_CallObject(callback, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -4958,7 +5397,15 @@ static Record* RedisGearsPy_PyCallbackMapper(ExecutionCtx* rctx, Record *record,
     PyObject* oldObj = PyObjRecordGet(record);
     PyObjRecordSet(record, NULL); // pass ownership of oldObj to NULL
     PyTuple_SetItem(pArgs, 0, oldObj);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -5015,7 +5462,15 @@ static Record* RedisGearsPy_PyCallbackFlatMapper(ExecutionCtx* rctx, Record *rec
     PyObject* oldObj = PyObjRecordGet(record);
     PyObjRecordSet(record, NULL);
     PyTuple_SetItem(pArgs, 0, oldObj);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* newObj = PyObject_CallObject(callback, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -5086,7 +5541,15 @@ static int RedisGearsPy_PyCallbackFilter(ExecutionCtx* rctx, Record *record, voi
     PyObject* obj = PyObjRecordGet(record);
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* ret = PyObject_CallObject(callback, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // stop profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
@@ -5145,7 +5608,15 @@ static char* RedisGearsPy_PyCallbackExtractor(ExecutionCtx* rctx, Record *record
     PyObject* obj = PyObjRecordGet(record);
     Py_INCREF(obj);
     PyTuple_SetItem(pArgs, 0, obj);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* ret = PyObject_CallObject(extractor, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     if(ret && PyCoro_CheckExact(ret)){
@@ -5201,7 +5672,15 @@ static Record* RedisGearsPy_PyCallbackReducer(ExecutionCtx* rctx, char* key, siz
     PyObject* keyPyObj = PyUnicode_FromString(key);
     PyTuple_SetItem(pArgs, 0, keyPyObj);
     PyTuple_SetItem(pArgs, 1, obj);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStartFunction, "O", sctx->profiler);
+    }
     PyObject* ret = PyObject_CallObject(reducer, pArgs);
+    if (RedisGears_ProfileEnabled()) {
+        // start profiling
+        PyObject_CallFunction(profileStopFunction, "O", sctx->profiler);
+    }
     GearsPyDecRef(pArgs);
 
     if(ret && PyCoro_CheckExact(ret)){
@@ -5367,7 +5846,7 @@ static Record* RedisGearsPy_ToPyRecordMapper(ExecutionCtx* rctx, Record *record,
     return res;
 }
 
-static void* RedisGearsPy_PyObjectDup(void* arg){
+static void* RedisGearsPy_PyObjectDup(FlatExecutionPlan* fep, void* arg){
     RedisGearsPy_LOCK
     PyObject* obj = arg;
     Py_INCREF(obj);
@@ -5375,14 +5854,14 @@ static void* RedisGearsPy_PyObjectDup(void* arg){
     return arg;
 }
 
-static void RedisGearsPy_PyObjectFree(void* arg){
+static void RedisGearsPy_PyObjectFree(FlatExecutionPlan* fep, void* arg){
     RedisGearsPy_LOCK
     PyObject* obj = arg;
     GearsPyDecRef(obj);
     RedisGearsPy_UNLOCK
 }
 
-static char* RedisGearsPy_PyObjectToString(void* arg){
+static char* RedisGearsPy_PyObjectToString(FlatExecutionPlan* fep, void* arg){
     char* objCstr = NULL;
     RedisGearsPy_LOCK
     PyObject* obj = arg;
@@ -5456,6 +5935,15 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         return NULL;
     }
     RedisGearsPy_LOCK
+
+    if(fep){
+        /* set requested_base_globals, cloud pickle was modified to look at this
+         * variable and if set, use is as the global dictionary for the deserialized
+         * functions. */
+        PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+        PyDict_SetItemString(pyGlobals, "requested_base_globals", sctx->globalsDict);
+    }
+
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject *dataStr = PyBytes_FromStringAndSize(data, len);
@@ -5478,15 +5966,9 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
     }
     GearsPyDecRef(args);
 
-    if(fep){
-        // replace the global dictionary with the session global dictionary
-        PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
-        PyFunctionObject* callback_func = (PyFunctionObject*)callback;
-        PyDict_Merge(sctx->globalsDict, callback_func->func_globals, 0);
-        GearsPyDecRef(callback_func->func_globals);
-        callback_func->func_globals = sctx->globalsDict;
-        Py_INCREF(callback_func->func_globals);
-    }
+    /* restore requested_base_globals */
+    Py_INCREF(Py_None);
+    PyDict_SetItemString(pyGlobals, "requested_base_globals", Py_None);
 
     RedisGearsPy_UNLOCK
     return callback;
@@ -5661,6 +6143,225 @@ static int RedisGearsPy_ImportRequirementInternal(RedisModuleCtx *ctx, RedisModu
     array_free(reqs);
 
     return REDISMODULE_OK;
+}
+
+static void RedisGearsPy_DumpSingleSession(RedisModuleCtx *ctx, PythonSessionCtx* s, int verbose){
+    RedisModule_ReplyWithArray(ctx, 16);
+    RedisModule_ReplyWithCString(ctx, "ID");
+    RedisModule_ReplyWithCString(ctx, s->sessionId);
+    RedisModule_ReplyWithCString(ctx, "sessionDescription");
+    if (s->sessionDesc) {
+        RedisModule_ReplyWithCString(ctx, s->sessionDesc);
+    } else {
+        RedisModule_ReplyWithNull(ctx);
+    }
+    RedisModule_ReplyWithCString(ctx, "refCount");
+    RedisModule_ReplyWithLongLong(ctx, s->refCount);
+    RedisModule_ReplyWithCString(ctx, "linked");
+    RedisModule_ReplyWithCString(ctx, s->linkedTo == LinkedTo_None ? "None" : s->linkedTo == LinkedTo_PrimaryDict ? "primary" : "temprary");
+    RedisModule_ReplyWithCString(ctx, "dead");
+    RedisModule_ReplyWithCString(ctx, s->deadNode ? "true" : "false");
+    RedisModule_ReplyWithCString(ctx, "requirementInstallationNeeded");
+    RedisModule_ReplyWithLongLong(ctx, s->isInstallationNeeded);
+    RedisModule_ReplyWithCString(ctx, "requirements");
+    RedisModule_ReplyWithArray(ctx, array_len(s->requirements));
+    for(size_t i = 0 ; i < array_len(s->requirements) ; ++i) {
+        PythonRequirementCtx* req = s->requirements[i];
+        if (verbose) {
+            RedisModule_ReplyWithArray(ctx, 10);
+            RedisModule_ReplyWithCString(ctx, "name");
+            RedisModule_ReplyWithCString(ctx, req->installName);
+            RedisModule_ReplyWithCString(ctx, "refCount");
+            RedisModule_ReplyWithLongLong(ctx, req->refCount);
+            RedisModule_ReplyWithCString(ctx, "isDownloaded");
+            RedisModule_ReplyWithLongLong(ctx, req->isDownloaded);
+            RedisModule_ReplyWithCString(ctx, "isInstalled");
+            RedisModule_ReplyWithLongLong(ctx, req->isInstalled);
+            RedisModule_ReplyWithCString(ctx, "wheels");
+            RedisModule_ReplyWithArray(ctx, array_len(req->wheels));
+            for(size_t j = 0 ; j < array_len(req->wheels) ; ++j) {
+                const char* wheel = req->wheels[j];
+                RedisModule_ReplyWithCString(ctx, wheel);
+            }
+        } else {
+            RedisModule_ReplyWithCString(ctx, req->installName);
+        }
+    }
+    RedisModule_ReplyWithCString(ctx, "registrations");
+
+    PythonSessionCtx_RunWithRegistrationsLock(s, {
+        RedisModule_ReplyWithArray(ctx, array_len(s->registrations));
+        for(size_t i = 0 ; i < array_len(s->registrations) ; ++i) {
+            const char *registrationId = s->registrations[i];
+            if (verbose) {
+                FlatExecutionPlan *fep = RedisGears_GetFepById(registrationId);
+                if (!fep) {
+                    RedisModule_ReplyWithCString(ctx, registrationId);
+                } else {
+                    RedisGears_DumpRegistration(ctx, fep, REGISTRATION_DUMP_NO_PD);
+                }
+            } else {
+                RedisModule_ReplyWithCString(ctx, registrationId);
+            }
+        }
+    });
+}
+
+static int RedisGearsPy_DumpSessions(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    pthread_mutex_lock(&PySessionsLock);
+    int verbose = 0;
+    int ts = 0;
+    int tmp = 0;
+    if (argc > 1) {
+        // dump sessions by name
+        size_t currArg = 1;
+        for(; currArg < argc ; ++currArg) {
+            const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
+            if(strcasecmp(option, "VERBOSE") == 0){
+                verbose = 1;
+                continue;
+            }
+            if(strcasecmp(option, "DEAD") == 0){
+                ts = 1;
+                continue;
+            }
+            break;
+        }
+
+        if (currArg < argc) {
+            const char* lastOption = RedisModule_StringPtrLen(argv[currArg++], NULL);
+            if(strcasecmp(lastOption, "SESSIONS") == 0){
+                RedisModule_ReplyWithArray(ctx, argc - currArg);
+                for (size_t i = currArg ; i < argc ; ++i) {
+                    const char* sessionName = RedisModule_StringPtrLen(argv[i], NULL);
+                    // we can fetch session directly because we take the PySessionsLock
+                    PythonSessionCtx* s = RedisModule_DictGetC(SessionsDict, (char*)sessionName, strlen(sessionName), NULL);
+                    if (!s) {
+                        char* msg;
+                        RedisGears_ASprintf(&msg, "Session %s does not exists", sessionName);
+                        RedisModule_ReplyWithCString(ctx, msg);
+                        RG_FREE(msg);
+                    } else {
+                        RedisGearsPy_DumpSingleSession(ctx, s, verbose);
+                    }
+                }
+            } else {
+                char* msg;
+                RedisGears_ASprintf(&msg, "Unknown option %s", lastOption);
+                RedisModule_ReplyWithError(ctx, msg);
+                RG_FREE(msg);
+            }
+            pthread_mutex_unlock(&PySessionsLock);
+            return REDISMODULE_OK;
+        }
+        if (ts) {
+            RedisModule_ReplyWithArray(ctx, Gears_listLength(DeadSessionsList));
+            Gears_listIter *iter = Gears_listGetIterator(DeadSessionsList, AL_START_HEAD);
+            Gears_listNode *n = NULL;
+            while((n = Gears_listNext(iter))) {
+                PythonSessionCtx* s = Gears_listNodeValue(n);
+                RedisGearsPy_DumpSingleSession(ctx, s, verbose);
+            }
+            Gears_listReleaseIterator(iter);
+            pthread_mutex_unlock(&PySessionsLock);
+            return REDISMODULE_OK;
+        }
+    }
+    // dump all sessions
+    RedisModuleDictIter *iter = RedisModule_DictIteratorStartC(SessionsDict, "^", NULL, 0);
+    char* key;
+    size_t keyLen;
+    PythonSessionCtx* s;
+    RedisModule_ReplyWithArray(ctx, RedisModule_DictSize(SessionsDict));
+    while((key = RedisModule_DictNextC(iter, &keyLen, (void**)&s))){
+        RedisGearsPy_DumpSingleSession(ctx, s, verbose);
+    }
+    RedisModule_DictIteratorStop(iter);
+    pthread_mutex_unlock(&PySessionsLock);
+    return REDISMODULE_OK;
+}
+
+static int RedisGearsPy_ProfileReset(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if (argc != 1){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* strId = RedisModule_StringPtrLen(argv[0], NULL);
+
+    PythonSessionCtx* s = PythonSessionCtx_Get(strId);
+    if (!s) {
+        RedisModule_ReplyWithError(ctx, "session does not exists");
+        return REDISMODULE_OK;
+    }
+
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(s, NULL);
+    RedisGearsPy_Lock(&pectx);
+    GearsPyDecRef(s->profiler);
+    s->profiler = PyObject_CallFunction(profileCreateFunction, NULL);
+    RedisGearsPy_Unlock(&pectx);
+    PythonSessionCtx_Free(s);
+    RedisModule_ReplyWithSimpleString(ctx, "OK");
+    return REDISMODULE_OK;
+}
+
+static int RedisGearsPy_ProfileStats(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if (argc < 0 || argc > 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    const char* strId = RedisModule_StringPtrLen(argv[0], NULL);
+    const char* order = "tottime";
+    if (argc == 3) {
+        order = RedisModule_StringPtrLen(argv[1], NULL);
+    }
+
+    PythonSessionCtx* s = PythonSessionCtx_Get(strId);
+    if (!s) {
+        RedisModule_ReplyWithError(ctx, "session does not exists");
+        return REDISMODULE_OK;
+    }
+
+    PythonExecutionCtx pectx = PythonExecutionCtx_New(s, NULL);
+    RedisGearsPy_Lock(&pectx);
+
+    PyObject* res = PyObject_CallFunction(profileGetInfoFunction, "Os", s->profiler, order);
+    if (!res) {
+        char* error = getPyError();
+        if (!error) {
+            error = RG_STRDUP("Failed getting profile information");
+        }
+        RedisModule_ReplyWithError(ctx, error);
+        RG_FREE(error);
+        RedisGearsPy_Unlock(&pectx);
+        PythonSessionCtx_Free(s);
+        return REDISMODULE_OK;
+    }
+    PyObject* statsPyStr = PyObject_Str(res);
+    size_t len;
+    const char* statsCStr = PyUnicode_AsUTF8AndSize(statsPyStr, &len);
+    RedisModule_ReplyWithStringBuffer(ctx, statsCStr, len);
+    GearsPyDecRef(statsPyStr);
+    GearsPyDecRef(res);
+
+    RedisGearsPy_Unlock(&pectx);
+    PythonSessionCtx_Free(s);
+
+    return REDISMODULE_OK;
+}
+
+static int RedisGearsPy_Profile(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+	if (argc < 2) {
+		return RedisModule_WrongArity(ctx);
+	}
+	const char* subCommand = RedisModule_StringPtrLen(argv[1], NULL);
+	if (strcasecmp(subCommand, "stats") == 0) {
+		return RedisGearsPy_ProfileStats(ctx, argv + 2, argc - 2);
+	} else if (strcasecmp(subCommand, "reset") == 0) {
+		return RedisGearsPy_ProfileReset(ctx, argv + 2, argc - 2);
+	}
+
+	RedisModule_ReplyWithError(ctx, "Wrong subcommand given to RG.PYPROFILE");
+	return REDISMODULE_OK;
 }
 
 static int RedisGearsPy_DumpRequirements(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
@@ -6547,17 +7248,37 @@ static int Python_BeforeConfigChange(const char* key, const char* val, char** er
     return REDISMODULE_OK;
 }
 
-#define REDISGEARSPYTHON_PLUGIN_NAME "GearsPythonPlugin"
+static int Python_SerializeSession(void* session, Gears_BufferWriter *bw, char **err){
+    RedisGears_BWWriteLong(bw, PY_SESSION_TYPE_VERSION);
+    return PythonSessionCtx_Serialize(NULL, session, bw, err);
+}
 
-#define REDISGEARSPYTHON_VERSION_MAJOR 1
-#define REDISGEARSPYTHON_VERSION_MINOR 0
-#define REDISGEARSPYTHON_VERSION_PATCH 0
+static void Python_SetCurrSession(void *s, bool onlyFree){
+    if (onlyFree) {
+        PythonSessionCtx_Free(s);
+        return;
+    }
+    if (!s) {
+        PythonSessionCtx_Set(currentSession);
+        PythonSessionCtx_Free(currentSession);
+        currentSession = NULL;
+    } else {
+        currentSession = s;
+    }
+}
 
-#define STR1(a) #a
-#define STR(e) STR1(e)
+static void* Python_DeserializeSession(Gears_BufferReader *br, char **err) {
+    long version = RedisGears_BRReadLong(br);
+    return PythonSessionCtx_Deserialize(br, version, err, false);
+}
 
-#define REDISGEARSPYTHON_PLUGIN_VERSION \
-  (REDISGEARSPYTHON_VERSION_MAJOR * 10000 + REDISGEARSPYTHON_VERSION_MINOR * 100 + REDISGEARSPYTHON_VERSION_PATCH)
+static void Python_UnlinkSession(const char* sessionId) {
+    PythonSessionCtx* s = PythonSessionCtx_Get(sessionId);
+    if (s) {
+        PythonSessionCtx_Unlink(s);
+        PythonSessionCtx_Free(s);
+    }
+}
 
 static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
     if (RedisModule_InfoAddSection(ctx, "python_stats") == REDISMODULE_OK) {
@@ -6575,25 +7296,59 @@ static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
             RedisModule_InfoAddFieldCString(ctx, "IsDownloaded", req->isDownloaded ? "yes" : "no");
             RedisModule_InfoAddFieldCString(ctx, "IsInstalled", req->isInstalled ? "yes" : "no");
             RedisModule_InfoAddFieldCString(ctx, "CompiledOs", (char*)RedisGears_GetCompiledOs());
-            char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonRequirementCtx_WheelToStr, '|');
+            char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonStringArray_ToStr, '|');
             RedisModule_InfoAddFieldCString(ctx, "Wheels", wheelsStr);
             RG_FREE(wheelsStr);
             RedisModule_InfoEndDictField(ctx);
         }
         Gears_dictReleaseIterator(iter);
     }
+
+    if (RedisModule_InfoAddSection(ctx, "python_sessions") == REDISMODULE_OK) {
+        pthread_mutex_lock(&PySessionsLock);
+        RedisModuleDictIter *iter = RedisModule_DictIteratorStartC(SessionsDict, "^", NULL, 0);
+        char* key;
+        size_t keyLen;
+        PythonSessionCtx* s;
+        while((key = RedisModule_DictNextC(iter, &keyLen, (void**)&s))){
+            char* str = PythonSessionCtx_ToString(s);
+            RedisModule_InfoAddFieldCString(ctx, s->sessionId, str);
+            RG_FREE(str);
+        }
+        RedisModule_DictIteratorStop(iter);
+
+        Gears_listIter *tsIter = Gears_listGetIterator(DeadSessionsList, AL_START_HEAD);
+        Gears_listNode *n = NULL;
+        while ((n = Gears_listNext(tsIter))) {
+            PythonSessionCtx* s = Gears_listNodeValue(n);
+            char* str = PythonSessionCtx_ToString(s);
+            RedisModule_InfoAddFieldCString(ctx, s->sessionId, str);
+            RG_FREE(str);
+        }
+        Gears_listReleaseIterator(tsIter);
+
+        pthread_mutex_unlock(&PySessionsLock);
+    }
 }
 
 __attribute__ ((visibility ("default"))) 
 int RedisGears_OnLoad(RedisModuleCtx *ctx){
 
-    Plugin* p = RedisGears_InitAsGearPlugin(ctx, REDISGEARSPYTHON_PLUGIN_NAME, REDISGEARSPYTHON_PLUGIN_VERSION);
-    if (!p) {
+    pluginCtx = RedisGears_InitAsGearPlugin(ctx, REDISGEARSPYTHON_PLUGIN_NAME, REDISGEARSPYTHON_PLUGIN_VERSION);
+    if (!pluginCtx) {
         RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
         return REDISMODULE_ERR;
     }
 
-    RedisGears_PluginSetInfoCallback(p, Python_Info);
+    pthread_mutex_init(&PySessionsLock, NULL);
+
+    redisVersion = RedisGears_GetRedisVersion();
+
+    RedisGears_PluginSetInfoCallback(pluginCtx, Python_Info);
+    RedisGears_PluginSetUnlinkSessionCallback(pluginCtx, Python_UnlinkSession);
+    RedisGears_PluginSetDeserializeSessionCallback(pluginCtx, Python_DeserializeSession);
+    RedisGears_PluginSetSerializeSessionCallback(pluginCtx, Python_SerializeSession);
+    RedisGears_PluginSetSetCurrSessionCallback(pluginCtx, Python_SetCurrSession);
 
     if(RMAPI_FUNC_SUPPORTED(RedisModule_GetDetachedThreadSafeContext)){
         staticCtx = RedisModule_GetDetachedThreadSafeContext(ctx);
@@ -6627,6 +7382,7 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     }
 
     SessionsDict = RedisModule_CreateDict(ctx);
+    DeadSessionsList = Gears_listCreate();
     RequirementsDict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
     PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
@@ -6772,6 +7528,12 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     setFutureResultsFunction = PyDict_GetItemString(pyGlobals, "setFutureResults");
     setFutureExceptionFunction = PyDict_GetItemString(pyGlobals, "setFutureException");
 
+    profileCreateFunction = PyDict_GetItemString(pyGlobals, "profilerCreate");
+    profileStartFunction = PyDict_GetItemString(pyGlobals, "profileStart");
+    profileStopFunction = PyDict_GetItemString(pyGlobals, "profileStop");
+    profileGetInfoFunction = PyDict_GetItemString(pyGlobals, "profileGetInfo");
+
+
     pythonRecordType = RedisGears_RecordTypeCreate("PythonRecord", sizeof(PythonRecord),
                                                    PythonRecord_SendReply,
                                                    PythonRecord_Serialize,
@@ -6784,23 +7546,26 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
                                                     RedisGearsPy_PyObjectDup,
                                                     RedisGearsPy_PyCallbackSerialize,
                                                     RedisGearsPy_PyCallbackDeserialize,
-                                                    RedisGearsPy_PyObjectToString);
+                                                    RedisGearsPy_PyObjectToString,
+                                                    NULL);
 
     ArgType* pySessionType = RedisGears_CreateType("PySessionType",
                                                     PY_SESSION_TYPE_VERSION,
-                                                    PythonSessionCtx_Free,
-                                                    PythonSessionCtx_ShellowCopy,
+                                                    PythonSessionCtx_FreeWithFep,
+                                                    PythonSessionCtx_ShallowCopyWithFep,
                                                     PythonSessionCtx_Serialize,
-                                                    PythonSessionCtx_Deserialize,
-                                                    PythonSessionCtx_ToString);
+                                                    PythonSessionCtx_DeserializeWithFep,
+                                                    PythonSessionCtx_ToStringWithFep,
+                                                    PythonSessionCtx_OnFepDeserialized);
 
     ArgType* pySessionRequirementsType = RedisGears_CreateType("PySessionRequirementsType",
                                                                 PY_SESSION_REQ_VERSION,
                                                                 PythonSessionRequirements_Free,
-                                                                PythonSessionRequirements_Dup,
+                                                                PythonSessionRequirements_DupWithFep,
                                                                 PythonSessionRequirements_Serialize,
                                                                 PythonSessionRequirements_Deserialize,
-                                                                PythonSessionRequirements_ToString);
+                                                                PythonSessionRequirements_ToString,
+                                                                NULL);
 
     RedisGears_RegisterFlatExecutionPrivateDataType(pySessionType);
 
@@ -6856,6 +7621,16 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
 
     if (RedisModule_CreateCommand(ctx, "rg.pydumpreqs", RedisGearsPy_DumpRequirements, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(staticCtx, "warning", "could not register command rg.pydumpreqs");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.pyprofile", RedisGearsPy_Profile, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pyprofilestats");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.pydumpsessions", RedisGearsPy_DumpSessions, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pydumpsessions");
         return REDISMODULE_ERR;
     }
 

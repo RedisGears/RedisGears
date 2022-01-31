@@ -29,6 +29,12 @@
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
 
+typedef struct RedisVersion{
+    int redisMajorVersion;
+    int redisMinorVersion;
+    int redisPatchVersion;
+}RedisVersion;
+
 #define ID_LEN REDISMODULE_NODE_ID_LEN + sizeof(long long) + 1 // the +1 is for the \0
 #define STR_ID_LEN  REDISMODULE_NODE_ID_LEN + 13
 
@@ -40,8 +46,22 @@
  * Arr(type) need to be created with array_new and free with array_free macros included from "utils/arr.h"
  */
 #define Arr(x) x*
+typedef struct Gears_Buffer Gears_Buffer;
+typedef struct Gears_BufferWriter{
+    Gears_Buffer* buff;
+}Gears_BufferWriter;
+
+typedef struct Gears_BufferReader{
+    Gears_Buffer* buff;
+    size_t location;
+}Gears_BufferReader;
 
 typedef struct Plugin Plugin;
+typedef void (*GearsPlugin_UnlinkSession)(const char* sessionId);
+typedef void (*GearsPlugin_LinkSession)(const char* sessionId);
+typedef int (*GearsPlugin_SerializeSession)(void* session, Gears_BufferWriter *bw, char **err);
+typedef void* (*GearsPlugin_DeserializeSession)(Gears_BufferReader *br, char **err);
+typedef void (*GearsPlugin_SetCurrSession)(void *s, bool onlyFree);
 
 /*
  * Opaque sturcts
@@ -49,6 +69,10 @@ typedef struct Plugin Plugin;
 typedef struct ExecutionPlan ExecutionPlan;
 typedef struct ExecutionCtx ExecutionCtx;
 typedef struct FlatExecutionPlan FlatExecutionPlan;
+
+typedef void (*SessionRegistrationCtx_OnDone)(char **errors, size_t len, void *pd);
+typedef struct SessionRegistrationCtx SessionRegistrationCtx;
+
 typedef struct Record Record;
 typedef struct WorkerData WorkerData;
 typedef struct ExecutionThreadPool ExecutionThreadPool;
@@ -79,7 +103,6 @@ typedef struct ExecutionThreadPool ExecutionThreadPool;
 
 /******************************* READERS *******************************/
 
-typedef struct Gears_Buffer Gears_Buffer;
 typedef struct Gears_BufferWriter Gears_BufferWriter;
 typedef struct Gears_BufferReader Gears_BufferReader;
 typedef struct ArgType ArgType;
@@ -87,11 +110,12 @@ typedef struct ArgType ArgType;
 /**
  * Arguments callbacks definition
  */
-typedef void (*ArgFree)(void* arg);
-typedef void* (*ArgDuplicate)(void* arg);
+typedef void (*ArgFree)(FlatExecutionPlan* fep, void* arg);
+typedef void* (*ArgDuplicate)(FlatExecutionPlan* fep, void* arg);
 typedef int (*ArgSerialize)(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err);
 typedef void* (*ArgDeserialize)(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err);
-typedef char* (*ArgToString)(void* arg);
+typedef char* (*ArgToString)(FlatExecutionPlan* fep, void* arg);
+typedef void (*ArgOnFepDeserialized)(FlatExecutionPlan* fep);
 
 /**
  * Reader instance definition. There is a single reader instance for each execution
@@ -106,26 +130,16 @@ typedef struct Reader{
 }Reader;
 
 /**
- * Default readers to use
- */
-#define KeysReader KeysReader
-#define StreamReader StreamReader
-#define CommandReader CommandReader
-#define ShardIDReader ShardIDReader
-
-/**
  * Create a new argument type with the given name and callbacks.
  */
-GEARS_API ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name, int version, ArgFree free, ArgDuplicate dup, ArgSerialize serialize, ArgDeserialize deserialize, ArgToString tostring);
-
-typedef struct Gears_BufferWriter{
-    Gears_Buffer* buff;
-}Gears_BufferWriter;
-
-typedef struct Gears_BufferReader{
-    Gears_Buffer* buff;
-    size_t location;
-}Gears_BufferReader;
+GEARS_API ArgType* MODULE_API_FUNC(RedisGears_CreateType)(char* name,
+                                                          int version,
+                                                          ArgFree free,
+                                                          ArgDuplicate dup,
+                                                          ArgSerialize serialize,
+                                                          ArgDeserialize deserialize,
+                                                          ArgToString tostring,
+                                                          ArgOnFepDeserialized onDeserialized);
 
 /**
  * Function that allows to read/write from buffers. Use when implementing serialize/deserialize
@@ -161,6 +175,7 @@ typedef RedisGears_ExecutionCallback RedisGears_OnExecutionDoneCallback;
  * Reader callbacks definition.
  */
 typedef Reader* (*RedisGears_CreateReaderCallback)(void* arg);
+typedef int (*RedisGears_ReaderVerifyRegisterCallback)(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err);
 typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err);
 typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep, bool abortPending);
 typedef void (*RedisGears_ReaderSerializeRegisterArgsCallback)(void* arg, Gears_BufferWriter* bw);
@@ -171,6 +186,7 @@ typedef void (*RedisGears_ReaderDumpRegistrationInfo)(FlatExecutionPlan* fep, Re
 typedef void (*RedisGears_ReaderRdbSave)(RedisModuleIO *rdb);
 typedef int (*RedisGears_ReaderRdbLoad)(RedisModuleIO *rdb, int encver);
 typedef void (*RedisGears_ReaderClear)();
+typedef void (*RedisGears_ReaderClearStats)();
 
 /**
  * callbacks for reader implementation.
@@ -179,6 +195,7 @@ typedef void (*RedisGears_ReaderClear)();
  */
 typedef struct RedisGears_ReaderCallbacks{
     RedisGears_CreateReaderCallback create;
+    RedisGears_ReaderVerifyRegisterCallback verifyRegister;
     RedisGears_ReaderRegisterCallback registerTrigger;
     RedisGears_ReaderUnregisterCallback unregisterTrigger;
     RedisGears_ReaderSerializeRegisterArgsCallback serializeTriggerArgs;
@@ -189,6 +206,7 @@ typedef struct RedisGears_ReaderCallbacks{
     RedisGears_ReaderRdbSave rdbSave;
     RedisGears_ReaderRdbLoad rdbLoad;
     RedisGears_ReaderClear clear;
+    RedisGears_ReaderClearStats clearStats;
 }RedisGears_ReaderCallbacks;
 
 
@@ -440,10 +458,20 @@ GEARS_API int MODULE_API_FUNC(RedisGears_FlatMap)(FlatExecutionPlan* ctx, char* 
 GEARS_API int MODULE_API_FUNC(RedisGears_Limit)(FlatExecutionPlan* ctx, size_t offset, size_t len);
 #define RGM_Limit(ctx, offset, len) RedisGears_Limit(ctx, offset, len)
 
+#define RunFlags int
+#define RFNoAsync (1<<0)
+GEARS_API ExecutionPlan* MODULE_API_FUNC(RedisGears_RunWithFlags)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags flags);
 GEARS_API ExecutionPlan* MODULE_API_FUNC(RedisGears_Run)(FlatExecutionPlan* ctx, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err);
 #define RGM_Run(ctx, mode, arg, callback, privateData, err) RedisGears_Run(ctx, mode, arg, callback, privateData, NULL, err)
 
-GEARS_API int MODULE_API_FUNC(RedisGears_Register)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err, char** registrationId);
+GEARS_API void MODULE_API_FUNC(RedisGears_AddRegistrationToUnregister)(SessionRegistrationCtx* srctx, const char* registrationId);
+GEARS_API int MODULE_API_FUNC(RedisGears_PutUsedSession)(SessionRegistrationCtx* srctx, void *session, char **err);
+GEARS_API void MODULE_API_FUNC(RedisGears_AddSessionToUnlink)(SessionRegistrationCtx* srctx, const char* sessionId);
+GEARS_API int MODULE_API_FUNC(RedisGears_PrepareForRegister)(SessionRegistrationCtx* srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId);
+GEARS_API int MODULE_API_FUNC(RedisGears_RegisterFep)(Plugin *p, FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId);
+GEARS_API SessionRegistrationCtx* MODULE_API_FUNC(RedisGears_SessionRegisterCtxCreate)(Plugin *p);
+GEARS_API void MODULE_API_FUNC(RedisGears_SessionRegisterCtxFree)(SessionRegistrationCtx* srctx);
+GEARS_API int MODULE_API_FUNC(RedisGears_Register)(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDone onDone, void *pd, char **err);
 #define RGM_Register(ctx, mode, arg, err) RedisGears_Register(ctx, mode, arg, err, NULL);
 
 GEARS_API int MODULE_API_FUNC(RedisGears_ForEach)(FlatExecutionPlan* ctx, char* name, void* arg);
@@ -466,6 +494,10 @@ GEARS_API const char* MODULE_API_FUNC(RedisGears_FepGetId)(FlatExecutionPlan* ct
 GEARS_API Record* MODULE_API_FUNC(RedisGears_GetRecord)(ExecutionPlan* ctx, long long i);
 GEARS_API Record* MODULE_API_FUNC(RedisGears_GetError)(ExecutionPlan* ctx, long long i);
 GEARS_API ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecution)(const char* id);
+GEARS_API FlatExecutionPlan* MODULE_API_FUNC(RedisGears_GetFepById)(const char* id);
+
+#define REGISTRATION_DUMP_NO_PD (1<<0)
+GEARS_API void MODULE_API_FUNC(RedisGears_DumpRegistration)(RedisModuleCtx *ctx, FlatExecutionPlan *fep, int flags);
 
 /**
  * Will drop the execution once the execution is done
@@ -492,6 +524,7 @@ GEARS_API void* MODULE_API_FUNC(RedisGears_GetFlatExecutionPrivateData)(Executio
 GEARS_API void* MODULE_API_FUNC(RedisGears_GetPrivateData)(ExecutionCtx* ectx);
 GEARS_API void MODULE_API_FUNC(RedisGears_SetPrivateData)(ExecutionCtx* ctx, void* PD);
 GEARS_API ExecutionPlan* MODULE_API_FUNC(RedisGears_GetExecutionFromCtx)(ExecutionCtx* ectx);
+GEARS_API RunFlags MODULE_API_FUNC(RedisGears_GetRunFlags)(ExecutionCtx* ctx);
 
 typedef void (*AbortCallback)(void* abortPD);
 GEARS_API void MODULE_API_FUNC(RedisGears_SetAbortCallback)(ExecutionCtx* ctx, AbortCallback abort, void* abortPD);
@@ -524,8 +557,13 @@ GEARS_API int MODULE_API_FUNC(RedisGears_ExecuteCommand)(RedisModuleCtx *ctx, co
 
 GEARS_API Plugin* MODULE_API_FUNC(RedisGears_RegisterPlugin)(const char* name, int version);
 GEARS_API void MODULE_API_FUNC(RedisGears_PluginSetInfoCallback)(Plugin*, RedisModuleInfoFunc infoFunc);
+GEARS_API void MODULE_API_FUNC(RedisGears_PluginSetUnlinkSessionCallback)(Plugin* p, GearsPlugin_UnlinkSession unlinkSession);
+GEARS_API void MODULE_API_FUNC(RedisGears_PluginSetSerializeSessionCallback)(Plugin* p, GearsPlugin_SerializeSession serializeSession);
+GEARS_API void MODULE_API_FUNC(RedisGears_PluginSetDeserializeSessionCallback)(Plugin* p, GearsPlugin_DeserializeSession deserializeSession);
+GEARS_API void MODULE_API_FUNC(RedisGears_PluginSetSetCurrSessionCallback)(Plugin* p, GearsPlugin_SetCurrSession setCurrSession);
 
 GEARS_API const char* MODULE_API_FUNC(RedisGears_GetConfig)(const char* name);
+GEARS_API bool MODULE_API_FUNC(RedisGears_ProfileEnabled)();
 
 GEARS_API const int MODULE_API_FUNC(RedisGears_ExecutionPlanIsLocal)(ExecutionPlan* ep);
 
@@ -553,6 +591,8 @@ typedef int (*BeforeConfigSet)(const char* key, const char* val, char** err);
 typedef void (*AfterConfigSet)(const char* key, const char* val);
 typedef int (*GetConfig)(const char* key, RedisModuleCtx* ctx);
 GEARS_API void MODULE_API_FUNC(RedisGears_AddConfigHooks)(BeforeConfigSet before, AfterConfigSet after, GetConfig getConfig);
+
+GEARS_API RedisVersion* MODULE_API_FUNC(RedisGears_GetRedisVersion)();
 
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
@@ -854,8 +894,16 @@ static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AccumulateBy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, LocalAccumulateBy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Filter);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RunWithFlags);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Run);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Register);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, PrepareForRegister);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterFep);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddRegistrationToUnregister);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, PutUsedSession);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddSessionToUnlink);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SessionRegisterCtxCreate);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SessionRegisterCtxFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ForEach);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GroupBy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Collect);
@@ -891,6 +939,9 @@ static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, CommandReaderTriggerCtxFree);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetExecution);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFepById);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, DumpRegistration);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRunFlags);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, IsDone);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetFep);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRecordsLen);
@@ -990,9 +1041,14 @@ static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetHashSetRecordType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetNullRecordType);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetConfig);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, ProfileEnabled);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterPlugin);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, PluginSetInfoCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, PluginSetUnlinkSessionCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, PluginSetDeserializeSessionCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, PluginSetSerializeSessionCallback);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, PluginSetSetCurrSessionCallback);
 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ExecutionPlanIsLocal);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetVersion);
@@ -1009,6 +1065,8 @@ static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddLockStateHandler);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddConfigHooks);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, RegisterLoadingEvent);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRedisVersion);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return NULL;

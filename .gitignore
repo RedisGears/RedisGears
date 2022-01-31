@@ -73,3 +73,7 @@ commit.txt
 /venv*/
 Pipfile.lock
 /site
+
+*.html
+*.gcda
+*.gcno
