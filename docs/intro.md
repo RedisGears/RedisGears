@@ -1003,24 +1003,24 @@ Then, after shuffling and summing, each worker executes the `foreach()` operatio
 
 ## Async Await Support
 
-On v1.2 RedisGears added support for Python async-await. It means that instead of giving a Python function as a gears operation, it is also possible to give a Python coroutine. When given a coroutine, the execution pass to a dedicated thread that runs an event loop and schedules all the coroutines.
+RedisGears v1.2 added support for Python async-await. Instead of giving a Python function as a gears operation, it is also possible to give a Python coroutine. When given a coroutine, the execution runs in a dedicated thread that runs an event loop and schedules all the coroutines.
 
 Example:
 ```python
 {{ include('async_await/async_await-000.py')}}
 ```
-This example will wait for 5 seconds and then return a list of all the shards IDs in the Redis cluster. But because it's inside a coroutine and running inside a dedicated event loop, it will not consume a thread from the RedisGears thread pool. This allows other executions to run while it's waiting.
+This example waits for 5 seconds and then returns a list of IDs for all shards in the Redis cluster. Since it's a coroutine that runs inside a dedicated event loop, it will not consume a thread from the RedisGears thread pool. This allows other executions to run while it's waiting.
 
 !!! important "Notice"
-    When using a coroutine, each record will be processed by the coroutine in a background thread. This means that if there were more than one record on each shard, the execution would have to wait 5 seconds for each record. In addition, the processing of records in the same shard is not parallel.
+    A coroutine processes each record in a background thread. If there are multiple records on each shard, the execution waits 5 seconds for each record. In addition, the processing of records in the same shard is not parallel.
 !!! important "Coroutine support"
-    Coroutines are only supported in the following steps: `map`, `flatmap`, `filter`, `foreach`, `aggregate`, `aggregateby`
+    Only the following steps support coroutines: `map`, `flatmap`, `filter`, `foreach`, `aggregate`, `aggregateby`
 
 ### Waiting for Another Execution
 
-So we know we can give a coroutine to a step and wait for events inside this coroutine. We saw that we can wait on `async.sleep` but what else can we wait on? On v1.2 the [run](functions.md#run) function will return a future object that can be awaited inside a coroutine. This allows you to start a [local](intro.md#local-vs-global) execution and decide to create a global execution and wait for it to finish.
+You can give a coroutine to a step and wait for events inside this coroutine. You can wait on `async.sleep` but what else can we wait on? On v1.2 the [run](functions.md#run) function returns a future object that can be awaited inside a coroutine. This allows you to start a [local](intro.md#local-vs-global) execution, decide to create a global execution, and wait for it to finish.
 
-The following example shows how we can use async-await to cache global execution results in a local key and only trigger a global execution on cache misses:
+The following example uses async-await to cache global execution results in a local key and only triggers a global execution on cache misses:
 ```python
 {{ include('async_await/async_await-003.py')}}
 ```
@@ -1028,25 +1028,24 @@ In the example, we first check if we have the student count in a local key, we n
 
 ### Gears Future
 
-In the last section, we mentioned that the [run](functions.md#run) function returns a future object. RedisGears allows you to create a future using a new function, `createFuture`. This function will create a future object that can be waited using `await` keyword. When waiting on a future object, the waiting coroutine does not consume any CPU resources. The waiting coroutine will continue when some other code will set some result to the future object using `setFutureResults`.
+In the last section, we mentioned that the [run](functions.md#run) function returns a future object. RedisGears allows you to create a future using a new function, `createFuture`. This function creates a future object that can be awaited using the `await` keyword. When waiting on a future object, the waiting coroutine does not consume any CPU resources. The waiting coroutine will continue when some other code sets a result to the future object with `setFutureResults`.
 
-The following example shows how we can create a pubsub version such that each published message goes to a single subscriber and the publisher is blocked until a subscriber reads his message.
+The following example creates a pubsub pattern where the publisher sends each message to a single subscriber and is blocked until the subscriber reads the message.
 
 ```python
 {{ include('async_await/async_await-001.py')}}
 ```
-The example creates two registrations on [CommandReader](readers.md#commandreader). The first is triggered using MSG_PUBLISH, and the second using MSG_CONSUME. The publish registration will basically call the `publish` function which will check if there are any consumers waiting on the consumer's list. If there are any, it will set the message as the result of the last consumer's future object, which will cause the message to reach this consumer.
+This example creates two [CommandReader](readers.md#commandreader) registrations. The first is triggered with MSG_PUBLISH, and the second with MSG_CONSUME. The publish registration calls the `publish` function which checks if there are any consumers waiting. If there are any, it sets the message as the result of the last consumer's future object, which sends the message to the consumer.
 
-If there are no waiting consumers, it will create a future object and put it (together with the message) on the publisher's list. When a consumer arrives, it will first check if there is a publisher waiting and if there is, it will take its message and release it with some `OK` reply.
+If no consumers are waiting, it creates a future object and adds it and the message to the list of publishers. When a consumer arrives, it first checks if there is a publisher waiting. If there is, it will take its message and release it with an `OK` reply.
 
-If there is no publisher waiting, it will create a future object and will put it in the consumer's list, waiting for the next publisher to take it.
+If no publishers are waiting, it creates a future object and adds it to the list of consumers, waiting for the next publisher to take it.
 
-Notice that all this code is protected under a mutex. We do not want a race condition on setting the future object and getting it by either publisher or consumer.
+Notice that this code is protected under a mutex. This prevents a race condition on setting the future object and getting it with a publisher or consumer.
 !!! important "Notice"
-    Mutex must be initialized inside the onRegistered callback because it's not serializable.
+    You must initialize the mutex inside the onRegistered callback since it's not serializable.
 !!! important "Notice"
-    Using mutex could be risky and can cause deadlocks with Redis Global Lock. Make sure to use
-    Mutex careful and if not sure please consult.
+    Use a mutex with caution since it can cause deadlocks with the Redis Global Lock.
 !!! example "Example: publisher"
     ````
     127.0.0.1:6379> RG.TRIGGER MSG_PUBLISH "this is a message"
@@ -1058,19 +1057,23 @@ Notice that all this code is protected under a mutex. We do not want a race cond
     1) "this is a message"
     ````
 
-Can we extend the example to support publisher timeout? Yes, using the `runCoroutine` function. This function allows us to add another coroutine to the event loop and to specify a delay. If a delay is given, the coroutine will only start after this delay. The extended code will look like this:
+You can use the `runCoroutine` function to add a publisher timeout to the example. This function allows you to add another coroutine to the event loop and specify a delay. If a delay is given, the coroutine will only start after this delay.
+
+Here's the extended code:
 
 ```python
 {{ include('async_await/async_await-002.py')}}
 ```
-The only addition is that after adding the publisher's future object to the publisher's list, we start a coroutine with a delay of 5 seconds that will release the publisher with a timeout error (exception) if it was not yet released by then. The result will look like this:
+The only addition is that a coroutine with a delay of 5 seconds starts after adding the publisher's future object to the list of publishers. The coroutine will release the publisher with a timeout error (exception) if it was not released by then.
+
+The result looks like this:
 !!! example "Example: publisher timeout"
     ````
     127.0.0.1:6379> RG.TRIGGER MSG_PUBLISH "this is a message"
     (error) timeout
     ````
 !!! important "Notice"
-    The following example only works on a single shard. We left it to the reader to think how to extend it to cluster support.
+    This example only works on a single shard. You will need to make some changes for it to work on a cluster.
 
 To read more about async await, see [Async Await Advanced Topics](async_await_advance_topics.md).
 
