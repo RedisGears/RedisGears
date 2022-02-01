@@ -407,6 +407,7 @@ workflows:
               #- build-macos
           <<: *on-version-tags
       - release-automation:
+          context: common
           <<: *on-version-tags
           requires:
             - deploy-releases
