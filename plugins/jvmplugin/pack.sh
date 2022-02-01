@@ -9,6 +9,7 @@ set -e
 [[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
+[[ $OSNICK == ol8 ]] && OSNICK=rhel8
 
 tar -czf ../../artifacts/snapshot/redisgears-jvm.Linux-$OSNICK-x86_64.$GIT_BRANCH.tgz \
 --transform "s,^./src/,./plugin/," \
