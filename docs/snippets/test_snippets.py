@@ -57,6 +57,7 @@ def standalone(image):
         ('docs/snippets/intro/intro-006.py', [[], []]),
         ('docs/snippets/intro/intro-007.py', b'OK'),
         ('docs/snippets/intro/intro-008.py', b'OK'),
+        ('docs/snippets/intro/intro-008-1.py', b'OK'),
         ('docs/snippets/intro/intro-009.py', [[], []]),
         ('docs/snippets/intro/intro-010.py', [[], []]),
         ('docs/snippets/intro/intro-011.py', [[], []]),

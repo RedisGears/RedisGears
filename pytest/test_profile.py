@@ -75,4 +75,4 @@ def testProfileReset(env):
 def testPyDumpSessions(env):
 	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'REQUIREMENTS', 'redis==3.5.3').ok()
 	sessionId = getSession(env)
-	env.expect('RG.PYDUMPSESSIONS').equal([['id', sessionId, 'refCount', 1L, 'requirementInstallationNeeded', 1L, 'requirements', [['name', 'redis==3.5.3', 'refCount', 2L, 'isDownloaded', 1L, 'isInstalled', 1L, 'wheels', ['redis-3.5.3-py2.py3-none-any.whl']]]]])
+	env.expect('RG.PYDUMPSESSIONS').equal([['ID', sessionId, 'sessionDescription', None, 'refCount', 1L, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 0L, 'requirements', ['redis==3.5.3'], 'registrations', ['0000000000000000000000000000000000000000-2']]])

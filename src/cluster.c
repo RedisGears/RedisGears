@@ -745,9 +745,9 @@ bool Cluster_IsInitialized(){
         // on enterprise we will always get the cluster set command so until we get it
         // we assume cluster is not initialized.
         // when cluster is not initialized we will not allow almost all operations.
-        // the only operations we will allows are sync registrations that can not be
+        // the only operations we will allows are local registrations that can not be
         // postpond.
-        return true;
+        return false;
     }
     // On oss we need to check if Redis in configured to be cluster,
     // if so, we will wait for RG.CLUSTERREFRESH command, otherwise we will
@@ -769,20 +769,29 @@ size_t Cluster_GetSize(){
     return Gears_dictSize(CurrCluster->nodes);
 }
 
+char myDefaultId[REDISMODULE_NODE_ID_LEN + 1];
+
 void Cluster_Init(){
+    memset(myDefaultId, '0', REDISMODULE_NODE_ID_LEN);
+    myDefaultId[REDISMODULE_NODE_ID_LEN] = '\0';
     RemoteCallbacks = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     nodesMsgIds = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
     Cluster_StartClusterThread();
 }
 
+
 char* Cluster_GetMyId(){
-    return CurrCluster->myId;
+    return (CurrCluster && CurrCluster->myId) ? CurrCluster->myId : myDefaultId;
 }
 
 const char* Cluster_GetMyHashTag(){
     if(RedisModule_ShardingGetSlotRange){
         int first, last;
         RedisModule_ShardingGetSlotRange(&first, &last);
+        if (first < 0) {
+            /* first < 0 means we are on a single shard database, set first=0 */
+            first = 0;
+        }
         return slot_table[first];
     }
 
