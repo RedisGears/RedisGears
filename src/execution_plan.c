@@ -2941,7 +2941,7 @@ static void FlatExecutionPlane_RegistrationCtxApply(SessionRegistrationCtx* srct
     for (size_t i = 0 ; i < array_len(srctx->idsToUnregister) ; ++i) {
         FlatExecutionPlan* fep = FlatExecutionPlan_FindByStrId(srctx->idsToUnregister[i]);
         if(!fep){
-            RedisModule_Log(staticCtx, "warning", "Failed finding execution to unregister %s", srctx->idsToUnregister[i]);
+            RedisModule_Log(staticCtx, "warning", "Failed finding registration to unregister %s", srctx->idsToUnregister[i]);
             continue;
         }
         ExecutionPlan_LocalUnregisterExecutionInternal(fep, 1);
@@ -2994,11 +2994,9 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
             case SESSION_REGISTRATION_OP_CODE_UNREGISTER:
                 id = Gears_BufferReaderReadString(&br);
                 fep = FlatExecutionPlan_FindByStrId(id);
-                if(!fep){
-                    RedisGears_ASprintf(err, "-ERR shard-%s: failed finding registration to unregister %s", Cluster_GetMyId(), id);
-                    goto done;
+                if (fep) {
+                    srctx->idsToUnregister = array_append(srctx->idsToUnregister, RG_STRDUP(id));
                 }
-                srctx->idsToUnregister = array_append(srctx->idsToUnregister, RG_STRDUP(id));
                 break;
             case SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE:
                 inner_err = NULL;
