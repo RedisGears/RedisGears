@@ -65,7 +65,7 @@ OSNICK=$($READIES/bin/platform --osnick)
 [[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
-[[ $OSNICK == ol8.5 ]] && OSNICK=rhel8
+[[ $OSNICK == ol8 ]] && OSNICK=rhel8
 
 OS_DESC=$(python2 $ROOT/getos.py)
 
