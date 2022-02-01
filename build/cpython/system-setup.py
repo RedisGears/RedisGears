@@ -31,7 +31,6 @@ class Python3Setup(paella.Setup):
         if sh("apt-cache search libgdbm-compat-dev") != "":
             self.install("libgdbm-compat-dev")
         self.install("libgdbm-dev")
-        self.install("tcl-dev tix-dev tk-dev")
 
         self.install("lsb-release")
 
@@ -42,7 +41,6 @@ class Python3Setup(paella.Setup):
 
         self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libuuid-devel ncurses-devel "
             "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
-        self.install("tcl-devel tix-devel tk-devel")
 
         self.install("redhat-lsb-core")
         self.install("libatomic file")
@@ -55,7 +53,6 @@ class Python3Setup(paella.Setup):
         self.install("autoconf automake libtool")
         self.install("bzip2-devel expat-devel gdbm-devel glibc-devel gmp-devel libffi-devel libnsl2-devel libuuid-devel ncurses-devel "
             "openssl-devel readline-devel sqlite-devel xz-devel zlib-devel")
-        self.install("tcl-devel tix-devel tk-devel")
 
         self.install("libatomic file")
 
