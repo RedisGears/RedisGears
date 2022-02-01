@@ -22,7 +22,7 @@ class JVMSetup(paella.Setup):
 
     def common_last(self):
         self.install("maven")
-        self.run("{PYTHON} -m pip --upgrade pip".format(PYTHON=self.python, READIES=READIES))
+        self.run("{PYTHON} -m pip install --upgrade pip".format(PYTHON=self.python, READIES=READIES))
         self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
 
 #----------------------------------------------------------------------------------------------
