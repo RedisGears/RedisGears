@@ -3027,6 +3027,7 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
                 // we got it from another shard that must run the same version as we are
                 args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
                 if(!args){
+                    FlatExecutionPlan_Free(fep);
                     RedisGears_ASprintf(err, "-ERR shard-%s: Could not deserialize flat execution plan args, %s", Cluster_GetMyId());
                     goto done;
                 }
@@ -3036,6 +3037,8 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
                 RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
                 RedisModule_Assert(callbacks->serializeTriggerArgs);
                 if(callbacks->verifyRegister && callbacks->verifyRegister(srctx, fep, mode, args, &inner_err) != REDISMODULE_OK){
+                    callbacks->freeTriggerArgs(args);
+                    FlatExecutionPlan_Free(fep);
                     RedisGears_ASprintf(err, "-ERR shard-%s: %s", Cluster_GetMyId(), inner_err);
                     RG_FREE(inner_err);
                     goto done;
