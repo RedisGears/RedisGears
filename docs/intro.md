@@ -1003,7 +1003,7 @@ Then, after shuffling and summing, each worker executes the `foreach()` operatio
 
 ## Async Await Support
 
-RedisGears v1.2 added support for Python async-await. Instead of giving a Python function as a gears operation, it is also possible to give a Python coroutine. When given a coroutine, the execution runs in a dedicated thread that runs an event loop and schedules all the coroutines.
+RedisGears v1.2 added support for Python async-await. This allows you to use Python coroutines within RedisGears operations. When using coroutines, the execution runs in a dedicated thread that runs an event loop and schedules all the coroutines.
 
 Example:
 ```python
@@ -1018,17 +1018,17 @@ This example waits for 5 seconds and then returns a list of IDs for all shards i
 
 ### Waiting for Another Execution
 
-You can give a coroutine to a step and wait for events inside this coroutine. You can wait on `async.sleep` but what else can we wait on? On v1.2 the [run](functions.md#run) function returns a future object that can be awaited inside a coroutine. This allows you to start a [local](intro.md#local-vs-global) execution, decide to create a global execution, and wait for it to finish.
+You can use a coroutine inside a step to wait for events like `async.sleep`. As of v1.2, it can also wait on the future object returned by the [run](functions.md#run) function. This allows you to start a [local](intro.md#local-vs-global) execution, decide to create a global execution, and wait for it to finish.
 
 The following example uses async-await to cache global execution results in a local key and only triggers a global execution on cache misses:
 ```python
 {{ include('async_await/async_await-003.py')}}
 ```
-In the example, we first check if we have the student count in a local key, we need the [`hashtag()`](runtime.md#hashtag) to make sure this cached key is located on the correct shard (for cluster support). If the key exists we return its content, otherwise we create a global execution that counts the number of students. We wait for this global execution to finish, cache the result, and return it. Notice that the results from `await GB() ... run()` are returned as a list of two elements: the first is the execution results (as another list) and the second is a list of errors.
+This example first checks if the student count is in a local key. It uses [`hashtag()`](runtime.md#hashtag) to make sure this cached key is located on the correct shard (for cluster support). If the key exists, it returns its content. Otherwise, it creates a global execution that counts the number of students. It waits for this global execution to finish, cache the result, and return it. Notice that the results from `await GB() ... run()` are a list of two elements: the first is a list of execution results and the second is a list of errors.
 
 ### Gears Future
 
-In the last section, we mentioned that the [run](functions.md#run) function returns a future object. RedisGears allows you to create a future using a new function, `createFuture`. This function creates a future object that can be awaited using the `await` keyword. When waiting on a future object, the waiting coroutine does not consume any CPU resources. The waiting coroutine will continue when some other code sets a result to the future object with `setFutureResults`.
+The last section mentioned that the [run](functions.md#run) function returns a future object. You can create a future object with the new `createFuture` function and await it with the `await` keyword. When waiting on a future object, the waiting coroutine does not consume any CPU resources. The waiting coroutine will continue when some other code sets a result to the future object with `setFutureResults`.
 
 The following example creates a pubsub pattern where the publisher sends each message to a single subscriber and is blocked until the subscriber reads the message.
 
