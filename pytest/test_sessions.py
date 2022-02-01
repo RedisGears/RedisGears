@@ -206,8 +206,24 @@ GB('CommandReader').count().map(lambda x: 'test2 reports %s shards' % str(x)).re
     '''
     env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'DESCRIPTION', 'desc').error().contains('Can not override a none sync registration which already created on this session')
 
+@gearsTest(skipCleanups=True, skipCallback=lambda: Defaults.num_shards != 2)
+def testSessionUpgradeFailureOnShard(env):
+    env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'ID', 'test', 'DESCRIPTION', 'desc').ok()
+    # restart shard 2
+    conn1 = env.getConnection(shardId=1)
+    conn2 = env.getConnection(shardId=2)
+    conn2.execute_command('config', 'set', 'save', '')
+    env.envRunner.shards[1].stopEnv()
+    env.envRunner.shards[1].startEnv()
+    env.envRunner.waitCluster()
+    # put a session only on the second shard
+    conn2.execute_command('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'ID', 'test1', 'DESCRIPTION', 'desc')
+    getConnectionByEnv(env) # will make sure to re-enable the cluster
+    res = env.cmd('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'ID', 'test', 'DESCRIPTION', 'desc', 'UPGRADE')
+    env.assertContains('trigger already registered', str(res[0]))
+
 @gearsTest(skipCallback=lambda: Defaults.num_shards != 2)
-def testSessionUpgradeFailureOnOneShard(env):
+def testSessionUpgradeSuccessedOnMissingRegistration(env):
     env.expect('RG.PYEXECUTE', 'GB().register()', 'ID', 'test', 'DESCRIPTION', 'desc').ok()
     # restart shard 2
     conn1 = env.getConnection(shardId=1)
@@ -217,5 +233,4 @@ def testSessionUpgradeFailureOnOneShard(env):
     env.envRunner.shards[1].startEnv()
     env.envRunner.waitCluster()
     getConnectionByEnv(env) # will make sure to re-enable the cluster
-    res = env.cmd('RG.PYEXECUTE', 'GB().register()', 'ID', 'test', 'DESCRIPTION', 'desc1', 'UPGRADE')
-    env.assertContains('failed finding registration to unregister', str(res[0]))
+    env.expect('RG.PYEXECUTE', 'GB().register()', 'ID', 'test', 'DESCRIPTION', 'desc1', 'UPGRADE').ok()
