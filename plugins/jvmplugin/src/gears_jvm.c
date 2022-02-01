@@ -3087,6 +3087,7 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     if (RedisGears_PutUsedSession(s->srctx, s, &err) != REDISMODULE_OK) {
         goto error;
     }
+    s = JVM_SessionDup(s);
 
     jmethodID mid = (*env)->GetStaticMethodID(env, cls, "main", "([Ljava/lang/String;)V");
 
