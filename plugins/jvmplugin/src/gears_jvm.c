@@ -845,7 +845,7 @@ static JVMRunSession* JVM_SessionCreate(const char* mainClassName, const char* j
     s->sessionClsLoader = NULL;
     s->linked = false;
     s->deadNode = NULL;
-    s->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
+    s->srctx = NULL;
     s->registrations = array_new(char*, 10);
     pthread_mutex_init(&s->registrationsLock, NULL);
 
@@ -3005,6 +3005,7 @@ static int JVM_Run(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
         if (oldSession) JVM_SessionFree(oldSession);
         return REDISMODULE_OK;
     }
+    s->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
 
     jobject upgradeData = NULL;
     if (oldSession) {
