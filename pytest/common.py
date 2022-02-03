@@ -191,7 +191,7 @@ def gearsTest(skipTest=False,
                 # or mac, it is needed.
                 env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
             conn = getConnectionByEnv(env)
-            version = conn.execute_command('info', 'server')['redis_version']
+            version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             test_function(env)

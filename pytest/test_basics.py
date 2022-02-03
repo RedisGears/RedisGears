@@ -111,14 +111,14 @@ class testBasic:
 def testBytes(env):
     conn = getConnectionByEnv(env)
     conn.set("x", 1)
-    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytes([1,2,3]))).run("x")')
+    env.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytes([1,2,3]))).run("x")')
     env.assertTrue(conn.exists("y"))
 
 @gearsTest()
 def testBytearray(env):
     conn = getConnectionByEnv(env)
     conn.set("x", 1)
-    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytearray([1,2,3]))).run("x")')
+    env.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytearray([1,2,3]))).run("x")')
     env.assertTrue(conn.exists("y"))
 
 @gearsTest()
@@ -290,7 +290,7 @@ def testMaxExecutions(env):
     ## todo: currently there is a problem with MaxExecutions which might cause running executions to be drop and the redis server
     ##       to crash, this is why I increased the sleep interval, we should fix it ASAP.
     conn = getConnectionByEnv(env)
-    conn.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
+    env.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
     time.sleep(1)
     conn.execute_command('set', 'x', '0')
     conn.execute_command('set', 'x', '1')

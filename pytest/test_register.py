@@ -1727,13 +1727,13 @@ GB('StreamReader').foreach(test).register(mode='sync')
 
     conn.execute_command('set', 'x', '1')
     conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
-    conn.execute_command('RG.TRIGGER', 'test')
+    env.execute_command('RG.TRIGGER', 'test')
 
     env.expect('RG.CLEARREGISTRATIONSSTATS').equal('OK')
 
     for i in range(1, env.shardsCount + 1):
         conn = env.getConnection(shardId=i)
-        res = conn.execute_command('RG.DUMPREGISTRATIONS')
+        res = env.execute_command('RG.DUMPREGISTRATIONS')
         for r in res:
             d = {}
             r = r[7]
