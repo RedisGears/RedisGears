@@ -12,7 +12,7 @@ from common import gearsTest
 
 class testUnregister:
     def __init__(self):
-        self.env = Env(freshEnv=True)
+        self.env = Env(freshEnv=True, decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
 
     def cleanUp(self):
@@ -814,7 +814,7 @@ def testKeysReaderEventTypeFilter(env):
                 counter = conn.get('counter')
                 time.sleep(0.1)
     except Exception as e:
-        print e
+        print(e)
         env.assertTrue(False, message='Failed waiting for counter to reach 2')
 
     ## make sure other commands are not triggers executions
@@ -1250,7 +1250,7 @@ GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
 
 class testKeysReaderWithCommands():
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
 
     def setUp(self):

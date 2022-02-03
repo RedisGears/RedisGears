@@ -112,7 +112,11 @@ def extractInfoOnfailure(env, suffixFileName):
         shardInfo['RG.DUMPEXECUTIONS'] = conn.execute_command('RG.DUMPEXECUTIONS')
         shardInfo['info_everything'] = conn.execute_command('info', 'everything')
         directory = conn.execute_command('config', 'get', 'dir')[1]
+        if type(directory) == bytes:
+            directory = directory.decode('utf8')
         fileName = conn.execute_command('config', 'get', 'logfile')[1]
+        if type(fileName) == bytes:
+            fileName = fileName.decode('utf8')
         with open(os.path.join(directory, '%s.failure_logs_%s.txt' % (fileName, suffixFileName)), 'wt') as f:
             f.write(json.dumps(shardInfo, indent=4, sort_keys=True))
 
@@ -140,7 +144,7 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lam
                     continue
                 res1 = env.cmd('RG.PYEXECUTE', script1)
                 res2 = env.cmd('RG.PYEXECUTE', script2)
-                if len(res1[0]) == 0 and len([a for a in res2[0] if a != '1']) == 0:
+                if len(res1[0]) == 0 and len([a for a in res2[0] if (a != '1' and a != b'1')]) == 0:
                     break
                 time.sleep(0.5)
     except Exception as e:
@@ -163,6 +167,7 @@ def gearsTest(skipTest=False,
               skipOnSingleShard=False,
               skipCallback=None,
               skipOnRedis6=False,
+              decodeResponses=True,
               envArgs={}):
     def test_func_generator(test_function):
         def test_func():
@@ -179,7 +184,7 @@ def gearsTest(skipTest=False,
             if skipCallback is not None:
                 if skipCallback():
                     raise unittest.SkipTest()
-            env = Env(testName = test_function.__name__, **envArgs)
+            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, **envArgs)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 
                 # able to execute commands on shards, on slow envs, run with valgrind,
