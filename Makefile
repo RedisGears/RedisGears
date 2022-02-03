@@ -57,7 +57,7 @@ MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
 include $(MK)/defs
 
 GEARS_VERSION:=$(shell $(ROOT)/getver)
-OS_VERSION_DESC:=$(shell python2 $(ROOT)/getos.py)
+OS_VERSION_DESC:=$(shell python3 $(ROOT)/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -287,7 +287,7 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 setup:
 	@echo Setting up system...
 	$(SHOW)./deps/readies/bin/getpy2
-	$(SHOW)python2 ./system-setup.py
+	$(SHOW)python3 ./system-setup.py
 
 #----------------------------------------------------------------------------------------------
 
@@ -422,7 +422,7 @@ test: __sep
 ifneq ($(TEST),)
 	@set -e; \
 	cd pytest; \
-	BB=1 $(TEST_FLAGS) python2 -m RLTest --test $(TEST) $(TEST_ARGS) \
+	BB=1 $(TEST_FLAGS) python3 -m RLTest --test $(TEST) $(TEST_ARGS) \
 		$(RLTEST_GDB) -s -v --module $(abspath $(TARGET)) \
 		--module-args "Plugin $(abspath $(GEARS_PYTHON))"
 else
