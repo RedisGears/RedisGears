@@ -20,6 +20,12 @@ GEARSLIB=$(shell readlink -f ../../redisgears.so)
 
 $(info OS=$(OS))
 
+ifeq ($(OSNICK),catalina)
+JVM_DOWNLOAD_LING=https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.14%2B9/OpenJDK11U-jdk_x64_mac_hotspot_11.0.14_9.tar.gz
+else
+JVM_DOWNLOAD_LING=https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
+endif
+
 all: gears_jvm GearsRuntime pack
 
 .PHONY: InstallOpenJDK
@@ -28,7 +34,7 @@ gears_jvm: InstallOpenJDK
 	make -C ./src/
 
 /tmp/openjdk-hotspot.zip:
-	test -f /tmp/opendjk-hotspot.zip || wget -q "https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz" -O /tmp/openjdk-hotspot.zip
+	test -f /tmp/openjdk-hotspot.zip || wget -q ${JVM_DOWNLOAD_LING} -O /tmp/openjdk-hotspot.zip
 
 InstallOpenJDK: bin/OpenJDK
 
