@@ -14,17 +14,21 @@ $(error Build redisgears first)
 endif
 endif
 
-# in case you want to specifcy
-GEARSPYTHONLIB=$(shell readlink -f ../../gears_python.so)
-GEARSLIB=$(shell readlink -f ../../redisgears.so)
-
-$(info OS=$(OS))
-
 ifeq ($(OSNICK),catalina)
 JVM_DOWNLOAD_LING=https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.14%2B9/OpenJDK11U-jdk_x64_mac_hotspot_11.0.14_9.tar.gz
+PARALLELISM=1
+READLINK=greadlink
 else
 JVM_DOWNLOAD_LING=https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
+PRALLELISM=$(shell nproc)
+READLINK=readlink
 endif
+
+# in case you want to specifcy
+GEARSPYTHONLIB=$(shell ${READLINK} -f ../../gears_python.so)
+GEARSLIB=$(shell ${READLINK} -f ../../redisgears.so)
+
+$(info OS=$(OS))
 
 all: gears_jvm GearsRuntime pack
 
@@ -49,7 +53,7 @@ clean:
 	make -C ./src/ clean
 
 tests: gears_jvm
-	cd ./pytest; ./run_test.sh ${PYTHONDIR} ${GEARSPYTHONLIB} ${GEARSLIB} --parallelism `nproc`
+	cd ./pytest; ./run_test.sh ${PYTHONDIR} ${GEARSPYTHONLIB} ${GEARSLIB} --parallelism ${PARALLELISM}
 
 run: gears_jvm
 	redis-server --loadmodule ${GEARSLIB} Plugin ./src/gears_jvm.so JvmOptions "-Djava.class.path=./gears_runtime/target/gear_runtime-jar-with-dependencies.jar" JvmPath ./bin/OpenJDK/jdk-11.0.9.1+1/

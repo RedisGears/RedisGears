@@ -13,8 +13,8 @@ fi
 OSNICK="$(../../../deps/readies/bin/platform --osnick)"
 
 if [[ $OSNICK == catalina ]]; then
-    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/dk-11.0.9.1+1/Contents/Home/bin/
-    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/dk-11.0.9.1+1/Contents/Home/
+    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.14+9/Contents/Home/bin/
+    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.14+9/Contents/Home/
 else
     JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.9.1+1/bin/
     JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.9.1+1/
