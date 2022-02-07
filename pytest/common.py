@@ -86,23 +86,17 @@ class TimeLimit(object):
         raise Exception('timeout')
 
 def verifyRegistrationIntegrity(env):
-    scripts = ['''
-GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect().distinct().count().run()    
-''']
-    for script in scripts:
-        try:
-            with TimeLimit(40):
-                while True:
-                    res = env.cmd('RG.PYEXECUTE', script)
-                    if len(res) == 0 or len(res[0]) == 0:
-                        raise Exception(str(res))
-                    if int(res[0][0]) == 1:
-                        break
-                    time.sleep(0.5)
-        except Exception as e:
-            env.assertTrue(False, message='Registrations Integrity failed, %s' % str(e))
-
-        env.assertTrue(env.isUp())
+    with TimeLimit(40, env, 'Failed on registrations integrity'):
+        while True:
+            registrations = set()
+            for i in range(1, env.shardsCount + 1, 1):
+                c = env.getConnection(i)
+                res = c.execute_command('RG.DUMPREGISTRATIONS')
+                registrations.add(len(res))
+            if len(registrations) == 1:
+                break
+            time.sleep(0.5)
+    env.assertTrue(env.isUp())
 
 def extractInfoOnfailure(env, suffixFileName):
     for i in range(1, env.shardsCount + 1):
