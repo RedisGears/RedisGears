@@ -20,7 +20,7 @@ PARALLELISM=1
 READLINK=greadlink
 else
 JVM_DOWNLOAD_LING=https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
-PRALLELISM=$(shell nproc)
+PARALLELISM=$(shell nproc)
 READLINK=readlink
 endif
 
