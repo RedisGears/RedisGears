@@ -1749,5 +1749,5 @@ GB('StreamReader').foreach(test).register(mode='sync')
             if 'lastEstimatedLagMS' in d.keys():
                 env.assertEqual(d['lastEstimatedLagMS'], 0)
             if 'avgEstimatedLagMS' in d.keys():
-                env.assertEqual(d['avgEstimatedLagMS'], '-nan')
+                env.assertContains('nan', d['avgEstimatedLagMS'])
             
