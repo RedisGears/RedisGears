@@ -10,6 +10,7 @@ override DEBUG:=1
 endif
 
 ROOT=.
+MK.pyver:=3
 include deps/readies/mk/main
 
 BINDIR=$(BINROOT)/$(SRCDIR)
@@ -286,7 +287,7 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 
 setup:
 	@echo Setting up system...
-	$(SHOW)./deps/readies/bin/getpy2
+	$(SHOW)./deps/readies/bin/getpy3
 	$(SHOW)python3 ./system-setup.py
 
 #----------------------------------------------------------------------------------------------
