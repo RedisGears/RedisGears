@@ -15,11 +15,11 @@ endif
 endif
 
 ifeq ($(OSNICK),catalina)
-JVM_DOWNLOAD_LING=https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.14%2B9/OpenJDK11U-jdk_x64_mac_hotspot_11.0.14_9.tar.gz
+JVM_DOWNLOAD_LINK=https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.14%2B9/OpenJDK11U-jdk_x64_mac_hotspot_11.0.14_9.tar.gz
 PARALLELISM=1
 READLINK=greadlink
 else
-JVM_DOWNLOAD_LING=https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
+JVM_DOWNLOAD_LINK=https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
 PARALLELISM=$(shell nproc)
 READLINK=readlink
 endif
@@ -38,7 +38,7 @@ gears_jvm: InstallOpenJDK
 	make -C ./src/
 
 /tmp/openjdk-hotspot.zip:
-	test -f /tmp/openjdk-hotspot.zip || wget -q ${JVM_DOWNLOAD_LING} -O /tmp/openjdk-hotspot.zip
+	test -f /tmp/openjdk-hotspot.zip || wget -q ${JVM_DOWNLOAD_LINK} -O /tmp/openjdk-hotspot.zip
 
 InstallOpenJDK: bin/OpenJDK
 
