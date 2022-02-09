@@ -284,6 +284,7 @@ static int RG_RegisterFep(Plugin *p, FlatExecutionPlan* fep, ExecutionMode mode,
     SessionRegistrationCtx* srctx = SessionRegistrationCtx_Create(p);
     if (!RG_PrepareForRegister(srctx, fep, mode, key, err, registrationId)) {
         SessionRegistrationCtx_Free(srctx);
+        LockHandler_Release(staticCtx);
         return 0;
     }
 
@@ -293,7 +294,6 @@ static int RG_RegisterFep(Plugin *p, FlatExecutionPlan* fep, ExecutionMode mode,
     LockHandler_Release(staticCtx);
 
     return 1;
-    return 0;
 }
 
 static ExecutionPlan* RG_RunWithFlags(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags flags){

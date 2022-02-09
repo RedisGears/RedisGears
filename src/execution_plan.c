@@ -2941,7 +2941,7 @@ static void FlatExecutionPlane_RegistrationCtxApply(SessionRegistrationCtx* srct
     for (size_t i = 0 ; i < array_len(srctx->idsToUnregister) ; ++i) {
         FlatExecutionPlan* fep = FlatExecutionPlan_FindByStrId(srctx->idsToUnregister[i]);
         if(!fep){
-            RedisModule_Log(staticCtx, "warning", "Failed finding execution to unregister %s", srctx->idsToUnregister[i]);
+            RedisModule_Log(staticCtx, "warning", "Failed finding registration to unregister %s", srctx->idsToUnregister[i]);
             continue;
         }
         ExecutionPlan_LocalUnregisterExecutionInternal(fep, 1);
@@ -2994,11 +2994,9 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
             case SESSION_REGISTRATION_OP_CODE_UNREGISTER:
                 id = Gears_BufferReaderReadString(&br);
                 fep = FlatExecutionPlan_FindByStrId(id);
-                if(!fep){
-                    RedisGears_ASprintf(err, "-ERR shard-%s: failed finding registration to unregister %s", Cluster_GetMyId(), id);
-                    goto done;
+                if (fep) {
+                    srctx->idsToUnregister = array_append(srctx->idsToUnregister, RG_STRDUP(id));
                 }
-                srctx->idsToUnregister = array_append(srctx->idsToUnregister, RG_STRDUP(id));
                 break;
             case SESSION_REGISTRATION_OP_CODE_SESSION_DESERIALIZE:
                 inner_err = NULL;
@@ -3029,6 +3027,7 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
                 // we got it from another shard that must run the same version as we are
                 args = callbacks->deserializeTriggerArgs(&br, REDISGEARS_DATATYPE_VERSION);
                 if(!args){
+                    FlatExecutionPlan_Free(fep);
                     RedisGears_ASprintf(err, "-ERR shard-%s: Could not deserialize flat execution plan args, %s", Cluster_GetMyId());
                     goto done;
                 }
@@ -3038,6 +3037,8 @@ static int FlatExecutionPlane_RegistrationCtxUpgradeInternal(SessionRegistration
                 RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
                 RedisModule_Assert(callbacks->serializeTriggerArgs);
                 if(callbacks->verifyRegister && callbacks->verifyRegister(srctx, fep, mode, args, &inner_err) != REDISMODULE_OK){
+                    callbacks->freeTriggerArgs(args);
+                    FlatExecutionPlan_Free(fep);
                     RedisGears_ASprintf(err, "-ERR shard-%s: %s", Cluster_GetMyId(), inner_err);
                     RG_FREE(inner_err);
                     goto done;

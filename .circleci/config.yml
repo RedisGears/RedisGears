@@ -384,7 +384,7 @@ workflows:
           context: common
           matrix:
             parameters:
-              platform: [hirsute, focal, bionic, xenial, centos7, centos8, bullseye]
+              platform: [hirsute, focal, bionic, xenial, centos7, ol8, bullseye]
       - valgrind:
           <<: *on-integ-and-version-tags
       - build-macos:
@@ -407,6 +407,7 @@ workflows:
               #- build-macos
           <<: *on-version-tags
       - release-automation:
+          context: common
           <<: *on-version-tags
           requires:
             - deploy-releases
