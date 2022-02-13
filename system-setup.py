@@ -86,7 +86,7 @@ class RedisGearsSetup(paella.Setup):
                      nop=False, output=True)
         self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
         self.pip_uninstall("redis redis-py-cluster ramp-packer RLTest")
-        self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@master")
+        self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@v0.4.2")
 
 #----------------------------------------------------------------------------------------------
 
