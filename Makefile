@@ -419,6 +419,12 @@ ifeq ($(VALGRIND),1)
 TEST_FLAGS += VALGRIND=1
 endif
 
+ifeq ($(OS),macos)
+PARALLELISM=1
+else
+PARALLELISM=4
+endif
+
 test: __sep
 ifneq ($(TEST),)
 	@set -e; \
@@ -429,7 +435,7 @@ ifneq ($(TEST),)
 else
 	$(SHOW)set -e; \
 	cd pytest; \
-	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism 4
+	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism $(PARALLELISM)
 	${MAKE} -C plugins/jvmplugin tests PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 endif
 

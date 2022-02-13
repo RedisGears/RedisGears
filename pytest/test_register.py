@@ -1744,10 +1744,10 @@ GB('StreamReader').foreach(test).register(mode='sync')
             env.assertEqual(d['numFailures'], 0)
             env.assertEqual(d['numAborted'], 0)
             env.assertEqual(d['lastRunDurationMS'], 0)
-            env.assertEqual(d['avgRunDurationMS'], '-nan')
+            env.assertContains('nan', d['avgRunDurationMS'])
             env.assertEqual(d['lastError'], None)
             if 'lastEstimatedLagMS' in d.keys():
                 env.assertEqual(d['lastEstimatedLagMS'], 0)
             if 'avgEstimatedLagMS' in d.keys():
-                env.assertEqual(d['avgEstimatedLagMS'], '-nan')
+                env.assertContains('nan', d['avgEstimatedLagMS'])
             
