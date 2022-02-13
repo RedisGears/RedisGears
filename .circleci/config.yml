@@ -169,7 +169,7 @@ commands:
 jobs:
   build-redis-versions:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: debian:bullseye
     resource_class: medium+
     parameters:
       redis_version:
@@ -182,7 +182,7 @@ jobs:
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: debian:bullseye
     steps:
       - build-steps:
           platform: debian
@@ -202,7 +202,7 @@ jobs:
 
   jvmpublish:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: debian:bullseye
     steps:
       - early-returns
       - checkout-all
@@ -253,7 +253,7 @@ jobs:
 
   deploy-snapshots:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: debian:bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -262,6 +262,8 @@ jobs:
       - run:
           name: Deploy Snapshots to S3
           command: |
+            apt update -q && apt install -qy python3 python3-dev python3-pip
+            pip install awscli
             ls -lR artifacts
             for f in artifacts/snapshot/*; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
@@ -269,7 +271,7 @@ jobs:
 
   deploy-releases:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: debian:bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -278,13 +280,15 @@ jobs:
       - run:
           name: Deploy Releases to S3
           command: |
+            apt update -q && apt install -qy python3 python3-dev python3-pip
             for f in artifacts/release/*; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
 
   release-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: debian:bullseye
+    steps:
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -296,7 +300,7 @@ jobs:
 
   nightly-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: debian:bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
