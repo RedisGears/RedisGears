@@ -85,8 +85,8 @@ class RedisGearsSetup(paella.Setup):
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
                      nop=False, output=True)
         self.pip_uninstall("redis redis-py-cluster ramp-packer RLTest")
+        self.pip_install("--no-cache-dir --ignore-installed git+https://github.com/redisfab/redis-py-cluster@2.1")
         self.pip_install("rltest==0.4.2")
-        self.pip_install("redis==4.1.3")
         self.pip_install("ramp-packer")
 
 #----------------------------------------------------------------------------------------------
