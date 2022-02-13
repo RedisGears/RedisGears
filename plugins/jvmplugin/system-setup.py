@@ -22,7 +22,6 @@ class JVMSetup(paella.Setup):
 
     def common_last(self):
         self.install("maven")
-        self.run("{PYTHON} -m pip install --upgrade pip".format(PYTHON=self.python, READIES=READIES))
 
 #----------------------------------------------------------------------------------------------
 
