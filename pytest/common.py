@@ -86,23 +86,17 @@ class TimeLimit(object):
         raise Exception('timeout')
 
 def verifyRegistrationIntegrity(env):
-    scripts = ['''
-GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPREGISTRATIONS'))).collect().distinct().count().run()    
-''']
-    for script in scripts:
-        try:
-            with TimeLimit(40):
-                while True:
-                    res = env.cmd('RG.PYEXECUTE', script)
-                    if len(res) == 0 or len(res[0]) == 0:
-                        raise Exception(str(res))
-                    if int(res[0][0]) == 1:
-                        break
-                    time.sleep(0.5)
-        except Exception as e:
-            env.assertTrue(False, message='Registrations Integrity failed, %s' % str(e))
-
-        env.assertTrue(env.isUp())
+    with TimeLimit(40, env, 'Failed on registrations integrity'):
+        while True:
+            registrations = set()
+            for i in range(1, env.shardsCount + 1, 1):
+                c = env.getConnection(i)
+                res = c.execute_command('RG.DUMPREGISTRATIONS')
+                registrations.add(len(res))
+            if len(registrations) == 1:
+                break
+            time.sleep(0.5)
+    env.assertTrue(env.isUp())
 
 def extractInfoOnfailure(env, suffixFileName):
     for i in range(1, env.shardsCount + 1):
@@ -112,7 +106,11 @@ def extractInfoOnfailure(env, suffixFileName):
         shardInfo['RG.DUMPEXECUTIONS'] = conn.execute_command('RG.DUMPEXECUTIONS')
         shardInfo['info_everything'] = conn.execute_command('info', 'everything')
         directory = conn.execute_command('config', 'get', 'dir')[1]
+        if type(directory) == bytes:
+            directory = directory.decode('utf8')
         fileName = conn.execute_command('config', 'get', 'logfile')[1]
+        if type(fileName) == bytes:
+            fileName = fileName.decode('utf8')
         with open(os.path.join(directory, '%s.failure_logs_%s.txt' % (fileName, suffixFileName)), 'wt') as f:
             f.write(json.dumps(shardInfo, indent=4, sort_keys=True))
 
@@ -140,7 +138,7 @@ GB('ShardsIDReader').map(lambda x: len(execute('RG.DUMPEXECUTIONS'))).filter(lam
                     continue
                 res1 = env.cmd('RG.PYEXECUTE', script1)
                 res2 = env.cmd('RG.PYEXECUTE', script2)
-                if len(res1[0]) == 0 and len([a for a in res2[0] if a != '1']) == 0:
+                if len(res1[0]) == 0 and len([a for a in res2[0] if (a != '1' and a != b'1')]) == 0:
                     break
                 time.sleep(0.5)
     except Exception as e:
@@ -163,6 +161,7 @@ def gearsTest(skipTest=False,
               skipOnSingleShard=False,
               skipCallback=None,
               skipOnRedis6=False,
+              decodeResponses=True,
               envArgs={}):
     def test_func_generator(test_function):
         def test_func():
@@ -179,14 +178,14 @@ def gearsTest(skipTest=False,
             if skipCallback is not None:
                 if skipCallback():
                     raise unittest.SkipTest()
-            env = Env(testName = test_function.__name__, **envArgs)
+            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, **envArgs)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 
                 # able to execute commands on shards, on slow envs, run with valgrind,
                 # or mac, it is needed.
                 env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
             conn = getConnectionByEnv(env)
-            version = conn.execute_command('info', 'server')['redis_version']
+            version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             test_function(env)
