@@ -22,6 +22,12 @@ class JVMSetup(paella.Setup):
 
     def common_last(self):
         self.install("maven")
+        self.run("{PYTHON} -m pip install --upgrade pip".format(PYTHON=self.python, READIES=READIES))
+        self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
+        self.pip_uninstall("redis redis-py-cluster ramp-packer RLTest")
+        self.pip_install("--no-cache-dir --ignore-installed git+https://github.com/redisfab/redis-py-cluster@2.1")
+        self.pip_install("rltest==0.4.2")
+        self.pip_install("ramp-packer")
 
 #----------------------------------------------------------------------------------------------
 
