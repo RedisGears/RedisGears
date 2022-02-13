@@ -55,7 +55,6 @@ commands:
           name: Setup automation
           command: |
             git submodule update --init deps/readies
-            ./deps/readies/bin/getpy2
             ./deps/readies/bin/getpy3
 
   install-prerequisites:
@@ -77,7 +76,7 @@ commands:
       - run:
           name: Install Redis
           command: |
-            bash -l -c "python2 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>"
+            bash -l -c "python3 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>"
             redis-server --version
 
   save-tests-logs:
@@ -407,6 +406,7 @@ workflows:
               #- build-macos
           <<: *on-version-tags
       - release-automation:
+          context: common
           <<: *on-version-tags
           requires:
             - deploy-releases
