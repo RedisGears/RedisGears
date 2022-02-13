@@ -388,7 +388,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock_sync', mode='sync')
         with Background(Block) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock')
+                    env.execute_command('RG.TRIGGER', 'unblock')
                     time.sleep(0.1)
     except Exception as e:
         print(e)
@@ -401,7 +401,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock_sync', mode='sync')
         with Background(Block2) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock_sync')
+                    env.execute_command('RG.TRIGGER', 'unblock_sync')
                     time.sleep(0.1)
     except Exception as e:
         print(e)
@@ -596,7 +596,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         with Background(Block) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock')
+                    env.execute_command('RG.TRIGGER', 'unblock')
                     time.sleep(0.1)
     except Exception as e:
         print(e)
@@ -655,7 +655,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
             with Background(Block) as bk2:
                 with TimeLimit(50):
                     while bk1.isAlive or bk2.isAlive:
-                        conn.execute_command('RG.TRIGGER', 'unblock')
+                        env.execute_command('RG.TRIGGER', 'unblock')
                         time.sleep(1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
@@ -716,7 +716,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         with Background(Block) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock', 'true')
+                    env.execute_command('RG.TRIGGER', 'unblock', 'true')
                     time.sleep(0.1)
     except Exception as e:
         env.assertTrue(False, message='Failed waiting to reach unblock')
@@ -769,7 +769,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         with Background(Block) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock', '1', '2', '3', '4', '5')
+                    env.execute_command('RG.TRIGGER', 'unblock', '1', '2', '3', '4', '5')
                     time.sleep(0.1)
     except Exception as e:
         print(e)
@@ -823,7 +823,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         with Background(Block) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock', '1', '2', '3', '4', '5')
+                    env.execute_command('RG.TRIGGER', 'unblock', '1', '2', '3', '4', '5')
                     time.sleep(0.1)
     except Exception as e:
         print(e)
@@ -877,7 +877,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         with Background(Block) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock', '2')
+                    env.execute_command('RG.TRIGGER', 'unblock', '2')
                     time.sleep(0.1)
     except Exception as e:
         print(e)
@@ -942,7 +942,7 @@ GB('CommandReader').map(unbc).register(trigger='unblock')
         with Background(Block) as bk:
             with TimeLimit(50):
                 while bk.isAlive:
-                    conn.execute_command('RG.TRIGGER', 'unblock')
+                    env.execute_command('RG.TRIGGER', 'unblock')
                     time.sleep(0.1)
     except Exception as e:
         print(e)

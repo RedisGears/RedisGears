@@ -12,6 +12,12 @@
 
 #include <pthread.h>
 
+#ifdef MAC
+#define DYLIB_SUFFIX "dylib"
+#else
+#define DYLIB_SUFFIX "so"
+#endif // MAC
+
 #define JOBJECT_TYPE_VERSION 1
 #define JSESSION_TYPE_VERSION 1
 
@@ -1066,7 +1072,7 @@ static JVM_ThreadLocalData* JVM_GetThreadLocalData(JVM_ExecutionCtx* jectx){
             if(moduleDataDir){
                 JVM_asprintf(&pathtojvm, "%s/rg/%d/deps/gears_jvm/bin/OpenJDK/jdk-11.0.9.1+1/lib/server/libjvm.so", moduleDataDir, RedisGears_GetVersion());
             }else{
-                JVM_asprintf(&pathtojvm, "%s/lib/server/libjvm.so", RedisGears_GetConfig(JVM_PATH_CONFIG));
+                JVM_asprintf(&pathtojvm, "%s/lib/server/libjvm." DYLIB_SUFFIX, RedisGears_GetConfig(JVM_PATH_CONFIG));
             }
 
             RedisModule_Log(NULL, "notice", "Loading jvm from %s", pathtojvm);

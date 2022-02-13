@@ -1,3 +1,5 @@
+OSNICK?=$(shell ../../../deps/readies/bin/platform --osnick)
+
 ifeq ($(DEBUG),1)
 	GCC_FLAGS=-o0 -g -DVALGRIND -fno-omit-frame-pointer
 else
@@ -6,6 +8,10 @@ endif
 
 ifeq ($(GCOV),1)
 	GCC_FLAGS+=-fprofile-arcs -ftest-coverage
+endif
+
+ifeq ($(OSNICK),catalina)
+	GCC_FLAGS+=-undefined dynamic_lookup -DMAC
 endif
 
 BASE_DIR=../../../
