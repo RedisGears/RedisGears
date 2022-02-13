@@ -289,7 +289,6 @@ jobs:
     docker:
       - image: debian:bullseye
     steps:
-    steps:
       - early-returns
       - early-return-for-forked-pull-requests
       - checkout
