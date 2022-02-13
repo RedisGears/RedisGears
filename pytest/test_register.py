@@ -12,7 +12,7 @@ from common import gearsTest
 
 class testUnregister:
     def __init__(self):
-        self.env = Env(freshEnv=True)
+        self.env = Env(freshEnv=True, decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
 
     def cleanUp(self):
@@ -814,7 +814,7 @@ def testKeysReaderEventTypeFilter(env):
                 counter = conn.get('counter')
                 time.sleep(0.1)
     except Exception as e:
-        print e
+        print(e)
         env.assertTrue(False, message='Failed waiting for counter to reach 2')
 
     ## make sure other commands are not triggers executions
@@ -1250,7 +1250,7 @@ GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
 
 class testKeysReaderWithCommands():
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
 
     def setUp(self):
@@ -1727,13 +1727,13 @@ GB('StreamReader').foreach(test).register(mode='sync')
 
     conn.execute_command('set', 'x', '1')
     conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
-    conn.execute_command('RG.TRIGGER', 'test')
+    env.execute_command('RG.TRIGGER', 'test')
 
     env.expect('RG.CLEARREGISTRATIONSSTATS').equal('OK')
 
     for i in range(1, env.shardsCount + 1):
         conn = env.getConnection(shardId=i)
-        res = conn.execute_command('RG.DUMPREGISTRATIONS')
+        res = env.execute_command('RG.DUMPREGISTRATIONS')
         for r in res:
             d = {}
             r = r[7]
@@ -1744,10 +1744,10 @@ GB('StreamReader').foreach(test).register(mode='sync')
             env.assertEqual(d['numFailures'], 0)
             env.assertEqual(d['numAborted'], 0)
             env.assertEqual(d['lastRunDurationMS'], 0)
-            env.assertEqual(d['avgRunDurationMS'], '-nan')
+            env.assertContains('nan', d['avgRunDurationMS'])
             env.assertEqual(d['lastError'], None)
             if 'lastEstimatedLagMS' in d.keys():
                 env.assertEqual(d['lastEstimatedLagMS'], 0)
             if 'avgEstimatedLagMS' in d.keys():
-                env.assertEqual(d['avgEstimatedLagMS'], '-nan')
+                env.assertContains('nan', d['avgEstimatedLagMS'])
             

@@ -47,7 +47,7 @@ run_tests() {
 		local shards_arg="--shards-count $shards"
 		local env="${ENV_PREFIX}-cluster"
 	fi
-	$OP python2 -m RLTest --clear-logs --module $MOD --module-args "ExecutionMaxIdleTime 10000 Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
+	$OP python3 -m RLTest --clear-logs --module $MOD --module-args "ExecutionMaxIdleTime 10000 Plugin $GEARSPY_PATH" --env $env $shards_arg $MORE_ARGS $TEST_ARGS "$@"
 }
 
 cd $HERE

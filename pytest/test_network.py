@@ -30,7 +30,7 @@ class Connection(object):
             return True
         try:
             with TimeLimit(timeout):
-                return self.read(1) == ''
+                return self.read(1) == b''
         except Exception:
             return False
 
@@ -51,36 +51,36 @@ class Connection(object):
         return self.sock.recv(bytes)
 
     def send(self, data):
-        self.sockf.write(data)
+        self.sockf.write(str.encode(data))
         self.sockf.flush()
 
     def readline(self):
-        return self.sockf.readline()
+        return self.sockf.readline().decode("utf-8")
 
     def send_bulk_header(self, data_len):
-        self.sockf.write('$%d\r\n' % data_len)
+        self.sockf.write(b'$%d\r\n' % data_len)
         self.sockf.flush()
 
     def send_bulk(self, data):
-        self.sockf.write('$%d\r\n%s\r\n' % (len(data), data))
+        self.sockf.write(b'$%d\r\n%s\r\n' % (len(data), str.encode(data)))
         self.sockf.flush()
 
     def send_status(self, data):
-        self.sockf.write('+%s\r\n' % data)
+        self.sockf.write(b'+%s\r\n' % str.encode(data))
         self.sockf.flush()
 
     def send_error(self, data):
-        self.sockf.write('-%s\r\n' % data)
+        self.sockf.write(b'-%s\r\n' % str.encode(data))
         self.sockf.flush()
 
     def send_integer(self, data):
-        self.sockf.write(':%u\r\n' % data)
+        self.sockf.write(b':%u\r\n' % str.encode(data))
         self.sockf.flush()
 
     def send_mbulk(self, data):
-        self.sockf.write('*%d\r\n' % len(data))
+        self.sockf.write(b'*%d\r\n' % len(data))
         for elem in data:
-            self.sockf.write('$%d\r\n%s\r\n' % (len(elem), elem))
+            self.sockf.write(b'$%d\r\n%s\r\n' % (len(elem), str.encode(elem)))
         self.sockf.flush()
 
     def read_mbulk(self, args_count=None):
@@ -159,12 +159,12 @@ class Connection(object):
                 raise Exception('Invalid bulk response: %s' % line)
             if bulk_len == -1:
                 return None
-            data = self.sockf.read(bulk_len + 2)
+            data = self.sockf.read(bulk_len + 2).decode('utf8')
             if len(data) < bulk_len:
                 self.peer_closed = True
                 self.close()
             return data[:bulk_len]
-        elif line[0] == '*':
+        elif line[0] == b'*':
             try:
                 args_count = int(line[1:])
             except ValueError:
