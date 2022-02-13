@@ -45,8 +45,10 @@ commands:
   checkout-all:
     steps:
       - run: |
-          apt-get update -q
-          apt install -qy git
+          if [ -f /usr/bin/apt ]; then
+              apt-get update -q
+              apt install -qy git
+          fi
       - checkout
       - run:
           name: Checkout submodules
