@@ -24,6 +24,8 @@ class JVMSetup(paella.Setup):
         self.install("maven")
         self.run("{PYTHON} -m pip install --upgrade pip".format(PYTHON=self.python, READIES=READIES))
         self.run("{PYTHON} {READIES}/bin/getrmpytools".format(PYTHON=self.python, READIES=READIES))
+        self.pip_uninstall("redis redis-py-cluster ramp-packer RLTest")
+        self.pip_install("git+https://github.com/RedisLabsModules/RLTest.git@v0.4.2")
 
 #----------------------------------------------------------------------------------------------
 
