@@ -45,7 +45,7 @@ commands:
   checkout-all:
     steps:
       - run: |
-          if [ -f /usr/bin/apt ]; then
+          if [ -f /usr/bin/apt-get ]; then
               apt-get update -q
               apt install -qy git
           fi
