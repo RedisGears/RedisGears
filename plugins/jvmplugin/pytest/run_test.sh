@@ -2,25 +2,29 @@
 set -x
 set -e
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+JVM_PLUGIN_ROOT=$(cd $HERE/../ && pwd)
+
 if [ -z $3 ]; then
-    echo "Usage: ${0} /path/to/gearspython.so /path/to/gears_python_installation /path/to/redisgears.so <option a... option n>"
+    echo "Usage: ${0} /path/to/gears_python_installation /path/to/gearspython.so /path/to/redisgears.so <option a... option n>"
     exit 3
 fi
 
-mkdir -p ./gears_tests/build/;cd ./gears_tests/build/;../../../bin/OpenJDK/jdk-11.0.9.1+1/bin/javac -d ./ -classpath ./../../../gears_runtime/target/gear_runtime-jar-with-dependencies.jar ../src/gears_tests/*;../../../bin/OpenJDK/jdk-11.0.9.1+1/bin/jar -cvf gears_tests.jar ./gears_tests/
+OSNICK="$(../../../deps/readies/bin/platform --osnick)"
+
+if [[ $OSNICK == catalina ]]; then
+    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.14+9/Contents/Home/bin/
+    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.14+9/Contents/Home/
+else
+    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.9.1+1/bin/
+    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.9.1+1/
+fi
+
+mkdir -p ./gears_tests/build/;cd ./gears_tests/build/;${JAVA_BIN}/javac -d ./ -classpath ${JVM_PLUGIN_ROOT}/gears_runtime/target/gear_runtime-jar-with-dependencies.jar ../src/gears_tests/*;${JAVA_BIN}/jar -cvf gears_tests.jar ./gears_tests/
 cd ../../
 
 JVM_OPTIONS="-Djava.class.path="
-JVM_OPTIONS+="../../gears_runtime/target/gear_runtime-jar-with-dependencies.jar"
-#JVM_OPTIONS+=" -XX:+IdleTuningGcOnIdle";
-#JVM_OPTIONS+=" -Xms10m";
-#JVM_OPTIONS+=" -Xmx2048m";
-#JVM_OPTIONS+=" -Xrs";
-#JVM_OPTIONS+=" -Xcheck:jni";
-
-#echo $JVM_OPTIONS
-#JVM_PATH=../../../../deps/openj9-openjdk-jdk14/build/linux-x86_64-server-release/jdk/lib/server/
-JVM_PATH=../../bin/OpenJDK/jdk-11.0.9.1+1/
+JVM_OPTIONS+="${JVM_PLUGIN_ROOT}/gears_runtime/target/gear_runtime-jar-with-dependencies.jar"
 
 PYTHONDIR=$1
 GEARSPYTHON=$2
