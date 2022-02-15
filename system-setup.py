@@ -84,7 +84,7 @@ class RedisGearsSetup(paella.Setup):
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
                      nop=False, output=True)
-        self.pip_install("rltest==0.5.0")
+        self.run("{PYTHON} -m pip install -r requirements.txt".format(PYTHON=self.python))
 
 #----------------------------------------------------------------------------------------------
 

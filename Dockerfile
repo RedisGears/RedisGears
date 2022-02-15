@@ -43,7 +43,7 @@ ARG TEST
 
 RUN if [ "$PACK" = "1" ]; then bash -l -c "make pack"; fi
 RUN if [ "$TEST" = "1" ]; then \
-		bash -l -c "TEST= make test" ;\
+		bash -l -c "TEST= make test" && \
 		tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-${ARCH}-${OSNICK}.tgz . ;\
 	fi
 
