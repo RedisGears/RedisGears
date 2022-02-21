@@ -751,7 +751,7 @@ GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3, onF
     slaveConn = env.getSlaveConnection()
     masterConn = env.getConnection()
     env.cmd('rg.pyexecute', script)
-    time.sleep(0.5) # wait for registration to reach all the shards
+    verifyRegistrationIntegrity(env)
 
     for i in range(3):
         env.execute_command('xadd', 'stream', '*', 'foo', 'bar')
@@ -1494,7 +1494,7 @@ def testStreamReaderNotTriggerEventsOnReplica(env):
     res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     time.sleep(2)
     res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
-    env.assertTrue(res1 < res2)
+    env.assertLess(res1, res2)
 
     env.cmd('SLAVEOF', 'localhost', '6380')
     time.sleep(2)
