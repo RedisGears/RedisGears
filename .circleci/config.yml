@@ -201,7 +201,7 @@ jobs:
         type: string
     docker:
       - image: redisfab/rmbuilder:6.2.5-x64-bullseye
-      resource_class: medium+
+    resource_class: medium+
     steps:
       - build-platforms-steps:
           platform: <<parameters.platform>>
