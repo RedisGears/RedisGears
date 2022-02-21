@@ -419,11 +419,11 @@ ifeq ($(VALGRIND),1)
 TEST_FLAGS += VALGRIND=1
 endif
 
-#ifeq ($(OS),macos)
-PARALLELISM=1
-#else
-#PARALLELISM=4
-#endif
+ifeq ($(OS),macos)
+PARALLELISM?=1
+else
+PARALLELISM?=4
+endif
 
 test: __sep
 ifneq ($(TEST),)
