@@ -829,3 +829,22 @@ def test1676(env):
 
     time.sleep(0.1) # make sure shard did not crash
     env.expect('ping').equal(True)
+
+def testRecursiveGearsBuilder(env):
+    env.skipOnCluster()
+    version = env.cmd('info', 'server')['redis_version']
+    if '6.0' in version:
+        env.skip()
+    env.cmd('set', 'x', '1')
+    res = env.cmd('RG.PYEXECUTE', "GearsBuilder().map(lambda x: execute('RG.PYEXECUTE', 'GearsBuilder().run()')).run()")
+    env.assertContains('blocking is not allowed', res[1][0])
+
+def testOverrideSetWithAsyncExecution(env):
+    env.skipOnCluster()
+    version = env.cmd('info', 'server')['redis_version']
+    if '6.0' in version:
+        env.skip()
+    env.expect('RG.PYEXECUTE', "GearsBuilder('CommandReader').register(trigger='test')").equal('OK')
+    res = env.cmd('RG.PYEXECUTE', "GearsBuilder('ShardsIDReader').map(lambda x: execute('rg.trigger', 'test')).run()")
+    env.assertContains('blocking is not allowed', res[1][0])
+

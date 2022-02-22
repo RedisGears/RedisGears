@@ -773,6 +773,10 @@ const char* Cluster_GetMyHashTag(){
     if(RedisModule_ShardingGetSlotRange){
         int first, last;
         RedisModule_ShardingGetSlotRange(&first, &last);
+        if (first < 0) {
+            /* first < 0 means we are on a single shard database, set first=0 */
+            first = 0;
+        }
         return slot_table[first];
     }
 

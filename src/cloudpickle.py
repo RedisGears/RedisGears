@@ -1054,7 +1054,10 @@ def _fill_function(*args):
     #   content of state['globals'] to populate the shared isolated
     #   namespace with all the global variables that are specifically
     #   referenced for this function.
-    func.__globals__.update(state['globals'])
+    #   update only keys that does not exists in the current global dictionary
+    for k,v in state['globals'].items():
+        if k not in func.__globals__.keys():
+            func.__globals__[k] = v
 
     func.__defaults__ = state['defaults']
     func.__dict__ = state['dict']
@@ -1086,7 +1089,7 @@ def _make_empty_cell():
 
     return (lambda: cell).__closure__[0]
 
-
+requested_base_globals = None
 def _make_skel_func(code, cell_count, base_globals=None):
     """ Creates a skeleton function object that contains just the provided
         code and the correct number of cells in func_closure.  All other
@@ -1098,7 +1101,10 @@ def _make_skel_func(code, cell_count, base_globals=None):
     if base_globals is None or isinstance(base_globals, str):
         base_globals = {}
 
-    base_globals['__builtins__'] = __builtins__
+    if requested_base_globals is not None:
+        base_globals = requested_base_globals
+    else:
+        base_globals['__builtins__'] = __builtins__
 
     closure = (
         tuple(_make_empty_cell() for _ in range(cell_count))

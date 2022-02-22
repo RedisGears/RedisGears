@@ -23,6 +23,8 @@
 #include "cluster.h"
 
 
+static RedisVersion *redisVersion = NULL;
+
 #define PY_OBJECT_TYPE_VERSION 1
 
 #define PY_SESSION_TYPE_VERSION 1
@@ -393,10 +395,6 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
         const char* os = RedisGears_BRReadString(br);
         if(os == BUFF_READ_ERROR){
             *err = RG_STRDUP("Bad serialization format on reading requirement os");
-            goto done;
-        }
-        if(strcmp(os, RedisGears_GetCompiledOs()) != 0){
-            rg_asprintf(err, "Requirement was compiled on different os (compiled_os = %s, current_os = %s)", os, RedisGears_GetCompiledOs());
             goto done;
         }
     }
@@ -1544,17 +1542,28 @@ typedef struct PyAtomic{
 static PyObject* atomicEnter(PyObject *self, PyObject *args){
     PyAtomic* pyAtomic = (PyAtomic*)self;
     LockHandler_Acquire(pyAtomic->ctx);
-    RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    if (redisVersion->redisMajorVersion < 7) {
+        /* Before Redis 7 we need to manually wrap the atomic
+         * execution with multi exec to make sure the replica
+         * will also perform the commands atomically.
+         * On Redis 7 and above, thanks to this PR:
+         * https://github.com/redis/redis/pull/9890
+         * It is not needed anymore. */
+        RedisModule_Replicate(pyAtomic->ctx, "multi", "");
+    }
     Py_INCREF(self);
     return self;
 }
 
 static PyObject* atomicExit(PyObject *self, PyObject *args){
     PyAtomic* pyAtomic = (PyAtomic*)self;
+    if (redisVersion->redisMajorVersion < 7) {
+        /* see comment on atomicEnter */
+        RedisModule_Replicate(pyAtomic->ctx, "exec", "");
+    }
     LockHandler_Release(pyAtomic->ctx);
-    RedisModule_Replicate(pyAtomic->ctx, "exec", "");
-    Py_INCREF(self);
-    return self;
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 static void PyAtomic_Destruct(PyObject *pyObj){
@@ -3299,8 +3308,8 @@ static void RedisGearsPy_BackgroundExecute(PythonSessionCtx* session,
 int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
     int ctxFlags = RedisModule_GetContextFlags(ctx);
 
-    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI)){
-        RedisModule_ReplyWithError(ctx, "Can not run gear inside multi exec or lua");
+    if(ctxFlags & (REDISMODULE_CTX_FLAGS_LUA|REDISMODULE_CTX_FLAGS_MULTI|REDISMODULE_CTX_FLAGS_DENY_BLOCKING)){
+        RedisModule_ReplyWithError(ctx, "Can not run gears inside a multi exec, lua, or when blocking is not allowed");
         return REDISMODULE_OK;
     }
 
@@ -3932,6 +3941,15 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
         return NULL;
     }
     void* old = RedisGearsPy_Lock(NULL);
+
+    if(fep){
+        /* set requested_base_globals, cloud pickle was modified to look at this
+         * variable and if set, use is as the global dictionary for the deserialized
+         * functions. */
+        PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
+        PyDict_SetItemString(pyGlobals, "requested_base_globals", sctx->globalsDict);
+    }
+
     size_t len;
     char* data = RedisGears_BRReadBuffer(br, &len);
     PyObject *dataStr = PyBytes_FromStringAndSize(data, len);
@@ -3954,15 +3972,9 @@ static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_Bu
     }
     GearsPyDecRef(args);
 
-    if(fep){
-        // replace the global dictionary with the session global dictionary
-        PythonSessionCtx* sctx = RedisGears_GetFlatExecutionPrivateDataFromFep(fep);
-        PyFunctionObject* callback_func = (PyFunctionObject*)callback;
-        PyDict_Merge(sctx->globalsDict, callback_func->func_globals, 0);
-        GearsPyDecRef(callback_func->func_globals);
-        callback_func->func_globals = sctx->globalsDict;
-        Py_INCREF(callback_func->func_globals);
-    }
+    /* restore requested_base_globals */
+    Py_INCREF(Py_None);
+    PyDict_SetItemString(pyGlobals, "requested_base_globals", Py_None);
 
     RedisGearsPy_Unlock(old);
     return callback;
@@ -4762,6 +4774,7 @@ static void PythonThreadCtx_Destructor(void *p) {
 }
 
 int RedisGearsPy_Init(RedisModuleCtx *ctx){
+    redisVersion = RedisGears_GetRedisVersion();
     installDepsPool = Gears_thpool_init(1);
     InitializeGlobalPaths();
     PrintGlobalPaths(ctx);

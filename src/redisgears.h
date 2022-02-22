@@ -21,6 +21,12 @@
  */
 #define Arr(x) x*
 
+typedef struct RedisVersion{
+    int redisMajorVersion;
+    int redisMinorVersion;
+    int redisPatchVersion;
+}RedisVersion;
+
 /*
  * Opaque sturcts
  */
@@ -421,6 +427,8 @@ int MODULE_API_FUNC(RedisGears_GetLLApiVersion)();
 
 void MODULE_API_FUNC(RedisGears_ReturnResultsAndErrors)(ExecutionPlan* ep, RedisModuleCtx *ctx);
 
+RedisVersion* MODULE_API_FUNC(RedisGears_GetRedisVersion)();
+
 #define REDISGEARS_MODULE_INIT_FUNCTION(ctx, name) \
         RedisGears_ ## name = RedisModule_GetSharedAPI(ctx, "RedisGears_" #name);\
         if(!RedisGears_ ## name){\
@@ -550,6 +558,8 @@ static int RedisGears_Initialize(RedisModuleCtx* ctx){
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataFree);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, WorkerDataGetShallowCopy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ReturnResultsAndErrors);
+
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, GetRedisVersion);
 
     if(RedisGears_GetLLApiVersion() < REDISGEARS_LLAPI_VERSION){
         return REDISMODULE_ERR;
