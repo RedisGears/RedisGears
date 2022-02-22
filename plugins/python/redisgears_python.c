@@ -498,10 +498,6 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
             *err = RG_STRDUP("Bad serialization format on reading requirement os");
             goto done;
         }
-        if(strcmp(os, RedisGears_GetCompiledOs()) != 0){
-            RedisGears_ASprintf(err, "Requirement was compiled on different os (compiled_os = %s, current_os = %s)", os, RedisGears_GetCompiledOs());
-            goto done;
-        }
     }
 
     long nWheels = RedisGears_BRReadLong(br);
