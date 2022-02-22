@@ -420,9 +420,9 @@ TEST_FLAGS += VALGRIND=1
 endif
 
 ifeq ($(OS),macos)
-PARALLELISM=1
+PARALLELISM?=1
 else
-PARALLELISM=4
+PARALLELISM?=4
 endif
 
 test: __sep
