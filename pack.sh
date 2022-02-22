@@ -11,7 +11,8 @@ export READIES=$ROOT/deps/readies
 cd $ROOT
 
 export PYTHONWARNINGS=ignore
-export LC_CTYPE=en_US.UTF-8
+export LC_CTYPE=en_US.utf-8
+
 
 #----------------------------------------------------------------------------------------------
 

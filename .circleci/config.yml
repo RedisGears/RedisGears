@@ -44,6 +44,11 @@ commands:
 
   checkout-all:
     steps:
+      - run: |
+          if [ -f /usr/bin/apt-get ]; then
+              apt-get update -q
+              apt install -qy git
+          fi
       - checkout
       - run:
           name: Checkout submodules
@@ -195,7 +200,8 @@ jobs:
       platform:
         type: string
     docker:
-      - image: debian:bullseye
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+    resource_class: medium+
     steps:
       - build-platforms-steps:
           platform: <<parameters.platform>>
@@ -262,6 +268,9 @@ jobs:
       - run:
           name: Deploy Snapshots to S3
           command: |
+            apt update -q
+            apt install -qy python3 python3-dev python3-pip
+            pip install awscli
             ls -lR artifacts
             for f in artifacts/snapshot/*; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
@@ -278,6 +287,8 @@ jobs:
       - run:
           name: Deploy Releases to S3
           command: |
+            apt update -q
+            apt install -qy python3 python3-dev python3-pip
             for f in artifacts/release/*; do
               aws s3 cp $f s3://redismodules/redisgears/ --acl public-read
             done
