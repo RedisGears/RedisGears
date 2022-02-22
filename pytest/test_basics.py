@@ -66,7 +66,7 @@ class testBasic:
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[0]]
+        res = [yaml.load(r, Loader=yaml.FullLoader) for r in res[0]]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'type': 'string', 'event': 'None', 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -74,7 +74,7 @@ class testBasic:
     def testBasicFilterQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[0]]
+        res = [yaml.load(r, Loader=yaml.FullLoader) for r in res[0]]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'type': 'string', 'event': 'None', 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -82,7 +82,7 @@ class testBasic:
     def testBasicMapQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[0]]
+        res = [yaml.load(r, Loader=yaml.FullLoader) for r in res[0]]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 
@@ -395,7 +395,7 @@ GB().map(InfinitLoop).run()
     res = env.cmd('RG.GETEXECUTION', executionId1)
     env.assertEqual(res[0][3][1], 'done')
     env.assertEqual(len(res[0][3][9]), 1) # number if error is one
-    
+
     env.expect('rg.dropexecution', executionId1).ok()
     env.expect('rg.dropexecution', executionId2).ok()
 
@@ -496,7 +496,7 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(steps))
         sdursum = 0
         for _, stype, _, sdur, _, sname, _, sarg in steps:
-            sdursum += sdur    
+            sdursum += sdur
         self.env.assertEqual(sdursum, 0)
         self.env.cmd('RG.DROPEXECUTION', id)
 
@@ -513,7 +513,7 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(steps))
         sdursum = 0
         for _, stype, _, sdur, _, sname, _, sarg in steps:
-            sdursum += sdur    
+            sdursum += sdur
         self.env.assertLessEqual(0, sdursum)
         self.env.cmd('RG.DROPEXECUTION', id)
 
@@ -584,7 +584,7 @@ def testMaxIdle(env):
         env.skip()
 
     conn = getConnectionByEnv(env)
-    
+
     env.broadcast('RG.CONFIGSET', 'ExecutionMaxIdleTime', '500')
 
     longExecution = '''
@@ -756,7 +756,7 @@ def testClusterRefreshOnOnlySingleNode(env):
         with TimeLimit(2):
             res = env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()')
             env.assertEqual(res, [[str(env.shardsCount)], []])
-    except Exception as e:  
+    except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to finish')
 
 @gearsTest()

@@ -11,8 +11,6 @@ set -e
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
 [[ $OSNICK == ol8 ]] && OSNICK=rhel8
 
-OSNICK="$(../../deps/readies/bin/platform --osnick)"
-
 if [[ $OSNICK == catalina ]]; then
     JVM_PATH=./bin/OpenJDK/jdk-11.0.14+9/Contents/Home/
 else
