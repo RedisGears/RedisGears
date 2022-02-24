@@ -255,7 +255,7 @@ _Runtime Configurability_
 Supported
 
 ## Plugin
-The **Plugin** configuration option allows to specify which RedisGears plugin you want to load. Usually a RedisGears plugin is the same as language support. Currently RedisGears supports python and java (jvm languages).
+The **Plugin** configuration option allows to specify which RedisGears plugin you want to load. Usually a RedisGears plugin is the same as language support. Currently RedisGears supports python and java (jvm languages). The **Plugin** configuration options tells RedisGears which language plugins to load.
 
 _Expected Value_
 
