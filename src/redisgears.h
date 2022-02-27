@@ -178,6 +178,8 @@ typedef Reader* (*RedisGears_CreateReaderCallback)(void* arg);
 typedef int (*RedisGears_ReaderVerifyRegisterCallback)(SessionRegistrationCtx *srctx, FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err);
 typedef int (*RedisGears_ReaderRegisterCallback)(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, char** err);
 typedef void (*RedisGears_ReaderUnregisterCallback)(FlatExecutionPlan* fep, bool abortPending);
+typedef void (*RedisGears_ReaderPauseCallback)(FlatExecutionPlan* fep, bool abortPending);
+typedef void (*RedisGears_ReaderUnpauseCallback)(FlatExecutionPlan* fep);
 typedef void (*RedisGears_ReaderSerializeRegisterArgsCallback)(void* arg, Gears_BufferWriter* bw);
 typedef void* (*RedisGears_ReaderDeserializeRegisterArgsCallback)(Gears_BufferReader* br, int encver);
 typedef void (*RedisGears_ReaderFreeArgsCallback)(void* args);
@@ -198,6 +200,8 @@ typedef struct RedisGears_ReaderCallbacks{
     RedisGears_ReaderVerifyRegisterCallback verifyRegister;
     RedisGears_ReaderRegisterCallback registerTrigger;
     RedisGears_ReaderUnregisterCallback unregisterTrigger;
+    RedisGears_ReaderPauseCallback pauseTrigger;
+    RedisGears_ReaderUnpauseCallback unpauseTrigger;
     RedisGears_ReaderSerializeRegisterArgsCallback serializeTriggerArgs;
     RedisGears_ReaderDeserializeRegisterArgsCallback deserializeTriggerArgs;
     RedisGears_ReaderFreeArgsCallback freeTriggerArgs;

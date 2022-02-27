@@ -50,11 +50,13 @@ typedef enum StreamRegistrationStatus{
     StreamRegistrationStatus_ABORTED,
     StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE,
     StreamRegistrationStatus_UNREGISTERED,
+    StreamRegistrationStatus_PAUSED,
 }StreamRegistrationStatus;
 
 typedef struct StreamReaderTriggerCtx{
     size_t refCount;
     StreamRegistrationStatus status;
+    int paused;
     StreamReaderTriggerArgs* args;
     Gears_dict* singleStreamData;
     FlatExecutionPlan* fep;
@@ -279,6 +281,7 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
     *srctx = (StreamReaderTriggerCtx){
         .refCount = 1,
         .status = StreamRegistrationStatus_OK,
+        .paused = 0,
         .args = args,
         .singleStreamData = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .fep = fep,
@@ -864,6 +867,9 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
             // we ignore stopped executions
             continue;
         }
+        if (srctx->paused) {
+            continue;
+        }
         if(StreamReader_IsKeyMatch(srctx->args->streamPrefix, keyName)){
             SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
             if(!ssrctx){
@@ -913,6 +919,28 @@ static StreamReaderTriggerCtx* StreamReader_GetStreamTriggerCtxByFep(FlatExecuti
     }
     Gears_listReleaseIterator(iter);
     return NULL;
+}
+
+static void StreamReader_PauseTrigger(FlatExecutionPlan* fep, bool abortPending){
+    StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
+    RedisModule_Assert(srctx);
+
+    if(abortPending){
+        StreamReader_AbortPendings(srctx);
+    }
+
+    StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+    srctx->paused = 1;
+}
+
+static void StreamReader_UnpauseTrigger(FlatExecutionPlan* fep){
+    StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
+    RedisModule_Assert(srctx);
+    if (srctx->paused) {
+        // currently registration are pause, re-trigger key space scanning for streams.
+        StreamReader_StartScanThread(staticCtx, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+    }
+    srctx->paused = 0;
 }
 
 static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPending){
@@ -1142,12 +1170,14 @@ static void StreamReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModul
     }
 
     RedisModule_InfoAddFieldULongLong(ctx, "retryInterval", srctx->args->retryInterval);
+
+    RedisModule_InfoAddFieldULongLong(ctx, "paused", srctx->paused);
 }
 
 static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPlan* fep){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
     RedisModule_Assert(srctx);
-    RedisModule_ReplyWithArray(ctx, 26);
+    RedisModule_ReplyWithArray(ctx, 28);
     RedisModule_ReplyWithStringBuffer(ctx, "mode", strlen("mode"));
     if(srctx->mode == ExecutionModeSync){
         RedisModule_ReplyWithStringBuffer(ctx, "sync", strlen("sync"));
@@ -1183,13 +1213,32 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
         RedisModule_ReplyWithNull(ctx);
     }
     RedisModule_ReplyWithStringBuffer(ctx, "args", strlen("args"));
-    RedisModule_ReplyWithArray(ctx, 6);
+    RedisModule_ReplyWithArray(ctx, 12);
     RedisModule_ReplyWithStringBuffer(ctx, "batchSize", strlen("batchSize"));
     RedisModule_ReplyWithLongLong(ctx, srctx->args->batchSize);
     RedisModule_ReplyWithStringBuffer(ctx, "durationMS", strlen("durationMS"));
     RedisModule_ReplyWithLongLong(ctx, srctx->args->durationMS);
     RedisModule_ReplyWithStringBuffer(ctx, "stream", strlen("stream"));
     RedisModule_ReplyWithStringBuffer(ctx, srctx->args->streamPrefix, strlen(srctx->args->streamPrefix));
+    RedisModule_ReplyWithStringBuffer(ctx, "trimStream", strlen("trimStream"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->args->trimStream);
+    RedisModule_ReplyWithStringBuffer(ctx, "onFailedPolicy", strlen("onFailedPolicy"));
+    switch(srctx->args->onFailedPolicy){
+    case OnFailedPolicyContinue:
+        RedisModule_ReplyWithStringBuffer(ctx, "continue", strlen("continue"));
+        break;
+    case OnFailedPolicyAbort:
+        RedisModule_ReplyWithStringBuffer(ctx, "abort", strlen("abort"));
+        break;
+    case OnFailedPolicyRetry:
+        RedisModule_ReplyWithStringBuffer(ctx, "retry", strlen("retry"));
+        break;
+    default:
+        RedisModule_Assert(false);
+    }
+    RedisModule_ReplyWithStringBuffer(ctx, "retryInterval", strlen("retryInterval"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->args->retryInterval);
+
     RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
     switch(srctx->status){
     case StreamRegistrationStatus_OK:
@@ -1204,6 +1253,8 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     default:
         RedisModule_Assert(false);
     }
+    RedisModule_ReplyWithStringBuffer(ctx, "paused", strlen("paused"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->paused);
 }
 
 static void StreamReader_RdbSave(RedisModuleIO *rdb){
@@ -1326,6 +1377,8 @@ RedisGears_ReaderCallbacks StreamReader = {
         .create = StreamReader_Create,
         .registerTrigger = StreamReader_RegisrterTrigger,
         .unregisterTrigger = StreamReader_UnregisrterTrigger,
+        .pauseTrigger = StreamReader_PauseTrigger,
+        .unpauseTrigger = StreamReader_UnpauseTrigger,
         .serializeTriggerArgs = StreamReader_SerializeArgs,
         .deserializeTriggerArgs = StreamReader_DeserializeArgs,
         .freeTriggerArgs = StreamReader_FreeArgs,

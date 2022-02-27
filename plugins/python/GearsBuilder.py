@@ -179,7 +179,7 @@ class GearsBuilder():
         if 'regex' in kargs:
             log('Using regex argument with register is deprecated and missleading, use prefix instead.', level='warning')
             kargs['prefix'] = kargs['regex']
-        self.gearsCtx.register(**kargs)
+        return self.gearsCtx.register(**kargs)
 
 def createDecorator(f):
     def deco(self, *args):

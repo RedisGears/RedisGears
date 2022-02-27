@@ -1751,3 +1751,65 @@ GB('StreamReader').foreach(test).register(mode='sync')
             if 'avgEstimatedLagMS' in d.keys():
                 env.assertContains('nan', d['avgEstimatedLagMS'])
             
+@gearsTest()
+def testPauseUnpause(env):
+    script = '''
+def test(x):
+    execute('incr', 'counter{%s}' % (x['key']))
+
+regId = GB('StreamReader').foreach(test).register(mode='sync')
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    counterY = conn.execute_command('get', 'counter{y}')
+    env.assertEqual(counterX, '1')
+    env.assertEqual(counterY, '1')
+
+    env.execute_command('RG.PAUSEREGISTRATIONS', regId)
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    counterY = conn.execute_command('get', 'counter{y}')
+    env.assertEqual(counterX, '1')
+    env.assertEqual(counterY, '1')
+
+    env.execute_command('RG.UNPAUSEREGISTRATIONS', regId)
+
+    with TimeLimit(2, env, 'Failed waiting for registration to unpaused'):
+        while True:
+            counterX = conn.execute_command('get', 'counter{x}')
+            counterY = conn.execute_command('get', 'counter{y}')
+            if counterX == '2' and counterY == '2':
+                break
+            time.sleep(0.1)
+
+@gearsTest()
+def testPauseUnpauseNotExistingID(env):
+    env.expect('RG.PAUSEREGISTRATIONS', 'not_exists').error().contains('Execution not_exists does not exists on')
+    env.expect('RG.UNPAUSEREGISTRATIONS', 'not_exists').error().contains('Execution not_exists does not exists on')
+
+@gearsTest()
+def testPauseUnpauseNotSupported(env):
+    script = '''
+regId = GB().register(mode='sync')
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+    env.expect('RG.PAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support pause')
+    env.expect('RG.UNPAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support unpause')
+
