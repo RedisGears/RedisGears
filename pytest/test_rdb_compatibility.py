@@ -18,7 +18,7 @@ class RdbMetaData:
 
 RDBS = [
     RdbMetaData(fileName='redisgears_1.0.0.rdb', nRegistrations=1, nExecutions=0),
-    RdbMetaData(fileName='redisgears_1.0.0_2.rdb', nRegistrations=3, nExecutions=2)
+    RdbMetaData(fileName='redisgears_1.0.0_2.rdb', nRegistrations=3, nExecutions=1)
 ]
 
 def downloadFiles():

@@ -273,7 +273,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
             done = False
             while not done:
                 registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
-                if registrationInfo[0][7][3] == 3 and registrationInfo[0][7][5] == 3:
+                if registrationInfo[0][7][3] == 2 and registrationInfo[0][7][5] == 2:
                     done = True
                 time.sleep(0.1)
     except Exception as e:
@@ -292,7 +292,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
             done = False
             while not done:
                 registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
-                if registrationInfo[0][7][3] == 7 and registrationInfo[0][7][5] == 5:
+                if registrationInfo[0][7][3] == 5 and registrationInfo[0][7][5] == 4:
                     done = True
                 time.sleep(0.1)
     except Exception as e:
@@ -302,9 +302,9 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     eid = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()', 'UNBLOCKING')
 
     executionsInfo = env.cmd('RG.DUMPEXECUTIONS')
-    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'done']), 5)
+    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'done']), 4)
     env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'running']), 1)
-    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'created']), 2)
+    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'created']), 1)
 
     env.expect('RG.UNREGISTER', registrationId, 'abortpending').ok()
 

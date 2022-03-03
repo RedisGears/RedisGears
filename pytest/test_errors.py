@@ -181,7 +181,7 @@ def testCommandReaderRegisterWithExcpetionCommand(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(trigger="command")').ok()
     env.expect('rg.trigger', 'command').error().contains("'noexists' is not defined")
 
-@gearsTest()
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
 def testNoSerializableRegistrationWithAllReaders(env):
     script = '''
 import redis
