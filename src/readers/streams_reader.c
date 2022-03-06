@@ -17,6 +17,7 @@
 #define STREAM_REGISTRATION_INIT_SIZE 10
 static Gears_list* streamsRegistration = NULL;
 static RedisModuleTimerID turnedMasterTimer;
+static bool turnedMasterTEOn = false;
 
 typedef struct StreamId{
         long first;
@@ -80,7 +81,6 @@ typedef struct SingleStreamReaderCtx{
     RedisModuleTimerID lastTimerId;
     StreamReaderTriggerCtx* srtctx; // weak ptr to the StreamReaderCtx
     char* keyName;
-    StreamId lastId;
     long long pendingMessages;
     long long nextBatch;
     bool isRunning;
@@ -117,26 +117,6 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
 #define StreamIdZero (StreamId){.first = 0, .second = 0}
 
 #define StreamIdIsZero(id) (id.first == 0 && id.second == 0)
-
-static int StreamReader_StreamIdCompare(StreamId id1, StreamId id2){
-    if(id1.second > id2.second){
-        return 1;
-    }
-
-    if(id1.second < id2.second){
-        return -1;
-    }
-
-    if(id1.first > id2.first){
-        return 1;
-    }
-
-    if(id1.first < id2.first){
-        return -1;
-    }
-
-    return 0;
-}
 
 static StreamId StreamReader_ParseStreamId(const char* streamId){
     StreamId ret;
@@ -177,31 +157,6 @@ static int StreamReader_ReadStreamLen(RedisModuleCtx *rctx, SingleStreamReaderCt
     return true;
 }
 
-static int StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx* ssrctx){
-    RedisModuleCallReply *reply = RedisModule_Call(rctx, "XINFO", "cc", "STREAM", ssrctx->keyName);
-    if(!StreamReader_VerifyCallReply(rctx, reply, "Failed on XINFO command", "warning")){
-    	return false;
-    }
-    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-    size_t lastGeneratedIdIndex = 0;
-    for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; i+=2){
-        RedisModuleCallReply *currReply = RedisModule_CallReplyArrayElement(reply, i);
-        size_t currReplyStrLen;
-        const char* currReplyStr = RedisModule_CallReplyStringPtr(currReply, &currReplyStrLen);
-        if(strncmp(currReplyStr, "last-generated-id", currReplyStrLen) == 0){
-            lastGeneratedIdIndex = i + 1;
-            break;
-        }
-    }
-    RedisModule_Assert(lastGeneratedIdIndex > 0);
-    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, lastGeneratedIdIndex);
-    RedisModule_Assert(RedisModule_CallReplyType(idReply) == REDISMODULE_REPLY_STRING);
-    const char* idStr = RedisModule_CallReplyStringPtr(idReply, NULL);
-    ssrctx->lastId = StreamReader_ParseStreamId(idStr);
-    RedisModule_FreeCallReply(reply);
-    return true;
-}
-
 #define GEARS_CONSUMER_GROUP "__gears_consumer_group__"
 static void StreamReader_CreateConsumersGroup(RedisModuleCtx *ctx, const char* key){
     RedisModuleCallReply *r = RedisModule_Call(ctx, "XGROUP", "!cccc", "CREATE", key, GEARS_CONSUMER_GROUP, "0");
@@ -227,11 +182,6 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
         RG_FREE(ssrctx->keyName);
         RG_FREE(ssrctx);
         return NULL;
-    }
-    if(!StreamReader_ReadLastId(ctx, ssrctx)){
-    	RG_FREE(ssrctx->keyName);
-    	RG_FREE(ssrctx);
-    	return NULL;
     }
     if (ssrctx->pendingMessages) {
         for (size_t i = 0 ; i < ssrctx->pendingMessages ; i+=srtctx->args->batchSize) {
@@ -643,14 +593,14 @@ static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx*
         struct timespec currTimeSpec = {0};
         clock_gettime(CLOCK_REALTIME, &currTimeSpec);
         long long currTime = ((long long)1000000000 * (currTimeSpec.tv_sec) + (currTimeSpec.tv_nsec));
-        if ((currTime - batchStartTime >= srctx->args->durationMS)) {
+        if ((currTime - batchStartTime >= srctx->args->durationMS * 1000000)) {
             /* Duration pass, trigger the run now. */
             StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
             ssrctx->nextBatch = 0; /* trigger execution in the middle of batch require us to reset the batch */
             return;
         }
         RedisModule_Assert(!ssrctx->timerIsSet);
-        ssrctx->lastTimerId = RedisModule_CreateTimer(staticCtx, srctx->args->durationMS - (currTime - batchStartTime), StreamReader_OnTime, ssrctx);
+        ssrctx->lastTimerId = RedisModule_CreateTimer(staticCtx, srctx->args->durationMS - (currTime - batchStartTime)/1000000, StreamReader_OnTime, ssrctx);
         ssrctx->timerIsSet = true;
     }
     ssrctx->isRunning = false;
@@ -716,7 +666,10 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
                     RedisModule_CreateTimer(staticCtx, srctx->args->retryInterval * 1000, StreamReader_StartScanThread, StreamReaderTriggerCtx_GetShallowCopy(srctx));
                 } else {
                     // set timer to check if we turn master
-                    turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                    if(!turnedMasterTEOn){
+                        turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                        turnedMasterTEOn = true;
+                    }
                 }
             }else if(srctx->args->onFailedPolicy == OnFailedPolicyAbort){
                 srctx->status = StreamRegistrationStatus_ABORTED;
@@ -760,9 +713,12 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
             StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
         } else {
-            StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
-            // set timer to check if we turn master
-            turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+            if(!turnedMasterTEOn){
+                StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+                // set timer to check if we turn master
+                turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                turnedMasterTEOn = true;
+            }
         }
     }
 
@@ -790,8 +746,6 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
     }
 }
 
-static bool turnedMasterTEOn = false;
-
 static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
     int flags = RedisModule_GetContextFlags(ctx);
     if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
@@ -816,6 +770,7 @@ static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
 }
 
 static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
+    int flags = RedisModule_GetContextFlags(staticCtx);
     SingleStreamReaderCtx* ssrctx = data;
     if(ssrctx->freeOnNextTimeEvent){
         Gears_listRelease(ssrctx->batchStartTime);
@@ -823,9 +778,18 @@ static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
         RG_FREE(ssrctx);
         return;
     }
-    StreamReader_RunOnEvent(ssrctx, ssrctx->srtctx->args->batchSize,false);
     ssrctx->nextBatch = 0; /* trigger execution in the middle of batch require us to reset the batch */
     ssrctx->timerIsSet = false;
+    if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
+        if(!turnedMasterTEOn){
+            StreamReaderTriggerCtx_CleanSingleStreamsData(ssrctx->srtctx);
+            // set timer to check if we turn master
+            turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+            turnedMasterTEOn = true;
+        }
+        return;
+    }
+    StreamReader_RunOnEvent(ssrctx, ssrctx->srtctx->args->batchSize,false);
 }
 
 static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
@@ -875,12 +839,12 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
                 }
             }
             if(srctx->args->batchSize <= ssrctx->pendingMessages && !ssrctx->isRunning){
-                StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
-                // we finish the run, if timer is set lets remove it.
-                if(!ssrctx->timerIsSet && srctx->args->durationMS > 0){
+                if(ssrctx->timerIsSet){
                     RedisModule_StopTimer(ctx, ssrctx->lastTimerId, NULL);
                     ssrctx->timerIsSet = false;
                 }
+                StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
+                // we finish the run, if timer is set lets remove it.
             } else if (!ssrctx->isRunning) {
                 // if we did not run execution we need to set timer if its not already set
                 if(!ssrctx->timerIsSet && srctx->args->durationMS > 0){

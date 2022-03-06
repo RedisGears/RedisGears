@@ -1813,3 +1813,65 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
     env.expect('RG.PAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support pause')
     env.expect('RG.UNPAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support unpause')
 
+
+@gearsTest()
+def testStreamReaderDuration(env):
+    script = '''
+GB('StreamReader').repartition(lambda x: 'counter').map(lambda x: execute('incr', 'counter')).register(prefix='s1*', batch=2, duration=1)
+GB('StreamReader').repartition(lambda x: 'counter').map(lambda x: execute('incr', 'counter')).register(prefix='s2*', batch=2, duration=1000)
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 's1', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's1', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's1', '*', 'foo', 'bar')
+
+    with TimeLimit(2, env, 'Failed waiting for counter to reach 3'):
+        while True:
+            counter = conn.execute_command('get', 'counter')
+            if counter == '3':
+                break
+            time.sleep(0.1)
+
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+
+    with TimeLimit(2, env, 'Failed waiting for counter to reach 3'):
+        while True:
+            counter = conn.execute_command('get', 'counter')
+            if counter == '6':
+                break
+            time.sleep(0.1)
+
+@gearsTest()
+def testStreamReaderOnTimmerPending(env):
+    script = '''
+regId = GB('StreamReader').repartition(lambda x: 'counter').map(lambda x: execute('incr', 'counter')).register(prefix='s2*', batch=2, duration=1000)
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+
+    # here we have a pending timmer, lets unregister the registration.
+
+    env.expect('RG.UNREGISTER', regId).equal('OK')
+
+    time.sleep(1)
+
+    # make sure cluster is still up
+    for i in range(1, env.shardsCount + 1, 1):
+        c = env.getConnection(i)
+        res = c.execute_command('ping')
+        env.assertEqual(res, True)
