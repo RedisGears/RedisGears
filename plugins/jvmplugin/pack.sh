@@ -9,6 +9,7 @@ set -e
 [[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
+[[ $OSNICK == ol8 ]] && OSNICK=rhel8
 [[ $OSNICK == rocky8 ]] && OSNICK=rhel8
 
 if [[ $OSNICK == catalina ]]; then
