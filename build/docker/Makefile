@@ -7,7 +7,7 @@ OSNICK ?= bullseye
 
 REPO=redisgears
 
-REDIS_VER=6.2.5
+REDIS_VER=6.2.6
 
 INT_BRANCHES=1.2 1.0
 
