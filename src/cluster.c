@@ -439,7 +439,7 @@ static void Cluster_DisconnectCallback(const struct redisAsyncContext* c, int st
 }
 
 /* Callback for passing a keyfile password stored as an sds to OpenSSL */
-static int MR_TlsPasswordCallback(char *buf, int size, int rwflag, void *u) {
+static int RG_TlsPasswordCallback(char *buf, int size, int rwflag, void *u) {
     const char *pass = u;
     size_t pass_len;
 
@@ -468,7 +468,7 @@ SSL_CTX* RG_CreateSSLContext(const char *cacert_filename,
 
     /* always set the callback, otherwise if key is encrypted and password
      * was not given, we will be waiting on stdin. */
-    SSL_CTX_set_default_passwd_cb(ssl_ctx, MR_TlsPasswordCallback);
+    SSL_CTX_set_default_passwd_cb(ssl_ctx, RG_TlsPasswordCallback);
     SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx, (void *) private_key_pass);
 
     if ((cert_filename != NULL && private_key_filename == NULL) ||
