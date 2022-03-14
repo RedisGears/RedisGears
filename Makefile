@@ -255,7 +255,8 @@ EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
 EMBEDDED_LIBS_FLAGS=\
 	-Wl,-Bstatic $(HIREDIS) $(LIBEVENT) -Wl,-Bdynamic \
-	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive \
+	-lssl -lcrypt
 endif
 
 define extract_symbols
@@ -436,6 +437,7 @@ else
 	$(SHOW)set -e; \
 	cd pytest; \
 	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism $(PARALLELISM)
+	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests_tls.sh --parallelism $(PARALLELISM)
 	${MAKE} -C plugins/jvmplugin tests PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 endif
 
