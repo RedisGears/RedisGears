@@ -437,6 +437,7 @@ else
 	$(SHOW)set -e; \
 	cd pytest; \
 	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests.sh --parallelism $(PARALLELISM)
+	cd pytest; \
 	$(TEST_FLAGS) MOD=$(abspath $(TARGET)) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./run_tests_tls.sh --parallelism $(PARALLELISM)
 	${MAKE} -C plugins/jvmplugin tests PYTHONDIR=$(PWD)/$(BINROOT)/python3_$(GEARS_VERSION)
 endif
