@@ -1,2 +1,2 @@
-rltest==0.5.0
+rltest==0.5.2
 ramp-packer==2.3.0
