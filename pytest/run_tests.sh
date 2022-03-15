@@ -34,6 +34,11 @@ else
 	MORE_ARGS=""
 fi
 
+if [[ $TLS == 1 ]]; then
+	$HERE/generate_tests_cert.sh
+	MORE_ARGS+=" --tls --tls-cert-file ./tests/tls/redis.crt --tls-key-file ./tests/tls/redis.key --tls-ca-cert-file ./tests/tls/ca.crt --tls-passphrase foobar"
+fi
+
 run_tests() {
 	local shards=$1
 	shift
