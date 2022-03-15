@@ -21,7 +21,7 @@ from redisgears import isInAtomicBlock
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 from redisgears import isAsyncAllow as isAsyncAllow
-from redisgears import flatError as flatError
+from redisgears import flatError as flat_error
 import asyncio
 from asyncio.futures import Future
 from threading import Thread

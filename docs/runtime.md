@@ -261,3 +261,18 @@ def override_reply(reply)
 _Arguments_
 
 * reply: the new reply to send to the client. If the reply starts with `-` it will be returned as error reply. If the reply starts with `+` it will be returned as a status reply.
+
+## flat_error
+The `flat_error` function is imported to the runtime's environment by default.
+This function raise a special exception type that instructs gears not to extract the error stack trace.
+
+**Python API**
+
+```python
+def flat_error(msg)
+```
+
+_Arguments_
+
+* msg: The error msg to add as is in the execution error list.
+

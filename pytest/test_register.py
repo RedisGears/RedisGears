@@ -1819,7 +1819,7 @@ def testPauseFromWithinTheRegistrationCode(env):
 def foreachFunc(x):
     isPaused = execute('get', 'paused{%s}' % (x['key']))
     if isPaused == 'yes':
-        flatError('PAUSE')
+        flat_error('PAUSE')
     execute('incr', 'counter{%s}' % (x['key']))
 
 regId = GB('StreamReader').foreach(foreachFunc).register(mode='sync')
