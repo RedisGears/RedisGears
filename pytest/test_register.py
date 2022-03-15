@@ -1813,6 +1813,47 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
     env.expect('RG.PAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support pause')
     env.expect('RG.UNPAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support unpause')
 
+@gearsTest()
+def testPauseFromWithinTheRegistrationCode(env):
+    script = '''
+def foreachFunc(x):
+    isPaused = execute('get', 'paused{%s}' % (x['key']))
+    if isPaused == 'yes':
+        flatError('PAUSE')
+    execute('incr', 'counter{%s}' % (x['key']))
+
+regId = GB('StreamReader').foreach(foreachFunc).register(mode='sync')
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    env.assertEqual(counterX, '1')
+
+    conn.execute_command('set', 'paused{x}', 'yes')
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    env.assertEqual(counterX, '1')
+
+    conn.execute_command('set', 'paused{x}', 'no')
+
+    env.execute_command('RG.UNPAUSEREGISTRATIONS', regId)
+
+    with TimeLimit(2, env, 'Failed waiting for registration to unpaused'):
+        while True:
+            counterX = conn.execute_command('get', 'counter{x}')
+            if counterX == '2':
+                break
+            time.sleep(0.1)
 
 @gearsTest()
 def testStreamReaderDuration(env):

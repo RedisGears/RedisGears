@@ -653,7 +653,10 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
         srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
 
-        if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
+        if (strncmp(srctx->lastError, "PAUSE", 5) == 0) {
+            StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+            srctx->status = StreamRegistrationStatus_PAUSED;
+        } else if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
             // lets clean all our data about all the streams, on restart we will read all the
             // pending data so we will not lose records
             StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
@@ -690,34 +693,36 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         Reader* reader = ExecutionPlan_GetReader(ctx);
         StreamReaderCtx* srCtx = ((StreamReaderCtx*)reader->ctx);
         SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, srCtx->streamKeyName);
-        if (!srCtx->readPenging) {
-            /* calculate lag, no lag information on not yet acked data */
-            Gears_listNode *first = Gears_listFirst(ssrctx->batchStartTime);
-            if (first) {
-                long long batchStartTime = (long long)Gears_listNodeValue(first);
-                Gears_listDelNode(ssrctx->batchStartTime, first);
-                if (batchStartTime) {
-                    struct timespec currTimeSpec = {0};
-                    clock_gettime(CLOCK_REALTIME, &currTimeSpec);
-                    long long currTime = ((long long)1000000000 * (currTimeSpec.tv_sec) + (currTimeSpec.tv_nsec));
-                    srctx->lastBatchLag = currTime - batchStartTime;
-                    srctx->totalBatchLag += srctx->lastBatchLag;
+        if (ssrctx) {
+            if (!srCtx->readPenging) {
+                /* calculate lag, no lag information on not yet acked data */
+                Gears_listNode *first = Gears_listFirst(ssrctx->batchStartTime);
+                if (first) {
+                    long long batchStartTime = (long long)Gears_listNodeValue(first);
+                    Gears_listDelNode(ssrctx->batchStartTime, first);
+                    if (batchStartTime) {
+                        struct timespec currTimeSpec = {0};
+                        clock_gettime(CLOCK_REALTIME, &currTimeSpec);
+                        long long currTime = ((long long)1000000000 * (currTimeSpec.tv_sec) + (currTimeSpec.tv_nsec));
+                        srctx->lastBatchLag = currTime - batchStartTime;
+                        srctx->totalBatchLag += srctx->lastBatchLag;
+                    }
+                } else {
+                    /* someone is messing up with the stream, and the stream size is not as we think, read it again */
+                    StreamReader_ReadStreamLen(staticCtx, ssrctx);
                 }
-            } else {
-                /* someone is messing up with the stream, and the stream size is not as we think, read it again */
-                StreamReader_ReadStreamLen(staticCtx, ssrctx);
             }
-        }
-        if (flags & REDISMODULE_CTX_FLAGS_MASTER) {
-            /* only if we are master we should continue trigger events */
-            StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
-            StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
-        } else {
-            if(!turnedMasterTEOn){
-                StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
-                // set timer to check if we turn master
-                turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
-                turnedMasterTEOn = true;
+            if (flags & REDISMODULE_CTX_FLAGS_MASTER) {
+                /* only if we are master we should continue trigger events */
+                StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
+                StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
+            } else {
+                if(!turnedMasterTEOn){
+                    StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+                    // set timer to check if we turn master
+                    turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                    turnedMasterTEOn = true;
+                }
             }
         }
     }

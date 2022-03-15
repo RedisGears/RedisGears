@@ -65,6 +65,7 @@ static PyObject* profileStartFunction;
 static PyObject* profileStopFunction;
 static PyObject* profileGetInfoFunction;
 PyObject* GearsError;
+PyObject* GearsFlatError;
 PyObject* ForceStoppedError;
 
 RecordType* pythonRecordType;
@@ -4442,6 +4443,17 @@ static PyObject* gearsTimeEvent(PyObject *cls, PyObject *args){
     return Py_True;
 }
 
+static PyObject* flatError(PyObject *cls, PyObject *args){
+    if(PyTuple_Size(args) != 1){
+        PyErr_SetString(GearsError, "not enough arguments for time flat error");
+        return NULL;
+    }
+    PyObject* msg = PyTuple_GetItem(args, 0);
+    PyErr_SetObject(GearsFlatError, msg);
+
+    return NULL;
+}
+
 static PyObject* isAsyncAllow(PyObject *cls, PyObject *args){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     PyObject* ret = Py_False;
@@ -4563,6 +4575,7 @@ PyMethodDef EmbRedisGearsMethods[] = {
     {"getCommand", getCommand, METH_VARARGS, "return the current running command, raise error if command is not available"},
     {"overrideReply", overrideReply, METH_VARARGS, "override the reply with the given python value, raise error if there is no command to override its reply"},
     {"isAsyncAllow", isAsyncAllow, METH_VARARGS, "return true iff async await is allow"},
+    {"flatError", flatError, METH_VARARGS, "return flat error object that will be return to the user without extracting the trace"},
     {NULL, NULL, 0, NULL}
 };
 
@@ -5044,38 +5057,44 @@ char* getPyError() {
     PyObject *pType, *pValue, *pTraceback;
     PyErr_Fetch(&pType, &pValue, &pTraceback);
     PyErr_NormalizeException(&pType, &pValue, &pTraceback);
-    PyObject *pModuleName = PyUnicode_FromString("traceback");
-    PyObject *pModule = PyImport_Import(pModuleName);
-    PyObject *pStrTraceback = NULL;
-    if(pythonConfig.attemptTraceback && pTraceback != NULL && pModule != NULL){
-        PyObject *pFunc = PyObject_GetAttrString(pModule, "format_exception");
-        if(pFunc != NULL){
-            if(PyCallable_Check(pFunc)){
-                PyObject *pCall = PyObject_CallFunctionObjArgs(pFunc, pType, pValue, pTraceback, NULL);
-                if(pCall){
-                    pStrTraceback = PyObject_Str(pCall);
-                    GearsPyDecRef(pCall);
-                }
-            }
-            GearsPyDecRef(pFunc);
-        }
-        GearsPyDecRef(pModule);
+    PyObject *pMsg = NULL;
+    if (pType == GearsFlatError) {
+        // flat error, return the message only!
+        pMsg = PyObject_Str(pValue);
     }
-    if(pStrTraceback == NULL){
+    if (!pMsg) {
+        PyObject *pModuleName = PyUnicode_FromString("traceback");
+        PyObject *pModule = PyImport_Import(pModuleName);
+        if(pythonConfig.attemptTraceback && pTraceback != NULL && pModule != NULL){
+            PyObject *pFunc = PyObject_GetAttrString(pModule, "format_exception");
+            if(pFunc != NULL){
+                if(PyCallable_Check(pFunc)){
+                    PyObject *pCall = PyObject_CallFunctionObjArgs(pFunc, pType, pValue, pTraceback, NULL);
+                    if(pCall){
+                        pMsg = PyObject_Str(pCall);
+                        GearsPyDecRef(pCall);
+                    }
+                }
+                GearsPyDecRef(pFunc);
+            }
+            GearsPyDecRef(pModule);
+        }
+        GearsPyDecRef(pModuleName);
+    }
+    if(!pMsg){
         PyObject *pStrFormat = PyUnicode_FromString("Error type: %s, Value: %s");
         PyObject* pStrType = PyObject_Str(pType);
         PyObject* pStrValue = PyObject_Str(pValue);
         PyObject *pArgs = PyTuple_New(2);
         PyTuple_SetItem(pArgs, 0, pStrType);
         PyTuple_SetItem(pArgs, 1, pStrValue);
-        pStrTraceback = PyUnicode_Format(pStrFormat, pArgs);
+        pMsg = PyUnicode_Format(pStrFormat, pArgs);
         GearsPyDecRef(pArgs);
         GearsPyDecRef(pStrFormat);
     }
-    char *strTraceback = (char*)PyUnicode_AsUTF8AndSize(pStrTraceback, NULL);
-    char* err =  RG_STRDUP(strTraceback);
-    GearsPyDecRef(pStrTraceback);
-    GearsPyDecRef(pModuleName);
+    char *msg = (char*)PyUnicode_AsUTF8AndSize(pMsg, NULL);
+    char* err =  RG_STRDUP(msg);
+    GearsPyDecRef(pMsg);
     if(pType){
         GearsPyDecRef(pType);
     }
@@ -7491,6 +7510,10 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     ForceStoppedError = PyErr_NewException("gears.forcestopped", NULL, NULL);
     Py_INCREF(ForceStoppedError);
     PyModule_AddObject(redisGearsModule, "GearsForceStopped", ForceStoppedError);
+
+    GearsFlatError = PyErr_NewException("gears.flat_error", NULL, NULL);
+    Py_INCREF(GearsFlatError);
+    PyModule_AddObject(redisGearsModule, "GearsFlatError", GearsFlatError);
 
     char* script = RG_ALLOC(cloudpickle_py_len + 1);
     memcpy(script, cloudpickle_py, cloudpickle_py_len);
