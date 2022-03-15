@@ -407,7 +407,7 @@ workflows:
       - valgrind:
           <<: *on-integ-and-version-tags
       - tls:
-          <<: *on-any-branch
+          <<: *on-integ-and-version-tags
       - build-macos:
           <<: *on-integ-and-version-tags
       - jvmpublish:
