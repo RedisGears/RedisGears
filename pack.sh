@@ -80,17 +80,27 @@ pack() {
 	# artifact=release|snapshot
 	local artifact="$1"
 	local pack_fname="$2"
+	local python_only="$3"
 
 	cd $ROOT
 	local packfile=artifacts/$artifact/$pack_fname
-	${PYTHON_BIN} $READIES/bin/xtx \
-		-d GEARS_PYTHON_NAME=python3_$SEMVER \
-		-d GEARS_PYTHON_FNAME=$URL_FNAME \
-		-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
-		-d GEARS_JAVA_FNAME=$JAVA_URL_FNAME \
-		-d GEARS_JAVA_SHA256=$(cat $GEARSJVM_PKG.sha256) \
-		-d OS_DESC=$OS_DESC \
-		ramp.yml > /tmp/ramp.yml
+	if [[ $python_only == "true" ]]; then
+		${PYTHON_BIN} $READIES/bin/xtx \
+			-d GEARS_PYTHON_NAME=python3_$SEMVER \
+			-d GEARS_PYTHON_FNAME=$URL_FNAME \
+			-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
+			-d OS_DESC=$OS_DESC \
+			ramp_python.yml > /tmp/ramp.yml
+	else
+		${PYTHON_BIN} $READIES/bin/xtx \
+			-d GEARS_PYTHON_NAME=python3_$SEMVER \
+			-d GEARS_PYTHON_FNAME=$URL_FNAME \
+			-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
+			-d GEARS_JAVA_FNAME=$JAVA_URL_FNAME \
+			-d GEARS_JAVA_SHA256=$(cat $GEARSJVM_PKG.sha256) \
+			-d OS_DESC=$OS_DESC \
+			ramp.yml > /tmp/ramp.yml
+	fi
 	rm -f /tmp/ramp.fname
 	if [[ ! -z $GEARSPY_PATH ]]; then
 		GEARS_OPT="Plugin $GEARSPY_PATH"
@@ -212,6 +222,8 @@ fi
 platform="$OS-$OSNICK-$ARCH"
 RELEASE_ramp=${PACKAGE_NAME}.$platform.${SEMVER}${VARIANT}.zip
 SNAPSHOT_ramp=${PACKAGE_NAME}.$platform.${BRANCH}${VARIANT}.zip
+RELEASE_python_ramp=${PACKAGE_NAME}_python.$platform.${SEMVER}${VARIANT}.zip
+SNAPSHOT_python_ramp=${PACKAGE_NAME}_python.$platform.${BRANCH}${VARIANT}.zip
 RELEASE_gearspy=${PACKAGE_NAME}-python.$platform.$SEMVER.tgz
 SNAPSHOT_gearspy=${PACKAGE_NAME}-python.$platform.$BRANCH.tgz
 RELEASE_debug=${PACKAGE_NAME}-debug.$platform.$SEMVER.tgz
@@ -263,4 +275,6 @@ fi
 if [[ $RAMP == 1 ]]; then
 	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
 	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
+	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_python_ramp" "true"
+	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_python_ramp" "true"
 fi
