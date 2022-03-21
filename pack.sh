@@ -80,18 +80,10 @@ pack() {
 	# artifact=release|snapshot
 	local artifact="$1"
 	local pack_fname="$2"
-	local python_only="$3"
 
 	cd $ROOT
 	local packfile=artifacts/$artifact/$pack_fname
-	if [[ $python_only == "true" ]]; then
-		${PYTHON_BIN} $READIES/bin/xtx \
-			-d GEARS_PYTHON_NAME=python3_$SEMVER \
-			-d GEARS_PYTHON_FNAME=$URL_FNAME \
-			-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
-			-d OS_DESC=$OS_DESC \
-			ramp_python.yml > /tmp/ramp.yml
-	else
+	if [[ -z $3 ]]; then
 		${PYTHON_BIN} $READIES/bin/xtx \
 			-d GEARS_PYTHON_NAME=python3_$SEMVER \
 			-d GEARS_PYTHON_FNAME=$URL_FNAME \
@@ -100,6 +92,13 @@ pack() {
 			-d GEARS_JAVA_SHA256=$(cat $GEARSJVM_PKG.sha256) \
 			-d OS_DESC=$OS_DESC \
 			ramp.yml > /tmp/ramp.yml
+	else
+		${PYTHON_BIN} $READIES/bin/xtx \
+			-d GEARS_PYTHON_NAME=python3_$SEMVER \
+			-d GEARS_PYTHON_FNAME=$URL_FNAME \
+			-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
+			-d OS_DESC=$OS_DESC \
+			ramp_python.yml > /tmp/ramp.yml
 	fi
 	rm -f /tmp/ramp.fname
 	if [[ ! -z $GEARSPY_PATH ]]; then
