@@ -4,7 +4,7 @@
 #include "../execution_plan.h"
 
 #define totalDurationMS(ctx) DURATION2MS(ctx->totalRunDuration)
-#define avgDurationMS(ctx) ((double)DURATION2MS(ctx->totalRunDuration) / (ctx->numSuccess + ctx->numFailures + ctx->numAborted))
+#define avgDurationMS(ctx) ((ctx->numSuccess + ctx->numFailures + ctx->numAborted) == 0 ? 0 : ((double)DURATION2MS(ctx->totalRunDuration) / (ctx->numSuccess + ctx->numFailures + ctx->numAborted)))
 
 #define resetStats(ctx) \
     do { \
