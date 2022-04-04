@@ -1086,7 +1086,11 @@ static void StreamReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModul
     RedisModule_InfoAddFieldULongLong(ctx, "totalRunDurationMS", totalDurationMS(srctx));
     RedisModule_InfoAddFieldDouble(ctx, "avgRunDurationMS", avgDurationMS(srctx));
     RedisModule_InfoAddFieldLongLong(ctx, "lastEstimatedLagMS", DURATION2MS(srctx->lastBatchLag));
-    RedisModule_InfoAddFieldDouble(ctx, "avgEstimatedLagMS", ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    if (srctx->numSuccess + srctx->numFailures + srctx->numAborted == 0) {
+        RedisModule_InfoAddFieldDouble(ctx, "avgEstimatedLagMS", 0);
+    } else {
+        RedisModule_InfoAddFieldDouble(ctx, "avgEstimatedLagMS", ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    }
     RedisModule_InfoAddFieldCString(ctx, "lastError", srctx->lastError ? srctx->lastError : "None");
     RedisModule_InfoAddFieldULongLong(ctx, "batchSize", srctx->args->batchSize);
     RedisModule_InfoAddFieldULongLong(ctx, "durationMS", srctx->args->durationMS);
@@ -1157,7 +1161,11 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     RedisModule_ReplyWithStringBuffer(ctx, "lastEstimatedLagMS", strlen("lastEstimatedLagMS"));
     RedisModule_ReplyWithLongLong(ctx, DURATION2MS(srctx->lastBatchLag));
     RedisModule_ReplyWithStringBuffer(ctx, "avgEstimatedLagMS", strlen("avgEstimatedLagMS"));
-    RedisModule_ReplyWithDouble(ctx, ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    if (srctx->numSuccess + srctx->numFailures + srctx->numAborted == 0) {
+        RedisModule_ReplyWithDouble(ctx, 0);
+    } else {
+        RedisModule_ReplyWithDouble(ctx, ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    }
     RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
     if(srctx->lastError){
         RedisModule_ReplyWithStringBuffer(ctx, srctx->lastError, strlen(srctx->lastError));
