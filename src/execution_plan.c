@@ -2349,7 +2349,7 @@ static void ExecutionPlan_LocalUnregisterExecutionInternal(FlatExecutionPlan* fe
 
     // call unregister callback
     if(fep->onUnregisteredStep.stepName){
-        RedisGears_FlatExecutionOnRegisteredCallback onUnregistered = FlatExecutionOnUnregisteredsMgmt_Get(fep->onUnregisteredStep.stepName);
+        RedisGears_FlatExecutionOnUnregisteredCallback onUnregistered = FlatExecutionOnUnregisteredsMgmt_Get(fep->onUnregisteredStep.stepName);
         RedisModule_Assert(onUnregistered);
         onUnregistered(fep, fep->onUnregisteredStep.arg.stepArg);
     }
