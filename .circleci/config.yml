@@ -195,6 +195,15 @@ jobs:
           test_params: VALGRIND=1
           getredis_params: --valgrind
 
+  tls:
+    docker:
+      - image: redisfab/rmbuilder:6.2.6-x64-bullseye
+    steps:
+      - build-steps:
+          platform: debian
+          build_params: TLS=1
+          test_params: TLS=1
+
   build-platforms:
     parameters:
       platform:
@@ -396,6 +405,8 @@ workflows:
             parameters:
               platform: [hirsute, focal, bionic, xenial, centos7, rocky8, bullseye]
       - valgrind:
+          <<: *on-integ-and-version-tags
+      - tls:
           <<: *on-integ-and-version-tags
       - build-macos:
           <<: *on-integ-and-version-tags

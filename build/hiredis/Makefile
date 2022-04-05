@@ -26,7 +26,7 @@ include $(MK)/defs
 
 CC=gcc
 
-_SOURCES=net.c hiredis.c sds.c async.c read.c alloc.c
+_SOURCES=net.c hiredis.c sds.c async.c read.c alloc.c  dict.c sockcompat.c ssl.c
 
 SOURCES=$(addprefix $(SRCDIR)/,$(_SOURCES))
 OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))

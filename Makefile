@@ -255,7 +255,8 @@ EMBEDDED_LIBS_FLAGS=$(foreach L,$(EMBEDDED_LIBS),-Wl,-force_load,$(L))
 else
 EMBEDDED_LIBS_FLAGS=\
 	-Wl,-Bstatic $(HIREDIS) $(LIBEVENT) -Wl,-Bdynamic \
-	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive
+	-Wl,--whole-archive $(EMBEDDED_LIBS) -Wl,--no-whole-archive \
+	-lssl -lcrypt
 endif
 
 define extract_symbols
