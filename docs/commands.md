@@ -28,6 +28,8 @@ The following sections describe the supported commands.
 | [`RG.TRIGGERONKEY`](#rgtriggeronkey) | Triggers execution of registration on a given key |
 | [`RG.UNREGISTER`](#rgunregister) | Removes registration |
 | [`RG.CLEARREGISTRATIONSSTATS`](#rgclearregistrationsstats) | Clears stats from all registrations |
+| [`RG.PAUSEREGISTRATIONS`](#rgpauseregistrations) | Pause a registrations by ids |
+| [`RG.UNPAUSEREGISTRATIONS`](#rgunpauseregistrations) | Unpause a registrations by ids |
 
 **Syntax Conventions**
 
@@ -841,4 +843,36 @@ RG.CREARREGISTRATIONSSTATS
 _Return_
 
 A simple 'OK' string.
+
+## RG.PAUSEREGISTRATIONS
+The **RG.PAUSEREGISTRATIONS** command pause a given registrations from triggering any more events. **Currently its only possible to pause a stream registrations**. pause a registration that already pause is consider as no op and will keep the state exactly as it is (without any errors). pause is considered an atomic operation, all the registrations that was given will be pause together and if one failed, the entire operation is aborted (atomicity is promised on the shard level and not on the cluster level).
+
+It is also possible to pause the registration from within the registration code itself by returning a special error message that starts with `PAUSE` string (message must be raised with [flatError](runtime.md#flat-error) api so the error trace will not be added to the error message), example:
+
+```python
+GB('StreamReader').foreach(lambda x: flatError('PAUSE registration is paused')).register()
+```
+
+**Redis API**
+
+```
+RG.PAUSEREGISTRATIONS id1 [id2 ...]
+```
+
+_Return_
+
+A simple 'OK' string. Or error if operation failed.
+
+## RG.UNPAUSEREGISTRATIONS
+The **RG.UNPAUSEREGISTRATIONS** command unpause a given registrations and cause it to restart triggering events. **Currently its only possible to unpause a stream registrations**. Unpause a registration that already running is consider as no op and will keep the state exactly as it is (without any errors). Unpause is considered an atomic operation, all the registrations that was given will be unpause together and if one failed, the entire operation is aborted (atomicity is promised on the shard level and not on the cluster level). Unpausing a registration will restart processing data from the stream, if the stream is not set to trim messages (using trimStream option) then all the element will potentially be processed again.
+
+**Redis API**
+
+```
+RG.UNPAUSEREGISTRATIONS id1 [id2 ...]
+```
+
+_Return_
+
+A simple 'OK' string. Or error if operation failed.
 

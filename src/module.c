@@ -1558,6 +1558,16 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDISMODULE_ERR;
     }
 
+    if (RedisModule_CreateCommand(ctx, "rg.pauseregistrations", Command_PauseOrUnpausedRegistrations, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.pauseregistrations");
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, "rg.unpauseregistrations", Command_PauseOrUnpausedRegistrations, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        RedisModule_Log(staticCtx, "warning", "could not register command rg.unpauseregistrations");
+        return REDISMODULE_ERR;
+    }
+
     if (RedisModule_CreateCommand(ctx, "rg.clearregistrationsstats", Command_FlushRegistrationsStats, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         RedisModule_Log(staticCtx, "warning", "could not register command rg.clearregistrationsstats");
         return REDISMODULE_ERR;
