@@ -13,6 +13,7 @@ static ExecutionThreadPool* mgmtPool;
 static WorkerData* mgmtWorker;
 
 #define STRING_TYPE_VERSION 1
+#define PAUSE_REGISTRATIONS_TYPE_VERSION 1
 
 void Command_ReturnResult(RedisModuleCtx* rctx, Record* record){
     RG_RecordSendReply(record, rctx);
@@ -602,6 +603,189 @@ int Command_Register(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDon
     return REDISMODULE_OK;
 }
 
+typedef enum PauseRegistrations{
+    PauseRegistrations_Pause = 0, PauseRegistrations_Unpause
+} PauseRegistrationsOp;
+
+typedef struct PauseRegistrationsArg {
+    int abortPendings;
+    char **registrations;
+    PauseRegistrationsOp op;
+} PauseRegistrationsArg;
+
+static void Command_pauseRegistrationsArgFree(FlatExecutionPlan* fep, void* arg){
+    PauseRegistrationsArg *pauseRegistrationsArg = arg;
+    for (size_t i = 0 ; i < array_len(pauseRegistrationsArg->registrations) ; ++i) {
+        RG_FREE(pauseRegistrationsArg->registrations[i]);
+    }
+    array_free(pauseRegistrationsArg->registrations);
+    RG_FREE(pauseRegistrationsArg);
+}
+
+static void* Command_pauseRegistrationsArgDup(FlatExecutionPlan* fep, void* arg){
+    PauseRegistrationsArg *pauseRegistrationsArg = arg;
+    PauseRegistrationsArg *ret = RG_ALLOC(sizeof(*ret));
+    ret->abortPendings = pauseRegistrationsArg->abortPendings;
+    ret->op = pauseRegistrationsArg->op;
+    ret->registrations = array_new(char*, 5);
+    for (size_t i = 0 ; i < array_len(pauseRegistrationsArg->registrations) ; ++i) {
+        ret->registrations = array_append(ret->registrations, RG_STRDUP(pauseRegistrationsArg->registrations[i]));
+    }
+    return ret;
+}
+
+static int Command_pauseRegistrationsArgSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
+    PauseRegistrationsArg *pauseRegistrationsArg = arg;
+    RedisGears_BWWriteLong(bw, pauseRegistrationsArg->abortPendings);
+    RedisGears_BWWriteLong(bw, pauseRegistrationsArg->op);
+    RedisGears_BWWriteLong(bw, array_len(pauseRegistrationsArg->registrations));
+    for (size_t i = 0 ; i < array_len(pauseRegistrationsArg->registrations) ; ++i) {
+        RedisGears_BWWriteString(bw, pauseRegistrationsArg->registrations[i]);
+    }
+    return REDISMODULE_OK;
+}
+
+static void* Command_pauseRegistrationsArgDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err){
+    if(version > PAUSE_REGISTRATIONS_TYPE_VERSION){
+        return NULL;
+    }
+    PauseRegistrationsArg *ret = RG_ALLOC(sizeof(*ret));
+    ret->abortPendings = RedisGears_BRReadLong(br);
+    ret->op = RedisGears_BRReadLong(br);
+    size_t numRegistrations = RedisGears_BRReadLong(br);
+    ret->registrations = array_new(char*, numRegistrations);
+    for (size_t i = 0 ; i < numRegistrations ; ++i) {
+        const char *registrationId = RedisGears_BRReadString(br);
+        ret->registrations = array_append(ret->registrations, RG_STRDUP(registrationId));
+    }
+    return ret;
+}
+
+static char* Command_pauseRegistrationsArgToString(FlatExecutionPlan* fep, void* arg){
+    return RG_STRDUP("PauseRegistrationsArg");
+}
+
+static Record* Command_PauseRegistrationsMap(ExecutionCtx* rctx, Record *data, void* arg){
+    PauseRegistrationsArg *pauseRegistrationsArg = arg;
+    Record *ret = NULL;
+    char *err = NULL;
+    RedisGears_FreeRecord(data);
+
+    FlatExecutionPlan **feps = array_new(FlatExecutionPlan*, array_len(pauseRegistrationsArg->registrations));
+    LockHandler_Acquire(staticCtx);
+    for (size_t i = 0 ; i < array_len(pauseRegistrationsArg->registrations) ; ++i) {
+        FlatExecutionPlan *fep = RedisGears_GetFepById(pauseRegistrationsArg->registrations[i]);
+        if (!fep) {
+            RedisGears_ASprintf(&err, "Execution %s does not exists on shard %s", pauseRegistrationsArg->registrations[i], Cluster_GetMyId());
+            goto done;
+        }
+
+        RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+
+        if(pauseRegistrationsArg->op == PauseRegistrations_Pause && !callbacks->pauseTrigger){
+            RedisGears_ASprintf(&err, "Reader %s does not support pause", fep->reader->reader);
+            goto done;
+        }
+
+        if(pauseRegistrationsArg->op == PauseRegistrations_Unpause && !callbacks->unpauseTrigger){
+            RedisGears_ASprintf(&err, "Reader %s does not support unpause", fep->reader->reader);
+            goto done;
+        }
+
+        feps = array_append(feps, fep);
+    }
+
+    for (size_t i = 0 ; i < array_len(feps) ; ++i) {
+        FlatExecutionPlan *fep = feps[i];
+        RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+        if(pauseRegistrationsArg->op == PauseRegistrations_Pause) {
+            callbacks->pauseTrigger(fep, pauseRegistrationsArg->abortPendings);
+        } else if(pauseRegistrationsArg->op == PauseRegistrations_Unpause) {
+            callbacks->unpauseTrigger(fep);
+        }
+    }
+
+done:
+    if (err) {
+        RedisGears_SetError(rctx, err);
+    } else {
+        ret = RedisGears_StringRecordCreate(RG_STRDUP("OK"), strlen("OK"));
+    }
+    array_free(feps);
+    LockHandler_Release(staticCtx);
+    return ret;
+}
+
+int Command_PauseOrUnpausedRegistrations(RedisModuleCtx *ctx, RedisModuleString **argv, int argc){
+    if(argc != 2){
+        return RedisModule_WrongArity(ctx);
+    }
+
+    VERIFY_CLUSTER_INITIALIZE(ctx);
+
+    PauseRegistrationsArg *pauseArg = RG_ALLOC(sizeof(*pauseArg));
+    pauseArg->abortPendings = 0;
+    pauseArg->registrations = array_new(char*, 5);
+
+    const char* op = RedisModule_StringPtrLen(argv[0], NULL);
+    if(strcasecmp(op, "rg.pauseregistrations") == 0) {
+        pauseArg->op = PauseRegistrations_Pause;
+    } else if(strcasecmp(op, "rg.unpauseregistrations") == 0){
+        pauseArg->op = PauseRegistrations_Unpause;
+    } else {
+        RedisModule_Assert(false);
+    }
+
+    size_t currArg = 1;
+    if (pauseArg->op == PauseRegistrations_Pause) {
+        // currently only RG.PAUSEREGISTRATIONS has extra arguments
+        for(; currArg < argc ; ++currArg) {
+            const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
+            if(strcasecmp(option, "ABORTPENDING") == 0){
+                pauseArg->abortPendings = 1;
+                continue;
+            }
+            break;
+        }
+    }
+
+    for(; currArg < argc ; ++currArg) {
+        const char *regId = RedisModule_StringPtrLen(argv[currArg], NULL);
+        pauseArg->registrations = array_append(pauseArg->registrations, RG_STRDUP(regId));
+    }
+
+    if (array_len(pauseArg->registrations) == 0) {
+        RedisModule_ReplyWithError(ctx, "ERR no registration to pause");
+        Command_pauseRegistrationsArgFree(NULL, pauseArg);
+        return REDISMODULE_OK;
+    }
+
+    char* err = NULL;
+    FlatExecutionPlan* fep = RGM_CreateCtx(ShardIDReader, &err);
+    if(!fep){
+        if(!err){
+            err = RG_STRDUP("ERR Failed creating abort Flat Execution Plan");
+        }
+        RedisModule_ReplyWithError(ctx, err);
+        RG_FREE(err);
+        return REDISMODULE_OK;
+    }
+    RGM_Map(fep, Command_PauseRegistrationsMap, pauseArg);
+    RGM_Collect(fep);
+    ExecutionPlan* ep = RedisGears_Run(fep, ExecutionModeAsync, NULL, NULL, NULL, mgmtWorker, &err);
+    if(!ep){
+        RedisModule_ReplyWithError(ctx, err);
+        RG_FREE(err);
+    } else {
+        RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
+        RedisGears_AddOnDoneCallback(ep, Command_Done, bc);
+    }
+
+    RedisGears_FreeFlatExecution(fep);
+
+    return REDISMODULE_OK;
+}
+
 int Command_Init(){
     mgmtPool = ExecutionPlan_CreateThreadPool("MgmtPool", 1);
     mgmtWorker = ExecutionPlan_CreateWorker(mgmtPool);
@@ -613,10 +797,19 @@ int Command_Init(){
                                                 Command_StringDeserialize,
                                                 Command_StringToString,
                                                 NULL);
+    ArgType* pauseRegistrationArgType = RedisGears_CreateType("PauseRegistrations",
+                                                           PAUSE_REGISTRATIONS_TYPE_VERSION,
+                                                           Command_pauseRegistrationsArgFree,
+                                                           Command_pauseRegistrationsArgDup,
+                                                           Command_pauseRegistrationsArgSerialize,
+                                                           Command_pauseRegistrationsArgDeserialize,
+                                                           Command_pauseRegistrationsArgToString,
+                                                           NULL);
     RGM_RegisterMap(Command_AbortExecutionMap, stringType);
     RGM_RegisterMap(Command_FlushRegistrationsStatsMap, NULL);
     RGM_RegisterMap(Command_SingleShardGetter, stringType);
     RGM_RegisterMap(Command_MirrorMapper, NULL);
+    RGM_RegisterMap(Command_PauseRegistrationsMap, pauseRegistrationArgType);
 
     ArgType* registrationSessionType = RedisGears_CreateType("RegistrationSessionDT",
                                                     STRING_TYPE_VERSION,

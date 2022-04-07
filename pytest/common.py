@@ -161,6 +161,7 @@ def gearsTest(skipTest=False,
               skipOnSingleShard=False,
               skipCallback=None,
               skipOnRedis6=False,
+              skipWithTLS=False,
               decodeResponses=True,
               envArgs={}):
     def test_func_generator(test_function):
@@ -174,6 +175,8 @@ def gearsTest(skipTest=False,
                 if 'cluster' in env:
                     raise unittest.SkipTest()
             if skipOnSingleShard and Defaults.num_shards == 1:
+                raise unittest.SkipTest()
+            if skipWithTLS and Defaults.use_TLS:
                 raise unittest.SkipTest()
             if skipCallback is not None:
                 if skipCallback():
