@@ -49,6 +49,7 @@ CC_FLAGS += -O2 -Wno-unused-result
 endif
 
 ifeq ($(OS),macos)
+CC_FLAGS += -I/usr/local/opt/openssl/include/
 LD_FLAGS += -undefined dynamic_lookup
 endif
 
