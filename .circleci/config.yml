@@ -197,7 +197,7 @@ jobs:
 
   tls:
     docker:
-      - image: redisfab/rmbuilder:6.2.6-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
     steps:
       - build-steps:
           platform: debian
