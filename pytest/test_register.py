@@ -107,8 +107,11 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
             self.env.broadcast('rg.getresultsblocking', e[1])
             self.env.cmd('rg.dropexecution', e[1])
         with TimeLimit(5, self.env, 'Failed waiting for keys to be updated'):
-            self.env.assertEqual(self.conn.get('f1'), 'v1')
-            self.env.assertEqual(self.conn.get('f2'), 'v2')
+            f1 = self.conn.get('f1')
+            f2 = self.conn.get('f2')
+            while f1 != 'v1' and f2 != 'v2':
+                f1 = self.conn.get('f1')
+                f2 = self.conn.get('f2')
 
         self.env.expect('RG.UNREGISTER', registrationID).equal('OK')
         time.sleep(1)  # make sure the unregister reached to all shards
