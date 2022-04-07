@@ -18,7 +18,9 @@ capabilities:
     - backup_restore
     - reshard_rebalance
     - eviction_expiry
-    - flash     
+    - flash
+    - intershard_tls
+    - intershard_tls_pass
 exclude_commands:
     - rg.configset
     - RG.INNERUNREGISTER
