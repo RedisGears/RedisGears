@@ -821,8 +821,8 @@ _Return_
 
 A simple 'OK' string, or an error. An error is returned if the registration ID doesn't exist or if the function's reader doesn't support the unregister operation.
 
-## RG.CREARREGISTRATIONSSTATS
-The **RG.CREARREGISTRATIONSSTATS** command clear stats from all the registrations, cleared stats:
+## RG.CLEARREGISTRATIONSSTATS
+The **RG.CLEARREGISTRATIONSSTATS** command clear stats from all the registrations, cleared stats:
 
 * numTriggered
 * numSuccess
@@ -837,7 +837,7 @@ The **RG.CREARREGISTRATIONSSTATS** command clear stats from all the registration
 **Redis API**
 
 ```
-RG.CREARREGISTRATIONSSTATS
+RG.CLEARREGISTRATIONSSTATS
 ```
 
 _Return_
