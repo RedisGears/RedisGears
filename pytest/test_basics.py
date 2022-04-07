@@ -10,7 +10,7 @@ from includes import *
 
 class testBasic:
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         conn = getConnectionByEnv(self.env)
         for i in range(100):
             conn.execute_command('set', str(i), str(i))
@@ -66,7 +66,7 @@ class testBasic:
     def testBasicQuery(self):
         id = self.env.cmd('rg.pyexecute', "GearsBuilder().map(lambda x:str(x)).collect().run()", 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[0]]
+        res = [yaml.load(r, Loader=yaml.FullLoader) for r in res[0]]
         for i in range(100):
             self.env.assertContains({'value': str(i), 'type': 'string', 'event': 'None', 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -74,7 +74,7 @@ class testBasic:
     def testBasicFilterQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: int(x["value"]) >= 50).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[0]]
+        res = [yaml.load(r, Loader=yaml.FullLoader) for r in res[0]]
         for i in range(50, 100):
             self.env.assertContains({'value': str(i), 'type': 'string', 'event': 'None', 'key': str(i)}, res)
         self.env.cmd('rg.dropexecution', id)
@@ -82,7 +82,7 @@ class testBasic:
     def testBasicMapQuery(self):
         id = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: x["value"]).map(lambda x:str(x)).collect().run()', 'UNBLOCKING')
         res = self.env.cmd('rg.getresultsblocking', id)
-        res = [yaml.load(r) for r in res[0]]
+        res = [yaml.load(r, Loader=yaml.FullLoader) for r in res[0]]
         self.env.assertEqual(set(res), set([i for i in range(100)]))
         self.env.cmd('rg.dropexecution', id)
 
@@ -111,14 +111,14 @@ class testBasic:
 def testBytes(env):
     conn = getConnectionByEnv(env)
     conn.set("x", 1)
-    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytes([1,2,3]))).run("x")')
+    env.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytes([1,2,3]))).run("x")')
     env.assertTrue(conn.exists("y"))
 
 @gearsTest()
 def testBytearray(env):
     conn = getConnectionByEnv(env)
     conn.set("x", 1)
-    conn.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytearray([1,2,3]))).run("x")')
+    env.execute_command('rg.pyexecute', 'GB().repartition(lambda x: "y").foreach(lambda x: execute("set", "y", bytearray([1,2,3]))).run("x")')
     env.assertTrue(conn.exists("y"))
 
 @gearsTest()
@@ -290,7 +290,7 @@ def testMaxExecutions(env):
     ## todo: currently there is a problem with MaxExecutions which might cause running executions to be drop and the redis server
     ##       to crash, this is why I increased the sleep interval, we should fix it ASAP.
     conn = getConnectionByEnv(env)
-    conn.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
+    env.execute_command('RG.PYEXECUTE', "GearsBuilder().map(lambda x: str(x)).register('*')", 'UNBLOCKING')
     time.sleep(1)
     conn.execute_command('set', 'x', '0')
     conn.execute_command('set', 'x', '1')
@@ -395,7 +395,7 @@ GB().map(InfinitLoop).run()
     res = env.cmd('RG.GETEXECUTION', executionId1)
     env.assertEqual(res[0][3][1], 'done')
     env.assertEqual(len(res[0][3][9]), 1) # number if error is one
-    
+
     env.expect('rg.dropexecution', executionId1).ok()
     env.expect('rg.dropexecution', executionId2).ok()
 
@@ -433,11 +433,11 @@ start()
 
 class testConfig:
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
 
     def testMaxExecutions(self):
         max_exe = self.env.execute_command('RG.CONFIGGET', 'MaxExecutions')
-        n = long(max_exe[0]) + 1
+        n = int(max_exe[0]) + 1
         self.env.expect('RG.CONFIGSET', 'MaxExecutions', n).equal(['OK'])
         self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([n])
 
@@ -457,12 +457,12 @@ class testConfig:
         self.env.assertTrue(str(res[0]).startswith('(error)') and not str(res[1]).startswith('(error)'))
         res = self.env.execute_command('RG.CONFIGSET', 'NoSuchConfig', 1, 'MaxExecutions', 10)
         self.env.assertTrue(str(res[0]) == 'OK - value was saved in extra config dictionary')
-        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10L])
+        self.env.expect('RG.CONFIGGET', 'MaxExecutions').equal([10])
 
 
 class testGetExecution:
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         conn = getConnectionByEnv(self.env)
         conn.execute_command('SET', 'k1', 'spark')
         conn.execute_command('SET', 'k2', 'star')
@@ -496,7 +496,7 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(steps))
         sdursum = 0
         for _, stype, _, sdur, _, sname, _, sarg in steps:
-            sdursum += sdur    
+            sdursum += sdur
         self.env.assertEqual(sdursum, 0)
         self.env.cmd('RG.DROPEXECUTION', id)
 
@@ -513,7 +513,7 @@ class testGetExecution:
         self.env.assertLessEqual(1, len(steps))
         sdursum = 0
         for _, stype, _, sdur, _, sname, _, sarg in steps:
-            sdursum += sdur    
+            sdursum += sdur
         self.env.assertLessEqual(0, sdursum)
         self.env.cmd('RG.DROPEXECUTION', id)
 
@@ -584,7 +584,7 @@ def testMaxIdle(env):
         env.skip()
 
     conn = getConnectionByEnv(env)
-    
+
     env.broadcast('RG.CONFIGSET', 'ExecutionMaxIdleTime', '500')
 
     longExecution = '''
@@ -756,7 +756,7 @@ def testClusterRefreshOnOnlySingleNode(env):
         with TimeLimit(2):
             res = env.cmd('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()')
             env.assertEqual(res, [[str(env.shardsCount)], []])
-    except Exception as e:  
+    except Exception as e:
         env.assertTrue(False, message='Failed waiting for execution to finish')
 
 @gearsTest()
@@ -795,11 +795,11 @@ def testInfo(env):
     env.expect('RG.PYEXECUTE', "GB('StreamReader').foreach(lambda x: __import__('time').sleep(2)).register(prefix='s*')").equal('OK')
     res = env.cmd('info', 'rg')
     # basic checks on the reply
-    env.assertTrue(res.has_key('rg_TotalAllocated'))
-    env.assertTrue(res.has_key('rg_PeakAllocated'))
-    env.assertTrue(res.has_key('rg_CurrAllocated'))
-    env.assertTrue(res.has_key('rg_nexecutions'))
-    env.assertTrue(res.has_key('rg_nregistrations'))
+    env.assertTrue('rg_TotalAllocated' in res.keys())
+    env.assertTrue('rg_PeakAllocated' in res.keys())
+    env.assertTrue('rg_CurrAllocated' in res.keys())
+    env.assertTrue('rg_nexecutions' in res.keys())
+    env.assertTrue('rg_nregistrations' in res.keys())
 
 @gearsTest()
 def testSlowlogReportOnRun(env):

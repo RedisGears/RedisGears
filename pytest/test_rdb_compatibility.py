@@ -2,7 +2,7 @@ import os
 import subprocess
 from includes import *
 
-from common import TimeLimit
+from common import TimeLimit, gearsTest
 
 GEARS_CACHE_DIR = '/tmp/'
 BASE_RDBS_URL = 'https://s3.amazonaws.com/redismodules/redisgears/versions_rdbs_samples/'
@@ -18,7 +18,7 @@ class RdbMetaData:
 
 RDBS = [
     RdbMetaData(fileName='redisgears_1.0.0.rdb', nRegistrations=1, nExecutions=0),
-    RdbMetaData(fileName='redisgears_1.0.0_2.rdb', nRegistrations=3, nExecutions=2)
+    RdbMetaData(fileName='redisgears_1.0.0_2.rdb', nRegistrations=3, nExecutions=1)
 ]
 
 def downloadFiles():
@@ -32,6 +32,7 @@ def downloadFiles():
             return False
     return True
 
+@gearsTest()
 def testRDBCompatibility(env):
     env.skipOnCluster()
     dbFileName = env.cmd('config', 'get', 'dbfilename')[1]

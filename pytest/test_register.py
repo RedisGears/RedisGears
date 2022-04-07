@@ -12,7 +12,7 @@ from common import gearsTest
 
 class testUnregister:
     def __init__(self):
-        self.env = Env(freshEnv=True)
+        self.env = Env(freshEnv=True, decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
 
     def cleanUp(self):
@@ -106,8 +106,12 @@ GB().filter(lambda r: r['key'] != 'all_keys').repartition(lambda r: 'all_keys').
         for e in res:
             self.env.broadcast('rg.getresultsblocking', e[1])
             self.env.cmd('rg.dropexecution', e[1])
-        self.env.assertEqual(self.conn.get('f1'), 'v1')
-        self.env.assertEqual(self.conn.get('f2'), 'v2')
+        with TimeLimit(5, self.env, 'Failed waiting for keys to be updated'):
+            f1 = self.conn.get('f1')
+            f2 = self.conn.get('f2')
+            while f1 != 'v1' and f2 != 'v2':
+                f1 = self.conn.get('f1')
+                f2 = self.conn.get('f2')
 
         self.env.expect('RG.UNREGISTER', registrationID).equal('OK')
         time.sleep(1)  # make sure the unregister reached to all shards
@@ -273,7 +277,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
             done = False
             while not done:
                 registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
-                if registrationInfo[0][7][3] == 3 and registrationInfo[0][7][5] == 3:
+                if registrationInfo[0][7][3] == 2 and registrationInfo[0][7][5] == 2:
                     done = True
                 time.sleep(0.1)
     except Exception as e:
@@ -292,7 +296,7 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
             done = False
             while not done:
                 registrationInfo = env.cmd('RG.DUMPREGISTRATIONS')
-                if registrationInfo[0][7][3] == 7 and registrationInfo[0][7][5] == 5:
+                if registrationInfo[0][7][3] == 5 and registrationInfo[0][7][5] == 4:
                     done = True
                 time.sleep(0.1)
     except Exception as e:
@@ -302,9 +306,9 @@ GB('StreamReader').map(InfinitLoop).register('s', mode='async_local', onFailedPo
     eid = env.cmd('rg.pyexecute', 'GB("KeysOnlyReader").run()', 'UNBLOCKING')
 
     executionsInfo = env.cmd('RG.DUMPEXECUTIONS')
-    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'done']), 5)
+    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'done']), 4)
     env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'running']), 1)
-    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'created']), 2)
+    env.assertEqual(len([a[3] for a in executionsInfo if a[3] == 'created']), 1)
 
     env.expect('RG.UNREGISTER', registrationId, 'abortpending').ok()
 
@@ -751,7 +755,7 @@ GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3, onF
     slaveConn = env.getSlaveConnection()
     masterConn = env.getConnection()
     env.cmd('rg.pyexecute', script)
-    time.sleep(0.5) # wait for registration to reach all the shards
+    verifyRegistrationIntegrity(env)
 
     for i in range(3):
         env.execute_command('xadd', 'stream', '*', 'foo', 'bar')
@@ -814,7 +818,7 @@ def testKeysReaderEventTypeFilter(env):
                 counter = conn.get('counter')
                 time.sleep(0.1)
     except Exception as e:
-        print e
+        print(e)
         env.assertTrue(False, message='Failed waiting for counter to reach 2')
 
     ## make sure other commands are not triggers executions
@@ -1250,7 +1254,7 @@ GB("StreamReader").foreach(lambda x: time.sleep(2)).register(prefix='s')
 
 class testKeysReaderWithCommands():
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
 
     def setUp(self):
@@ -1494,7 +1498,7 @@ def testStreamReaderNotTriggerEventsOnReplica(env):
     res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     time.sleep(2)
     res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
-    env.assertTrue(res1 < res2)
+    env.assertLess(res1, res2)
 
     env.cmd('SLAVEOF', 'localhost', '6380')
     time.sleep(2)
@@ -1727,13 +1731,13 @@ GB('StreamReader').foreach(test).register(mode='sync')
 
     conn.execute_command('set', 'x', '1')
     conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
-    conn.execute_command('RG.TRIGGER', 'test')
+    env.execute_command('RG.TRIGGER', 'test')
 
     env.expect('RG.CLEARREGISTRATIONSSTATS').equal('OK')
 
     for i in range(1, env.shardsCount + 1):
         conn = env.getConnection(shardId=i)
-        res = conn.execute_command('RG.DUMPREGISTRATIONS')
+        res = env.execute_command('RG.DUMPREGISTRATIONS')
         for r in res:
             d = {}
             r = r[7]
@@ -1744,10 +1748,175 @@ GB('StreamReader').foreach(test).register(mode='sync')
             env.assertEqual(d['numFailures'], 0)
             env.assertEqual(d['numAborted'], 0)
             env.assertEqual(d['lastRunDurationMS'], 0)
-            env.assertEqual(d['avgRunDurationMS'], '-nan')
+            env.assertContains('0', d['avgRunDurationMS'])
             env.assertEqual(d['lastError'], None)
             if 'lastEstimatedLagMS' in d.keys():
                 env.assertEqual(d['lastEstimatedLagMS'], 0)
             if 'avgEstimatedLagMS' in d.keys():
-                env.assertEqual(d['avgEstimatedLagMS'], '-nan')
+                env.assertContains('0', d['avgEstimatedLagMS'])
             
+@gearsTest()
+def testPauseUnpause(env):
+    script = '''
+def test(x):
+    execute('incr', 'counter{%s}' % (x['key']))
+
+regId = GB('StreamReader').foreach(test).register(mode='sync')
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    counterY = conn.execute_command('get', 'counter{y}')
+    env.assertEqual(counterX, '1')
+    env.assertEqual(counterY, '1')
+
+    env.execute_command('RG.PAUSEREGISTRATIONS', regId)
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 'y', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    counterY = conn.execute_command('get', 'counter{y}')
+    env.assertEqual(counterX, '1')
+    env.assertEqual(counterY, '1')
+
+    env.execute_command('RG.UNPAUSEREGISTRATIONS', regId)
+
+    with TimeLimit(2, env, 'Failed waiting for registration to unpaused'):
+        while True:
+            counterX = conn.execute_command('get', 'counter{x}')
+            counterY = conn.execute_command('get', 'counter{y}')
+            if counterX == '2' and counterY == '2':
+                break
+            time.sleep(0.1)
+
+@gearsTest()
+def testPauseUnpauseNotExistingID(env):
+    env.expect('RG.PAUSEREGISTRATIONS', 'not_exists').error().contains('Execution not_exists does not exists on')
+    env.expect('RG.UNPAUSEREGISTRATIONS', 'not_exists').error().contains('Execution not_exists does not exists on')
+
+@gearsTest()
+def testPauseUnpauseNotSupported(env):
+    script = '''
+regId = GB().register(mode='sync')
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+    env.expect('RG.PAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support pause')
+    env.expect('RG.UNPAUSEREGISTRATIONS', regId).error().contains('Reader KeysReader does not support unpause')
+
+@gearsTest()
+def testPauseFromWithinTheRegistrationCode(env):
+    script = '''
+def foreachFunc(x):
+    isPaused = execute('get', 'paused{%s}' % (x['key']))
+    if isPaused == 'yes':
+        flat_error('PAUSE')
+    execute('incr', 'counter{%s}' % (x['key']))
+
+regId = GB('StreamReader').foreach(foreachFunc).register(mode='sync')
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    env.assertEqual(counterX, '1')
+
+    conn.execute_command('set', 'paused{x}', 'yes')
+
+    conn.execute_command('xadd', 'x', '*', 'foo', 'bar')
+
+    counterX = conn.execute_command('get', 'counter{x}')
+    env.assertEqual(counterX, '1')
+
+    conn.execute_command('set', 'paused{x}', 'no')
+
+    env.execute_command('RG.UNPAUSEREGISTRATIONS', regId)
+
+    with TimeLimit(2, env, 'Failed waiting for registration to unpaused'):
+        while True:
+            counterX = conn.execute_command('get', 'counter{x}')
+            if counterX == '2':
+                break
+            time.sleep(0.1)
+
+@gearsTest()
+def testStreamReaderDuration(env):
+    script = '''
+GB('StreamReader').repartition(lambda x: 'counter').map(lambda x: execute('incr', 'counter')).register(prefix='s1*', batch=2, duration=1)
+GB('StreamReader').repartition(lambda x: 'counter').map(lambda x: execute('incr', 'counter')).register(prefix='s2*', batch=2, duration=1000)
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 's1', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's1', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's1', '*', 'foo', 'bar')
+
+    with TimeLimit(2, env, 'Failed waiting for counter to reach 3'):
+        while True:
+            counter = conn.execute_command('get', 'counter')
+            if counter == '3':
+                break
+            time.sleep(0.1)
+
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+
+    with TimeLimit(2, env, 'Failed waiting for counter to reach 3'):
+        while True:
+            counter = conn.execute_command('get', 'counter')
+            if counter == '6':
+                break
+            time.sleep(0.1)
+
+@gearsTest()
+def testStreamReaderOnTimmerPending(env):
+    script = '''
+regId = GB('StreamReader').repartition(lambda x: 'counter').map(lambda x: execute('incr', 'counter')).register(prefix='s2*', batch=2, duration=1000)
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    conn = getConnectionByEnv(env)
+
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+    conn.execute_command('xadd', 's2', '*', 'foo', 'bar')
+
+    # here we have a pending timmer, lets unregister the registration.
+
+    env.expect('RG.UNREGISTER', regId).equal('OK')
+
+    time.sleep(1)
+
+    # make sure cluster is still up
+    for i in range(1, env.shardsCount + 1, 1):
+        c = env.getConnection(i)
+        res = c.execute_command('ping')
+        env.assertEqual(res, True)
