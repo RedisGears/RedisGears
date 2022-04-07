@@ -167,6 +167,7 @@ LD_FLAGS += -fprofile-arcs -ftest-coverage
 endif
 
 ifeq ($(OS),macos)
+CC_FLAGS += -I/usr/local/opt/openssl/include/
 LD_FLAGS += \
 	-framework CoreFoundation \
 	-undefined dynamic_lookup
