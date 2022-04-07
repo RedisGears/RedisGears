@@ -18,9 +18,7 @@ capabilities:
     - backup_restore
     - reshard_rebalance
     - eviction_expiry
-    - flash
-    - intershard_tls
-    - intershard_tls_pass
+    - flash     
 exclude_commands:
     - rg.configset
     - RG.INNERUNREGISTER
@@ -41,6 +39,3 @@ dependencies:
     gears_python:
         url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_PYTHON_FNAME}}
         sha256: {{GEARS_PYTHON_SHA256}}
-    gears_jvm:
-        url: http://redismodules.s3.amazonaws.com/redisgears/{{GEARS_JAVA_FNAME}}
-        sha256: {{GEARS_JAVA_SHA256}}

@@ -17,6 +17,7 @@
 #define STREAM_REGISTRATION_INIT_SIZE 10
 static Gears_list* streamsRegistration = NULL;
 static RedisModuleTimerID turnedMasterTimer;
+static bool turnedMasterTEOn = false;
 
 typedef struct StreamId{
         long first;
@@ -33,7 +34,6 @@ typedef struct StreamReaderCtx{
     bool isDone;
     RedisModuleString** batchIds;
     StreamId lastReadId;
-    long long batchStartTime;
 }StreamReaderCtx;
 
 typedef struct StreamReaderTriggerArgs{
@@ -50,6 +50,7 @@ typedef enum StreamRegistrationStatus{
     StreamRegistrationStatus_ABORTED,
     StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE,
     StreamRegistrationStatus_UNREGISTERED,
+    StreamRegistrationStatus_PAUSED,
 }StreamRegistrationStatus;
 
 typedef struct StreamReaderTriggerCtx{
@@ -69,25 +70,27 @@ typedef struct StreamReaderTriggerCtx{
     long long totalBatchLag;
     char* lastError;
     pthread_t scanThread;
-    Gears_dict* localPendingExecutions;
     Gears_list* localDoneExecutions;
     WorkerData* wd;
 }StreamReaderTriggerCtx;
 
 typedef struct SingleStreamReaderCtx{
-    size_t numTriggered;
-    long long batchStartTime;
+    Gears_list *batchStartTime;
     bool timerIsSet;
     bool freeOnNextTimeEvent;
     RedisModuleTimerID lastTimerId;
     StreamReaderTriggerCtx* srtctx; // weak ptr to the StreamReaderCtx
     char* keyName;
-    StreamId lastId;
+    long long pendingMessages;
+    long long nextBatch;
+    bool isRunning;
+
 }SingleStreamReaderCtx;
 
 static void* StreamReader_ScanForStreams(void* pd);
 static void StreamReader_Free(void* ctx);
 static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data);
+static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data);
 
 static bool StreamReader_VerifyCallReply(RedisModuleCtx* ctx, RedisModuleCallReply* reply, const char* msgPrefix, const char* logLevel){
     if (reply == NULL ||
@@ -114,26 +117,6 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
 #define StreamIdZero (StreamId){.first = 0, .second = 0}
 
 #define StreamIdIsZero(id) (id.first == 0 && id.second == 0)
-
-static int StreamReader_StreamIdCompare(StreamId id1, StreamId id2){
-    if(id1.second > id2.second){
-        return 1;
-    }
-
-    if(id1.second < id2.second){
-        return -1;
-    }
-
-    if(id1.first > id2.first){
-        return 1;
-    }
-
-    if(id1.first < id2.first){
-        return -1;
-    }
-
-    return 0;
-}
 
 static StreamId StreamReader_ParseStreamId(const char* streamId){
     StreamId ret;
@@ -163,27 +146,13 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_GetShallowCopy(StreamReade
     return srtctx;
 }
 
-static int StreamReader_ReadLastId(RedisModuleCtx *rctx, SingleStreamReaderCtx* ssrctx){
-    RedisModuleCallReply *reply = RedisModule_Call(rctx, "XINFO", "cc", "STREAM", ssrctx->keyName);
-    if(!StreamReader_VerifyCallReply(rctx, reply, "Failed on XINFO command", "warning")){
-    	return false;
+static int StreamReader_ReadStreamLen(RedisModuleCtx *rctx, SingleStreamReaderCtx* ssrctx){
+    RedisModuleCallReply *reply = RedisModule_Call(rctx, "XLEN", "c", ssrctx->keyName);
+    if(!StreamReader_VerifyCallReply(rctx, reply, "Failed on XLEN command", "warning")){
+        return false;
     }
-    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_ARRAY);
-    size_t lastGeneratedIdIndex = 0;
-    for(size_t i = 0 ; i < RedisModule_CallReplyLength(reply) ; i+=2){
-        RedisModuleCallReply *currReply = RedisModule_CallReplyArrayElement(reply, i);
-        size_t currReplyStrLen;
-        const char* currReplyStr = RedisModule_CallReplyStringPtr(currReply, &currReplyStrLen);
-        if(strncmp(currReplyStr, "last-generated-id", currReplyStrLen) == 0){
-            lastGeneratedIdIndex = i + 1;
-            break;
-        }
-    }
-    RedisModule_Assert(lastGeneratedIdIndex > 0);
-    RedisModuleCallReply *idReply = RedisModule_CallReplyArrayElement(reply, lastGeneratedIdIndex);
-    RedisModule_Assert(RedisModule_CallReplyType(idReply) == REDISMODULE_REPLY_STRING);
-    const char* idStr = RedisModule_CallReplyStringPtr(idReply, NULL);
-    ssrctx->lastId = StreamReader_ParseStreamId(idStr);
+    RedisModule_Assert(RedisModule_CallReplyType(reply) == REDISMODULE_REPLY_INTEGER);
+    ssrctx->pendingMessages = RedisModule_CallReplyInteger(reply);
     RedisModule_FreeCallReply(reply);
     return true;
 }
@@ -198,19 +167,32 @@ static void StreamReader_CreateConsumersGroup(RedisModuleCtx *ctx, const char* k
 }
 
 static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
-                                                             const char* keyName,
-                                                             StreamReaderTriggerCtx* srtctx){
+                                                           const char* keyName,
+                                                           StreamReaderTriggerCtx* srtctx,
+                                                           bool setCurrentTime){
     SingleStreamReaderCtx* ssrctx = RG_ALLOC(sizeof(*ssrctx));
-    ssrctx->numTriggered = 0;
     ssrctx->srtctx = srtctx;
     ssrctx->keyName = RG_STRDUP(keyName);
     ssrctx->timerIsSet = false;
     ssrctx->freeOnNextTimeEvent = false;
-    ssrctx->batchStartTime = 0;
-    if(!StreamReader_ReadLastId(ctx, ssrctx)){
-    	RG_FREE(ssrctx->keyName);
-    	RG_FREE(ssrctx);
-    	return NULL;
+    ssrctx->isRunning = false;
+    ssrctx->nextBatch = 0;
+    ssrctx->batchStartTime = Gears_listCreate();
+    if (!StreamReader_ReadStreamLen(ctx, ssrctx)) {
+        RG_FREE(ssrctx->keyName);
+        RG_FREE(ssrctx);
+        return NULL;
+    }
+    if (ssrctx->pendingMessages) {
+        for (size_t i = 0 ; i < ssrctx->pendingMessages ; i+=srtctx->args->batchSize) {
+            long long currTime = 0;
+            if (setCurrentTime) {
+                struct timespec t = {0};
+                clock_gettime(CLOCK_REALTIME, &t);
+                currTime = (long long)1000000000 * (t.tv_sec) + (t.tv_nsec);
+            }
+            Gears_listAddNodeTail(ssrctx->batchStartTime, (void*)currTime);
+        }
     }
     Gears_dictAdd(srtctx->singleStreamData, (char*)keyName, ssrctx);
 
@@ -228,6 +210,7 @@ static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx
         if(ssrctx->timerIsSet){
             ssrctx->freeOnNextTimeEvent = true;
         }else{
+            Gears_listRelease(ssrctx->batchStartTime);
             RG_FREE(ssrctx->keyName);
             RG_FREE(ssrctx);
         }
@@ -243,10 +226,6 @@ static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
     if((--srtctx->refCount) == 0){
         Gears_listNode* n = NULL;
 
-        // if we free registration there must not be any pending executions.
-        // either all executions was finished or aborted
-        RedisModule_Assert(Gears_dictSize(srtctx->localPendingExecutions) == 0);
-
         while((n = Gears_listFirst(srtctx->localDoneExecutions))){
             char* epIdStr = Gears_listNodeValue(n);
             Gears_listDelNode(srtctx->localDoneExecutions, n);
@@ -260,7 +239,6 @@ static void StreamReaderTriggerCtx_Free(StreamReaderTriggerCtx* srtctx){
             RedisGears_DropExecution(ep);
         }
 
-        Gears_dictRelease(srtctx->localPendingExecutions);
         Gears_listRelease(srtctx->localDoneExecutions);
 
         StreamReaderTriggerCtx_CleanSingleStreamsData(srtctx);
@@ -278,7 +256,7 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
     StreamReaderTriggerCtx* srctx = RG_ALLOC(sizeof(StreamReaderTriggerCtx));
     *srctx = (StreamReaderTriggerCtx){
         .refCount = 1,
-        .status = StreamRegistrationStatus_OK,
+        .status = StreamRegistrationStatus_PAUSED,
         .args = args,
         .singleStreamData = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .fep = fep,
@@ -292,7 +270,6 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .lastBatchLag = 0,
         .totalBatchLag = 0,
         .lastError = NULL,
-        .localPendingExecutions = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL),
         .localDoneExecutions = Gears_listCreate(),
         .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
     };
@@ -311,7 +288,6 @@ StreamReaderCtx* StreamReaderCtx_Create(const char* streamName, const char* stre
             .batchSize = 0,
             .readPenging = false,
             .lastReadId = StreamIdZero,
-            .batchStartTime = 0,
     };
     return readerCtx;
 }
@@ -320,7 +296,7 @@ void StreamReaderCtx_Free(StreamReaderCtx* readerCtx){
     StreamReader_Free(readerCtx);
 }
 
-static StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* streamName, const char* consumerGroup, size_t batchSize, bool readPenging, long long batchStartTime){
+static StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* streamName, const char* consumerGroup, size_t batchSize, bool readPenging){
     StreamReaderCtx* readerCtx = RG_ALLOC(sizeof(StreamReaderCtx));
     *readerCtx = (StreamReaderCtx){
             .streamKeyName = streamName ? RG_STRDUP(streamName) : NULL,
@@ -332,7 +308,6 @@ static StreamReaderCtx* StreamReaderCtx_CreateWithConsumerGroup(const char* stre
             .batchSize = batchSize,
             .readPenging = readPenging,
             .lastReadId = StreamIdZero,
-            .batchStartTime = batchStartTime,
     };
     return readerCtx;
 }
@@ -555,10 +530,16 @@ typedef struct ExecutionDoneCtx{
     SingleStreamReaderCtx ssrctx;
 }ExecutionDoneCtx;
 
-static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm){
+static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, SingleStreamReaderCtx* ssrctx, bool alsoTrimm){
     if(array_len(readerCtx->batchIds) == 0){
         // nothing to ack on
         return;
+    }
+
+    ssrctx->pendingMessages -= array_len(readerCtx->batchIds);
+    if(ssrctx->pendingMessages < 0){
+        ssrctx->pendingMessages = 0;
+        RedisModule_Log(staticCtx, "warning", "Calculated stream length turned negative, set to 0.");
     }
 
     RedisModuleCallReply* reply = RedisModule_Call(staticCtx, "XACK", "!ccv", readerCtx->streamKeyName, readerCtx->consumerGroup, readerCtx->batchIds, (size_t)array_len(readerCtx->batchIds));
@@ -571,86 +552,58 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, bool alsoTrimm)
     RedisModule_FreeCallReply(reply);
 
     if(alsoTrimm){
-
-        reply = RedisModule_Call(staticCtx, "XLEN", "c", readerCtx->streamKeyName);
-        ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed XLEN messages", "warning");
-        if(!ret){
-            // we all not crash on failure, someone is messing up with the stream.
-            return;
-        }
-        if(RedisModule_CallReplyType(reply) != REDISMODULE_REPLY_INTEGER){
-            RedisModule_Log(staticCtx, "warning", "bad reply on xlen, probably someone modified the stream while we are working on it.");
-            RedisModule_FreeCallReply(reply);
-            return;
-        }
-
-        long long streamLen = RedisModule_CallReplyInteger(reply);
-
-        RedisModule_FreeCallReply(reply);
-
-        long long streamLenForTrim = streamLen - array_len(readerCtx->batchIds);
-        if(streamLenForTrim < 0){
-            RedisModule_Log(staticCtx, "warning", "try to trim stream to negative len, probably someone modified the stream while we are working on it.");
-            return;
-        }
-
-        reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", streamLenForTrim);
+        reply = RedisModule_Call(staticCtx, "XTRIM", "!ccl", readerCtx->streamKeyName, "MAXLEN", ssrctx->pendingMessages);
         ret = StreamReader_VerifyCallReply(staticCtx, reply, "Failed Trim messages", "warning");
         if(!ret){
-            // we all not crash on failure, someone is messing up with the stream.
+            // we will not crash on failure, someone is messing up with the stream.
             return;
         }
 
         RedisModule_FreeCallReply(reply);
-
     }
 }
 
-static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, StreamReaderCtx* readerCtx){
-    if(StreamIdIsZero(readerCtx->lastReadId) && !readerCtx->readPenging){
-        // we got no data from the stream and we were not asked to read pending,
-        // there is no need to trigger another execution.
+static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, SingleStreamReaderCtx* ssrctx){
+    if (!ssrctx->pendingMessages) {
+        /* Nothing to run on */
+        ssrctx->isRunning = false;
         return;
     }
-    // If we reach here there is 2 options:
-    //      1. we did not yet reach the last id
-    //      2. we only read pending records
-    // either way we need to trigger another execution.
-    SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, readerCtx->streamKeyName);
-    if(StreamReader_StreamIdCompare(ssrctx->lastId, readerCtx->lastReadId) > 0){
+    if(srctx->args->batchSize <= ssrctx->pendingMessages){
         StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
+        return;
     }
-}
-
-static void StreamReader_AbortPendings(StreamReaderTriggerCtx* srctx){
-    // unregister require aborting all pending executions
-    ExecutionPlan** abortEpArray = array_new(ExecutionPlan*, 10);
-
-    Gears_dictEntry* n = NULL;
-    Gears_dictIterator *iter = Gears_dictGetIterator(srctx->localPendingExecutions);
-    while((n = Gears_dictNext(iter))){
-        char* epIdStr = Gears_dictGetKey(n);
-        ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
-        if(!ep){
-            RedisModule_Log(staticCtx, "warning", "Failed finding pending execution to abort on unregister.");
-            continue;
+    long long batchStartTime = 0;
+    Gears_listNode *first = Gears_listFirst(ssrctx->batchStartTime);
+    if (first){
+        batchStartTime = (long long)Gears_listNodeValue(first);
+    }
+    if (!batchStartTime) {
+        /* we do not know when the batch started, data was in the stream
+         * when we started the run, we will trigger an execution. */
+        StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
+        ssrctx->nextBatch = 0; /* trigger execution in the middle of batch require us to reset the batch */
+        return;
+    }
+    if(srctx->args->durationMS) {
+        /* check if we should run on the pending messages anyway.
+         * If we reached the configured timeout we will trigger
+         * the run anyway, otherwise we will set a timer with the
+         * left timeout. */
+        struct timespec currTimeSpec = {0};
+        clock_gettime(CLOCK_REALTIME, &currTimeSpec);
+        long long currTime = ((long long)1000000000 * (currTimeSpec.tv_sec) + (currTimeSpec.tv_nsec));
+        if ((currTime - batchStartTime >= srctx->args->durationMS * 1000000)) {
+            /* Duration pass, trigger the run now. */
+            StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
+            ssrctx->nextBatch = 0; /* trigger execution in the middle of batch require us to reset the batch */
+            return;
         }
-
-        // we can not abort right now cause aborting might cause values to be deleted
-        // from localPendingExecutions and it will mess up with the iterator
-        // so we must collect all the exeuctions first and then abort one by one
-        abortEpArray = array_append(abortEpArray, ep);
+        RedisModule_Assert(!ssrctx->timerIsSet);
+        ssrctx->lastTimerId = RedisModule_CreateTimer(staticCtx, srctx->args->durationMS - (currTime - batchStartTime)/1000000, StreamReader_OnTime, ssrctx);
+        ssrctx->timerIsSet = true;
     }
-    Gears_dictReleaseIterator(iter);
-
-    for(size_t i = 0 ; i < array_len(abortEpArray) ; ++i){
-        // we can not free while iterating so we add to the epArr and free after
-        if(RedisGears_AbortExecution(abortEpArray[i]) != REDISMODULE_OK){
-            RedisModule_Log(staticCtx, "warning", "Failed aborting execution on unregister.");
-        }
-    }
-
-    array_free(abortEpArray);
+    ssrctx->isRunning = false;
 }
 
 static void StreamReader_StartScanThread(RedisModuleCtx *ctx, void *data){
@@ -666,16 +619,15 @@ static void StreamReader_StartScanThread(RedisModuleCtx *ctx, void *data){
 
 static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderTriggerCtx* srctx = privateData;
+    int flags = RedisModule_GetContextFlags(staticCtx);
 
-    if(EPIsFlagOn(ctx, EFIsLocal)){
-        Gears_dictDelete(srctx->localPendingExecutions, ctx->idStr);
-
-        char* epIdStr = RG_STRDUP(ctx->idStr);
-        // Add the execution id to the localDoneExecutions list
-        Gears_listAddNodeTail(srctx->localDoneExecutions, epIdStr);
+    // Add the execution id to the localDoneExecutions list
+    char *currentRunningExecution = RG_STRDUP(RedisGears_GetId(ctx));
+    if (currentRunningExecution) {
+        Gears_listAddNodeTail(srctx->localDoneExecutions, currentRunningExecution);
         if(GearsConfig_GetMaxExecutionsPerRegistration() > 0 && Gears_listLength(srctx->localDoneExecutions) > GearsConfig_GetMaxExecutionsPerRegistration()){
             Gears_listNode *head = Gears_listFirst(srctx->localDoneExecutions);
-            epIdStr = Gears_listNodeValue(head);
+            char* epIdStr = Gears_listNodeValue(head);
             ExecutionPlan* ep = RedisGears_GetExecution(epIdStr);
             if(ep){
                 RedisModule_Assert(EPIsFlagOn(ep, EFDone));
@@ -701,24 +653,26 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
         srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
 
-        if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
-            // we abort pending execution, continue now will cause incorect processing order.
-            StreamReader_AbortPendings(srctx);
-
+        if (strncmp(srctx->lastError, "PAUSE", 5) == 0) {
+            StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+            srctx->status = StreamRegistrationStatus_PAUSED;
+        } else if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
             // lets clean all our data about all the streams, on restart we will read all the
             // pending data so we will not lose records
             StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
 
             if(srctx->args->onFailedPolicy == OnFailedPolicyRetry){
-                int flags = RedisModule_GetContextFlags(staticCtx);
                 // only retrigger on master
                 if(flags & REDISMODULE_CTX_FLAGS_MASTER){
                     // Set the status to WAITING_FOR_TIMEOUT_ON_FAILURE, the status will be reflected to the user.
                     srctx->status = StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE;
                     RedisModule_CreateTimer(staticCtx, srctx->args->retryInterval * 1000, StreamReader_StartScanThread, StreamReaderTriggerCtx_GetShallowCopy(srctx));
                 } else {
-                    // set timmer to check if we turn master
-                    turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                    // set timer to check if we turn master
+                    if(!turnedMasterTEOn){
+                        turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                        turnedMasterTEOn = true;
+                    }
                 }
             }else if(srctx->args->onFailedPolicy == OnFailedPolicyAbort){
                 srctx->status = StreamRegistrationStatus_ABORTED;
@@ -735,46 +689,50 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         ++srctx->numSuccess;
     }
 
-    if(ackAndTrim && EPIsFlagOn(ctx, EFIsLocal)){
-        // we only ack and trim local executions.
-        // distributed executions on stream is tricky and should be considered
-        // carefully cause order (and in rare situations process only once) can not be promised.
-        // why?
-        // 1. oreder can not be promised because because execution might take longer on
-        //    another shard and so the finished while be delayed.
-        // 2. because execution order might changed, the read pending might read
-        //    data that is currently processed and this is why we can not promise exactly once
-        //    processing.
-        //
-        // It might be possible to solve those issues but we decide not to handle with them currently.
-
+    if(ackAndTrim){
         Reader* reader = ExecutionPlan_GetReader(ctx);
-        StreamReader_AckAndTrimm(reader->ctx, srctx->args->trimStream);
-        StreamReader_TriggerAnotherExecutionIfNeeded(srctx, reader->ctx);
+        StreamReaderCtx* srCtx = ((StreamReaderCtx*)reader->ctx);
+        SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, srCtx->streamKeyName);
+        if (ssrctx) {
+            if (!srCtx->readPenging) {
+                /* calculate lag, no lag information on not yet acked data */
+                Gears_listNode *first = Gears_listFirst(ssrctx->batchStartTime);
+                if (first) {
+                    long long batchStartTime = (long long)Gears_listNodeValue(first);
+                    Gears_listDelNode(ssrctx->batchStartTime, first);
+                    if (batchStartTime) {
+                        struct timespec currTimeSpec = {0};
+                        clock_gettime(CLOCK_REALTIME, &currTimeSpec);
+                        long long currTime = ((long long)1000000000 * (currTimeSpec.tv_sec) + (currTimeSpec.tv_nsec));
+                        srctx->lastBatchLag = currTime - batchStartTime;
+                        srctx->totalBatchLag += srctx->lastBatchLag;
+                    }
+                } else {
+                    /* someone is messing up with the stream, and the stream size is not as we think, read it again */
+                    StreamReader_ReadStreamLen(staticCtx, ssrctx);
+                }
+            }
+            if (flags & REDISMODULE_CTX_FLAGS_MASTER) {
+                /* only if we are master we should continue trigger events */
+                StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
+                StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
+            } else {
+                if(!turnedMasterTEOn){
+                    StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+                    // set timer to check if we turn master
+                    turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+                    turnedMasterTEOn = true;
+                }
+            }
+        }
     }
-
-    /* calculate lag */
-    Reader* reader = ExecutionPlan_GetReader(ctx);
-    StreamReaderCtx* readerCtx = reader->ctx;
-    if (readerCtx->batchStartTime) {
-        /* no need to calculate lag if batchStartTime is not set.
-         * In such case its either:
-         * 1. Batch operation on the stream
-         * 2. Run logic on data already exists in the stream */
-        struct timespec currTimeSpec = {0};
-        clock_gettime(CLOCK_REALTIME, &currTimeSpec);
-        long long currTime = ((long long)1000000000 * (currTimeSpec.tv_sec) + (currTimeSpec.tv_nsec));
-        srctx->lastBatchLag = currTime - readerCtx->batchStartTime;
-        srctx->totalBatchLag += srctx->lastBatchLag;
-    }
-
 
     StreamReaderTriggerCtx_Free(srctx);
 }
 
 static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch, bool readPending){
     StreamReaderTriggerCtx* srtctx = ssrctx->srtctx;
-    StreamReaderCtx* readerCtx = StreamReaderCtx_CreateWithConsumerGroup(ssrctx->keyName, GEARS_CONSUMER_GROUP, batch, readPending, ssrctx->batchStartTime);
+    StreamReaderCtx* readerCtx = StreamReaderCtx_CreateWithConsumerGroup(ssrctx->keyName, GEARS_CONSUMER_GROUP, batch, readPending);
     RedisGears_OnExecutionDoneCallback callback = StreamReader_ExecutionDone;
     void* privateData = StreamReaderTriggerCtx_GetShallowCopy(srtctx);
     ++srtctx->numTriggered;
@@ -788,18 +746,10 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
         }
         return;
     }
-    if(srtctx->mode != ExecutionModeSync && EPIsFlagOn(ep, EFIsLocal) && EPIsFlagOff(ep, EFDone)){
-        // execution is local
-        // If execution is SYNC it will be added to localDoneExecutions on done
-        // Otherwise, save it to the registration pending execution list.
-        // currently we are not save global executions and those will not be listed
-        // in the registration execution list nor will be drop on unregister.
-        // todo: handle none local executions
-        Gears_dictAdd(srtctx->localPendingExecutions, ep->idStr, NULL);
+    if(EPIsFlagOff(ep, EFDone)){
+        ssrctx->isRunning = true;
     }
 }
-
-static bool turnedMasterTEOn = false;
 
 static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
     int flags = RedisModule_GetContextFlags(ctx);
@@ -825,15 +775,26 @@ static void StreamReader_CheckIfTurnedMaster(RedisModuleCtx *ctx, void *data){
 }
 
 static void StreamReader_OnTime(RedisModuleCtx *ctx, void *data){
+    int flags = RedisModule_GetContextFlags(staticCtx);
     SingleStreamReaderCtx* ssrctx = data;
     if(ssrctx->freeOnNextTimeEvent){
+        Gears_listRelease(ssrctx->batchStartTime);
         RG_FREE(ssrctx->keyName);
         RG_FREE(ssrctx);
         return;
     }
-    StreamReader_RunOnEvent(ssrctx, ssrctx->srtctx->args->batchSize,false);
+    ssrctx->nextBatch = 0; /* trigger execution in the middle of batch require us to reset the batch */
     ssrctx->timerIsSet = false;
-    ssrctx->numTriggered = 0;
+    if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
+        if(!turnedMasterTEOn){
+            StreamReaderTriggerCtx_CleanSingleStreamsData(ssrctx->srtctx);
+            // set timer to check if we turn master
+            turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
+            turnedMasterTEOn = true;
+        }
+        return;
+    }
+    StreamReader_RunOnEvent(ssrctx, ssrctx->srtctx->args->batchSize,false);
 }
 
 static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key){
@@ -867,24 +828,29 @@ static int StreamReader_OnKeyTouched(RedisModuleCtx *ctx, int type, const char *
         if(StreamReader_IsKeyMatch(srctx->args->streamPrefix, keyName)){
             SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
             if(!ssrctx){
-                ssrctx = SingleStreamReaderCtx_Create(ctx, keyName, srctx);
+                ssrctx = SingleStreamReaderCtx_Create(ctx, keyName, srctx, true);
                 RedisModule_Assert(ssrctx);
+            } else {
+                ++ssrctx->pendingMessages;
+                ++ssrctx->nextBatch;
+                if (ssrctx->nextBatch == 1) {
+                    /* first element in a batch save current time for lag calculation */
+                    struct timespec t = {0};
+                    clock_gettime(CLOCK_REALTIME, &t);
+                    Gears_listAddNodeTail(ssrctx->batchStartTime, (void*)((long long)1000000000 * (t.tv_sec) + (t.tv_nsec)));
+                }
+                if (ssrctx->nextBatch == srctx->args->batchSize) {
+                    ssrctx->nextBatch = 0;
+                }
             }
-            if (ssrctx->numTriggered == 0) {
-                /* first element in a batch save current time for lag calculation */
-                struct timespec t = {0};
-                clock_gettime(CLOCK_REALTIME, &t);
-                ssrctx->batchStartTime = ((long long)1000000000 * (t.tv_sec) + (t.tv_nsec));
-            }
-            if(srctx->args->batchSize <= ++ssrctx->numTriggered){
-                StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
-                ssrctx->numTriggered = 0;
-                // we finish the run, if timer is set lets remove it.
-                if(!ssrctx->timerIsSet && srctx->args->durationMS > 0){
+            if(srctx->args->batchSize <= ssrctx->pendingMessages && !ssrctx->isRunning){
+                if(ssrctx->timerIsSet){
                     RedisModule_StopTimer(ctx, ssrctx->lastTimerId, NULL);
                     ssrctx->timerIsSet = false;
                 }
-            }else{
+                StreamReader_RunOnEvent(ssrctx, srctx->args->batchSize, false);
+                // we finish the run, if timer is set lets remove it.
+            } else if (!ssrctx->isRunning) {
                 // if we did not run execution we need to set timer if its not already set
                 if(!ssrctx->timerIsSet && srctx->args->durationMS > 0){
                     ssrctx->lastTimerId = RedisModule_CreateTimer(ctx, srctx->args->durationMS, StreamReader_OnTime, ssrctx);
@@ -915,13 +881,25 @@ static StreamReaderTriggerCtx* StreamReader_GetStreamTriggerCtxByFep(FlatExecuti
     return NULL;
 }
 
+static void StreamReader_PauseTrigger(FlatExecutionPlan* fep, bool abortPending){
+    StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
+    RedisModule_Assert(srctx);
+
+    if (srctx->status == StreamRegistrationStatus_OK) {
+        StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+        srctx->status = StreamRegistrationStatus_PAUSED;
+    }
+}
+
+static void StreamReader_UnpauseTrigger(FlatExecutionPlan* fep){
+    StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
+    RedisModule_Assert(srctx);
+    StreamReader_StartScanThread(staticCtx, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+}
+
 static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPending){
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, STREAM_TRIGGER_FLAG_POP);
     RedisModule_Assert(srctx);
-
-    if(abortPending){
-        StreamReader_AbortPendings(srctx);
-    }
 
     srctx->status = StreamRegistrationStatus_UNREGISTERED;
     StreamReaderTriggerCtx_Free(srctx);
@@ -992,7 +970,7 @@ static void* StreamReader_ScanForStreams(void* pd){
                 SingleStreamReaderCtx* ssrctx = Gears_dictFetchValue(srctx->singleStreamData, (char*)keyName);
                 if(!ssrctx){
                 	size_t retries = 0;
-                    while(!(ssrctx = SingleStreamReaderCtx_Create(staticCtx, keyName, srctx))) {
+                    while(!(ssrctx = SingleStreamReaderCtx_Create(staticCtx, keyName, srctx, false))) {
                     	// creating stream reader ctx can failed if cluster is not initialized.
                     	// sleep for 1 second and retry (but not more than 10 retries)
                     	if(++retries > 10) {
@@ -1039,6 +1017,7 @@ static int StreamReader_RegisrterTrigger(FlatExecutionPlan* fep, ExecutionMode m
     int flags = RedisModule_GetContextFlags(staticCtx);
     if(!(flags & REDISMODULE_CTX_FLAGS_MASTER)){
         // we are not executing registrations on slave
+        srctx->status = StreamRegistrationStatus_OK;
         if(!turnedMasterTEOn){
             turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
             turnedMasterTEOn = true;
@@ -1107,7 +1086,11 @@ static void StreamReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModul
     RedisModule_InfoAddFieldULongLong(ctx, "totalRunDurationMS", totalDurationMS(srctx));
     RedisModule_InfoAddFieldDouble(ctx, "avgRunDurationMS", avgDurationMS(srctx));
     RedisModule_InfoAddFieldLongLong(ctx, "lastEstimatedLagMS", DURATION2MS(srctx->lastBatchLag));
-    RedisModule_InfoAddFieldDouble(ctx, "avgEstimatedLagMS", ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    if (srctx->numSuccess + srctx->numFailures + srctx->numAborted == 0) {
+        RedisModule_InfoAddFieldDouble(ctx, "avgEstimatedLagMS", 0);
+    } else {
+        RedisModule_InfoAddFieldDouble(ctx, "avgEstimatedLagMS", ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    }
     RedisModule_InfoAddFieldCString(ctx, "lastError", srctx->lastError ? srctx->lastError : "None");
     RedisModule_InfoAddFieldULongLong(ctx, "batchSize", srctx->args->batchSize);
     RedisModule_InfoAddFieldULongLong(ctx, "durationMS", srctx->args->durationMS);
@@ -1121,6 +1104,9 @@ static void StreamReader_DumpRegistrationInfo(FlatExecutionPlan* fep, RedisModul
         break;
     case StreamRegistrationStatus_ABORTED:
         RedisModule_InfoAddFieldCString(ctx, "status", "ABORTED");
+        break;
+    case StreamRegistrationStatus_PAUSED:
+        RedisModule_InfoAddFieldCString(ctx, "status", "PAUSED");
         break;
     default:
         RedisModule_Assert(false);
@@ -1175,7 +1161,11 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
     RedisModule_ReplyWithStringBuffer(ctx, "lastEstimatedLagMS", strlen("lastEstimatedLagMS"));
     RedisModule_ReplyWithLongLong(ctx, DURATION2MS(srctx->lastBatchLag));
     RedisModule_ReplyWithStringBuffer(ctx, "avgEstimatedLagMS", strlen("avgEstimatedLagMS"));
-    RedisModule_ReplyWithDouble(ctx, ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    if (srctx->numSuccess + srctx->numFailures + srctx->numAborted == 0) {
+        RedisModule_ReplyWithDouble(ctx, 0);
+    } else {
+        RedisModule_ReplyWithDouble(ctx, ((double)DURATION2MS(srctx->totalBatchLag) / (srctx->numSuccess + srctx->numFailures + srctx->numAborted)));
+    }
     RedisModule_ReplyWithStringBuffer(ctx, "lastError", strlen("lastError"));
     if(srctx->lastError){
         RedisModule_ReplyWithStringBuffer(ctx, srctx->lastError, strlen(srctx->lastError));
@@ -1183,13 +1173,32 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
         RedisModule_ReplyWithNull(ctx);
     }
     RedisModule_ReplyWithStringBuffer(ctx, "args", strlen("args"));
-    RedisModule_ReplyWithArray(ctx, 6);
+    RedisModule_ReplyWithArray(ctx, 12);
     RedisModule_ReplyWithStringBuffer(ctx, "batchSize", strlen("batchSize"));
     RedisModule_ReplyWithLongLong(ctx, srctx->args->batchSize);
     RedisModule_ReplyWithStringBuffer(ctx, "durationMS", strlen("durationMS"));
     RedisModule_ReplyWithLongLong(ctx, srctx->args->durationMS);
     RedisModule_ReplyWithStringBuffer(ctx, "stream", strlen("stream"));
     RedisModule_ReplyWithStringBuffer(ctx, srctx->args->streamPrefix, strlen(srctx->args->streamPrefix));
+    RedisModule_ReplyWithStringBuffer(ctx, "trimStream", strlen("trimStream"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->args->trimStream);
+    RedisModule_ReplyWithStringBuffer(ctx, "onFailedPolicy", strlen("onFailedPolicy"));
+    switch(srctx->args->onFailedPolicy){
+    case OnFailedPolicyContinue:
+        RedisModule_ReplyWithStringBuffer(ctx, "continue", strlen("continue"));
+        break;
+    case OnFailedPolicyAbort:
+        RedisModule_ReplyWithStringBuffer(ctx, "abort", strlen("abort"));
+        break;
+    case OnFailedPolicyRetry:
+        RedisModule_ReplyWithStringBuffer(ctx, "retry", strlen("retry"));
+        break;
+    default:
+        RedisModule_Assert(false);
+    }
+    RedisModule_ReplyWithStringBuffer(ctx, "retryInterval", strlen("retryInterval"));
+    RedisModule_ReplyWithLongLong(ctx, srctx->args->retryInterval);
+
     RedisModule_ReplyWithStringBuffer(ctx, "status", strlen("status"));
     switch(srctx->status){
     case StreamRegistrationStatus_OK:
@@ -1200,6 +1209,9 @@ static void StreamReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecution
         break;
     case StreamRegistrationStatus_ABORTED:
         RedisModule_ReplyWithStringBuffer(ctx, "ABORTED", strlen("ABORTED"));
+        break;
+    case StreamRegistrationStatus_PAUSED:
+        RedisModule_ReplyWithStringBuffer(ctx, "PAUSED", strlen("PAUSED"));
         break;
     default:
         RedisModule_Assert(false);
@@ -1326,6 +1338,8 @@ RedisGears_ReaderCallbacks StreamReader = {
         .create = StreamReader_Create,
         .registerTrigger = StreamReader_RegisrterTrigger,
         .unregisterTrigger = StreamReader_UnregisrterTrigger,
+        .pauseTrigger = StreamReader_PauseTrigger,
+        .unpauseTrigger = StreamReader_UnpauseTrigger,
         .serializeTriggerArgs = StreamReader_SerializeArgs,
         .deserializeTriggerArgs = StreamReader_DeserializeArgs,
         .freeTriggerArgs = StreamReader_FreeArgs,
