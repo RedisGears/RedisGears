@@ -56,27 +56,27 @@ def testDependenciesWithRegister(env):
         env.assertEqual(len(res[1]), 0)
         env.assertContains("<module 'redisgraph'", res[0][0])
 
-@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+@gearsTest(decodeResponses=False, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesBasicExportImport(env):
     conn = getConnectionByEnv(env)
 
     #disable rdb save
     res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('config', 'set', 'save', '')).run()")
     
-    env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
+    env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').equal(b'OK')
     md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph')
-    env.assertEqual(md[5], 'yes')
-    env.assertEqual(md[7], 'yes')
+    env.assertEqual(md[5], b'yes')
+    env.assertEqual(md[7], b'yes')
     env.stop()
     env.start()
     conn = getConnectionByEnv(env)
     env.expect('RG.PYDUMPREQS').equal([])
-    env.expect('RG.PYIMPORTREQ', *data).equal('OK')
+    env.expect('RG.PYIMPORTREQ', *data).equal(b'OK')
     res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').flatmap(lambda x: execute('RG.PYDUMPREQS')).run()")
     env.assertEqual(len(err), 0)
     env.assertEqual(len(res), env.shardsCount)
     for r in res:
-        env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)
+        env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r.decode('utf8'))
 
 @gearsTest(envArgs={'useSlaves':True, 'env':'oss', 'moduleArgs':'CreateVenv 1'})
 def testDependenciesReplicatedToSlave(env):
@@ -87,7 +87,7 @@ def testDependenciesReplicatedToSlave(env):
 
     slaveConn = env.getSlaveConnection()
     try:
-        with TimeLimit(5):
+        with TimeLimit(15):
             res = []
             while len(res) < 1:
                 res = slaveConn.execute_command('RG.PYDUMPREQS')
@@ -127,11 +127,10 @@ def testAof(env):
     for r in res:
         env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)    
 
-@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+@gearsTest(decodeResponses=False, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesImportSerializationError(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson', 'redis==3').ok()
+    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson', 'redis==3').equal(b'OK')
     md, data = env.cmd('RG.PYEXPORTREQ', 'rejson')
-    data = b''.join(data)
     for i in range(len(data) - 1):
         env.expect('RG.PYIMPORTREQ', data[:i]).error()

@@ -11,6 +11,8 @@ export READIES=$ROOT/deps/readies
 cd $ROOT
 
 export PYTHONWARNINGS=ignore
+export LC_CTYPE=en_US.utf-8
+
 
 #----------------------------------------------------------------------------------------------
 
@@ -65,9 +67,12 @@ OSNICK=$($READIES/bin/platform --osnick)
 [[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
-[[ $OSNICK == ol8 ]] && OSNICK=rhel8
+[[ $OSNICK == ol8 ]]     && OSNICK=rhel8
+[[ $OSNICK == rocky8 ]]  && OSNICK=rhel8
 
-OS_DESC=$(python2 $ROOT/getos.py)
+
+PYTHON_BIN=python3
+OS_DESC=$(${PYTHON_BIN} $ROOT/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -78,19 +83,28 @@ pack() {
 
 	cd $ROOT
 	local packfile=artifacts/$artifact/$pack_fname
-	python2 $READIES/bin/xtx \
-		-d GEARS_PYTHON_NAME=python3_$SEMVER \
-		-d GEARS_PYTHON_FNAME=$URL_FNAME \
-		-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
-		-d GEARS_JAVA_FNAME=$JAVA_URL_FNAME \
-		-d GEARS_JAVA_SHA256=$(cat $GEARSJVM_PKG.sha256) \
-		-d OS_DESC=$OS_DESC \
-		ramp.yml > /tmp/ramp.yml
+	if [[ -z $3 ]]; then
+		${PYTHON_BIN} $READIES/bin/xtx \
+			-d GEARS_PYTHON_NAME=python3_$SEMVER \
+			-d GEARS_PYTHON_FNAME=$URL_FNAME \
+			-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
+			-d GEARS_JAVA_FNAME=$JAVA_URL_FNAME \
+			-d GEARS_JAVA_SHA256=$(cat $GEARSJVM_PKG.sha256) \
+			-d OS_DESC=$OS_DESC \
+			ramp.yml > /tmp/ramp.yml
+	else
+		${PYTHON_BIN} $READIES/bin/xtx \
+			-d GEARS_PYTHON_NAME=python3_$SEMVER \
+			-d GEARS_PYTHON_FNAME=$URL_FNAME \
+			-d GEARS_PYTHON_SHA256=$(cat $GEARSPY_PKG.sha256) \
+			-d OS_DESC=$OS_DESC \
+			ramp_python.yml > /tmp/ramp.yml
+	fi
 	rm -f /tmp/ramp.fname
 	if [[ ! -z $GEARSPY_PATH ]]; then
 		GEARS_OPT="Plugin $GEARSPY_PATH"
 	fi
-	GEARS_NO_DEPS=1 python2 -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
+	GEARS_NO_DEPS=1 ${PYTHON_BIN} -m RAMP.ramp pack -m /tmp/ramp.yml --packname-file /tmp/ramp.fname \
 		--verbose --debug -o $packfile $GEARS_SO --runcmdargs "$GEARS_OPT" >/tmp/ramp.err 2>&1 || true
 
 	if [[ ! -f /tmp/ramp.fname ]]; then
@@ -207,6 +221,8 @@ fi
 platform="$OS-$OSNICK-$ARCH"
 RELEASE_ramp=${PACKAGE_NAME}.$platform.${SEMVER}${VARIANT}.zip
 SNAPSHOT_ramp=${PACKAGE_NAME}.$platform.${BRANCH}${VARIANT}.zip
+RELEASE_python_ramp=${PACKAGE_NAME}_python.$platform.${SEMVER}${VARIANT}.zip
+SNAPSHOT_python_ramp=${PACKAGE_NAME}_python.$platform.${BRANCH}${VARIANT}.zip
 RELEASE_gearspy=${PACKAGE_NAME}-python.$platform.$SEMVER.tgz
 SNAPSHOT_gearspy=${PACKAGE_NAME}-python.$platform.$BRANCH.tgz
 RELEASE_debug=${PACKAGE_NAME}-debug.$platform.$SEMVER.tgz
@@ -258,4 +274,6 @@ fi
 if [[ $RAMP == 1 ]]; then
 	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
 	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
+	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_python_ramp" "true"
+	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_python_ramp" "true"
 fi

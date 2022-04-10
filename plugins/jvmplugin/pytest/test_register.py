@@ -274,25 +274,25 @@ def testKeysReaderCommandsOptionBadArgsError(env, results, errs, conn, **kargs):
     env.assertEqual(len(errs), 0)
     
     try:
-        conn.execute_command('RG.TRIGGER', 'bad_command')
+        env.execute_command('RG.TRIGGER', 'bad_command')
         env.assertTrue(False, message='no error raised')
     except Exception as e:
         env.assertContains('bad reply on COMMAND command', str(e))
         
     try:
-        conn.execute_command('RG.TRIGGER', 'unallow_command')
+        env.execute_command('RG.TRIGGER', 'unallow_command')
         env.assertTrue(False, message='no error raised')
     except Exception as e:
         env.assertContains('Can not hook a command which are not allowed inside a script', str(e))
         
     try:
-        conn.execute_command('RG.TRIGGER', 'unknown_keys_command')
+        env.execute_command('RG.TRIGGER', 'unknown_keys_command')
         env.assertTrue(False, message='no error raised')
     except Exception as e:
         env.assertContains('Can not hook a command with moveable keys by key prefix', str(e))
         
     try:
-        conn.execute_command('RG.TRIGGER', 'blocking_command')
+        env.execute_command('RG.TRIGGER', 'blocking_command')
         env.assertTrue(False, message='no error raised')
     except Exception as e:
         env.assertContains('Can not hook a command which are not allowed inside a script', str(e))

@@ -82,34 +82,34 @@ GB('StreamReader').map(test).run()
 
 class testStepsErrors:
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
         self.conn.execute_command('set', 'x', '1')
         self.conn.execute_command('set', 'y', '1')
 
     def testForEachError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().foreach(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 
     def testGroupByError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: "str", lambda a, x, k: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 
     def testBatchGroupByError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().batchgroupby(lambda x: "str", lambda x, k: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 
     def testExtractorError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().groupby(lambda x: notexists(x), lambda a, x, k: 1).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 
     def testAccumulateError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().accumulate(lambda a, x: notexists(a, x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
     def testAccumulateError2(self):
         script = '''
@@ -123,7 +123,7 @@ def secondCallFailed(a, x):
 GearsBuilder().accumulate(secondCallFailed).collect().run()
         '''
         res = self.env.cmd('rg.pyexecute', script)
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
     def testAccumulatebyError(self):
         script = '''
@@ -137,30 +137,30 @@ def secondCallFailed(k, a, x):
 GearsBuilder().aggregateby(lambda x: 'test', 0, secondCallFailed, secondCallFailed).collect().run()
         '''
         res = self.env.cmd('rg.pyexecute', script)
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
     def testAggregateByError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().aggregateby(lambda x: "1",{},lambda k, a, x: (x["kaka"] if x["key"]=="y" else x), lambda k, a, x: (x["kaka"] if x["key"]=="y" else x)).run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
     def testMapError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().map(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 
     def testFlatMapError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().flatmap(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 
     def testFilterError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().filter(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 
     def testRepartitionError(self):
         res = self.env.cmd('rg.pyexecute', 'GearsBuilder().repartition(lambda x: notexists(x)).repartition(lambda x: notexists(x)).collect().run()')
-        self.env.assertLessEqual(1, res[1])
+        self.env.assertLessEqual(1, len(res[1]))
 
 @gearsTest()
 def testCommandReaderWithRun(env):
@@ -181,7 +181,7 @@ def testCommandReaderRegisterWithExcpetionCommand(env):
     env.expect('rg.pyexecute', 'GB("CommandReader").foreach(lambda x: noexists).register(trigger="command")').ok()
     env.expect('rg.trigger', 'command').error().contains("'noexists' is not defined")
 
-@gearsTest()
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
 def testNoSerializableRegistrationWithAllReaders(env):
     script = '''
 import redis
@@ -198,7 +198,7 @@ def testExtraUnknownArgumentsReturnError(env):
 
 class testStepsWrongArgs:
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         self.conn = getConnectionByEnv(self.env)
 
     def testRegisterWithWrongRegexType(self):
@@ -338,7 +338,7 @@ class testStepsWrongArgs:
 
 class testGetExecutionErrorReporting:
     def __init__(self):
-        self.env = Env()
+        self.env = Env(decodeResponses=True)
         conn = getConnectionByEnv(self.env)
         conn.execute_command('set', '0', 'falsE')
         conn.execute_command('set', '1', 'truE')

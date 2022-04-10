@@ -30,7 +30,7 @@ class Connection(object):
             return True
         try:
             with TimeLimit(timeout):
-                return self.read(1) == ''
+                return self.read(1) == b''
         except Exception:
             return False
 
@@ -51,36 +51,36 @@ class Connection(object):
         return self.sock.recv(bytes)
 
     def send(self, data):
-        self.sockf.write(data)
+        self.sockf.write(str.encode(data))
         self.sockf.flush()
 
     def readline(self):
-        return self.sockf.readline()
+        return self.sockf.readline().decode("utf-8")
 
     def send_bulk_header(self, data_len):
-        self.sockf.write('$%d\r\n' % data_len)
+        self.sockf.write(b'$%d\r\n' % data_len)
         self.sockf.flush()
 
     def send_bulk(self, data):
-        self.sockf.write('$%d\r\n%s\r\n' % (len(data), data))
+        self.sockf.write(b'$%d\r\n%s\r\n' % (len(data), str.encode(data)))
         self.sockf.flush()
 
     def send_status(self, data):
-        self.sockf.write('+%s\r\n' % data)
+        self.sockf.write(b'+%s\r\n' % str.encode(data))
         self.sockf.flush()
 
     def send_error(self, data):
-        self.sockf.write('-%s\r\n' % data)
+        self.sockf.write(b'-%s\r\n' % str.encode(data))
         self.sockf.flush()
 
     def send_integer(self, data):
-        self.sockf.write(':%u\r\n' % data)
+        self.sockf.write(b':%u\r\n' % str.encode(data))
         self.sockf.flush()
 
     def send_mbulk(self, data):
-        self.sockf.write('*%d\r\n' % len(data))
+        self.sockf.write(b'*%d\r\n' % len(data))
         for elem in data:
-            self.sockf.write('$%d\r\n%s\r\n' % (len(elem), elem))
+            self.sockf.write(b'$%d\r\n%s\r\n' % (len(elem), str.encode(elem)))
         self.sockf.flush()
 
     def read_mbulk(self, args_count=None):
@@ -159,12 +159,12 @@ class Connection(object):
                 raise Exception('Invalid bulk response: %s' % line)
             if bulk_len == -1:
                 return None
-            data = self.sockf.read(bulk_len + 2)
+            data = self.sockf.read(bulk_len + 2).decode('utf8')
             if len(data) < bulk_len:
                 self.peer_closed = True
                 self.close()
             return data[:bulk_len]
-        elif line[0] == '*':
+        elif line[0] == b'*':
             try:
                 args_count = int(line[1:])
             except ValueError:
@@ -241,7 +241,7 @@ class ShardMock():
         self.stream_server = gevent.server.StreamServer(('localhost', self.port), self._handle_conn)
         self.stream_server.start()
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageIdCorrectness(env):
 
     with ShardMock(env) as shardMock:
@@ -257,7 +257,7 @@ def testMessageIdCorrectness(env):
         env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
         conn.send_status('OK')
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testErrorHelloResponse(env):
 
     with ShardMock(env) as shardMock:
@@ -276,7 +276,7 @@ def testErrorHelloResponse(env):
         # expect a new connection to arrive
         conn = shardMock.GetConnection()
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageResentAfterDisconnect(env):
 
     with ShardMock(env) as shardMock:
@@ -312,7 +312,7 @@ def testMessageResentAfterDisconnect(env):
         except Exception:
             pass
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageNotResentAfterCrash(env):
 
     with ShardMock(env) as shardMock:
@@ -339,7 +339,7 @@ def testMessageNotResentAfterCrash(env):
         except Exception:
             pass
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testSendRetriesMechanizm(env):
 
     with ShardMock(env) as shardMock:
@@ -385,7 +385,7 @@ def testSendRetriesMechanizm(env):
         except Exception:
             pass
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testSendTopology(env):
 
     with ShardMock(env) as shardMock:
@@ -406,7 +406,7 @@ def testSendTopology(env):
         env.assertEqual(conn.read_request(), ['RG.CLUSTERSETFROMSHARD', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', '0000000000000000000000000000000000000002', 'NO-USED', '2', 'NO-USED', '1', 'NO-USED', '0', '8192', 'NO-USED', 'password@localhost:6379', 'NO-USED', 'NO-USED', '2', 'NO-USED', '8193', '16383', 'NO-USED', 'password@localhost:%d' % shardMock.port])
 
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testStopListening(env):
 
     with ShardMock(env) as shardMock:
@@ -433,7 +433,7 @@ def testStopListening(env):
         env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testDuplicateMessagesAreIgnored(env):
 
     with ShardMock(env) as shardMock:
@@ -441,7 +441,7 @@ def testDuplicateMessagesAreIgnored(env):
         env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000' , 'RG_NetworkTest', 'test', '0').equal('OK')
         env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessagesResentAfterHelloResponse(env):
 
     with ShardMock(env) as shardMock:
@@ -463,7 +463,7 @@ def testMessagesResentAfterHelloResponse(env):
         except Exception:
             env.assertTrue(False, message='did not get the "test" message')
 
-@gearsTest(skipOnSingleShard=True, skipCleanups=True)
+@gearsTest(skipOnSingleShard=True, skipCleanups=True, skipWithTLS=True)
 def testClusterRefreshOnOnlySingleNode(env):
     conn = getConnectionByEnv(env)
     env.expect('RG.PYEXECUTE', 'GB("ShardsIDReader").count().run()').equal([[str(env.shardsCount)], []])
@@ -475,7 +475,7 @@ def testClusterRefreshOnOnlySingleNode(env):
     except Exception as e:  
         env.assertTrue(False, message='Failed waiting for execution to finish')
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testClusterSetAfterHelloResponseFailure(env):
     with ShardMock(env) as shardMock:
         conn = shardMock.GetConnection(sendHelloResponse=False)
@@ -508,7 +508,7 @@ def testClusterSetAfterHelloResponseFailure(env):
 
         time.sleep(2) # make sure the RG.HELLO resend callback is not called
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testClusterSetAfterDisconnect(env):
     with ShardMock(env) as shardMock:
         conn = shardMock.GetConnection(sendHelloResponse=False)
@@ -545,14 +545,14 @@ def testClusterSetAfterDisconnect(env):
         # read RG.HELLO request
         env.assertEqual(conn.read_request(), ['RG.HELLO'])
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMassiveClusterSet(env):
     with ShardMock(env) as shardMock:
         for i in range(1000):
             conn = shardMock.GetConnection(sendHelloResponse=False)
             shardMock._send_cluster_set()
 
-@gearsTest(skipOnCluster=True, skipCleanups=True)
+@gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMassiveClusterSetFromShard(env):
     with ShardMock(env) as shardMock:
         for i in range(1000):

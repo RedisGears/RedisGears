@@ -21,6 +21,7 @@ from redisgears import isInAtomicBlock
 from redisgears import config_get as configGet
 from redisgears import PyFlatExecution
 from redisgears import isAsyncAllow as isAsyncAllow
+from redisgears import flatError as flat_error
 import asyncio
 from asyncio.futures import Future
 from threading import Thread
@@ -170,16 +171,16 @@ class GearsBuilder():
             arg = createKeysOnlyReader(arg, **kargs)
         return self.gearsCtx.run(arg, **kargs)
 
-    def register(self, prefix='*', convertToStr=True, collect=True, **kargs):
+    def register(self, prefix='*', convertToStr=True, collect=True, **kwargs):
         if(convertToStr):
             self.gearsCtx.map(lambda x: str(x))
         if(collect):
             self.gearsCtx.collect()
-        kargs['prefix'] = prefix # this is for backword comptability
-        if 'regex' in kargs:
+        kwargs['prefix'] = prefix # this is for backword comptability
+        if 'regex' in kwargs:
             log('Using regex argument with register is deprecated and missleading, use prefix instead.', level='warning')
-            kargs['prefix'] = kargs['regex']
-        self.gearsCtx.register(**kargs)
+            kwargs['prefix'] = kwargs['regex']
+        return self.gearsCtx.register(**kwargs)
 
 def createDecorator(f):
     def deco(self, *args):
