@@ -403,7 +403,7 @@ workflows:
           context: common
           matrix:
             parameters:
-              platform: [hirsute, focal, bionic, xenial, centos7, rocky8, bullseye]
+              platform: [hirsute, focal, bionic, xenial, centos7, rocky8, bullseye, jammy]
       - valgrind:
           <<: *on-integ-and-version-tags
       - tls:
