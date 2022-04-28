@@ -1289,41 +1289,54 @@ static int Command_NetworkTest(RedisModuleCtx *ctx, RedisModuleString **argv, in
     return REDISMODULE_OK;
 }
 
-static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
-    char** plugins = GearsConfig_GetPlugins();
-    for(size_t i = 0 ; i < array_len(plugins) ; ++i){
-        char* plugin = plugins[i];
-        char* pluginFile = NULL;
-        const char* moduleDataDir = getenv("modulesdatadir");
-        if(moduleDataDir){
-            // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
-            rg_asprintf(&pluginFile, "%s/%s/%d/deps/%s/plugin/%s.so", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION, plugin, plugin);
-        }else{
-            pluginFile = RG_STRDUP(plugin);
-        }
-
-        void* handler = dlopen(pluginFile, RTLD_NOW|RTLD_GLOBAL);
-        RG_FREE(pluginFile);
-
-        if (handler == NULL) {
-            RedisModule_Log(staticCtx, "warning", "Failed loading gears plugin %s, error='%s'", plugin, dlerror());
-            return REDISMODULE_ERR;
-        }
-        int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
-        if (onload == NULL) {
-            dlclose(handler);
-            RedisModule_Log(staticCtx, "warning",
-                "Gears plugin %s does not export RedisGears_OnLoad() symbol", plugin);
-            return REDISMODULE_ERR;
-        }
-        if (onload(ctx) == REDISMODULE_ERR) {
-            dlclose(handler);
-            RedisModule_Log(staticCtx, "warning",
-                "Plugin %s initialization failed", plugin);
-            return REDISMODULE_ERR;
-        }
+static int RedisGears_LoadSinglePlugin(RedisModuleCtx *ctx, char* plugin) {
+    char* pluginFile = NULL;
+    const char* moduleDataDir = getenv("modulesdatadir");
+    if(moduleDataDir){
+        // modulesdatadir env var exists, we are running on redis enterprise and we need to run on modules directory
+        rg_asprintf(&pluginFile, "%s/%s/%d/deps/%s/plugin/%s.so", moduleDataDir, REDISGEARS_MODULE_NAME, REDISGEARS_MODULE_VERSION, plugin, plugin);
+    }else{
+        pluginFile = RG_STRDUP(plugin);
     }
 
+    void* handler = dlopen(pluginFile, RTLD_NOW|RTLD_GLOBAL);
+    RG_FREE(pluginFile);
+
+    if (handler == NULL) {
+        RedisModule_Log(staticCtx, "warning", "Failed loading gears plugin %s, error='%s'", plugin, dlerror());
+        return REDISMODULE_ERR;
+    }
+    int (*onload)(void *) = dlsym(handler,"RedisGears_OnLoad");
+    if (onload == NULL) {
+        dlclose(handler);
+        RedisModule_Log(staticCtx, "warning",
+            "Gears plugin %s does not export RedisGears_OnLoad() symbol", plugin);
+        return REDISMODULE_ERR;
+    }
+    if (onload(ctx) == REDISMODULE_ERR) {
+        dlclose(handler);
+        RedisModule_Log(staticCtx, "warning",
+            "Plugin %s initialization failed", plugin);
+        return REDISMODULE_ERR;
+    }
+    return REDISMODULE_OK;
+}
+
+static int RedisGears_InitializePlugins(RedisModuleCtx *ctx) {
+    char** plugins = GearsConfig_GetPlugins();
+    if (array_len(plugins) == 0 && IsEnterprise()) {
+        /* On enterprise, if no plugin was specified, we will load the default Python plugin. */
+        RedisModule_Log(staticCtx, "notice", "No plugin was specified, automatically loading the python plugin.");
+        if (RedisGears_LoadSinglePlugin(ctx, "gears_python") != REDISMODULE_OK) {
+            return REDISMODULE_ERR;
+        }
+    } else {
+        for(size_t i = 0 ; i < array_len(plugins) ; ++i){
+            if (RedisGears_LoadSinglePlugin(ctx, plugins[i]) != REDISMODULE_OK) {
+                return REDISMODULE_ERR;
+            }
+        }
+    }
     return REDISMODULE_OK;
 }
 
