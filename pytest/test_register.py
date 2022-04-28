@@ -1925,7 +1925,7 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
 def testStreamReaderHoldFinishCurrentBatch(env):
     script = '''
 import time
-regId = GB('StreamReader').foreach(lambda x: time.sleep(1)).register()
+regId = GB('StreamReader').foreach(lambda x: execute('incr', 'x')).foreach(lambda x: time.sleep(2)).register()
 GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
     '''
     env.expect('rg.pyexecute', script).ok()
@@ -1935,6 +1935,13 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
 
     env.expect('xadd', 's', '*', 'foo', 'bar')
     env.expect('xadd', 's', '*', 'foo', 'bar')
+
+    with TimeLimit(5, env, 'Failed waiting for registration to start processing the stream'):
+        while True:
+            val = env.execute_command('get', 'x')
+            if val == '1':
+                break
+            time.sleep(0.1)
 
     env.expect('RG.PAUSEREGISTRATIONS', regId).ok()
 
@@ -1949,7 +1956,7 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
 def testStreamReaderUnregisterFinishesOnlyCurrentBatch(env):
     script = '''
 import time
-regId = GB('StreamReader').foreach(lambda x: time.sleep(1)).register()
+regId = GB('StreamReader').foreach(lambda x: execute('incr', 'x')).foreach(lambda x: time.sleep(2)).register()
 GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
     '''
     env.expect('rg.pyexecute', script).ok()
@@ -1959,6 +1966,13 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
 
     env.expect('xadd', 's', '*', 'foo', 'bar')
     env.expect('xadd', 's', '*', 'foo', 'bar')
+
+    with TimeLimit(5, env, 'Failed waiting for registration to start processing the stream'):
+        while True:
+            val = env.execute_command('get', 'x')
+            if val == '1':
+                break
+            time.sleep(0.1)
 
     env.expect('RG.UNREGISTER', regId).ok()
 
