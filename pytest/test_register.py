@@ -1920,3 +1920,62 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
         c = env.getConnection(i)
         res = c.execute_command('ping')
         env.assertEqual(res, True)
+
+@gearsTest(skipOnCluster=True)
+def testStreamReaderHoldFinishCurrentBatch(env):
+    script = '''
+import time
+regId = GB('StreamReader').foreach(lambda x: time.sleep(1)).register()
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+
+    env.expect('RG.PAUSEREGISTRATIONS', regId).ok()
+
+    with TimeLimit(5, env, 'Failed waiting stream len to be 1'):
+        while True:
+            size = env.execute_command('xlen', 's')
+            if size == 1:
+                break
+            time.sleep(0.1)
+
+@gearsTest(skipOnCluster=True)
+def testStreamReaderUnregisterFinishesOnlyCurrentBatch(env):
+    script = '''
+import time
+regId = GB('StreamReader').foreach(lambda x: time.sleep(1)).register()
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+
+    env.expect('RG.UNREGISTER', regId).ok()
+
+    with TimeLimit(5, env, 'Failed waiting stream len to be 1'):
+        while True:
+            size = env.execute_command('xlen', 's')
+            if size == 1:
+                break
+            time.sleep(0.1)
+
+    # make sure the second element are not consumed
+    try:
+        with TimeLimit(1):
+            while True:
+                size = env.execute_command('xlen', 's')
+                if size == 0:
+                    env.assertTrue(False, message='Second element of the stream was consumed')
+                time.sleep(0.1)
+    except Exception as e:
+        pass
