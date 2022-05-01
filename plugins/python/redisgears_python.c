@@ -27,6 +27,7 @@ typedef struct PythonConfig{
     int foreceDownloadDepsOnEnterprise;
     int installReqMaxIdleTime;
     int attemptTraceback;
+    int overrideAllocators;
     char* gearsPythonUrl;
     char* gearsPythonSha256;
     char* pythonInstallationDir;
@@ -7079,6 +7080,7 @@ static int PythonConfig_GetStrVal(const char* val, const char* defaultVal, const
 #define DownloadDepsConfigName "DownloadDeps"
 #define ForeceDownloadDepsOnEnterpriseConfigName "ForeceDownloadDepsOnEnterprise"
 #define PythonAttemptTracebackConfigName "PythonAttemptTraceback"
+#define PythonOverrideAllocatorsConfigName "OverridePythonAllocators"
 #define PythonInstallReqMaxIdleTimeConfigName "PythonInstallReqMaxIdleTime"
 #define GearsPythonUrlConfigName "DependenciesUrl"
 #define GearsPythonSha256ConfigName "DependenciesSha256"
@@ -7129,6 +7131,13 @@ PythonConfigValDef configDefs[] = {
                 .configurableAtRuntime = true,
                 .defaultBoolVal = 1,
                 .ptr = &pythonConfig.attemptTraceback,
+        },
+        {
+                .name = PythonOverrideAllocatorsConfigName,
+                .type = PythonConfigType_Bool,
+                .configurableAtRuntime = false,
+                .defaultBoolVal = 1,
+                .ptr = &pythonConfig.overrideAllocators,
         },
         {
                 .name = PythonInstallReqMaxIdleTimeConfigName,
@@ -7400,9 +7409,11 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
     DeadSessionsList = Gears_listCreate();
     RequirementsDict = Gears_dictCreate(&Gears_dictTypeHeapStrings, NULL);
 
-    PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
-    PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
-    PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
+    if (pythonConfig.overrideAllocators) {
+        PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &allocator);
+        PyMem_SetAllocator(PYMEM_DOMAIN_MEM, &allocator);
+        PyMem_SetAllocator(PYMEM_DOMAIN_OBJ, &allocator);
+    }
     char* arg = "Embeded";
     size_t len = strlen(arg);
     wchar_t *pyHome = Py_DecodeLocale(PYENV_DIR, NULL);
