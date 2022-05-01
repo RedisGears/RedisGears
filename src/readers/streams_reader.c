@@ -84,7 +84,7 @@ typedef struct SingleStreamReaderCtx{
     long long pendingMessages;
     long long nextBatch;
     bool isRunning;
-    bool freeWhenDone;
+    bool isFreeWhenDone;
 }SingleStreamReaderCtx;
 
 static void* StreamReader_ScanForStreams(void* pd);
@@ -176,7 +176,7 @@ static SingleStreamReaderCtx* SingleStreamReaderCtx_Create(RedisModuleCtx* ctx,
     ssrctx->timerIsSet = false;
     ssrctx->freeOnNextTimeEvent = false;
     ssrctx->isRunning = false;
-    ssrctx->freeWhenDone = false;
+    ssrctx->isFreeWhenDone = false;
     ssrctx->nextBatch = 0;
     ssrctx->batchStartTime = Gears_listCreate();
     if (!StreamReader_ReadStreamLen(ctx, ssrctx)) {
@@ -211,7 +211,7 @@ static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx
         if(ssrctx->timerIsSet){
             ssrctx->freeOnNextTimeEvent = true;
         }if (ssrctx->isRunning){
-            ssrctx->freeWhenDone = true;
+            ssrctx->isFreeWhenDone = true;
         }else{
             Gears_listRelease(ssrctx->batchStartTime);
             RG_FREE(ssrctx->keyName);
@@ -723,7 +723,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         if (flags & REDISMODULE_CTX_FLAGS_MASTER) {
             /* only if we are master we should continue trigger events */
             StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
-            if (!ssrctx->freeWhenDone) {
+            if (!ssrctx->isFreeWhenDone) {
                 StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
             }
         } else {
@@ -736,7 +736,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
     }
 
-    if (ssrctx->freeWhenDone) {
+    if (ssrctx->isFreeWhenDone) {
         Gears_listRelease(ssrctx->batchStartTime);
         RG_FREE(ssrctx->keyName);
         RG_FREE(ssrctx);
