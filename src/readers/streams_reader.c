@@ -210,9 +210,9 @@ static void StreamReaderTriggerCtx_CleanSingleStreamsData(StreamReaderTriggerCtx
         SingleStreamReaderCtx* ssrctx = Gears_dictGetVal(entry);
         if(ssrctx->timerIsSet){
             ssrctx->freeOnNextTimeEvent = true;
-        }if (ssrctx->isRunning){
+        } else if (ssrctx->isRunning){
             ssrctx->isFreeWhenDone = true;
-        }else{
+        } else {
             Gears_listRelease(ssrctx->batchStartTime);
             RG_FREE(ssrctx->keyName);
             RG_FREE(ssrctx);
