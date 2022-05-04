@@ -120,7 +120,7 @@ _Runtime Configurability_
 Supported
 
 ## OverridePythonAllocators
-The **OverridePythonAllocators** configuration option controls whether RedisGears will override the default python memory allocators. By disabling this option the python interpreter can achieve better performance (in some cases we saw improvement of up to 50%), the disadvantage is that the report of [RG.PYSTATS](commands.md#rgpystats) command is no longer valid and Redis will not be able to track and report the memory usage used by the python interpreter.
+The **OverridePythonAllocators** configuration option controls whether RedisGears will override the default python memory allocators. Disabling this option, causes the python interpreter to increase performance (in some cases we saw improvement of up to 50%), the disadvantage is that the output of [RG.PYSTATS](commands.md#rgpystats) becomes invalid, and Redis will be unable to track and report memory usage by the python interpreter.
 
 !!! important "Notice"
     Available sense v1.2.4
