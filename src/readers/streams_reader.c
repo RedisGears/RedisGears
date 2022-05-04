@@ -665,12 +665,15 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
 
         if (strncmp(srctx->lastError, "PAUSE", 5) == 0) {
             StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+            // ssrctx was freed by `StreamReaderTriggerCtx_CleanSingleStreamsData`
+            ssrctx = NULL;
             srctx->status = StreamRegistrationStatus_PAUSED;
         } else if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
             // lets clean all our data about all the streams, on restart we will read all the
             // pending data so we will not lose records
             StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
-
+            // ssrctx was freed by `StreamReaderTriggerCtx_CleanSingleStreamsData`
+            ssrctx = NULL;
             if(srctx->args->onFailedPolicy == OnFailedPolicyRetry){
                 // only retrigger on master
                 if(flags & REDISMODULE_CTX_FLAGS_MASTER){
@@ -729,6 +732,8 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         } else {
             if(!turnedMasterTEOn){
                 StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
+                // ssrctx was freed by `StreamReaderTriggerCtx_CleanSingleStreamsData`
+                ssrctx = NULL;
                 // set timer to check if we turn master
                 turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
                 turnedMasterTEOn = true;
@@ -736,7 +741,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         }
     }
 
-    if (ssrctx->isFreeWhenDone) {
+    if (ssrctx && ssrctx->isFreeWhenDone) {
         Gears_listRelease(ssrctx->batchStartTime);
         RG_FREE(ssrctx->keyName);
         RG_FREE(ssrctx);
