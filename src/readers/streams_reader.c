@@ -56,6 +56,7 @@ typedef enum StreamRegistrationStatus{
 typedef struct StreamReaderTriggerCtx{
     size_t refCount;
     StreamRegistrationStatus status;
+    bool isRetryTimmerSet;
     StreamReaderTriggerArgs* args;
     Gears_dict* singleStreamData;
     FlatExecutionPlan* fep;
@@ -275,6 +276,7 @@ static StreamReaderTriggerCtx* StreamReaderTriggerCtx_Create(FlatExecutionPlan* 
         .lastError = NULL,
         .localDoneExecutions = Gears_listCreate(),
         .wd = RedisGears_WorkerDataCreate(fep->executionThreadPool),
+        .isRetryTimmerSet = false,
     };
     return srctx;
 }
@@ -611,6 +613,7 @@ static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx*
 
 static void StreamReader_StartScanThread(RedisModuleCtx *ctx, void *data){
     StreamReaderTriggerCtx* srctx = data;
+    srctx->isRetryTimmerSet = false;
     if(srctx->status == StreamRegistrationStatus_UNREGISTERED){
         StreamReaderTriggerCtx_Free(srctx);
         return;
@@ -629,6 +632,8 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
     StreamReaderExecutionCtx *pd = privateData;
     StreamReaderTriggerCtx* srctx = pd->srctx;
     SingleStreamReaderCtx* ssrctx = pd->ssrctx;
+
+
     int flags = RedisModule_GetContextFlags(staticCtx);
 
     // Add the execution id to the localDoneExecutions list
@@ -665,21 +670,20 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
 
         if (strncmp(srctx->lastError, "PAUSE", 5) == 0) {
             StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
-            // ssrctx was freed by `StreamReaderTriggerCtx_CleanSingleStreamsData`
-            ssrctx = NULL;
             srctx->status = StreamRegistrationStatus_PAUSED;
         } else if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
             // lets clean all our data about all the streams, on restart we will read all the
             // pending data so we will not lose records
             StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
-            // ssrctx was freed by `StreamReaderTriggerCtx_CleanSingleStreamsData`
-            ssrctx = NULL;
             if(srctx->args->onFailedPolicy == OnFailedPolicyRetry){
                 // only retrigger on master
                 if(flags & REDISMODULE_CTX_FLAGS_MASTER){
                     // Set the status to WAITING_FOR_TIMEOUT_ON_FAILURE, the status will be reflected to the user.
                     srctx->status = StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE;
-                    RedisModule_CreateTimer(staticCtx, srctx->args->retryInterval * 1000, StreamReader_StartScanThread, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+                    if (!srctx->isRetryTimmerSet) {
+                        RedisModule_CreateTimer(staticCtx, srctx->args->retryInterval * 1000, StreamReader_StartScanThread, StreamReaderTriggerCtx_GetShallowCopy(srctx));
+                        srctx->isRetryTimmerSet = true;
+                    }
                 } else {
                     // set timer to check if we turn master
                     if(!turnedMasterTEOn){
@@ -728,20 +732,23 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
             if (!ssrctx->isFreeWhenDone) {
                 StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
+            } else {
+                ssrctx->isRunning = false;
             }
         } else {
+            ssrctx->isRunning = false;
             if(!turnedMasterTEOn){
                 StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
-                // ssrctx was freed by `StreamReaderTriggerCtx_CleanSingleStreamsData`
-                ssrctx = NULL;
                 // set timer to check if we turn master
                 turnedMasterTimer = RedisModule_CreateTimer(staticCtx, 1000, StreamReader_CheckIfTurnedMaster, NULL);
                 turnedMasterTEOn = true;
             }
         }
+    } else {
+        ssrctx->isRunning = false;
     }
 
-    if (ssrctx && ssrctx->isFreeWhenDone) {
+    if (ssrctx->isFreeWhenDone) {
         Gears_listRelease(ssrctx->batchStartTime);
         RG_FREE(ssrctx->keyName);
         RG_FREE(ssrctx);
@@ -759,6 +766,7 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
     pd->ssrctx = ssrctx;
     ++srtctx->numTriggered;
     char* err = NULL;
+    ssrctx->isRunning = true;
     ExecutionPlan* ep = RedisGears_Run(srtctx->fep, srtctx->mode, readerCtx, callback, pd, srtctx->wd, &err);
     if(!ep){
         ++srtctx->numAborted;
@@ -767,9 +775,6 @@ static void StreamReader_RunOnEvent(SingleStreamReaderCtx* ssrctx, size_t batch,
             RG_FREE(err);
         }
         return;
-    }
-    if(EPIsFlagOff(ep, EFDone)){
-        ssrctx->isRunning = true;
     }
 }
 
