@@ -223,7 +223,7 @@ _Arguments_
 * _batch_: the number of new messages that trigger execution
 * _duration_: the time to wait before execution is triggered, regardless of the batch size (0 for no duration)
 * _onFailedPolicy_: the policy for handling execution failures, values should be as describe above
-* _onFailedRetryInterval_: the interval (in milliseconds) in which to retry in case _onFailedPolicy_ is **'retry'**
+* _onFailedRetryInterval_: the interval (in seconds) in which to retry in case _onFailedPolicy_ is **'retry'**
 * _trimStream_: when `#!python True` the stream will be trimmed after execution
 
 _Return_
