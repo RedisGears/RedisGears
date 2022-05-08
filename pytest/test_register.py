@@ -1993,3 +1993,40 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
                 time.sleep(0.1)
     except Exception as e:
         pass
+
+
+@gearsTest(skipOnCluster=True)
+def testFastPauseAndUnpause(env):
+    script = '''
+import time
+regId = GB('StreamReader').foreach(lambda x: execute('incr', 'x')).foreach(lambda x: time.sleep(1)).register()
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+    env.expect('xadd', 's', '*', 'foo', 'bar')
+
+    with TimeLimit(5, env, 'Failed waiting for registration to start processing the stream'):
+        while True:
+            val = env.execute_command('get', 'x')
+            if val == '1':
+                break
+            time.sleep(0.1)
+
+    env.expect('RG.PAUSEREGISTRATIONS', regId).ok()
+    env.expect('RG.UNPAUSEREGISTRATIONS', regId).ok()
+
+    # make sure the second element are not consumed
+    try:
+        with TimeLimit(1):
+            while True:
+                size = env.execute_command('xlen', 's')
+                if size >= 2:
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        pass
