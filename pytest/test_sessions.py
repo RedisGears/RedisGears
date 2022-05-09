@@ -92,7 +92,7 @@ def testBasicPyDumpSessionsWithRequirements(env):
     for i in range(1, env.shardsCount + 1, 1):
         c = env.getConnection(i)
         res = c.execute_command('RG.PYDUMPSESSIONS')
-        env.assertEqual(res[0][0:-1], ['ID', 'test', 'sessionDescription', 'desc', 'refCount', 1, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 0, 'requirements', ['redis'], 'registrations'])
+        env.assertEqual(res[0][0:-1], ['ID', 'test', 'sessionDescription', 'desc', 'refCount', 1, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 1, 'requirements', ['redis'], 'registrations'])
         res = c.execute_command('RG.PYDUMPSESSIONS VERBOSE')
         env.assertEqual(res[0][13][0][1], 'redis')
 

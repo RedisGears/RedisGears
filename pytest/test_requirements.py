@@ -63,7 +63,7 @@ def testDependenciesBasicExportImport(env):
     #disable rdb save
     res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('config', 'set', 'save', '')).run()")
     
-    env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').equal(b'OK')
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').equal(b'OK')
     md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph')
     env.assertEqual(md[5], b'yes')
     env.assertEqual(md[7], b'yes')
@@ -83,7 +83,7 @@ def testDependenciesReplicatedToSlave(env):
     if env.envRunner.debugger is not None:
         env.skip() # valgrind is not working correctly with replication
 
-    env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').ok()
 
     slaveConn = env.getSlaveConnection()
     try:
@@ -100,7 +100,7 @@ def testDependenciesReplicatedToSlave(env):
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1', 'freshEnv': True})
 def testDependenciesSavedToRDB(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').ok()
     for _ in env.reloading_iterator():
         res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').flatmap(lambda x: execute('RG.PYDUMPREQS')).run()")
         env.assertEqual(len(err), 0)
@@ -111,7 +111,7 @@ def testDependenciesSavedToRDB(env):
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1', 'useAof':True})
 def testAof(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import redisgraph", 'REQUIREMENTS', 'redisgraph').ok()
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').ok()
 
     res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').flatmap(lambda x: execute('RG.PYDUMPREQS')).run()")
     env.assertEqual(len(err), 0)
@@ -127,10 +127,38 @@ def testAof(env):
     for r in res:
         env.assertContains("'IsDownloaded', 'yes', 'IsInstalled', 'yes'", r)    
 
-@gearsTest(decodeResponses=False, envArgs={'moduleArgs': 'CreateVenv 1'})
+@gearsTest(skipCleanups=True, decodeResponses=False, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesImportSerializationError(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "import rejson", 'REQUIREMENTS', 'rejson', 'redis==3').equal(b'OK')
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'rejson', 'redis==3').equal(b'OK')
     md, data = env.cmd('RG.PYEXPORTREQ', 'rejson')
     for i in range(len(data) - 1):
         env.expect('RG.PYIMPORTREQ', data[:i]).error()
+
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesForceUpgrade(env):
+    getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'REQUIREMENTS', 'redis').equal('OK')
+    res1 = env.cmd('RG.TRIGGER', "test")
+    res1.sort()
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'REQUIREMENTS', 'redis').equal('OK')
+    res2 = env.cmd('RG.TRIGGER', "test")
+    res2.sort()
+    env.assertEqual(res1, res2)
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'FORCE_REQUIREMENTS_REINSTALLATION', 'REQUIREMENTS', 'redis').equal('OK')
+    res3 = env.cmd('RG.TRIGGER', "test")
+    res3.sort()
+    env.assertNotEqual(res3, res2)
+
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+def testDependenciesForceUpgradeFailure(env):
+    getConnectionByEnv(env)
+    env.expect('RG.PYEXECUTE', "import redis;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'REQUIREMENTS', 'redis').equal('OK')
+    reqs = env.cmd('rg.pydumpreqs')
+    env.assertEqual(len(reqs), 1)
+    path1 = reqs[0][13]
+    env.expect('RG.PYEXECUTE', "import redis1;GB('CommandReader').map(lambda x: id(redis)).register(trigger='test')", 'ID', 'test', 'UPGRADE', 'FORCE_REQUIREMENTS_REINSTALLATION', 'REQUIREMENTS', 'redis').error()
+    reqs = env.cmd('rg.pydumpreqs')
+    env.assertEqual(len(reqs), 1)
+    path2 = reqs[0][13]
+    env.assertEqual(path1, path2)
