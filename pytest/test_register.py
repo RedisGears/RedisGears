@@ -1486,7 +1486,7 @@ def testStreamReaderNotTriggerEventsOnReplica(env):
     res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     env.assertTrue(res1 < res2)
     
-    env.cmd('SLAVEOF', 'localhost', '6380')
+    env.cmd('SLAVEOF', 'localhost', '22222')
     time.sleep(2)
     res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     time.sleep(2)
@@ -1500,7 +1500,7 @@ def testStreamReaderNotTriggerEventsOnReplica(env):
     res2 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     env.assertLess(res1, res2)
 
-    env.cmd('SLAVEOF', 'localhost', '6380')
+    env.cmd('SLAVEOF', 'localhost', '22222')
     time.sleep(2)
     res1 = env.cmd('RG.DUMPREGISTRATIONS')[0][7][3]
     time.sleep(2)
