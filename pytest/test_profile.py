@@ -71,7 +71,7 @@ def testProfileReset(env):
 	env.expect('RG.PYPROFILE', 'RESET', sessionId).ok()
 	env.expect('RG.PYPROFILE', 'STATS', sessionId).error()
 
-@gearsTest(skipOnCluster=True)
+@gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testPyDumpSessions(env):
 	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'REQUIREMENTS', 'redis==3.5.3').ok()
 	sessionId = getSession(env)
