@@ -996,7 +996,7 @@ static void* PythonSessionCtx_Deserialize(Gears_BufferReader* br, int version, c
                 requirementsInstalled = true;
                 if(!PythonRequirementCtx_InstallRequirement(req)){
                     PythonSessionCtx_Free(s);
-                    *err = RG_STRDUP("Failed install requirement on shard, check shard log for more info.");
+                    *err = RG_STRDUP("Failed installing requirements on shard, please check shard logs for more details.");
                     return NULL;
                 }
             }
@@ -4879,7 +4879,7 @@ static void RedisGearsPy_DownloadWheelsAndDistribute(void* ctx){
     for(size_t i = 0 ; i < array_len(bdiCtx->session->requirements) ; ++i){
         PythonRequirementCtx *req = bdiCtx->session->requirements[i];
         if(!PythonRequirementCtx_InstallRequirement(req)){
-            RedisModule_ReplyWithError(rctx, "Failed install requirement on shard, check shard log for more info.");
+            RedisModule_ReplyWithError(rctx, "Failed installing requirements on shard, please check shard logs for more details.");
             goto done;
         }
     }
@@ -5003,7 +5003,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
             upgrade = true;
             continue;
         }
-        if(strcasecmp(option, "FORCE_REQUIREMENTS_REINSTALLATION") == 0){
+        if(strcasecmp(option, "FORCE_REINSTALL_REQUIREMENTS") == 0){
             forceRequirementsReinstallation = true;
             continue;
         }

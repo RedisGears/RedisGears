@@ -73,6 +73,6 @@ def testProfileReset(env):
 
 @gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testPyDumpSessions(env):
-	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'REQUIREMENTS', 'redis==3.5.3').ok()
+	env.expect('RG.PYEXECUTE', "GB('CommandReader').register(trigger='test')", 'REQUIREMENTS', 'redis==4.3.1').ok()
 	sessionId = getSession(env)
-	env.expect('RG.PYDUMPSESSIONS').equal([['ID', sessionId, 'sessionDescription', None, 'refCount', 1, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 1, 'requirements', ['redis==3.5.3'], 'registrations', ['0000000000000000000000000000000000000000-1']]])
+	env.expect('RG.PYDUMPSESSIONS').equal([['ID', sessionId, 'sessionDescription', None, 'refCount', 1, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 1, 'requirements', ['redis==4.3.1'], 'registrations', ['0000000000000000000000000000000000000000-1']]])
