@@ -43,12 +43,14 @@ static RedisVersion *redisVersion = NULL;
 
 #define PY_OBJECT_TYPE_VERSION 1
 
-#define PY_SESSION_TYPE_VERSION 2
+#define PY_SESSION_TYPE_VERSION 3
+#define PY_SESSION_TYPE_WITH_OPTIONAL_REQS 3
 #define PY_SESSION_TYPE_WITH_NAMES 2
 #define PY_SESSION_TYPE_WITH_DESC 2
 #define PY_SESSION_TYPE_WITH_REQ_NAMES_ONLY 1
 
-#define PY_REQ_VERSION 1
+#define PY_REQ_VERSION 2
+#define PY_REQ_VERSION_WITH_REQ_DICT_INDICATION 2
 #define PY_REQ_VERSION_WITH_OS_VERSION 1
 #define PY_SESSION_REQ_VERSION 1
 
@@ -65,6 +67,7 @@ static PyObject* profileCreateFunction;
 static PyObject* profileStartFunction;
 static PyObject* profileStopFunction;
 static PyObject* profileGetInfoFunction;
+static PyObject* initialModulesDict;
 PyObject* GearsError;
 PyObject* GearsFlatError;
 PyObject* ForceStoppedError;
@@ -186,12 +189,16 @@ char* getPyError();
 
 #define PYTHON_ERROR "error running python code"
 
+typedef struct PythonRequirementCtx PythonRequirementCtx;
+
 static void* RedisGearsPy_PyCallbackDeserialize(FlatExecutionPlan* fep, Gears_BufferReader* br, int version, char** err);
 static void TimeEvent_Free(void *value);
 static int RedisGearsPy_PyCallbackSerialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err);
 static PythonThreadCtx* GetPythonThreadCtx();
 static void continueFutureOnDone(ExecutionPlan* ep, void* privateData);
 static void dropExecutionOnDone(ExecutionPlan* ep, void* privateData);
+static PythonRequirementCtx* PythonRequirementCtx_Get(const char* requirement);
+static void RedisGearsPy_AddSessionRequirementsToDict(PythonSessionCtx* session);
 
 
 RedisModuleDict* SessionsDict = NULL;
@@ -199,7 +206,7 @@ Gears_list *DeadSessionsList = NULL;
 
 static char* venvDir = NULL;
 
-typedef struct PythonRequirementCtx{
+struct PythonRequirementCtx{
     size_t refCount;
     char* basePath;
     char* installName;
@@ -207,7 +214,8 @@ typedef struct PythonRequirementCtx{
     volatile bool isInstalled;
     volatile bool isDownloaded;
     pthread_mutex_t installationLock;
-}PythonRequirementCtx;
+    bool isInRequirementsDict;
+};
 
 Gears_dict* RequirementsDict = NULL;
 
@@ -228,6 +236,7 @@ typedef struct PythonSessionCtx{
     SessionRegistrationCtx *srctx;
     LinkedTo linkedTo;
     Gears_listNode *deadNode;
+    bool fullSerialization;
 }PythonSessionCtx;
 
 static PythonSessionCtx* currentSession = NULL;
@@ -292,9 +301,6 @@ done:
 static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
     int ret = true;
     pthread_mutex_lock(&req->installationLock);
-    if(req->isInstalled){
-        goto done;
-    }
     RedisModule_Assert(array_len(req->wheels) > 0);
     char* filesInDir = array_new(char, 10);
     filesInDir = array_append(filesInDir, '\'');
@@ -312,13 +318,15 @@ static bool PythonRequirementCtx_InstallRequirement(PythonRequirementCtx* req){
 
     int exitCode;
     if(pythonConfig.createVenv){
-        exitCode = RedisGears_ExecuteCommand(NULL, "notice", "/bin/bash -c \"source %s/bin/activate; cd '%s'; python -m pip install --no-index --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
+        exitCode = RedisGears_ExecuteCommand(NULL, "notice", "/bin/bash -c \"source %s/bin/activate; cd '%s'; python -m pip install --no-cache-dir --force-reinstall --no-index --disable-pip-version-check %s\"", venvDir, req->basePath, filesInDir);
     }else{
-        exitCode = RedisGears_ExecuteCommand(NULL, "notice", "/bin/bash -c \"cd '%s'; %s/bin/python3 -m pip install --no-index --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
+        exitCode = RedisGears_ExecuteCommand(NULL, "notice", "/bin/bash -c \"cd '%s'; %s/bin/python3 -m pip install --no-cache-dir --force-reinstall --no-index --disable-pip-version-check %s\"", req->basePath, venvDir, filesInDir);
     }
     array_free(filesInDir);
     if(exitCode == 0){
         req->isInstalled = true;
+    } else {
+        req->isInstalled = false;
     }
 
     ret = exitCode == 0;
@@ -345,7 +353,16 @@ static void PythonRequirementCtx_Free(PythonRequirementCtx* reqCtx){
 
     PythonRequirementCtx_VerifyBasePath(reqCtx);
     RedisGears_ExecuteCommand(NULL, "notice", "rm -rf '%s'", reqCtx->basePath);
-    Gears_dictDelete(RequirementsDict, reqCtx->installName);
+    if (reqCtx->isInRequirementsDict) {
+        Gears_dictDelete(RequirementsDict, reqCtx->installName);
+    } else if (reqCtx->isInstalled) {
+        // reinstall old requirement if exists
+        PythonRequirementCtx *oldReq = PythonRequirementCtx_Get(reqCtx->installName);
+        if (oldReq) {
+            PythonRequirementCtx_InstallRequirement(oldReq);
+            PythonRequirementCtx_Free(oldReq);
+        }
+    }
     RG_FREE(reqCtx->installName);
     RG_FREE(reqCtx->basePath);
     if(reqCtx->wheels){
@@ -448,24 +465,28 @@ static PythonRequirementCtx* PythonRequirementCtx_Get(const char* requirement){
 }
 
 static PythonRequirementCtx* PythonRequirementCtx_Create(const char* requirement){
+#define RAND_SIZE 10
+    char rand[RAND_SIZE + 1];
+    RedisModule_GetRandomHexChars(rand, RAND_SIZE);
+    rand[RAND_SIZE] = '\0';
 
     // first lets create basePath
-    int exitCode = RedisGears_ExecuteCommand(NULL, "notice", "mkdir -p '%s/%s'", venvDir, requirement);
+    int exitCode = RedisGears_ExecuteCommand(NULL, "notice", "mkdir -p '%s/%s_%s'", venvDir, requirement, rand);
     if(exitCode != 0){
         return NULL;
     }
 
     PythonRequirementCtx* ret = RG_ALLOC(sizeof(*ret));
     ret->installName = RG_STRDUP(requirement);
-    RedisGears_ASprintf(&ret->basePath, "%s/%s", venvDir, ret->installName);
+    RedisGears_ASprintf(&ret->basePath, "%s/%s_%s", venvDir, ret->installName, rand);
     ret->wheels = array_new(char*, 10);
     // refCount is starting from 2, one hold by RequirementsDict and once by the caller.
     // currently we basically never delete requirements so we will know not to reinstall them
     // to save time
-    ret->refCount = 2;
+    ret->refCount = 1;
     pthread_mutex_init(&ret->installationLock, NULL);
 
-    Gears_dictAdd(RequirementsDict, ret->installName, ret);
+    ret->isInRequirementsDict = false;
 
     PythonRequirementCtx_VerifyBasePath(ret);
 
@@ -502,6 +523,12 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
         }
     }
 
+    long isInReqDict = 1;
+    if (version >= PY_REQ_VERSION_WITH_REQ_DICT_INDICATION) {
+        isInReqDict = RedisGears_BRReadLong(br);
+    }
+
+
     long nWheels = RedisGears_BRReadLong(br);
     if(nWheels == LONG_READ_ERROR){
         *err = RG_STRDUP("Bad serialization format on reading requirement wheels amount");
@@ -529,9 +556,17 @@ static PythonRequirementCtx* PythonRequirementCtx_Deserialize(Gears_BufferReader
         array_append(wheelsData, wd);
     }
 
-    req = PythonRequirementCtx_Get(name);
-    if(!req){
+    if (isInReqDict) {
+        req = PythonRequirementCtx_Get(name);
+    }
+
+    if (!req) {
         req = PythonRequirementCtx_Create(name);
+        if (isInReqDict) {
+            req->refCount++;
+            req->isInRequirementsDict = true;
+            Gears_dictAdd(RequirementsDict, (char*)name, req);
+        }
     }
 
     pthread_mutex_lock(&req->installationLock);
@@ -596,6 +631,7 @@ static int PythonRequirementCtx_Serialize(PythonRequirementCtx* req, Gears_Buffe
     }
     RedisGears_BWWriteString(bw, req->installName);
     RedisGears_BWWriteString(bw, RedisGears_GetCompiledOs());
+    RedisGears_BWWriteLong(bw, req->isInRequirementsDict);
     RedisGears_BWWriteLong(bw, array_len(req->wheels));
     for(size_t i = 0 ; i < array_len(req->wheels) ; ++i){
         char* wheel = req->wheels[i];
@@ -764,7 +800,7 @@ static int PythonSessionCtx_DownloadWheels(PythonSessionCtx* session){
     return true;
 }
 
-static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const char* desc, const char** requirementsList, size_t requirementsListLen){
+static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const char* desc, const char** requirementsList, size_t requirementsListLen, bool forceReqReinstallation){
     // creating a new global dict for this session
     RedisGearsPy_LOCK
 
@@ -782,33 +818,43 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const cha
             .srctx = NULL,
             .linkedTo = LinkedTo_None,
             .deadNode = NULL,
+            .fullSerialization = false,
 
     };
     pthread_mutex_init(&session->registrationsLock, NULL);
 
     session->requirements = array_new(PythonRequirementCtx*, 10);
 
-    for(size_t i = 0 ; i < requirementsListLen ; ++i){
-        PythonRequirementCtx* req = PythonRequirementCtx_Get(requirementsList[i]);
+    if (!forceReqReinstallation) {
+        // lets see if we already have the requirements installed
+        for(size_t i = 0 ; i < requirementsListLen ; ++i){
+            PythonRequirementCtx *req = PythonRequirementCtx_Get(requirementsList[i]);
+            if (!req) {
+                session->isInstallationNeeded = true;
+                break;
+            } else {
+                session->requirements = array_append(session->requirements , req);
+            }
+        }
+    } else {
+        session->isInstallationNeeded = true;
+    }
 
-        if(!req){
-            req = PythonRequirementCtx_Create(requirementsList[i]);
-            session->isInstallationNeeded = true;
+    if (session->isInstallationNeeded) {
+        while(array_len(session->requirements) > 0) {
+            PythonRequirementCtx *req = array_pop(session->requirements);
+            PythonRequirementCtx_Free(req);
+        }
+        for(size_t i = 0 ; i < requirementsListLen ; ++i){
+            PythonRequirementCtx* req = PythonRequirementCtx_Create(requirementsList[i]);
 
             if(!req){
                 PythonSessionCtx_Free(session);
                 session = NULL;
                 break;
             }
+            session->requirements = array_append(session->requirements , req);
         }
-
-        if(!req->isInstalled){
-            // it could be that the requirement already exits but not yet installed
-            // in this case we will move the execution to background installation also.
-            session->isInstallationNeeded = true;
-        }
-
-        session->requirements = array_append(session->requirements , req);
     }
 
     RedisGearsPy_UNLOCK
@@ -816,14 +862,23 @@ static PythonSessionCtx* PythonSessionCtx_CreateWithId(const char* id, const cha
     return session;
 }
 
-static PythonSessionCtx* PythonSessionCtx_Create(const char *id, const char *desc, const char** requirementsList, size_t requirementsListLen){
+static PythonSessionCtx* PythonSessionCtx_Create(const char *id, const char *desc, const char** requirementsList, size_t requirementsListLen, bool forceReqReinstallation){
 
-    PythonSessionCtx* session = PythonSessionCtx_CreateWithId(id, desc, requirementsList, requirementsListLen);
+    PythonSessionCtx* session = PythonSessionCtx_CreateWithId(id, desc, requirementsList, requirementsListLen, forceReqReinstallation);
     session->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
     return session;
 }
 
-static int PythonSessionCtx_Serialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
+static void PythosSessionCtx_ResetModulesDict() {
+    RedisGearsPy_LOCK
+    /* reset modules catch */
+    PyInterpreterState *interp = PyThreadState_GET()->interp;
+    PyDict_Clear(interp->modules);
+    PyDict_Merge(interp->modules, initialModulesDict, 1);
+    RedisGearsPy_UNLOCK
+}
+
+static int PythonSessionCtx_SerializeInternals(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, bool withFullReqs, char** err){
     PythonSessionCtx* session = arg;
     RedisGears_BWWriteString(bw, session->sessionId);
     if (session->sessionDesc) {
@@ -832,12 +887,30 @@ static int PythonSessionCtx_Serialize(FlatExecutionPlan* fep, void* arg, Gears_B
     } else {
         RedisGears_BWWriteLong(bw, 0); // description do not exists
     }
+    if (withFullReqs) {
+        RedisGears_BWWriteLong(bw, 1);
+    } else {
+        RedisGears_BWWriteLong(bw, 0);
+    }
     RedisGears_BWWriteLong(bw, array_len(session->requirements));
+
     for(size_t i = 0 ; i < array_len(session->requirements) ; ++i){
-        RedisGears_BWWriteString(bw, session->requirements[i]->installName);
+        if (withFullReqs) {
+            RedisGears_BWWriteLong(bw, PY_REQ_VERSION);
+            if (PythonRequirementCtx_Serialize(session->requirements[i], bw, err) != REDISMODULE_OK) {
+                return REDISMODULE_ERR;
+            }
+        } else {
+            RedisGears_BWWriteString(bw, session->requirements[i]->installName);
+        }
     }
 
     return REDISMODULE_OK;
+}
+
+static int PythonSessionCtx_Serialize(FlatExecutionPlan* fep, void* arg, Gears_BufferWriter* bw, char** err){
+    PythonSessionCtx* session = arg;
+    return PythonSessionCtx_SerializeInternals(fep, arg, bw, session->fullSerialization, err);
 }
 
 static void* PythonSessionCtx_Deserialize(Gears_BufferReader* br, int version, char** err, bool useSessionsDict){
@@ -873,7 +946,7 @@ static void* PythonSessionCtx_Deserialize(Gears_BufferReader* br, int version, c
     }
     bool sessionExists;
     if(!s){
-        s = PythonSessionCtx_CreateWithId(id, desc, NULL, 0);
+        s = PythonSessionCtx_CreateWithId(id, desc, NULL, 0, false);
         if (useSessionsDict) {
             PythonSessionCtx_Set(s);
         }
@@ -887,22 +960,30 @@ static void* PythonSessionCtx_Deserialize(Gears_BufferReader* br, int version, c
     }
     RG_FREE(id);
     RG_FREE(desc);
+    size_t withFullReqs = (version < PY_SESSION_TYPE_WITH_REQ_NAMES_ONLY);
+    if (version >= PY_SESSION_TYPE_WITH_OPTIONAL_REQS) {
+        withFullReqs = RedisGears_BRReadLong(br);
+    }
     size_t requirementsLen = RedisGears_BRReadLong(br);
+    bool requirementsInstalled = false;
     for(size_t i = 0 ; i < requirementsLen ; ++i){
         PythonRequirementCtx* req;
-        if(version >= PY_SESSION_TYPE_WITH_REQ_NAMES_ONLY){
+        if(!withFullReqs){
             const char* reqName = RedisGears_BRReadString(br);
-            req = PythonRequirementCtx_Get(reqName);
-            if(!req){
-                RedisGears_ASprintf(err, "session missing requirement (%s)", reqName);
-                PythonSessionCtx_Free(s);
-                return NULL;
+            if(!sessionExists){
+                req = PythonRequirementCtx_Get(reqName);
+                if(!req){
+                    RedisGears_ASprintf(err, "session missing requirement (%s)", reqName);
+                    PythonSessionCtx_Free(s);
+                    return NULL;
+                }
             }
         }else{
-            // we set the req version to 0, only at gears v1.0.0 we added the serialized
-            // requirement to the session so we need to read it and install it here
-            RedisModule_Log(staticCtx, "notice", "Loading an old rdb registrations that comes with a requirement. the requirent will also be installed.");
-            req = PythonRequirementCtx_Deserialize(br, 0, err);
+            int reqVersion = 0;
+            if (version >= PY_SESSION_TYPE_WITH_REQ_NAMES_ONLY) {
+                version = RedisGears_BRReadLong(br);
+            }
+            req = PythonRequirementCtx_Deserialize(br, version, err);
             if(!req){
                 if(!*err){
                     *err = RG_STRDUP("Failed deserializing requirement");
@@ -911,16 +992,23 @@ static void* PythonSessionCtx_Deserialize(Gears_BufferReader* br, int version, c
                 return NULL;
             }
 
-            if(!PythonRequirementCtx_InstallRequirement(req)){
-                PythonSessionCtx_Free(s);
-                *err = RG_STRDUP("Failed install requirement on shard, check shard log for more info.");
-                return NULL;
+            if (!req->isInstalled) {
+                requirementsInstalled = true;
+                if(!PythonRequirementCtx_InstallRequirement(req)){
+                    PythonSessionCtx_Free(s);
+                    *err = RG_STRDUP("Failed installing requirements on shard, please check shard logs for more details.");
+                    return NULL;
+                }
             }
         }
 
         if(!sessionExists){
             s->requirements = array_append(s->requirements , req);
         }
+    }
+    if (requirementsInstalled) {
+        s->isInstallationNeeded = true;
+        PythosSessionCtx_ResetModulesDict();
     }
     return s;
 }
@@ -4661,13 +4749,21 @@ static void RedisGearsPy_RegisterOnDone(char **errors, size_t len, void *pd){
     RedisModule_FreeThreadSafeContext(ctx);
 }
 
-static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstallCtx* bdiCtx){
+static int RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstallCtx* bdiCtx){
     PythonThreadCtx* ptctx = GetPythonThreadCtx();
     ptctx->currentCtx = rctx;
     ptctx->createdExecution = NULL;
 
     PythonExecutionCtx pectx = PythonExecutionCtx_New(bdiCtx->session, NULL);
     RedisGearsPy_Lock(&pectx);
+
+    if (bdiCtx->session->isInstallationNeeded) {
+        /* Requirements was installed, reset modules catch. */
+        PyInterpreterState *interp = PyThreadState_GET()->interp;
+        PyDict_Clear(interp->modules);
+        PyDict_Merge(interp->modules, initialModulesDict, 1);
+    }
+
     PyObject *v = PyRun_StringFlags(bdiCtx->script, Py_file_input, ptctx->currSession->globalsDict, ptctx->currSession->globalsDict, NULL);
 
     if(!v){
@@ -4690,9 +4786,7 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
 
         ptctx->createdExecution = NULL;
         ptctx->currentCtx = NULL;
-        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
-        bdiCtx->session->srctx = NULL;
-        return;
+        return REDISMODULE_ERR;
     }
 
     if (array_len(bdiCtx->session->registrations) > 0){
@@ -4710,6 +4804,8 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
         bdiCtx->session->srctx = NULL;
     } else {
         if(ptctx->createdExecution){
+            RedisGearsPy_AddSessionRequirementsToDict(bdiCtx->session); // add the requirements to dictionary
+            bdiCtx->session->fullSerialization = true; // mark the session to be fully serialized with requirements
             if(bdiCtx->isBlocking){
                 RedisModuleBlockedClient* bc = bdiCtx->bc;
                 bdiCtx->bc = NULL; // we are taking ownership of the blocked client
@@ -4737,39 +4833,7 @@ static void RedisGearsPy_InnerExecute(RedisModuleCtx* rctx, BackgroundDepsInstal
 
     ptctx->createdExecution = NULL;
     ptctx->currentCtx = NULL;
-}
-
-static void RedisGears_OnRequirementInstallationDone(ExecutionPlan* ep, void* privateData){
-    BackgroundDepsInstallCtx* bdiCtx = privateData;
-
-    RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bdiCtx->bc);
-
-    size_t nErrors = RedisGears_GetErrorsLen(ep);
-
-    if(nErrors > 0){
-        Record* errorRecord = RedisGears_GetError(ep, 0);
-        size_t errorLen;
-        const char* errorStr = RedisGears_StringRecordGet(errorRecord, &errorLen);
-        RedisModule_ReplyWithError(rctx, errorStr);
-        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
-        bdiCtx->session->srctx = NULL;
-    }else{
-        bdiCtx->session->isInstallationNeeded = false;
-        RedisGearsPy_InnerExecute(rctx, bdiCtx);
-    }
-
-    RedisGears_DropExecution(ep);
-
-    // free bdiCtx
-    PythonSessionCtx_Free(bdiCtx->session);
-    if (bdiCtx->oldSession) PythonSessionCtx_Free(bdiCtx->oldSession);
-    RG_FREE(bdiCtx->script);
-    if(bdiCtx->bc){
-        RedisModule_UnblockClient(bdiCtx->bc, NULL);
-    }
-    RG_FREE(bdiCtx);
-
-    RedisModule_FreeThreadSafeContext(rctx);
+    return REDISMODULE_OK;
 }
 
 static ExecutionPlan* RedisGearsPy_DistributeRequirements(PythonRequirementCtx** requirements, RedisGears_OnExecutionDoneCallback doneCallback, void* pd, char** err){
@@ -4785,35 +4849,68 @@ static ExecutionPlan* RedisGearsPy_DistributeRequirements(PythonRequirementCtx**
     return ep;
 }
 
+static void RedisGearsPy_AddSessionRequirementsToDict(PythonSessionCtx* session){
+    for(size_t i = 0 ; i < array_len(session->requirements) ; ++i){
+        PythonRequirementCtx *req = session->requirements[i];
+        if (!req->isInRequirementsDict) {
+            req->refCount++; // pushing to requirements dictionary
+            req->isInRequirementsDict = true;
+            PythonRequirementCtx *oldReq = Gears_dictFetchValue(RequirementsDict, req->installName);
+            if (oldReq) {
+                Gears_dictDelete(RequirementsDict, oldReq->installName);
+                oldReq->isInRequirementsDict = false;
+                PythonRequirementCtx_Free(oldReq);
+            }
+            Gears_dictAdd(RequirementsDict, req->installName, req);
+        }
+    }
+}
+
 static void RedisGearsPy_DownloadWheelsAndDistribute(void* ctx){
     BackgroundDepsInstallCtx* bdiCtx = ctx;
     RedisModuleCtx* rctx = RedisModule_GetThreadSafeContext(bdiCtx->bc);
     if(!PythonSessionCtx_DownloadWheels(bdiCtx->session)){
         RedisModule_ReplyWithError(rctx, "Could not satisfy requirements (look at redis log file for more information)");
         RedisGears_LockHanlderAcquire(rctx);
-        goto error;
+        goto done;
     }
 
     RedisGears_LockHanlderAcquire(rctx);
-    char* err = NULL;
-    ExecutionPlan* ep = RedisGearsPy_DistributeRequirements(bdiCtx->session->requirements, RedisGears_OnRequirementInstallationDone, bdiCtx, &err);
-    if(!ep){
-        if(!err){
-            err = RG_STRDUP("Failed create distribute requirements execution or rg.pyexecute");
+    for(size_t i = 0 ; i < array_len(bdiCtx->session->requirements) ; ++i){
+        PythonRequirementCtx *req = bdiCtx->session->requirements[i];
+        if(!PythonRequirementCtx_InstallRequirement(req)){
+            RedisModule_ReplyWithError(rctx, "Failed installing requirements on shard, please check shard logs for more details.");
+            goto done;
         }
-        RedisModule_ReplyWithError(ctx, err);
-        RG_FREE(err);
-        goto error;
     }
 
-    RedisGears_LockHanlderRelease(rctx);
-    RedisModule_FreeThreadSafeContext(rctx);
-    return;
+    char *err;
+    if (RedisGears_PutUsedSession(bdiCtx->session->srctx, bdiCtx->session, &err) != REDISMODULE_OK) {
+        RedisModule_ReplyWithError(ctx, "Failed serializing session");
+        goto done;
+    }
+    // we gave the session to srctx so we need another copy of it.
+    bdiCtx->session = PythonSessionCtx_ShallowCopy(bdiCtx->session);
 
-error:
+    if (bdiCtx->oldSession) {
+        RedisGears_AddSessionToUnlink(bdiCtx->session->srctx, bdiCtx->oldSession->sessionId);
+        PythonSessionCtx_RunWithRegistrationsLock(bdiCtx->oldSession, {
+            for (size_t i = 0 ; i < array_len(bdiCtx->oldSession->registrations) ; ++i) {
+                RedisGears_AddRegistrationToUnregister(bdiCtx->session->srctx, bdiCtx->oldSession->registrations[i]);
+            }
+        });
+    }
+
+    if (RedisGearsPy_InnerExecute(rctx, bdiCtx) != REDISMODULE_OK) {
+        goto done;
+    }
+
+done:
     // free bdiCtx
-    RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
-    bdiCtx->session->srctx = NULL;
+    if (bdiCtx->session->srctx) {
+        RedisGears_SessionRegisterCtxFree(bdiCtx->session->srctx);
+        bdiCtx->session->srctx = NULL;
+    }
     PythonSessionCtx_Free(bdiCtx->session);
     if (bdiCtx->oldSession) PythonSessionCtx_Free(bdiCtx->oldSession);
     RG_FREE(bdiCtx->script);
@@ -4894,6 +4991,7 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     char *sessionDesc = NULL;
     bool isBlocking = true;
     bool upgrade = false;
+    bool forceRequirementsReinstallation = false;
     size_t currArg = 2;
     for(; currArg < argc ; ++currArg) {
         const char* option = RedisModule_StringPtrLen(argv[currArg], NULL);
@@ -4903,6 +5001,10 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         }
         if(strcasecmp(option, "UPGRADE") == 0){
             upgrade = true;
+            continue;
+        }
+        if(strcasecmp(option, "FORCE_REINSTALL_REQUIREMENTS") == 0){
+            forceRequirementsReinstallation = true;
             continue;
         }
         if(strcasecmp(option, "REPLACE_WITH") == 0){
@@ -4988,10 +5090,18 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         }
     }
 
-    PythonSessionCtx* session = PythonSessionCtx_Create(sessionName, sessionDesc, requirementsList, reqLen);
+    PythonSessionCtx* session = PythonSessionCtx_Create(sessionName, sessionDesc, requirementsList, reqLen, forceRequirementsReinstallation);
     if(!session){
         if (oldSession) PythonSessionCtx_Free(oldSession);
         RedisModule_ReplyWithError(ctx, "Could not satisfy requirements, look at the log file for more information.");
+        return REDISMODULE_OK;
+    }
+
+    PythonThreadCtx* ptctx = GetPythonThreadCtx();
+
+    if(session->isInstallationNeeded){
+        RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
+        RedisGearsPy_BackgroundExecute(session, oldSession, bc, script, ptctx->doneFunction, isBlocking);
         return REDISMODULE_OK;
     }
 
@@ -5015,14 +5125,6 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 RedisGears_AddRegistrationToUnregister(session->srctx, oldSession->registrations[i]);
             }
         });
-    }
-
-    PythonThreadCtx* ptctx = GetPythonThreadCtx();
-
-    if(session->isInstallationNeeded){
-        RedisModuleBlockedClient *bc = RedisModule_BlockClient(ctx, NULL, NULL, NULL, 0);
-        RedisGearsPy_BackgroundExecute(session, oldSession, bc, script, ptctx->doneFunction, isBlocking);
-        return REDISMODULE_OK;
     }
 
     BackgroundDepsInstallCtx bdiCtx = (BackgroundDepsInstallCtx){
@@ -6054,7 +6156,7 @@ static void* RedisGearsPy_Relloc(void* ctx, void * p, size_t size){
 }
 
 static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementCtx* req){
-    RedisModule_ReplyWithArray(ctx, 12);
+    RedisModule_ReplyWithArray(ctx, 18);
 
     RedisModule_ReplyWithCString(ctx, "GearReqVersion");
     RedisModule_ReplyWithLongLong(ctx, PY_REQ_VERSION);
@@ -6080,6 +6182,15 @@ static void RedisGearsPy_SendReqMetaData(RedisModuleCtx *ctx, PythonRequirementC
     }else{
         RedisModule_ReplyWithCString(ctx, "Requirement was not yet downloaded so wheels are not available");
     }
+
+    RedisModule_ReplyWithCString(ctx, "Path");
+    RedisModule_ReplyWithCString(ctx, req->basePath);
+
+    RedisModule_ReplyWithCString(ctx, "RefCount");
+    RedisModule_ReplyWithLongLong(ctx, req->refCount);
+
+    RedisModule_ReplyWithCString(ctx, "IsInReqDictionary");
+    RedisModule_ReplyWithCString(ctx, req->isInRequirementsDict ? "yes" : "no");
 }
 
 
@@ -6930,9 +7041,6 @@ static int RedisGearsPy_LoadRegistrations(RedisModuleIO *rdb, int encver, int wh
         }
 
         RedisModule_Free(data);
-
-        // we hold a sharded ref to the requirement, lets free it.
-        PythonRequirementCtx_Free(req);
     }
     return REDISMODULE_OK;
 
@@ -7274,7 +7382,7 @@ static int Python_BeforeConfigChange(const char* key, const char* val, char** er
 
 static int Python_SerializeSession(void* session, Gears_BufferWriter *bw, char **err){
     RedisGears_BWWriteLong(bw, PY_SESSION_TYPE_VERSION);
-    return PythonSessionCtx_Serialize(NULL, session, bw, err);
+    return PythonSessionCtx_SerializeInternals(NULL, session, bw, true, err);
 }
 
 static void Python_SetCurrSession(void *s, bool onlyFree){
@@ -7283,6 +7391,8 @@ static void Python_SetCurrSession(void *s, bool onlyFree){
         return;
     }
     if (!s) {
+        RedisGearsPy_AddSessionRequirementsToDict(currentSession);
+
         PythonSessionCtx_Set(currentSession);
         PythonSessionCtx_Free(currentSession);
         currentSession = NULL;
@@ -7323,6 +7433,9 @@ static void Python_Info(RedisModuleInfoCtx *ctx, int for_crash_report) {
             char* wheelsStr = RedisGears_ArrToStr((void**)req->wheels, array_len(req->wheels), PythonStringArray_ToStr, '|');
             RedisModule_InfoAddFieldCString(ctx, "Wheels", wheelsStr);
             RG_FREE(wheelsStr);
+            RedisModule_InfoAddFieldCString(ctx, "Path", req->basePath);
+            RedisModule_InfoAddFieldULongLong(ctx, "RefCount", req->refCount);
+            RedisModule_InfoAddFieldCString(ctx, "IsInReqDictionary", req->isInRequirementsDict ? "yes" : "no");
             RedisModule_InfoEndDictField(ctx);
         }
         Gears_dictReleaseIterator(iter);
@@ -7668,6 +7781,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
         RedisModule_Log(staticCtx, "warning", "could not register command rg.pyimportreq");
         return REDISMODULE_ERR;
     }
+
+    initialModulesDict = PyDict_Copy(PyThreadState_GET()->interp->modules);
 
     PyEval_SaveThread();
 
