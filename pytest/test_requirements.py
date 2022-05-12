@@ -5,7 +5,7 @@ import uuid
 from includes import *
 from common import gearsTest
 
-@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
+@gearsTest(envArgs={'moduleArgs': 'CreateVenv 1 ExecutionMaxIdleTime 10000'})
 def testDependenciesInstall(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."

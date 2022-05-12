@@ -5138,8 +5138,13 @@ int RedisGearsPy_Execute(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     RedisGearsPy_InnerExecute(ctx, &bdiCtx);
 
-    PythonSessionCtx_Free(session);
-    if (oldSession) PythonSessionCtx_Free(oldSession);
+    // free bdiCtx
+    if (bdiCtx.session->srctx) {
+        RedisGears_SessionRegisterCtxFree(bdiCtx.session->srctx);
+        bdiCtx.session->srctx = NULL;
+    }
+    PythonSessionCtx_Free(bdiCtx.session);
+    if (bdiCtx.oldSession) PythonSessionCtx_Free(bdiCtx.oldSession);
 
     return REDISMODULE_OK;
 }
