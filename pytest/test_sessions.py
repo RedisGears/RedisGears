@@ -94,7 +94,7 @@ def testBasicPyDumpSessionsWithRequirements(env):
         res = c.execute_command('RG.PYDUMPSESSIONS')
         env.assertEqual(res[0][0:-1], ['ID', 'test', 'sessionDescription', 'desc', 'refCount', 1, 'linked', 'primary', 'dead', 'false', 'requirementInstallationNeeded', 1, 'requirements', ['redis'], 'registrations'])
         res = c.execute_command('RG.PYDUMPSESSIONS VERBOSE')
-        env.assertEqual(res[0][13][0][1], 'redis')
+        env.assertEqual(res[0][13][0][3], 'redis')
 
 @gearsTest()
 def testBasicPyDumpSessionsList(env):

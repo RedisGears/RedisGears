@@ -6300,21 +6300,7 @@ static void RedisGearsPy_DumpSingleSession(RedisModuleCtx *ctx, PythonSessionCtx
     for(size_t i = 0 ; i < array_len(s->requirements) ; ++i) {
         PythonRequirementCtx* req = s->requirements[i];
         if (verbose) {
-            RedisModule_ReplyWithArray(ctx, 10);
-            RedisModule_ReplyWithCString(ctx, "name");
-            RedisModule_ReplyWithCString(ctx, req->installName);
-            RedisModule_ReplyWithCString(ctx, "refCount");
-            RedisModule_ReplyWithLongLong(ctx, req->refCount);
-            RedisModule_ReplyWithCString(ctx, "isDownloaded");
-            RedisModule_ReplyWithLongLong(ctx, req->isDownloaded);
-            RedisModule_ReplyWithCString(ctx, "isInstalled");
-            RedisModule_ReplyWithLongLong(ctx, req->isInstalled);
-            RedisModule_ReplyWithCString(ctx, "wheels");
-            RedisModule_ReplyWithArray(ctx, array_len(req->wheels));
-            for(size_t j = 0 ; j < array_len(req->wheels) ; ++j) {
-                const char* wheel = req->wheels[j];
-                RedisModule_ReplyWithCString(ctx, wheel);
-            }
+            RedisGearsPy_SendReqMetaData(ctx, req);
         } else {
             RedisModule_ReplyWithCString(ctx, req->installName);
         }
@@ -7006,10 +6992,41 @@ static void RedisGearsPy_ClearRequirements(){
     Gears_dictReleaseIterator(iter);
 
     for(size_t i = 0 ; i < array_len(reqs) ; ++i){
+        Gears_dictDelete(RequirementsDict, reqs[i]->installName);
+        reqs[i]->isInRequirementsDict = false;
         PythonRequirementCtx_Free(reqs[i]);
     }
 
     array_free(reqs);
+}
+
+static void RedisGearsPy_ClearAllData(){
+    RedisGearsPy_ClearRequirements();
+    PythonSessionCtx** sessions = array_new(PythonSessionCtx*, 10);
+    RedisModuleDictIter *iter = RedisModule_DictIteratorStartC(SessionsDict, "^", NULL, 0);
+    char* key;
+    size_t keyLen;
+    PythonSessionCtx* s;
+    while((key = RedisModule_DictNextC(iter, &keyLen, (void**)&s))){
+        sessions = array_append(sessions, s);
+    }
+    RedisModule_DictIteratorStop(iter);
+
+    for (size_t i = 0 ; i < array_len(sessions) ; ++i) {
+        PythonSessionCtx_Unlink(sessions[i]);
+    }
+    array_free(sessions);
+
+    RedisModule_FreeDict(staticCtx, SessionsDict);
+    SessionsDict = RedisModule_CreateDict(staticCtx);
+}
+
+static void RedisGearsPy_OnLoadedEvent(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
+    if(subevent == REDISMODULE_SUBEVENT_LOADING_RDB_START ||
+            subevent == REDISMODULE_SUBEVENT_LOADING_AOF_START ||
+            subevent == REDISMODULE_SUBEVENT_LOADING_REPL_START){
+        RedisGearsPy_ClearAllData();
+    }
 }
 
 static int RedisGearsPy_LoadRegistrations(RedisModuleIO *rdb, int encver, int when){
@@ -7018,8 +7035,7 @@ static int RedisGearsPy_LoadRegistrations(RedisModuleIO *rdb, int encver, int wh
         return REDISMODULE_ERR;
     }
 
-    // first we need to clear all existing requirements
-    RedisGearsPy_ClearRequirements();
+    RedisGearsPy_ClearAllData();
 
     char* err = NULL;
     char *data = NULL;
@@ -7481,6 +7497,8 @@ int RedisGears_OnLoad(RedisModuleCtx *ctx){
         RedisModule_Log(ctx, "warning", "Failed initialize RedisGears API");
         return REDISMODULE_ERR;
     }
+
+    RedisGears_RegisterLoadingEvent(RedisGearsPy_OnLoadedEvent);
 
     pthread_mutex_init(&PySessionsLock, NULL);
 
