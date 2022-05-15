@@ -30,7 +30,6 @@ COPY --from=redis /usr/local/ /usr/local/
 
 ADD . /build
 
-RUN ./deps/readies/bin/getpy2
 RUN ./deps/readies/bin/getpy3
 RUN ./deps/readies/bin/getredis -v ${REDIS_VER}
 RUN ./system-setup.py

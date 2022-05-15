@@ -30,7 +30,10 @@ class RedisGearsSetup(paella.Setup):
 
         self.install("lsb-release")
         self.install("zip unzip gawk")
-        self.install("python-dev")
+        if self.osnick != 'jammy':
+            self.install("python-dev")
+        else:
+            self.install("python-dev-is-python3")
         self.install("locales-all")
 
         # pip cannot build gevent on ARM
