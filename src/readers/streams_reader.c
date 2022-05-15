@@ -936,6 +936,7 @@ static void StreamReader_UnregisrterTrigger(FlatExecutionPlan* fep, bool abortPe
     RedisModule_Assert(srctx);
 
     srctx->status = StreamRegistrationStatus_UNREGISTERED;
+    StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
     StreamReaderTriggerCtx_Free(srctx);
 }
 
@@ -989,6 +990,13 @@ static void* StreamReader_ScanForStreams(void* pd){
             RedisModuleString* key = RedisModule_CreateStringFromCallReply(keyReply);
 
             LockHandler_Acquire(staticCtx);
+            if (srctx->status != StreamRegistrationStatus_OK) {
+                cursor = 0; // make sure to break the do {...} while.
+                RedisModule_FreeString(staticCtx, key);
+                LockHandler_Release(staticCtx);
+                RedisModule_Log(staticCtx, "warning", "Stream registration was aborted while key space not streams");
+                break;
+            }
             RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
             if(kp == NULL){
                 LockHandler_Release(staticCtx);
