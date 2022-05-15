@@ -994,7 +994,7 @@ static void* StreamReader_ScanForStreams(void* pd){
                 cursor = 0; // make sure to break the do {...} while.
                 RedisModule_FreeString(staticCtx, key);
                 LockHandler_Release(staticCtx);
-                RedisModule_Log(staticCtx, "warning", "Stream registration was aborted while key space not streams");
+                RedisModule_Log(staticCtx, "warning", "Stream registration was aborted while key space was scanned");
                 break;
             }
             RedisModuleKey *kp = RedisModule_OpenKey(staticCtx, key, REDISMODULE_READ);
