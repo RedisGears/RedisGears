@@ -4,5 +4,5 @@ cd `dirname ${BASH_SOURCE}`
 if [ ! -z "${CIRCLE_BRANCH}" ]; then
     echo "${CIRCLE_BRANCH}" | cut -d '/' -f 2-2
 else
-    git rev-parse --abbrev-ref HEAD|sed -e 's/heads\//v//'
+    git rev-parse --abbrev-ref HEAD|sed -e 's/heads\//v/'
 fi
