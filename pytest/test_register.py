@@ -1985,7 +1985,7 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
 
     # make sure the second element are not consumed
     try:
-        with TimeLimit(1):
+        with TimeLimit(4):
             while True:
                 size = env.execute_command('xlen', 's')
                 if size == 0:
