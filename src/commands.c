@@ -580,6 +580,7 @@ int Command_Register(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDon
     // a distributed calculation
 
     FlatExecutionPlan* fep = RedisGears_CreateCtx("ShardIDReader", err);
+    RedisGears_SetMaxIdleTime(fep, srctx->maxIdle);
     if (!fep) {
         RedisGears_SessionRegisterCtxFree(srctx);
         return REDISMODULE_ERR;

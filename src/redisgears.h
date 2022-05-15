@@ -475,6 +475,7 @@ GEARS_API int MODULE_API_FUNC(RedisGears_PrepareForRegister)(SessionRegistration
 GEARS_API int MODULE_API_FUNC(RedisGears_RegisterFep)(Plugin *p, FlatExecutionPlan* fep, ExecutionMode mode, void* key, char** err, char** registrationId);
 GEARS_API SessionRegistrationCtx* MODULE_API_FUNC(RedisGears_SessionRegisterCtxCreate)(Plugin *p);
 GEARS_API void MODULE_API_FUNC(RedisGears_SessionRegisterCtxFree)(SessionRegistrationCtx* srctx);
+GEARS_API void MODULE_API_FUNC(RedisGears_SessionRegisterSetMaxIdle)(SessionRegistrationCtx* s, long long maxIdle);
 GEARS_API int MODULE_API_FUNC(RedisGears_Register)(SessionRegistrationCtx* srctx, SessionRegistrationCtx_OnDone onDone, void *pd, char **err);
 #define RGM_Register(ctx, mode, arg, err) RedisGears_Register(ctx, mode, arg, err, NULL);
 
@@ -908,6 +909,7 @@ static Plugin* RedisGears_Initialize(RedisModuleCtx* ctx, const char* name, int 
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, AddSessionToUnlink);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SessionRegisterCtxCreate);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, SessionRegisterCtxFree);
+    REDISGEARS_MODULE_INIT_FUNCTION(ctx, SessionRegisterSetMaxIdle);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, ForEach);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, GroupBy);
     REDISGEARS_MODULE_INIT_FUNCTION(ctx, Collect);

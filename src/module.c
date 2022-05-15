@@ -243,6 +243,10 @@ static void RG_SessionRegisterCtxFree(SessionRegistrationCtx* s) {
     return SessionRegistrationCtx_Free(s);
 }
 
+static void RG_SessionRegisterSetMaxIdle(SessionRegistrationCtx* s, long long maxIdle) {
+    s->maxIdle = maxIdle;
+}
+
 static void RG_AddRegistrationToUnregister(SessionRegistrationCtx* srctx, const char* registrationId) {
     FlatExecutionPlan_AddRegistrationToUnregister(srctx, registrationId);
 }
@@ -1099,6 +1103,7 @@ static int RedisGears_RegisterApi(RedisModuleCtx* ctx){
     REGISTER_API(AddSessionToUnlink, ctx);
     REGISTER_API(SessionRegisterCtxCreate, ctx);
     REGISTER_API(SessionRegisterCtxFree, ctx);
+    REGISTER_API(SessionRegisterSetMaxIdle, ctx);
     REGISTER_API(FreeFlatExecution, ctx);
     REGISTER_API(GetReader, ctx);
     REGISTER_API(StreamReaderCtxCreate, ctx);
