@@ -866,6 +866,7 @@ static PythonSessionCtx* PythonSessionCtx_Create(const char *id, const char *des
 
     PythonSessionCtx* session = PythonSessionCtx_CreateWithId(id, desc, requirementsList, requirementsListLen, forceReqReinstallation);
     session->srctx = RedisGears_SessionRegisterCtxCreate(pluginCtx);
+    RedisGears_SessionRegisterSetMaxIdle(session->srctx, pythonConfig.installReqMaxIdleTime);
     return session;
 }
 
