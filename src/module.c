@@ -912,6 +912,11 @@ static RedisVersion* RG_GetRedisVersion() {
 }
 
 static void RedisGears_OnLoadingEvent(RedisModuleCtx *ctx, RedisModuleEvent eid, uint64_t subevent, void *data){
+    if(subevent == REDISMODULE_SUBEVENT_LOADING_RDB_START ||
+                subevent == REDISMODULE_SUBEVENT_LOADING_AOF_START ||
+                subevent == REDISMODULE_SUBEVENT_LOADING_REPL_START){
+        ExecutionPlan_Clean();
+    }
     if(pluginLoadingCallbacks){
         for(size_t i = 0 ; i < array_len(pluginLoadingCallbacks) ; ++i){
             pluginLoadingCallbacks[i](ctx, eid, subevent, data);
