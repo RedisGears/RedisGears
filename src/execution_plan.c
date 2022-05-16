@@ -3993,6 +3993,7 @@ SessionRegistrationCtx* SessionRegistrationCtx_Create(Plugin *p) {
     ret->usedSession = NULL;
     ret->buff = Gears_BufferCreate();
     ret->requireDeserialization = 0;
+    ret->maxIdle = GearsConfig_ExecutionMaxIdleTime();
     Gears_BufferWriterInit(&ret->bw, ret->buff);
     Gears_BufferWriterWriteString(&ret->bw, p->name);
     return ret;

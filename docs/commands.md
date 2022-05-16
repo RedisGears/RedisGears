@@ -471,7 +471,8 @@ _Arguments_
 * _ID_: [Session](glossary.html#session) unique ID (if not given, RedisGears will generate one)
 * _DESCRIPTION_: Optional [Session](glossary.html#session) description
 * _UPGRADE_: If the session with this name already exists, replace it.
-* _REPLACE_WITH_: Set the new [Session]() as a replacement of the session give by this argument.
+* _REPLACE_WITH_: Set the new [Session](glossary.html#session) as a replacement of the session give by this argument.
+* _FORCE_REINSTALL_REQUIREMENTS_: Force re-installation of all the requirements. When this option is used, RedisGears will reset the python interpreter module cache after re-installation is finished. The python interpreter then reloads the modules. An important limitation of this option is that **It is not possible to have multiple versions of the same requirement at the same time**. If one registration uses an old version of a requirement and another registration upgrades it, then after a restart (or before, on some rare cases) both will have the new version. If the new version is **not** backwards compatible **the code may fail due to errors**. This option is available as of v1.2.4.
 * _REQUIREMENTS_: this argument ensures that list of dependencies it is given as an argument is installed on each shard before execution
 
 _Return_

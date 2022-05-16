@@ -295,6 +295,7 @@ typedef struct SessionRegistrationCtx {
     RegistrationData *registrationsData;
     Gears_Buffer* buff;
     Gears_BufferWriter bw;
+    long long maxIdle;
 } SessionRegistrationCtx;
 
 #define EXECUTION_POOL_SIZE 1
