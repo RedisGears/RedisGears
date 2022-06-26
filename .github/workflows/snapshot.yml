@@ -31,6 +31,7 @@ jobs:
             /var/cache/apt
           key: gears-${{hashFiles('**/pom.xml')}}
       - name: mvn offline
+        working-directory: ./plugins/jvmplugin/gears_runtime
         run: |
           mvn -q dependency:go-offline
       - name: deploy
