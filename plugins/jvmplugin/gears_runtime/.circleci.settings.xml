@@ -2,8 +2,8 @@
   <servers>
     <server>
       <id>ossrh</id>
-      <username>${env.OSSRH_USERNAME}</username>
-      <password>${env.OSSRH_PASSWORD}</password>
+      <username>gkorland</username>
+      <password>#E585hcPpbu%6C$2SS</password>
     </server>
     <server>
       <id>gpg.passphrase</id>

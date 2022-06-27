@@ -18,7 +18,7 @@ public abstract class BaseReader<T extends Serializable>{
 	
 	/**
 	 * Returns the reader name, must be implemented by the reader.
-	 * @return
+	 * @return the name
 	 */
 	public abstract String getName();
 

@@ -9,7 +9,7 @@
 	<version>1.2.4-SNAPSHOT</version>
 
 	<name>Gears Runtime</name>
-	<description/>
+    <description>A runtime library for redisgears</description>
 	<url>https://oss.redislabs.com/redisgears</url>
 
 	<organization>

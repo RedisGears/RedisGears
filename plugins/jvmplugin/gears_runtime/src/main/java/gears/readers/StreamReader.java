@@ -142,13 +142,12 @@ public class StreamReader extends BaseReader<HashMap<String, Object>> {
 
 	/**
 	 * Set the reader failure policy (relevant only for register).
-	 * This policy is one of the following:
+	 * @param failurePolicy The failure policy, one of:
 	 * 	1. CONTINUE - continue trigger more events
 	 * 	2. ABORT - do not trigger any more events
 	 *  3. RETRY - retry execute the last batch. The retry interval is
 	 *             defined by FailureRertyInterval
-	 * @param failurePolicy
-	 * @return
+	 * @return the reader 
 	 */
 	public StreamReader setFailurePolicy(FailurePolicy failurePolicy) {
 		this.failurePolicy = failurePolicy;
@@ -190,8 +189,8 @@ public class StreamReader extends BaseReader<HashMap<String, Object>> {
 	 * 		   register more then one execution on a stream with TrimStream enable will cause
 	 *         undefined behavior.
 	 * 
-	 * @param trimStream
-	 * @return
+	 * @param trimStream - Set to trim the stream
+	 * @return  - the reader
 	 */
 	public StreamReader setTrimStream(boolean trimStream) {
 		this.trimStream = trimStream;

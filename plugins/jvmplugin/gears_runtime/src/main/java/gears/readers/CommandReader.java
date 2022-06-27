@@ -3,16 +3,16 @@ package gears.readers;
 /**
  * A command reader implementation, trigger an execution on command.
  * Command usage:
- * 		RG.TRIGGER <Trigger name> [arg1 arg2 ...]
+ * 		RG.TRIGGER &lt;trigger_name&gt; [arg1 arg2 ...]
  *
  */
 public class CommandReader extends BaseReader<Object[]> {
 
 	/**
-	 * 
+	 *
 	 */
 	private static final long serialVersionUID = 1L;
-	
+
 	private String trigger;
 
 	/**
@@ -21,7 +21,7 @@ public class CommandReader extends BaseReader<Object[]> {
 	public CommandReader() {
 		this.setTrigger(null);
 	}
-	
+
 	@Override
 	public String getName() {
 		// TODO Auto-generated method stub
@@ -45,6 +45,6 @@ public class CommandReader extends BaseReader<Object[]> {
 	public String getTrigger() {
 		return trigger;
 	}
-	
-	
+
+
 }

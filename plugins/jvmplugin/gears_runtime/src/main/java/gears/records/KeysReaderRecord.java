@@ -123,7 +123,7 @@ public class KeysReaderRecord extends BaseRecord {
 
 	/**
 	 * Currently not support and return null
-	 * @return
+	 * @return - list of strings
 	 */
 	public List<String> getListVal() {
 		return listVal;
@@ -131,7 +131,7 @@ public class KeysReaderRecord extends BaseRecord {
 
 	/**
 	 * Currently not support and return null
-	 * @return
+	 * @return - the set of strings
 	 */
 	public Set<String> getSetVal() {
 		return setVal;

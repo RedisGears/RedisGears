@@ -5,13 +5,13 @@ import gears.records.KeysReaderRecord;
 /**
  * A reader that reads keys and value from the Redis.
  * currently only String and Hashes values are supported.
- * 
+ *
  * If the key type is not Hash nor String, only the key name will be given.
  *
  */
 public class KeysReader extends BaseReader<KeysReaderRecord> {
 	/**
-	 * 
+	 *
 	 */
 	private static final long serialVersionUID = 1L;
 	private String pattern;
@@ -32,10 +32,10 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 		this.eventTypes = null;
 		this.keyTypes = null;
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
+	 *
 	 * @param pattern - the keys pattern to read
 	 * @param noScan - whether or not to scan the key space or just read the patter as is.
 	 * @param readValues - whether or not to read keys values
@@ -50,19 +50,19 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 		this.eventTypes = eventTypes;
 		this.keyTypes = keyTypes;
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
+	 *
 	 * @param pattern - the keys pattern to read
 	 */
 	public KeysReader(String pattern) {
 		this(pattern, false, true, null, null);
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
+	 *
 	 * @param pattern - the keys pattern to read
 	 * @param noScan - whether or not to scan the key space or just read the patter as is.
 	 * @param readValues - whether or not to read keys values
@@ -70,10 +70,10 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	public KeysReader(String pattern, boolean noScan, boolean readValues) {
 		this(pattern, noScan, readValues, null, null);
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
+	 *
 	 * @param prefix - the keys prefix to read
 	 * @param readValues - whether or not to read keys values
 	 * @param eventTypes - if used with register, the event types to register on (most of the time its the command name)
@@ -82,10 +82,10 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 	public KeysReader(String prefix, boolean readValues, String[] eventTypes, String[] keyTypes) {
 		this(prefix, false, readValues, eventTypes, keyTypes);
 	}
-	
+
 	/**
 	 * Create a new KeysReader object
-	 * 
+	 *
 	 * @param prefix - the keys prefix to read
 	 * @param readValues - whether or not to read keys values
 	 */
@@ -190,7 +190,7 @@ public class KeysReader extends BaseReader<KeysReaderRecord> {
 
 	/**
 	 * On register, returns the commands that this reader register on.
-	 * @return
+	 * @return The commands registered with this reader
 	 */
 	public String[] getCommands() {
 		return commands;
