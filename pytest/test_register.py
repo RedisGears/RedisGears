@@ -2054,3 +2054,30 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
             if stream_registration[7][25] == 'PAUSED':
                 break
             time.sleep(0.1)
+
+@gearsTest(skipOnCluster=True)
+def testStreamReaderInfinitLoopOnTrimmingDisabled(env):
+    script = '''
+import time
+GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(onFailedPolicy='retry', trimStream=False)
+    '''
+    env.expect('rg.pyexecute', script, 'ID', 'test').ok()
+    verifyRegistrationIntegrity(env)
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    env.expect('rg.pyexecute', script, 'ID', 'test', 'UPGRADE').ok()
+    verifyRegistrationIntegrity(env)
+    
+    try:
+        with TimeLimit(1):
+            while True:
+                registrations = env.cmd('RG.DUMPREGISTRATIONS')
+                if registrations[0][7][3] > 2:
+                    self.env.assertTrue(False, message='More than 2 executions was triggered')
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        if 'timeout' not in str(e):
+            print(str(e))
+        env.assertContains('timeout', str(e))
