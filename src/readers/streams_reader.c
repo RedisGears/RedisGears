@@ -674,7 +674,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
 
         if (ssrctx->createdEpoc == srctx->epoc) {
-            if (strncmp(srctx->lastError, "PAUSE", 5) == 0) {
+            if (strncmp(srctx->lastError, "PAUSE", 5) == 0 || srctx->status == StreamRegistrationStatus_PAUSED) {
                 StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
                 srctx->status = StreamRegistrationStatus_PAUSED;
             } else if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
@@ -919,7 +919,8 @@ static void StreamReader_PauseTrigger(FlatExecutionPlan* fep, bool abortPending)
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
     RedisModule_Assert(srctx);
 
-    if (srctx->status == StreamRegistrationStatus_OK) {
+    if (srctx->status == StreamRegistrationStatus_OK ||
+        srctx->status == StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE) {
         StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
         srctx->status = StreamRegistrationStatus_PAUSED;
     }
