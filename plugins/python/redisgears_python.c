@@ -6839,7 +6839,7 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
     if(pythonConfig.createVenv){
         const char* moduleDataDir = getenv("modulesdatadir");
         if(moduleDataDir){
-            RedisGears_ASprintf(&venvDir, "%s/%s/.venv-%s", moduleDataDir, "rg");
+            RedisGears_ASprintf(&venvDir, "%s/%s/.venv-%s", moduleDataDir, "rg", shardUid);
         } else {
             RedisGears_ASprintf(&venvDir, "%s/.venv-%s", pythonConfig.pythonInstallationDir, shardUid);
         }
