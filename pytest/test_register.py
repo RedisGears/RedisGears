@@ -2061,7 +2061,7 @@ def testStreamReaderInfinitLoopOnTrimmingDisabled(env):
 import time
 GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onFailedPolicy='retry', trimStream=False)
     '''
-    env.expect('rg.pyexecute', script, 'ID', 'test').ok()
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test').ok()
     verifyRegistrationIntegrity(env)
 
     env.cmd('xadd', 's', '*', 'foo', 'bar')
@@ -2074,7 +2074,7 @@ GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onF
                 break
             time.sleep(0.1)
 
-    env.expect('rg.pyexecute', script, 'ID', 'test', 'UPGRADE').ok()
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'UPGRADE').ok()
     verifyRegistrationIntegrity(env)
     
     try:
