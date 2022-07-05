@@ -6837,7 +6837,13 @@ static int RedisGears_InstallDeps(RedisModuleCtx *ctx) {
         RedisModule_Log(staticCtx, "notice", "Found python installation under: %s", PYENV_DIR);
     }
     if(pythonConfig.createVenv){
-        RedisGears_ASprintf(&venvDir, "%s/.venv-%s", pythonConfig.pythonInstallationDir, shardUid);
+        const char* moduleDataDir = getenv("modulesdatadir");
+        if(moduleDataDir){
+            RedisGears_ASprintf(&venvDir, "%s/%s/.venv-%s", moduleDataDir, "rg", shardUid);
+        } else {
+            RedisGears_ASprintf(&venvDir, "%s/.venv-%s", pythonConfig.pythonInstallationDir, shardUid);
+        }
+
         DIR* dir = opendir(venvDir);
         if(!dir){
             RedisGears_ExecuteCommand(ctx, "notice", "mkdir -p %s", venvDir);
