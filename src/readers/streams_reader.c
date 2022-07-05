@@ -539,6 +539,10 @@ typedef struct ExecutionDoneCtx{
     SingleStreamReaderCtx ssrctx;
 }ExecutionDoneCtx;
 
+static int StreamReader_HasData(StreamReaderCtx* readerCtx){
+    return array_len(readerCtx->batchIds) > 0;
+}
+
 static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, SingleStreamReaderCtx* ssrctx, bool alsoTrimm){
     if(array_len(readerCtx->batchIds) == 0){
         // nothing to ack on
@@ -572,10 +576,18 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, SingleStreamRea
     }
 }
 
-static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, SingleStreamReaderCtx* ssrctx){
+static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, SingleStreamReaderCtx* ssrctx, int hasData, int readPending){
     if (!ssrctx->pendingMessages) {
         /* Nothing to run on */
         ssrctx->isRunning = false;
+        return;
+    }
+    if (!hasData && !readPending && ssrctx->nextBatch == 0) {
+        // Did not processed any data on this batch, and we do not have any new data added.
+        // There is not need to trigger another execution.
+        ssrctx->isRunning = false;
+        // it is safe to set pending message to 0 here, we know we are at the end of the stream.
+        ssrctx->pendingMessages = 0;
         return;
     }
     if(srctx->args->batchSize <= ssrctx->pendingMessages){
@@ -674,7 +686,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
         srctx->lastError = RG_STRDUP(RedisGears_StringRecordGet(r, NULL));
 
         if (ssrctx->createdEpoc == srctx->epoc) {
-            if (strncmp(srctx->lastError, "PAUSE", 5) == 0) {
+            if (strncmp(srctx->lastError, "PAUSE", 5) == 0 || srctx->status == StreamRegistrationStatus_PAUSED) {
                 StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
                 srctx->status = StreamRegistrationStatus_PAUSED;
             } else if(srctx->args->onFailedPolicy != OnFailedPolicyContinue){
@@ -738,7 +750,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             /* only if we are master we should continue trigger events */
             StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
             if (!ssrctx->isFreeWhenDone) {
-                StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
+                StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx, StreamReader_HasData(srCtx), srCtx->readPenging);
             } else {
                 ssrctx->isRunning = false;
             }
@@ -919,7 +931,8 @@ static void StreamReader_PauseTrigger(FlatExecutionPlan* fep, bool abortPending)
     StreamReaderTriggerCtx* srctx = StreamReader_GetStreamTriggerCtxByFep(fep, 0);
     RedisModule_Assert(srctx);
 
-    if (srctx->status == StreamRegistrationStatus_OK) {
+    if (srctx->status == StreamRegistrationStatus_OK ||
+        srctx->status == StreamRegistrationStatus_WAITING_FOR_RETRY_ON_FAILURE) {
         StreamReaderTriggerCtx_CleanSingleStreamsData(srctx);
         srctx->status = StreamRegistrationStatus_PAUSED;
     }
