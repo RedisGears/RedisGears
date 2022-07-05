@@ -585,6 +585,9 @@ static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx*
     if (!hasData && !readPending && ssrctx->nextBatch == 0) {
         // Did not processed any data on this batch, and we do not have any new data added.
         // There is not need to trigger another execution.
+        ssrctx->isRunning = false;
+        // it is safe to set pending message to 0 here, we know we are at the end of the stream.
+        ssrctx->pendingMessages = 0;
         return;
     }
     if(srctx->args->batchSize <= ssrctx->pendingMessages){

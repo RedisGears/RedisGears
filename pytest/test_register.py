@@ -2059,12 +2059,20 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
 def testStreamReaderInfinitLoopOnTrimmingDisabled(env):
     script = '''
 import time
-GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(onFailedPolicy='retry', trimStream=False)
+GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onFailedPolicy='retry', trimStream=False)
     '''
     env.expect('rg.pyexecute', script, 'ID', 'test').ok()
     verifyRegistrationIntegrity(env)
 
     env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    with TimeLimit(5, env, 'Failed waiting for registration to pause'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            if registrations[0][7][5] == 2:
+                break
+            time.sleep(0.1)
 
     env.expect('rg.pyexecute', script, 'ID', 'test', 'UPGRADE').ok()
     verifyRegistrationIntegrity(env)
@@ -2074,6 +2082,22 @@ GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(onFailedPoli
             while True:
                 registrations = env.cmd('RG.DUMPREGISTRATIONS')
                 if registrations[0][7][3] > 2:
+                    self.env.assertTrue(False, message='More than 2 executions was triggered')
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        if 'timeout' not in str(e):
+            print(str(e))
+        env.assertContains('timeout', str(e))
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    try:
+        with TimeLimit(1):
+            while True:
+                registrations = env.cmd('RG.DUMPREGISTRATIONS')
+                if registrations[0][7][3] != 3:
                     self.env.assertTrue(False, message='More than 2 executions was triggered')
                     break
                 time.sleep(0.1)
