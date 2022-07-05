@@ -2030,3 +2030,78 @@ GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_
                 time.sleep(0.1)
     except Exception as e:
         pass
+
+@gearsTest(skipOnCluster=True)
+def testStreamReaderPauseFailedRegistration(env):
+    script = '''
+import time
+regId = GB('StreamReader').foreach(lambda x: execute('incr', 'x')).foreach(lambda x: foo()).register(onFailedPolicy='retry')
+GB('CommandReader').map(lambda x: regId).register(mode='sync', trigger='get_reg_id')
+    '''
+    env.expect('rg.pyexecute', script).ok()
+    verifyRegistrationIntegrity(env)
+
+    regId = env.execute_command('RG.TRIGGER', 'get_reg_id')[0]
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    env.expect('RG.PAUSEREGISTRATIONS', regId).ok()
+
+    with TimeLimit(5, env, 'Failed waiting for registration to pause'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            stream_registration = [r for r in registrations if r[3] == 'StreamReader'][0]
+            if stream_registration[7][25] == 'PAUSED':
+                break
+            time.sleep(0.1)
+
+@gearsTest(skipOnCluster=True)
+def testStreamReaderInfinitLoopOnTrimmingDisabled(env):
+    script = '''
+import time
+GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onFailedPolicy='retry', trimStream=False)
+    '''
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test').ok()
+    verifyRegistrationIntegrity(env)
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    with TimeLimit(5, env, 'Failed waiting for registration to pause'):
+        while True:
+            registrations = env.cmd('RG.DUMPREGISTRATIONS')
+            if registrations[0][7][5] == 2:
+                break
+            time.sleep(0.1)
+
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'UPGRADE').ok()
+    verifyRegistrationIntegrity(env)
+    
+    try:
+        with TimeLimit(1):
+            while True:
+                registrations = env.cmd('RG.DUMPREGISTRATIONS')
+                if registrations[0][7][3] > 2:
+                    self.env.assertTrue(False, message='More than 2 executions were triggered')
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        if 'timeout' not in str(e):
+            sys.stderr.write('%s\n' % str(e))
+        env.assertContains('timeout', str(e))
+
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+    env.cmd('xadd', 's', '*', 'foo', 'bar')
+
+    try:
+        with TimeLimit(1):
+            while True:
+                registrations = env.cmd('RG.DUMPREGISTRATIONS')
+                if registrations[0][7][3] != 3:
+                    self.env.assertTrue(False, message='More than 3 executions were triggered')
+                    break
+                time.sleep(0.1)
+    except Exception as e:
+        if 'timeout' not in str(e):
+            sys.stderr.write('%s\n' % str(e))
+        env.assertContains('timeout', str(e))

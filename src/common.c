@@ -319,13 +319,16 @@ int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fm
     va_list ap;
     va_copy(ap, __arg);
     char* command;
+    char* command_to_execute;
 
     rg_vasprintf(&command, __fmt, ap);
-    RedisModule_Log(staticCtx, logLevel, "Executing : %s", command);
-    FILE* f = popen(command, "r");
+    rg_asprintf(&command_to_execute, "%s 2>&1", command);
+    RedisModule_Log(staticCtx, logLevel, "Executing : %s", command_to_execute);
+    FILE* f = popen(command_to_execute, "r");
     if (f == NULL) {
         RG_FREE(command);
-        RedisModule_Log(staticCtx, "warning", "Failed to run command : %s", command);
+        RG_FREE(command_to_execute);
+        RedisModule_Log(staticCtx, "warning", "Failed to run command : %s", command_to_execute);
         exit(1);
     }
 
@@ -345,10 +348,11 @@ int ExecCommandVList(RedisModuleCtx *ctx, const char* logLevel, const char* __fm
     int exitCode = pclose(f)/256;
 
     if(exitCode != 0){
-        RedisModule_Log(staticCtx, "warning", "Execution failed command : %s", command);
+        RedisModule_Log(staticCtx, "warning", "Execution failed command : %s", command_to_execute);
     }
 
     RG_FREE(command);
+    RG_FREE(command_to_execute);
 
     va_end(ap);
 
