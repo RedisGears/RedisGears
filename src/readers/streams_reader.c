@@ -539,6 +539,10 @@ typedef struct ExecutionDoneCtx{
     SingleStreamReaderCtx ssrctx;
 }ExecutionDoneCtx;
 
+static int StreamReader_HasData(StreamReaderCtx* readerCtx){
+    return array_len(readerCtx->batchIds) > 0;
+}
+
 static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, SingleStreamReaderCtx* ssrctx, bool alsoTrimm){
     if(array_len(readerCtx->batchIds) == 0){
         // nothing to ack on
@@ -572,10 +576,18 @@ static void StreamReader_AckAndTrimm(StreamReaderCtx* readerCtx, SingleStreamRea
     }
 }
 
-static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, SingleStreamReaderCtx* ssrctx){
+static void StreamReader_TriggerAnotherExecutionIfNeeded(StreamReaderTriggerCtx* srctx, SingleStreamReaderCtx* ssrctx, int hasData, int readPending){
     if (!ssrctx->pendingMessages) {
         /* Nothing to run on */
         ssrctx->isRunning = false;
+        return;
+    }
+    if (!hasData && !readPending && ssrctx->nextBatch == 0) {
+        // Did not processed any data on this batch, and we do not have any new data added.
+        // There is not need to trigger another execution.
+        ssrctx->isRunning = false;
+        // it is safe to set pending message to 0 here, we know we are at the end of the stream.
+        ssrctx->pendingMessages = 0;
         return;
     }
     if(srctx->args->batchSize <= ssrctx->pendingMessages){
@@ -738,7 +750,7 @@ static void StreamReader_ExecutionDone(ExecutionPlan* ctx, void* privateData){
             /* only if we are master we should continue trigger events */
             StreamReader_AckAndTrimm(reader->ctx, ssrctx, srctx->args->trimStream);
             if (!ssrctx->isFreeWhenDone) {
-                StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx);
+                StreamReader_TriggerAnotherExecutionIfNeeded(srctx, ssrctx, StreamReader_HasData(srCtx), srCtx->readPenging);
             } else {
                 ssrctx->isRunning = false;
             }
