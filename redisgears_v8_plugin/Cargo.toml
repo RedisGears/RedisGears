@@ -1,0 +1,19 @@
+[package]
+name = "redisgears_v8_plugin"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+v8_rs = { git = "https://github.com/RedisGears/v8-rs", branch = "master"}
+redisgears_plugin_api = {path="../redisgears_plugin_api/"}
+zip = "0.6.2"
+serde_json = "1.0"
+serde = "1.0"
+
+[build-dependencies]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "redisgears_v8_plugin"

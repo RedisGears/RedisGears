@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "redisgears_core",
+    "redisgears_plugin_api",
+    "redisgears_v8_plugin"
+]

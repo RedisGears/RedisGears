@@ -1,0 +1,1 @@
+RLTest --module ../target/debug/libredisgears.so --module-args "../../target/debug/libredisgears_v8_plugin.so" $@
