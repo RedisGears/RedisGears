@@ -2,10 +2,29 @@
 
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes.
 
-## Getting started
+## Build
+
+### With Docker
+
+Run the following on the main directoty:
+```bash
+> docker build -t redisgears2 .
+```
+
+Then run the built image:
+```bash
+> docker run -p 6379:6379 redisgears2
+```
+
+### From Source
+
 ### Pre-requisite
 1. [rust](https://www.rust-lang.org/tools/install)
 2. [Redis v7.0.3 or above](https://redis.io/)
+3. libssl-dev
+4. pkg-config
+5. clang
+6. wget
 
 ### Compile
 Run the following on the main directoty:
@@ -18,6 +37,9 @@ Run the following on the main directoty:
 ```bash
 > ./run.sh
 ```
+
+
+## Getting started
 
 ### Run JS code
 The API expose by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) is working. Lets write a simple `hello world` RedisGears function that return the string `hello world`:
