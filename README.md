@@ -1,6 +1,8 @@
 # RedisGears-2.0
 
-A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes.
+A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
+
+**Notice, RedisGears 2.0 is still under active development and not yet GA, the API might (and probably) change at the final GA version.**
 
 ## Build
 
@@ -95,6 +97,76 @@ And now we can invoke `my_ping` using `RG.FUNCTION CALL`:
 ```bash
 > redis-cli RG.FUNCTION CALL lib my_ping
 "PONG"
+```
+
+### Function Arguments
+
+The arguments given on the [`RG.FUNCTION CALL`](docs/commands.md#rgfunction-call) command, after the function name, will be passed to the function callback. The following example shows how to implement a simple function that returns the value of a key whether its a string or a hash:
+
+```js
+#!js name=lib
+
+redis.register_function('my_get', function(client, key_name){
+    if (client.call('type', key_name) == 'string') {
+        return client.call('get', key_name);
+    }
+    if (client.call('type', key_name) == 'hash') {
+        return client.call('hgetall', key_name);
+    }
+    throw "Unsupported type";
+});
+```
+
+Example of running the following function:
+
+```bash
+127.0.0.1:6379> set x 1
+OK
+127.0.0.1:6379> rg.function call foo my_get x
+"1"
+127.0.0.1:6379> hset h foo bar x y
+(integer) 2
+127.0.0.1:6379> rg.function call foo my_get h
+1) "foo"
+2) "bar"
+3) "x"
+4) "y"
+
+```
+
+It is also possible to get all th arguments given to the function as a `JS` array. This is how we can extend the above example to except multiple keys and return their values:
+
+```js
+#!js name=lib
+
+redis.register_function('my_get', function(client, ...keys){
+    var results = [];
+    keys.forEach((key_name)=> {
+            if (client.call('type', key_name) == 'string') {
+                results.push(client.call('get', key_name));
+                return;
+            }
+            if (client.call('type', key_name) == 'hash') {
+                results.push(client.call('hgetall', key_name));
+                return;
+            }
+            results.push("Unsupported type");
+        }
+    );
+    return results;
+    
+});
+```
+
+Run example:
+
+```bash
+127.0.0.1:6379> rg.function call foo my_get x h
+1) "1"
+2) 1) "foo"
+   2) "bar"
+   3) "x"
+   4) "y"
 ```
 
 ### Whats next?
