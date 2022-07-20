@@ -169,6 +169,36 @@ Run example:
    4) "y"
 ```
 
+### Function Flags
+
+It is possible to provide some information about the function behaviour on registration time. Such information is called function flags. The function flags is a optional argument that can be given after the function implementation. The supported flags are:
+1. `no-writes` - indicating that the function performs not write commands. If this flag is on, it will be possible to run the function on read only replicas or on OOM. RedisGears force this flag behaviour, this means that any attempt to call a write command from within a function that has this flag will result in an exception.
+2. `allow-oom` - by default, RedisGears will not allow running any function on OOM. This flag allows overide this behaviour and running the function even on OOM. Enable this flag is considered unsafe and could cause Redis to bypass the maxmemory value. **User should only enable this flag if he knows for sure that his function do not consume memory** (for example, on OOM, it is safe to run a function that only deletes data).
+
+The following example shows how to set the `no-writes` flag:
+
+```js
+#!js name=lib
+
+redis.register_function('my_ping', function(client){
+    return client.call('ping');
+},
+["no-writes"]);
+```
+
+Run example:
+
+```bash
+127.0.0.1:6379> rg.function call foo my_ping
+"PONG"
+127.0.0.1:6379> config set maxmemory 1
+OK
+127.0.0.1:6379> rg.function call foo my_ping
+"PONG"
+
+```
+
+
 ### Whats next?
 
 * [Create a development environment](docs/create_development_environment.md)
