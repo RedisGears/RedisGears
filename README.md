@@ -4,6 +4,12 @@ A [Redis module](https://redis.io/docs/modules/) that allows running a JS functi
 
 **Notice, RedisGears 2.0 is still under active development and not yet GA, the API might (and probably) change at the final GA version.**
 
+## Run Using Docker
+
+```bash
+docker run -p 6379:6379 redislabs/redisgears:edge
+```
+
 ## Build
 
 ### With Docker
