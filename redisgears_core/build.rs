@@ -1,13 +1,11 @@
 extern crate clap;
 
-use std::process::Command;
 use regex::Regex;
+use std::process::Command;
 
 fn main() {
     // Expose GIT_SHA env var
-    let git_sha = Command::new("git")
-        .args(&["rev-parse", "HEAD"])
-        .output();
+    let git_sha = Command::new("git").args(&["rev-parse", "HEAD"]).output();
     if let Ok(sha) = git_sha {
         let sha = String::from_utf8(sha.stdout).unwrap();
         println!("cargo:rustc-env=GIT_SHA={}", sha);

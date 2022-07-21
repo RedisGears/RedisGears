@@ -442,7 +442,12 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
 }
 
 fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
-    ctx.log_notice(&format!("RedisGears v{}, sha='{}', branch='{}'.", VERSION_STR.unwrap_or_default(), GIT_SHA.unwrap_or_default(), GIT_BRANCH.unwrap_or_default()));
+    ctx.log_notice(&format!(
+        "RedisGears v{}, sha='{}', branch='{}'.",
+        VERSION_STR.unwrap_or_default(),
+        GIT_SHA.unwrap_or_default(),
+        GIT_BRANCH.unwrap_or_default()
+    ));
     match ctx.get_redis_version() {
         Ok(v) => {
             if v.major < 7 || (v.major == 7 && v.minor == 0 && v.patch < 3) {
