@@ -64,6 +64,11 @@ mod run_ctx;
 mod stream_reader;
 mod stream_run_ctx;
 
+pub const GIT_SHA: Option<&str> = std::option_env!("GIT_SHA");
+pub const GIT_BRANCH: Option<&str> = std::option_env!("GIT_BRANCH");
+pub const VERSION_STR: Option<&str> = std::option_env!("VERSION_STR");
+pub const VERSION_NUM: Option<&str> = std::option_env!("VERSION_NUM");
+
 struct GearsLibraryMataData {
     name: String,
     engine: String,
@@ -437,10 +442,11 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
 }
 
 fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
+    ctx.log_notice(&format!("RedisGears v{}, sha='{}', branch='{}'.", VERSION_STR.unwrap_or_default(), GIT_SHA.unwrap_or_default(), GIT_BRANCH.unwrap_or_default()));
     match ctx.get_redis_version() {
         Ok(v) => {
-            if v.major < 7 {
-                ctx.log_warning("Redis version must be 7.0.0 or greater");
+            if v.major < 7 || (v.major == 7 && v.minor == 0 && v.patch < 3) {
+                ctx.log_warning("Redis version must be 7.0.3 or greater");
                 return Status::Err;
             }
         }
@@ -1456,7 +1462,7 @@ fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
 
 redis_module! {
     name: "redisgears_2",
-    version: 999999,
+    version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
     data_types: [REDIS_GEARS_TYPE],
     init: js_init,
     post_init: js_post_init,
