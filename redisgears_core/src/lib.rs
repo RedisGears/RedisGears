@@ -1460,11 +1460,6 @@ fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
     }
 }
 
-// fn on_command_called(_ctx: &Context, _event_data: ServerEventData) {
-//     // let res = ctx.call("ping", &[]);
-//     // println!("{:?}", res);
-// }
-
 redis_module! {
     name: "redisgears_2",
     version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
@@ -1487,7 +1482,6 @@ redis_module! {
         [@RuleChanged: on_role_changed],
         [@Loading: on_loading_event],
         [@Flush: on_flush_event],
-        // [@Command: on_command_called],
     ],
     string_configurations: [
         &get_globals().config.gears_box_address,

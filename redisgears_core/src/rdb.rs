@@ -1,7 +1,8 @@
 use crate::{function_load_intrernal, get_ctx, get_globals_mut, get_libraries};
 
 use redis_module::{
-    native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB, RedisModuleTypeMethods,
+    error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB,
+    RedisModuleTypeMethods,
 };
 
 use std::os::raw::c_int;
@@ -76,97 +77,49 @@ extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     }
 }
 
-unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when: c_int) -> c_int {
-    if encver > REDIS_GEARS_VERSION {
-        get_ctx().log_notice(&format!(
-            "Can not load RedisGears data type version '{}', max supported version '{}'",
-            encver, REDIS_GEARS_VERSION
-        ));
-        return raw::REDISMODULE_ERR as i32;
-    }
-
-    let num_of_libs = match raw::load_unsigned(rdb) {
-        Ok(n) => n,
-        Err(e) => {
-            get_ctx().log_notice(&format!("Failed reading number of library from rdb, {}", e));
-            return raw::REDISMODULE_ERR as i32;
-        }
-    };
+fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
+    let num_of_libs = raw::load_unsigned(rdb)?;
 
     for _ in 0..num_of_libs {
-        let name = match raw::load_string_buffer(rdb) {
-            Ok(s) => match s.to_string() {
-                Ok(s) => s,
-                Err(e) => {
-                    get_ctx()
-                        .log_notice(&format!("Failed converting librart name to string, {}", e));
-                    return raw::REDISMODULE_ERR as i32;
-                }
-            },
-            Err(e) => {
-                get_ctx().log_notice(&format!("Failed reading librart name from rdb, {}", e));
-                return raw::REDISMODULE_ERR as i32;
-            }
-        };
-        let code = match raw::load_string_buffer(rdb) {
-            Ok(s) => match s.to_string() {
-                Ok(s) => s,
-                Err(e) => {
-                    get_ctx()
-                        .log_notice(&format!("Failed converting library code to string, {}", e));
-                    return raw::REDISMODULE_ERR as i32;
-                }
-            },
-            Err(e) => {
-                get_ctx().log_notice(&format!("Failed reading library code from rdb, {}", e));
-                return raw::REDISMODULE_ERR as i32;
-            }
-        };
-        let user = match raw::load_string_buffer(rdb) {
-            Ok(s) => match s.to_string() {
-                Ok(s) => s,
-                Err(e) => {
-                    get_ctx()
-                        .log_notice(&format!("Failed converting library user to string, {}", e));
-                    return raw::REDISMODULE_ERR as i32;
-                }
-            },
-            Err(e) => {
-                get_ctx().log_notice(&format!("Failed reading library user from rdb, {}", e));
-                return raw::REDISMODULE_ERR as i32;
-            }
-        };
+        let name = raw::load_string_buffer(rdb)
+            .map_err(|e| Error::generic(&format!("Failed loading name from rdb, {}.", e)))?
+            .to_string()
+            .map_err(|e| {
+                Error::generic(&format!("Failed parsing name from rdb as string, {}.", e))
+            })?;
+        let code = raw::load_string_buffer(rdb)
+            .map_err(|e| Error::generic(&format!("Failed loading code from rdb, {}.", e)))?
+            .to_string()
+            .map_err(|e| {
+                Error::generic(&format!("Failed parsing code from rdb as string, {}.", e))
+            })?;
+        let user = raw::load_string_buffer(rdb)
+            .map_err(|e| Error::generic(&format!("Failed loading user from rdb, {}.", e)))?
+            .to_string()
+            .map_err(|e| {
+                Error::generic(&format!("Failed parsing user from rdb as string, {}.", e))
+            })?;
 
         // load gears box info
-        let has_gears_box_info = match raw::load_unsigned(rdb) {
-            Ok(n) => n,
-            Err(e) => {
-                get_ctx().log_notice(&format!(
-                    "Failed reading number of steams consumers from rdb, {}",
-                    e
-                ));
-                return raw::REDISMODULE_ERR as i32;
-            }
-        };
+        let has_gears_box_info = raw::load_unsigned(rdb).map_err(|e| {
+            Error::generic(&format!(
+                "Failed loading gears box indicator from rdb, {}.",
+                e
+            ))
+        })?;
 
         let gears_box_info = if has_gears_box_info > 0 {
-            let gears_box_info_str = match raw::load_string_buffer(rdb) {
-                Ok(s) => match s.to_string() {
-                    Ok(s) => s,
-                    Err(e) => {
-                        get_ctx().log_notice(&format!(
-                            "Failed converting library gears box to string, {}",
-                            e
-                        ));
-                        return raw::REDISMODULE_ERR as i32;
-                    }
-                },
-                Err(e) => {
-                    get_ctx()
-                        .log_notice(&format!("Failed reading library gears box from rdb, {}", e));
-                    return raw::REDISMODULE_ERR as i32;
-                }
-            };
+            let gears_box_info_str = raw::load_string_buffer(rdb)
+                .map_err(|e| {
+                    Error::generic(&format!("Failed loading gears box data from rdb, {}.", e))
+                })?
+                .to_string()
+                .map_err(|e| {
+                    Error::generic(&format!(
+                        "Failed parsing gears box data from rdb as string, {}.",
+                        e
+                    ))
+                })?;
             Some(serde_json::from_str(&gears_box_info_str).unwrap())
         } else {
             None
@@ -174,10 +127,7 @@ unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when
 
         match function_load_intrernal(user, &code, false, gears_box_info) {
             Ok(_) => {}
-            Err(e) => {
-                get_ctx().log_notice(&format!("Failed loading librart, {}", e));
-                return raw::REDISMODULE_ERR as i32;
-            }
+            Err(e) => return Err(Error::generic(&format!("Failed loading librart, {}", e))),
         }
 
         // library was load, we must be able to find it
@@ -185,80 +135,61 @@ unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when
         let lib = libraries.get(&name).unwrap();
 
         // load stream consumers data
-        let num_of_streams_consumers = match raw::load_unsigned(rdb) {
-            Ok(n) => n,
-            Err(e) => {
-                get_ctx().log_notice(&format!(
-                    "Failed reading number of steams consumers from rdb, {}",
-                    e
-                ));
-                return raw::REDISMODULE_ERR as i32;
-            }
-        };
+        let num_of_streams_consumers = raw::load_unsigned(rdb).map_err(|e| {
+            Error::generic(&format!("Failed loading number of streams from rdb, {}.", e))
+        })?;
 
         for _ in 0..num_of_streams_consumers {
-            let consumer_name = match raw::load_string_buffer(rdb) {
-                Ok(s) => match s.to_string() {
-                    Ok(s) => s,
-                    Err(e) => {
-                        get_ctx().log_notice(&format!(
-                            "Failed converting consumer name to string, {}",
-                            e
-                        ));
-                        return raw::REDISMODULE_ERR as i32;
-                    }
-                },
-                Err(e) => {
-                    get_ctx().log_notice(&format!("Failed reading consumer name from rdb, {}", e));
-                    return raw::REDISMODULE_ERR as i32;
-                }
-            };
+            let consumer_name = raw::load_string_buffer(rdb)
+                .map_err(|e| {
+                    Error::generic(&format!("Failed loading consumer name from rdb, {}.", e))
+                })?
+                .to_string()
+                .map_err(|e| {
+                    Error::generic(&format!(
+                        "Failed parsing consumer name from rdb as string, {}.",
+                        e
+                    ))
+                })?;
             let consumer = lib
                 .gears_lib_ctx
                 .stream_consumers
                 .get(&consumer_name)
                 .unwrap();
             // read the number of streams for this consumer
-            let num_of_streams = match raw::load_unsigned(rdb) {
-                Ok(n) => n,
-                Err(e) => {
-                    get_ctx()
-                        .log_notice(&format!("Failed reading number of steams from rdb, {}", e));
-                    return raw::REDISMODULE_ERR as i32;
-                }
-            };
+            let num_of_streams = raw::load_unsigned(rdb).map_err(|e| {
+                Error::generic(&format!(
+                    "Failed loading number of streams for a consumer '{}', {}.",
+                    consumer_name, e
+                ))
+            })?;
             for _ in 0..num_of_streams {
-                let stream_name = match raw::load_string_buffer(rdb) {
-                    Ok(s) => match s.to_string() {
-                        Ok(s) => s,
-                        Err(e) => {
-                            get_ctx().log_notice(&format!(
-                                "Failed converting stream name to string, {}",
-                                e
-                            ));
-                            return raw::REDISMODULE_ERR as i32;
-                        }
-                    },
-                    Err(e) => {
-                        get_ctx()
-                            .log_notice(&format!("Failed reading stream name from rdb, {}", e));
-                        return raw::REDISMODULE_ERR as i32;
-                    }
-                };
-                let ms = match raw::load_unsigned(rdb) {
-                    Ok(n) => n,
-                    Err(e) => {
-                        get_ctx().log_notice(&format!("Failed reading ms from rdb, {}", e));
-                        return raw::REDISMODULE_ERR as i32;
-                    }
-                };
-                let seq = match raw::load_unsigned(rdb) {
-                    Ok(n) => n,
-                    Err(e) => {
-                        get_ctx().log_notice(&format!("Failed reading seq from rdb, {}", e));
-                        return raw::REDISMODULE_ERR as i32;
-                    }
-                };
+                let stream_name = raw::load_string_buffer(rdb)
+                    .map_err(|e| {
+                        Error::generic(&format!(
+                            "Failed loading stream name for consumer '{}', {}.",
+                            consumer_name, e
+                        ))
+                    })?
+                    .to_string()
+                    .map_err(|e| {
+                        Error::generic(&format!(
+                            "Failed parsing stream name for consumer '{}' as string, {}.",
+                            consumer_name, e
+                        ))
+                    })?;
+                let ms = raw::load_unsigned(rdb).map_err(|e| {
+                    Error::generic(&format!(
+                        "Failed loading ms value for consumer '{}', {}.",
+                        consumer_name, e
+                    ))
+                })?;
+                let seq = raw::load_unsigned(rdb).map_err(|e| {
+                    Error::generic(&format!(
+                        "Failed loading seq value for consumer '{}', {}.",
+                        consumer_name, e
+                    ))
+                })?;
                 get_globals_mut().stream_ctx.update_stream_for_consumer(
                     &stream_name,
                     consumer,
@@ -269,5 +200,23 @@ unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when
         }
     }
 
-    raw::REDISMODULE_OK as i32
+    Ok(())
+}
+
+unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when: c_int) -> c_int {
+    if encver > REDIS_GEARS_VERSION {
+        get_ctx().log_notice(&format!(
+            "Can not load RedisGears data type version '{}', max supported version '{}'",
+            encver, REDIS_GEARS_VERSION
+        ));
+        return raw::REDISMODULE_ERR as i32;
+    }
+
+    match aux_load_internals(rdb) {
+        Ok(_) => raw::REDISMODULE_OK as i32,
+        Err(e) => {
+            get_ctx().log_warning(&format!("Failed loading functions from rdb, {}.", e));
+            raw::REDISMODULE_ERR as i32
+        }
+    }
 }
