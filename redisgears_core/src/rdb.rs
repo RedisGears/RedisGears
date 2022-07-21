@@ -136,7 +136,10 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
 
         // load stream consumers data
         let num_of_streams_consumers = raw::load_unsigned(rdb).map_err(|e| {
-            Error::generic(&format!("Failed loading number of streams from rdb, {}.", e))
+            Error::generic(&format!(
+                "Failed loading number of streams from rdb, {}.",
+                e
+            ))
         })?;
 
         for _ in 0..num_of_streams_consumers {
