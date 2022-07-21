@@ -106,3 +106,13 @@ If the callback is a Coroutine, it will be executed in the background and there 
 ## Upgrades
 
 When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOAD`](commands.md#rgfunction-load) command) all the trigger parameters can be modified.
+
+## Known Issues
+
+On the current Redis version (7.0.3) there are couple of known issues that effects databases triggers:
+
+* The effect of the trigger and the command that fire the trigger will be replicated (to the replica and AOF) at a reverse order. This means that if `set x 1` fire a trigger that perfroms `del x`, the replication will see the `del x` command before the `set x 1` command. This will cause replication inconsistency. To avoid it, the trigger should only perform operations that are indipendent and are not effected the by execution order.
+* On active expire, the `del` command and the trigger effect will not be wrapped with `multi/exec` block.
+* On active eviction, the `del` command and the trigger effect will not be wrapped with `multi/exec` block.
+
+There is already a [PR](https://github.com/redis/redis/pull/10969) that should fix those issues on Redis, we hope it will be merged soon.
