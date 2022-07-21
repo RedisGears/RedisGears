@@ -171,14 +171,14 @@ redis.register_function('test', function(client, expected_name){
 });
 ```
 
-`run_on_background` will return a `Promise` object, we return this Promise object as the function return value. When RedisGears sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much safer in cases of cache hit.
+`run_on_background` will return a `Promise` object, we return this Promise object as the function return value. When RedisGears sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much faster in case of cache hit.
 
 
 # Fail Blocking the Redis
 
 Blocking Redis might fail, couple of reasons for such failure can be:
 
-* Redis reached OOM state and the `no-writes` or `allow-oom` flags are not set (see [functions flags]() for more information)
+* Redis reached OOM state and the `no-writes` or `allow-oom` flags are not set (see [functions flags](function_advance_topics.md#function-flags) for more information)
 * `no-writes` flag is not set and the Redis instance turned role and it is now a replica.
 * ACL user that invoked the function was deleted.
 
