@@ -149,7 +149,7 @@ redis.register_function("hset", function(client, key, field, val){
 Notica that in the above example we first set `last_update_field_name` to `__last_update__`, this will be the default value in case not given by the configuration. Then we check if we have `last_update_field_name` in our configuration and if we do we use it. We can now upload our function with `CONFIG` argument:
 
 ```bash
-> redis-cli -x RG.FUNCTION LOAD UPGRADE CONFIG '"last_update_field_name":"last_update"}' < <path to code file>
+> redis-cli -x RG.FUNCTION LOAD UPGRADE CONFIG '{"last_update_field_name":"last_update"}' < <path to code file>
 OK
 ```
 
