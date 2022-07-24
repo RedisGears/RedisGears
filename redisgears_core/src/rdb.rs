@@ -107,19 +107,18 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
             })?;
 
         let has_config = raw::load_unsigned(rdb).map_err(|e| {
-            Error::generic(&format!(
-                "Failed loading config indicator from rdb, {}.",
-                e
-            ))
+            Error::generic(&format!("Failed loading config indicator from rdb, {}.", e))
         })?;
 
         let config = if has_config > 0 {
-            Some(raw::load_string_buffer(rdb)
-            .map_err(|e| Error::generic(&format!("Failed loading user from rdb, {}.", e)))?
-            .to_string()
-            .map_err(|e| {
-                Error::generic(&format!("Failed parsing user from rdb as string, {}.", e))
-            })?)
+            Some(
+                raw::load_string_buffer(rdb)
+                    .map_err(|e| Error::generic(&format!("Failed loading user from rdb, {}.", e)))?
+                    .to_string()
+                    .map_err(|e| {
+                        Error::generic(&format!("Failed parsing user from rdb as string, {}.", e))
+                    })?,
+            )
         } else {
             None
         };

@@ -9,12 +9,12 @@ use v8_rs::v8::{
     v8_value::V8LocalValue, v8_version,
 };
 
-use crate::{get_function_flags, get_exception_msg};
 use crate::v8_backend::log;
 use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
 use crate::v8_script_ctx::V8ScriptCtx;
 use crate::v8_stream_ctx::V8StreamCtx;
+use crate::{get_exception_msg, get_function_flags};
 
 use std::cell::RefCell;
 use std::str;
@@ -289,7 +289,7 @@ pub(crate) fn initialize_globals(
     globals: &V8LocalObject,
     ctx_scope: &V8ContextScope,
     config: Option<&String>,
-) -> Result<(), GearsApiError>{
+) -> Result<(), GearsApiError> {
     let redis = script_ctx.isolate.new_object();
 
     match config {
@@ -302,13 +302,21 @@ pub(crate) fn initialize_globals(
                 return Err(GearsApiError::Msg(format!(
                     "Failed parsing configuration as json, {}",
                     error_msg
-                )));  
+                )));
             }
-            redis.set(ctx_scope, &script_ctx.isolate.new_string("config").to_value(), &config_json.unwrap())
+            redis.set(
+                ctx_scope,
+                &script_ctx.isolate.new_string("config").to_value(),
+                &config_json.unwrap(),
+            )
         }
         None => {
             // setting empty config
-            redis.set(ctx_scope, &script_ctx.isolate.new_string("config").to_value(), &script_ctx.isolate.new_object().to_value())
+            redis.set(
+                ctx_scope,
+                &script_ctx.isolate.new_string("config").to_value(),
+                &script_ctx.isolate.new_object().to_value(),
+            )
         }
     }
 

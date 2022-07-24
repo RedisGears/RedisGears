@@ -676,7 +676,10 @@ fn function_call_command(
     Ok(RedisValue::NoReply)
 }
 
-fn library_extract_matadata(code: &str, config: Option<String>) -> Result<GearsLibraryMataData, RedisError> {
+fn library_extract_matadata(
+    code: &str,
+    config: Option<String>,
+) -> Result<GearsLibraryMataData, RedisError> {
     let shabeng = match code.split("\n").next() {
         Some(s) => s,
         None => return Err(RedisError::Str("could not extract library metadata")),
@@ -1127,7 +1130,8 @@ pub(crate) fn function_load_intrernal(
     let backend = backend.unwrap();
     let compile_lib_ctx = CompiledLibraryAPI::new();
     let compile_lib_internals = compile_lib_ctx.take_internals();
-    let lib_ctx = backend.compile_library(code, meta_data.config.as_ref(), Box::new(compile_lib_ctx));
+    let lib_ctx =
+        backend.compile_library(code, meta_data.config.as_ref(), Box::new(compile_lib_ctx));
     let lib_ctx = match lib_ctx {
         Err(e) => match e {
             GearsApiError::Msg(s) => {
@@ -1200,7 +1204,9 @@ struct FunctionLoadArgs<'a> {
     last_arg: &'a str,
 }
 
-fn get_args_values<'a>(mut args: Skip<IntoIter<redis_module::RedisString>>) -> Result<FunctionLoadArgs<'a>, RedisError> {
+fn get_args_values<'a>(
+    mut args: Skip<IntoIter<redis_module::RedisString>>,
+) -> Result<FunctionLoadArgs<'a>, RedisError> {
     let mut upgrade = false;
     let mut config = None;
     let last_arg = loop {
@@ -1217,8 +1223,19 @@ fn get_args_values<'a>(mut args: Skip<IntoIter<redis_module::RedisString>>) -> R
         match arg_str.as_ref() {
             "upgrade" => upgrade = true,
             "config" => {
-                let arg = args.next_arg().map_err(|_e| RedisError::Str("configuration value was not given"))?.try_as_str().map_err(|_e| RedisError::Str("given configuration value is not a valid string"))?;
-                let v = serde_json::from_str::<serde_json::Value>(arg).map_err(|e| RedisError::String(format!("configuration must be a valid json, '{}', {}.", arg, e)))?;
+                let arg = args
+                    .next_arg()
+                    .map_err(|_e| RedisError::Str("configuration value was not given"))?
+                    .try_as_str()
+                    .map_err(|_e| {
+                        RedisError::Str("given configuration value is not a valid string")
+                    })?;
+                let v = serde_json::from_str::<serde_json::Value>(arg).map_err(|e| {
+                    RedisError::String(format!(
+                        "configuration must be a valid json, '{}', {}.",
+                        arg, e
+                    ))
+                })?;
                 match v {
                     serde_json::Value::Object(_) => (),
                     _ => return Err(RedisError::Str("configuration must be a valid json object")),
@@ -1233,7 +1250,7 @@ fn get_args_values<'a>(mut args: Skip<IntoIter<redis_module::RedisString>>) -> R
         Ok(s) => s,
         Err(_) => return Err(RedisError::Str("lib code must a valid string")),
     };
-    Ok(FunctionLoadArgs{
+    Ok(FunctionLoadArgs {
         upgrade: upgrade,
         config: config,
         last_arg: last_arg,
@@ -1246,7 +1263,13 @@ fn function_load_command(
 ) -> RedisResult {
     let function_load_args = get_args_values(args)?;
     let user = ctx.get_current_user()?;
-    match function_load_intrernal(user, function_load_args.last_arg, function_load_args.config, function_load_args.upgrade, None) {
+    match function_load_intrernal(
+        user,
+        function_load_args.last_arg,
+        function_load_args.config,
+        function_load_args.upgrade,
+        None,
+    ) {
         Ok(r) => {
             ctx.replicate_verbatim();
             Ok(r)
@@ -1302,7 +1325,13 @@ fn function_install_lib_command(
     let gear_box_lib = gears_box_get_library(function_load_args.last_arg)?;
     let function_code = do_http_get_text(&gear_box_lib.versions.get(0).unwrap().url)?;
     let user = ctx.get_current_user()?;
-    match function_load_intrernal(user, &function_code, function_load_args.config, function_load_args.upgrade, Some(gear_box_lib)) {
+    match function_load_intrernal(
+        user,
+        &function_code,
+        function_load_args.config,
+        function_load_args.upgrade,
+        Some(gear_box_lib),
+    ) {
         Ok(r) => {
             ctx.replicate_verbatim();
             Ok(r)
