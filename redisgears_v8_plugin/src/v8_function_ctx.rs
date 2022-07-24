@@ -123,7 +123,13 @@ impl V8InternalFunction {
                     {
                         let r = res.get_result();
                         if res.state() == V8PromiseState::Fulfilled {
-                            send_reply(0, &self.script_ctx.isolate, &ctx_scope, bg_client.as_ref(), r);
+                            send_reply(
+                                0,
+                                &self.script_ctx.isolate,
+                                &ctx_scope,
+                                bg_client.as_ref(),
+                                r,
+                            );
                         } else {
                             let r = r.to_utf8(&self.script_ctx.isolate).unwrap();
                             bg_client.reply_with_error(r.as_str());
@@ -162,7 +168,13 @@ impl V8InternalFunction {
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(0, &self.script_ctx.isolate, &ctx_scope, bg_client.as_ref(), r);
+                    send_reply(
+                        0,
+                        &self.script_ctx.isolate,
+                        &ctx_scope,
+                        bg_client.as_ref(),
+                        r,
+                    );
                 }
             }
             None => {
@@ -275,7 +287,13 @@ impl V8InternalFunction {
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(0, &self.script_ctx.isolate, &ctx_scope, run_ctx.as_client(), r);
+                    send_reply(
+                        0,
+                        &self.script_ctx.isolate,
+                        &ctx_scope,
+                        run_ctx.as_client(),
+                        r,
+                    );
                 }
             }
             None => {
