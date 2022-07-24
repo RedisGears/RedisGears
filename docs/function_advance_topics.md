@@ -98,3 +98,71 @@ OK
 "PONG"
 
 ```
+
+## Library Configuration
+
+When writing a library you might want to be able to provide a loading configuration, so that different users can use the same library with slightly different behaviour (without changing the base code). For example, assuming you writing a library that adds `__last_updated__` field to a hash (you can see how it can also be done with [databases triggers](databse_triggers.md)), the code will look like this:
+
+```js
+#!js name=lib
+
+redis.register_function("hset", function(client, key, field, val){
+    // get the current time in ms
+    var curr_time = client.call("time")[0];
+    return client.call('hset', key, field, val, "__last_update__", curr_time);
+});
+```
+
+Run example:
+
+```bash
+127.0.0.1:6379> RG.FUNCTION call lib hset k foo bar
+(integer) 2
+127.0.0.1:6379> hgetall k
+1) "foo"
+2) "bar"
+3) "__last_update__"
+4) "1658653125"
+```
+
+The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? RedisGears allow specify library configuration at load time using `CONFIG` argument given to [`FUNCTION LOAD`](commands.md#rgfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
+
+```js
+#!js name=lib
+
+var last_update_field_name = "__last_update__"
+
+if (redis.config.last_update_field_name !== undefined) {
+    if (typeof redis.config.last_update_field_name != 'string') {
+        throw "last_update_field_name must be a string";
+    }
+    last_update_field_name = redis.config.last_update_field_name
+}
+
+redis.register_function("hset", function(client, key, field, val){
+    // get the current time in ms
+    var curr_time = client.call("time")[0];
+    return client.call('hset', key, field, val, last_update_field_name, curr_time);
+});
+```
+
+Notica that in the above example we first set `last_update_field_name` to `__last_update__`, this will be the default value in case not given by the configuration. Then we check if we have `last_update_field_name` in our configuration and if we do we use it. We can now upload our function with `CONFIG` argument:
+
+```bash
+> redis-cli -x RG.FUNCTION LOAD UPGRADE CONFIG '"last_update_field_name":"last_update"}' < <path to code file>
+OK
+```
+
+And we can see that the last update field name is `last_update`: 
+
+```bash
+127.0.0.1:6379> RG.FUNCTION call lib hset h foo bar
+(integer) 2
+127.0.0.1:6379> hgetall h
+1) "foo"
+2) "bar"
+3) "last_update"
+4) "1658654047"
+```
+
+

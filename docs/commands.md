@@ -5,12 +5,13 @@
 Load a new library to RedisGears.
 
 ```
-RG.FUNCTION LOAD [UPGRADE] "<library code>"
+RG.FUNCTION LOAD [UPGRADE] [CONFIG <config>] "<library code>"
 ```
 
 _Arguments_
 
 * UPGRADE - an optional argument, instructs RedisGears to upgrade the function if its already exists.
+* CONFIG - a string representation of a JSON object that will be provided to the library on load time, for more information refer to [library configuration](function_advance_topics.md#library-configuration)
 * _library code_ - the library code
 
 _Return_
