@@ -165,4 +165,4 @@ And we can see that the last update field name is `last_update`:
 4) "1658654047"
 ```
 
-
+Notice, RedisGears only gives the library the json configuration, **its the library responsibility to verify the correcness of the given configuration**.
