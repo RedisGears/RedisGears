@@ -35,11 +35,16 @@ pub struct V8InternalFunction {
 }
 
 fn send_reply(
+    nesting_level: usize,
     isolate: &V8Isolate,
     ctx_scope: &V8ContextScope,
     client: &dyn ReplyCtxInterface,
     val: V8LocalValue,
 ) {
+    if nesting_level > 100 {
+        client.reply_with_simple_string("nesting level reached");
+        return;
+    }
     if val.is_long() {
         client.reply_with_long(val.get_long());
     } else if val.is_number() {
@@ -51,7 +56,7 @@ fn send_reply(
         client.reply_with_array(arr.len());
         for i in 0..arr.len() {
             let val = arr.get(ctx_scope, i);
-            send_reply(isolate, ctx_scope, client, val);
+            send_reply(nesting_level + 1, isolate, ctx_scope, client, val);
         }
     } else if val.is_object() {
         let res = val.as_object();
@@ -60,8 +65,8 @@ fn send_reply(
         for i in 0..keys.len() {
             let key = keys.get(ctx_scope, i);
             let obj = res.get(ctx_scope, &key);
-            send_reply(isolate, ctx_scope, client, key);
-            send_reply(isolate, ctx_scope, client, obj);
+            send_reply(nesting_level + 1, isolate, ctx_scope, client, key);
+            send_reply(nesting_level + 1, isolate, ctx_scope, client, obj);
         }
     } else {
         client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
@@ -118,7 +123,7 @@ impl V8InternalFunction {
                     {
                         let r = res.get_result();
                         if res.state() == V8PromiseState::Fulfilled {
-                            send_reply(&self.script_ctx.isolate, &ctx_scope, bg_client.as_ref(), r);
+                            send_reply(0, &self.script_ctx.isolate, &ctx_scope, bg_client.as_ref(), r);
                         } else {
                             let r = r.to_utf8(&self.script_ctx.isolate).unwrap();
                             bg_client.reply_with_error(r.as_str());
@@ -157,7 +162,7 @@ impl V8InternalFunction {
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(&self.script_ctx.isolate, &ctx_scope, bg_client.as_ref(), r);
+                    send_reply(0, &self.script_ctx.isolate, &ctx_scope, bg_client.as_ref(), r);
                 }
             }
             None => {
@@ -224,6 +229,7 @@ impl V8InternalFunction {
                         let r = res.get_result();
                         if res.state() == V8PromiseState::Fulfilled {
                             send_reply(
+                                0,
                                 &self.script_ctx.isolate,
                                 &ctx_scope,
                                 run_ctx.as_client(),
@@ -269,7 +275,7 @@ impl V8InternalFunction {
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(&self.script_ctx.isolate, &ctx_scope, run_ctx.as_client(), r);
+                    send_reply(0, &self.script_ctx.isolate, &ctx_scope, run_ctx.as_client(), r);
                 }
             }
             None => {

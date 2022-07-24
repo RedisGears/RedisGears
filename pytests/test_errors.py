@@ -145,3 +145,16 @@ test();
 redis.register_function('test', test);
     """
     env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '5').error().contains("configuration must be a valid json object")
+
+@gearsTest()
+def testLongNestedReply(env):
+    """#!js name=foo
+function test() {
+    var a = [];
+    a[0] = a;
+    return a;
+}
+redis.register_function('test', test);
+    """
+    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test')
+    env.expect('PING').equal(True)
