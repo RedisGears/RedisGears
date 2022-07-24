@@ -376,3 +376,24 @@ redis.register_function("test1", function(client){
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '1000000000').equal('OK')
     env.expect('RG.FUNCTION', 'CALL', 'lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
+
+@gearsTest()
+def testLibraryConfiguration(env):
+    code = """#!js name=lib
+redis.register_function("test1", function(){
+    return redis.config;
+});
+    """
+    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
+    env.expect('RG.FUNCTION', 'CALL', 'lib', 'test1').equal(['foo', 'bar'])
+
+@gearsTest()
+def testLibraryConfigurationPersistAfterLoading(env):
+    code = """#!js name=lib
+redis.register_function("test1", function(){
+    return redis.config;
+});
+    """
+    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
+    env.expect('debug', 'reload').equal("OK")
+    env.expect('RG.FUNCTION', 'CALL', 'lib', 'test1').equal(['foo', 'bar'])

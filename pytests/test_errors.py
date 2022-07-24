@@ -112,3 +112,36 @@ test();
 redis.register_function('test', test);
     """
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("Maximum call stack size exceeded")
+
+@gearsTest()
+def testMissingConfig(env):
+    script = """#!js name=foo
+function test() {
+    test();
+}
+test();
+redis.register_function('test', test);
+    """
+    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG').error().contains("configuration value was not given")
+
+@gearsTest()
+def testNoJsonConfig(env):
+    script = """#!js name=foo
+function test() {
+    test();
+}
+test();
+redis.register_function('test', test);
+    """
+    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', 'foo').error().contains("configuration must be a valid json")
+
+@gearsTest()
+def testNoJsonObjectConfig(env):
+    script = """#!js name=foo
+function test() {
+    test();
+}
+test();
+redis.register_function('test', test);
+    """
+    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '5').error().contains("configuration must be a valid json object")

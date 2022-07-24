@@ -148,6 +148,7 @@ impl BackendCtxInterface for V8Backend {
     fn compile_library(
         &mut self,
         blob: &str,
+        config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError> {
         let isolate = V8Isolate::new_with_limits(
@@ -233,7 +234,7 @@ impl BackendCtxInterface for V8Backend {
                         }
                     });
 
-                initialize_globals(&script_ctx, &globals, &ctx_scope);
+                initialize_globals(&script_ctx, &globals, &ctx_scope, config)?;
             }
 
             script_ctx

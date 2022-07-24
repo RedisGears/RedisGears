@@ -73,6 +73,7 @@ struct GearsLibraryMataData {
     name: String,
     engine: String,
     code: String,
+    config: Option<String>,
 }
 
 struct GearsFunctionCtx {
@@ -675,7 +676,7 @@ fn function_call_command(
     Ok(RedisValue::NoReply)
 }
 
-fn library_extract_matadata(code: &str) -> Result<GearsLibraryMataData, RedisError> {
+fn library_extract_matadata(code: &str, config: Option<String>) -> Result<GearsLibraryMataData, RedisError> {
     let shabeng = match code.split("\n").next() {
         Some(s) => s,
         None => return Err(RedisError::Str("could not extract library metadata")),
@@ -718,6 +719,7 @@ fn library_extract_matadata(code: &str) -> Result<GearsLibraryMataData, RedisErr
         engine: engine.to_string(),
         name: name.to_string(),
         code: code.to_string(),
+        config: config,
     })
 }
 
@@ -865,6 +867,13 @@ fn function_list_command(
                     RedisValue::BulkString(l.gears_lib_ctx.meta_data.engine.to_string()),
                     RedisValue::BulkString("name".to_string()),
                     RedisValue::BulkString(l.gears_lib_ctx.meta_data.name.to_string()),
+                    RedisValue::BulkString("configuration".to_string()),
+                    {
+                        match l.gears_lib_ctx.meta_data.config.as_ref() {
+                            Some(c) => RedisValue::BulkString(c.to_string()),
+                            None => RedisValue::Null,
+                        }
+                    },
                     RedisValue::BulkString("pending_jobs".to_string()),
                     RedisValue::Integer(l.compile_lib_internals.pending_jobs() as i64),
                     RedisValue::BulkString("user".to_string()),
@@ -1102,10 +1111,11 @@ pub(crate) fn function_load_revert(
 pub(crate) fn function_load_intrernal(
     user: String,
     code: &str,
+    config: Option<String>,
     upgrade: bool,
     gears_box_lib: Option<GearsBoxLibraryInfo>,
 ) -> RedisResult {
-    let meta_data = library_extract_matadata(code)?;
+    let meta_data = library_extract_matadata(code, config)?;
     let backend_name = meta_data.engine.as_str();
     let backend = get_backends_mut().get_mut(backend_name);
     if backend.is_none() {
@@ -1117,7 +1127,7 @@ pub(crate) fn function_load_intrernal(
     let backend = backend.unwrap();
     let compile_lib_ctx = CompiledLibraryAPI::new();
     let compile_lib_internals = compile_lib_ctx.take_internals();
-    let lib_ctx = backend.compile_library(code, Box::new(compile_lib_ctx));
+    let lib_ctx = backend.compile_library(code, meta_data.config.as_ref(), Box::new(compile_lib_ctx));
     let lib_ctx = match lib_ctx {
         Err(e) => match e {
             GearsApiError::Msg(s) => {
@@ -1184,12 +1194,16 @@ pub(crate) fn function_load_intrernal(
     Ok(RedisValue::SimpleStringStatic("OK"))
 }
 
-fn function_load_command(
-    ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
+struct FunctionLoadArgs<'a> {
+    upgrade: bool,
+    config: Option<String>,
+    last_arg: &'a str,
+}
+
+fn get_args_values<'a>(mut args: Skip<IntoIter<redis_module::RedisString>>) -> Result<FunctionLoadArgs<'a>, RedisError> {
     let mut upgrade = false;
-    let lib_code = loop {
+    let mut config = None;
+    let last_arg = loop {
         let arg = args.next_arg();
         if arg.is_err() {
             break Err(RedisError::Str("Could not find library payload"));
@@ -1202,15 +1216,37 @@ fn function_load_command(
         let arg_str = arg_str.to_lowercase();
         match arg_str.as_ref() {
             "upgrade" => upgrade = true,
+            "config" => {
+                let arg = args.next_arg().map_err(|_e| RedisError::Str("configuration value was not given"))?.try_as_str().map_err(|_e| RedisError::Str("given configuration value is not a valid string"))?;
+                let v = serde_json::from_str::<serde_json::Value>(arg).map_err(|e| RedisError::String(format!("configuration must be a valid json, '{}', {}.", arg, e)))?;
+                match v {
+                    serde_json::Value::Object(_) => (),
+                    _ => return Err(RedisError::Str("configuration must be a valid json object")),
+                }
+                config = Some(arg.to_string());
+            }
             _ => break Ok(arg),
         }
     }?;
-    let lib_code_slice = match lib_code.try_as_str() {
+
+    let last_arg = match last_arg.try_as_str() {
         Ok(s) => s,
         Err(_) => return Err(RedisError::Str("lib code must a valid string")),
     };
+    Ok(FunctionLoadArgs{
+        upgrade: upgrade,
+        config: config,
+        last_arg: last_arg,
+    })
+}
+
+fn function_load_command(
+    ctx: &Context,
+    args: Skip<IntoIter<redis_module::RedisString>>,
+) -> RedisResult {
+    let function_load_args = get_args_values(args)?;
     let user = ctx.get_current_user()?;
-    match function_load_intrernal(user, lib_code_slice, upgrade, None) {
+    match function_load_intrernal(user, function_load_args.last_arg, function_load_args.config, function_load_args.upgrade, None) {
         Ok(r) => {
             ctx.replicate_verbatim();
             Ok(r)
@@ -1260,13 +1296,13 @@ fn function_search_lib_command(
 
 fn function_install_lib_command(
     ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
+    args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> RedisResult {
-    let id = args.next_arg()?.try_as_str()?;
-    let gear_box_lib = gears_box_get_library(id)?;
+    let function_load_args = get_args_values(args)?;
+    let gear_box_lib = gears_box_get_library(function_load_args.last_arg)?;
     let function_code = do_http_get_text(&gear_box_lib.versions.get(0).unwrap().url)?;
     let user = ctx.get_current_user()?;
-    match function_load_intrernal(user, &function_code, false, Some(gear_box_lib)) {
+    match function_load_intrernal(user, &function_code, function_load_args.config, function_load_args.upgrade, Some(gear_box_lib)) {
         Ok(r) => {
             ctx.replicate_verbatim();
             Ok(r)

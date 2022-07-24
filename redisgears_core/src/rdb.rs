@@ -48,6 +48,12 @@ extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
         raw::save_string(rdb, &val.gears_lib_ctx.meta_data.name);
         raw::save_string(rdb, &val.gears_lib_ctx.meta_data.code);
         raw::save_string(rdb, &val.gears_lib_ctx.user.ref_cell.borrow());
+        if let Some(config) = &val.gears_lib_ctx.meta_data.config.as_ref() {
+            raw::save_unsigned(rdb, 1); // config exists
+            raw::save_string(rdb, config);
+        } else {
+            raw::save_unsigned(rdb, 0); // no config
+        }
         if let Some(gears_box_info) = &val.gears_box_lib {
             raw::save_unsigned(rdb, 1);
             raw::save_string(rdb, &serde_json::to_string(gears_box_info).unwrap());
@@ -100,6 +106,24 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
                 Error::generic(&format!("Failed parsing user from rdb as string, {}.", e))
             })?;
 
+        let has_config = raw::load_unsigned(rdb).map_err(|e| {
+            Error::generic(&format!(
+                "Failed loading config indicator from rdb, {}.",
+                e
+            ))
+        })?;
+
+        let config = if has_config > 0 {
+            Some(raw::load_string_buffer(rdb)
+            .map_err(|e| Error::generic(&format!("Failed loading user from rdb, {}.", e)))?
+            .to_string()
+            .map_err(|e| {
+                Error::generic(&format!("Failed parsing user from rdb as string, {}.", e))
+            })?)
+        } else {
+            None
+        };
+
         // load gears box info
         let has_gears_box_info = raw::load_unsigned(rdb).map_err(|e| {
             Error::generic(&format!(
@@ -125,7 +149,7 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
             None
         };
 
-        match function_load_intrernal(user, &code, false, gears_box_info) {
+        match function_load_intrernal(user, &code, config, false, gears_box_info) {
             Ok(_) => {}
             Err(e) => return Err(Error::generic(&format!("Failed loading librart, {}", e))),
         }

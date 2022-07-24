@@ -9,7 +9,7 @@ use v8_rs::v8::{
     v8_value::V8LocalValue, v8_version,
 };
 
-use crate::get_function_flags;
+use crate::{get_function_flags, get_exception_msg};
 use crate::v8_backend::log;
 use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
@@ -288,8 +288,29 @@ pub(crate) fn initialize_globals(
     script_ctx: &Arc<V8ScriptCtx>,
     globals: &V8LocalObject,
     ctx_scope: &V8ContextScope,
-) {
+    config: Option<&String>,
+) -> Result<(), GearsApiError>{
     let redis = script_ctx.isolate.new_object();
+
+    match config {
+        Some(c) => {
+            let string = script_ctx.isolate.new_string(c);
+            let trycatch = script_ctx.isolate.new_try_catch();
+            let config_json = ctx_scope.new_object_from_json(&string);
+            if config_json.is_none() {
+                let error_msg = get_exception_msg(&script_ctx.isolate, trycatch);
+                return Err(GearsApiError::Msg(format!(
+                    "Failed parsing configuration as json, {}",
+                    error_msg
+                )));  
+            }
+            redis.set(ctx_scope, &script_ctx.isolate.new_string("config").to_value(), &config_json.unwrap())
+        }
+        None => {
+            // setting empty config
+            redis.set(ctx_scope, &script_ctx.isolate.new_string("config").to_value(), &script_ctx.isolate.new_object().to_value())
+        }
+    }
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
     redis.set(ctx_scope,
@@ -669,4 +690,6 @@ pub(crate) fn initialize_globals(
             })
             .to_value(),
     );
+
+    Ok(())
 }
