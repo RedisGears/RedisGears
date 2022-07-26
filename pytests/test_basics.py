@@ -464,3 +464,43 @@ redis.register_function("test", function(client){
     """
     env.expect('RG.FUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
     env.expect('RG.FUNCTION', 'call', 'lib', 'test').equal("OK")
+
+@gearsTest()
+def testNoAsyncFunctionOnMultiExec(env):
+    """#!js name=lib
+redis.register_function("test", async() => {return 'test'});
+    """
+    conn = env.getConnection()
+    p = conn.pipeline()
+    p.execute_command('RG.FUNCTION', 'CALL', 'lib', 'test')
+    try:
+        p.execute()
+        env.assertTrue(False, message='Except error on async function inside transaction')
+    except Exception as e:
+        env.assertContains('Blocking is not allow', str(e))
+
+@gearsTest()
+def testSyncFunctionWithPromiseOnMultiExec(env):
+    """#!js name=lib
+redis.register_function("test", () => {return new Promise((resume, reject) => {})});
+    """
+    conn = env.getConnection()
+    p = conn.pipeline()
+    p.execute_command('RG.FUNCTION', 'CALL', 'lib', 'test')
+    try:
+        p.execute()
+        env.assertTrue(False, message='Except error on async function inside transaction')
+    except Exception as e:
+        env.assertContains('Blocking is not allow', str(e))
+
+@gearsTest()
+def testAllowBlockAPI(env):
+    """#!js name=lib
+redis.register_function("test", (c) => {return c.allow_block()});
+    """
+    env.expect('RG.FUNCTION', 'CALL', 'lib', 'test').equal('true')
+    conn = env.getConnection()
+    p = conn.pipeline()
+    p.execute_command('RG.FUNCTION', 'CALL', 'lib', 'test')
+    res = p.execute()
+    env.assertEqual(res, ['false'])

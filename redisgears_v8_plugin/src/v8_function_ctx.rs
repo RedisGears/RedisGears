@@ -267,9 +267,17 @@ impl V8InternalFunction {
                             run_ctx.reply_with_error(r.as_str());
                         }
                     } else {
-                        let bg_execution_ctx = BackgroundClientHolder {
-                            c: Some(run_ctx.get_background_client()),
+                        let bc = match run_ctx.get_background_client() {
+                            Ok(bc) => bc,
+                            Err(e) => {
+                                run_ctx.reply_with_error(&format!(
+                                    "Can not block client for background execution, {}.",
+                                    e.get_msg()
+                                ));
+                                return FunctionCallResult::Done;
+                            }
                         };
+                        let bg_execution_ctx = BackgroundClientHolder { c: Some(bc) };
                         let execution_ctx_resolve = Arc::new(RefCell::new(bg_execution_ctx));
                         let execution_ctx_reject = Arc::clone(&execution_ctx_resolve);
                         let resolve =
@@ -349,6 +357,16 @@ impl V8Function {
 impl FunctionCtxInterface for V8Function {
     fn call(&self, run_ctx: &mut dyn RunFunctionCtxInterface) -> FunctionCallResult {
         if self.is_async {
+            let bg_client = match run_ctx.get_background_client() {
+                Ok(bc) => bc,
+                Err(e) => {
+                    run_ctx.reply_with_error(&format!(
+                        "Can not block client for background execution, {}.",
+                        e.get_msg()
+                    ));
+                    return FunctionCallResult::Done;
+                }
+            };
             let inner_function = Arc::clone(&self.inner_function);
             // if we are going to the background we must consume all the arguments
             let mut args = Vec::new();
@@ -362,7 +380,6 @@ impl FunctionCtxInterface for V8Function {
                 };
                 args.push(arg.to_string());
             }
-            let bg_client = run_ctx.get_background_client();
             let bg_redis_client = run_ctx.get_redis_client().get_background_redis_client();
             self.inner_function
                 .script_ctx
@@ -374,6 +391,9 @@ impl FunctionCtxInterface for V8Function {
         } else {
             let redis_client = run_ctx.get_redis_client();
             self.client.borrow_mut().set_client(redis_client);
+            self.client
+                .borrow_mut()
+                .set_allow_block(run_ctx.allow_block());
             self.inner_function.call_sync(run_ctx);
             self.client.borrow_mut().make_invalid();
             FunctionCallResult::Done

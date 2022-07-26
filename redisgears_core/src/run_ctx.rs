@@ -6,7 +6,7 @@ use redis_module::{
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::FUNCTION_FLAG_NO_WRITES, run_function_ctx::BackgroundRunFunctionCtxInterface,
     run_function_ctx::RedisClientCtxInterface, run_function_ctx::ReplyCtxInterface,
-    run_function_ctx::RunFunctionCtxInterface, CallResult,
+    run_function_ctx::RunFunctionCtxInterface, CallResult, GearsApiError,
 };
 
 use crate::{call_redis_command, get_globals};
@@ -129,14 +129,20 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
         Some(self.iter.next()?.as_slice())
     }
 
-    fn get_background_client(&self) -> Box<dyn ReplyCtxInterface> {
+    fn get_background_client(&self) -> Result<Box<dyn ReplyCtxInterface>, GearsApiError> {
+        if !self.allow_block() {
+            return Err(GearsApiError::Msg(
+                "Blocking is not allow inside multi/exec, Lua, or within another module (RM_Call)"
+                    .to_string(),
+            ));
+        }
         let blocked_client = self.ctx.block_client();
         let thread_ctx = ThreadSafeContext::with_blocked_client(blocked_client);
         let ctx = thread_ctx.get_ctx();
-        Box::new(BackgroundClientCtx {
+        Ok(Box::new(BackgroundClientCtx {
             _thread_ctx: thread_ctx,
             ctx: ctx,
-        })
+        }))
     }
 
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
@@ -145,6 +151,10 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
             Err(_) => None,
         };
         Box::new(RedisClient::new(user, self.flags))
+    }
+
+    fn allow_block(&self) -> bool {
+        self.ctx.allow_block()
     }
 }
 

@@ -125,19 +125,28 @@ pub(crate) fn call_result_to_js_object(
 
 pub(crate) struct RedisClient {
     client: Option<Box<dyn RedisClientCtxInterface>>,
+    allow_block: Option<bool>,
 }
 
 impl RedisClient {
     pub(crate) fn new() -> RedisClient {
-        RedisClient { client: None }
+        RedisClient {
+            client: None,
+            allow_block: Some(true),
+        }
     }
 
     pub(crate) fn make_invalid(&mut self) {
         self.client = None;
+        self.allow_block = None;
     }
 
     pub(crate) fn set_client(&mut self, c: Box<dyn RedisClientCtxInterface>) {
         self.client = Some(c);
+    }
+
+    pub(crate) fn set_allow_block(&mut self, allow_block: bool) {
+        self.allow_block = Some(allow_block);
     }
 }
 
@@ -263,6 +272,31 @@ pub(crate) fn get_redis_client(
                 };
 
                 call_result_to_js_object(isolate, ctx_scope, res)
+            })
+            .to_value(),
+    );
+
+    let redis_client_ref = Arc::clone(redis_client);
+    client.set(
+        ctx_scope,
+        &script_ctx.isolate.new_string("allow_block").to_value(),
+        &ctx_scope
+            .new_native_function(move |args, isolate, _ctx_scope| {
+                if args.len() != 0 {
+                    isolate
+                        .raise_exception_str("Wrong number of arguments to 'allow_block' function");
+                    return None;
+                }
+
+                let res = match redis_client_ref.borrow().allow_block.as_ref() {
+                    Some(c) => *c,
+                    None => {
+                        isolate.raise_exception_str("Used on invalid client");
+                        return None;
+                    }
+                };
+
+                Some(isolate.new_bool(res))
             })
             .to_value(),
     );

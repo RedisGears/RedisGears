@@ -173,6 +173,8 @@ redis.register_function('test', function(client, expected_name){
 
 `run_on_background` will return a `Promise` object, we return this Promise object as the function return value. When RedisGears sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much faster in case of cache hit.
 
+**Notice!!!** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.allow_block()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possibe.
+
 
 # Fail Blocking the Redis
 
