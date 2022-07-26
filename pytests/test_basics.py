@@ -403,9 +403,9 @@ def testCallTypeParsing(env):
     """#!js name=lib
 redis.register_function("test", function(client){
     var res;
-    
+
     res = client.call("debug", "protocol", "string");
-    if (typeof res !== "object" || res.__reply_type !== "status") {
+    if (typeof res !== "object" || res.__reply_type !== "bulk_string") {
         throw `string protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
     }
 

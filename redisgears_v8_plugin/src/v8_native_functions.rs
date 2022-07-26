@@ -120,6 +120,22 @@ pub(crate) fn call_result_to_js_object(
             Some(s.to_value())
         }
         CallResult::Null => Some(isolate.new_null()),
+        CallResult::StringBuffer(s) => {
+            let s = match String::from_utf8(s) {
+                Ok(s) => s,
+                Err(_) => {
+                    isolate.raise_exception_str("Could not decode value as string");
+                    return None;
+                }
+            };
+            let s = isolate.new_string(&s).to_string_object(isolate);
+            s.set(
+                ctx_scope,
+                &isolate.new_string("__reply_type").to_value(),
+                &isolate.new_string("bulk_string").to_value(),
+            );
+            Some(s.to_value())
+        }
     }
 }
 

@@ -114,7 +114,11 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
         RedisValue::SimpleString(s) => CallResult::SimpleStr(s),
         RedisValue::SimpleStringStatic(s) => CallResult::SimpleStr(s.to_string()),
         RedisValue::BulkString(s) => CallResult::BulkStr(s.to_string()),
-        RedisValue::BulkRedisString(s) => CallResult::BulkStr(s.try_as_str().unwrap().to_string()),
+        RedisValue::BulkRedisString(s) => {
+            let slice = s.as_slice().into_iter().map(|v| *v).collect::<Vec<u8>>();
+            CallResult::StringBuffer(slice)
+        }
+        RedisValue::StringBuffer(s) => CallResult::StringBuffer(s),
         RedisValue::Integer(i) => CallResult::Long(i),
         RedisValue::Float(f) => CallResult::Double(f),
         RedisValue::Array(a) => {
@@ -1421,26 +1425,47 @@ fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     }
 }
 
-fn on_stream_touched(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &str) {
+fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+    let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
+        Ok(s) => s,
+        Err(_) => {
+            ctx.log_warning("Binary key name is not yet supported");
+            return;
+        }
+    };
     if get_ctx().is_primary() {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_touched(event, key);
+        stream_ctx.on_stream_touched(event, &key);
     }
 }
 
-fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &str) {
+fn generic_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+    let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
+        Ok(s) => s,
+        Err(_) => {
+            ctx.log_warning("Binary key name is not yet supported");
+            return;
+        }
+    };
     if event == "del" {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_deleted(event, key);
+        stream_ctx.on_stream_deleted(event, &key);
     }
 }
 
-fn key_space_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &str) {
+fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+    let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
+        Ok(s) => s,
+        Err(_) => {
+            ctx.log_warning("Binary key name is not yet supported");
+            return;
+        }
+    };
     let globals = get_globals();
     if globals.avoid_key_space_notifications {
         return;
     }
-    globals.notifications_ctx.on_key_touched(event, key)
+    globals.notifications_ctx.on_key_touched(event, &key)
 }
 
 fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
@@ -1490,7 +1515,9 @@ fn scan_key_space_for_streams() {
                     Ok(key) => get_globals_mut()
                         .stream_ctx
                         .on_stream_touched("created", key),
-                    Err(_) => {}
+                    Err(_) => {
+                        get_ctx().log_warning("Binary streams names are not yet supported");
+                    }
                 }
             }
         }) {

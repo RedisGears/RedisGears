@@ -6,6 +6,7 @@ use redisgears_plugin_api::redisgears_plugin_api::stream_ctx::{
 
 use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInterface;
 
+use crate::v8_backend::log;
 use crate::v8_native_functions::{get_backgrounnd_client, get_redis_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
 
@@ -70,6 +71,7 @@ impl V8StreamCtxInternals {
             .map(|(f, v)| (str::from_utf8(f), str::from_utf8(v)))
             .filter(|(f, v)| {
                 if f.is_err() || v.is_err() {
+                    log("Stream binary data is not yet supported");
                     false
                 } else {
                     true
@@ -171,6 +173,7 @@ impl V8StreamCtxInternals {
                 .map(|(f, v)| (str::from_utf8(f), str::from_utf8(v)))
                 .filter(|(f, v)| {
                     if f.is_err() || v.is_err() {
+                        log("Stream binary data is not yet supported");
                         false
                     } else {
                         true

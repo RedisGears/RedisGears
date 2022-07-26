@@ -29,6 +29,7 @@ pub enum CallResult {
     Error(String),
     SimpleStr(String),
     BulkStr(String),
+    StringBuffer(Vec<u8>),
     Long(i64),
     Double(f64),
     Array(Vec<CallResult>),
