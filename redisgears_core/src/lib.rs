@@ -27,7 +27,7 @@ use crate::run_ctx::RunCtx;
 
 use libloading::{Library, Symbol};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use std::sync::{Arc, Mutex};
 
@@ -124,8 +124,27 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
                 .collect::<Vec<CallResult>>();
             CallResult::Array(res)
         }
+        RedisValue::Map(m) => {
+            let mut map = HashMap::new();
+            for (k, v) in m {
+                map.insert(k, redis_value_to_call_reply(v));
+            }
+            CallResult::Map(map)
+        }
+        RedisValue::Set(s) => {
+            let mut set = HashSet::new();
+            for v in s {
+                set.insert(v);
+            }
+            CallResult::Set(set)
+        }
+        RedisValue::Bool(b) => CallResult::Bool(b),
+        RedisValue::Double(d) => CallResult::Double(d),
+        RedisValue::BigNumber(s) => CallResult::BigNumber(s),
+        RedisValue::VerbatimString((t, s)) => CallResult::VerbatimString((t, s)),
+        
         RedisValue::Null => CallResult::Null,
-        _ => panic!("not yet implemented"),
+        _ => panic!("not yet supported"),
     }
 }
 
@@ -305,6 +324,7 @@ struct GlobalCtx {
     notifications_ctx: KeysNotificationsCtx,
     config: Config,
     avoid_key_space_notifications: bool,
+    allow_unsafe_redis_commands: bool,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -537,6 +557,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
             notifications_ctx: KeysNotificationsCtx::new(),
             config: Config::new(),
             avoid_key_space_notifications: false,
+            allow_unsafe_redis_commands: false,
         };
 
         let v8_path = match args.into_iter().next() {
@@ -758,6 +779,7 @@ fn function_call_result_to_redis_result(res: CallResult) -> RedisValue {
                 .map(|v| function_call_result_to_redis_result(v))
                 .collect::<Vec<RedisValue>>(),
         ),
+        _ => panic!("not yet supported"),
     }
 }
 
@@ -765,10 +787,17 @@ fn function_debug_command(
     _ctx: &Context,
     mut args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> RedisResult {
+    if !get_globals().config.enable_debug_command.enabled {
+        return Err(RedisError::Str("Debug command are disabled"));
+    }
     let backend_name = args.next_arg()?.try_as_str()?;
     match backend_name {
         "panic_on_thread_pool" => {
             execute_on_pool(|| panic!("debug panic"));
+            return Ok(RedisValue::SimpleStringStatic("OK"));
+        }
+        "allow_unsafe_redis_commands" => {
+            get_globals_mut().allow_unsafe_redis_commands = true;
             return Ok(RedisValue::SimpleStringStatic("OK"));
         }
         _ => (),
@@ -1558,5 +1587,6 @@ redis_module! {
     ],
     enum_configurations: [
         &get_globals().config.libraray_fatal_failure_policy,
+        &get_globals().config.enable_debug_command,
     ]
 }

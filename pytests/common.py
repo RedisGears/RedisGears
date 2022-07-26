@@ -1,6 +1,7 @@
 import signal
 import time
 import unittest
+import os.path
 from RLTest import Env, Defaults
 
 def toDictionary(res, max_recursion=1000):
@@ -100,9 +101,14 @@ def gearsTest(skipTest=False,
               skipOnRedis6=False,
               skipWithTLS=False,
               decodeResponses=True,
+              enableGearsDebugCommands=False,
               envArgs={}):
     def test_func_generator(test_function):
         def test_func():
+            root_path = os.path.dirname(os.path.dirname(__file__))
+            module_path = os.path.join(root_path, 'target/debug/libredisgears.so')
+            v8_plugin_path = os.path.join(root_path, 'target/debug/libredisgears_v8_plugin.so')
+            module_args = [v8_plugin_path]
             if skipTest:
                 raise unittest.SkipTest()
             if skipOnCluster:
@@ -118,7 +124,9 @@ def gearsTest(skipTest=False,
             if skipCallback is not None:
                 if skipCallback():
                     raise unittest.SkipTest()
-            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, **envArgs)
+            if enableGearsDebugCommands:
+                module_args += ["enable-debug-command", "yes"]
+            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**envArgs)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 
                 # able to execute commands on shards, on slow envs, run with valgrind,

@@ -9,7 +9,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::RunFunctionCtxInterface, CallResult,
 };
 
-use crate::call_redis_command;
+use crate::{call_redis_command, get_globals};
 
 use std::slice::Iter;
 
@@ -24,10 +24,15 @@ pub(crate) struct RedisClientCallOptions {
 impl RedisClientCallOptions {
     pub(crate) fn new(flags: u8) -> RedisClientCallOptions {
         let call_options = CallOptionsBuilder::new()
-            .script_mode()
             .replicate()
             .verify_acl()
-            .errors_as_replies();
+            .errors_as_replies()
+            .resp_3();
+        let call_options = if !get_globals().allow_unsafe_redis_commands {
+            call_options.script_mode()
+        } else {
+            call_options
+        };
         let call_options = if flags & FUNCTION_FLAG_NO_WRITES != 0 {
             call_options.no_writes()
         } else {

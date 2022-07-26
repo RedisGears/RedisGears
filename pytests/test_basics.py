@@ -25,7 +25,7 @@ redis.register_function("test", function(client){
     """
     env.expect('RG.FUNCTION', 'CALL', 'foo', 'test').equal('PONG')
 
-@gearsTest()
+@gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgrade(env):
     """#!js name=foo
 redis.register_function("test", function(client){
@@ -46,7 +46,7 @@ redis.register_function("test", function(client){
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
-@gearsTest()
+@gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailure(env):
     """#!js name=foo
 redis.register_function("test", function(client){
@@ -68,7 +68,7 @@ redis.register_function("test", "bar"); // this will fail
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
-@gearsTest()
+@gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithStreamConsumer(env):
     """#!js name=foo
 redis.register_stream_consumer("consumer", "stream", 1, false, async function(c){
@@ -96,7 +96,7 @@ redis.register_function("test", "bar"); // this will fail
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
-@gearsTest()
+@gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithNotificationConsumer(env):
     """#!js name=foo
 redis.register_notifications_consumer("consumer", "key", async function(c){
@@ -397,3 +397,70 @@ redis.register_function("test1", function(){
     env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
     env.expect('debug', 'reload').equal("OK")
     env.expect('RG.FUNCTION', 'CALL', 'lib', 'test1').equal(['foo', 'bar'])
+
+@gearsTest(enableGearsDebugCommands=True)
+def testCallTypeParsing(env):
+    """#!js name=lib
+redis.register_function("test", function(client){
+    var res;
+    
+    res = client.call("debug", "protocol", "string");
+    if (typeof res !== "object" || res.__reply_type !== "status") {
+        throw `string protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
+    }
+
+    res = client.call("debug", "protocol", "integer");
+    if (typeof res !== "bigint") {
+        throw `integer protocol returned wrong type, typeof='${typeof res}'.`;
+    }
+
+    res = client.call("debug", "protocol", "double");
+    if (typeof res !== "number") {
+        throw `double protocol returned wrong type, typeof='${typeof res}'.`;
+    }
+
+    res = client.call("debug", "protocol", "bignum");
+    if (typeof res !== "object" || res.__reply_type !== "big_number") {
+        throw `bignum protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
+    }
+
+    res = client.call("debug", "protocol", "null");
+    if (res !== null) {
+        throw `null protocol returned wrong type, res='${res}'.`;
+    }
+
+    res = client.call("debug", "protocol", "array");
+    if (!Array.isArray(res)) {
+        throw `array protocol returned no array type.`;
+    }
+
+    res = client.call("debug", "protocol", "set");
+    if (!(res instanceof Set)) {
+        throw `set protocol returned no set type.`;
+    }
+
+    res = client.call("debug", "protocol", "map");
+    if (typeof res !== "object") {
+        throw `map protocol returned no map type.`;
+    }
+
+    res = client.call("debug", "protocol", "verbatim");
+    if (typeof res !== "object" || res.__reply_type !== "verbatim") {
+        throw `verbatim protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
+    }
+
+    res = client.call("debug", "protocol", "true");
+    if (typeof res !== "boolean" || !res) {
+        throw `true protocol returned wrong type, typeof='${typeof res}', value='${res}'.`;
+    }
+
+    res = client.call("debug", "protocol", "false");
+    if (typeof res !== "boolean" || res) {
+        throw `true protocol returned wrong type, typeof='${typeof res}', value='${res}'.`;
+    }
+
+    return (()=>{var ret = new String("OK"); ret.__reply_type = "status"; return ret})();
+});
+    """
+    env.expect('RG.FUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
+    env.expect('RG.FUNCTION', 'call', 'lib', 'test').equal("OK")

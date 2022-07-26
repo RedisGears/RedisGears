@@ -238,6 +238,69 @@ impl RedisEnumConfigCtx for LibraryOnFatalFailurePolicy {
     }
 }
 
+pub(crate) struct EnableDebugCommand {
+    pub(crate) enabled: bool,
+    flags: ConfigFlags,
+}
+
+impl EnableDebugCommand {
+    fn new() -> EnableDebugCommand {
+        EnableDebugCommand {
+            enabled: false,
+            flags: ConfigFlags::new().emmutable(),
+        }
+    }
+}
+
+impl fmt::Display for EnableDebugCommand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.enabled {
+            true => write!(f, "yes"),
+            false => write!(f, "no"),
+        }
+    }
+}
+
+impl RedisConfigCtx for EnableDebugCommand {
+    fn name(&self) -> &'static str {
+        "enable-debug-command"
+    }
+
+    fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
+        Ok(())
+    }
+
+    fn flags(&self) -> &ConfigFlags {
+        &self.flags
+    }
+}
+
+impl RedisEnumConfigCtx for EnableDebugCommand {
+    fn default(&self) -> i32 {
+        false as i32
+    }
+
+    fn values(&self) -> Vec<(&str, i32)> {
+        vec![
+            ("yes", true as i32),
+            ("no", true as i32),
+        ]
+    }
+
+    fn get(&self, _name: &str) -> i32 {
+        self.enabled as i32
+    }
+
+    fn set(&mut self, _name: &str, value: i32) -> Result<(), RedisError> {
+        if value != 0 {
+            self.enabled = true;
+        } else {
+            self.enabled = false;
+        }
+        Ok(())
+    }
+}
+
 pub(crate) struct LockRedisTimeout {
     pub(crate) size: u128,
     flags: ConfigFlags,
@@ -300,6 +363,7 @@ pub(crate) struct Config {
     pub(crate) gears_box_address: GearBoxAddress,
     pub(crate) libraray_fatal_failure_policy: LibraryOnFatalFailurePolicy,
     pub(crate) lock_regis_timeout: LockRedisTimeout,
+    pub(crate) enable_debug_command: EnableDebugCommand,
 }
 
 impl Config {
@@ -310,6 +374,7 @@ impl Config {
             gears_box_address: GearBoxAddress::new(),
             libraray_fatal_failure_policy: LibraryOnFatalFailurePolicy::new(),
             lock_regis_timeout: LockRedisTimeout::new(),
+            enable_debug_command: EnableDebugCommand::new(),
         }
     }
 
@@ -388,6 +453,9 @@ impl Config {
             x if x == self.libraray_fatal_failure_policy.name() => {
                 Self::set_enum_value(&mut self.libraray_fatal_failure_policy, val)
             }
+            x if x == self.enable_debug_command.name() => {
+                Self::set_enum_value(&mut self.enable_debug_command, val)
+            }
             x if x == self.lock_regis_timeout.name() => {
                 Self::set_numeric_value(&mut self.lock_regis_timeout, val)
             }
@@ -417,6 +485,9 @@ impl Config {
             }
             x if x == self.libraray_fatal_failure_policy.name() => {
                 Self::is_emmutable(&mut self.libraray_fatal_failure_policy)
+            }
+            x if x == self.enable_debug_command.name() => {
+                Self::is_emmutable(&mut self.enable_debug_command)
             }
             x if x == self.lock_regis_timeout.name() => {
                 Self::is_emmutable(&mut self.lock_regis_timeout)

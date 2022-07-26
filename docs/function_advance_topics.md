@@ -166,3 +166,23 @@ And we can see that the last update field name is `last_update`:
 ```
 
 Notice, RedisGears only gives the library the json configuration, **its the library responsibility to verify the correcness of the given configuration**.
+
+## Resp <-> JS Conversion
+
+When running Redis commands from within a RedisGears function using `client.call` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
+
+| resp 3            | JS object type                                                                                                                              |
+|-------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `status`          | `StringObject` with a field called `__reply_type` and value `status`                                                                        |
+| `bulk string`     | `StringObject` with a field called `__reply_type` and value `bulk_string`                                                                   |
+| `Error`           | Raise JS exception                                                                                                                          |
+| `long`            | JS big integer                                                                                                                              |
+| `double`          | JS number                                                                                                                                   |
+| `array`           | JS array                                                                                                                                    |
+| `map`             | JS object                                                                                                                                   |
+| `set`             | JS set                                                                                                                                      |
+| `bool`            | JS boolean                                                                                                                                  |
+| `big number`      | `StringObject` with a field called `__reply_type` and value `big_number`                                                                    |
+| `verbatim string` | `StringObject` with 2 additional fields: 1. `__reply_type` and value `verbatim` 2. `__ext` with the value of the ext in the verbatim string |
+| `null`            | JS null                                                                                                                                     |
+|                   |                                                                                                                                             |

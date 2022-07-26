@@ -51,6 +51,21 @@ fn send_reply(
         client.reply_with_double(val.get_number());
     } else if val.is_string() {
         client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
+    } else if val.is_string_object() {
+        // check the type of the reply
+        let obj_reply = val.as_object();
+        let reply_type = obj_reply.get(ctx_scope, &isolate.new_string("__reply_type").to_value());
+        if reply_type.is_some() {
+            let reply_type = reply_type.unwrap();
+            if reply_type.is_string() {
+                let reply_type_v8_str = reply_type.to_utf8(isolate).unwrap();
+                if reply_type_v8_str.as_str() == "status" {
+                    client.reply_with_simple_string(val.to_utf8(isolate).unwrap().as_str());
+                    return;
+                }
+            }
+        } 
+        client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
     } else if val.is_array() {
         let arr = val.as_array();
         client.reply_with_array(arr.len());
@@ -64,7 +79,7 @@ fn send_reply(
         client.reply_with_array(keys.len() * 2);
         for i in 0..keys.len() {
             let key = keys.get(ctx_scope, i);
-            let obj = res.get(ctx_scope, &key);
+            let obj = res.get(ctx_scope, &key).unwrap();
             send_reply(nesting_level + 1, isolate, ctx_scope, client, key);
             send_reply(nesting_level + 1, isolate, ctx_scope, client, obj);
         }

@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 
 pub mod backend_ctx;
 pub mod function_ctx;
@@ -31,6 +32,11 @@ pub enum CallResult {
     Long(i64),
     Double(f64),
     Array(Vec<CallResult>),
+    Map(HashMap<String, CallResult>),
+    Set(HashSet<String>),
+    Bool(bool),
+    BigNumber(String),
+    VerbatimString((String, String)),
     Null,
 }
 
