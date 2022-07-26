@@ -131,7 +131,7 @@ redis.register_function("test", function(client){
     return client.call('get', 'x');
 })  
     """
-    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test').equal("undefined")
+    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test').equal("null")
 
 @gearsTest()
 def testOOM(env):
