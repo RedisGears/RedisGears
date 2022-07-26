@@ -28,12 +28,20 @@ pub(crate) fn call_result_to_js_object(
     match res {
         CallResult::SimpleStr(s) => {
             let s = isolate.new_string(&s).to_string_object(isolate);
-            s.set(ctx_scope, &isolate.new_string("__reply_type").to_value(), &isolate.new_string("status").to_value());
+            s.set(
+                ctx_scope,
+                &isolate.new_string("__reply_type").to_value(),
+                &isolate.new_string("status").to_value(),
+            );
             Some(s.to_value())
         }
         CallResult::BulkStr(s) => {
             let s = isolate.new_string(&s).to_string_object(isolate);
-            s.set(ctx_scope, &isolate.new_string("__reply_type").to_value(), &isolate.new_string("bulk_string").to_value());
+            s.set(
+                ctx_scope,
+                &isolate.new_string("__reply_type").to_value(),
+                &isolate.new_string("bulk_string").to_value(),
+            );
             Some(s.to_value())
         }
         CallResult::Error(e) => {
@@ -90,13 +98,25 @@ pub(crate) fn call_result_to_js_object(
         CallResult::Bool(b) => Some(isolate.new_bool(b)),
         CallResult::BigNumber(s) => {
             let s = isolate.new_string(&s).to_string_object(isolate);
-            s.set(ctx_scope, &isolate.new_string("__reply_type").to_value(), &isolate.new_string("big_number").to_value());
+            s.set(
+                ctx_scope,
+                &isolate.new_string("__reply_type").to_value(),
+                &isolate.new_string("big_number").to_value(),
+            );
             Some(s.to_value())
         }
         CallResult::VerbatimString((ext, s)) => {
             let s = isolate.new_string(&s).to_string_object(isolate);
-            s.set(ctx_scope, &isolate.new_string("__reply_type").to_value(), &isolate.new_string("verbatim").to_value());
-            s.set(ctx_scope, &isolate.new_string("__ext").to_value(), &isolate.new_string(&ext).to_value());
+            s.set(
+                ctx_scope,
+                &isolate.new_string("__reply_type").to_value(),
+                &isolate.new_string("verbatim").to_value(),
+            );
+            s.set(
+                ctx_scope,
+                &isolate.new_string("__ext").to_value(),
+                &isolate.new_string(&ext).to_value(),
+            );
             Some(s.to_value())
         }
         CallResult::Null => Some(isolate.new_null()),

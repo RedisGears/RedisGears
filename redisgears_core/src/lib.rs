@@ -142,7 +142,7 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
         RedisValue::Double(d) => CallResult::Double(d),
         RedisValue::BigNumber(s) => CallResult::BigNumber(s),
         RedisValue::VerbatimString((t, s)) => CallResult::VerbatimString((t, s)),
-        
+
         RedisValue::Null => CallResult::Null,
         _ => panic!("not yet supported"),
     }

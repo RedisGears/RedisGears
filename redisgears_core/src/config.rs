@@ -281,10 +281,7 @@ impl RedisEnumConfigCtx for EnableDebugCommand {
     }
 
     fn values(&self) -> Vec<(&str, i32)> {
-        vec![
-            ("yes", true as i32),
-            ("no", true as i32),
-        ]
+        vec![("yes", true as i32), ("no", true as i32)]
     }
 
     fn get(&self, _name: &str) -> i32 {

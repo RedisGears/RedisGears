@@ -64,7 +64,7 @@ fn send_reply(
                     return;
                 }
             }
-        } 
+        }
         client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
     } else if val.is_array() {
         let arr = val.as_array();
