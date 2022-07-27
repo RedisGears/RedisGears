@@ -1,6 +1,6 @@
 # Create a Development Environemt
 
-When the project is small it is accaptable to have a single file that contains the entire code base. But as the project grows and become complex it is less comftable to mantain it as a single file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this taturial we will explain how to create a multi file project and how to wrap it as a single file and send it to RedisGears. The taturial assume you have Redis with RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
+When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and becomes complex it is less comfortable to mantain it as a single-file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi-file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi-file project and how to wrap it as a single file and send it to RedisGears. The tutorial assume you have Redis with RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
 
 ## Pre-requisite
 
@@ -33,7 +33,7 @@ The above will generate a `package.json` file that looks as follow:
 
 ```
 
-In order to wrap our multi file project into a single file, we will use [webpack](https://webpack.js.org/), let install the required webpack tools:
+In order to wrap our multi-file project into a single file, we will use [webpack](https://webpack.js.org/), let install the required webpack tools:
 
 ```bash
 npm install webpack webpack-cli --save-dev
@@ -73,7 +73,7 @@ module.exports = {
 }
 ```
 
-The `entry` field is the entery point of our project. The plugin we use instruct webpack to add a banner line at the begining of the generated code that will contains the shabeng syntax required by RedisGears along side the library name.
+The `entry` field is the entry point of our project. The plugin we use instruct webpack to add a banner line at the begining of the generated code that will contains the shebang syntax required by RedisGears along side the library name.
 
 We can now build our project, from within the root directory run the following command:
 
@@ -103,7 +103,7 @@ An `OK` reply will indicating that the library was loaded successfully. Test the
 
 ## Adding Files to our Project
 
-Lets adda another file under the `src` direcotry called `test.js` that contains the following code:
+Lets add another file under the `src` direcotry called `test.js` that contains the following code:
 
 ```js
 export var test = 'test';
@@ -125,7 +125,7 @@ If we will compile our code again:
 npx webpack --config webpack.config.js
 ```
 
-We will see that the generated file content has changed and it is now contains the following code:
+We will see that the generated file content has changed and it now contains the following:
 
 ```js
 #!js name=foo
@@ -147,7 +147,7 @@ And we can test our function:
 
 ## Using an External Library
 
-Now lets use some exteral library, for example `mathjs`. To install the library run the following npm command on the project root directory:
+Now lets use an exteral library, for example `mathjs`. To install the library run the following npm command on the project root directory:
 
 ```
 npm install mathjs
@@ -182,7 +182,7 @@ And run it:
 "3.1415926535897931"
 ```
 
-Notice that RedisGears **only supports pure JS libraries**, a library that has a native code or use some native JS API provided by the browser or by nodejs **will not work**.
+Notice that RedisGears **only supports pure JS libraries**, a library that has native code or uses native JS API provided by the browser or by nodejs **will not work**.
 
 ## Easy Build and Deploy
 
@@ -228,4 +228,4 @@ Deploying
 OK
 ```
 
-You are welcome to come up with a new and nice ideas of impoving the development environment and share it with us.
+You are welcome to come up with new and nice ideas of improving the development environment and share it with us.

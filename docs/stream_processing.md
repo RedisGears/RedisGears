@@ -4,7 +4,7 @@ RedisGears 2.0 comes with a full stream API to processes data from [Redis Stream
 
 ## Register a Stream consumer
 
-RedisGears provide an API that allows Register a stream consumer. Do not get confuse with [Redis Streams Consumer groups](https://redis.io/docs/manual/data-types/streams/#consumer-groups), RedisGears uses Redis Module API to efficiently read the stream and manage its consumers. This approach gives a much better performance as there is no need to invoke any Redis commands in order to read from the stream. Lets see a simple example:
+RedisGears provide an API that allows you to register a stream consumer. Do not get confused with [Redis Streams Consumer groups](https://redis.io/docs/manual/data-types/streams/#consumer-groups), RedisGears uses the Redis Module API to efficiently read the stream and manage its consumers. This approach gives a much better performance as there is no need to invoke any Redis commands in order to read from the stream. Lets see a simple example:
 
 ```js
 #!js name=lib
@@ -25,11 +25,11 @@ redis.register_stream_consumer(
 );
 ```
 
-Argument Discription:
+Argument Description:
 
 * consumer - the consumer name.
 * stream - streams name prefix on which to trigger the callback.
-* window - how many elements can be proceesed simultaneously.
+* window - how many elements can be processed simultaneously.
 * trim stream - whether or not to trim the stream.
 * callback - the callback to invoke on each element in the stream. Following the same rules of [Sync and Async invocation](sync_and_async_run.md). The callback will be invoke only on primary shard.
 
@@ -66,7 +66,7 @@ The `data` argument which pass to the stream consumer callback are in the follow
 }
 ```
 
-The reason why the record is a list of touples and not an object is because the Redis Stream spacifications allows duplicate keys.
+The reason why the record is a list of tuples and not an object is because the Redis Stream specifications allow for duplicate keys.
 
 We can observe the streams which are tracked by our registered consumer using [RG.FUNCTION LIST](commands.md#rgfunction-list) command:
 
@@ -139,11 +139,11 @@ We can observe the streams which are tracked by our registered consumer using [R
 
 ## Enable Trimming
 
-It is enough that a single consumer will enable trimming so that the stream will be trimmed. The stream will be trim according to the slowest consumer that consume the stream at a given time (even if this is not the consumer that enabled the trimming). Raising exception durring the callback invocation will **not prevent the trimming**. The callback should decide how to handle failures by invoke a retry or write some error log. The error will be added to the `last_error` field on [RG.FUNCTION LIST](commands.md#rgfunction-list) command.
+It is enough that a single consumer will enable trimming so that the stream will be trimmed. The stream will be trimmed according to the slowest consumer that consumes the stream at any given time (even if this is not the consumer that enabled the trimming). Raising exception during the callback invocation will **not prevent the trimming**. The callback should decide how to handle failures by invoke a retry or write some error log. The error will be added to the `last_error` field on [RG.FUNCTION LIST](commands.md#rgfunction-list) command.
 
 ## Data processing Guarantees
 
-As long as the primary shard is up and running we guarantee exactly once property (the callback will be triggered exactly one time on each element in the stream). In case of failure such as shard crashing, we guarantee at least once propert (the callback will be triggered at least one time on each element in the stream)
+As long as the primary shard is up and running we guarantee exactly once property (the callback will be triggered exactly one time on each element in the stream). In case of failure such as shard crashing, we guarantee at least once propert (the callback will be triggered at least one time on each element in the stream).
 
 ## Upgrades
 

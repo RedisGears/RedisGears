@@ -35,7 +35,7 @@ OK
 
 ```
 
-It is also possible to get all th arguments given to the function as a `JS` array. This is how we can extend the above example to except multiple keys and return their values:
+It is also possible to get all the arguments given to the function as a `JS` array. This is how we can extend the above example to accept multiple keys and return their values:
 
 ```js
 #!js name=lib
@@ -72,8 +72,8 @@ Run example:
 
 ## Function Flags
 
-It is possible to provide some information about the function behaviour on registration time. Such information is called function flags. The function flags is a optional argument that can be given after the function implementation. The supported flags are:
-1. `no-writes` - indicating that the function performs not write commands. If this flag is on, it will be possible to run the function on read only replicas or on OOM. RedisGears force this flag behaviour, this means that any attempt to call a write command from within a function that has this flag will result in an exception.
+It is possible to provide some information about the function behaviour at registration time. Such information is called function flags. The function flags is an optional argument that can be given after the function implementation. The supported flags are:
+1. `no-writes` - indicating that the function performs no write commands. If this flag is on, it will be possible to run the function on read only replicas or on OOM. RedisGears force this flag behaviour, this means that any attempt to call a write command from within a function that has this flag will result in an exception.
 2. `allow-oom` - by default, RedisGears will not allow running any function on OOM. This flag allows overide this behaviour and running the function even on OOM. Enable this flag is considered unsafe and could cause Redis to bypass the maxmemory value. **User should only enable this flag if he knows for sure that his function do not consume memory** (for example, on OOM, it is safe to run a function that only deletes data).
 
 The following example shows how to set the `no-writes` flag:
@@ -101,7 +101,7 @@ OK
 
 ## Library Configuration
 
-When writing a library you might want to be able to provide a loading configuration, so that different users can use the same library with slightly different behaviour (without changing the base code). For example, assuming you writing a library that adds `__last_updated__` field to a hash (you can see how it can also be done with [databases triggers](databse_triggers.md)), the code will look like this:
+When writing a library you might want to provide a loading configuration, so that different users can use the same library with slightly different behaviour (without changing the base code). For example, assuming you writing a library that adds `__last_updated__` field to a hash (you can see how it can also be done with [databases triggers](databse_triggers.md)), the code will look like this:
 
 ```js
 #!js name=lib
@@ -125,7 +125,7 @@ Run example:
 4) "1658653125"
 ```
 
-The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? RedisGears allow specify library configuration at load time using `CONFIG` argument given to [`FUNCTION LOAD`](commands.md#rgfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
+The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? RedisGears allows you to specify library configuration at load time using `CONFIG` argument given to [`FUNCTION LOAD`](commands.md#rgfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
 
 ```js
 #!js name=lib
@@ -146,7 +146,7 @@ redis.register_function("hset", function(client, key, field, val){
 });
 ```
 
-Notica that in the above example we first set `last_update_field_name` to `__last_update__`, this will be the default value in case not given by the configuration. Then we check if we have `last_update_field_name` in our configuration and if we do we use it. We can now upload our function with `CONFIG` argument:
+Notice that in the above example we first set `last_update_field_name` to `__last_update__`, this will be the default value in case not given by the configuration. Then we check if we have `last_update_field_name` in our configuration and if we do, we use it. We can now upload our function with `CONFIG` argument:
 
 ```bash
 > redis-cli -x RG.FUNCTION LOAD UPGRADE CONFIG '{"last_update_field_name":"last_update"}' < <path to code file>
