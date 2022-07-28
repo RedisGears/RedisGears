@@ -62,7 +62,7 @@ redis.register_function('test', async function(c1){
     });
 })
     """
-    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test').error().contains('thread is already blocked')
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('thread is already blocked')
     
 @gearsTest()
 def testCallRedisWhenNotBlocked(env):
@@ -75,7 +75,7 @@ redis.register_function('test', async function(c){
     });
 })
     """
-    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test').error().contains('thread is not locked')
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('thread is not locked')
     
 @gearsTest()
 def testCommandsNotAllowedOnScript(env):
@@ -89,8 +89,8 @@ redis.register_function('test2', async function(c1){
     });
 })
     """
-    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test1').error().contains('is not allowed on script mode')
-    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test2').error().contains('is not allowed on script mode')
+    env.expect('RG.FCALL', 'foo', 'test1', '0').error().contains('is not allowed on script mode')
+    env.expect('RG.FCALL', 'foo', 'test2', '0').error().contains('is not allowed on script mode')
 
 @gearsTest()
 def testJSStackOverflow(env):
@@ -100,7 +100,7 @@ function test() {
 }
 redis.register_function('test', test);
     """
-    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test').error().contains('Maximum call stack size exceeded')
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Maximum call stack size exceeded')
 
 @gearsTest()
 def testJSStackOverflowOnLoading(env):
@@ -156,5 +156,16 @@ function test() {
 }
 redis.register_function('test', test);
     """
-    env.expect('RG.FUNCTION', 'CALL', 'foo', 'test')
+    env.expect('RG.FCALL', 'foo', 'test', '0')
     env.expect('PING').equal(True)
+
+@gearsTest()
+def testFcallWithWrangArgumets(env):
+    """#!js name=foo
+function test() {
+    return 'test';
+}
+redis.register_function('test', test);
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '10', 'bar').error().contains('Not enough arguments was given')
+    env.expect('RG.FCALL', 'foo', 'test').error().contains('wrong number of arguments ')

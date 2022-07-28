@@ -68,12 +68,14 @@ Assuming we put the following code on a file `lib.js`, we can register our funct
 OK
 ```
 
-And now we can execute our function using `RG.FUNCTION CALL` command, the command gets the library name and the function name:
+And now we can execute our function using [`RG.FCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name:
 
 ```bash
-> redis-cli RG.FUNCTION CALL lib hello_world
+> redis-cli RG.FCALL lib hello_world 0
 "hello_world"
 ```
+
+Notice that [`RG.FCALL`](docs/commands.md#rgfcal) command arguments is very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on RedisGears the command also gets the library name. The `0` represent the number of keys that will follow (which in our case is `0`).
 
 ### Calling Redis Commands Inside our Gears Function
 
@@ -99,9 +101,9 @@ We get the error because the library with the same name already exists, we can u
 OK
 ```
 
-And now we can invoke `my_ping` using `RG.FUNCTION CALL`:
+And now we can invoke `my_ping` using [`RG.FCALL`](docs/commands.md#rgfcal) :
 ```bash
-> redis-cli RG.FUNCTION CALL lib my_ping
+> redis-cli RG.CALL lib my_ping 0
 "PONG"
 ```
 

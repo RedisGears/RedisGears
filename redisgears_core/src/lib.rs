@@ -653,6 +653,7 @@ fn function_call_command(
 ) -> RedisResult {
     let library_name = args.next_arg()?.try_as_str()?;
     let function_name = args.next_arg()?.try_as_str()?;
+    let num_keys = args.next_arg()?.try_as_str()?.parse::<usize>()?;
     let libraries = get_libraries();
 
     let lib = libraries.get(library_name);
@@ -687,6 +688,13 @@ fn function_call_command(
     }
 
     let args = args.collect::<Vec<redis_module::RedisString>>();
+    if args.len() < num_keys {
+        return Err(RedisError::String(format!(
+            "Not enough arguments was given, expected at least {} arguments, got {} arguments.",
+            num_keys,
+            args.len()
+        )));
+    }
     let args_iter = args.iter();
 
     {
@@ -1373,12 +1381,16 @@ fn function_install_lib_command(
     }
 }
 
+fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let args = args.into_iter().skip(1);
+    function_call_command(ctx, args)
+}
+
 fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let mut args = args.into_iter().skip(1);
     let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
     match sub_command.as_ref() {
         "load" => function_load_command(ctx, args),
-        "call" => function_call_command(ctx, args),
         "list" => function_list_command(ctx, args),
         "del" => function_del_command(ctx, args),
         "debug" => function_debug_command(ctx, args),
@@ -1589,8 +1601,9 @@ redis_module! {
     post_init: js_post_init,
     info: js_info,
     commands: [
-        ["rg.function", function_command, "readonly deny-script", 0,0,0],
-        ["rg.box", gears_box_command, "readonly deny-script", 0,0,0],
+        ["rg.function", function_command, "may-replicate deny-script", 0,0,0],
+        ["rg.fcall", function_call, "may-replicate deny-script", 4,4,1],
+        ["rg.box", gears_box_command, "may-replicate deny-script", 0,0,0],
         ["rg.config", config_command, "readonly deny-script", 0,0,0],
         ["_rg_internals.update_stream_last_read_id", update_stream_last_read_id, "readonly", 0,0,0],
     ],

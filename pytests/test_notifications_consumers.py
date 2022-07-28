@@ -18,13 +18,13 @@ redis.register_function("n_notifications", function(){
 })
     """
 
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(0)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
     env.expect('SET', 'X', '2').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(2)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(2)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(3)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(3)
 
 @gearsTest()
 def testAsyncNotification(env):
@@ -39,13 +39,13 @@ redis.register_function("n_notifications", async function(){
 })
     """
 
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(0)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 1, lambda: env.cmd('RG.FUNCTION', 'CALL', 'lib', 'n_notifications'))
+    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'n_notifications', '0'))
     env.expect('SET', 'X', '2').equal(True)
-    runUntil(env, 2, lambda: env.cmd('RG.FUNCTION', 'CALL', 'lib', 'n_notifications'))
+    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'n_notifications', '0'))
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 3, lambda: env.cmd('RG.FUNCTION', 'CALL', 'lib', 'n_notifications'))
+    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'n_notifications', '0'))
 
 @gearsTest()
 def testCallRedisOnNotification(env):
@@ -81,11 +81,11 @@ redis.register_function("simple_set", function(client){
     return client.call('set', 'x', '1');
 });
     """
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(0)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'simple_set').equal('OK')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALL', 'lib', 'simple_set', '0').equal('OK')
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
@@ -105,11 +105,11 @@ redis.register_function("simple_set", async function(client){
     });
 });
     """
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(0)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'simple_set').equal('OK')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALL', 'lib', 'simple_set', '0').equal('OK')
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAnotherNotification(env):
@@ -124,9 +124,9 @@ redis.register_function("n_notifications", async function(){
     return n_notifications
 });
     """
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(0)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinStreamConsumer(env):
@@ -147,9 +147,9 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(client) {
     client.call('set', 'X' , '2');
 }) 
     """
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(0)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
     env.cmd('XADD', 'stream:1', '*', 'foo', 'bar')
     env.expect('GET', 'X').equal('2')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'n_notifications').equal(1)
+    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)

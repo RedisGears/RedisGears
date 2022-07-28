@@ -2,7 +2,7 @@
 
 ## Function Arguments
 
-The arguments given on the [`RG.FUNCTION CALL`](docs/commands.md#rgfunction-call) command, after the function name, will be passed to the function callback. The following example shows how to implement a simple function that returns the value of a key whether its a string or a hash:
+The arguments given on the [`RG.FCALL`](docs/commands.md#rgfcall) command, after the function name, will be passed to the function callback. The following example shows how to implement a simple function that returns the value of a key whether its a string or a hash:
 
 ```js
 #!js name=lib
@@ -23,11 +23,11 @@ Example of running the following function:
 ```bash
 127.0.0.1:6379> set x 1
 OK
-127.0.0.1:6379> rg.function call foo my_get x
+127.0.0.1:6379> rg.fcall foo my_get 1 x
 "1"
 127.0.0.1:6379> hset h foo bar x y
 (integer) 2
-127.0.0.1:6379> rg.function call foo my_get h
+127.0.0.1:6379> rg.fcall foo my_get 1 h
 1) "foo"
 2) "bar"
 3) "x"
@@ -62,7 +62,7 @@ redis.register_function('my_get', function(client, ...keys){
 Run example:
 
 ```bash
-127.0.0.1:6379> rg.function call foo my_get x h
+127.0.0.1:6379> rg.fcall foo my_get 2 x h
 1) "1"
 2) 1) "foo"
    2) "bar"
@@ -90,11 +90,11 @@ redis.register_function('my_ping', function(client){
 Run example:
 
 ```bash
-127.0.0.1:6379> rg.function call foo my_ping
+127.0.0.1:6379> rg.fcall foo my_ping 0
 "PONG"
 127.0.0.1:6379> config set maxmemory 1
 OK
-127.0.0.1:6379> rg.function call foo my_ping
+127.0.0.1:6379> rg.fcall foo my_ping 0
 "PONG"
 
 ```
@@ -116,7 +116,7 @@ redis.register_function("hset", function(client, key, field, val){
 Run example:
 
 ```bash
-127.0.0.1:6379> RG.FUNCTION call lib hset k foo bar
+127.0.0.1:6379> RG.Fcall lib hset k foo bar 0
 (integer) 2
 127.0.0.1:6379> hgetall k
 1) "foo"
@@ -156,7 +156,7 @@ OK
 And we can see that the last update field name is `last_update`: 
 
 ```bash
-127.0.0.1:6379> RG.FUNCTION call lib hset h foo bar
+127.0.0.1:6379> RG.FCALL lib hset h foo bar 0
 (integer) 2
 127.0.0.1:6379> hgetall h
 1) "foo"

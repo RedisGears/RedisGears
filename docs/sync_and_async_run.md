@@ -36,7 +36,7 @@ redis.register_function('test', async function(client){
 Running this function will return a `pong` reply:
 
 ```bash
-127.0.0.1:6379> RG.FUNCTION CALL lib test
+127.0.0.1:6379> RG.FCALL lib test 0
 "PONG"
 ```
 

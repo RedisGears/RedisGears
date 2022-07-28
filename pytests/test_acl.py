@@ -5,41 +5,41 @@ from common import runUntil
 @gearsTest()
 def testAclOnSyncFunction(env):
     """#!js name=lib
-redis.register_function("get", function(client, key){
+redis.register_function("get", function(client, dummy, key){
     return client.call('get', key);
 })
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'x').equal('1')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'cached:x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'x').error().contains('acl verification failed')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'cached:x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('acl verification failed')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclOnAsyncFunction(env):
     """#!js name=lib
-redis.register_function("get", async function(client, key){
+redis.register_function("get", async function(client, dummy, key){
     return client.block(function(client){
         return client.call('get', key);
     });
 })
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'x').equal('1')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'cached:x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'x').error().contains('acl verification failed')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'cached:x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('acl verification failed')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclOnAsyncComplex(env):
     """#!js name=lib
-redis.register_function("get", async function(client, key){
+redis.register_function("get", async function(client, dummy, key){
     return client.block(function(client){
         return client.run_on_background(async function(client) {
             return client.block(function(client) {
@@ -49,14 +49,14 @@ redis.register_function("get", async function(client, key){
     });
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'x').equal('1')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'cached:x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'x').error().contains('acl verification failed')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'get', 'cached:x').equal('1')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('acl verification failed')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclUserDeletedWhileFunctionIsRunning(env):
@@ -73,7 +73,7 @@ redis.register_function("async_get_continue", async function(client){
     })
 });
 
-redis.register_function("async_get_start", function(client, key){
+redis.register_function("async_get_start", function(client, dummy, key){
     client.run_on_background(async function(client) {
         await new Promise((resolve, reject) => {
             async_get_continue = resolve;
@@ -89,33 +89,33 @@ redis.register_function("async_get_start", function(client, key){
     return "OK";
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'async_get_start', 'x').equal('OK')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'async_get_continue').equal('1')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'async_get_start', 'cached:x').equal('OK')
-    env.expect('RG.FUNCTION', 'CALL', 'lib', 'async_get_continue').equal('1')
+    env.expect('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'x').equal('OK')
+    env.expect('RG.FCALL', 'lib', 'async_get_continue', '0').equal('1')
+    env.expect('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x').equal('OK')
+    env.expect('RG.FCALL', 'lib', 'async_get_continue', '0').equal('1')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
 
-    env.assertEqual(c.execute_command('RG.FUNCTION', 'CALL', 'lib', 'async_get_start', 'x'), "OK")
+    env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'x'), "OK")
     try:
-        c.execute_command('RG.FUNCTION', 'CALL', 'lib', 'async_get_continue')
+        c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains("acl verification failed", str(e))
 
-    env.assertEqual(c.execute_command('RG.FUNCTION', 'CALL', 'lib', 'async_get_start', 'cached:x'), "OK")
+    env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
     try:
-        env.assertEqual(c.execute_command('RG.FUNCTION', 'CALL', 'lib', 'async_get_continue'), '1')
+        env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0'), '1')
     except Exception as e:
         env.assertTrue(False, message='Command failed though should success, %s' % str(e))
 
-    env.assertEqual(c.execute_command('RG.FUNCTION', 'CALL', 'lib', 'async_get_start', 'cached:x'), "OK")
+    env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
     env.expect('ACL', 'DELUSER', 'alice').equal(1) # delete alice user while function is running
     try:
-        c.execute_command('RG.FUNCTION', 'CALL', 'lib', 'async_get_continue')
+        c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains("Failed authenticating client", str(e))
@@ -127,7 +127,7 @@ redis.register_notifications_consumer("test", "", function(client, data) {
     return client.call("get", "x");
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
     c.execute_command('RG.FUNCTION', 'LOAD', script)
@@ -149,7 +149,7 @@ redis.register_notifications_consumer("test", "", async function(client, data) {
     });
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
     c.execute_command('RG.FUNCTION', 'LOAD', script)
@@ -173,7 +173,7 @@ redis.register_stream_consumer("consumer", "", 1, false, function(client){
     return client.call("get", "x");
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
     c.execute_command('RG.FUNCTION', 'LOAD', script)
@@ -198,7 +198,7 @@ redis.register_stream_consumer("consumer", "", 1, false, async function(client){
     });
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
     c.execute_command('RG.FUNCTION', 'LOAD', script)

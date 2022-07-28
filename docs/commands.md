@@ -91,18 +91,20 @@ Information about the requested libraries.
 
 ```
 
-## RG.FUNCTION CALL
+## RG.FCALL
 
 Invoke a function.
 
 ```
-RG.FUNCTION CALL <library name> <function name> [<arg1> ... <argn>]
+RG.FCALL <library name> <function name> <number of keys> [<key1> ... <keyn>] [<arg1> ... <argn>]
 ```
 
 _Arguments_
 
 * _library name_ - The library name contains the function.
 * _function name_ - The function name to run.
+* _number of keys_ - The number of keys that will follow
+* _key1_ ... _keyn_ - keys that will be touched by the function.
 * _arg1_ ... _argn_ - Additional argument to pass to the function.
 
 _Return_
@@ -111,6 +113,6 @@ The return value from the function on error in case of failure.
 
 **Example**
 ```bash
-> RG.FUNCTION CALL lib foo
+> RG.FCALL lib foo 0
 "bar"
 ```

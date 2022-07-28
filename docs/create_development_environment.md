@@ -97,7 +97,7 @@ redis-cli -x RG.FUNCTION LOAD < ./dist/main.js
 An `OK` reply will indicating that the library was loaded successfully. Test the library functionality by running the following:
 
 ```bash
-> redis-cli RG.FUNCTION CALL foo foo
+> redis-cli RG.FCALL foo foo 0
 "foo"
 ```
 
@@ -141,7 +141,7 @@ redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js
 And we can test our function:
 
 ```bash
-> redis-cli RG.FUNCTION CALL foo foo
+> redis-cli RG.FCALL foo foo 0
 "test"
 ```
 
@@ -178,7 +178,7 @@ redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js
 And run it:
 
 ```bash
-> redis-cli RG.FUNCTION CALL foo foo
+> redis-cli RG.FCALL foo foo 0
 "3.1415926535897931"
 ```
 
