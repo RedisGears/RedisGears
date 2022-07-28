@@ -103,7 +103,7 @@ OK
 
 And now we can invoke `my_ping` using [`RG.FCALL`](docs/commands.md#rgfcal) :
 ```bash
-> redis-cli RG.CALL lib my_ping 0
+> redis-cli RG.FCALL lib my_ping 0
 "PONG"
 ```
 
