@@ -11,7 +11,7 @@ When the module is loaded on start time, the module configuration can be set on 
 
 ## Runtime Configuration
 
-You may set certain configuration options at runtime. Setting a configuration at runtime is done using [CONFIG SET](https://redis.io/commands/config-set/) command. Here also, Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
+You may set certain configuration options at runtime. Setting a configuration at runtime is done using [CONFIG SET](https://redis.io/commands/config-set/) command. Here also, each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 
 Example:
 
@@ -53,7 +53,7 @@ The `library-fatal-failure-policy` configuration option controls how to handle a
 * Block timedout - The function blocks the Redis processes for to long (configurable using [lock-redis-timeout](#lock-redis-timeout) configuraion value)
 * OOM - The function consumer to much memory (configurable using [library-maxmemory](#library-maxmemory) configuraion value).
 
-This configuration basically allow chosing between 2 options:
+This configuration basically allows choosing between 2 options:
 
 * Do not break atomocity property, even at the cost of killing the Redis processes.
 * Keep my Redis processes alive, even at the cost of losing atomicity.

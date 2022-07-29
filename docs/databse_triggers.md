@@ -1,13 +1,13 @@
 # Database Triggers
 
-Database triggers allow register a function that will be invoked wheneven an event happened on the database. Most of the events triggers by command invocation but there are 2 special event that is not necessarally triggered by a command:
+Database triggers allow you to register a function that will be invoked whenever an event has happened on the database. Most of the events are triggered by command invocation but there are 2 special events that are not necessarily triggered by a command:
 
 1. Expired - fired when a key expired from the database.
 2. Evicted - fired when a key evicted from the database.
 
 For the full list of supported events please refer to [Redis Key Space notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands)
 
-To register a database trigger we need to use the `redis.register_notifications_consumer` API when loading our library. The following example shows how to register a database trigger that will add a last update field when ever a hash key is changed:
+To register a database trigger we need to use the `redis.register_notifications_consumer` API when loading our library. The following example shows how to register a database trigger that will add a last update field whenever a hash key is changed:
 
 ```js
 #!js name=lib
@@ -24,10 +24,10 @@ redis.register_notifications_consumer("consumer", "", function(client, data){
 });
 ```
 
-Argument Discription:
+Argument Description:
 
 * consumer - the consumer name.
-* prefix - the prefix of keys we want to fire the trigger on
+* prefix - the prefix of keys we want to fire the trigger on.
 * callback - the callback to invoke. Following the same rules of [Sync and Async invocation](sync_and_async_run.md). The callback will be invoke only on primary shard.
 
 Run example:
@@ -49,7 +49,7 @@ Run example:
 4) "1658390910"
 ```
 
-The `data` argument which pass to the consumer callback are in the following format:
+The `data` arguments which pass to the consumer callback are in the following format:
 
 ```json
 {
@@ -99,9 +99,9 @@ We can observe the trigger information using [RG.FUNCTION LIST](commands.md#rgfu
 
 ## Triggers Guarantees
 
-If the callback pass to the trigger is a `JS` function (not a Coroutine), it is guarantee that the callback will be invoke atomically along side the operation that cause the trigger, i.e all client will see the data only after the callback has finished. In addition, it is guarantee that the effect of the callback will be replicated to the replication and the AOF in a `multi/exec` block together with the command that fired the trigger.
+If the callback pass to the trigger is a `JS` function (not a coroutine), it is guarantee that the callback will be invoked atomically along side the operation that cause the trigger, i.e all client will see the data only after the callback has finished. In addition, it is guarantee that the effect of the callback will be replicated to the replication and the AOF in a `multi/exec` block together with the command that fired the trigger.
 
-If the callback is a Coroutine, it will be executed in the background and there is not guarantees on where or if it will be executed. The guarantees are the same as describe on [Sync and Async invocation](sync_and_async_run.md).
+If the callback is a coroutine, it will be executed in the background and there is no guarantees on where or if it will be executed. The guarantees are the same as describe on [Sync and Async invocation](sync_and_async_run.md).
 
 ## Upgrades
 
@@ -109,7 +109,7 @@ When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOA
 
 ## Known Issues
 
-On the current Redis version (7.0.3) there are couple of known issues that effects databases triggers:
+On the current Redis version (7.0.3) there are a couple of known issues that effect databases triggers:
 
 * The effect of the trigger and the command that fire the trigger will be replicated (to the replica and AOF) at a reverse order. This means that if `set x 1` fire a trigger that perfroms `del x`, the replication will see the `del x` command before the `set x 1` command. This will cause replication inconsistency. To avoid it, the trigger should only perform operations that are indipendent and are not effected the by execution order.
 * On active expire, the `del` command and the trigger effect will not be wrapped with `multi/exec` block.

@@ -34,7 +34,6 @@ RG.FUNCTION DEL "<library name>"
 
 _Arguments_
 
-* UPGRADE - an optional argument, instructs RedisGears to upgrade the function if its already exists.
 * _library name_ - the name of the library to delete
 
 _Return_
@@ -101,7 +100,7 @@ RG.FCALL <library name> <function name> <number of keys> [<key1> ... <keyn>] [<a
 
 _Arguments_
 
-* _library name_ - The library name contains the function.
+* _library name_ - The library name that contains the function.
 * _function name_ - The function name to run.
 * _number of keys_ - The number of keys that will follow
 * _key1_ ... _keyn_ - keys that will be touched by the function.
@@ -109,7 +108,7 @@ _Arguments_
 
 _Return_
 
-The return value from the function on error in case of failure.
+The return value from the function or error in case of failure.
 
 **Example**
 ```bash
