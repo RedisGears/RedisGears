@@ -241,7 +241,13 @@ Fortunatly for us, v8 comes with an embeded webassembly support. We can leverage
 
 ## Write and Build the Rust Code
 
-First we need to initiate our project, we will use [rust pack](https://github.com/rustwasm/rust-webpack-template):
+First let install [wasm-pack]():
+
+```
+cargo install wasm-pack
+```
+
+Now we need to initiate our project, we will use [rust pack](https://github.com/rustwasm/rust-webpack-template):
 
 ```bash
 > npm init rust-webpack redisgears_rust
