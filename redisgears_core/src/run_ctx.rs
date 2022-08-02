@@ -64,7 +64,7 @@ impl RedisClient {
 }
 
 impl RedisClientCtxInterface for RedisClient {
-    fn call(&self, command: &str, args: &[&str]) -> CallResult {
+    fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
         call_redis_command(
             self.user.as_ref(),
             command,
@@ -114,6 +114,10 @@ impl<'a> ReplyCtxInterface for RunCtx<'a> {
 
     fn reply_with_array(&self, size: usize) {
         self.ctx.reply_array(size);
+    }
+
+    fn reply_with_slice(&self, val: &[u8]) {
+        self.ctx.reply_bulk_slice(val);
     }
 
     fn as_client(&self) -> &dyn ReplyCtxInterface {
@@ -189,6 +193,10 @@ impl ReplyCtxInterface for BackgroundClientCtx {
 
     fn reply_with_array(&self, size: usize) {
         self.ctx.reply_array(size);
+    }
+
+    fn reply_with_slice(&self, val: &[u8]) {
+        self.ctx.reply_bulk_slice(val);
     }
 
     fn as_client(&self) -> &dyn ReplyCtxInterface {

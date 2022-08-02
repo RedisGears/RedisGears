@@ -1,5 +1,6 @@
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, load_library_ctx::RegisteredKeys,
+    load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
     CallResult, GearsApiError,
 };
@@ -17,13 +18,13 @@ use crate::v8_stream_ctx::V8StreamCtx;
 use crate::{get_exception_msg, get_function_flags};
 
 use std::cell::RefCell;
-use std::str;
 use std::sync::Arc;
 
 pub(crate) fn call_result_to_js_object(
     isolate: &V8Isolate,
     ctx_scope: &V8ContextScope,
     res: CallResult,
+    decode_responses: bool,
 ) -> Option<V8LocalValue> {
     match res {
         CallResult::SimpleStr(s) => {
@@ -55,7 +56,7 @@ pub(crate) fn call_result_to_js_object(
             let vals = a
                 .into_iter()
                 .map(|v| {
-                    let res = call_result_to_js_object(isolate, ctx_scope, v);
+                    let res = call_result_to_js_object(isolate, ctx_scope, v, decode_responses);
                     if res.is_none() {
                         has_error = true;
                     }
@@ -78,7 +79,7 @@ pub(crate) fn call_result_to_js_object(
             let obj = isolate.new_object();
             for (k, v) in m {
                 let k_js_string = isolate.new_string(&k);
-                let v_js = call_result_to_js_object(isolate, ctx_scope, v);
+                let v_js = call_result_to_js_object(isolate, ctx_scope, v, decode_responses);
                 if v_js.is_none() {
                     return None;
                 }
@@ -121,20 +122,24 @@ pub(crate) fn call_result_to_js_object(
         }
         CallResult::Null => Some(isolate.new_null()),
         CallResult::StringBuffer(s) => {
-            let s = match String::from_utf8(s) {
-                Ok(s) => s,
-                Err(_) => {
-                    isolate.raise_exception_str("Could not decode value as string");
-                    return None;
-                }
-            };
-            let s = isolate.new_string(&s).to_string_object(isolate);
-            s.set(
-                ctx_scope,
-                &isolate.new_string("__reply_type").to_value(),
-                &isolate.new_string("bulk_string").to_value(),
-            );
-            Some(s.to_value())
+            if decode_responses {
+                let s = match String::from_utf8(s) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        isolate.raise_exception_str("Could not decode value as string");
+                        return None;
+                    }
+                };
+                let s = isolate.new_string(&s).to_string_object(isolate);
+                s.set(
+                    ctx_scope,
+                    &isolate.new_string("__reply_type").to_value(),
+                    &isolate.new_string("bulk_string").to_value(),
+                );
+                Some(s.to_value())
+            } else {
+                Some(isolate.new_array_buffer(&s).to_value())
+            }
         }
     }
 }
@@ -237,17 +242,18 @@ pub(crate) fn get_backgrounnd_client(
     bg_client
 }
 
-pub(crate) fn get_redis_client(
+fn add_call_function(
     script_ctx: &Arc<V8ScriptCtx>,
     ctx_scope: &V8ContextScope,
     redis_client: &Arc<RefCell<RedisClient>>,
-) -> V8LocalObject {
-    let client = script_ctx.isolate.new_object();
-
+    client: &V8LocalObject,
+    function_name: &str,
+    decode_response: bool,
+) {
     let redis_client_ref = Arc::clone(redis_client);
     client.set(
         ctx_scope,
-        &script_ctx.isolate.new_string("call").to_value(),
+        &script_ctx.isolate.new_string(function_name).to_value(),
         &ctx_scope
             .new_native_function(move |args, isolate, ctx_scope| {
                 if args.len() < 1 {
@@ -269,27 +275,49 @@ pub(crate) fn get_redis_client(
 
                 let command_utf8 = command.to_utf8(isolate).unwrap();
 
-                let mut commands_args_str = Vec::new();
+                let mut commands_args = Vec::new();
                 for i in 1..args.len() {
-                    commands_args_str.push(args.get(i).to_utf8(isolate).unwrap());
+                    let arg = args.get(i);
+                    let arg = if arg.is_string() {
+                        arg.to_utf8(isolate).unwrap().as_str().as_bytes().iter().map(|v| *v).collect::<Vec<u8>>()
+                    } else if arg.is_array_buffer(){
+                        arg.as_array_buffer().data().clone().iter().map(|v| *v).collect::<Vec<u8>>()
+                    } else {
+                        isolate.raise_exception_str("Bad argument was given to 'call', argument must be either String or ArrayBuffer");
+                        return None;
+                    };
+                    commands_args.push(arg);
                 }
 
-                let command_args_rust_str = commands_args_str
-                    .iter()
-                    .map(|v| v.as_str())
-                    .collect::<Vec<&str>>();
-
                 let res = match redis_client_ref.borrow().client.as_ref() {
-                    Some(c) => c.call(command_utf8.as_str(), &command_args_rust_str),
+                    Some(c) => c.call(command_utf8.as_str(), &commands_args.iter().map(|v| v.as_slice()).collect::<Vec<&[u8]>>()),
                     None => {
                         isolate.raise_exception_str("Used on invalid client");
                         return None;
                     }
                 };
 
-                call_result_to_js_object(isolate, ctx_scope, res)
+                call_result_to_js_object(isolate, ctx_scope, res, decode_response)
             })
             .to_value(),
+    );
+}
+
+pub(crate) fn get_redis_client(
+    script_ctx: &Arc<V8ScriptCtx>,
+    ctx_scope: &V8ContextScope,
+    redis_client: &Arc<RefCell<RedisClient>>,
+) -> V8LocalObject {
+    let client = script_ctx.isolate.new_object();
+
+    add_call_function(script_ctx, ctx_scope, redis_client, &client, "call", true);
+    add_call_function(
+        script_ctx,
+        ctx_scope,
+        redis_client,
+        &client,
+        "call_raw",
+        false,
     );
 
     let redis_client_ref = Arc::clone(redis_client);
@@ -620,6 +648,7 @@ pub(crate) fn initialize_globals(
                 redis_client.to_value().persist(isolate),
                 &c,
                 function_callback.is_async_function(),
+                function_flags & FUNCTION_FLAG_RAW_ARGUMENTS == 0,
             );
 
             let res = load_ctx.register_function(function_name_utf8.as_str(), Box::new(f), function_flags);

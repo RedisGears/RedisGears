@@ -75,6 +75,7 @@ Run example:
 It is possible to provide some information about the function behaviour on registration time. Such information is called function flags. The function flags is a optional argument that can be given after the function implementation. The supported flags are:
 1. `no-writes` - indicating that the function performs not write commands. If this flag is on, it will be possible to run the function on read only replicas or on OOM. RedisGears force this flag behaviour, this means that any attempt to call a write command from within a function that has this flag will result in an exception.
 2. `allow-oom` - by default, RedisGears will not allow running any function on OOM. This flag allows overide this behaviour and running the function even on OOM. Enable this flag is considered unsafe and could cause Redis to bypass the maxmemory value. **User should only enable this flag if he knows for sure that his function do not consume memory** (for example, on OOM, it is safe to run a function that only deletes data).
+3. `raw-arguments` - by default, RedisGears will try to decode all function arguments as `JS` `String` and if it failed an error will be return to the client. When this flag is set, RedisGears will avoid String decoding and will pass the argument as `JS` `ArrayBuffer`.
 
 The following example shows how to set the `no-writes` flag:
 
@@ -186,3 +187,55 @@ When running Redis commands from within a RedisGears function using `client.call
 | `verbatim string` | `StringObject` with 2 additional fields: 1. `__reply_type` and value `verbatim` 2. `__ext` with the value of the ext in the verbatim string |
 | `null`            | JS null                                                                                                                                     |
 |                   |                                                                                                                                             |
+## Working with Binary Data
+
+By default, RedisGears will decode all data as string and will raise error on failures. Though usefull for most users sometimes there is a need to work with binary data. In order to do so, the library developer has to considerations the following:
+
+1. Binary function arguments
+2. Binary command results
+
+### Binary Function Arguments
+
+It is possible to instruct RedisGears not to decode function arguments as `JS` `Strings` using [`raw-arguments`](#function-flags) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
+
+```js
+#!js name=lib
+redis.register_function("my_set", (c, key, val) => {
+    return c.call("set", key, val);
+},
+["raw-arguments"]);
+```
+
+The above example will allow us to set `key` and `val` even if those are binary data. Run example:
+
+```bash
+127.0.0.1:6379> rg.fcall lib my_set 1 "\xaa" "\xaa"
+"OK"
+127.0.0.1:6379> get "\xaa"
+"\xaa"
+```
+
+Notice that `call` function also except `JS` `ArrayBuffer` arguments.
+
+### Get Command Results as Binary Data
+
+Getting function arguments as binary data is not enough. We might want to read binary data from Redis key. In order to do this we can use `call_raw` function that will not decode the result as `JS` `String` and instead will return the result as `JS` `ArrayBuffer`. Example:
+
+```js
+#!js name=lib
+redis.register_function("my_get", (c, key) => {
+    return c.call_raw("get", key);
+},
+["raw-arguments"]);
+```
+
+The above example will be able to fetch binary data and return it to the user. Run example:
+
+```bash
+27.0.0.1:6379> set "\xaa" "\xaa"
+OK
+127.0.0.1:6379> rg.fcall lib my_get 1 "\xaa"
+"\xaa"
+```
+
+Notice that `JS` `ArrayBuffer` can be returned by RedisGears function, RedisGears will return it to the client as `bulk string`.

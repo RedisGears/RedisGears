@@ -37,7 +37,7 @@ impl BackgroundRunScopeGuardCtx {
 }
 
 impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
-    fn call(&self, command: &str, args: &[&str]) -> CallResult {
+    fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
         call_redis_command(
             self.user.as_ref(),
             command,

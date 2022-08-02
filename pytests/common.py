@@ -137,7 +137,7 @@ def gearsTest(skipTest=False,
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             if test_function.__doc__ is not None:
-                env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK')
+                env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
             test_function(env)
             if len(env.assertionFailedSummary) > 0:
                 extractInfoOnfailure(env, 'before_cleanups')

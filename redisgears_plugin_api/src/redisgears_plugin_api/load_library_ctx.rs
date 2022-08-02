@@ -17,6 +17,7 @@ pub enum RegisteredKeys<'a> {
 
 pub const FUNCTION_FLAG_NO_WRITES: u8 = 0x01;
 pub const FUNCTION_FLAG_ALLOW_OOM: u8 = 0x02;
+pub const FUNCTION_FLAG_RAW_ARGUMENTS: u8 = 0x04;
 
 pub trait LoadLibraryCtxInterface {
     fn register_function(

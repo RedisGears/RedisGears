@@ -17,8 +17,8 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface,
     load_library_ctx::LibraryCtxInterface, load_library_ctx::LoadLibraryCtxInterface,
     load_library_ctx::RegisteredKeys, load_library_ctx::FUNCTION_FLAG_ALLOW_OOM,
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES, stream_ctx::StreamCtxInterface, CallResult,
-    GearsApiError,
+    load_library_ctx::FUNCTION_FLAG_NO_WRITES, load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
+    stream_ctx::StreamCtxInterface, CallResult, GearsApiError,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
@@ -400,7 +400,7 @@ pub(crate) fn call_redis_command(
     user: Option<&String>,
     command: &str,
     call_options: &CallOptions,
-    args: &[&str],
+    args: &[&[u8]],
 ) -> CallResult {
     let ctx = match user {
         Some(u) => {
@@ -850,6 +850,9 @@ fn function_list_command_flags(flags: u8) -> RedisValue {
     }
     if (flags & FUNCTION_FLAG_ALLOW_OOM) != 0 {
         res.push(RedisValue::BulkString("allow-oom".to_string()));
+    }
+    if (flags & FUNCTION_FLAG_RAW_ARGUMENTS) != 0 {
+        res.push(RedisValue::BulkString("raw-arguments".to_string()));
     }
     RedisValue::Array(res)
 }
@@ -1451,25 +1454,23 @@ fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: 
     }
 }
 
-fn generic_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
-    let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
-        Ok(s) => s,
-        Err(_) => {
-            ctx.log_warning("Binary key name is not yet supported");
-            return;
-        }
-    };
+fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if event == "del" {
+        let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
+            Ok(s) => s,
+            Err(_) => {
+                return;
+            }
+        };
         let stream_ctx = &mut get_globals_mut().stream_ctx;
         stream_ctx.on_stream_deleted(event, &key);
     }
 }
 
-fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+fn key_space_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
         Ok(s) => s,
         Err(_) => {
-            ctx.log_warning("Binary key name is not yet supported");
             return;
         }
     };

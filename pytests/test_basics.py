@@ -504,3 +504,51 @@ redis.register_function("test", (c) => {return c.allow_block()});
     p.execute_command('RG.FCALL', 'lib', 'test', '0')
     res = p.execute()
     env.assertEqual(res, ['false'])
+
+@gearsTest(decodeResponses=False)
+def testRawArguments(env):
+    """#!js name=lib
+redis.register_function("my_set", (c, key, val) => {
+    return c.call("set", key, val);
+},
+["raw-arguments"]);
+    """
+    env.expect('RG.FCALL', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
+    env.expect('get', 'x').equal(b'1')
+    env.expect('RG.FCALL', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
+    env.expect('get', b'\xaa').equal(b'\xaa')
+
+@gearsTest(decodeResponses=False)
+def testRawArgumentsAsync(env):
+    """#!js name=lib
+redis.register_function("my_set", async (c, key, val) => {
+    return c.block((c)=>{
+        return c.call("set", key, val);
+    });
+},
+["raw-arguments"]);
+    """
+    env.expect('RG.FCALL', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
+    env.expect('get', 'x').equal(b'1')
+    env.expect('RG.FCALL', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
+    env.expect('get', b'\xaa').equal(b'\xaa')
+
+@gearsTest(decodeResponses=False)
+def testReplyWithBinaryData(env):
+    """#!js name=lib
+redis.register_function("test", () => {
+    return new Uint8Array([255, 255, 255, 255]).buffer;
+});
+    """
+    env.expect('RG.FCALL', 'lib', 'test', '0').equal(b'\xff\xff\xff\xff')
+
+@gearsTest(decodeResponses=False)
+def testRawCall(env):
+    """#!js name=lib
+redis.register_function("test", (c, key) => {
+    return c.call_raw("get", key)
+},
+["raw-arguments"]);
+    """
+    env.expect('set', b'\xaa', b'\xaa').equal(True)
+    env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').equal(b'\xaa')

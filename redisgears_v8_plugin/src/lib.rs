@@ -5,7 +5,7 @@ use v8_rs::v8::{
 
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtxInterface, load_library_ctx::FUNCTION_FLAG_ALLOW_OOM,
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES,
+    load_library_ctx::FUNCTION_FLAG_NO_WRITES, load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
 };
 
 mod v8_backend;
@@ -43,6 +43,7 @@ pub(crate) fn get_function_flags(
         match flag_str.as_str() {
             "no-writes" => flags_val |= FUNCTION_FLAG_NO_WRITES,
             "allow-oom" => flags_val |= FUNCTION_FLAG_ALLOW_OOM,
+            "raw-arguments" => flags_val |= FUNCTION_FLAG_RAW_ARGUMENTS,
             _ => return Err(format!("Unknow flag '{}' was given", flag_str.as_str())),
         }
     }

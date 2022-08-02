@@ -66,6 +66,9 @@ fn send_reply(
             }
         }
         client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
+    } else if val.is_array_buffer() {
+        let val = val.as_array_buffer();
+        client.reply_with_slice(val.data());
     } else if val.is_array() {
         let arr = val.as_array();
         client.reply_with_array(arr.len());
@@ -91,9 +94,10 @@ fn send_reply(
 impl V8InternalFunction {
     fn call_async(
         &self,
-        command_args: Vec<String>,
+        command_args: Vec<Vec<u8>>,
         bg_client: Box<dyn ReplyCtxInterface>,
         redis_background_client: Box<dyn BackgroundRunFunctionCtxInterface>,
+        decode_args: bool,
     ) -> FunctionCallResult {
         let _isolate_scope = self.script_ctx.isolate.enter();
         let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
@@ -107,7 +111,19 @@ impl V8InternalFunction {
                 let mut args = Vec::new();
                 args.push(r_client.to_value());
                 for arg in command_args.iter() {
-                    args.push(self.script_ctx.isolate.new_string(arg).to_value());
+                    let arg = if decode_args {
+                        let arg = match str::from_utf8(arg) {
+                            Ok(s) => s,
+                            Err(_) => {
+                                bg_client.reply_with_error("Can not convert argument to string");
+                                return FunctionCallResult::Done;
+                            }
+                        };
+                        self.script_ctx.isolate.new_string(arg).to_value()
+                    } else {
+                        self.script_ctx.isolate.new_array_buffer(arg).to_value()
+                    };
+                    args.push(arg);
                 }
                 Some(args)
             };
@@ -200,7 +216,11 @@ impl V8InternalFunction {
         FunctionCallResult::Done
     }
 
-    fn call_sync(&self, run_ctx: &mut dyn RunFunctionCtxInterface) -> FunctionCallResult {
+    fn call_sync(
+        &self,
+        run_ctx: &mut dyn RunFunctionCtxInterface,
+        decode_arguments: bool,
+    ) -> FunctionCallResult {
         let _isolate_scope = self.script_ctx.isolate.enter();
         let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
         let ctx_scope = self.script_ctx.ctx.enter();
@@ -211,14 +231,19 @@ impl V8InternalFunction {
                 let mut args = Vec::new();
                 args.push(self.persisted_client.as_local(&self.script_ctx.isolate));
                 while let Some(a) = run_ctx.next_arg() {
-                    let arg = match str::from_utf8(a) {
-                        Ok(s) => s,
-                        Err(_) => {
-                            run_ctx.reply_with_error("Can not convert argument to string");
-                            return FunctionCallResult::Done;
-                        }
+                    let arg = if decode_arguments {
+                        let arg = match str::from_utf8(a) {
+                            Ok(s) => s,
+                            Err(_) => {
+                                run_ctx.reply_with_error("Can not convert argument to string");
+                                return FunctionCallResult::Done;
+                            }
+                        };
+                        self.script_ctx.isolate.new_string(arg).to_value()
+                    } else {
+                        self.script_ctx.isolate.new_array_buffer(a).to_value()
                     };
-                    args.push(self.script_ctx.isolate.new_string(arg).to_value());
+                    args.push(arg);
                 }
                 Some(args)
             };
@@ -332,6 +357,7 @@ pub struct V8Function {
     inner_function: Arc<V8InternalFunction>,
     client: Arc<RefCell<RedisClient>>,
     is_async: bool,
+    decode_arguments: bool,
 }
 
 impl V8Function {
@@ -341,6 +367,7 @@ impl V8Function {
         persisted_client: V8PersistValue,
         client: &Arc<RefCell<RedisClient>>,
         is_async: bool,
+        decode_arguments: bool,
     ) -> V8Function {
         V8Function {
             inner_function: Arc::new(V8InternalFunction {
@@ -350,6 +377,7 @@ impl V8Function {
             }),
             client: Arc::clone(client),
             is_async: is_async,
+            decode_arguments: decode_arguments,
         }
     }
 }
@@ -371,21 +399,15 @@ impl FunctionCtxInterface for V8Function {
             // if we are going to the background we must consume all the arguments
             let mut args = Vec::new();
             while let Some(a) = run_ctx.next_arg() {
-                let arg = match str::from_utf8(a) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        run_ctx.reply_with_error("Can not convert argument to string");
-                        return FunctionCallResult::Done;
-                    }
-                };
-                args.push(arg.to_string());
+                args.push(a.into_iter().map(|v| *v).collect::<Vec<u8>>());
             }
             let bg_redis_client = run_ctx.get_redis_client().get_background_redis_client();
+            let decode_arguments = self.decode_arguments;
             self.inner_function
                 .script_ctx
                 .compiled_library_api
                 .run_on_background(Box::new(move || {
-                    inner_function.call_async(args, bg_client, bg_redis_client);
+                    inner_function.call_async(args, bg_client, bg_redis_client, decode_arguments);
                 }));
             FunctionCallResult::Done
         } else {
@@ -394,7 +416,8 @@ impl FunctionCtxInterface for V8Function {
             self.client
                 .borrow_mut()
                 .set_allow_block(run_ctx.allow_block());
-            self.inner_function.call_sync(run_ctx);
+            self.inner_function
+                .call_sync(run_ctx, self.decode_arguments);
             self.client.borrow_mut().make_invalid();
             FunctionCallResult::Done
         }
