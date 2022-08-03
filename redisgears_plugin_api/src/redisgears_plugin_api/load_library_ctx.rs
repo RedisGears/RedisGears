@@ -29,7 +29,7 @@ pub trait LoadLibraryCtxInterface {
     fn register_stream_consumer(
         &mut self,
         name: &str,
-        prefix: &str,
+        prefix: &[u8],
         stream_ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,

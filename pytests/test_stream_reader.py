@@ -27,6 +27,32 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(2)
 
+@gearsTest(decodeResponses=False)
+def testBasicStreamReaderWithBinaryData(env):
+    """#!js name=lib
+var last_key = null;
+var last_key_raw = null;
+var last_data = null;
+var last_data_raw = null;
+redis.register_function("stats", function(){
+    return [
+        last_key,
+        last_key_raw,
+        last_data,
+        last_data_raw
+    ];
+})
+redis.register_stream_consumer("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
+    last_key = data.stream_name;
+    last_key_raw = data.stream_name_raw;
+    last_data = data.record;
+    last_data_raw = data.record_raw;
+})
+    """
+    env.expect('RG.FCALL', 'lib', 'stats', '0').equal([None, None, None, None])
+    env.cmd('xadd', b'\xff\xff', '*', b'\xaa', b'\xaa')
+    env.expect('RG.FCALL', 'lib', 'stats', '0').equal([None, b'\xff\xff', [[None, None]], [[b'\xaa', b'\xaa']]])
+
 @gearsTest()
 def testAsyncStreamReader(env):
     """#!js name=lib

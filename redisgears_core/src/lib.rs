@@ -173,7 +173,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
     fn register_stream_consumer(
         &mut self,
         name: &str,
-        prefix: &str,
+        prefix: &[u8],
         ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,
@@ -193,7 +193,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             if o_c.prefix != prefix {
                 return Err(GearsApiError::Msg(
                     format!("Can not upgrade an existing consumer with different prefix, consumer: '{}', old_prefix: {}, new_prefix: {}.",
-                    name, o_c.prefix, prefix)
+                    name, std::str::from_utf8(&o_c.prefix).unwrap_or("[binary data]"), std::str::from_utf8(prefix).unwrap_or("[binary data]"))
                 ));
             }
             let old_ctx = o_c.set_consumer(GearsStreamConsumer::new(&self.user, 0, ctx));
@@ -213,15 +213,15 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                 window,
                 trim,
                 Some(Box::new(move |stream_name, ms, seq| {
-                    redis_module::replicate(
+                    redis_module::replicate_slices(
                         get_ctx().ctx,
                         "_rg_internals.update_stream_last_read_id",
                         &[
-                            &lib_name,
-                            &consumer_name,
+                            lib_name.as_bytes(),
+                            consumer_name.as_bytes(),
                             stream_name,
-                            &ms.to_string(),
-                            &seq.to_string(),
+                            ms.to_string().as_bytes(),
+                            seq.to_string().as_bytes(),
                         ],
                     );
                 })),
@@ -521,7 +521,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                     if !ctx.is_primary() {
                         return Err("Can not read data on replica".to_string());
                     }
-                    let stream_name = ctx.create_string(key);
+                    let stream_name = ctx.create_string_from_slice(key);
                     let key = ctx.open_key(&stream_name);
                     let mut stream_iterator =
                         match key.get_stream_range_iterator(id, None, !include_id) {
@@ -543,7 +543,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                         ctx.log_warning("Attempt to trim data on replica was denied.");
                         return;
                     }
-                    let stream_name = ctx.create_string(key_name);
+                    let stream_name = ctx.create_string_from_slice(key_name);
                     let key = ctx.open_key_writable(&stream_name);
                     let res = key.trim_stream_by_id(id, false);
                     if let Err(e) = res {
@@ -552,10 +552,10 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                             e
                         ))
                     } else {
-                        redis_module::replicate(
+                        redis_module::replicate_slices(
                             ctx.ctx,
                             "xtrim",
-                            &[key_name, "MINID", &format!("{}-{}", id.ms, id.seq)],
+                            &[key_name, "MINID".as_bytes(), format!("{}-{}", id.ms, id.seq).as_bytes()],
                         );
                     }
                 }),
@@ -860,7 +860,7 @@ fn function_list_command_flags(flags: u8) -> RedisValue {
 }
 
 fn function_list_command(
-    _ctx: &Context,
+    ctx: &Context,
     mut args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> RedisResult {
     let mut with_code = false;
@@ -960,7 +960,7 @@ fn function_list_command(
                                         RedisValue::BulkString("name".to_string()),
                                         RedisValue::BulkString(k.to_string()),
                                         RedisValue::BulkString("prefix".to_string()),
-                                        RedisValue::BulkString(v.prefix.to_string()),
+                                        RedisValue::BulkRedisString(ctx.create_string_from_slice(&v.prefix)),
                                         RedisValue::BulkString("window".to_string()),
                                         RedisValue::Integer(v.window as i64),
                                         RedisValue::BulkString("trim".to_string()),
@@ -982,7 +982,7 @@ fn function_list_command(
                                                     res.push(RedisValue::BulkString(
                                                         "name".to_string(),
                                                     ));
-                                                    res.push(RedisValue::BulkString(s.to_string()));
+                                                    res.push(RedisValue::BulkRedisString(ctx.create_string_from_slice(s)));
 
                                                     res.push(RedisValue::BulkString(
                                                         "last_processed_time".to_string(),
@@ -1442,14 +1442,7 @@ fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     }
 }
 
-fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
-    let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
-        Ok(s) => s,
-        Err(_) => {
-            ctx.log_warning("Binary key name is not yet supported");
-            return;
-        }
-    };
+fn on_stream_touched(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if get_ctx().is_primary() {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
         stream_ctx.on_stream_touched(event, &key);
@@ -1458,12 +1451,6 @@ fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: 
 
 fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if event == "del" {
-        let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
-            Ok(s) => s,
-            Err(_) => {
-                return;
-            }
-        };
         let stream_ctx = &mut get_globals_mut().stream_ctx;
         stream_ctx.on_stream_deleted(event, &key);
     }
@@ -1481,7 +1468,8 @@ fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisRes
     let mut args = args.into_iter().skip(1);
     let library_name = args.next_arg()?.try_as_str()?;
     let stream_consumer = args.next_arg()?.try_as_str()?;
-    let stream = args.next_arg()?.try_as_str()?;
+    let stream_arg = args.next_arg()?;
+    let stream = stream_arg.as_slice();
     let ms = args.next_arg()?.try_as_str()?.parse::<u64>()?;
     let seq = args.next_arg()?.try_as_str()?.parse::<u64>()?;
     let library = get_libraries().get(library_name);
@@ -1519,15 +1507,7 @@ fn scan_key_space_for_streams() {
                 None => ctx.open_key(&key_name).key_type(),
             };
             if key_type == Stream {
-                let key_name_str = key_name.try_as_str();
-                match key_name_str {
-                    Ok(key) => get_globals_mut()
-                        .stream_ctx
-                        .on_stream_touched("created", key),
-                    Err(_) => {
-                        get_ctx().log_warning("Binary streams names are not yet supported");
-                    }
-                }
+                get_globals_mut().stream_ctx.on_stream_touched("created", key_name.as_slice());
             }
         }) {
             _gaurd = None; // will release the lock

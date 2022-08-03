@@ -6,7 +6,6 @@ use redisgears_plugin_api::redisgears_plugin_api::stream_ctx::{
 
 use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInterface;
 
-use crate::v8_backend::log;
 use crate::v8_native_functions::{get_backgrounnd_client, get_redis_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
 
@@ -50,7 +49,7 @@ impl V8StreamCtx {
 impl V8StreamCtxInternals {
     fn process_record_internal_sync(
         &self,
-        stream_name: &str,
+        stream_name: &[u8],
         record: Box<dyn StreamRecordInterface>,
         run_ctx: &dyn StreamProcessCtxInterface,
     ) -> Option<StreamRecordAck> {
@@ -64,26 +63,34 @@ impl V8StreamCtxInternals {
             &self.script_ctx.isolate.new_long(id.0 as i64),
             &self.script_ctx.isolate.new_long(id.1 as i64),
         ]);
-        let stream_name_v8_str = self.script_ctx.isolate.new_string(stream_name);
+        let stream_name_v8_str = match std::str::from_utf8(stream_name) {
+            Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
+            Err(_) => self.script_ctx.isolate.new_null(),
+        };
 
         let vals = record
             .fields()
-            .map(|(f, v)| (str::from_utf8(f), str::from_utf8(v)))
-            .filter(|(f, v)| {
-                if f.is_err() || v.is_err() {
-                    log("Stream binary data is not yet supported");
-                    false
-                } else {
-                    true
-                }
+            .map(|(f, v)| {
+                let f = match str::from_utf8(f){
+                    Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
+                    Err(_) => self.script_ctx.isolate.new_null(),
+                };
+                let v = match str::from_utf8(v){
+                    Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
+                    Err(_) => self.script_ctx.isolate.new_null(),
+                };
+                self.script_ctx.isolate.new_array(&[&f, &v]).to_value()
             })
-            .map(|(f, v)| (f.unwrap(), v.unwrap()))
+            .collect::<Vec<V8LocalValue>>();
+
+        let raw_vals = record
+            .fields()
             .map(|(f, v)| {
                 self.script_ctx
                     .isolate
                     .new_array(&[
-                        &self.script_ctx.isolate.new_string(f).to_value(),
-                        &self.script_ctx.isolate.new_string(v).to_value(),
+                        &self.script_ctx.isolate.new_array_buffer(f).to_value(),
+                        &self.script_ctx.isolate.new_array_buffer(v).to_value(),
                     ])
                     .to_value()
             })
@@ -93,6 +100,11 @@ impl V8StreamCtxInternals {
             .script_ctx
             .isolate
             .new_array(&vals.iter().collect::<Vec<&V8LocalValue>>());
+        
+        let raw_val_v8_arr = self
+            .script_ctx
+            .isolate
+            .new_array(&raw_vals.iter().collect::<Vec<&V8LocalValue>>());
 
         let stream_data = self.script_ctx.isolate.new_object();
         stream_data.set(
@@ -103,12 +115,22 @@ impl V8StreamCtxInternals {
         stream_data.set(
             &ctx_scope,
             &self.script_ctx.isolate.new_string("stream_name").to_value(),
-            &stream_name_v8_str.to_value(),
+            &stream_name_v8_str,
+        );
+        stream_data.set(
+            &ctx_scope,
+            &self.script_ctx.isolate.new_string("stream_name_raw").to_value(),
+            &self.script_ctx.isolate.new_array_buffer(stream_name).to_value(),
         );
         stream_data.set(
             &ctx_scope,
             &self.script_ctx.isolate.new_string("record").to_value(),
             &val_v8_arr.to_value(),
+        );
+        stream_data.set(
+            &ctx_scope,
+            &self.script_ctx.isolate.new_string("record_raw").to_value(),
+            &raw_val_v8_arr.to_value(),
         );
 
         let c = run_ctx.get_redis_client();
@@ -147,7 +169,7 @@ impl V8StreamCtxInternals {
 
     fn process_record_internal_async(
         &self,
-        stream_name: &str,
+        stream_name: &[u8],
         record: Box<dyn StreamRecordInterface>,
         redis_client: Box<dyn BackgroundRunFunctionCtxInterface>,
         ack_callback: Box<dyn FnOnce(StreamRecordAck) + Send>,
@@ -166,26 +188,34 @@ impl V8StreamCtxInternals {
                 &self.script_ctx.isolate.new_long(id.0 as i64),
                 &self.script_ctx.isolate.new_long(id.1 as i64),
             ]);
-            let stream_name_v8_str = self.script_ctx.isolate.new_string(stream_name);
+            let stream_name_v8_str = match std::str::from_utf8(stream_name) {
+                Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
+                Err(_) => self.script_ctx.isolate.new_null(),
+            };
 
             let vals = record
                 .fields()
-                .map(|(f, v)| (str::from_utf8(f), str::from_utf8(v)))
-                .filter(|(f, v)| {
-                    if f.is_err() || v.is_err() {
-                        log("Stream binary data is not yet supported");
-                        false
-                    } else {
-                        true
-                    }
+                .map(|(f, v)| {
+                    let f = match str::from_utf8(f){
+                        Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
+                        Err(_) => self.script_ctx.isolate.new_null(),
+                    };
+                    let v = match str::from_utf8(v){
+                        Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
+                        Err(_) => self.script_ctx.isolate.new_null(),
+                    };
+                    self.script_ctx.isolate.new_array(&[&f, &v]).to_value()
                 })
-                .map(|(f, v)| (f.unwrap(), v.unwrap()))
+                .collect::<Vec<V8LocalValue>>();
+
+            let raw_vals = record
+                .fields()
                 .map(|(f, v)| {
                     self.script_ctx
                         .isolate
                         .new_array(&[
-                            &self.script_ctx.isolate.new_string(f).to_value(),
-                            &self.script_ctx.isolate.new_string(v).to_value(),
+                            &self.script_ctx.isolate.new_array_buffer(f).to_value(),
+                            &self.script_ctx.isolate.new_array_buffer(v).to_value(),
                         ])
                         .to_value()
                 })
@@ -196,6 +226,11 @@ impl V8StreamCtxInternals {
                 .isolate
                 .new_array(&vals.iter().collect::<Vec<&V8LocalValue>>());
 
+            let raw_val_v8_arr = self
+                .script_ctx
+                .isolate
+                .new_array(&raw_vals.iter().collect::<Vec<&V8LocalValue>>());
+
             let stream_data = self.script_ctx.isolate.new_object();
             stream_data.set(
                 &ctx_scope,
@@ -205,12 +240,22 @@ impl V8StreamCtxInternals {
             stream_data.set(
                 &ctx_scope,
                 &self.script_ctx.isolate.new_string("stream_name").to_value(),
-                &stream_name_v8_str.to_value(),
+                &stream_name_v8_str,
+            );
+            stream_data.set(
+                &ctx_scope,
+                &self.script_ctx.isolate.new_string("stream_name_raw").to_value(),
+                &self.script_ctx.isolate.new_array_buffer(stream_name).to_value(),
             );
             stream_data.set(
                 &ctx_scope,
                 &self.script_ctx.isolate.new_string("record").to_value(),
                 &val_v8_arr.to_value(),
+            );
+            stream_data.set(
+                &ctx_scope,
+                &self.script_ctx.isolate.new_string("record_raw").to_value(),
+                &raw_val_v8_arr.to_value(),
             );
 
             let r_client = get_backgrounnd_client(&self.script_ctx, &ctx_scope, redis_client);
@@ -284,21 +329,21 @@ impl V8StreamCtxInternals {
 impl StreamCtxInterface for V8StreamCtx {
     fn process_record(
         &self,
-        stream_name: &str,
+        stream_name: &[u8],
         record: Box<dyn StreamRecordInterface + Send>,
         run_ctx: &dyn StreamProcessCtxInterface,
         ack_callback: Box<dyn FnOnce(StreamRecordAck) + Send>,
     ) -> Option<StreamRecordAck> {
         if self.is_async {
             let internals = Arc::clone(&self.internals);
-            let stream_name = stream_name.to_string();
+            let stream_name: Vec<u8> = stream_name.iter().map(|v| *v).collect();
             let bg_redis_client = run_ctx.get_background_redis_client();
             self.internals
                 .script_ctx
                 .compiled_library_api
                 .run_on_background(Box::new(move || {
                     internals.process_record_internal_async(
-                        &stream_name.to_string(),
+                        &stream_name.clone(),
                         record,
                         bg_redis_client,
                         ack_callback,

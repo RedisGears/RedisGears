@@ -105,17 +105,17 @@ impl GearsStreamConsumer {
 impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
     fn new_data(
         &self,
-        stream_name: &str,
+        stream_name: &[u8],
         record: GearsStreamRecord,
         ack_callback: Box<dyn FnOnce(StreamReaderAck) + Send>,
     ) -> Option<StreamReaderAck> {
         let user = self.user.ref_cell.borrow();
-        let key_redis_str = RedisString::create(std::ptr::null_mut(), stream_name);
+        let key_redis_str = RedisString::create_from_slice(std::ptr::null_mut(), stream_name);
         if let Err(e) = get_ctx().acl_check_key_permission(&user, &key_redis_str, &self.permissions)
         {
             return Some(StreamReaderAck::Nack(format!(
                 "User '{}' has no permissions on key '{}', {}.",
-                user, stream_name, e
+                user, std::str::from_utf8(stream_name).unwrap_or("[binary data]"), e
             )));
         }
 

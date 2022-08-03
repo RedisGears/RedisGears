@@ -475,13 +475,6 @@ pub(crate) fn initialize_globals(
             }
             let registration_name_utf8 = consumer_name.to_utf8(isolate).unwrap();
 
-            let prefix = args.get(1);
-            if !prefix.is_string() {
-                isolate.raise_exception_str("Second argument to 'register_stream_consumer' must be a string representing the prefix");
-                return None;
-            }
-            let prefix_utf8 = prefix.to_utf8(isolate).unwrap();
-
             let window = args.get(2);
             if !window.is_long() {
                 isolate.raise_exception_str("Third argument to 'register_stream_consumer' must be a long representing the window size");
@@ -518,7 +511,18 @@ pub(crate) fn initialize_globals(
                 }
             };
             let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, if function_callback.is_async_function() {true} else {false});
-            let res = load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix_utf8.as_str(), Box::new(v8_stream_ctx), window as usize, trim);
+            
+            let prefix = args.get(1);
+            let res = if prefix.is_string() {
+                let prefix = prefix.to_utf8(isolate).unwrap();
+                load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.as_str().as_bytes(), Box::new(v8_stream_ctx), window as usize, trim)
+            } else if prefix.is_array_buffer() {
+                let prefix = prefix.as_array_buffer();
+                load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.data(), Box::new(v8_stream_ctx), window as usize, trim)
+            } else {
+                isolate.raise_exception_str("Second argument to 'register_stream_consumer' must be a String or ArrayBuffer representing the prefix");
+                return None;
+            };
             if let Err(err) = res {
                 match err {
                     GearsApiError::Msg(s) => isolate.raise_exception_str(&s),

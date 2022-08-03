@@ -57,16 +57,25 @@ The `data` argument which pass to the stream consumer callback are in the follow
 {
     "id": ["<ms>", "<seq>"],
     "stream_name": "<stream name>",
+    "stream_name_raw": "<stream name as ArrayBuffer>",
     "record":[
         ["<key>", "<value>"],
         .
         .
         ["<key>", "<value>"]
-    ]
+    ],
+    "record_raw":[
+        ["<key_raw>", "<value_raw>"],
+        .
+        .
+        ["<key_raw>", "<value_raw>"]
+    ],
 }
 ```
 
 The reason why the record is a list of touples and not an object is because the Redis Stream spacifications allows duplicate keys.
+
+Notice that `stream_name` and `record` fields might contains `null`'s if the data can not be decoded as string. the `*_raw` fields will always be provided and will contains the data as `JS` `ArrayBuffer`.
 
 We can observe the streams which are tracked by our registered consumer using [RG.FUNCTION LIST](commands.md#rgfunction-list) command:
 

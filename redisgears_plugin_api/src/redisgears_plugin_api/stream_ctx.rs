@@ -19,7 +19,7 @@ pub enum StreamRecordAck {
 pub trait StreamCtxInterface {
     fn process_record(
         &self,
-        stream_name: &str,
+        stream_name: &[u8],
         record: Box<dyn StreamRecordInterface + Send>,
         run_ctx: &dyn StreamProcessCtxInterface,
         ack_callback: Box<dyn FnOnce(StreamRecordAck) + Send>,

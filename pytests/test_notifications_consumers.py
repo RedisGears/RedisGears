@@ -160,7 +160,7 @@ def testNotificationsOnBinaryKey(env):
 var n_notifications = 0;
 var last_key = null;
 var last_key_raw = null;
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.register_notifications_consumer("consumer", new Uint8Array([255]).buffer, function(client, data) {
     if (data.event == "set") {
         n_notifications += 1;
         last_data = data.key;
@@ -177,5 +177,5 @@ redis.register_function("notifications_stats", async function(){
 });
     """
     env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([0, None, None])
-    env.expect('SET', b'\xaa', b'\xaa').equal(True)
-    env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([1, None, b'\xaa'])
+    env.expect('SET', b'\xff\xff', b'\xaa').equal(True)
+    env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([1, None, b'\xff\xff'])

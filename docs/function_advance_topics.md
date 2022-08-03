@@ -194,6 +194,7 @@ By default, RedisGears will decode all data as string and will raise error on fa
 1. Binary function arguments
 2. Binary command results
 3. Binary keys names On [database triggers](databse_triggers.md)
+4. Binary data on [stream consumers](stream_processing.md)
 
 ### Binary Function Arguments
 
@@ -280,3 +281,45 @@ OK
 ```
 
 For more informatio, follow [database triggers](databse_triggers.md) page.
+
+### Binary Data on Stream Consumers
+
+On [stream consumers](stream_processing.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is alway provided as `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case it is possible to use `data.record` (which always exists) and contains the data as `JS` `ArrayBuffer`. Example:
+
+```js
+#!js name=lib
+/* The following is just an example, in general it is discourage to use globals. */
+var last_key = null;
+var last_key_raw = null;
+var last_data = null;
+var last_data_raw = null;
+redis.register_function("stats", function(){
+    return [
+        last_key,
+        last_key_raw,
+        last_data,
+        last_data_raw
+    ];
+})
+redis.register_stream_consumer("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
+    last_key = data.stream_name;
+    last_key_raw = data.stream_name_raw;
+    last_data = data.record;
+    last_data_raw = data.record_raw;
+})
+```
+
+Run Example:
+
+```bash
+127.0.0.1:6379> xadd "\xff\xff" * "\xaa" "\xaa"
+"1659515146671-0"
+127.0.0.1:6379> rg.fcall foo stats 0
+1) (nil)
+2) "\xff\xff"
+3) 1) 1) (nil)
+      2) (nil)
+4) 1) 1) "\xaa"
+      2) "\xaa"
+
+```

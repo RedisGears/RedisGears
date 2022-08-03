@@ -29,16 +29,16 @@ pub(crate) enum StreamReaderAck {
 pub(crate) trait StreamConsumer<T: StreamReaderRecord> {
     fn new_data(
         &self,
-        stream_name: &str,
+        stream_name: &[u8],
         record: T,
         ack_callback: Box<dyn FnOnce(StreamReaderAck) + Send>,
     ) -> Option<StreamReaderAck>;
 }
 
 pub(crate) struct TrackedStream {
-    name: String,
+    name: Vec<u8>,
     consumers_data: Vec<Weak<RefCellWrapper<ConsumerInfo>>>,
-    stream_trimmer: Arc<Box<dyn Fn(&str, RedisModuleStreamID) + Sync + Send>>,
+    stream_trimmer: Arc<Box<dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send>>,
 }
 
 impl TrackedStream {
@@ -136,12 +136,12 @@ impl ConsumerInfo {
 }
 
 pub(crate) struct ConsumerData<T: StreamReaderRecord, C: StreamConsumer<T>> {
-    pub(crate) prefix: String,
+    pub(crate) prefix: Vec<u8>,
     pub(crate) consumer: Option<C>,
-    pub(crate) consumed_streams: HashMap<String, Arc<RefCellWrapper<ConsumerInfo>>>,
+    pub(crate) consumed_streams: HashMap<Vec<u8>, Arc<RefCellWrapper<ConsumerInfo>>>,
     pub(crate) window: usize, // represent the max amount of elements that can be processed at the same time
     pub(crate) trim: bool,
-    pub(crate) on_record_acked: Option<Box<dyn Fn(&str, u64, u64)>>,
+    pub(crate) on_record_acked: Option<Box<dyn Fn(&[u8], u64, u64)>>,
     phantom: std::marker::PhantomData<T>,
 }
 
@@ -170,12 +170,12 @@ where
 
     pub(crate) fn get_or_create_consumed_stream(
         &mut self,
-        name: &str,
+        name: &[u8],
     ) -> (Arc<RefCellWrapper<ConsumerInfo>>, bool) {
         let mut is_new = false;
         let res = self
             .consumed_streams
-            .entry(name.to_string())
+            .entry(name.iter().map(|v| *v).collect())
             .or_insert_with(|| {
                 is_new = true;
                 Arc::new(RefCellWrapper {
@@ -196,7 +196,7 @@ where
 
     pub(crate) fn get_streams_info<'a>(
         &'a self,
-    ) -> Box<dyn Iterator<Item = (String, u64, u64)> + 'a> {
+    ) -> Box<dyn Iterator<Item = (Vec<u8>, u64, u64)> + 'a> {
         Box::new(
             self.consumed_streams
                 .iter()
@@ -206,9 +206,9 @@ where
                         return None;
                     }
                     let v = v.last_read_id.as_ref().unwrap();
-                    Some((s.to_string(), v.ms, v.seq))
+                    Some((s.clone(), v.ms, v.seq))
                 })
-                .collect::<Vec<(String, u64, u64)>>()
+                .collect::<Vec<(Vec<u8>, u64, u64)>>()
                 .into_iter(),
         )
     }
@@ -227,23 +227,23 @@ where
     consumers: Vec<Weak<RefCellWrapper<ConsumerData<T, C>>>>,
     stream_reader: Arc<
         Box<
-            dyn Fn(&str, Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
+            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
                 + Sync
                 + Send,
         >,
     >,
-    stream_trimmer: Arc<Box<dyn Fn(&str, RedisModuleStreamID) + Sync + Send>>,
-    tracked_streams: HashMap<String, Arc<RefCellWrapper<TrackedStream>>>,
+    stream_trimmer: Arc<Box<dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send>>,
+    tracked_streams: HashMap<Vec<u8>, Arc<RefCellWrapper<TrackedStream>>>,
 }
 
 fn read_next_data<T: StreamReaderRecord>(
-    name: &str,
+    name: &[u8],
     id: Option<RedisModuleStreamID>,
     include_id: bool,
     consumer_info: &Arc<RefCellWrapper<ConsumerInfo>>,
     stream_reader: &Arc<
         Box<
-            dyn Fn(&str, Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
+            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
                 + Sync
                 + Send,
         >,
@@ -271,7 +271,7 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
     consumer_info: Arc<RefCellWrapper<ConsumerInfo>>,
     stream_reader: Arc<
         Box<
-            dyn Fn(&str, Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
+            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
                 + Sync
                 + Send,
         >,
@@ -437,11 +437,11 @@ where
 {
     pub(crate) fn new(
         stream_reader: Box<
-            dyn Fn(&str, Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
+            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
                 + Sync
                 + Send,
         >,
-        steam_trimmer: Box<dyn Fn(&str, RedisModuleStreamID) + Sync + Send>,
+        steam_trimmer: Box<dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send>,
     ) -> Self {
         StreamReaderCtx {
             consumers: Vec::new(),
@@ -458,15 +458,15 @@ where
 
     pub(crate) fn add_consumer(
         &'static mut self,
-        prefix: &str,
+        prefix: &[u8],
         consumer: C,
         window: usize,
         trim: bool,
-        on_record_acked: Option<Box<dyn Fn(&str, u64, u64)>>,
+        on_record_acked: Option<Box<dyn Fn(&[u8], u64, u64)>>,
     ) -> Arc<RefCellWrapper<ConsumerData<T, C>>> {
         let consumer_data = Arc::new(RefCellWrapper {
             ref_cell: RefCell::new(ConsumerData {
-                prefix: prefix.to_string(),
+                prefix: prefix.iter().map(|v| *v).collect(),
                 consumer: Some(consumer),
                 consumed_streams: HashMap::new(),
                 phantom: std::marker::PhantomData::<T>,
@@ -479,7 +479,7 @@ where
         consumer_data
     }
 
-    pub(crate) fn on_stream_deleted(&mut self, _event: &str, key: &str) {
+    pub(crate) fn on_stream_deleted(&mut self, _event: &str, key: &[u8]) {
         let mut ids_to_remove = Vec::new();
         self.tracked_streams.remove(key);
         for (i, c) in self.consumers.iter().enumerate() {
@@ -496,13 +496,13 @@ where
 
     fn get_or_create_tracked_stream(
         &mut self,
-        name: &str,
+        name: &[u8],
     ) -> &std::sync::Arc<RefCellWrapper<TrackedStream>> {
         self.tracked_streams
-            .entry(name.to_string())
+            .entry(name.iter().map(|v| *v).collect())
             .or_insert(Arc::new(RefCellWrapper {
                 ref_cell: RefCell::new(TrackedStream {
-                    name: name.to_string(),
+                    name: name.iter().map(|v| *v).collect(),
                     consumers_data: Vec::new(),
                     stream_trimmer: Arc::clone(&self.stream_trimmer),
                 }),
@@ -511,7 +511,7 @@ where
 
     pub(crate) fn update_stream_for_consumer(
         &mut self,
-        stream_name: &str,
+        stream_name: &[u8],
         consumer_data: &Arc<RefCellWrapper<ConsumerData<T, C>>>,
         ms: u64,
         seq: u64,
@@ -533,7 +533,7 @@ where
         self.tracked_streams.clear();
     }
 
-    pub(crate) fn on_stream_touched(&mut self, _event: &str, key: &str) {
+    pub(crate) fn on_stream_touched(&mut self, _event: &str, key: &[u8]) {
         let mut ids_to_remove = Vec::new();
 
         let tracked_stream = Arc::clone(self.get_or_create_tracked_stream(key));

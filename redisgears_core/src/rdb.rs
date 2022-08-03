@@ -69,12 +69,12 @@ extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
                 .ref_cell
                 .borrow()
                 .get_streams_info()
-                .collect::<Vec<(String, u64, u64)>>();
+                .collect::<Vec<(Vec<u8>, u64, u64)>>();
             // save the number of streams for this consumer
             raw::save_unsigned(rdb, streams_info.len() as u64);
             for (stream, ms, seq) in streams_info {
                 // save the stream name
-                raw::save_string(rdb, &stream);
+                raw::save_slice(rdb, &stream);
                 // save last read id
                 raw::save_unsigned(rdb, ms);
                 raw::save_unsigned(rdb, seq);
@@ -196,13 +196,6 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
                             "Failed loading stream name for consumer '{}', {}.",
                             consumer_name, e
                         ))
-                    })?
-                    .to_string()
-                    .map_err(|e| {
-                        Error::generic(&format!(
-                            "Failed parsing stream name for consumer '{}' as string, {}.",
-                            consumer_name, e
-                        ))
                     })?;
                 let ms = raw::load_unsigned(rdb).map_err(|e| {
                     Error::generic(&format!(
@@ -217,7 +210,7 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
                     ))
                 })?;
                 get_globals_mut().stream_ctx.update_stream_for_consumer(
-                    &stream_name,
+                    stream_name.as_ref(),
                     consumer,
                     ms,
                     seq,
