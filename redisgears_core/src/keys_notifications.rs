@@ -4,11 +4,11 @@ use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 
 pub(crate) type NotificationCallback =
-    Box<dyn Fn(&str, &str, Box<dyn FnOnce(Result<(), String>) + Send + Sync>)>;
+    Box<dyn Fn(&str, &[u8], Box<dyn FnOnce(Result<(), String>) + Send + Sync>)>;
 
 pub(crate) enum ConsumerKey {
-    Key(String),
-    Prefix(String),
+    Key(Vec<u8>),
+    Prefix(Vec<u8>),
 }
 
 #[derive(Clone)]
@@ -64,7 +64,7 @@ impl NotificationConsumer {
     }
 }
 
-fn fire_event(consumer: &Arc<RefCell<NotificationConsumer>>, event: &str, key: &str) {
+fn fire_event(consumer: &Arc<RefCell<NotificationConsumer>>, event: &str, key: &[u8]) {
     let c = consumer.borrow();
     {
         let mut stats = c.stats.ref_cell.borrow_mut();
@@ -108,11 +108,11 @@ impl KeysNotificationsCtx {
 
     pub(crate) fn add_consumer_on_prefix(
         &mut self,
-        prefix: &str,
+        prefix: &[u8],
         callback: NotificationCallback,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
-            ConsumerKey::Prefix(prefix.to_string()),
+            ConsumerKey::Prefix(prefix.iter().map(|v| *v).collect()),
             callback,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
@@ -121,18 +121,18 @@ impl KeysNotificationsCtx {
 
     pub(crate) fn add_consumer_on_key(
         &mut self,
-        key: &str,
+        key: &[u8],
         callback: NotificationCallback,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
-            ConsumerKey::Key(key.to_string()),
+            ConsumerKey::Key(key.iter().map(|v| *v).collect()),
             callback,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
         consumer
     }
 
-    pub(crate) fn on_key_touched(&self, event: &str, key: &str) {
+    pub(crate) fn on_key_touched(&self, event: &str, key: &[u8]) {
         for consumer in self.consumers.iter() {
             let consumer = match consumer.upgrade() {
                 Some(c) => c,

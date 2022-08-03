@@ -13,7 +13,7 @@ pub trait KeysNotificationsConsumerCtxInterface {
     fn on_notification_fired(
         &self,
         event: &str,
-        key: &str,
+        key: &[u8],
         notification_ctx: Box<dyn NotificationRunCtxInterface>,
     ) -> Option<Box<dyn Any>>;
 

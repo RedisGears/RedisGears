@@ -120,6 +120,10 @@ impl<'a> ReplyCtxInterface for RunCtx<'a> {
         self.ctx.reply_bulk_slice(val);
     }
 
+    fn reply_with_null(&self) {
+        self.ctx.reply_null();
+    }
+
     fn as_client(&self) -> &dyn ReplyCtxInterface {
         self
     }
@@ -197,6 +201,10 @@ impl ReplyCtxInterface for BackgroundClientCtx {
 
     fn reply_with_slice(&self, val: &[u8]) {
         self.ctx.reply_bulk_slice(val);
+    }
+
+    fn reply_with_null(&self) {
+        self.ctx.reply_null();
     }
 
     fn as_client(&self) -> &dyn ReplyCtxInterface {

@@ -153,3 +153,29 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(client) {
     env.cmd('XADD', 'stream:1', '*', 'foo', 'bar')
     env.expect('GET', 'X').equal('2')
     env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+
+@gearsTest(decodeResponses=False)
+def testNotificationsOnBinaryKey(env):
+    """#!js name=lib
+var n_notifications = 0;
+var last_key = null;
+var last_key_raw = null;
+redis.register_notifications_consumer("consumer", "", function(client, data) {
+    if (data.event == "set") {
+        n_notifications += 1;
+        last_data = data.key;
+        last_key_raw = data.key_raw;
+    }
+});
+
+redis.register_function("notifications_stats", async function(){
+    return [
+        n_notifications,
+        last_key,
+        last_key_raw
+    ];
+});
+    """
+    env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([0, None, None])
+    env.expect('SET', b'\xaa', b'\xaa').equal(True)
+    env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([1, None, b'\xaa'])

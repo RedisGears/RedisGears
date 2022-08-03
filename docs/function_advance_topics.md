@@ -193,6 +193,7 @@ By default, RedisGears will decode all data as string and will raise error on fa
 
 1. Binary function arguments
 2. Binary command results
+3. Binary keys names On [database triggers](databse_triggers.md)
 
 ### Binary Function Arguments
 
@@ -217,7 +218,7 @@ The above example will allow us to set `key` and `val` even if those are binary 
 
 Notice that `call` function also except `JS` `ArrayBuffer` arguments.
 
-### Get Command Results as Binary Data
+### Binary Command Results
 
 Getting function arguments as binary data is not enough. We might want to read binary data from Redis key. In order to do this we can use `call_raw` function that will not decode the result as `JS` `String` and instead will return the result as `JS` `ArrayBuffer`. Example:
 
@@ -239,3 +240,43 @@ OK
 ```
 
 Notice that `JS` `ArrayBuffer` can be returned by RedisGears function, RedisGears will return it to the client as `bulk string`.
+
+### Binary Keys Names On Database Triggers
+
+On [database triggers](databse_triggers.md), if the key name that triggered the event is binary. The `data.key` field will be NULL. The `data.key_raw` field is alway provided as `JS` `ArrayBuffer` and can be used in this case, example:
+
+```js
+#!js name=lib
+/* The following is just an example, in general it is discourage to use globals. */
+var n_notifications = 0;
+var last_key = null;
+var last_key_raw = null;
+redis.register_notifications_consumer("consumer", "", function(client, data) {
+    if (data.event == "set") {
+        n_notifications += 1;
+        last_data = data.key;
+        last_key_raw = data.key_raw;
+    }
+});
+
+redis.register_function("notifications_stats", async function(){
+    return [
+        n_notifications,
+        last_key,
+        last_key_raw
+    ];
+});
+```
+
+Run example:
+
+```bash
+127.0.0.1:6379> set "\xaa" "\xaa"
+OK
+127.0.0.1:6379> rg.fcall lib notifications_stats 0
+1) (integer) 1
+2) (nil)
+3) "\xaa"
+```
+
+For more informatio, follow [database triggers](databse_triggers.md) page.

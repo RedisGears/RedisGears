@@ -69,6 +69,8 @@ fn send_reply(
     } else if val.is_array_buffer() {
         let val = val.as_array_buffer();
         client.reply_with_slice(val.data());
+    } else if val.is_null() {
+        client.reply_with_null();
     } else if val.is_array() {
         let arr = val.as_array();
         client.reply_with_array(arr.len());

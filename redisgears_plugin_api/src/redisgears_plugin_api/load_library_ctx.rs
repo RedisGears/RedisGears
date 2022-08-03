@@ -11,8 +11,8 @@ pub trait LibraryCtxInterface {
 }
 
 pub enum RegisteredKeys<'a> {
-    Key(&'a str),
-    Prefix(&'a str),
+    Key(&'a [u8]),
+    Prefix(&'a [u8]),
 }
 
 pub const FUNCTION_FLAG_NO_WRITES: u8 = 0x01;

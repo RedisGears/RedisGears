@@ -15,6 +15,7 @@ pub trait ReplyCtxInterface: Send + Sync {
     fn reply_with_bulk_string(&self, val: &str);
     fn reply_with_slice(&self, val: &[u8]);
     fn reply_with_array(&self, size: usize);
+    fn reply_with_null(&self);
     fn as_client(&self) -> &dyn ReplyCtxInterface;
 }
 

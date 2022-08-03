@@ -256,13 +256,15 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         let fire_event_callback: NotificationCallback =
             Box::new(move |event, key, done_callback| {
                 let user = user_name.ref_cell.borrow();
-                let key_redis_str = RedisString::create(std::ptr::null_mut(), key);
+                let key_redis_str = RedisString::create_from_slice(std::ptr::null_mut(), key);
                 if let Err(e) =
                     get_ctx().acl_check_key_permission(&user, &key_redis_str, &permissions)
                 {
                     done_callback(Err(format!(
                         "User '{}' has no permissions on key '{}', {}.",
-                        user, key, e
+                        user,
+                        std::str::from_utf8(key).unwrap_or("[binary data]"),
+                        e
                     )));
                     return;
                 }
@@ -287,8 +289,8 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
             let new_key = match key {
-                RegisteredKeys::Key(s) => ConsumerKey::Key(s.to_string()),
-                RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.to_string()),
+                RegisteredKeys::Key(s) => ConsumerKey::Key(s.iter().map(|v| *v).collect()),
+                RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.iter().map(|v| *v).collect()),
             };
             let old_key = o_c.set_key(new_key);
             self.revert_notifications_consumers.push((
@@ -1468,17 +1470,11 @@ fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, k
 }
 
 fn key_space_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
-    let key = match String::from_utf8(key.into_iter().map(|v| *v).collect::<Vec<u8>>()) {
-        Ok(s) => s,
-        Err(_) => {
-            return;
-        }
-    };
     let globals = get_globals();
     if globals.avoid_key_space_notifications {
         return;
     }
-    globals.notifications_ctx.on_key_touched(event, &key)
+    globals.notifications_ctx.on_key_touched(event, key)
 }
 
 fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {

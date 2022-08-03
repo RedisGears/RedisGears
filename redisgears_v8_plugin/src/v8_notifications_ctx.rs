@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 struct V8NotificationCtxData {
     event: String,
-    key: String,
+    key: Vec<u8>,
 }
 
 impl NotificationFiredDataInterface for V8NotificationCtxData {}
@@ -59,7 +59,19 @@ impl V8NotificationsCtxInternal {
             notification_data.set(
                 &ctx_scope,
                 &self.script_ctx.isolate.new_string("key").to_value(),
-                &self.script_ctx.isolate.new_string(&data.key).to_value(),
+                &std::str::from_utf8(&data.key).map_or(self.script_ctx.isolate.new_null(), |v| {
+                    self.script_ctx.isolate.new_string(v).to_value()
+                }),
+            );
+
+            notification_data.set(
+                &ctx_scope,
+                &self.script_ctx.isolate.new_string("key_raw").to_value(),
+                &self
+                    .script_ctx
+                    .isolate
+                    .new_array_buffer(&data.key)
+                    .to_value(),
             );
 
             let c = notification_ctx.get_redis_client();
@@ -171,7 +183,19 @@ impl V8NotificationsCtxInternal {
             notification_data.set(
                 &ctx_scope,
                 &self.script_ctx.isolate.new_string("key").to_value(),
-                &self.script_ctx.isolate.new_string(&data.key).to_value(),
+                &std::str::from_utf8(&data.key).map_or(self.script_ctx.isolate.new_null(), |v| {
+                    self.script_ctx.isolate.new_string(v).to_value()
+                }),
+            );
+
+            notification_data.set(
+                &ctx_scope,
+                &self.script_ctx.isolate.new_string("key_raw").to_value(),
+                &self
+                    .script_ctx
+                    .isolate
+                    .new_array_buffer(&data.key)
+                    .to_value(),
             );
 
             let r_client = get_backgrounnd_client(&self.script_ctx, &ctx_scope, background_client);
@@ -275,12 +299,12 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
     fn on_notification_fired(
         &self,
         event: &str,
-        key: &str,
+        key: &[u8],
         _notification_ctx: Box<dyn NotificationRunCtxInterface>,
     ) -> Option<Box<dyn Any>> {
         Some(Box::new(V8NotificationCtxData {
             event: event.to_string(),
-            key: key.to_string(),
+            key: key.iter().map(|v| *v).collect(),
         }))
     }
 

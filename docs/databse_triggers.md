@@ -54,9 +54,12 @@ The `data` argument which pass to the consumer callback are in the following for
 ```json
 {
     "event": "<the event name that fired the trigger>",
-    "key": "<key name that the event was fired on>",
+    "key": "<key name that the event was fired on as String>",
+    "key_raw": "<key name that the event was fired on as ArrayBuffer>"
 }
 ```
+
+Notice that `key` field is given only if the key can be decoded as `String`, otherwise the value will be `null`.
 
 We can observe the trigger information using [RG.FUNCTION LIST](commands.md#rgfunction-list) command:
 
