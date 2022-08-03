@@ -555,7 +555,11 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                         redis_module::replicate_slices(
                             ctx.ctx,
                             "xtrim",
-                            &[key_name, "MINID".as_bytes(), format!("{}-{}", id.ms, id.seq).as_bytes()],
+                            &[
+                                key_name,
+                                "MINID".as_bytes(),
+                                format!("{}-{}", id.ms, id.seq).as_bytes(),
+                            ],
                         );
                     }
                 }),
@@ -960,7 +964,9 @@ fn function_list_command(
                                         RedisValue::BulkString("name".to_string()),
                                         RedisValue::BulkString(k.to_string()),
                                         RedisValue::BulkString("prefix".to_string()),
-                                        RedisValue::BulkRedisString(ctx.create_string_from_slice(&v.prefix)),
+                                        RedisValue::BulkRedisString(
+                                            ctx.create_string_from_slice(&v.prefix),
+                                        ),
                                         RedisValue::BulkString("window".to_string()),
                                         RedisValue::Integer(v.window as i64),
                                         RedisValue::BulkString("trim".to_string()),
@@ -982,7 +988,9 @@ fn function_list_command(
                                                     res.push(RedisValue::BulkString(
                                                         "name".to_string(),
                                                     ));
-                                                    res.push(RedisValue::BulkRedisString(ctx.create_string_from_slice(s)));
+                                                    res.push(RedisValue::BulkRedisString(
+                                                        ctx.create_string_from_slice(s),
+                                                    ));
 
                                                     res.push(RedisValue::BulkString(
                                                         "last_processed_time".to_string(),
@@ -1507,7 +1515,9 @@ fn scan_key_space_for_streams() {
                 None => ctx.open_key(&key_name).key_type(),
             };
             if key_type == Stream {
-                get_globals_mut().stream_ctx.on_stream_touched("created", key_name.as_slice());
+                get_globals_mut()
+                    .stream_ctx
+                    .on_stream_touched("created", key_name.as_slice());
             }
         }) {
             _gaurd = None; // will release the lock

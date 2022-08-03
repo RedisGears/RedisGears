@@ -71,11 +71,11 @@ impl V8StreamCtxInternals {
         let vals = record
             .fields()
             .map(|(f, v)| {
-                let f = match str::from_utf8(f){
+                let f = match str::from_utf8(f) {
                     Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
                     Err(_) => self.script_ctx.isolate.new_null(),
                 };
-                let v = match str::from_utf8(v){
+                let v = match str::from_utf8(v) {
                     Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
                     Err(_) => self.script_ctx.isolate.new_null(),
                 };
@@ -100,7 +100,7 @@ impl V8StreamCtxInternals {
             .script_ctx
             .isolate
             .new_array(&vals.iter().collect::<Vec<&V8LocalValue>>());
-        
+
         let raw_val_v8_arr = self
             .script_ctx
             .isolate
@@ -119,8 +119,16 @@ impl V8StreamCtxInternals {
         );
         stream_data.set(
             &ctx_scope,
-            &self.script_ctx.isolate.new_string("stream_name_raw").to_value(),
-            &self.script_ctx.isolate.new_array_buffer(stream_name).to_value(),
+            &self
+                .script_ctx
+                .isolate
+                .new_string("stream_name_raw")
+                .to_value(),
+            &self
+                .script_ctx
+                .isolate
+                .new_array_buffer(stream_name)
+                .to_value(),
         );
         stream_data.set(
             &ctx_scope,
@@ -196,11 +204,11 @@ impl V8StreamCtxInternals {
             let vals = record
                 .fields()
                 .map(|(f, v)| {
-                    let f = match str::from_utf8(f){
+                    let f = match str::from_utf8(f) {
                         Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
                         Err(_) => self.script_ctx.isolate.new_null(),
                     };
-                    let v = match str::from_utf8(v){
+                    let v = match str::from_utf8(v) {
                         Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
                         Err(_) => self.script_ctx.isolate.new_null(),
                     };
@@ -244,8 +252,16 @@ impl V8StreamCtxInternals {
             );
             stream_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("stream_name_raw").to_value(),
-                &self.script_ctx.isolate.new_array_buffer(stream_name).to_value(),
+                &self
+                    .script_ctx
+                    .isolate
+                    .new_string("stream_name_raw")
+                    .to_value(),
+                &self
+                    .script_ctx
+                    .isolate
+                    .new_array_buffer(stream_name)
+                    .to_value(),
             );
             stream_data.set(
                 &ctx_scope,

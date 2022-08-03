@@ -511,7 +511,6 @@ pub(crate) fn initialize_globals(
                 }
             };
             let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, if function_callback.is_async_function() {true} else {false});
-            
             let prefix = args.get(1);
             let res = if prefix.is_string() {
                 let prefix = prefix.to_utf8(isolate).unwrap();

@@ -190,13 +190,12 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
                 ))
             })?;
             for _ in 0..num_of_streams {
-                let stream_name = raw::load_string_buffer(rdb)
-                    .map_err(|e| {
-                        Error::generic(&format!(
-                            "Failed loading stream name for consumer '{}', {}.",
-                            consumer_name, e
-                        ))
-                    })?;
+                let stream_name = raw::load_string_buffer(rdb).map_err(|e| {
+                    Error::generic(&format!(
+                        "Failed loading stream name for consumer '{}', {}.",
+                        consumer_name, e
+                    ))
+                })?;
                 let ms = raw::load_unsigned(rdb).map_err(|e| {
                     Error::generic(&format!(
                         "Failed loading ms value for consumer '{}', {}.",

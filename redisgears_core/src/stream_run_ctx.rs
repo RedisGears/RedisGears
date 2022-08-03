@@ -115,7 +115,9 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
         {
             return Some(StreamReaderAck::Nack(format!(
                 "User '{}' has no permissions on key '{}', {}.",
-                user, std::str::from_utf8(stream_name).unwrap_or("[binary data]"), e
+                user,
+                std::str::from_utf8(stream_name).unwrap_or("[binary data]"),
+                e
             )));
         }
 
