@@ -48,11 +48,18 @@ pub(crate) struct GearsBoxLibraryVersionInfo {
 
 #[derive(Serialize, Deserialize)]
 #[allow(non_snake_case)]
-pub(crate) struct GearsBoxLibraryInfo {
+pub(crate) struct GearsBoxLibraryAuthorInfo {
+    pub(crate) id: String,
+    pub(crate) email: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[allow(non_snake_case)]
+pub(crate) struct GearsBoxLibraryGeneralInfo {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) description: String,
-    pub(crate) author: String,
+    pub(crate) author: GearsBoxLibraryAuthorInfo,
     pub(crate) likes: usize,
     pub(crate) created: usize,
     pub(crate) tags: Vec<String>,
@@ -64,12 +71,21 @@ pub(crate) struct GearsBoxLibraryInfo {
     pub(crate) active: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+#[allow(non_snake_case)]
+pub(crate) struct GearsBoxLibraryInfo {
+    pub(crate) general_info: GearsBoxLibraryGeneralInfo,
+    pub(crate) installed_version_info: GearsBoxLibraryVersionInfo
+}
+
 pub(crate) fn gears_box_get_library(library_id: &str) -> Result<GearsBoxLibraryInfo, RedisError> {
     let gears_box_address = &get_globals().config.gears_box_address.address;
-    let url = &format!("{}/api/v1/recipes/{}", gears_box_address, library_id);
-    let res = do_http_get(url);
-    match res {
-        Ok(r) => Ok(r),
-        Err(e) => Err(e),
-    }
+    let general_info_url = &format!("{}/api/v1/recipes/{}/", gears_box_address, library_id);
+    let general_info = do_http_get(general_info_url)?;
+    let installed_version_url = &format!("{}/api/v1/recipes/{}/versions/latest", gears_box_address, library_id);
+    let installed_version = do_http_get(installed_version_url)?;
+    Ok(GearsBoxLibraryInfo {
+        general_info: general_info,
+        installed_version_info: installed_version,
+    })
 }

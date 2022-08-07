@@ -1377,7 +1377,7 @@ fn function_install_lib_command(
 ) -> RedisResult {
     let function_load_args = get_args_values(args)?;
     let gear_box_lib = gears_box_get_library(function_load_args.last_arg)?;
-    let function_code = do_http_get_text(&gear_box_lib.versions.get(0).unwrap().url)?;
+    let function_code = do_http_get_text(&gear_box_lib.installed_version_info.url)?;
     let user = ctx.get_current_user()?;
     match function_load_intrernal(
         user,
