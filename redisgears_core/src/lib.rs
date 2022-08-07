@@ -1378,6 +1378,12 @@ fn function_install_lib_command(
     let function_load_args = get_args_values(args)?;
     let gear_box_lib = gears_box_get_library(function_load_args.last_arg)?;
     let function_code = do_http_get_text(&gear_box_lib.installed_version_info.url)?;
+
+    let calculated_sha = sha256::digest(function_code.to_string());
+    if calculated_sha != gear_box_lib.installed_version_info.sha256 {
+        return Err(RedisError::String(format!("File validation failure, calculated sha256sum does not match the expected value.")));
+    }
+
     let user = ctx.get_current_user()?;
     match function_load_intrernal(
         user,
