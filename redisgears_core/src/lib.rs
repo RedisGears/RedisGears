@@ -1381,7 +1381,9 @@ fn function_install_lib_command(
 
     let calculated_sha = sha256::digest(function_code.to_string());
     if calculated_sha != gear_box_lib.installed_version_info.sha256 {
-        return Err(RedisError::String(format!("File validation failure, calculated sha256sum does not match the expected value.")));
+        return Err(RedisError::String(format!(
+            "File validation failure, calculated sha256sum does not match the expected value."
+        )));
     }
 
     let user = ctx.get_current_user()?;

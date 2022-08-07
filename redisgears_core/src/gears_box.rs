@@ -75,14 +75,17 @@ pub(crate) struct GearsBoxLibraryGeneralInfo {
 #[allow(non_snake_case)]
 pub(crate) struct GearsBoxLibraryInfo {
     pub(crate) general_info: GearsBoxLibraryGeneralInfo,
-    pub(crate) installed_version_info: GearsBoxLibraryVersionInfo
+    pub(crate) installed_version_info: GearsBoxLibraryVersionInfo,
 }
 
 pub(crate) fn gears_box_get_library(library_id: &str) -> Result<GearsBoxLibraryInfo, RedisError> {
     let gears_box_address = &get_globals().config.gears_box_address.address;
     let general_info_url = &format!("{}/api/v1/recipes/{}/", gears_box_address, library_id);
     let general_info = do_http_get(general_info_url)?;
-    let installed_version_url = &format!("{}/api/v1/recipes/{}/versions/latest", gears_box_address, library_id);
+    let installed_version_url = &format!(
+        "{}/api/v1/recipes/{}/versions/latest",
+        gears_box_address, library_id
+    );
     let installed_version = do_http_get(installed_version_url)?;
     Ok(GearsBoxLibraryInfo {
         general_info: general_info,
