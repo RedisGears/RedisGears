@@ -1,0 +1,43 @@
+name: Centos 7
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: centos:centos7
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Update yum
+      run: yum update -qqy
+    - name: Install requirements 
+      run: |
+        yum install -yqq git openssl wget python3 xz-utils lsb-release sudo dialog apt-utils redhat-lsb subversion make gcc-c++ chrpath php php-devel php-pear openssl-devel python3-devel
+        yum groupinstall -yqq 'Development Tools'
+        yum install -yqq centos-release-scl
+        yum install -yqq devtoolset-9 llvm-toolset-7
+    - name: install rltest
+      run: pip3 install RLTest
+    - name: Install redis
+      run: |
+        scl enable devtoolset-9 llvm-toolset-7 bash
+        git clone https://github.com/redis/redis
+        cd redis
+        git checkout unstable; make install
+    - name: Install rust
+      run: |
+        scl enable devtoolset-9 llvm-toolset-7 bash
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
+        sh install_rust.sh -y
+    - name: format
+      run: $HOME/.cargo/bin/cargo fmt -- --check
+    - name: Build
+      run: $HOME/.cargo/bin/cargo build --verbose
+    - name: Tests
+      run: cd pytests;./run_tests.sh
