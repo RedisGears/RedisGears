@@ -1,0 +1,26 @@
+name: Macos Latest
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: install rltest
+      run: pip install RLTest
+    - name: install redis
+      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+    - name: format
+      run: cargo fmt -- --check
+    - name: Build
+      run: cargo build --verbose
+    - name: Tests
+      run: cd pytests;./run_tests.sh
