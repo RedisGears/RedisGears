@@ -4,7 +4,7 @@ A [Redis module](https://redis.io/docs/modules/) that allows running a JS functi
 
 **Notice, RedisGears 2.0 is still under active development and not yet GA, the API might (and probably) change at the final GA version.**
 
-**Notice, RedisGears 2.0 is providing support for JavaScript only. Documentation how to use Python is in [RedisGears v1.2](https://oss.redis.com/redisgears/1.2/).**
+**Notice, RedisGears 2.0 only provides support for JavaScript. Documentation for using Python is available in [RedisGears v1.2](https://oss.redis.com/redisgears/1.2/).**
 
 ## Run Using Docker
 

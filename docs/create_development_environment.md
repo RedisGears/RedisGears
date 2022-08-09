@@ -1,6 +1,6 @@
 # Create a Development Environemt
 
-When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and becomes complex it is less comfortable to mantain it as a single-file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi-file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi-file project and how to wrap it as a single file and send it to RedisGears. The tutorial assume you have Redis with RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
+When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and becomes complex it is less comfortable to mantain it as a single-file project. Lucky for us JS already faces this problem and has the relevant tool to maintain a multi-file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi-file project and how to wrap it as a single file and send it to RedisGears. The tutorial assumes you have Redis with RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
 
 ## Pre-requisite
 
@@ -33,7 +33,7 @@ The above will generate a `package.json` file that looks as follow:
 
 ```
 
-In order to wrap our multi-file project into a single file, we will use [webpack](https://webpack.js.org/), let install the required webpack tools:
+To wrap our multi-file project into a single file, we will use [webpack](https://webpack.js.org/), and install the required webpack tools:
 
 ```bash
 npm install webpack webpack-cli --save-dev
@@ -73,7 +73,7 @@ module.exports = {
 }
 ```
 
-The `entry` field is the entry point of our project. The plugin we use instruct webpack to add a banner line at the begining of the generated code that will contains the shebang syntax required by RedisGears along side the library name.
+The `entry` field represents the entry point of our project. The plugin we use instructs webpack to add a banner line at the begining of the generated code. The generated code will be prefixed by the shebang syntax required by RedisGears alongside the library name.
 
 We can now build our project, from within the root directory run the following command:
 
@@ -103,7 +103,7 @@ An `OK` reply will indicating that the library was loaded successfully. Test the
 
 ## Adding Files to our Project
 
-Lets add another file under the `src` direcotry called `test.js` that contains the following code:
+Let's add another file under the `src` directory called `test.js` containing the following code:
 
 ```js
 export var test = 'test';
@@ -125,7 +125,7 @@ If we will compile our code again:
 npx webpack --config webpack.config.js
 ```
 
-We will see that the generated file content has changed and it now contains the following:
+We will see that the generated file content has changed and now contains the following:
 
 ```js
 #!js name=foo

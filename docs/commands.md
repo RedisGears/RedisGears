@@ -100,13 +100,13 @@ RG.FUNCTION CALL <library name> <function name> [<arg1> ... <argn>]
 
 _Arguments_
 
-* _library name_ - The library name that contains the function.
+* _library name_ - The library name containing the function.
 * _function name_ - The function name to run.
 * _arg1_ ... _argn_ - Additional argument to pass to the function.
 
 _Return_
 
-The return value from the function or error in case of failure.
+Either the function return value, or an error in case of failure.
 
 **Example**
 ```bash
