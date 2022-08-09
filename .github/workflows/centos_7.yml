@@ -39,6 +39,8 @@ jobs:
     - name: format
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build
-      run: $HOME/.cargo/bin/cargo build --verbose
+      run: |
+        scl enable devtoolset-9 llvm-toolset-7 bash
+        $HOME/.cargo/bin/cargo build --verbose
     - name: Tests
       run: cd pytests;./run_tests.sh
