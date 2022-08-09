@@ -23,24 +23,24 @@ jobs:
         yum groupinstall -yqq 'Development Tools'
         yum install -yqq centos-release-scl
         yum install -yqq devtoolset-9 llvm-toolset-7
+        echo "source scl_source enable llvm-toolset-7 devtoolset-9" >> ~/.bash_profile
+        source ~/.bash
     - name: install rltest
       run: pip3 install RLTest
     - name: Install redis
       run: |
-        scl enable devtoolset-9 llvm-toolset-7 bash
         git clone https://github.com/redis/redis
         cd redis
-        git checkout unstable; make install
+        git checkout 7.0.3
+        make install
     - name: Install rust
       run: |
-        scl enable devtoolset-9 llvm-toolset-7 bash
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
         sh install_rust.sh -y
     - name: format
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build
       run: |
-        scl enable devtoolset-9 llvm-toolset-7 bash
         $HOME/.cargo/bin/cargo build --verbose
     - name: Tests
       run: cd pytests;./run_tests.sh
