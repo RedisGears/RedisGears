@@ -19,12 +19,12 @@ jobs:
       run: yum update -qqy
     - name: Install requirements 
       run: |
-        yum install -yqq git openssl wget python3 xz-utils lsb-release sudo dialog apt-utils redhat-lsb subversion make gcc-c++ chrpath php php-devel php-pear openssl-devel python3-devel
+        yum install -yqq git openssl wget python3 xz-utils lsb-release sudo dialog apt-utils redhat-lsb subversion chrpath openssl-devel python3-devel
         yum groupinstall -yqq 'Development Tools'
         yum install -yqq centos-release-scl
         yum install -yqq devtoolset-9 llvm-toolset-7
         echo "source scl_source enable llvm-toolset-7 devtoolset-9" >> ~/.bash_profile
-        source ~/.bash
+        source ~/.bash_profile
     - name: install rltest
       run: pip3 install RLTest
     - name: Install redis
