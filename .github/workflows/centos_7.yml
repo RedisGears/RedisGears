@@ -27,7 +27,9 @@ jobs:
       run: pip3 install RLTest
     - name: Install redis
       run: |
-        source scl_source enable llvm-toolset-7 devtoolset-9
+        set -x
+        . scl_source enable  devtoolset-9 || true
+        . scl_source enable llvm-toolset-7 || true
         git clone https://github.com/redis/redis
         cd redis
         git checkout 7.0.3
@@ -40,7 +42,8 @@ jobs:
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build
       run: |
-        source scl_source enable llvm-toolset-7 devtoolset-9
+        . scl_source enable  devtoolset-9 || true
+        . scl_source enable llvm-toolset-7 || true
         $HOME/.cargo/bin/cargo build --verbose
     - name: Tests
       run: cd pytests;./run_tests.sh
