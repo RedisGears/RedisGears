@@ -10,7 +10,8 @@ env:
 jobs:
   build:
 
-    runs-on: centos:centos7
+    runs-on: ubuntu-latest
+    container: centos:centos7
 
     steps:
     - uses: actions/checkout@v3
