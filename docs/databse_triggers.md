@@ -1,6 +1,6 @@
 # Database Triggers
 
-Database triggers allow register a function that will be invoked wheneven an event happened on the database. Most of the events triggers by command invocation but there are 2 special event that is not necessarally triggered by a command:
+Database triggers allow register a function that will be invoked whenever an event happened on the database. Most of the events triggers by command invocation but there are 2 special events that are not necessarily triggered by a command:
 
 1. Expired - fired when a key expired from the database.
 2. Evicted - fired when a key evicted from the database.
@@ -24,7 +24,7 @@ redis.register_notifications_consumer("consumer", "", function(client, data){
 });
 ```
 
-Argument Discription:
+Argument Description:
 
 * consumer - the consumer name.
 * prefix - the prefix of keys we want to fire the trigger on
@@ -114,7 +114,7 @@ When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOA
 
 On the current Redis version (7.0.3) there are couple of known issues that effects databases triggers:
 
-* The effect of the trigger and the command that fire the trigger will be replicated (to the replica and AOF) at a reverse order. This means that if `set x 1` fire a trigger that perfroms `del x`, the replication will see the `del x` command before the `set x 1` command. This will cause replication inconsistency. To avoid it, the trigger should only perform operations that are indipendent and are not effected the by execution order.
+* The effect of the trigger and the command that fire the trigger will be replicated (to the replica and AOF) at a reverse order. This means that if `set x 1` fire a trigger that performs `del x`, the replication will see the `del x` command before the `set x 1` command. This will cause replication inconsistency. To avoid it, the trigger should only perform operations that are independent and are not effected the by execution order.
 * On active expire, the `del` command and the trigger effect will not be wrapped with `multi/exec` block.
 * On active eviction, the `del` command and the trigger effect will not be wrapped with `multi/exec` block.
 

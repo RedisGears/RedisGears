@@ -1,6 +1,6 @@
-# Create a Development Environemt
+# Create a Development Environment
 
-When the project is small it is accaptable to have a single file that contains the entire code base. But as the project grows and become complex it is less comftable to mantain it as a single file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this taturial we will explain how to create a multi file project and how to wrap it as a single file and send it to RedisGears. The taturial assume you have Redis with RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
+When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and become complex it is less comfortable to maintain it as a single file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi file project and how to wrap it as a single file and send it to RedisGears. The tutorial assume you have Redis with RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
 
 ## Pre-requisite
 
@@ -73,7 +73,7 @@ module.exports = {
 }
 ```
 
-The `entry` field is the entery point of our project. The plugin we use instruct webpack to add a banner line at the begining of the generated code that will contains the shabeng syntax required by RedisGears along side the library name.
+The `entry` field is the entry point of our project. The plugin we use instruct webpack to add a banner line at the beginning of the generated code that will contains the shebang syntax required by RedisGears along side the library name.
 
 We can now build our project, from within the root directory run the following command:
 
@@ -81,7 +81,7 @@ We can now build our project, from within the root directory run the following c
 npx webpack --config webpack.config.js
 ```
 
-If all was done correctly you will see a new directiry, `dist`, with a single file, `main.js`, that contains the following code:
+If all was done correctly you will see a new directory, `dist`, with a single file, `main.js`, that contains the following code:
 
 ```js
 #!js name=foo
@@ -103,7 +103,7 @@ An `OK` reply will indicating that the library was loaded successfully. Test the
 
 ## Adding Files to our Project
 
-Lets adda another file under the `src` direcotry called `test.js` that contains the following code:
+Lets adda another file under the `src` directory called `test.js` that contains the following code:
 
 ```js
 export var test = 'test';
@@ -147,7 +147,7 @@ And we can test our function:
 
 ## Using an External Library
 
-Now lets use some exteral library, for example `mathjs`. To install the library run the following npm command on the project root directory:
+Now lets use some external library, for example `mathjs`. To install the library run the following npm command on the project root directory:
 
 ```
 npm install mathjs
@@ -232,7 +232,7 @@ OK
 
 **The following tutorial is experimental and is not promised to be supported in the final GA version**
 
-Fortunatly for us, v8 comes with an embeded webassembly support. We can leverage it to run our code that was written in some low level language, and achieve better performance on CPU intensive tasks. In this taturial we will show how to compile and run a rust code inside v8 webassembly embeded inside Redis using RedisGears :).
+Fortunately for us, v8 comes with an embedded webassembly support. We can leverage it to run our code that was written in some low level language, and achieve better performance on CPU intensive tasks. In this tutorial we will show how to compile and run a rust code inside v8 webassembly embedded inside Redis using RedisGears :).
 
 ## Pre-requisite
 
@@ -251,8 +251,8 @@ Now we need to initiate our project, we will use [rust pack](https://github.com/
 
 ```bash
 > npm init rust-webpack redisgears_rust
- 🦀 Rust + 🕸 WebAssembly + Webpack = ❤️ 
- Installed dependencies ✅ 
+ 🦀 Rust + 🕸 WebAssembly + Webpack = ❤️
+ Installed dependencies ✅
 ```
 
 `cd` in `redisgears_rust` directory. You will notice we have `src` directory with a single file inside it, `lib.rs`. Let open this file and add the following content:
@@ -282,7 +282,7 @@ wasm-pack build --target web
 
 Notice that we are building using the `web` target, though we are not actually a web, this target will be good enough for us and will help to avoid `nodejs` specific API that are not supported inside RedisGears (we hope that one day we will be popular enough and a new `RedisGears` target will be added :)).
 
-After build successfully, you will notice that a new `pkg` direcrtory was created containing the following content:
+After build successfully, you will notice that a new `pkg` directory was created containing the following content:
 
 ```bash
 package.json
@@ -312,7 +312,7 @@ For convenience, let add this build processes to be part of our `npm run deploy`
 
 ## Bundle Our Compiled Code With Webpack
 
-Now we will need to create a single bundled file that contain it all (`JS` and `webassembly`). We will generate a `JS` code that contains the webassebly code as base64 encoded string. On runtime, we will decode the string and run our webassembly code. Before we modify our `src/index.js` code to do that, let install some needed libraries:
+Now we will need to create a single bundled file that contain it all (`JS` and `webassembly`). We will generate a `JS` code that contains the webassembly code as base64 encoded string. On runtime, we will decode the string and run our webassembly code. Before we modify our `src/index.js` code to do that, let install some needed libraries:
 
 ```bash
 npm i base-64
@@ -320,7 +320,7 @@ npm i modify-source-webpack-plugin
 npm i text-encoding
 ```
 
-Now lets modify `src/index.js` to decode our base64 string and load the webassemble module. Then we will call `test` function that was exported by our rust code.
+Now lets modify `src/index.js` to decode our base64 string and load the webassembly module. Then we will call `test` function that was exported by our rust code.
 
 ```js
 import wasm_base_64 from "../redisgears_rust/pkg/rust_webpack_template_bg.wasm";
@@ -462,7 +462,7 @@ cacheable modules 625 KiB
 
 WARNING in asset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
 This can impact web performance.
-Assets: 
+Assets:
   main.js (539 KiB)
 
 WARNING in entrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
@@ -471,7 +471,7 @@ Entrypoints:
       main.js
 
 
-WARNING in webpack performance recommendations: 
+WARNING in webpack performance recommendations:
 You can limit the size of your bundles by using import() or require.ensure to lazy load some parts of your application.
 For more info visit https://webpack.js.org/guides/code-splitting/
 
@@ -558,4 +558,4 @@ OK
 
 You can now expose whatever API you want to the rust code and write rust code the way you like.
 
-**You are welcome to come up with a new and nice ideas of impoving the development environment and share it with us.**
+**You are welcome to come up with a new and nice ideas of improving the development environment and share it with us.**
