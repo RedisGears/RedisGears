@@ -78,21 +78,45 @@ pub(crate) fn call_result_to_js_object(
         CallResult::Map(m) => {
             let obj = isolate.new_object();
             for (k, v) in m {
-                let k_js_string = isolate.new_string(&k);
+                let k_js_string = if decode_responses {
+                    let s = match String::from_utf8(k) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            isolate.raise_exception_str("Could not decode value as string");
+                            return None;
+                        }
+                    };
+                    isolate.new_string(&s).to_value()
+                } else {
+                    isolate.raise_exception_str("Binary map key is not supported");
+                    return None;
+                };
                 let v_js = call_result_to_js_object(isolate, ctx_scope, v, decode_responses);
                 if v_js.is_none() {
                     return None;
                 }
                 let v_js = v_js.unwrap();
-                obj.set(ctx_scope, &k_js_string.to_value(), &v_js);
+                obj.set(ctx_scope, &k_js_string, &v_js);
             }
             Some(obj.to_value())
         }
         CallResult::Set(s) => {
             let set = isolate.new_set();
             for v in s {
-                let v_js_string = isolate.new_string(&v);
-                set.add(ctx_scope, &v_js_string.to_value());
+                let v_js_string = if decode_responses {
+                    let s = match String::from_utf8(v) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            isolate.raise_exception_str("Could not decode value as string");
+                            return None;
+                        }
+                    };
+                    isolate.new_string(&s).to_value()
+                } else {
+                    isolate.raise_exception_str("Binary set element is not supported");
+                    return None;
+                };
+                set.add(ctx_scope, &v_js_string);
             }
             Some(set.to_value())
         }

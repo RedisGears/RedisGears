@@ -552,3 +552,38 @@ redis.register_function("test", (c, key) => {
     """
     env.expect('set', b'\xaa', b'\xaa').equal(True)
     env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').equal(b'\xaa')
+
+@gearsTest()
+def testSimpleHgetall(env):
+    """#!js name=lib
+redis.register_function("test", (c, key) => {
+    return c.call("hgetall", key)
+},
+["raw-arguments"]);
+    """
+    env.expect('hset', 'k', 'f', 'v').equal(True)
+    env.expect('RG.FCALL', 'lib', 'test', '1', 'k').equal(['f', 'v'])
+
+
+@gearsTest(decodeResponses=False)
+def testBinaryFieldsNamesOnHashRaiseError(env):
+    """#!js name=lib
+redis.register_function("test", (c, key) => {
+    return c.call("hgetall", key)
+},
+["raw-arguments"]);
+    """
+    env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
+    env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').error().contains('Could not decode value as string')
+
+@gearsTest(decodeResponses=False)
+def testBinaryFieldsNamesOnHash(env):
+    """#!js name=lib
+redis.register_function("test", (c, key) => {
+    return typeof Object.keys(c.call_raw("hgetall", key))[0];
+},
+["raw-arguments"]);
+    """
+    env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
+    env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').error().contains('Binary map key is not supported')
+
