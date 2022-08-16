@@ -58,7 +58,7 @@ RG.FUNCTION LIST [WITHCODE] [VERBOSE] [v] [LIBRARY <library name>]
 _Arguments_
 
 * WITHCODE - Show libraries code.
-* VERBOSE - Increase output verbosity (can be used mutiple times to increase verbosity level).
+* VERBOSE - Increase output verbosity (can be used multiple times to increase verbosity level).
 * v - Same as VERBOSE
 * LIBRARY - Optional argument allow specifying a library name (can be used multiple times to show multiple libraries in a single command)
 

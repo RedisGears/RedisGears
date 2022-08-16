@@ -14,7 +14,7 @@ docker run -p 6379:6379 redislabs/redisgears:edge
 
 ### With Docker
 
-Run the following on the main directoty:
+Run the following on the main directory:
 ```bash
 > docker build -t redisgears2 .
 ```
@@ -35,13 +35,13 @@ Then run the built image:
 6. wget
 
 ### Compile
-Run the following on the main directoty:
+Run the following on the main directory:
 ```bash
 > cargo build
 ```
 
 ### Run
-Run the following on the main directoty:
+Run the following on the main directory:
 ```bash
 > ./run.sh
 ```

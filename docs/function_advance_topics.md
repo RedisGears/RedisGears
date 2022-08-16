@@ -55,7 +55,7 @@ redis.register_function('my_get', function(client, ...keys){
         }
     );
     return results;
-    
+
 });
 ```
 
@@ -154,7 +154,7 @@ Notica that in the above example we first set `last_update_field_name` to `__las
 OK
 ```
 
-And we can see that the last update field name is `last_update`: 
+And we can see that the last update field name is `last_update`:
 
 ```bash
 127.0.0.1:6379> RG.FCALL lib hset h foo bar 0
@@ -166,7 +166,7 @@ And we can see that the last update field name is `last_update`:
 4) "1658654047"
 ```
 
-Notice, RedisGears only gives the library the json configuration, **its the library responsibility to verify the correcness of the given configuration**.
+Notice, RedisGears only gives the library the json configuration, **its the library responsibility to verify the correctness of the given configuration**.
 
 ## Resp <-> JS Conversion
 
@@ -244,7 +244,7 @@ Notice that `JS` `ArrayBuffer` can be returned by RedisGears function, RedisGear
 
 ### Binary Keys Names On Database Triggers
 
-On [database triggers](databse_triggers.md), if the key name that triggered the event is binary. The `data.key` field will be NULL. The `data.key_raw` field is alway provided as `JS` `ArrayBuffer` and can be used in this case, example:
+On [database triggers](databse_triggers.md), if the key name that triggered the event is binary. The `data.key` field will be NULL. The `data.key_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case, example:
 
 ```js
 #!js name=lib
@@ -280,11 +280,11 @@ OK
 3) "\xaa"
 ```
 
-For more informatio, follow [database triggers](databse_triggers.md) page.
+For more information, follow [database triggers](databse_triggers.md) page.
 
 ### Binary Data on Stream Consumers
 
-On [stream consumers](stream_processing.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is alway provided as `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case it is possible to use `data.record` (which always exists) and contains the data as `JS` `ArrayBuffer`. Example:
+On [stream consumers](stream_processing.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case it is possible to use `data.record` (which always exists) and contains the data as `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js name=lib

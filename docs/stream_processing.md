@@ -25,11 +25,11 @@ redis.register_stream_consumer(
 );
 ```
 
-Argument Discription:
+Argument Description:
 
 * consumer - the consumer name.
 * stream - streams name prefix on which to trigger the callback.
-* window - how many elements can be proceesed simultaneously.
+* window - how many elements can be processed simultaneously.
 * trim stream - whether or not to trim the stream.
 * callback - the callback to invoke on each element in the stream. Following the same rules of [Sync and Async invocation](sync_and_async_run.md). The callback will be invoke only on primary shard.
 
@@ -73,7 +73,7 @@ The `data` argument which pass to the stream consumer callback are in the follow
 }
 ```
 
-The reason why the record is a list of touples and not an object is because the Redis Stream spacifications allows duplicate keys.
+The reason why the record is a list of touples and not an object is because the Redis Stream specifications allows duplicate keys.
 
 Notice that `stream_name` and `record` fields might contains `null`'s if the data can not be decoded as string. the `*_raw` fields will always be provided and will contains the data as `JS` `ArrayBuffer`.
 
@@ -148,11 +148,11 @@ We can observe the streams which are tracked by our registered consumer using [R
 
 ## Enable Trimming
 
-It is enough that a single consumer will enable trimming so that the stream will be trimmed. The stream will be trim according to the slowest consumer that consume the stream at a given time (even if this is not the consumer that enabled the trimming). Raising exception durring the callback invocation will **not prevent the trimming**. The callback should decide how to handle failures by invoke a retry or write some error log. The error will be added to the `last_error` field on [RG.FUNCTION LIST](commands.md#rgfunction-list) command.
+It is enough that a single consumer will enable trimming so that the stream will be trimmed. The stream will be trim according to the slowest consumer that consume the stream at a given time (even if this is not the consumer that enabled the trimming). Raising exception during the callback invocation will **not prevent the trimming**. The callback should decide how to handle failures by invoke a retry or write some error log. The error will be added to the `last_error` field on [RG.FUNCTION LIST](commands.md#rgfunction-list) command.
 
 ## Data processing Guarantees
 
-As long as the primary shard is up and running we guarantee exactly once property (the callback will be triggered exactly one time on each element in the stream). In case of failure such as shard crashing, we guarantee at least once propert (the callback will be triggered at least one time on each element in the stream)
+As long as the primary shard is up and running we guarantee exactly once property (the callback will be triggered exactly one time on each element in the stream). In case of failure such as shard crashing, we guarantee at least once property (the callback will be triggered at least one time on each element in the stream)
 
 ## Upgrades
 

@@ -1,4 +1,4 @@
-# Configuraiton
+# Configuration
 
 RedisGears provides configuration options to control its operation. These options can be set when the module is bootstrapped and, in some cases, at runtime.
 
@@ -6,7 +6,7 @@ The following sections describe the configuration options and how to set them.
 
 ## Bootstrap Configuration
 
-You can set your configuration options when the module is loaded. 
+You can set your configuration options when the module is loaded.
 When the module is loaded on start time, the module configuration can be set on the Redis configuration file itself. When loading the module on runtime the configuration can be given to the [MODULE LOADEX](https://redis.io/commands/module-loadex/) command. Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 
 ## Runtime Configuration
@@ -24,7 +24,7 @@ OK
 
 ## execution-threads
 
-The `execution-threads` configuration option controls the amount of background thread that runs JS code. **Notice that libraries are considered single threaded**, This configuration allows parallelise the invocation of multiple libraries only.
+The `execution-threads` configuration option controls the amount of background thread that runs JS code. **Notice that libraries are considered single threaded**, This configuration allows parallelize the invocation of multiple libraries only.
 
 _Expected Value_
 
@@ -34,7 +34,7 @@ _Default_
 
 1
 
-_Minumum Value_
+_Minimum Value_
 
 1
 
@@ -50,10 +50,10 @@ No
 
 The `library-fatal-failure-policy` configuration option controls how to handle a fatal error. Fatal error is consider one of the following:
 
-* Block timedout - The function blocks the Redis processes for to long (configurable using [lock-redis-timeout](#lock-redis-timeout) configuraion value)
-* OOM - The function consumer to much memory (configurable using [library-maxmemory](#library-maxmemory) configuraion value).
+* Block timeout - The function blocks the Redis processes for to long (configurable using [lock-redis-timeout](#lock-redis-timeout) configuration value)
+* OOM - The function consumer to much memory (configurable using [library-maxmemory](#library-maxmemory) configuration value).
 
-This configuration basically allow chosing between 2 options:
+This configuration basically allow choosing between 2 options:
 
 * Do not break atomocity property, even at the cost of killing the Redis processes.
 * Keep my Redis processes alive, even at the cost of losing atomicity.
@@ -83,7 +83,7 @@ _Default_
 
 1G
 
-_Minumum Value_
+_Minimum Value_
 
 16M
 
@@ -107,7 +107,7 @@ _Default_
 
 500 MS
 
-_Minumum Value_
+_Minimum Value_
 
 100 MS
 

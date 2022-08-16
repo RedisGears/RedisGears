@@ -1,13 +1,13 @@
 # Sync and Async Run
 
-By default, each time a gears function is invoked, it is invoke synchronously. This means that the atomicity property is promised (no other commands will be invoke or Redis while RedisGears function is running). Atomicity property has some greate adventages:
+By default, each time a gears function is invoked, it is invoke synchronously. This means that the atomicity property is promised (no other commands will be invoke or Redis while RedisGears function is running). Atomicity property has some great advantages:
 
 * You can update multiple keys at once and be sure any other client will see the entire update (and not partial updates).
 * You can be sure the data in Redis are not changed while processing it.
 
-On major disadventage of the atomicity property is that durring the entire invocation Redis is blocked and can not serve any other clients.
+On major disadvantage of the atomicity property is that during the entire invocation Redis is blocked and can not serve any other clients.
 
-RedisGears attempt to give a better flexability to the Gears function writer and allow to invoke function on the background. When function is invoke on the background it can not touch the Redis key space, To touch the Redis key space from the background, the function must block Redis and enter an atomic section where the atomicity property is once again guaranteed.
+RedisGears attempt to give a better flexibility to the Gears function writer and allow to invoke function on the background. When function is invoke on the background it can not touch the Redis key space, To touch the Redis key space from the background, the function must block Redis and enter an atomic section where the atomicity property is once again guaranteed.
 
 RedisGears function can go to the background by implement the function as a JS Coroutine. The Coroutine is invoked on a background thread and do not block the Redis processes. Example:
 
@@ -21,7 +21,7 @@ redis.register_function('test', async function(){
 
 The above function will simply return `test`, but will run on a background thread and will not block Redis (when running the function, Redis will be able to accept more commands from other clients).
 
-The Coroutine accept an optional client argument, this client is different then the client accepted by synchronous functions. The client does not allow to invoke Redis command, but instead the client allows to block Redis and enter an atomic section where the atomicity propert is once again guaranteed. The following example shows how to invoke a simple `ping` command from within an async Coroutine:
+The Coroutine accept an optional client argument, this client is different then the client accepted by synchronous functions. The client does not allow to invoke Redis command, but instead the client allows to block Redis and enter an atomic section where the atomicity property is once again guaranteed. The following example shows how to invoke a simple `ping` command from within an async Coroutine:
 
 ```js
 #!js name=lib
@@ -86,11 +86,11 @@ redis.register_function('test', async function(async_client, expected_name){
 });
 ```
 
-Both implementations return the same result, but the seconds runs in the background and block Redis just to analize the next batch of keys that returned from the scan command. Other commands will be processed in between the scan batches. Notice that the Coroutine approach allows the key space to be changed while the scanning it, function writer will need to decide if this is acceptable.
+Both implementations return the same result, but the seconds runs in the background and block Redis just to analyze the next batch of keys that returned from the scan command. Other commands will be processed in between the scan batches. Notice that the Coroutine approach allows the key space to be changed while the scanning it, function writer will need to decide if this is acceptable.
 
 # Start Sync and Move Async
 
-The above example is costly, even though Redis is not blocked it is still takes time to return the reply to the user. If we flaten the requirement in such way that we agree to get an approximate value, we can get a much better performance (on most cases). We will cache the result on a key called `<name>_count` and set some expiration on that key so that we will recalculate the value from time to time. The new code will look like this:
+The above example is costly, even though Redis is not blocked it is still takes time to return the reply to the user. If we flatten the requirement in such way that we agree to get an approximate value, we can get a much better performance (on most cases). We will cache the result on a key called `<name>_count` and set some expiration on that key so that we will recalculate the value from time to time. The new code will look like this:
 
 ```js
 #!js name=lib
@@ -173,7 +173,7 @@ redis.register_function('test', function(client, expected_name){
 
 `run_on_background` will return a `Promise` object, we return this Promise object as the function return value. When RedisGears sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much faster in case of cache hit.
 
-**Notice!!!** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.allow_block()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possibe.
+**Notice!!!** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.allow_block()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possible.
 
 
 # Fail Blocking the Redis
