@@ -9,11 +9,11 @@ from common import gearsTest
 def testDependenciesInstall(env):
     conn = getConnectionByEnv(env)
     res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                            "map(lambda x: str(__import__('redisgraph')))."
-                            "collect().distinct().run()", 'REQUIREMENTS', 'redisgraph')
+                            "map(lambda x: str(__import__('redis')))."
+                            "collect().distinct().run()", 'REQUIREMENTS', 'redis')
     env.assertEqual(len(res[0]), env.shardsCount)
     env.assertEqual(len(res[1]), 0)
-    env.assertContains("<module 'redisgraph'", res[0][0])
+    env.assertContains("<module 'redis'", res[0][0])
 
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesInstallWithVersionGreater(env):
@@ -45,16 +45,16 @@ def testDependenciesInstallFailure(env):
 @gearsTest(skipOnCluster=True, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesWithRegister(env):
     env.expect('RG.PYEXECUTE', "GB()."
-                               "map(lambda x: __import__('redisgraph'))."
-                               "collect().distinct().register()", 'REQUIREMENTS', 'redisgraph').ok()
+                               "map(lambda x: __import__('redis'))."
+                               "collect().distinct().register()", 'REQUIREMENTS', 'redis').ok()
 
     for _ in env.reloading_iterator():
         res = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader')."
-                                      "map(lambda x: str(__import__('redisgraph')))."
+                                      "map(lambda x: str(__import__('redis')))."
                                       "collect().distinct().run()")
         env.assertEqual(len(res[0]), env.shardsCount)
         env.assertEqual(len(res[1]), 0)
-        env.assertContains("<module 'redisgraph'", res[0][0])
+        env.assertContains("<module 'redis'", res[0][0])
 
 @gearsTest(decodeResponses=False, envArgs={'moduleArgs': 'CreateVenv 1'})
 def testDependenciesBasicExportImport(env):
@@ -63,8 +63,8 @@ def testDependenciesBasicExportImport(env):
     #disable rdb save
     res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').foreach(lambda x: execute('config', 'set', 'save', '')).run()")
     
-    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').equal(b'OK')
-    md, data = env.cmd('RG.PYEXPORTREQ', 'redisgraph')
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redis').equal(b'OK')
+    md, data = env.cmd('RG.PYEXPORTREQ', 'redis')
     env.assertEqual(md[5], b'yes')
     env.assertEqual(md[7], b'yes')
     env.stop()
@@ -83,7 +83,7 @@ def testDependenciesReplicatedToSlave(env):
     if env.envRunner.debugger is not None:
         env.skip() # valgrind is not working correctly with replication
 
-    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').ok()
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redis').ok()
 
     slaveConn = env.getSlaveConnection()
     try:
@@ -100,7 +100,7 @@ def testDependenciesReplicatedToSlave(env):
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1', 'freshEnv': True})
 def testDependenciesSavedToRDB(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').ok()
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redis').ok()
     for _ in env.reloading_iterator():
         res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').flatmap(lambda x: execute('RG.PYDUMPREQS')).run()")
         env.assertEqual(len(err), 0)
@@ -111,7 +111,7 @@ def testDependenciesSavedToRDB(env):
 @gearsTest(envArgs={'moduleArgs': 'CreateVenv 1', 'useAof':True})
 def testAof(env):
     conn = getConnectionByEnv(env)
-    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redisgraph').ok()
+    env.expect('RG.PYEXECUTE', "GB().register()", 'REQUIREMENTS', 'redis').ok()
 
     res, err = env.cmd('RG.PYEXECUTE', "GB('ShardsIDReader').flatmap(lambda x: execute('RG.PYDUMPREQS')).run()")
     env.assertEqual(len(err), 0)
