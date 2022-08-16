@@ -384,7 +384,7 @@ static int CommandReader_VerifyRegister(SessionRegistrationCtx *srctx, FlatExecu
         if (srctx) {
             for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
                 RegistrationData *rd = srctx->registrationsData + i;
-                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
                 if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
                     // another command reader found, check its arguments.
                     CommandReaderTriggerArgs* crtArgs2 = rd->args;
@@ -442,7 +442,7 @@ static int CommandReader_VerifyRegister(SessionRegistrationCtx *srctx, FlatExecu
         if (srctx) {
             for (size_t i = 0 ; i < array_len(srctx->registrationsData) ; ++i) {
                 RegistrationData *rd = srctx->registrationsData + i;
-                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(fep->reader->reader);
+                RedisGears_ReaderCallbacks* callbacks = ReadersMgmt_Get(rd->fep->reader->reader);
                 if (callbacks->verifyRegister == CommandReader_VerifyRegister) {
                     // another command reader found, check its arguments.
                     CommandReaderTriggerArgs* crtArgs2 = rd->args;
