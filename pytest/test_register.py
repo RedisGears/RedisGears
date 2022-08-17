@@ -2082,7 +2082,7 @@ GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onF
             while True:
                 registrations = env.cmd('RG.DUMPREGISTRATIONS')
                 if registrations[0][7][3] > 2:
-                    self.env.assertTrue(False, message='More than 2 executions were triggered')
+                    env.assertTrue(False, message='More than 2 executions were triggered')
                     break
                 time.sleep(0.1)
     except Exception as e:
@@ -2098,7 +2098,7 @@ GB('StreamReader').foreach(lambda x: execute('incr', 'x')).register(batch=2, onF
             while True:
                 registrations = env.cmd('RG.DUMPREGISTRATIONS')
                 if registrations[0][7][3] != 3:
-                    self.env.assertTrue(False, message='More than 3 executions were triggered')
+                    env.assertTrue(False, message='More than 3 executions were triggered')
                     break
                 time.sleep(0.1)
     except Exception as e:

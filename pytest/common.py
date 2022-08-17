@@ -163,6 +163,7 @@ def gearsTest(skipTest=False,
               skipOnRedis6=False,
               skipWithTLS=False,
               decodeResponses=True,
+              executionMaxIdleTime=20000,
               envArgs={}):
     def test_func_generator(test_function):
         def test_func():
@@ -187,6 +188,7 @@ def gearsTest(skipTest=False,
                 # able to execute commands on shards, on slow envs, run with valgrind,
                 # or mac, it is needed.
                 env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
+            env.broadcast('RG.CONFIGSET', 'ExecutionMaxIdleTime', str(executionMaxIdleTime))
             conn = getConnectionByEnv(env)
             version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
