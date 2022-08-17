@@ -200,7 +200,7 @@ GB('CommandReader').count().map(lambda x: 'test2 reports %s shards' % str(x)).re
 
 @gearsTest(skipOnCluster=True)
 def testMod4054(env):
-    script = '''
+    script = """
 dm_g1 = GearsBuilder()
 dm_g1.register('prefix*', eventTypes=['set', 'change'], readValue=False, mode='sync')
 
@@ -219,7 +219,7 @@ GearsBuilder().register("key", eventTypes=['expired'], noScan=True, readValue=Fa
 
 GB('CommandReader').register(trigger='foo1')
 GB('CommandReader').register(trigger='foo1')
-    '''
+    """
     env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'DESCRIPTION', 'desc').error().contains('trigger already registered')
 
 @gearsTest(skipOnCluster=True)
