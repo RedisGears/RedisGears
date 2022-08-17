@@ -87,7 +87,7 @@ def testDependenciesReplicatedToSlave(env):
 
     slaveConn = env.getSlaveConnection()
     try:
-        with TimeLimit(20):
+        with TimeLimit(60):
             res = []
             while len(res) < 1:
                 res = slaveConn.execute_command('RG.PYDUMPREQS')
