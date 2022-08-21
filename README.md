@@ -26,26 +26,7 @@ Then run the built image:
 
 ### From Source
 
-### Pre-requisite
-1. [rust](https://www.rust-lang.org/tools/install)
-2. [Redis v7.0.3 or above](https://redis.io/)
-3. libssl-dev
-4. pkg-config
-5. clang
-6. wget
-
-### Compile
-Run the following on the main directory:
-```bash
-> cargo build
-```
-
-### Run
-Run the following on the main directory:
-```bash
-> ./run.sh
-```
-
+See the [build](docs/build_insturctions.md) page for more information.
 
 ## Getting started
 
