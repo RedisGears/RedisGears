@@ -36,7 +36,7 @@ sudo yum install -qqy wget curl git openssl openssl-devel
 
 ### Install Build Tools
 
-Install build-essential or its equavalent to the OS you are using
+Install build-essential or its equivalent to the OS you are using
 
 #### ubuntu
 
