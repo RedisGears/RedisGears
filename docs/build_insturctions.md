@@ -1,4 +1,4 @@
-# Build Steps
+# Installation Steps
 
 ## Install_Build_Pre_Requisite
 
@@ -132,5 +132,5 @@ cd ./pytests
 Run the tests using RLTest
 
 ```bash
-python3 -m RLTest
+python3 -m RLTest --parallelism 10
 ```
