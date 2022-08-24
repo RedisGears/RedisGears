@@ -23,4 +23,4 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Tests
-      run: cd pytests; python3 -m RLTest
+      run: cd pytests; python3 -m RLTest -s
