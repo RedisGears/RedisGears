@@ -199,6 +199,30 @@ GB('CommandReader').count().map(lambda x: 'test2 reports %s shards' % str(x)).re
     env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'DESCRIPTION', 'desc').error().contains('trigger already registered in this session')
 
 @gearsTest(skipOnCluster=True)
+def testMod4054(env):
+    script = """
+dm_g1 = GearsBuilder()
+dm_g1.register('prefix*', eventTypes=['set', 'change'], readValue=False, mode='sync')
+
+m1_g2 = GearsBuilder('StreamReader')
+m1_g2.register(prefix='foo:*', mode='async_local', trimStream=False) 
+
+m2_g2 = GearsBuilder('StreamReader')
+m2_g2.register(prefix='foo:*', mode='async_local', trimStream=False) 
+
+m3_g2 = GearsBuilder('StreamReader')
+m3_g2.register(prefix='foo:*', mode='async_local', trimStream=False) 
+
+GB('CommandReader').register(trigger='bar')
+
+GearsBuilder().register("key", eventTypes=['expired'], noScan=True, readValue=False, mode='sync')
+
+GB('CommandReader').register(trigger='foo1')
+GB('CommandReader').register(trigger='foo1')
+    """
+    env.expect('RG.PYEXECUTE', script, 'ID', 'test', 'DESCRIPTION', 'desc').error().contains('trigger already registered')
+
+@gearsTest(skipOnCluster=True)
 def testCommandReaderOverrideCommandWithNoneSyncRegistration(env):
     script = '''
 GB('CommandReader').count().map(lambda x: 'test1 reports %s shards' % str(x)).register(hook='set')
