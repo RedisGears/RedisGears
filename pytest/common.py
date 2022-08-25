@@ -101,6 +101,7 @@ def verifyRegistrationIntegrity(env):
 def extractInfoOnfailure(env, suffixFileName):
     for i in range(1, env.shardsCount + 1):
         conn = env.getConnection(shardId=i)
+        conn.set_response_callback('info', lambda r: r)
         shardInfo = {}
         shardInfo['RG.DUMPREGISTRATIONS'] = conn.execute_command('RG.DUMPREGISTRATIONS')
         shardInfo['RG.DUMPEXECUTIONS'] = conn.execute_command('RG.DUMPEXECUTIONS')

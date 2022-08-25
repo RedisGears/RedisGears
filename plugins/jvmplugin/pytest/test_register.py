@@ -87,6 +87,7 @@ def testRegistersReplicatedToSlave(env, conn, **kargs):
     #                         "foreach(lambda x: execute('incrby', 'NumOfKeys', ('1' if 'value' in x.keys() else '-1')))."
     #                         "register()")
 
+    env.expect('wait', '1', '10000').equal(1)
     slaveConn = env.getSlaveConnection()
     try:
         with TimeLimit(5):
