@@ -68,6 +68,9 @@ pub const GIT_SHA: Option<&str> = std::option_env!("GIT_SHA");
 pub const GIT_BRANCH: Option<&str> = std::option_env!("GIT_BRANCH");
 pub const VERSION_STR: Option<&str> = std::option_env!("VERSION_STR");
 pub const VERSION_NUM: Option<&str> = std::option_env!("VERSION_NUM");
+pub const BUILD_OS_TYPE: Option<&str> = std::option_env!("BUILD_OS_TYPE");
+pub const BUILD_OS_VERSION: Option<&str> = std::option_env!("BUILD_OS_VERSION");
+pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 
 struct GearsLibraryMataData {
     name: String,
@@ -470,10 +473,13 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
 
 fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     ctx.log_notice(&format!(
-        "RedisGears v{}, sha='{}', branch='{}'.",
+        "RedisGears v{}, sha='{}', branch='{}', built_on='{}.{}.{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
-        GIT_BRANCH.unwrap_or_default()
+        GIT_BRANCH.unwrap_or_default(),
+        BUILD_OS_TYPE.unwrap_or_default(),
+        BUILD_OS_VERSION.unwrap_or_default(),
+        BUILD_OS_ARCH.unwrap_or_default()
     ));
     match ctx.get_redis_version() {
         Ok(v) => {

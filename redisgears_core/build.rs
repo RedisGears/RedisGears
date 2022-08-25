@@ -31,4 +31,10 @@ fn main() {
         version_num = major * 10000 + minor * 100 + patch;
     }
     println!("cargo:rustc-env=VERSION_NUM={}", version_num);
+
+    let info = os_info::get();
+
+    println!("cargo:rustc-env=BUILD_OS_TYPE={}", info.os_type());
+    println!("cargo:rustc-env=BUILD_OS_VERSION={}", info.version());
+    println!("cargo:rustc-env=BUILD_OS_ARCH={}", std::env::consts::ARCH);
 }
