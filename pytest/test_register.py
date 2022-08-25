@@ -524,7 +524,7 @@ def testRegistersReplicatedToSlave(env):
                             "foreach(lambda x: execute('incrby', 'NumOfKeys', ('1' if 'value' in x.keys() else '-1')))."
                             "register()")
 
-    time.sleep(0.5) # wait for registration to reach all the shards
+    env.expect('wait', '1', '10000').equal(1)
 
     slaveConn = env.getSlaveConnection()
     try:
