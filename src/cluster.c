@@ -716,7 +716,7 @@ static void Cluster_Refresh(RedisModuleCtx* ctx){
 
         RedisModuleCallReply *nodeDetailsRelpy = RedisModule_CallReplyArrayElement(slotRangeRelpy, 2);
         RedisModule_Assert(RedisModule_CallReplyType(nodeDetailsRelpy) == REDISMODULE_REPLY_ARRAY);
-        RedisModule_Assert(RedisModule_CallReplyLength(nodeDetailsRelpy) == 3);
+        RedisModule_Assert(RedisModule_CallReplyLength(nodeDetailsRelpy) >= 3);
         RedisModuleCallReply *nodeipReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 0);
         RedisModuleCallReply *nodeportReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 1);
         RedisModuleCallReply *nodeidReply = RedisModule_CallReplyArrayElement(nodeDetailsRelpy, 2);

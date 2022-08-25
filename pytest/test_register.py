@@ -752,6 +752,8 @@ GB('StreamReader').foreach(FailedOnMaster).register(regex='stream', batch=3, onF
 '''
     if env.envRunner.debugger is not None:
         env.skip() # valgrind is not working correctly with replication
+
+    env.expect('wait', '1', '10000').equal(1)
     slaveConn = env.getSlaveConnection()
     masterConn = env.getConnection()
     env.cmd('rg.pyexecute', script)
@@ -1160,6 +1162,8 @@ def doHset(x):
 
 GB("CommandReader").map(doHset).register(hook="hset", convertToStr=False)
     '''
+    env.expect('wait', '1', '10000').equal(1)
+
     env.expect('rg.pyexecute', script).ok()
 
     env.expect('hset', 'h', 'foo', 'bar').equal(1)
