@@ -2,12 +2,12 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, load_library_ctx::RegisteredKeys,
     load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    CallResult, GearsApiError,
+    CallResult, GearsApiError, RefCellWrapper,
 };
 
 use v8_rs::v8::{
     isolate::V8Isolate, v8_context_scope::V8ContextScope, v8_object::V8LocalObject,
-    v8_value::V8LocalValue, v8_version,
+    v8_value::V8LocalValue, v8_version, v8_promise::V8PromiseState,
 };
 
 use crate::v8_backend::log;
@@ -18,7 +18,7 @@ use crate::v8_stream_ctx::V8StreamCtx;
 use crate::{get_exception_msg, get_function_flags};
 
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 pub(crate) fn call_result_to_js_object(
     isolate: &V8Isolate,
@@ -198,10 +198,9 @@ impl RedisClient {
 pub(crate) fn get_backgrounnd_client(
     script_ctx: &Arc<V8ScriptCtx>,
     ctx_scope: &V8ContextScope,
-    redis_background_client: Box<dyn BackgroundRunFunctionCtxInterface>,
+    redis_background_client: Arc<Box<dyn BackgroundRunFunctionCtxInterface>>,
 ) -> V8LocalObject {
     let bg_client = script_ctx.isolate.new_object();
-    let redis_background_client = Arc::new(redis_background_client);
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_ref = Arc::downgrade(script_ctx);
     bg_client.set(
@@ -263,6 +262,82 @@ pub(crate) fn get_backgrounnd_client(
             })
             .to_value(),
     );
+
+    let redis_background_client_ref = Arc::clone(&redis_background_client);
+    let script_ctx_weak_ref = Arc::downgrade(script_ctx);
+    bg_client.set(
+        ctx_scope,
+        &script_ctx.isolate.new_string("run_on_key").to_value(),
+        &ctx_scope
+            .new_native_function(move |args, isolate, ctx_scope| {
+                if args.len() < 3 {
+                    isolate.raise_exception_str("Wrong number of arguments to 'block' function");
+                    return None;
+                }
+
+                let key = args.get(0);
+                if !key.is_string() {
+                    isolate.raise_exception_str("First argument to 'run_on_key' must be a string represnting a key name");
+                    return None;
+                }
+                let key_str = key.to_utf8(isolate).unwrap();
+
+                let remote_function_name = args.get(1);
+                if !remote_function_name.is_string() {
+                    isolate.raise_exception_str("Second argument to 'run_on_key' must be a string represnting a remote function name");
+                    return None;
+                }
+                let remote_function_name = remote_function_name.to_utf8(isolate).unwrap();
+
+                let input = args.get(2);
+                if !input.is_string() {
+                    isolate.raise_exception_str("Third argument to 'run_on_key' must be a string represnting a remote function argument");
+                    return None;
+                }
+                let input = input.to_utf8(isolate).unwrap();
+                
+
+                let _ = match script_ctx_weak_ref.upgrade() {
+                    Some(s) => s,
+                    None => {
+                        isolate.raise_exception_str("Function were unregistered");
+                        return None;
+                    }
+                };
+
+                let resolver = ctx_scope.new_resolver();
+                let promise = resolver.get_promise();
+                let resolver = resolver.to_value().persist(isolate);
+                let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
+                redis_background_client_ref.run_on_key(key_str.as_str().as_bytes(), remote_function_name.as_str(), input.as_str().as_bytes(), Box::new(move |result|{
+                    let script_ctx = match script_ctx_weak_ref.upgrade() {
+                        Some(s) => s,
+                        None => {
+                            log("Library was delete while not all the remote jobs were done");
+                            return;
+                        }
+                    };
+                    
+                    let _isolate_scope = script_ctx.isolate.enter();
+                    let _handlers_scope = script_ctx.isolate.new_handlers_scope();
+                    let ctx_scope = script_ctx.ctx.enter();
+                    let _trycatch = script_ctx.isolate.new_try_catch();
+
+                    let resolver = resolver.as_local(&script_ctx.isolate).as_resolver();
+                    match result {
+                        Ok(r) => resolver.resolve(&ctx_scope, &script_ctx.isolate.new_array_buffer(&r).to_value()),
+                        Err(e) => {
+                            match e {
+                                GearsApiError::Msg(msg) => resolver.reject(&ctx_scope, &script_ctx.isolate.new_string(&msg).to_value())
+                            }
+                        }
+                    }
+                }));
+                Some(promise.to_value())
+            })
+            .to_value(),
+    );
+
     bg_client
 }
 
@@ -425,7 +500,7 @@ pub(crate) fn get_redis_client(
                         let background_client = get_backgrounnd_client(
                             &new_script_ctx_ref,
                             &ctx_scope,
-                            bg_redis_client,
+                            Arc::new(bg_redis_client),
                         );
                         let res = f
                             .as_local(&new_script_ctx_ref.isolate)
@@ -688,6 +763,165 @@ pub(crate) fn initialize_globals(
                     GearsApiError::Msg(s) => isolate.raise_exception_str(&s),
                 }
                 return None;
+            }
+            None
+    }).to_value());
+
+    let script_ctx_ref = Arc::downgrade(script_ctx);
+    redis.set(ctx_scope,
+        &script_ctx.isolate.new_string("register_remote_function").to_value(),
+        &ctx_scope.new_native_function(move|args, isolate, curr_ctx_scope| {
+            if args.len() < 2 {
+                isolate.raise_exception_str("Wrong number of arguments to 'register_remote_function' function");
+                return None;
+            }
+
+            let function_name = args.get(0);
+            if !function_name.is_string() {
+                isolate.raise_exception_str("First argument to 'register_remote_function' must be a string representing the function name");
+                return None;
+            }
+            let function_name_utf8 = function_name.to_utf8(isolate).unwrap();
+
+            let function_callback = args.get(1);
+            if !function_callback.is_function() {
+                isolate.raise_exception_str("Second argument to 'register_remote_function' must be a function");
+                return None;
+            }
+
+            if !function_callback.is_async_function() {
+                isolate.raise_exception_str("Remote function must be async");
+                return None;
+            }
+            let persisted_function = Arc::new(function_callback.persist(isolate));
+
+            let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+            if load_ctx.is_none() {
+                isolate.raise_exception_str("Called 'register_remote_function' out of context");
+                return None;
+            }
+
+            let load_ctx = load_ctx.unwrap();
+            let new_script_ctx_ref = Weak::clone(&script_ctx_ref);
+            let res = load_ctx.register_remote_task(function_name_utf8.as_str(), Box::new(move |_input, on_done|{
+                let script_ctx = match new_script_ctx_ref.upgrade() {
+                    Some(s) => s,
+                    None => {
+                        on_done(Err(GearsApiError::Msg("Use of uninitialize script context".to_string())));
+                        return;
+                    }
+                };
+
+                let new_script_ctx_ref = Weak::clone(&new_script_ctx_ref);
+                let weak_function = Arc::downgrade(&persisted_function);
+                script_ctx.compiled_library_api.run_on_background(Box::new(move || {
+                    let script_ctx = match new_script_ctx_ref.upgrade() {
+                        Some(s) => s,
+                        None => {
+                            on_done(Err(GearsApiError::Msg("Use of uninitialize script context".to_string())));
+                            return;
+                        }
+                    };
+                    
+                    let persisted_function = match weak_function.upgrade() {
+                        Some(s) => s,
+                        None => {
+                            on_done(Err(GearsApiError::Msg("Use of uninitialize function context".to_string())));
+                            return;
+                        } 
+                    };
+
+                    let _isolate_scope = script_ctx.isolate.enter();
+                    let _handlers_scope = script_ctx.isolate.new_handlers_scope();
+                    let ctx_scope = script_ctx.ctx.enter();
+                    let trycatch = script_ctx.isolate.new_try_catch();
+
+                    script_ctx.before_run();
+                    let res = persisted_function
+                        .as_local(&script_ctx.isolate)
+                        .call(
+                            &ctx_scope,
+                            None,
+                        );
+                    script_ctx.after_run();
+                    match res {
+                        Some(r) => {
+                            if r.is_promise() {
+                                let res = r.as_promise();
+                                if res.state() == V8PromiseState::Fulfilled
+                                    || res.state() == V8PromiseState::Rejected
+                                {
+                                    let r = res.get_result();
+                                    if res.state() == V8PromiseState::Fulfilled {
+                                        if r.is_string() {
+                                            let utf8_str = r.to_utf8(&script_ctx.isolate).unwrap();
+                                            on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                        } else {
+                                            on_done(Err(GearsApiError::Msg("Result is not a string".to_string())));
+                                        }
+                                    } else {
+                                        let r = r.to_utf8(&script_ctx.isolate).unwrap();
+                                        on_done(Err(GearsApiError::Msg(r.as_str().to_string())));
+                                    }
+                                } else {
+                                    // Notice, we are allowed to do this trick because we are protected by the isolate GIL
+                                    let done_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(Some(on_done))});
+                                    let done_reject = Arc::clone(&done_resolve);
+                                    let resolve =
+                                        ctx_scope.new_native_function(move |args, isolate, _context| {
+                                            {
+                                                if done_resolve.ref_cell.borrow().is_none() {
+                                                    return None;
+                                                }
+                                            }
+                                            let on_done = done_resolve.ref_cell.borrow_mut().take().unwrap();
+                                            let r = args.get(0);
+                                            if r.is_string() {
+                                                let utf8_str = r.to_utf8(isolate).unwrap();
+                                                on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                            } else {
+                                                on_done(Err(GearsApiError::Msg("Result is not a string".to_string())));
+                                            }
+                                            None
+                                        });
+                                    let reject =
+                                        ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
+                                            {
+                                                if done_reject.ref_cell.borrow().is_none() {
+                                                    return None;
+                                                }
+                                            }
+                                            let on_done = done_reject.ref_cell.borrow_mut().take().unwrap();
+
+                                            let r = args.get(0);
+                                            let utf8_str = r.to_utf8(isolate).unwrap();
+                                            on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                            None
+                                        });
+                                    res.then(&ctx_scope, &resolve, &reject);
+                                }
+                            } else {
+                                if r.is_string() {
+                                    let utf8_str = r.to_utf8(&script_ctx.isolate).unwrap();
+                                    on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                } else {
+                                    on_done(Err(GearsApiError::Msg("Result is not a string".to_string())));
+                                }
+                                
+                            }
+                        }
+                        None => {
+                            let error_msg = get_exception_msg(&script_ctx.isolate, trycatch);
+                            on_done(Err(GearsApiError::Msg(error_msg)));
+                        }
+                    };
+                }));
+            }));
+
+            if let Err(err) = res {
+                match err {
+                    GearsApiError::Msg(s) => isolate.raise_exception_str(&s),
+                }
             }
             None
     }).to_value());

@@ -108,7 +108,7 @@ impl V8InternalFunction {
 
         let res = {
             let r_client =
-                get_backgrounnd_client(&self.script_ctx, &ctx_scope, redis_background_client);
+                get_backgrounnd_client(&self.script_ctx, &ctx_scope, Arc::new(redis_background_client));
             let args = {
                 let mut args = Vec::new();
                 args.push(r_client.to_value());

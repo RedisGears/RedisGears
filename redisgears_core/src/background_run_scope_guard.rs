@@ -8,13 +8,16 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 use crate::run_ctx::RedisClientCallOptions;
 use crate::{
     background_run_ctx::BackgroundRunCtx, call_redis_command, get_notification_blocker,
-    NotificationBlocker,
+    NotificationBlocker, GearsLibraryMataData,
 };
+
+use std::sync::Arc;
 
 pub(crate) struct BackgroundRunScopeGuardCtx {
     pub(crate) _ctx_guard: ContextGuard,
     call_options: RedisClientCallOptions,
     user: Option<String>,
+    lib_meta_data: Arc<GearsLibraryMataData>,
     _notification_blocker: NotificationBlocker,
 }
 
@@ -25,12 +28,14 @@ impl BackgroundRunScopeGuardCtx {
     pub(crate) fn new(
         ctx_guard: ContextGuard,
         user: Option<String>,
+        lib_meta_data: &Arc<GearsLibraryMataData>,
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunScopeGuardCtx {
         BackgroundRunScopeGuardCtx {
             _ctx_guard: ctx_guard,
             call_options: call_options,
             user: user,
+            lib_meta_data: Arc::clone(lib_meta_data),
             _notification_blocker: get_notification_blocker(),
         }
     }
@@ -38,8 +43,12 @@ impl BackgroundRunScopeGuardCtx {
 
 impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
+        let user = match self.user.as_ref() {
+            Some(u) => Some(u),
+            None => Some(&self.lib_meta_data.user),
+        };
         call_redis_command(
-            self.user.as_ref(),
+            user,
             command,
             &self.call_options.call_options,
             args,
@@ -49,6 +58,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
         Box::new(BackgroundRunCtx::new(
             self.user.clone(),
+            &self.lib_meta_data,
             self.call_options.clone(),
         ))
     }

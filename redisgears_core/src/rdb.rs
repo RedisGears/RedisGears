@@ -47,7 +47,7 @@ extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     for val in libraries.values() {
         raw::save_string(rdb, &val.gears_lib_ctx.meta_data.name);
         raw::save_string(rdb, &val.gears_lib_ctx.meta_data.code);
-        raw::save_string(rdb, &val.gears_lib_ctx.user.ref_cell.borrow());
+        raw::save_string(rdb, &val.gears_lib_ctx.meta_data.user);
         if let Some(config) = &val.gears_lib_ctx.meta_data.config.as_ref() {
             raw::save_unsigned(rdb, 1); // config exists
             raw::save_string(rdb, config);

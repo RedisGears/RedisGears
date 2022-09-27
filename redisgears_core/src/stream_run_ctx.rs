@@ -13,24 +13,24 @@ use crate::{
     background_run_ctx::BackgroundRunCtx,
     get_ctx,
     run_ctx::{RedisClient, RedisClientCallOptions},
+    GearsLibraryMataData,
 };
 
 use crate::stream_reader::{StreamConsumer, StreamReaderAck};
 
 use crate::get_notification_blocker;
 
-use crate::RefCellWrapper;
 use std::sync::Arc;
 
 pub(crate) struct StreamRunCtx {
-    user: String,
+    lib_meta_data: Arc<GearsLibraryMataData>,
     flags: u8,
 }
 
 impl StreamRunCtx {
-    fn new(user: String, flags: u8) -> StreamRunCtx {
+    fn new(lib_meta_data: &Arc<GearsLibraryMataData>, flags: u8) -> StreamRunCtx {
         StreamRunCtx {
-            user: user,
+            lib_meta_data: Arc::clone(lib_meta_data),
             flags: flags,
         }
     }
@@ -38,12 +38,13 @@ impl StreamRunCtx {
 
 impl StreamProcessCtxInterface for StreamRunCtx {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
-        Box::new(RedisClient::new(Some(self.user.clone()), self.flags))
+        Box::new(RedisClient::new(&self.lib_meta_data, None, self.flags))
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
         Box::new(BackgroundRunCtx::new(
-            Some(self.user.clone()),
+            None,
+            &self.lib_meta_data,
             RedisClientCallOptions::new(self.flags),
         ))
     }
@@ -80,14 +81,14 @@ impl StreamRecordInterface for GearsStreamRecord {
 
 pub(crate) struct GearsStreamConsumer {
     pub(crate) ctx: Box<dyn StreamCtxInterface>,
-    user: Arc<RefCellWrapper<String>>,
+    lib_meta_data: Arc<GearsLibraryMataData>,
     flags: u8,
     permissions: AclPermissions,
 }
 
 impl GearsStreamConsumer {
     pub(crate) fn new(
-        user: &Arc<RefCellWrapper<String>>,
+        user: &Arc<GearsLibraryMataData>,
         flags: u8,
         ctx: Box<dyn StreamCtxInterface>,
     ) -> GearsStreamConsumer {
@@ -95,7 +96,7 @@ impl GearsStreamConsumer {
         permissions.add_full_permission();
         GearsStreamConsumer {
             ctx: ctx,
-            user: Arc::clone(user),
+            lib_meta_data: Arc::clone(user),
             flags: flags,
             permissions: permissions,
         }
@@ -109,9 +110,9 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
         record: GearsStreamRecord,
         ack_callback: Box<dyn FnOnce(StreamReaderAck) + Send>,
     ) -> Option<StreamReaderAck> {
-        let user = self.user.ref_cell.borrow();
+        let user = &self.lib_meta_data.user;
         let key_redis_str = RedisString::create_from_slice(std::ptr::null_mut(), stream_name);
-        if let Err(e) = get_ctx().acl_check_key_permission(&user, &key_redis_str, &self.permissions)
+        if let Err(e) = get_ctx().acl_check_key_permission(user, &key_redis_str, &self.permissions)
         {
             return Some(StreamReaderAck::Nack(format!(
                 "User '{}' has no permissions on key '{}', {}.",
@@ -126,7 +127,7 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
             self.ctx.process_record(
                 stream_name,
                 Box::new(record),
-                &mut StreamRunCtx::new(self.user.ref_cell.borrow().clone(), self.flags),
+                &mut StreamRunCtx::new(&self.lib_meta_data, self.flags),
                 Box::new(|ack| {
                     // here we must take the redis lock
                     let ctx = ThreadSafeContext::new();

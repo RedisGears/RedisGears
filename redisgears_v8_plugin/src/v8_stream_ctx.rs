@@ -274,7 +274,7 @@ impl V8StreamCtxInternals {
                 &raw_val_v8_arr.to_value(),
             );
 
-            let r_client = get_backgrounnd_client(&self.script_ctx, &ctx_scope, redis_client);
+            let r_client = get_backgrounnd_client(&self.script_ctx, &ctx_scope, Arc::new(redis_client));
 
             self.script_ctx.before_run();
             let res = self
