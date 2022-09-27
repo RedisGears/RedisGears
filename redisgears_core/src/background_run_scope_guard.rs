@@ -8,7 +8,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 use crate::run_ctx::RedisClientCallOptions;
 use crate::{
     background_run_ctx::BackgroundRunCtx, call_redis_command, get_notification_blocker,
-    NotificationBlocker, GearsLibraryMataData,
+    GearsLibraryMataData, NotificationBlocker,
 };
 
 use std::sync::Arc;
@@ -47,12 +47,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
             Some(u) => Some(u),
             None => Some(&self.lib_meta_data.user),
         };
-        call_redis_command(
-            user,
-            command,
-            &self.call_options.call_options,
-            args,
-        )
+        call_redis_command(user, command, &self.call_options.call_options, args)
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {

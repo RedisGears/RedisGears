@@ -21,7 +21,13 @@ pub trait ReplyCtxInterface: Send + Sync {
 
 pub trait BackgroundRunFunctionCtxInterface: Send + Sync {
     fn lock<'a>(&'a self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError>;
-    fn run_on_key(&self, key: &[u8], job_name: &str, input: &[u8], on_done: Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>)>);
+    fn run_on_key(
+        &self,
+        key: &[u8],
+        job_name: &str,
+        input: &[u8],
+        on_done: Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>)>,
+    );
 }
 
 pub trait RunFunctionCtxInterface: ReplyCtxInterface {

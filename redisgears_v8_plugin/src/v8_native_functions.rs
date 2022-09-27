@@ -7,7 +7,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use v8_rs::v8::{
     isolate::V8Isolate, v8_context_scope::V8ContextScope, v8_object::V8LocalObject,
-    v8_value::V8LocalValue, v8_version, v8_promise::V8PromiseState,
+    v8_promise::V8PromiseState, v8_value::V8LocalValue, v8_version,
 };
 
 use crate::v8_backend::log;
@@ -295,7 +295,6 @@ pub(crate) fn get_backgrounnd_client(
                     return None;
                 }
                 let input = input.to_utf8(isolate).unwrap();
-                
 
                 let _ = match script_ctx_weak_ref.upgrade() {
                     Some(s) => s,
@@ -317,7 +316,6 @@ pub(crate) fn get_backgrounnd_client(
                             return;
                         }
                     };
-                    
                     let _isolate_scope = script_ctx.isolate.enter();
                     let _handlers_scope = script_ctx.isolate.new_handlers_scope();
                     let ctx_scope = script_ctx.ctx.enter();
@@ -822,15 +820,13 @@ pub(crate) fn initialize_globals(
                             return;
                         }
                     };
-                    
                     let persisted_function = match weak_function.upgrade() {
                         Some(s) => s,
                         None => {
                             on_done(Err(GearsApiError::Msg("Use of uninitialize function context".to_string())));
                             return;
-                        } 
+                        }
                     };
-
                     let _isolate_scope = script_ctx.isolate.enter();
                     let _handlers_scope = script_ctx.isolate.new_handlers_scope();
                     let ctx_scope = script_ctx.ctx.enter();
@@ -907,7 +903,6 @@ pub(crate) fn initialize_globals(
                                 } else {
                                     on_done(Err(GearsApiError::Msg("Result is not a string".to_string())));
                                 }
-                                
                             }
                         }
                         None => {

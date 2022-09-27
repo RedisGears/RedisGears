@@ -198,7 +198,8 @@ impl V8NotificationsCtxInternal {
                     .to_value(),
             );
 
-            let r_client = get_backgrounnd_client(&self.script_ctx, &ctx_scope, Arc::new(background_client));
+            let r_client =
+                get_backgrounnd_client(&self.script_ctx, &ctx_scope, Arc::new(background_client));
 
             self.script_ctx.before_run();
             let res = self

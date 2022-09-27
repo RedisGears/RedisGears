@@ -58,7 +58,11 @@ unsafe impl Sync for RedisClient {}
 unsafe impl Send for RedisClient {}
 
 impl RedisClient {
-    pub(crate) fn new(lib_meta_data: &Arc<GearsLibraryMataData>, user: Option<String>, flags: u8) -> RedisClient {
+    pub(crate) fn new(
+        lib_meta_data: &Arc<GearsLibraryMataData>,
+        user: Option<String>,
+        flags: u8,
+    ) -> RedisClient {
         RedisClient {
             call_options: RedisClientCallOptions::new(flags),
             lib_meta_data: Arc::clone(lib_meta_data),
@@ -73,12 +77,7 @@ impl RedisClientCtxInterface for RedisClient {
             Some(u) => Some(u),
             None => Some(&self.lib_meta_data.user),
         };
-        call_redis_command(
-            user,
-            command,
-            &self.call_options.call_options,
-            args,
-        )
+        call_redis_command(user, command, &self.call_options.call_options, args)
     }
 
     fn as_redis_client(&self) -> &dyn RedisClientCtxInterface {
@@ -98,7 +97,7 @@ pub(crate) struct RunCtx<'a> {
     pub(crate) ctx: &'a Context,
     pub(crate) iter: Iter<'a, redis_module::RedisString>,
     pub(crate) flags: u8,
-    pub(crate) lib_meta_data: Arc<GearsLibraryMataData>
+    pub(crate) lib_meta_data: Arc<GearsLibraryMataData>,
 }
 
 impl<'a> ReplyCtxInterface for RunCtx<'a> {

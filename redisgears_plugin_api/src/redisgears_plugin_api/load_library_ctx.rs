@@ -29,7 +29,9 @@ pub trait LoadLibraryCtxInterface {
     fn register_remote_task(
         &mut self,
         name: &str,
-        remote_function_ctx: Box<dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>)>,
+        remote_function_ctx: Box<
+            dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>),
+        >,
     ) -> Result<(), GearsApiError>;
     fn register_stream_consumer(
         &mut self,

@@ -55,11 +55,7 @@ use std::cell::RefCell;
 
 use crate::keys_notifications::ConsumerKey;
 
-use mr::libmr::{
-    mr_init,
-    record::Record, 
-    remote_task::RemoteTask,
-};
+use mr::libmr::{mr_init, record::Record, remote_task::RemoteTask};
 
 mod background_run_ctx;
 mod background_run_scope_guard;
@@ -106,7 +102,10 @@ impl GearsFunctionCtx {
 struct GearsLibraryCtx {
     meta_data: Arc<GearsLibraryMataData>,
     functions: HashMap<String, GearsFunctionCtx>,
-    remote_functions: HashMap<String, Box<dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>)>>,
+    remote_functions: HashMap<
+        String,
+        Box<dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>)>,
+    >,
     stream_consumers:
         HashMap<String, Arc<RefCellWrapper<ConsumerData<GearsStreamRecord, GearsStreamConsumer>>>>,
     revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool)>,
@@ -186,7 +185,9 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
     fn register_remote_task(
         &mut self,
         name: &str,
-        remote_function_callback: Box<dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>)>,
+        remote_function_callback: Box<
+            dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>),
+        >,
     ) -> Result<(), GearsApiError> {
         if self.remote_functions.contains_key(name) {
             return Err(GearsApiError::Msg(format!(
@@ -194,7 +195,8 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                 name
             )));
         }
-        self.remote_functions.insert(name.to_string(), remote_function_callback);
+        self.remote_functions
+            .insert(name.to_string(), remote_function_callback);
         Ok(())
     }
 
@@ -284,9 +286,11 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         let fire_event_callback: NotificationCallback =
             Box::new(move |event, key, done_callback| {
                 let key_redis_str = RedisString::create_from_slice(std::ptr::null_mut(), key);
-                if let Err(e) =
-                    get_ctx().acl_check_key_permission(&meta_data.user, &key_redis_str, &permissions)
-                {
+                if let Err(e) = get_ctx().acl_check_key_permission(
+                    &meta_data.user,
+                    &key_redis_str,
+                    &permissions,
+                ) {
                     done_callback(Err(format!(
                         "User '{}' has no permissions on key '{}', {}.",
                         meta_data.user,

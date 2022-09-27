@@ -107,8 +107,11 @@ impl V8InternalFunction {
         let trycatch = self.script_ctx.isolate.new_try_catch();
 
         let res = {
-            let r_client =
-                get_backgrounnd_client(&self.script_ctx, &ctx_scope, Arc::new(redis_background_client));
+            let r_client = get_backgrounnd_client(
+                &self.script_ctx,
+                &ctx_scope,
+                Arc::new(redis_background_client),
+            );
             let args = {
                 let mut args = Vec::new();
                 args.push(r_client.to_value());
