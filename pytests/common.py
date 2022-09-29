@@ -102,16 +102,17 @@ def gearsTest(skipTest=False,
             module_args = [v8_plugin_path]
             if skipTest:
                 raise unittest.SkipTest()
+            final_envArgs = envArgs.copy()
             if skipOnCluster:
                 env = Defaults.env
-                if 'env' in envArgs.keys():
-                    env = envArgs['env']
+                if 'env' in final_envArgs.keys():
+                    env = final_envArgs['env']
                 if 'cluster' in env:
                     raise unittest.SkipTest()
-            if 'env' not in envArgs.keys():
+            if 'env' not in final_envArgs.keys():
                 if cluster:
-                    envArgs['env'] = 'oss-cluster'
-                    envArgs['shardsCount'] = shardsCount
+                    final_envArgs['env'] = 'oss-cluster'
+                    final_envArgs['shardsCount'] = shardsCount
             if skipOnSingleShard and Defaults.num_shards == 1:
                 raise unittest.SkipTest()
             if skipWithTLS and Defaults.use_TLS:
@@ -121,7 +122,7 @@ def gearsTest(skipTest=False,
                     raise unittest.SkipTest()
             if enableGearsDebugCommands:
                 module_args += ["enable-debug-command", "yes"]
-            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**envArgs)
+            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**final_envArgs)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 
                 # able to execute commands on shards, on slow envs, run with valgrind,
