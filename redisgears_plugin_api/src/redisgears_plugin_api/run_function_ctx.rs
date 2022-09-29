@@ -19,14 +19,20 @@ pub trait ReplyCtxInterface: Send + Sync {
     fn as_client(&self) -> &dyn ReplyCtxInterface;
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub enum RemoteFunctionData {
+    Binary(Vec<u8>),
+    String(String),
+}
+
 pub trait BackgroundRunFunctionCtxInterface: Send + Sync {
     fn lock<'a>(&'a self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError>;
     fn run_on_key(
         &self,
         key: &[u8],
         job_name: &str,
-        input: &[u8],
-        on_done: Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>)>,
+        inputs: Vec<RemoteFunctionData>,
+        on_done: Box<dyn FnOnce(Result<RemoteFunctionData, GearsApiError>)>,
     );
 }
 

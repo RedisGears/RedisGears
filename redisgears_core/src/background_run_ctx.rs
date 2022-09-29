@@ -1,6 +1,6 @@
 use redisgears_plugin_api::redisgears_plugin_api::{
-    run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    GearsApiError,
+    load_library_ctx::FUNCTION_FLAG_NO_WRITES, run_function_ctx::BackgroundRunFunctionCtxInterface,
+    run_function_ctx::RedisClientCtxInterface, run_function_ctx::RemoteFunctionData, GearsApiError,
 };
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
@@ -39,23 +39,63 @@ impl BackgroundRunCtx {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct GearsBufferRecord {
-    pub buff: Vec<u8>,
+pub(crate) struct GearsRemoteFunctionInputsRecord {
+    inputs: Vec<RemoteFunctionData>,
 }
 
-impl Record for GearsBufferRecord {
+impl Record for GearsRemoteFunctionInputsRecord {
     fn to_redis_value(&mut self) -> RedisValue {
-        RedisValue::StringBuffer(self.buff.clone())
+        RedisValue::Array(
+            self.inputs
+                .iter()
+                .map(|v| {
+                    let buff = match v {
+                        RemoteFunctionData::Binary(b) => &b,
+                        RemoteFunctionData::String(s) => s.as_bytes(),
+                    };
+                    RedisValue::StringBuffer(buff.into_iter().map(|v| *v).collect())
+                })
+                .collect(),
+        )
     }
 
     fn hash_slot(&self) -> usize {
-        calc_slot(&self.buff)
+        1 // not relevant here
     }
 }
 
-impl BaseObject for GearsBufferRecord {
+impl BaseObject for GearsRemoteFunctionInputsRecord {
     fn get_name() -> &'static str {
-        "GearsBufferRecord\0"
+        "GearsRemoteFunctionInputsRecord\0"
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct GearsRemoteFunctionOutputRecord {
+    output: RemoteFunctionData,
+}
+
+impl Record for GearsRemoteFunctionOutputRecord {
+    fn to_redis_value(&mut self) -> RedisValue {
+        let buff = match &self.output {
+            RemoteFunctionData::Binary(b) => b,
+            RemoteFunctionData::String(s) => s.as_bytes(),
+        };
+        RedisValue::StringBuffer(buff.into_iter().map(|v| *v).collect())
+    }
+
+    fn hash_slot(&self) -> usize {
+        let buff = match &self.output {
+            RemoteFunctionData::Binary(b) => b,
+            RemoteFunctionData::String(s) => s.as_bytes(),
+        };
+        calc_slot(buff)
+    }
+}
+
+impl BaseObject for GearsRemoteFunctionOutputRecord {
+    fn get_name() -> &'static str {
+        "GearsRemoteFunctionOutputRecord\0"
     }
 }
 
@@ -63,11 +103,12 @@ impl BaseObject for GearsBufferRecord {
 pub(crate) struct GearsRemoteTask {
     lib_name: String,
     job_name: String,
+    user: Option<String>,
 }
 
 impl RemoteTask for GearsRemoteTask {
-    type InRecord = GearsBufferRecord;
-    type OutRecord = GearsBufferRecord;
+    type InRecord = GearsRemoteFunctionInputsRecord;
+    type OutRecord = GearsRemoteFunctionOutputRecord;
 
     fn task(
         self,
@@ -96,10 +137,15 @@ impl RemoteTask for GearsRemoteTask {
         }
         let remote_function = remote_function.unwrap();
         remote_function(
-            r.buff,
+            r.inputs,
+            Box::new(BackgroundRunCtx::new(
+                self.user,
+                &library.gears_lib_ctx.meta_data,
+                RedisClientCallOptions::new(FUNCTION_FLAG_NO_WRITES),
+            )),
             Box::new(move |result| {
                 let res = match result {
-                    Ok(r) => Ok(GearsBufferRecord { buff: r }),
+                    Ok(r) => Ok(GearsRemoteFunctionOutputRecord { output: r }),
                     Err(e) => match e {
                         GearsApiError::Msg(msg) => Err(msg),
                     },
@@ -141,23 +187,22 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
         &self,
         key: &[u8],
         job_name: &str,
-        input: &[u8],
-        on_done: Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>)>,
+        inputs: Vec<RemoteFunctionData>,
+        on_done: Box<dyn FnOnce(Result<RemoteFunctionData, GearsApiError>)>,
     ) {
         let task = GearsRemoteTask {
             lib_name: self.lib_meta_data.name.clone(),
             job_name: job_name.to_string(),
+            user: self.user.clone(),
         };
-        let input_record = GearsBufferRecord {
-            buff: input.into_iter().map(|v| *v).collect(),
-        };
+        let input_record = GearsRemoteFunctionInputsRecord { inputs: inputs };
         mr::libmr::remote_task::run_on_key(
             key,
             task,
             input_record,
-            move |result: Result<GearsBufferRecord, RustMRError>| {
+            move |result: Result<GearsRemoteFunctionOutputRecord, RustMRError>| {
                 let res = match result {
-                    Ok(r) => Ok(r.buff),
+                    Ok(r) => Ok(r.output),
                     Err(e) => Err(GearsApiError::Msg(e)),
                 };
                 on_done(res);

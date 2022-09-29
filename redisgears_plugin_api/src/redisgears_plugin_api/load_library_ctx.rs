@@ -1,5 +1,7 @@
 use crate::redisgears_plugin_api::function_ctx::FunctionCtxInterface;
 use crate::redisgears_plugin_api::keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface;
+use crate::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInterface;
+use crate::redisgears_plugin_api::run_function_ctx::RemoteFunctionData;
 use crate::redisgears_plugin_api::stream_ctx::StreamCtxInterface;
 use crate::redisgears_plugin_api::GearsApiError;
 
@@ -19,6 +21,14 @@ pub const FUNCTION_FLAG_NO_WRITES: u8 = 0x01;
 pub const FUNCTION_FLAG_ALLOW_OOM: u8 = 0x02;
 pub const FUNCTION_FLAG_RAW_ARGUMENTS: u8 = 0x04;
 
+pub type RemoteFunctionCtx = Box<
+    dyn Fn(
+        Vec<RemoteFunctionData>,
+        Box<dyn BackgroundRunFunctionCtxInterface>,
+        Box<dyn FnOnce(Result<RemoteFunctionData, GearsApiError>) + Send>,
+    ),
+>;
+
 pub trait LoadLibraryCtxInterface {
     fn register_function(
         &mut self,
@@ -29,9 +39,7 @@ pub trait LoadLibraryCtxInterface {
     fn register_remote_task(
         &mut self,
         name: &str,
-        remote_function_ctx: Box<
-            dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>),
-        >,
+        remote_function_ctx: RemoteFunctionCtx,
     ) -> Result<(), GearsApiError>;
     fn register_stream_consumer(
         &mut self,

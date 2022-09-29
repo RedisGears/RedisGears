@@ -19,9 +19,10 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterface, function_ctx::FunctionCtxInterface,
     keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface,
     load_library_ctx::LibraryCtxInterface, load_library_ctx::LoadLibraryCtxInterface,
-    load_library_ctx::RegisteredKeys, load_library_ctx::FUNCTION_FLAG_ALLOW_OOM,
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES, load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
-    stream_ctx::StreamCtxInterface, CallResult, GearsApiError,
+    load_library_ctx::RegisteredKeys, load_library_ctx::RemoteFunctionCtx,
+    load_library_ctx::FUNCTION_FLAG_ALLOW_OOM, load_library_ctx::FUNCTION_FLAG_NO_WRITES,
+    load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS, stream_ctx::StreamCtxInterface, CallResult,
+    GearsApiError,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
@@ -102,10 +103,7 @@ impl GearsFunctionCtx {
 struct GearsLibraryCtx {
     meta_data: Arc<GearsLibraryMataData>,
     functions: HashMap<String, GearsFunctionCtx>,
-    remote_functions: HashMap<
-        String,
-        Box<dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>)>,
-    >,
+    remote_functions: HashMap<String, RemoteFunctionCtx>,
     stream_consumers:
         HashMap<String, Arc<RefCellWrapper<ConsumerData<GearsStreamRecord, GearsStreamConsumer>>>>,
     revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool)>,
@@ -185,9 +183,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
     fn register_remote_task(
         &mut self,
         name: &str,
-        remote_function_callback: Box<
-            dyn Fn(Vec<u8>, Box<dyn FnOnce(Result<Vec<u8>, GearsApiError>) + Send>),
-        >,
+        remote_function_callback: RemoteFunctionCtx,
     ) -> Result<(), GearsApiError> {
         if self.remote_functions.contains_key(name) {
             return Err(GearsApiError::Msg(format!(
@@ -497,7 +493,8 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
 
 fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     mr_init(ctx, 1);
-    crate::background_run_ctx::GearsBufferRecord::register();
+    crate::background_run_ctx::GearsRemoteFunctionInputsRecord::register();
+    crate::background_run_ctx::GearsRemoteFunctionOutputRecord::register();
     crate::background_run_ctx::GearsRemoteTask::register();
     ctx.log_notice(&format!(
         "RedisGears v{}, sha='{}', branch='{}', built_on='{}.{}.{}'.",
@@ -988,6 +985,14 @@ fn function_list_command(
                             .map(|k| RedisValue::BulkString(k.to_string()))
                             .collect::<Vec<RedisValue>>()
                     }),
+                    RedisValue::BulkString("remote_functions".to_string()),
+                    RedisValue::Array(
+                        l.gears_lib_ctx
+                            .remote_functions
+                            .keys()
+                            .map(|k| RedisValue::BulkString(k.to_string()))
+                            .collect::<Vec<RedisValue>>(),
+                    ),
                     RedisValue::BulkString("stream_consumers".to_string()),
                     RedisValue::Array(
                         l.gears_lib_ctx
@@ -1633,6 +1638,7 @@ redis_module! {
     commands: [
         ["rg.function", function_command, "may-replicate deny-script", 0,0,0],
         ["rg.fcall", function_call, "may-replicate deny-script", 4,4,1],
+        ["rg.fcall_no_keys", function_call, "may-replicate deny-script", 0,0,0],
         ["rg.box", gears_box_command, "may-replicate deny-script", 0,0,0],
         ["rg.config", config_command, "readonly deny-script", 0,0,0],
         ["_rg_internals.update_stream_last_read_id", update_stream_last_read_id, "readonly", 0,0,0],

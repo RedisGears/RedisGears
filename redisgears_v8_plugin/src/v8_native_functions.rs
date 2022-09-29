@@ -2,7 +2,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, load_library_ctx::RegisteredKeys,
     load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    CallResult, GearsApiError, RefCellWrapper,
+    run_function_ctx::RemoteFunctionData, CallResult, GearsApiError, RefCellWrapper,
 };
 
 use v8_rs::v8::{
@@ -195,6 +195,29 @@ impl RedisClient {
     }
 }
 
+fn js_value_to_remote_function_data(
+    isolate: &V8Isolate,
+    ctx_scope: &V8ContextScope,
+    val: V8LocalValue,
+) -> Option<RemoteFunctionData> {
+    if val.is_array_buffer() {
+        let array_buff = val.as_array_buffer();
+        let data = array_buff.data();
+        Some(RemoteFunctionData::Binary(
+            data.into_iter().map(|v| *v).collect(),
+        ))
+    } else {
+        let arg_str = ctx_scope.json_stringify(&val);
+        if arg_str.is_none() {
+            return None;
+        }
+        let arg_str_utf8 = arg_str.unwrap().to_value().to_utf8(isolate).unwrap();
+        Some(RemoteFunctionData::String(
+            arg_str_utf8.as_str().to_string(),
+        ))
+    }
+}
+
 pub(crate) fn get_backgrounnd_client(
     script_ctx: &Arc<V8ScriptCtx>,
     ctx_scope: &V8ContextScope,
@@ -276,25 +299,28 @@ pub(crate) fn get_backgrounnd_client(
                 }
 
                 let key = args.get(0);
-                if !key.is_string() {
+                if !key.is_string() && !key.is_string_object() {
                     isolate.raise_exception_str("First argument to 'run_on_key' must be a string represnting a key name");
                     return None;
                 }
                 let key_str = key.to_utf8(isolate).unwrap();
 
                 let remote_function_name = args.get(1);
-                if !remote_function_name.is_string() {
+                if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
                     isolate.raise_exception_str("Second argument to 'run_on_key' must be a string represnting a remote function name");
                     return None;
                 }
                 let remote_function_name = remote_function_name.to_utf8(isolate).unwrap();
 
-                let input = args.get(2);
-                if !input.is_string() {
-                    isolate.raise_exception_str("Third argument to 'run_on_key' must be a string represnting a remote function argument");
-                    return None;
+                let mut args_vec = Vec::new();
+                for i in 2 .. args.len() {
+                    let arg = args.get(i);
+                    let arg = js_value_to_remote_function_data(isolate, ctx_scope, arg);
+                    match  arg {
+                        Some(arg) => args_vec.push(arg),
+                        None => return None,
+                    };
                 }
-                let input = input.to_utf8(isolate).unwrap();
 
                 let _ = match script_ctx_weak_ref.upgrade() {
                     Some(s) => s,
@@ -308,7 +334,7 @@ pub(crate) fn get_backgrounnd_client(
                 let promise = resolver.get_promise();
                 let resolver = resolver.to_value().persist(isolate);
                 let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
-                redis_background_client_ref.run_on_key(key_str.as_str().as_bytes(), remote_function_name.as_str(), input.as_str().as_bytes(), Box::new(move |result|{
+                redis_background_client_ref.run_on_key(key_str.as_str().as_bytes(), remote_function_name.as_str(), args_vec, Box::new(move |result|{
                     let script_ctx = match script_ctx_weak_ref.upgrade() {
                         Some(s) => s,
                         None => {
@@ -323,7 +349,21 @@ pub(crate) fn get_backgrounnd_client(
 
                     let resolver = resolver.as_local(&script_ctx.isolate).as_resolver();
                     match result {
-                        Ok(r) => resolver.resolve(&ctx_scope, &script_ctx.isolate.new_array_buffer(&r).to_value()),
+                        Ok(r) => {
+                            let v = match &r {
+                                RemoteFunctionData::Binary(b) => script_ctx.isolate.new_array_buffer(b).to_value(),
+                                RemoteFunctionData::String(s) => {
+                                    let v8_str = script_ctx.isolate.new_string(s);
+                                    let v8_obj = ctx_scope.new_object_from_json(&v8_str);
+                                    if v8_obj.is_none() {
+                                        resolver.reject(&ctx_scope, &script_ctx.isolate.new_string("Failed deserializing remote function result").to_value());
+                                        return;
+                                    }
+                                    v8_obj.unwrap()
+                                }
+                            };
+                            resolver.resolve(&ctx_scope, &v)
+                        },
                         Err(e) => {
                             match e {
                                 GearsApiError::Msg(msg) => resolver.reject(&ctx_scope, &script_ctx.isolate.new_string(&msg).to_value())
@@ -801,7 +841,7 @@ pub(crate) fn initialize_globals(
 
             let load_ctx = load_ctx.unwrap();
             let new_script_ctx_ref = Weak::clone(&script_ctx_ref);
-            let res = load_ctx.register_remote_task(function_name_utf8.as_str(), Box::new(move |_input, on_done|{
+            let res = load_ctx.register_remote_task(function_name_utf8.as_str(), Box::new(move |inputs, background_ctx, on_done|{
                 let script_ctx = match new_script_ctx_ref.upgrade() {
                     Some(s) => s,
                     None => {
@@ -832,12 +872,30 @@ pub(crate) fn initialize_globals(
                     let ctx_scope = script_ctx.ctx.enter();
                     let trycatch = script_ctx.isolate.new_try_catch();
 
+                    let mut args = Vec::new();
+                    args.push(get_backgrounnd_client(&script_ctx, &ctx_scope, Arc::new(background_ctx)).to_value());
+                    for input in inputs {
+                        args.push(match input {
+                            RemoteFunctionData::Binary(b) => script_ctx.isolate.new_array_buffer(&b).to_value(),
+                            RemoteFunctionData::String(s) => {
+                                let v8_str = script_ctx.isolate.new_string(&s);
+                                let v8_obj = ctx_scope.new_object_from_json(&v8_str);
+                                if v8_obj.is_none() {
+                                    on_done(Err(GearsApiError::Msg("Failed deserializing remote function argument".to_string())));
+                                    return;
+                                }
+                                v8_obj.unwrap()
+                            }
+                        });
+                    }
+                    let args_refs = args.iter().collect::<Vec<&V8LocalValue>>();
+
                     script_ctx.before_run();
                     let res = persisted_function
                         .as_local(&script_ctx.isolate)
                         .call(
                             &ctx_scope,
-                            None,
+                            Some(&args_refs),
                         );
                     script_ctx.after_run();
                     match res {
@@ -849,11 +907,11 @@ pub(crate) fn initialize_globals(
                                 {
                                     let r = res.get_result();
                                     if res.state() == V8PromiseState::Fulfilled {
-                                        if r.is_string() {
-                                            let utf8_str = r.to_utf8(&script_ctx.isolate).unwrap();
-                                            on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                        let r = js_value_to_remote_function_data(&script_ctx.isolate, &ctx_scope, r);
+                                        if r.is_none() {
+                                            on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
                                         } else {
-                                            on_done(Err(GearsApiError::Msg("Result is not a string".to_string())));
+                                            on_done(Ok(r.unwrap()));
                                         }
                                     } else {
                                         let r = r.to_utf8(&script_ctx.isolate).unwrap();
@@ -864,19 +922,18 @@ pub(crate) fn initialize_globals(
                                     let done_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(Some(on_done))});
                                     let done_reject = Arc::clone(&done_resolve);
                                     let resolve =
-                                        ctx_scope.new_native_function(move |args, isolate, _context| {
+                                        ctx_scope.new_native_function(move |args, isolate, ctx_scope| {
                                             {
                                                 if done_resolve.ref_cell.borrow().is_none() {
                                                     return None;
                                                 }
                                             }
                                             let on_done = done_resolve.ref_cell.borrow_mut().take().unwrap();
-                                            let r = args.get(0);
-                                            if r.is_string() {
-                                                let utf8_str = r.to_utf8(isolate).unwrap();
-                                                on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                            let r = js_value_to_remote_function_data(isolate, ctx_scope, args.get(0));
+                                            if r.is_none() {
+                                                on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
                                             } else {
-                                                on_done(Err(GearsApiError::Msg("Result is not a string".to_string())));
+                                                on_done(Ok(r.unwrap()));
                                             }
                                             None
                                         });
@@ -891,17 +948,17 @@ pub(crate) fn initialize_globals(
 
                                             let r = args.get(0);
                                             let utf8_str = r.to_utf8(isolate).unwrap();
-                                            on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                            on_done(Err(GearsApiError::Msg(utf8_str.as_str().to_string())));
                                             None
                                         });
                                     res.then(&ctx_scope, &resolve, &reject);
                                 }
                             } else {
-                                if r.is_string() {
-                                    let utf8_str = r.to_utf8(&script_ctx.isolate).unwrap();
-                                    on_done(Ok(utf8_str.as_str().as_bytes().into_iter().map(|v| *v).collect()));
+                                let r = js_value_to_remote_function_data(&script_ctx.isolate, &ctx_scope, r);
+                                if r.is_none() {
+                                    on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
                                 } else {
-                                    on_done(Err(GearsApiError::Msg("Result is not a string".to_string())));
+                                    on_done(Ok(r.unwrap()));
                                 }
                             }
                         }
@@ -945,7 +1002,7 @@ pub(crate) fn initialize_globals(
                 }
 
                 let msg = args.get(0);
-                if !msg.is_string() {
+                if !msg.is_string() && !msg.is_string_object() {
                     isolate.raise_exception_str("First argument to 'log' must be a string message");
                     return None;
                 }
