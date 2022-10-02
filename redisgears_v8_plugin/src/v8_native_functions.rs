@@ -557,7 +557,9 @@ pub(crate) fn get_redis_client(
                             .take_local(&new_script_ctx_ref.isolate)
                             .call(&ctx_scope, Some(&[&background_client.to_value()]));
 
-                        let resolver = resolver.take_local(&new_script_ctx_ref.isolate).as_resolver();
+                        let resolver = resolver
+                            .take_local(&new_script_ctx_ref.isolate)
+                            .as_resolver();
                         match res {
                             Some(r) => resolver.resolve(&ctx_scope, &r),
                             None => {
@@ -1068,7 +1070,9 @@ pub(crate) fn initialize_globals(
                 let script_ctx_ref_reject = Arc::downgrade(&script_ctx_ref);
                 let resolver = curr_ctx_scope.new_resolver();
                 let promise = resolver.get_promise();
-                let resolver_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(resolver.to_value().persist(isolate))});
+                let resolver_resolve = Arc::new(RefCellWrapper {
+                    ref_cell: RefCell::new(resolver.to_value().persist(isolate)),
+                });
                 let resolver_reject = Arc::clone(&resolver_resolve);
 
                 let resolve =
@@ -1112,7 +1116,9 @@ pub(crate) fn initialize_globals(
                                 let ctx_scope = new_script_ctx_ref_resolve.ctx.enter();
                                 let _trycatch = new_script_ctx_ref_resolve.isolate.new_try_catch();
                                 let res = res.take_local(&new_script_ctx_ref_resolve.isolate);
-                                let resolver = resolver_resolve.ref_cell.borrow_mut()
+                                let resolver = resolver_resolve
+                                    .ref_cell
+                                    .borrow_mut()
                                     .take_local(&new_script_ctx_ref_resolve.isolate)
                                     .as_resolver();
                                 resolver.resolve(&ctx_scope, &res);
@@ -1161,7 +1167,9 @@ pub(crate) fn initialize_globals(
                                 let ctx_scope = new_script_ctx_ref_reject.ctx.enter();
                                 let _trycatch = new_script_ctx_ref_reject.isolate.new_try_catch();
                                 let res = res.take_local(&new_script_ctx_ref_reject.isolate);
-                                let resolver = resolver_reject.ref_cell.borrow_mut()
+                                let resolver = resolver_reject
+                                    .ref_cell
+                                    .borrow_mut()
                                     .take_local(&new_script_ctx_ref_reject.isolate)
                                     .as_resolver();
                                 resolver.reject(&ctx_scope, &res);
