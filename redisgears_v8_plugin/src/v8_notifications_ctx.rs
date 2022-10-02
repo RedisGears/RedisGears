@@ -282,10 +282,11 @@ pub(crate) struct V8NotificationsCtx {
 
 impl V8NotificationsCtx {
     pub(crate) fn new(
-        persisted_function: V8PersistValue,
+        mut persisted_function: V8PersistValue,
         script_ctx: &Arc<V8ScriptCtx>,
         is_async: bool,
     ) -> V8NotificationsCtx {
+        persisted_function.forget();
         V8NotificationsCtx {
             internal: Arc::new(V8NotificationsCtxInternal {
                 persisted_function: persisted_function,

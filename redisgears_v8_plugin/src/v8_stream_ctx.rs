@@ -32,10 +32,11 @@ pub struct V8StreamCtx {
 
 impl V8StreamCtx {
     pub(crate) fn new(
-        persisted_function: V8PersistValue,
+        mut persisted_function: V8PersistValue,
         script_ctx: &Arc<V8ScriptCtx>,
         is_async: bool,
     ) -> V8StreamCtx {
+        persisted_function.forget();
         V8StreamCtx {
             internals: Arc::new(V8StreamCtxInternals {
                 persisted_function: persisted_function,

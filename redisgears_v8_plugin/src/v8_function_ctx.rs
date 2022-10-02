@@ -368,12 +368,14 @@ pub struct V8Function {
 impl V8Function {
     pub(crate) fn new(
         script_ctx: &Arc<V8ScriptCtx>,
-        persisted_function: V8PersistValue,
-        persisted_client: V8PersistValue,
+        mut persisted_function: V8PersistValue,
+        mut persisted_client: V8PersistValue,
         client: &Arc<RefCell<RedisClient>>,
         is_async: bool,
         decode_arguments: bool,
     ) -> V8Function {
+        persisted_function.forget();
+        persisted_client.forget();
         V8Function {
             inner_function: Arc::new(V8InternalFunction {
                 script_ctx: Arc::clone(script_ctx),

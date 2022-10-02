@@ -332,44 +332,57 @@ pub(crate) fn get_backgrounnd_client(
 
                 let resolver = ctx_scope.new_resolver();
                 let promise = resolver.get_promise();
-                let resolver = resolver.to_value().persist(isolate);
+                let mut resolver = resolver.to_value().persist(isolate);
                 let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
                 redis_background_client_ref.run_on_key(key_str.as_str().as_bytes(), remote_function_name.as_str(), args_vec, Box::new(move |result|{
                     let script_ctx = match script_ctx_weak_ref.upgrade() {
                         Some(s) => s,
                         None => {
+                            resolver.forget();
                             log("Library was delete while not all the remote jobs were done");
                             return;
                         }
                     };
-                    let _isolate_scope = script_ctx.isolate.enter();
-                    let _handlers_scope = script_ctx.isolate.new_handlers_scope();
-                    let ctx_scope = script_ctx.ctx.enter();
-                    let _trycatch = script_ctx.isolate.new_try_catch();
 
-                    let resolver = resolver.as_local(&script_ctx.isolate).as_resolver();
-                    match result {
-                        Ok(r) => {
-                            let v = match &r {
-                                RemoteFunctionData::Binary(b) => script_ctx.isolate.new_array_buffer(b).to_value(),
-                                RemoteFunctionData::String(s) => {
-                                    let v8_str = script_ctx.isolate.new_string(s);
-                                    let v8_obj = ctx_scope.new_object_from_json(&v8_str);
-                                    if v8_obj.is_none() {
-                                        resolver.reject(&ctx_scope, &script_ctx.isolate.new_string("Failed deserializing remote function result").to_value());
-                                        return;
+                    script_ctx.compiled_library_api.run_on_background(Box::new(move||{
+                        let script_ctx = match script_ctx_weak_ref.upgrade() {
+                            Some(s) => s,
+                            None => {
+                                resolver.forget();
+                                log("Library was delete while not all the remote jobs were done");
+                                return;
+                            }
+                        };
+
+                        let _isolate_scope = script_ctx.isolate.enter();
+                        let _handlers_scope = script_ctx.isolate.new_handlers_scope();
+                        let ctx_scope = script_ctx.ctx.enter();
+                        let _trycatch = script_ctx.isolate.new_try_catch();
+
+                        let resolver = resolver.take_local(&script_ctx.isolate).as_resolver();
+                        match result {
+                            Ok(r) => {
+                                let v = match &r {
+                                    RemoteFunctionData::Binary(b) => script_ctx.isolate.new_array_buffer(b).to_value(),
+                                    RemoteFunctionData::String(s) => {
+                                        let v8_str = script_ctx.isolate.new_string(s);
+                                        let v8_obj = ctx_scope.new_object_from_json(&v8_str);
+                                        if v8_obj.is_none() {
+                                            resolver.reject(&ctx_scope, &script_ctx.isolate.new_string("Failed deserializing remote function result").to_value());
+                                            return;
+                                        }
+                                        v8_obj.unwrap()
                                     }
-                                    v8_obj.unwrap()
+                                };
+                                resolver.resolve(&ctx_scope, &v)
+                            },
+                            Err(e) => {
+                                match e {
+                                    GearsApiError::Msg(msg) => resolver.reject(&ctx_scope, &script_ctx.isolate.new_string(&msg).to_value())
                                 }
-                            };
-                            resolver.resolve(&ctx_scope, &v)
-                        },
-                        Err(e) => {
-                            match e {
-                                GearsApiError::Msg(msg) => resolver.reject(&ctx_scope, &script_ctx.isolate.new_string(&msg).to_value())
                             }
                         }
-                    }
+                    }));
                 }));
                 Some(promise.to_value())
             })
@@ -514,7 +527,6 @@ pub(crate) fn get_redis_client(
                     );
                     return None;
                 }
-                let f = f.persist(isolate);
 
                 let script_ctx_ref = match script_ctx_ref.upgrade() {
                     Some(s) => s,
@@ -523,10 +535,11 @@ pub(crate) fn get_redis_client(
                         return None;
                     }
                 };
+                let mut f = f.persist(isolate);
                 let new_script_ctx_ref = Arc::clone(&script_ctx_ref);
                 let resolver = ctx_scope.new_resolver();
                 let promise = resolver.get_promise();
-                let resolver = resolver.to_value().persist(isolate);
+                let mut resolver = resolver.to_value().persist(isolate);
                 script_ctx_ref
                     .compiled_library_api
                     .run_on_background(Box::new(move || {
@@ -541,10 +554,10 @@ pub(crate) fn get_redis_client(
                             Arc::new(bg_redis_client),
                         );
                         let res = f
-                            .as_local(&new_script_ctx_ref.isolate)
+                            .take_local(&new_script_ctx_ref.isolate)
                             .call(&ctx_scope, Some(&[&background_client.to_value()]));
 
-                        let resolver = resolver.as_local(&new_script_ctx_ref.isolate).as_resolver();
+                        let resolver = resolver.take_local(&new_script_ctx_ref.isolate).as_resolver();
                         match res {
                             Some(r) => resolver.resolve(&ctx_scope, &r),
                             None => {
@@ -831,13 +844,16 @@ pub(crate) fn initialize_globals(
                 isolate.raise_exception_str("Remote function must be async");
                 return None;
             }
-            let persisted_function = Arc::new(function_callback.persist(isolate));
 
             let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
             if load_ctx.is_none() {
                 isolate.raise_exception_str("Called 'register_remote_function' out of context");
                 return None;
             }
+
+            let mut persisted_function = function_callback.persist(isolate);
+            persisted_function.forget();
+            let persisted_function = Arc::new(persisted_function);
 
             let load_ctx = load_ctx.unwrap();
             let new_script_ctx_ref = Weak::clone(&script_ctx_ref);
@@ -1052,7 +1068,7 @@ pub(crate) fn initialize_globals(
                 let script_ctx_ref_reject = Arc::downgrade(&script_ctx_ref);
                 let resolver = curr_ctx_scope.new_resolver();
                 let promise = resolver.get_promise();
-                let resolver_resolve = Arc::new(resolver.to_value().persist(isolate));
+                let resolver_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(resolver.to_value().persist(isolate))});
                 let resolver_reject = Arc::clone(&resolver_resolve);
 
                 let resolve =
@@ -1067,12 +1083,13 @@ pub(crate) fn initialize_globals(
                         let script_ctx_ref_resolve = match script_ctx_ref_resolve.upgrade() {
                             Some(s) => s,
                             None => {
+                                resolver_resolve.ref_cell.borrow_mut().forget();
                                 isolate.raise_exception_str("Library was deleted");
                                 return None;
                             }
                         };
 
-                        let res = args.get(0).persist(isolate);
+                        let mut res = args.get(0).persist(isolate);
                         let new_script_ctx_ref_resolve = Arc::downgrade(&script_ctx_ref_resolve);
                         let resolver_resolve = Arc::clone(&resolver_resolve);
                         script_ctx_ref_resolve
@@ -1083,6 +1100,8 @@ pub(crate) fn initialize_globals(
                                 {
                                     Some(s) => s,
                                     None => {
+                                        resolver_resolve.ref_cell.borrow_mut().forget();
+                                        res.forget();
                                         log("Library was delete while not all the jobs were done");
                                         return;
                                     }
@@ -1092,9 +1111,9 @@ pub(crate) fn initialize_globals(
                                     new_script_ctx_ref_resolve.isolate.new_handlers_scope();
                                 let ctx_scope = new_script_ctx_ref_resolve.ctx.enter();
                                 let _trycatch = new_script_ctx_ref_resolve.isolate.new_try_catch();
-                                let res = res.as_local(&new_script_ctx_ref_resolve.isolate);
-                                let resolver = resolver_resolve
-                                    .as_local(&new_script_ctx_ref_resolve.isolate)
+                                let res = res.take_local(&new_script_ctx_ref_resolve.isolate);
+                                let resolver = resolver_resolve.ref_cell.borrow_mut()
+                                    .take_local(&new_script_ctx_ref_resolve.isolate)
                                     .as_resolver();
                                 resolver.resolve(&ctx_scope, &res);
                             }));
@@ -1113,12 +1132,13 @@ pub(crate) fn initialize_globals(
                         let script_ctx_ref_reject = match script_ctx_ref_reject.upgrade() {
                             Some(s) => s,
                             None => {
+                                resolver_reject.ref_cell.borrow_mut().forget();
                                 isolate.raise_exception_str("Library was deleted");
                                 return None;
                             }
                         };
 
-                        let res = args.get(0).persist(isolate);
+                        let mut res = args.get(0).persist(isolate);
                         let new_script_ctx_ref_reject = Arc::downgrade(&script_ctx_ref_reject);
                         let resolver_reject = Arc::clone(&resolver_reject);
                         script_ctx_ref_reject
@@ -1129,6 +1149,8 @@ pub(crate) fn initialize_globals(
                                 {
                                     Some(s) => s,
                                     None => {
+                                        res.forget();
+                                        resolver_reject.ref_cell.borrow_mut().forget();
                                         log("Library was delete while not all the jobs were done");
                                         return;
                                     }
@@ -1138,9 +1160,9 @@ pub(crate) fn initialize_globals(
                                     new_script_ctx_ref_reject.isolate.new_handlers_scope();
                                 let ctx_scope = new_script_ctx_ref_reject.ctx.enter();
                                 let _trycatch = new_script_ctx_ref_reject.isolate.new_try_catch();
-                                let res = res.as_local(&new_script_ctx_ref_reject.isolate);
-                                let resolver = resolver_reject
-                                    .as_local(&new_script_ctx_ref_reject.isolate)
+                                let res = res.take_local(&new_script_ctx_ref_reject.isolate);
+                                let resolver = resolver_reject.ref_cell.borrow_mut()
+                                    .take_local(&new_script_ctx_ref_reject.isolate)
                                     .as_resolver();
                                 resolver.reject(&ctx_scope, &res);
                             }));
