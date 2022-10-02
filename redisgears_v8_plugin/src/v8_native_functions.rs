@@ -15,7 +15,7 @@ use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
 use crate::v8_script_ctx::V8ScriptCtx;
 use crate::v8_stream_ctx::V8StreamCtx;
-use crate::{get_exception_msg, get_function_flags};
+use crate::{get_exception_msg, get_exception_v8_value, get_function_flags};
 
 use std::cell::RefCell;
 use std::sync::{Arc, Weak};
@@ -563,7 +563,8 @@ pub(crate) fn get_redis_client(
                         match res {
                             Some(r) => resolver.resolve(&ctx_scope, &r),
                             None => {
-                                let error_utf8 = trycatch.get_exception();
+                                let error_utf8 =
+                                    get_exception_v8_value(&new_script_ctx_ref.isolate, trycatch);
                                 resolver.reject(&ctx_scope, &error_utf8);
                             }
                         }

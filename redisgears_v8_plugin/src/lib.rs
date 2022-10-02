@@ -1,6 +1,6 @@
 use v8_rs::v8::{
     isolate::V8Isolate, try_catch::V8TryCatch, v8_array::V8LocalArray,
-    v8_context_scope::V8ContextScope,
+    v8_context_scope::V8ContextScope, v8_value::V8LocalValue,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -25,6 +25,17 @@ pub(crate) fn get_exception_msg(isolate: &V8Isolate, trycatch: V8TryCatch) -> St
     } else {
         let error_utf8 = trycatch.get_exception().to_utf8(isolate).unwrap();
         error_utf8.as_str().to_string()
+    }
+}
+
+pub(crate) fn get_exception_v8_value(isolate: &V8Isolate, trycatch: V8TryCatch) -> V8LocalValue {
+    if trycatch.has_terminated() {
+        isolate.cancel_terminate_execution();
+        isolate
+            .new_string("Err Execution was terminated due to OOM or timeout")
+            .to_value()
+    } else {
+        trycatch.get_exception()
     }
 }
 
