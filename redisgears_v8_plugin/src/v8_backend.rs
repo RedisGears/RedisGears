@@ -89,8 +89,16 @@ impl BackendCtxInterface for V8Backend {
                 panic!("{}", msg);
             }),
             Box::new(|line, is_heap_oom| {
+                let isolate = V8Isolate::current_isolate();
                 let msg = format!("v8 oom error on {}, is_heap_oom:{}", line, is_heap_oom);
                 log(&msg);
+                if let Some(i) = isolate {
+                    log(&format!(
+                        "used_heap_size={}, total_heap_size={}",
+                        i.used_heap_size(),
+                        i.total_heap_size()
+                    ));
+                }
                 panic!("{}", msg);
             }),
         );
@@ -215,6 +223,8 @@ impl BackendCtxInterface for V8Backend {
                             }
                         };
 
+                        let msg = format!("{}, used_heap_size={}, total_heap_size={}", msg, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
+
                         script_ctx.compiled_library_api.log(&msg);
 
                         match get_fatal_failure_policy() {
@@ -223,13 +233,20 @@ impl BackendCtxInterface for V8Backend {
                                 curr_limit as usize
                             }
                             LibraryFatalFailurePolicy::Abort => {
+                                let mut new_limit: usize = (curr_limit as f64 * 1.2 ) as usize;
+                                if new_limit < script_ctx.isolate.total_heap_size() {
+                                    new_limit = (script_ctx.isolate.total_heap_size() as f64 * 1.2) as usize;
+                                }
+                                script_ctx.isolate.request_interrupt(|isolate| {
+                                    isolate.memory_pressure_notification();
+                                });
                                 script_ctx.isolate.terminate_execution();
 
                                 script_ctx
                                     .compiled_library_api
-                                    .log("Temporarly increase max memory aborting the script");
+                                    .log(&format!("Temporarly increase max memory to {} memory and aborting the script", new_limit));
 
-                                (curr_limit as f64 * 1.2) as usize
+                                new_limit
                             }
                         }
                     });
