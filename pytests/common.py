@@ -42,7 +42,9 @@ def runFor(expected_result, callback, sleep_time=0.1, timeout=1):
 def shardsConnections(env):
     for s in range(1, env.shardsCount + 1):
         yield env.getConnection(shardId=s)
-            
+
+def failTest(env, msg):
+    env.assertTrue(False, depth=1, message=msg)
 
 class TimeLimit(object):
     """

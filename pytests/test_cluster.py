@@ -1,5 +1,6 @@
 from common import gearsTest
 from common import shardsConnections
+from common import failTest
 
 @gearsTest(cluster=True)
 def testBasicClusterSupport(env, cluster_conn):
@@ -21,6 +22,52 @@ redis.register_function("test", async (async_client, key) => {
     for conn in shardsConnections(env):
         res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x')
         env.assertEqual(res, '1')
+
+@gearsTest(cluster=True)
+def testBasicClusterBinaryInputOutputSupport(env, cluster_conn):
+    """#!js name=foo
+const remote_get = "remote_get";
+
+redis.register_remote_function(remote_get, async(client, key) => {
+    let res = client.block((client) => {
+        return client.call_raw("get", key);
+    });
+    return res;
+});
+
+redis.register_function("test", async (async_client, key) => {
+    return await async_client.run_on_key(key, remote_get, key);
+},
+["raw-arguments"]);
+    """
+    cluster_conn.execute_command('set', 'x', '1')
+    for conn in shardsConnections(env):
+        res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x')
+        env.assertEqual(res, '1')
+
+@gearsTest(cluster=True)
+def testRemoteFunctionRaiseError(env, cluster_conn):
+    """#!js name=foo
+const remote_get = "remote_get";
+
+redis.register_remote_function(remote_get, async(client, key) => {
+    throw 'Remote function failure';
+});
+
+redis.register_function("test", async (async_client, key) => {
+    return await async_client.run_on_key(key, remote_get, key);
+},
+["raw-arguments"]);
+    """
+    cluster_conn.execute_command('set', 'x', '1')
+    for conn in shardsConnections(env):
+        try:
+            conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x')
+            pass
+        except Exception as e:
+            env.assertContains('Remote function failure', str(e))
+            continue
+        failTest(env, 'error was not raised by command')
 
 @gearsTest(cluster=True)
 def testRecursiveLookup(env, cluster_conn):

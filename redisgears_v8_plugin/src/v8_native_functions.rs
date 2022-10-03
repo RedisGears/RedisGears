@@ -6,8 +6,9 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use v8_rs::v8::{
-    isolate::V8Isolate, v8_context_scope::V8ContextScope, v8_object::V8LocalObject,
-    v8_promise::V8PromiseState, v8_value::V8LocalValue, v8_version,
+    isolate::V8Isolate, v8_array_buffer::V8LocalArrayBuffer, v8_context_scope::V8ContextScope,
+    v8_object::V8LocalObject, v8_promise::V8PromiseState, v8_utf8::V8LocalUtf8,
+    v8_value::V8LocalValue, v8_version,
 };
 
 use crate::v8_backend::log;
@@ -218,6 +219,20 @@ fn js_value_to_remote_function_data(
     }
 }
 
+enum BinaryDataHelper {
+    V8Uft(V8LocalUtf8),
+    V8Binary(V8LocalArrayBuffer),
+}
+
+impl BinaryDataHelper {
+    fn as_bytes(&self) -> &[u8] {
+        match self {
+            BinaryDataHelper::V8Uft(val) => val.as_str().as_bytes(),
+            BinaryDataHelper::V8Binary(val) => val.data(),
+        }
+    }
+}
+
 pub(crate) fn get_backgrounnd_client(
     script_ctx: &Arc<V8ScriptCtx>,
     ctx_scope: &V8ContextScope,
@@ -293,17 +308,20 @@ pub(crate) fn get_backgrounnd_client(
         &script_ctx.isolate.new_string("run_on_key").to_value(),
         &ctx_scope
             .new_native_function(move |args, isolate, ctx_scope| {
-                if args.len() < 3 {
+                if args.len() < 2 {
                     isolate.raise_exception_str("Wrong number of arguments to 'block' function");
                     return None;
                 }
 
                 let key = args.get(0);
-                if !key.is_string() && !key.is_string_object() {
+                let key = if key.is_string() || key.is_string_object() {
+                    BinaryDataHelper::V8Uft(key.to_utf8(isolate).unwrap())
+                } else if key.is_array_buffer() {
+                    BinaryDataHelper::V8Binary(key.as_array_buffer())
+                } else {
                     isolate.raise_exception_str("First argument to 'run_on_key' must be a string represnting a key name");
                     return None;
-                }
-                let key_str = key.to_utf8(isolate).unwrap();
+                };
 
                 let remote_function_name = args.get(1);
                 if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
@@ -334,7 +352,7 @@ pub(crate) fn get_backgrounnd_client(
                 let promise = resolver.get_promise();
                 let mut resolver = resolver.to_value().persist(isolate);
                 let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
-                redis_background_client_ref.run_on_key(key_str.as_str().as_bytes(), remote_function_name.as_str(), args_vec, Box::new(move |result|{
+                redis_background_client_ref.run_on_key(key.as_bytes(), remote_function_name.as_str(), args_vec, Box::new(move |result|{
                     let script_ctx = match script_ctx_weak_ref.upgrade() {
                         Some(s) => s,
                         None => {
@@ -357,7 +375,6 @@ pub(crate) fn get_backgrounnd_client(
                         let _isolate_scope = script_ctx.isolate.enter();
                         let _handlers_scope = script_ctx.isolate.new_handlers_scope();
                         let ctx_scope = script_ctx.ctx.enter();
-                        let _trycatch = script_ctx.isolate.new_try_catch();
 
                         let resolver = resolver.take_local(&script_ctx.isolate).as_resolver();
                         match result {

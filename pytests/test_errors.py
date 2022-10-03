@@ -169,3 +169,77 @@ redis.register_function('test', test);
     """
     env.expect('RG.FCALL', 'foo', 'test', '10', 'bar').error().contains('Not enough arguments was given')
     env.expect('RG.FCALL', 'foo', 'test').error().contains('wrong number of arguments ')
+
+@gearsTest()
+def testNotExistsRemoteFunction(env):
+    """#!js name=foo
+redis.register_function("test", async (async_client) => {
+    return await async_client.run_on_key('x', 'not_exists');
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Remote function not_exists does not exists')
+
+@gearsTest()
+def testRemoteFunctionNotSerializableInput(env):
+    """#!js name=foo
+const remote_get = "remote_get";
+
+redis.register_remote_function(remote_get, async(client, key) => {
+    let res = client.block((client) => {
+        return client.call("get", key);
+    });
+    return res;
+});
+
+redis.register_function("test", async (async_client, key) => {
+    return await async_client.run_on_key(key, remote_get, ()=>{return 1;});
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function argument')
+
+@gearsTest()
+def testRemoteFunctionNotSerializableOutput(env):
+    """#!js name=foo
+const remote_get = "remote_get";
+
+redis.register_remote_function(remote_get, async(client, key) => {
+    return ()=>{return 1;};
+});
+
+redis.register_function("test", async (async_client, key) => {
+    return await async_client.run_on_key(key, remote_get, key);
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function result')
+
+@gearsTest()
+def testRegisterRemoteFunctionWorngNumberOfArgs(env):
+    script = """#!js name=foo
+redis.register_remote_function();
+    """
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Wrong number of arguments to 'register_remote_function' function")
+
+@gearsTest()
+def testRegisterRemoteFunctionWorngfArgsType(env):
+    script = """#!js name=foo
+redis.register_remote_function(1, async (async_client, key) => {
+    return await async_client.run_on_key(key, remote_get, key);
+});
+    """
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("First argument to 'register_remote_function' must be a string")
+
+@gearsTest()
+def testRegisterRemoteFunctionWorngfArgsType2(env):
+    script = """#!js name=foo
+redis.register_remote_function('test', 'test');
+    """
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Second argument to 'register_remote_function' must be a function")
+
+@gearsTest()
+def testRegisterRemoteFunctionWorngfArgsType3(env):
+    script = """#!js name=foo
+redis.register_remote_function('test', (async_client, key) => {
+    return async_client.run_on_key(key, remote_get, key);
+});
+    """
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Remote function must be async")
