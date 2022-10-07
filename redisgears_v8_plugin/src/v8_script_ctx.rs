@@ -141,12 +141,11 @@ impl LibraryCtxInterface for V8LibraryCtx {
         &self,
         load_library_ctx: &mut dyn LoadLibraryCtxInterface,
     ) -> Result<(), GearsApiError> {
-        let _isolate_scope = self.script_ctx.isolate.enter();
-        let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
-        let ctx_scope = self.script_ctx.ctx.enter();
-        let trycatch = self.script_ctx.isolate.new_try_catch();
+        let isolate_scope = self.script_ctx.isolate.enter();
+        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let trycatch = isolate_scope.new_try_catch();
 
-        let script = self.script_ctx.script.to_local(&self.script_ctx.isolate);
+        let script = self.script_ctx.script.to_local(&isolate_scope);
 
         // set private content
         self.script_ctx
@@ -176,7 +175,7 @@ impl LibraryCtxInterface for V8LibraryCtx {
             let promise = res.as_promise();
             if promise.state() == V8PromiseState::Rejected {
                 let error = promise.get_result();
-                let error_utf8 = error.to_utf8(&self.script_ctx.isolate).unwrap();
+                let error_utf8 = error.to_utf8().unwrap();
                 return Err(GearsApiError::Msg(format!(
                     "Failed evaluating module: {}",
                     error_utf8.as_str()

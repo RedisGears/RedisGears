@@ -167,14 +167,12 @@ impl BackendCtxInterface for V8Backend {
         let script_ctx = {
             let (ctx, script) = {
                 let isolate_scope = isolate.enter();
-                let _handlers_scope = isolate.new_handlers_scope();
-
                 let ctx = isolate_scope.new_context(None);
-                let ctx_scope = ctx.enter();
+                let ctx_scope = ctx.enter(&isolate_scope);
 
-                let v8code_str = isolate.new_string(blob);
+                let v8code_str = isolate_scope.new_string(blob);
 
-                let trycatch = isolate.new_try_catch();
+                let trycatch = isolate_scope.new_try_catch();
                 let script = match ctx_scope.compile(&v8code_str) {
                     Some(s) => s,
                     None => {
@@ -186,7 +184,7 @@ impl BackendCtxInterface for V8Backend {
                     }
                 };
 
-                let script = script.persist(&isolate);
+                let script = script.persist();
                 (ctx, script)
             };
             let script_ctx = Arc::new(V8ScriptCtx::new(isolate, ctx, script, compiled_library_api));
@@ -200,9 +198,8 @@ impl BackendCtxInterface for V8Backend {
                 self.isolates_gc();
             }
             {
-                let _isolate_scope = script_ctx.isolate.enter();
-                let _handlers_scope = script_ctx.isolate.new_handlers_scope();
-                let ctx_scope = script_ctx.ctx.enter();
+                let isolate_scope = script_ctx.isolate.enter();
+                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
                 let globals = ctx_scope.get_globals();
 
                 let oom_script_ctx = Arc::downgrade(&script_ctx);
@@ -251,7 +248,7 @@ impl BackendCtxInterface for V8Backend {
                         }
                     });
 
-                initialize_globals(&script_ctx, &globals, &ctx_scope, config)?;
+                initialize_globals(&script_ctx, &globals, &isolate_scope, &ctx_scope, config)?;
             }
 
             script_ctx

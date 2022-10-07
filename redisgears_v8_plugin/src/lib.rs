@@ -1,6 +1,6 @@
 use v8_rs::v8::{
-    isolate::V8Isolate, try_catch::V8TryCatch, v8_array::V8LocalArray,
-    v8_context_scope::V8ContextScope, v8_value::V8LocalValue,
+    isolate::V8Isolate, isolate_scope::V8IsolateScope, try_catch::V8TryCatch,
+    v8_array::V8LocalArray, v8_context_scope::V8ContextScope, v8_value::V8LocalValue,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -23,15 +23,19 @@ pub(crate) fn get_exception_msg(isolate: &V8Isolate, trycatch: V8TryCatch) -> St
         isolate.cancel_terminate_execution();
         "Err Execution was terminated due to OOM or timeout".to_string()
     } else {
-        let error_utf8 = trycatch.get_exception().to_utf8(isolate).unwrap();
+        let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
         error_utf8.as_str().to_string()
     }
 }
 
-pub(crate) fn get_exception_v8_value(isolate: &V8Isolate, trycatch: V8TryCatch) -> V8LocalValue {
+pub(crate) fn get_exception_v8_value<'isolate_scope, 'isolate>(
+    isolate: &V8Isolate,
+    isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+    trycatch: V8TryCatch<'isolate_scope, 'isolate>,
+) -> V8LocalValue<'isolate_scope, 'isolate> {
     if trycatch.has_terminated() {
         isolate.cancel_terminate_execution();
-        isolate
+        isolate_scope
             .new_string("Err Execution was terminated due to OOM or timeout")
             .to_value()
     } else {
@@ -40,7 +44,6 @@ pub(crate) fn get_exception_v8_value(isolate: &V8Isolate, trycatch: V8TryCatch) 
 }
 
 pub(crate) fn get_function_flags(
-    isolate: &V8Isolate,
     curr_ctx_scope: &V8ContextScope,
     flags: &V8LocalArray,
 ) -> Result<u8, String> {
@@ -50,7 +53,7 @@ pub(crate) fn get_function_flags(
         if !flag.is_string() {
             return Err("wrong type of string value".to_string());
         }
-        let flag_str = flag.to_utf8(isolate).unwrap();
+        let flag_str = flag.to_utf8().unwrap();
         match flag_str.as_str() {
             "no-writes" => flags_val |= FUNCTION_FLAG_NO_WRITES,
             "allow-oom" => flags_val |= FUNCTION_FLAG_ALLOW_OOM,
