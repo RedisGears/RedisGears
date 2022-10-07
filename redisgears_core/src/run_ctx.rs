@@ -9,11 +9,13 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::RunFunctionCtxInterface, CallResult, GearsApiError,
 };
 
-use crate::{call_redis_command, get_globals};
+use crate::{call_redis_command, get_globals, GearsLibraryMataData};
 
 use std::slice::Iter;
 
 use crate::background_run_ctx::BackgroundRunCtx;
+
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct RedisClientCallOptions {
@@ -48,6 +50,7 @@ impl RedisClientCallOptions {
 
 pub(crate) struct RedisClient {
     call_options: RedisClientCallOptions,
+    lib_meta_data: Arc<GearsLibraryMataData>,
     user: Option<String>,
 }
 
@@ -55,9 +58,14 @@ unsafe impl Sync for RedisClient {}
 unsafe impl Send for RedisClient {}
 
 impl RedisClient {
-    pub(crate) fn new(user: Option<String>, flags: u8) -> RedisClient {
+    pub(crate) fn new(
+        lib_meta_data: &Arc<GearsLibraryMataData>,
+        user: Option<String>,
+        flags: u8,
+    ) -> RedisClient {
         RedisClient {
             call_options: RedisClientCallOptions::new(flags),
+            lib_meta_data: Arc::clone(lib_meta_data),
             user: user,
         }
     }
@@ -65,12 +73,11 @@ impl RedisClient {
 
 impl RedisClientCtxInterface for RedisClient {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
-        call_redis_command(
-            self.user.as_ref(),
-            command,
-            &self.call_options.call_options,
-            args,
-        )
+        let user = match self.user.as_ref() {
+            Some(u) => Some(u),
+            None => Some(&self.lib_meta_data.user),
+        };
+        call_redis_command(user, command, &self.call_options.call_options, args)
     }
 
     fn as_redis_client(&self) -> &dyn RedisClientCtxInterface {
@@ -80,6 +87,7 @@ impl RedisClientCtxInterface for RedisClient {
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
         Box::new(BackgroundRunCtx::new(
             self.user.clone(),
+            &self.lib_meta_data,
             self.call_options.clone(),
         ))
     }
@@ -89,6 +97,7 @@ pub(crate) struct RunCtx<'a> {
     pub(crate) ctx: &'a Context,
     pub(crate) iter: Iter<'a, redis_module::RedisString>,
     pub(crate) flags: u8,
+    pub(crate) lib_meta_data: Arc<GearsLibraryMataData>,
 }
 
 impl<'a> ReplyCtxInterface for RunCtx<'a> {
@@ -158,7 +167,7 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
             Ok(u) => Some(u),
             Err(_) => None,
         };
-        Box::new(RedisClient::new(user, self.flags))
+        Box::new(RedisClient::new(&self.lib_meta_data, user, self.flags))
     }
 
     fn allow_block(&self) -> bool {

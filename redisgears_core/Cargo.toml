@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 #redis-module = { version="1.0", features = ["experimental-api"]}
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "api_extentions", features = ["experimental-api"]}
+lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api" }
 libloading = "0.7"
 redisgears_plugin_api = {path="../redisgears_plugin_api/"}
 threadpool = "1.8.1"
@@ -15,6 +16,7 @@ reqwest = { version = "0.11", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
 sha256 = "1.0.3"
 
 [build-dependencies]

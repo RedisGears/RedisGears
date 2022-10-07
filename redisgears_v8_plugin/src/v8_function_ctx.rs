@@ -5,7 +5,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use v8_rs::v8::{
-    isolate::V8Isolate, v8_context_scope::V8ContextScope, v8_promise::V8PromiseState,
+    isolate_scope::V8IsolateScope, v8_context_scope::V8ContextScope, v8_promise::V8PromiseState,
     v8_value::V8LocalValue, v8_value::V8PersistValue,
 };
 
@@ -36,7 +36,7 @@ pub struct V8InternalFunction {
 
 fn send_reply(
     nesting_level: usize,
-    isolate: &V8Isolate,
+    isolate_scope: &V8IsolateScope,
     ctx_scope: &V8ContextScope,
     client: &dyn ReplyCtxInterface,
     val: V8LocalValue,
@@ -50,22 +50,25 @@ fn send_reply(
     } else if val.is_number() {
         client.reply_with_double(val.get_number());
     } else if val.is_string() {
-        client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
+        client.reply_with_bulk_string(val.to_utf8().unwrap().as_str());
     } else if val.is_string_object() {
         // check the type of the reply
         let obj_reply = val.as_object();
-        let reply_type = obj_reply.get(ctx_scope, &isolate.new_string("__reply_type").to_value());
+        let reply_type = obj_reply.get(
+            ctx_scope,
+            &isolate_scope.new_string("__reply_type").to_value(),
+        );
         if reply_type.is_some() {
             let reply_type = reply_type.unwrap();
             if reply_type.is_string() {
-                let reply_type_v8_str = reply_type.to_utf8(isolate).unwrap();
+                let reply_type_v8_str = reply_type.to_utf8().unwrap();
                 if reply_type_v8_str.as_str() == "status" {
-                    client.reply_with_simple_string(val.to_utf8(isolate).unwrap().as_str());
+                    client.reply_with_simple_string(val.to_utf8().unwrap().as_str());
                     return;
                 }
             }
         }
-        client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
+        client.reply_with_bulk_string(val.to_utf8().unwrap().as_str());
     } else if val.is_array_buffer() {
         let val = val.as_array_buffer();
         client.reply_with_slice(val.data());
@@ -76,7 +79,7 @@ fn send_reply(
         client.reply_with_array(arr.len());
         for i in 0..arr.len() {
             let val = arr.get(ctx_scope, i);
-            send_reply(nesting_level + 1, isolate, ctx_scope, client, val);
+            send_reply(nesting_level + 1, isolate_scope, ctx_scope, client, val);
         }
     } else if val.is_object() {
         let res = val.as_object();
@@ -85,11 +88,11 @@ fn send_reply(
         for i in 0..keys.len() {
             let key = keys.get(ctx_scope, i);
             let obj = res.get(ctx_scope, &key).unwrap();
-            send_reply(nesting_level + 1, isolate, ctx_scope, client, key);
-            send_reply(nesting_level + 1, isolate, ctx_scope, client, obj);
+            send_reply(nesting_level + 1, isolate_scope, ctx_scope, client, key);
+            send_reply(nesting_level + 1, isolate_scope, ctx_scope, client, obj);
         }
     } else {
-        client.reply_with_bulk_string(val.to_utf8(isolate).unwrap().as_str());
+        client.reply_with_bulk_string(val.to_utf8().unwrap().as_str());
     }
 }
 
@@ -101,14 +104,17 @@ impl V8InternalFunction {
         redis_background_client: Box<dyn BackgroundRunFunctionCtxInterface>,
         decode_args: bool,
     ) -> FunctionCallResult {
-        let _isolate_scope = self.script_ctx.isolate.enter();
-        let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
-        let ctx_scope = self.script_ctx.ctx.enter();
-        let trycatch = self.script_ctx.isolate.new_try_catch();
+        let isolate_scope = self.script_ctx.isolate.enter();
+        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let trycatch = isolate_scope.new_try_catch();
 
         let res = {
-            let r_client =
-                get_backgrounnd_client(&self.script_ctx, &ctx_scope, redis_background_client);
+            let r_client = get_backgrounnd_client(
+                &self.script_ctx,
+                &isolate_scope,
+                &ctx_scope,
+                Arc::new(redis_background_client),
+            );
             let args = {
                 let mut args = Vec::new();
                 args.push(r_client.to_value());
@@ -121,9 +127,9 @@ impl V8InternalFunction {
                                 return FunctionCallResult::Done;
                             }
                         };
-                        self.script_ctx.isolate.new_string(arg).to_value()
+                        isolate_scope.new_string(arg).to_value()
                     } else {
-                        self.script_ctx.isolate.new_array_buffer(arg).to_value()
+                        isolate_scope.new_array_buffer(arg).to_value()
                     };
                     args.push(arg);
                 }
@@ -136,13 +142,10 @@ impl V8InternalFunction {
             });
 
             self.script_ctx.before_run();
-            let res = self
-                .persisted_function
-                .as_local(&self.script_ctx.isolate)
-                .call(
-                    &ctx_scope,
-                    args_ref.as_ref().map_or(None, |v| Some(v.as_slice())),
-                );
+            let res = self.persisted_function.as_local(&isolate_scope).call(
+                &ctx_scope,
+                args_ref.as_ref().map_or(None, |v| Some(v.as_slice())),
+            );
             self.script_ctx.after_run();
             res
         };
@@ -156,15 +159,9 @@ impl V8InternalFunction {
                     {
                         let r = res.get_result();
                         if res.state() == V8PromiseState::Fulfilled {
-                            send_reply(
-                                0,
-                                &self.script_ctx.isolate,
-                                &ctx_scope,
-                                bg_client.as_ref(),
-                                r,
-                            );
+                            send_reply(0, &isolate_scope, &ctx_scope, bg_client.as_ref(), r);
                         } else {
-                            let r = r.to_utf8(&self.script_ctx.isolate).unwrap();
+                            let r = r.to_utf8().unwrap();
                             bg_client.reply_with_error(r.as_str());
                         }
                     } else {
@@ -172,22 +169,22 @@ impl V8InternalFunction {
                         let execution_ctx_resolve = Arc::new(RefCell::new(bg_execution_ctx));
                         let execution_ctx_reject = Arc::clone(&execution_ctx_resolve);
                         let resolve =
-                            ctx_scope.new_native_function(move |args, isolate, _context| {
-                                let reply = args.get(0);
-                                let reply = reply.to_utf8(isolate).unwrap();
+                            ctx_scope.new_native_function(move |args, isolate, context| {
                                 let mut execution_ctx = execution_ctx_resolve.borrow_mut();
-                                execution_ctx
-                                    .c
-                                    .as_ref()
-                                    .unwrap()
-                                    .reply_with_bulk_string(reply.as_str());
+                                send_reply(
+                                    0,
+                                    isolate,
+                                    context,
+                                    execution_ctx.c.as_ref().unwrap().as_ref(),
+                                    args.get(0),
+                                );
                                 execution_ctx.unblock();
                                 None
                             });
-                        let reject =
-                            ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
+                        let reject = ctx_scope.new_native_function(
+                            move |args, _isolate_scope, _ctx_scope| {
                                 let reply = args.get(0);
-                                let reply = reply.to_utf8(isolate).unwrap();
+                                let reply = reply.to_utf8().unwrap();
                                 let mut execution_ctx = execution_ctx_reject.borrow_mut();
                                 execution_ctx
                                     .c
@@ -196,18 +193,13 @@ impl V8InternalFunction {
                                     .reply_with_error(reply.as_str());
                                 execution_ctx.unblock();
                                 None
-                            });
+                            },
+                        );
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(
-                        0,
-                        &self.script_ctx.isolate,
-                        &ctx_scope,
-                        bg_client.as_ref(),
-                        r,
-                    );
+                    send_reply(0, &isolate_scope, &ctx_scope, bg_client.as_ref(), r);
                 }
             }
             None => {
@@ -223,15 +215,14 @@ impl V8InternalFunction {
         run_ctx: &mut dyn RunFunctionCtxInterface,
         decode_arguments: bool,
     ) -> FunctionCallResult {
-        let _isolate_scope = self.script_ctx.isolate.enter();
-        let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
-        let ctx_scope = self.script_ctx.ctx.enter();
-        let trycatch = self.script_ctx.isolate.new_try_catch();
+        let isolate_scope = self.script_ctx.isolate.enter();
+        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let trycatch = isolate_scope.new_try_catch();
 
         let res = {
             let args = {
                 let mut args = Vec::new();
-                args.push(self.persisted_client.as_local(&self.script_ctx.isolate));
+                args.push(self.persisted_client.as_local(&isolate_scope));
                 while let Some(a) = run_ctx.next_arg() {
                     let arg = if decode_arguments {
                         let arg = match str::from_utf8(a) {
@@ -241,9 +232,9 @@ impl V8InternalFunction {
                                 return FunctionCallResult::Done;
                             }
                         };
-                        self.script_ctx.isolate.new_string(arg).to_value()
+                        isolate_scope.new_string(arg).to_value()
                     } else {
-                        self.script_ctx.isolate.new_array_buffer(a).to_value()
+                        isolate_scope.new_array_buffer(a).to_value()
                     };
                     args.push(arg);
                 }
@@ -259,13 +250,10 @@ impl V8InternalFunction {
 
             self.script_ctx.before_run();
             self.script_ctx.after_lock_gil();
-            let res = self
-                .persisted_function
-                .as_local(&self.script_ctx.isolate)
-                .call(
-                    &ctx_scope,
-                    args_ref.as_ref().map_or(None, |v| Some(v.as_slice())),
-                );
+            let res = self.persisted_function.as_local(&isolate_scope).call(
+                &ctx_scope,
+                args_ref.as_ref().map_or(None, |v| Some(v.as_slice())),
+            );
             self.script_ctx.before_release_gil();
             self.script_ctx.after_run();
 
@@ -282,15 +270,9 @@ impl V8InternalFunction {
                     {
                         let r = res.get_result();
                         if res.state() == V8PromiseState::Fulfilled {
-                            send_reply(
-                                0,
-                                &self.script_ctx.isolate,
-                                &ctx_scope,
-                                run_ctx.as_client(),
-                                r,
-                            );
+                            send_reply(0, &isolate_scope, &ctx_scope, run_ctx.as_client(), r);
                         } else {
-                            let r = r.to_utf8(&self.script_ctx.isolate).unwrap();
+                            let r = r.to_utf8().unwrap();
                             run_ctx.reply_with_error(r.as_str());
                         }
                     } else {
@@ -308,9 +290,9 @@ impl V8InternalFunction {
                         let execution_ctx_resolve = Arc::new(RefCell::new(bg_execution_ctx));
                         let execution_ctx_reject = Arc::clone(&execution_ctx_resolve);
                         let resolve =
-                            ctx_scope.new_native_function(move |args, isolate, _context| {
+                            ctx_scope.new_native_function(move |args, _isolate_scope, _context| {
                                 let reply = args.get(0);
-                                let reply = reply.to_utf8(isolate).unwrap();
+                                let reply = reply.to_utf8().unwrap();
                                 let mut execution_ctx = execution_ctx_resolve.borrow_mut();
                                 execution_ctx
                                     .c
@@ -320,10 +302,10 @@ impl V8InternalFunction {
                                 execution_ctx.unblock();
                                 None
                             });
-                        let reject =
-                            ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
+                        let reject = ctx_scope.new_native_function(
+                            move |args, _isolate_scope, _ctx_scope| {
                                 let reply = args.get(0);
-                                let reply = reply.to_utf8(isolate).unwrap();
+                                let reply = reply.to_utf8().unwrap();
                                 let mut execution_ctx = execution_ctx_reject.borrow_mut();
                                 execution_ctx
                                     .c
@@ -332,18 +314,13 @@ impl V8InternalFunction {
                                     .reply_with_error(reply.as_str());
                                 execution_ctx.unblock();
                                 None
-                            });
+                            },
+                        );
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(
-                        0,
-                        &self.script_ctx.isolate,
-                        &ctx_scope,
-                        run_ctx.as_client(),
-                        r,
-                    );
+                    send_reply(0, &isolate_scope, &ctx_scope, run_ctx.as_client(), r);
                 }
             }
             None => {
@@ -365,12 +342,14 @@ pub struct V8Function {
 impl V8Function {
     pub(crate) fn new(
         script_ctx: &Arc<V8ScriptCtx>,
-        persisted_function: V8PersistValue,
-        persisted_client: V8PersistValue,
+        mut persisted_function: V8PersistValue,
+        mut persisted_client: V8PersistValue,
         client: &Arc<RefCell<RedisClient>>,
         is_async: bool,
         decode_arguments: bool,
     ) -> V8Function {
+        persisted_function.forget();
+        persisted_client.forget();
         V8Function {
             inner_function: Arc::new(V8InternalFunction {
                 script_ctx: Arc::clone(script_ctx),

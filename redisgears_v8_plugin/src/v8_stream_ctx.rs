@@ -32,10 +32,11 @@ pub struct V8StreamCtx {
 
 impl V8StreamCtx {
     pub(crate) fn new(
-        persisted_function: V8PersistValue,
+        mut persisted_function: V8PersistValue,
         script_ctx: &Arc<V8ScriptCtx>,
         is_async: bool,
     ) -> V8StreamCtx {
+        persisted_function.forget();
         V8StreamCtx {
             internals: Arc::new(V8StreamCtxInternals {
                 persisted_function: persisted_function,
@@ -53,91 +54,76 @@ impl V8StreamCtxInternals {
         record: Box<dyn StreamRecordInterface>,
         run_ctx: &dyn StreamProcessCtxInterface,
     ) -> Option<StreamRecordAck> {
-        let _isolate_scope = self.script_ctx.isolate.enter();
-        let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
-        let ctx_scope = self.script_ctx.ctx.enter();
-        let trycatch = self.script_ctx.isolate.new_try_catch();
+        let isolate_scope = self.script_ctx.isolate.enter();
+        let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+        let trycatch = isolate_scope.new_try_catch();
 
         let id = record.get_id();
-        let id_v8_arr = self.script_ctx.isolate.new_array(&[
-            &self.script_ctx.isolate.new_long(id.0 as i64),
-            &self.script_ctx.isolate.new_long(id.1 as i64),
+        let id_v8_arr = isolate_scope.new_array(&[
+            &isolate_scope.new_long(id.0 as i64),
+            &isolate_scope.new_long(id.1 as i64),
         ]);
         let stream_name_v8_str = match std::str::from_utf8(stream_name) {
-            Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
-            Err(_) => self.script_ctx.isolate.new_null(),
+            Ok(s) => isolate_scope.new_string(s).to_value(),
+            Err(_) => isolate_scope.new_null(),
         };
 
         let vals = record
             .fields()
             .map(|(f, v)| {
                 let f = match str::from_utf8(f) {
-                    Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
-                    Err(_) => self.script_ctx.isolate.new_null(),
+                    Ok(s) => isolate_scope.new_string(s).to_value(),
+                    Err(_) => isolate_scope.new_null(),
                 };
                 let v = match str::from_utf8(v) {
-                    Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
-                    Err(_) => self.script_ctx.isolate.new_null(),
+                    Ok(s) => isolate_scope.new_string(s).to_value(),
+                    Err(_) => isolate_scope.new_null(),
                 };
-                self.script_ctx.isolate.new_array(&[&f, &v]).to_value()
+                isolate_scope.new_array(&[&f, &v]).to_value()
             })
             .collect::<Vec<V8LocalValue>>();
 
         let raw_vals = record
             .fields()
             .map(|(f, v)| {
-                self.script_ctx
-                    .isolate
+                isolate_scope
                     .new_array(&[
-                        &self.script_ctx.isolate.new_array_buffer(f).to_value(),
-                        &self.script_ctx.isolate.new_array_buffer(v).to_value(),
+                        &isolate_scope.new_array_buffer(f).to_value(),
+                        &isolate_scope.new_array_buffer(v).to_value(),
                     ])
                     .to_value()
             })
             .collect::<Vec<V8LocalValue>>();
 
-        let val_v8_arr = self
-            .script_ctx
-            .isolate
-            .new_array(&vals.iter().collect::<Vec<&V8LocalValue>>());
+        let val_v8_arr = isolate_scope.new_array(&vals.iter().collect::<Vec<&V8LocalValue>>());
 
-        let raw_val_v8_arr = self
-            .script_ctx
-            .isolate
-            .new_array(&raw_vals.iter().collect::<Vec<&V8LocalValue>>());
+        let raw_val_v8_arr =
+            isolate_scope.new_array(&raw_vals.iter().collect::<Vec<&V8LocalValue>>());
 
-        let stream_data = self.script_ctx.isolate.new_object();
+        let stream_data = isolate_scope.new_object();
         stream_data.set(
             &ctx_scope,
-            &self.script_ctx.isolate.new_string("id").to_value(),
+            &isolate_scope.new_string("id").to_value(),
             &id_v8_arr.to_value(),
         );
         stream_data.set(
             &ctx_scope,
-            &self.script_ctx.isolate.new_string("stream_name").to_value(),
+            &isolate_scope.new_string("stream_name").to_value(),
             &stream_name_v8_str,
         );
         stream_data.set(
             &ctx_scope,
-            &self
-                .script_ctx
-                .isolate
-                .new_string("stream_name_raw")
-                .to_value(),
-            &self
-                .script_ctx
-                .isolate
-                .new_array_buffer(stream_name)
-                .to_value(),
+            &isolate_scope.new_string("stream_name_raw").to_value(),
+            &isolate_scope.new_array_buffer(stream_name).to_value(),
         );
         stream_data.set(
             &ctx_scope,
-            &self.script_ctx.isolate.new_string("record").to_value(),
+            &isolate_scope.new_string("record").to_value(),
             &val_v8_arr.to_value(),
         );
         stream_data.set(
             &ctx_scope,
-            &self.script_ctx.isolate.new_string("record_raw").to_value(),
+            &isolate_scope.new_string("record_raw").to_value(),
             &raw_val_v8_arr.to_value(),
         );
 
@@ -145,19 +131,17 @@ impl V8StreamCtxInternals {
         let mut redis_client = RedisClient::new();
         redis_client.set_client(c);
         let redis_client = Arc::new(RefCell::new(redis_client));
-        let r_client = get_redis_client(&self.script_ctx, &ctx_scope, &redis_client);
+        let r_client =
+            get_redis_client(&self.script_ctx, &isolate_scope, &ctx_scope, &redis_client);
 
         ctx_scope.set_private_data(0, Some(&true)); // indicate we are blocked
 
         self.script_ctx.before_run();
         self.script_ctx.after_lock_gil();
-        let res = self
-            .persisted_function
-            .as_local(&self.script_ctx.isolate)
-            .call(
-                &ctx_scope,
-                Some(&[&r_client.to_value(), &stream_data.to_value()]),
-            );
+        let res = self.persisted_function.as_local(&isolate_scope).call(
+            &ctx_scope,
+            Some(&[&r_client.to_value(), &stream_data.to_value()]),
+        );
         self.script_ctx.before_release_gil();
         self.script_ctx.after_run();
 
@@ -186,104 +170,91 @@ impl V8StreamCtxInternals {
             ack: Some(ack_callback),
         }));
         let res = {
-            let _isolate_scope = self.script_ctx.isolate.enter();
-            let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
-            let ctx_scope = self.script_ctx.ctx.enter();
-            let trycatch = self.script_ctx.isolate.new_try_catch();
+            let isolate_scope = self.script_ctx.isolate.enter();
+            let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+            let trycatch = isolate_scope.new_try_catch();
 
             let id = record.get_id();
-            let id_v8_arr = self.script_ctx.isolate.new_array(&[
-                &self.script_ctx.isolate.new_long(id.0 as i64),
-                &self.script_ctx.isolate.new_long(id.1 as i64),
+            let id_v8_arr = isolate_scope.new_array(&[
+                &isolate_scope.new_long(id.0 as i64),
+                &isolate_scope.new_long(id.1 as i64),
             ]);
             let stream_name_v8_str = match std::str::from_utf8(stream_name) {
-                Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
-                Err(_) => self.script_ctx.isolate.new_null(),
+                Ok(s) => isolate_scope.new_string(s).to_value(),
+                Err(_) => isolate_scope.new_null(),
             };
 
             let vals = record
                 .fields()
                 .map(|(f, v)| {
                     let f = match str::from_utf8(f) {
-                        Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
-                        Err(_) => self.script_ctx.isolate.new_null(),
+                        Ok(s) => isolate_scope.new_string(s).to_value(),
+                        Err(_) => isolate_scope.new_null(),
                     };
                     let v = match str::from_utf8(v) {
-                        Ok(s) => self.script_ctx.isolate.new_string(s).to_value(),
-                        Err(_) => self.script_ctx.isolate.new_null(),
+                        Ok(s) => isolate_scope.new_string(s).to_value(),
+                        Err(_) => isolate_scope.new_null(),
                     };
-                    self.script_ctx.isolate.new_array(&[&f, &v]).to_value()
+                    isolate_scope.new_array(&[&f, &v]).to_value()
                 })
                 .collect::<Vec<V8LocalValue>>();
 
             let raw_vals = record
                 .fields()
                 .map(|(f, v)| {
-                    self.script_ctx
-                        .isolate
+                    isolate_scope
                         .new_array(&[
-                            &self.script_ctx.isolate.new_array_buffer(f).to_value(),
-                            &self.script_ctx.isolate.new_array_buffer(v).to_value(),
+                            &isolate_scope.new_array_buffer(f).to_value(),
+                            &isolate_scope.new_array_buffer(v).to_value(),
                         ])
                         .to_value()
                 })
                 .collect::<Vec<V8LocalValue>>();
 
-            let val_v8_arr = self
-                .script_ctx
-                .isolate
-                .new_array(&vals.iter().collect::<Vec<&V8LocalValue>>());
+            let val_v8_arr = isolate_scope.new_array(&vals.iter().collect::<Vec<&V8LocalValue>>());
 
-            let raw_val_v8_arr = self
-                .script_ctx
-                .isolate
-                .new_array(&raw_vals.iter().collect::<Vec<&V8LocalValue>>());
+            let raw_val_v8_arr =
+                isolate_scope.new_array(&raw_vals.iter().collect::<Vec<&V8LocalValue>>());
 
-            let stream_data = self.script_ctx.isolate.new_object();
+            let stream_data = isolate_scope.new_object();
             stream_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("id").to_value(),
+                &isolate_scope.new_string("id").to_value(),
                 &id_v8_arr.to_value(),
             );
             stream_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("stream_name").to_value(),
+                &isolate_scope.new_string("stream_name").to_value(),
                 &stream_name_v8_str,
             );
             stream_data.set(
                 &ctx_scope,
-                &self
-                    .script_ctx
-                    .isolate
-                    .new_string("stream_name_raw")
-                    .to_value(),
-                &self
-                    .script_ctx
-                    .isolate
-                    .new_array_buffer(stream_name)
-                    .to_value(),
+                &isolate_scope.new_string("stream_name_raw").to_value(),
+                &isolate_scope.new_array_buffer(stream_name).to_value(),
             );
             stream_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("record").to_value(),
+                &isolate_scope.new_string("record").to_value(),
                 &val_v8_arr.to_value(),
             );
             stream_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("record_raw").to_value(),
+                &isolate_scope.new_string("record_raw").to_value(),
                 &raw_val_v8_arr.to_value(),
             );
 
-            let r_client = get_backgrounnd_client(&self.script_ctx, &ctx_scope, redis_client);
+            let r_client = get_backgrounnd_client(
+                &self.script_ctx,
+                &isolate_scope,
+                &ctx_scope,
+                Arc::new(redis_client),
+            );
 
             self.script_ctx.before_run();
-            let res = self
-                .persisted_function
-                .as_local(&self.script_ctx.isolate)
-                .call(
-                    &ctx_scope,
-                    Some(&[&r_client.to_value(), &stream_data.to_value()]),
-                );
+            let res = self.persisted_function.as_local(&isolate_scope).call(
+                &ctx_scope,
+                Some(&[&r_client.to_value(), &stream_data.to_value()]),
+            );
             self.script_ctx.after_run();
 
             match res {
@@ -291,8 +262,7 @@ impl V8StreamCtxInternals {
                     if res.is_promise() {
                         let res = res.as_promise();
                         if res.state() == V8PromiseState::Rejected {
-                            let error_utf8 =
-                                res.get_result().to_utf8(&self.script_ctx.isolate).unwrap();
+                            let error_utf8 = res.get_result().to_utf8().unwrap();
                             Some(StreamRecordAck::Nack(error_utf8.as_str().to_string()))
                         } else if res.state() == V8PromiseState::Fulfilled {
                             Some(StreamRecordAck::Ack)
@@ -311,7 +281,7 @@ impl V8StreamCtxInternals {
                             let reject =
                                 ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
                                     let res = args.get(0);
-                                    let res = res.to_utf8(isolate).unwrap();
+                                    let res = res.to_utf8().unwrap();
                                     let res = res.as_str().to_string();
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) = ack_callback_reject.borrow_mut().ack.take() {

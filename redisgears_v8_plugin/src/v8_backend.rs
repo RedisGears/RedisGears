@@ -89,8 +89,16 @@ impl BackendCtxInterface for V8Backend {
                 panic!("{}", msg);
             }),
             Box::new(|line, is_heap_oom| {
+                let isolate = V8Isolate::current_isolate();
                 let msg = format!("v8 oom error on {}, is_heap_oom:{}", line, is_heap_oom);
                 log(&msg);
+                if let Some(i) = isolate {
+                    log(&format!(
+                        "used_heap_size={}, total_heap_size={}",
+                        i.used_heap_size(),
+                        i.total_heap_size()
+                    ));
+                }
                 panic!("{}", msg);
             }),
         );
@@ -159,14 +167,12 @@ impl BackendCtxInterface for V8Backend {
         let script_ctx = {
             let (ctx, script) = {
                 let isolate_scope = isolate.enter();
-                let _handlers_scope = isolate.new_handlers_scope();
-
                 let ctx = isolate_scope.new_context(None);
-                let ctx_scope = ctx.enter();
+                let ctx_scope = ctx.enter(&isolate_scope);
 
-                let v8code_str = isolate.new_string(blob);
+                let v8code_str = isolate_scope.new_string(blob);
 
-                let trycatch = isolate.new_try_catch();
+                let trycatch = isolate_scope.new_try_catch();
                 let script = match ctx_scope.compile(&v8code_str) {
                     Some(s) => s,
                     None => {
@@ -178,7 +184,7 @@ impl BackendCtxInterface for V8Backend {
                     }
                 };
 
-                let script = script.persist(&isolate);
+                let script = script.persist();
                 (ctx, script)
             };
             let script_ctx = Arc::new(V8ScriptCtx::new(isolate, ctx, script, compiled_library_api));
@@ -192,9 +198,8 @@ impl BackendCtxInterface for V8Backend {
                 self.isolates_gc();
             }
             {
-                let _isolate_scope = script_ctx.isolate.enter();
-                let _handlers_scope = script_ctx.isolate.new_handlers_scope();
-                let ctx_scope = script_ctx.ctx.enter();
+                let isolate_scope = script_ctx.isolate.enter();
+                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
                 let globals = ctx_scope.get_globals();
 
                 let oom_script_ctx = Arc::downgrade(&script_ctx);
@@ -215,6 +220,8 @@ impl BackendCtxInterface for V8Backend {
                             }
                         };
 
+                        let msg = format!("{}, used_heap_size={}, total_heap_size={}", msg, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
+
                         script_ctx.compiled_library_api.log(&msg);
 
                         match get_fatal_failure_policy() {
@@ -223,18 +230,25 @@ impl BackendCtxInterface for V8Backend {
                                 curr_limit as usize
                             }
                             LibraryFatalFailurePolicy::Abort => {
+                                let mut new_limit: usize = (curr_limit as f64 * 1.2 ) as usize;
+                                if new_limit < script_ctx.isolate.total_heap_size() {
+                                    new_limit = (script_ctx.isolate.total_heap_size() as f64 * 1.2) as usize;
+                                }
+                                script_ctx.isolate.request_interrupt(|isolate| {
+                                    isolate.memory_pressure_notification();
+                                });
                                 script_ctx.isolate.terminate_execution();
 
                                 script_ctx
                                     .compiled_library_api
-                                    .log("Temporarly increase max memory aborting the script");
+                                    .log(&format!("Temporarly increase max memory to {} memory and aborting the script", new_limit));
 
-                                (curr_limit as f64 * 1.2) as usize
+                                new_limit
                             }
                         }
                     });
 
-                initialize_globals(&script_ctx, &globals, &ctx_scope, config)?;
+                initialize_globals(&script_ctx, &globals, &isolate_scope, &ctx_scope, config)?;
             }
 
             script_ctx

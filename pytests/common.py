@@ -38,7 +38,13 @@ def runFor(expected_result, callback, sleep_time=0.1, timeout=1):
     except Exception as e:
         if str(e) != 'timeout':
             raise e
-            
+
+def shardsConnections(env):
+    for s in range(1, env.shardsCount + 1):
+        yield env.getConnection(shardId=s)
+
+def failTest(env, msg):
+    env.assertTrue(False, depth=1, message=msg)
 
 class TimeLimit(object):
     """
@@ -64,29 +70,6 @@ class TimeLimit(object):
             self.env.assertTrue(False, message='Timedout %s' % (str(self.msg) if self.msg is not None else 'Error'))
         raise Exception('timeout')
 
-def getConnectionByEnv(env):
-    conn = None
-    # env.broadcast('rg.refreshcluster')
-    if env.env == 'oss-cluster' and env.shardsCount > 1:
-        conn = env.envRunner.getClusterConnection()
-        # for s in range(1, env.shardsCount + 1):
-        #     while True:
-        #         c = env.getConnection(shardId=s)
-        #         res = c.execute_command('RG.INFOCLUSTER')
-        #         if res == 'no cluster mode':
-        #             continue
-        #         res = res[4]
-        #         isAllRunIdsFound = True
-        #         for r in res:
-        #             if r[9] == None: # runid
-        #                 isAllRunIdsFound = False
-        #         if isAllRunIdsFound:
-        #             break
-    else:
-        conn = env.getConnection()
-    return conn
-
-
 def extractInfoOnfailure(env, prefix):
     pass
 
@@ -102,6 +85,8 @@ def gearsTest(skipTest=False,
               skipWithTLS=False,
               decodeResponses=True,
               enableGearsDebugCommands=False,
+              cluster=False,
+              shardsCount=2,
               envArgs={}):
     def test_func_generator(test_function):
         def test_func():
@@ -119,12 +104,17 @@ def gearsTest(skipTest=False,
             module_args = [v8_plugin_path]
             if skipTest:
                 raise unittest.SkipTest()
+            final_envArgs = envArgs.copy()
             if skipOnCluster:
                 env = Defaults.env
-                if 'env' in envArgs.keys():
-                    env = envArgs['env']
+                if 'env' in final_envArgs.keys():
+                    env = final_envArgs['env']
                 if 'cluster' in env:
                     raise unittest.SkipTest()
+            if 'env' not in final_envArgs.keys():
+                if cluster:
+                    final_envArgs['env'] = 'oss-cluster'
+                    final_envArgs['shardsCount'] = shardsCount
             if skipOnSingleShard and Defaults.num_shards == 1:
                 raise unittest.SkipTest()
             if skipWithTLS and Defaults.use_TLS:
@@ -134,19 +124,24 @@ def gearsTest(skipTest=False,
                     raise unittest.SkipTest()
             if enableGearsDebugCommands:
                 module_args += ["enable-debug-command", "yes"]
-            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**envArgs)
+            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**final_envArgs)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 
                 # able to execute commands on shards, on slow envs, run with valgrind,
                 # or mac, it is needed.
                 env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
-            conn = getConnectionByEnv(env)
+                env.broadcast('REDISGEARS_2.REFRESHCLUSTER')
             version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             if test_function.__doc__ is not None:
-                env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
-            test_function(env)
+                for conn in shardsConnections(env):
+                    res = conn.execute_command('RG.FUNCTION', 'LOAD', test_function.__doc__)
+                    env.assertEqual(res, 'OK' if decodeResponses else b'OK')
+            test_args = [env]
+            if cluster:
+                test_args.append(env.envRunner.getClusterConnection())
+            test_function(*test_args)
             if len(env.assertionFailedSummary) > 0:
                 extractInfoOnfailure(env, 'before_cleanups')
             if not skipCleanups:

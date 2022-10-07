@@ -44,53 +44,46 @@ impl V8NotificationsCtxInternal {
         ack_callback: Box<dyn FnOnce(Result<(), String>) + Send + Sync>,
     ) {
         let res = {
-            let _isolate_scope = self.script_ctx.isolate.enter();
-            let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
-            let ctx_scope = self.script_ctx.ctx.enter();
-            let trycatch = self.script_ctx.isolate.new_try_catch();
+            let isolate_scope = self.script_ctx.isolate.enter();
+            let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+            let trycatch = isolate_scope.new_try_catch();
 
-            let notification_data = self.script_ctx.isolate.new_object();
+            let notification_data = isolate_scope.new_object();
             notification_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("event").to_value(),
-                &self.script_ctx.isolate.new_string(&data.event).to_value(),
+                &isolate_scope.new_string("event").to_value(),
+                &isolate_scope.new_string(&data.event).to_value(),
             );
 
             notification_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("key").to_value(),
-                &std::str::from_utf8(&data.key).map_or(self.script_ctx.isolate.new_null(), |v| {
-                    self.script_ctx.isolate.new_string(v).to_value()
+                &isolate_scope.new_string("key").to_value(),
+                &std::str::from_utf8(&data.key).map_or(isolate_scope.new_null(), |v| {
+                    isolate_scope.new_string(v).to_value()
                 }),
             );
 
             notification_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("key_raw").to_value(),
-                &self
-                    .script_ctx
-                    .isolate
-                    .new_array_buffer(&data.key)
-                    .to_value(),
+                &isolate_scope.new_string("key_raw").to_value(),
+                &isolate_scope.new_array_buffer(&data.key).to_value(),
             );
 
             let c = notification_ctx.get_redis_client();
             let mut redis_client = RedisClient::new();
             redis_client.set_client(c);
             let redis_client = Arc::new(RefCell::new(redis_client));
-            let r_client = get_redis_client(&self.script_ctx, &ctx_scope, &redis_client);
+            let r_client =
+                get_redis_client(&self.script_ctx, &isolate_scope, &ctx_scope, &redis_client);
 
             ctx_scope.set_private_data(0, Some(&true)); // indicate we are blocked
 
             self.script_ctx.before_run();
             self.script_ctx.after_lock_gil();
-            let res = self
-                .persisted_function
-                .as_local(&self.script_ctx.isolate)
-                .call(
-                    &ctx_scope,
-                    Some(&[&r_client.to_value(), &notification_data.to_value()]),
-                );
+            let res = self.persisted_function.as_local(&isolate_scope).call(
+                &ctx_scope,
+                Some(&[&r_client.to_value(), &notification_data.to_value()]),
+            );
             self.script_ctx.before_release_gil();
             self.script_ctx.after_run();
 
@@ -103,8 +96,7 @@ impl V8NotificationsCtxInternal {
                     if res.is_promise() {
                         let res = res.as_promise();
                         if res.state() == V8PromiseState::Rejected {
-                            let error_utf8 =
-                                res.get_result().to_utf8(&self.script_ctx.isolate).unwrap();
+                            let error_utf8 = res.get_result().to_utf8().unwrap();
                             Some(Err(error_utf8.as_str().to_string()))
                         } else if res.state() == V8PromiseState::Fulfilled {
                             Some(Ok(()))
@@ -130,7 +122,7 @@ impl V8NotificationsCtxInternal {
                             let reject =
                                 ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
                                     let res = args.get(0);
-                                    let res = res.to_utf8(isolate).unwrap();
+                                    let res = res.to_utf8().unwrap();
                                     let res = res.as_str().to_string();
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
@@ -168,46 +160,43 @@ impl V8NotificationsCtxInternal {
         ack_callback: Box<dyn FnOnce(Result<(), String>) + Send + Sync>,
     ) {
         let res = {
-            let _isolate_scope = self.script_ctx.isolate.enter();
-            let _handlers_scope = self.script_ctx.isolate.new_handlers_scope();
-            let ctx_scope = self.script_ctx.ctx.enter();
-            let trycatch = self.script_ctx.isolate.new_try_catch();
+            let isolate_scope = self.script_ctx.isolate.enter();
+            let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
+            let trycatch = isolate_scope.new_try_catch();
 
-            let notification_data = self.script_ctx.isolate.new_object();
+            let notification_data = isolate_scope.new_object();
             notification_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("event").to_value(),
-                &self.script_ctx.isolate.new_string(&data.event).to_value(),
+                &isolate_scope.new_string("event").to_value(),
+                &isolate_scope.new_string(&data.event).to_value(),
             );
 
             notification_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("key").to_value(),
-                &std::str::from_utf8(&data.key).map_or(self.script_ctx.isolate.new_null(), |v| {
-                    self.script_ctx.isolate.new_string(v).to_value()
+                &isolate_scope.new_string("key").to_value(),
+                &std::str::from_utf8(&data.key).map_or(isolate_scope.new_null(), |v| {
+                    isolate_scope.new_string(v).to_value()
                 }),
             );
 
             notification_data.set(
                 &ctx_scope,
-                &self.script_ctx.isolate.new_string("key_raw").to_value(),
-                &self
-                    .script_ctx
-                    .isolate
-                    .new_array_buffer(&data.key)
-                    .to_value(),
+                &isolate_scope.new_string("key_raw").to_value(),
+                &isolate_scope.new_array_buffer(&data.key).to_value(),
             );
 
-            let r_client = get_backgrounnd_client(&self.script_ctx, &ctx_scope, background_client);
+            let r_client = get_backgrounnd_client(
+                &self.script_ctx,
+                &isolate_scope,
+                &ctx_scope,
+                Arc::new(background_client),
+            );
 
             self.script_ctx.before_run();
-            let res = self
-                .persisted_function
-                .as_local(&self.script_ctx.isolate)
-                .call(
-                    &ctx_scope,
-                    Some(&[&r_client.to_value(), &notification_data.to_value()]),
-                );
+            let res = self.persisted_function.as_local(&isolate_scope).call(
+                &ctx_scope,
+                Some(&[&r_client.to_value(), &notification_data.to_value()]),
+            );
             self.script_ctx.after_run();
 
             match res {
@@ -215,8 +204,7 @@ impl V8NotificationsCtxInternal {
                     if res.is_promise() {
                         let res = res.as_promise();
                         if res.state() == V8PromiseState::Rejected {
-                            let error_utf8 =
-                                res.get_result().to_utf8(&self.script_ctx.isolate).unwrap();
+                            let error_utf8 = res.get_result().to_utf8().unwrap();
                             Some(Err(error_utf8.as_str().to_string()))
                         } else if res.state() == V8PromiseState::Fulfilled {
                             Some(Ok(()))
@@ -242,7 +230,7 @@ impl V8NotificationsCtxInternal {
                             let reject =
                                 ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
                                     let res = args.get(0);
-                                    let res = res.to_utf8(isolate).unwrap();
+                                    let res = res.to_utf8().unwrap();
                                     let res = res.as_str().to_string();
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
@@ -281,10 +269,11 @@ pub(crate) struct V8NotificationsCtx {
 
 impl V8NotificationsCtx {
     pub(crate) fn new(
-        persisted_function: V8PersistValue,
+        mut persisted_function: V8PersistValue,
         script_ctx: &Arc<V8ScriptCtx>,
         is_async: bool,
     ) -> V8NotificationsCtx {
+        persisted_function.forget();
         V8NotificationsCtx {
             internal: Arc::new(V8NotificationsCtxInternal {
                 persisted_function: persisted_function,
