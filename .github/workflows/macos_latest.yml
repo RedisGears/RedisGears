@@ -15,7 +15,11 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: install rltest
-      run: python3 -m pip install RLTest
+      run: python3 -m pip install RLTest\
+    - name: install automake
+      run: brew install automake
+    - name: install openssl
+      run: brew install openssl@1.1
     - name: install redis
       run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
     - name: format
