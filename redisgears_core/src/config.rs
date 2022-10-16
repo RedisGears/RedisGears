@@ -102,7 +102,7 @@ impl RedisConfigCtx for RemoteTaskDefaultTimeout {
 
 impl RedisNumberConfigCtx for RemoteTaskDefaultTimeout {
     fn default(&self) -> i64 {
-        500 // 500 ms   
+        500 // 500 ms
     }
 
     fn min(&self) -> i64 {
@@ -578,7 +578,9 @@ impl Config {
                 Ok(format!("{}", self.libraray_fatal_failure_policy))
             }
             x if x == self.lock_regis_timeout.name() => Ok(format!("{}", self.lock_regis_timeout)),
-            x if x == self.remote_task_default_timeout.name() => Ok(format!("{}", self.remote_task_default_timeout)),
+            x if x == self.remote_task_default_timeout.name() => {
+                Ok(format!("{}", self.remote_task_default_timeout))
+            }
             _ => Err(RedisError::String(format!(
                 "No such configuration {}",
                 name
