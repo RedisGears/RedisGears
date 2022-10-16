@@ -76,6 +76,22 @@ def extractInfoOnfailure(env, prefix):
 def doCleanups(env):
     pass
 
+def verifyClusterInitialized(env):
+    for conn in shardsConnections(env):
+        allConnected = False
+        while not allConnected:
+            res = conn.execute_command('REDISGEARS_2.INFOCLUSTER')
+            nodes = res[4]
+            allConnected = True
+            for n in nodes:
+                status = n[17]
+                if status != 'connected':
+                    allConnected = False
+            if not allConnected:
+                time.sleep(0.1)
+                    
+
+
 def gearsTest(skipTest=False,
               skipOnCluster=False,
               skipCleanups=False,
@@ -87,6 +103,7 @@ def gearsTest(skipTest=False,
               enableGearsDebugCommands=False,
               cluster=False,
               shardsCount=2,
+              gearsConfig={},
               envArgs={}):
     def test_func_generator(test_function):
         def test_func():
@@ -124,6 +141,8 @@ def gearsTest(skipTest=False,
                     raise unittest.SkipTest()
             if enableGearsDebugCommands:
                 module_args += ["enable-debug-command", "yes"]
+            for k, v in gearsConfig.items():
+                module_args += [k, v]
             env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**final_envArgs)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 
@@ -131,6 +150,9 @@ def gearsTest(skipTest=False,
                 # or mac, it is needed.
                 env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
                 env.broadcast('REDISGEARS_2.REFRESHCLUSTER')
+                with TimeLimit(2, env, "Failed waiting for cluster to initialized"):
+                    verifyClusterInitialized(env)
+                    return
             version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()

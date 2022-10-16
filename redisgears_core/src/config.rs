@@ -66,6 +66,62 @@ impl RedisNumberConfigCtx for ExecutionThreads {
     }
 }
 
+pub(crate) struct RemoteTaskDefaultTimeout {
+    pub(crate) timeout: usize,
+    flags: ConfigFlags,
+}
+
+impl RemoteTaskDefaultTimeout {
+    fn new() -> RemoteTaskDefaultTimeout {
+        RemoteTaskDefaultTimeout {
+            timeout: 500, // 500 ms
+            flags: ConfigFlags::new(),
+        }
+    }
+}
+
+impl fmt::Display for RemoteTaskDefaultTimeout {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.timeout)
+    }
+}
+
+impl RedisConfigCtx for RemoteTaskDefaultTimeout {
+    fn name(&self) -> &'static str {
+        "remote-task-default-timeout"
+    }
+
+    fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
+        Ok(())
+    }
+
+    fn flags(&self) -> &ConfigFlags {
+        &self.flags
+    }
+}
+
+impl RedisNumberConfigCtx for RemoteTaskDefaultTimeout {
+    fn default(&self) -> i64 {
+        500 // 500 ms   
+    }
+
+    fn min(&self) -> i64 {
+        1 // 1 ms
+    }
+    fn max(&self) -> i64 {
+        i64::MAX
+    }
+
+    fn get(&self, _name: &str) -> i64 {
+        self.timeout as i64
+    }
+
+    fn set(&mut self, _name: &str, value: i64) -> Result<(), RedisError> {
+        self.timeout = value as usize;
+        Ok(())
+    }
+}
+
 pub(crate) struct LibraryMaxMemory {
     pub(crate) size: usize,
     flags: ConfigFlags,
@@ -361,6 +417,7 @@ pub(crate) struct Config {
     pub(crate) libraray_fatal_failure_policy: LibraryOnFatalFailurePolicy,
     pub(crate) lock_regis_timeout: LockRedisTimeout,
     pub(crate) enable_debug_command: EnableDebugCommand,
+    pub(crate) remote_task_default_timeout: RemoteTaskDefaultTimeout,
 }
 
 impl Config {
@@ -372,6 +429,7 @@ impl Config {
             libraray_fatal_failure_policy: LibraryOnFatalFailurePolicy::new(),
             lock_regis_timeout: LockRedisTimeout::new(),
             enable_debug_command: EnableDebugCommand::new(),
+            remote_task_default_timeout: RemoteTaskDefaultTimeout::new(),
         }
     }
 
@@ -456,6 +514,9 @@ impl Config {
             x if x == self.lock_regis_timeout.name() => {
                 Self::set_numeric_value(&mut self.lock_regis_timeout, val)
             }
+            x if x == self.remote_task_default_timeout.name() => {
+                Self::set_numeric_value(&mut self.remote_task_default_timeout, val)
+            }
             _ => {
                 return Err(RedisError::String(format!(
                     "No such configuration {}",
@@ -489,6 +550,9 @@ impl Config {
             x if x == self.lock_regis_timeout.name() => {
                 Self::is_emmutable(&mut self.lock_regis_timeout)
             }
+            x if x == self.remote_task_default_timeout.name() => {
+                Self::is_emmutable(&mut self.remote_task_default_timeout)
+            }
             _ => {
                 return Err(RedisError::String(format!(
                     "No such configuration {}",
@@ -514,6 +578,7 @@ impl Config {
                 Ok(format!("{}", self.libraray_fatal_failure_policy))
             }
             x if x == self.lock_regis_timeout.name() => Ok(format!("{}", self.lock_regis_timeout)),
+            x if x == self.remote_task_default_timeout.name() => Ok(format!("{}", self.remote_task_default_timeout)),
             _ => Err(RedisError::String(format!(
                 "No such configuration {}",
                 name

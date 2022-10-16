@@ -5,7 +5,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;
-use crate::{get_libraries, verify_ok_on_replica, verify_oom, GearsLibraryMataData};
+use crate::{get_libraries, verify_ok_on_replica, verify_oom, get_globals, GearsLibraryMataData};
 
 use redis_module::{RedisValue, ThreadSafeContext};
 
@@ -207,6 +207,7 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
                 };
                 on_done(res);
             },
+            get_globals().config.remote_task_default_timeout.timeout,
         );
     }
 }

@@ -1660,6 +1660,7 @@ redis_module! {
         &get_globals().config.execution_threads,
         &get_globals().config.library_maxmemory,
         &get_globals().config.lock_regis_timeout,
+        &get_globals().config.remote_task_default_timeout,
     ],
     enum_configurations: [
         &get_globals().config.libraray_fatal_failure_policy,

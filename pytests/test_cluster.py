@@ -98,5 +98,19 @@ redis.register_function("test", async(async_client, key) => {
         res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'key0')
         env.assertEqual(res, 'final_value')
 
+@gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
+def testRemoteTaksTimeout(env, cluster_conn):
+    """#!js name=foo
+const remote_get = "remote_get";
 
+redis.register_remote_function(remote_get, async(client, key) => {
+    while (true); // run forever so we will get the timeout.
+    return 'done';
+});
 
+redis.register_function("test", async (async_client, key) => {
+    return await async_client.run_on_key(key, remote_get, key);
+});
+    """
+    cluster_conn.execute_command('set', 'x', '1')
+    env.expect('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x').error().contains('Timeout')
