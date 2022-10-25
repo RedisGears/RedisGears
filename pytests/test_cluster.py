@@ -91,7 +91,7 @@ redis.register_function("test", async(async_client, key) => {
     return await async_client.run_on_key(key, recursive_get, key);
 });
     """
-    for i in range(1000):
+    for i in range(100):
         cluster_conn.execute_command('hset', 'key%d' % i, 'lookup', 'key%d' % (i + 1))
     cluster_conn.execute_command('set', 'key%d' % i, 'final_value')
     for conn in shardsConnections(env):
