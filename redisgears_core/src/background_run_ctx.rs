@@ -227,8 +227,10 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
             task,
             input_record,
             move |results: Vec<GearsRemoteFunctionOutputRecord>, errors| {
-                let errors: Vec<GearsApiError> = errors.into_iter().map(|e| GearsApiError::Msg(e)).collect();
-                let results: Vec<RemoteFunctionData> = results.into_iter().map(|r| r.output).collect();
+                let errors: Vec<GearsApiError> =
+                    errors.into_iter().map(|e| GearsApiError::Msg(e)).collect();
+                let results: Vec<RemoteFunctionData> =
+                    results.into_iter().map(|r| r.output).collect();
                 on_done(results, errors);
             },
             get_globals().config.remote_task_default_timeout.timeout,

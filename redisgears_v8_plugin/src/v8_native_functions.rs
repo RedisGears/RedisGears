@@ -492,7 +492,6 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                         let errors_array = isolate_scope.new_array(&errors.iter().collect::<Vec<&V8LocalValue>>()).to_value();
 
                         resolver.resolve(&ctx_scope, &isolate_scope.new_array(&[&results_array, &errors_array]).to_value());
-                        
                     }));
                 }));
                 Some(promise.to_value())
