@@ -34,6 +34,12 @@ pub trait BackgroundRunFunctionCtxInterface: Send + Sync {
         inputs: Vec<RemoteFunctionData>,
         on_done: Box<dyn FnOnce(Result<RemoteFunctionData, GearsApiError>)>,
     );
+    fn run_on_all_shards(
+        &self,
+        job_name: &str,
+        inputs: Vec<RemoteFunctionData>,
+        on_done: Box<dyn FnOnce(Vec<RemoteFunctionData>, Vec<GearsApiError>)>,
+    );
 }
 
 pub trait RunFunctionCtxInterface: ReplyCtxInterface {

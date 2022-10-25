@@ -152,7 +152,6 @@ def gearsTest(skipTest=False,
                 env.broadcast('REDISGEARS_2.REFRESHCLUSTER')
                 with TimeLimit(2, env, "Failed waiting for cluster to initialized"):
                     verifyClusterInitialized(env)
-                    return
             version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()

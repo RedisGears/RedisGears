@@ -210,4 +210,28 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
             get_globals().config.remote_task_default_timeout.timeout,
         );
     }
+
+    fn run_on_all_shards(
+        &self,
+        job_name: &str,
+        inputs: Vec<RemoteFunctionData>,
+        on_done: Box<dyn FnOnce(Vec<RemoteFunctionData>, Vec<GearsApiError>)>,
+    ) {
+        let task = GearsRemoteTask {
+            lib_name: self.lib_meta_data.name.clone(),
+            job_name: job_name.to_string(),
+            user: self.user.clone(),
+        };
+        let input_record = GearsRemoteFunctionInputsRecord { inputs: inputs };
+        mr::libmr::remote_task::run_on_all_shards(
+            task,
+            input_record,
+            move |results: Vec<GearsRemoteFunctionOutputRecord>, errors| {
+                let errors: Vec<GearsApiError> = errors.into_iter().map(|e| GearsApiError::Msg(e)).collect();
+                let results: Vec<RemoteFunctionData> = results.into_iter().map(|r| r.output).collect();
+                on_done(results, errors);
+            },
+            get_globals().config.remote_task_default_timeout.timeout,
+        )
+    }
 }

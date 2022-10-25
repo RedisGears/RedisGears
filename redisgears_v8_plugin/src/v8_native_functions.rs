@@ -409,6 +409,97 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
             .to_value(),
     );
 
+    let redis_background_client_ref = Arc::clone(&redis_background_client);
+    let script_ctx_weak_ref = Arc::downgrade(script_ctx);
+    bg_client.set(
+        ctx_scope,
+        &isolate_scope.new_string("run_on_all_shards").to_value(),
+        &ctx_scope
+            .new_native_function(move |args, isolate, ctx_scope| {
+                if args.len() < 1 {
+                    isolate.raise_exception_str("Wrong number of arguments to 'isolate_scopelock' function");
+                    return None;
+                }
+
+                let remote_function_name = args.get(0);
+                if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
+                    isolate.raise_exception_str("Second argument to 'run_on_all_shards' must be a string represnting a remote function name");
+                    return None;
+                }
+                let remote_function_name = remote_function_name.to_utf8().unwrap();
+
+                let mut args_vec = Vec::new();
+                for i in 1 .. args.len() {
+                    let arg = args.get(i);
+                    let arg = js_value_to_remote_function_data(ctx_scope, arg);
+                    match  arg {
+                        Some(arg) => args_vec.push(arg),
+                        None => return None,
+                    };
+                }
+
+                let _ = match script_ctx_weak_ref.upgrade() {
+                    Some(s) => s,
+                    None => {
+                        isolate.raise_exception_str("Function were unregistered");
+                        return None;
+                    }
+                };
+
+                let resolver = ctx_scope.new_resolver();
+                let promise = resolver.get_promise();
+                let mut resolver = resolver.to_value().persist();
+                let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
+                redis_background_client_ref.run_on_all_shards(remote_function_name.as_str(), args_vec, Box::new(move |results, mut errors|{
+                    let script_ctx = match script_ctx_weak_ref.upgrade() {
+                        Some(s) => s,
+                        None => {
+                            resolver.forget();
+                            log("Library was delete while not all the remote jobs were done");
+                            return;
+                        }
+                    };
+
+                    script_ctx.compiled_library_api.run_on_background(Box::new(move||{
+                        let script_ctx = match script_ctx_weak_ref.upgrade() {
+                            Some(s) => s,
+                            None => {
+                                resolver.forget();
+                                log("Library was delete while not all the remote jobs were done");
+                                return;
+                            }
+                        };
+
+                        let isolate_scope = script_ctx.isolate.enter();
+                        let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
+
+                        let resolver = resolver.take_local(&isolate_scope).as_resolver();
+                        let results: Vec<V8LocalValue> = results.into_iter().map(|v| {
+                            match v {
+                                RemoteFunctionData::Binary(b) => isolate_scope.new_array_buffer(&b).to_value(),
+                                RemoteFunctionData::String(s) => {
+                                    let v8_str = isolate_scope.new_string(&s);
+                                    let v8_obj = ctx_scope.new_object_from_json(&v8_str);
+                                    if v8_obj.is_none() {
+                                        errors.push(GearsApiError::Msg(format!("Failed deserializing remote function result '{}'", s)));
+                                    }
+                                    v8_obj.unwrap()
+                                }
+                            }
+                        }).collect();
+                        let errors: Vec<V8LocalValue> = errors.into_iter().map(|e| isolate_scope.new_string(e.get_msg()).to_value()).collect();
+                        let results_array = isolate_scope.new_array(&results.iter().collect::<Vec<&V8LocalValue>>()).to_value();
+                        let errors_array = isolate_scope.new_array(&errors.iter().collect::<Vec<&V8LocalValue>>()).to_value();
+
+                        resolver.resolve(&ctx_scope, &isolate_scope.new_array(&[&results_array, &errors_array]).to_value());
+                        
+                    }));
+                }));
+                Some(promise.to_value())
+            })
+            .to_value(),
+    );
+
     bg_client
 }
 
@@ -955,7 +1046,8 @@ pub(crate) fn initialize_globals(
                                     if res.state() == V8PromiseState::Fulfilled {
                                         let r = js_value_to_remote_function_data(&ctx_scope, r);
                                         if r.is_none() {
-                                            on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
+                                            let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
+                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                         } else {
                                             on_done(Ok(r.unwrap()));
                                         }
@@ -968,16 +1060,18 @@ pub(crate) fn initialize_globals(
                                     let done_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(Some(on_done))});
                                     let done_reject = Arc::clone(&done_resolve);
                                     let resolve =
-                                        ctx_scope.new_native_function(move |args, _isolate_scope, ctx_scope| {
+                                        ctx_scope.new_native_function(move |args, isolate_scope, ctx_scope| {
                                             {
                                                 if done_resolve.ref_cell.borrow().is_none() {
                                                     return None;
                                                 }
                                             }
                                             let on_done = done_resolve.ref_cell.borrow_mut().take().unwrap();
+                                            let trycatch = isolate_scope.new_try_catch();
                                             let r = js_value_to_remote_function_data(ctx_scope, args.get(0));
                                             if r.is_none() {
-                                                on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
+                                                let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
+                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                             } else {
                                                 on_done(Ok(r.unwrap()));
                                             }

@@ -114,3 +114,62 @@ redis.register_function("test", async (async_client, key) => {
     """
     cluster_conn.execute_command('set', 'x', '1')
     env.expect('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x').error().contains('Timeout')
+
+@gearsTest(cluster=True)
+def testRunOnAllShards(env, cluster_conn):
+    """#!js name=foo
+const dbside_remote_func = "dbsize";
+
+redis.register_remote_function(dbside_remote_func, async(client) => {
+    return await client.block((client) => {
+        return client.call("dbsize").toString();
+    });
+});
+
+redis.register_function("test", async(async_client) => {
+    let res = await async_client.run_on_all_shards(dbside_remote_func);
+    let results = res[0];
+    let errors = res[1];
+    if (errors.length > 0) {
+        return errors;
+    }
+    let sum = BigInt(0);
+    results.forEach((element) => sum+=BigInt(element));
+    return sum;
+});
+    """
+    for i in range(1000):
+        cluster_conn.execute_command('set', 'key%d' % i, '1')
+    for conn in shardsConnections(env):
+        res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '0')
+        env.assertEqual(res, 1000)
+
+@gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
+def testRunOnAllShardsTimeout(env, cluster_conn):
+    """#!js name=foo
+const remote_function = "remote_function";
+
+redis.register_remote_function(remote_function, async(client, key) => {
+    let val = client.block((client) => {
+        try {
+            return client.call("get", "z");
+        } catch(e) {
+            return 0;
+        }
+    });
+    if (val != "1") {
+        while(true); // block forever so we will get a timeout
+    }
+    return val;
+});
+
+redis.register_function("test", async (async_client) => {
+    let res = await async_client.run_on_all_shards(remote_function);
+    if (res[1].length > 0) {
+        throw res[1][0];
+    }
+    return res[0];
+});
+    """
+    cluster_conn.execute_command('set', 'z', '1')
+    env.expect('RG.FCALL', 'foo', 'test', '1', 'z').error().contains('Timeout')
