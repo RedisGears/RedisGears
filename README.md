@@ -97,4 +97,5 @@ And now we can invoke `my_ping` using [`RG.FCALL`](docs/commands.md#rgfcal) :
 * [Sync and Async Run](docs/sync_and_async_run.md)
 * [Stream Processing with RedisGears 2.0](docs/stream_processing.md)
 * [Database triggers](docs/databse_triggers.md)
+* [Cluster support](docs/cluster_support.md)
 * [JS API](docs/js_api.md)

@@ -118,3 +118,27 @@ Unlimited
 _Runtime Configurability_
 
 Yes
+
+## remote-task-default-timeout
+
+The `remote-task-default-timeout` configuration option controls the timeout when waiting for remote task to finish. If the timeout reaches an error will return.
+
+_Expected Value_
+
+Integer
+
+_Default_
+
+500 MS
+
+_Minimum Value_
+
+1 MS
+
+_Maximum Value_
+
+Unlimited
+
+_Runtime Configurability_
+
+Yes
