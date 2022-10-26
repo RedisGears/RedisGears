@@ -17,9 +17,9 @@ redis.register_remote_function("dbsize", async(async_client) => {
 We have couple of options to call a remote function, those options are expose through the async client which is given to a Coroutine:
 
 * `async_client.run_on_all_shards` - run the remote function on all the shards (including the current shard). Returns a promise that once resolve will give 2 nested arrays, the first contains another array with the results from all the shards and the other contains an array of errors (`[[res1, res2, ...],[err1, err2, ..]]`)
-* `async_client.run_on_key` - run the remote function on the shard responsible for a given key. Returns a promise that once resolve will give the result from the remote function exectution or raise an exception in case of an error.
+* `async_client.run_on_key` - run the remote function on the shard responsible for a given key. Returns a promise that once resolve will give the result from the remote function execution or raise an exception in case of an error.
 
-The following example register a function that will return the total amout of keys on the cluster. The function will use the remote function define above:
+The following example register a function that will return the total amount of keys on the cluster. The function will use the remote function define above:
 
 ```js
 redis.register_function("my_dbsize", async(async_client) => {
@@ -81,7 +81,7 @@ redis.register_function("test", async (async_client) => {
 });
 ```
 
-The function `test` will return the value of `x` regredless on which shard the function was executed on.
+The function `test` will return the value of `x` regardless on which shard the function was executed on.
 
 The remote function arguments and results are serialized in the following way:
 
@@ -96,7 +96,7 @@ Remote functions has timeout to the results forever . The timeout can be configu
 
 All the limitation listed on [Coroutine](sync_and_async_run.md) are also applied to remote functions. Remote function come with some extra limitations:
 
-* Remote function can only perform read operations. An attempt to perform a write opperation will result in an error.
-* Remote function are not prommised to successed (if the shard crashed for example). In such case a timeout error will be given.
+* Remote function can only perform read operations. An attempt to perform a write operation will result in an error.
+* Remote function are not promise to success (if the shard crashed for example). In such case a timeout error will be given.
 
 
