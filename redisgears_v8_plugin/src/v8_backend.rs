@@ -118,7 +118,7 @@ impl BackendCtxInterface for V8Backend {
                         .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
                         .is_ok()
                     {
-                        let interrupt_script_ctx_clone = Weak::clone(&script_ctx_weak);
+                        let interrupt_script_ctx_clone = Weak::clone(script_ctx_weak);
                         script_ctx.isolate.request_interrupt(move|isolate|{
                             let script_ctx = match interrupt_script_ctx_clone.upgrade() {
                                 Some(s) => s,
@@ -254,9 +254,7 @@ impl BackendCtxInterface for V8Backend {
             script_ctx
         };
 
-        Ok(Box::new(V8LibraryCtx {
-            script_ctx: script_ctx,
-        }))
+        Ok(Box::new(V8LibraryCtx { script_ctx }))
     }
 
     fn debug(&mut self, args: &[&str]) -> Result<CallResult, GearsApiError> {
@@ -267,7 +265,7 @@ impl BackendCtxInterface for V8Backend {
                 Err(GearsApiError::Msg(
                     "Subcommand was not provided".to_string(),
                 )),
-                |v| Ok(v),
+                Ok,
             )?
             .to_lowercase();
         match sub_command.as_ref() {

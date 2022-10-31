@@ -39,10 +39,10 @@ impl V8StreamCtx {
         persisted_function.forget();
         V8StreamCtx {
             internals: Arc::new(V8StreamCtxInternals {
-                persisted_function: persisted_function,
+                persisted_function,
                 script_ctx: Arc::clone(script_ctx),
             }),
-            is_async: is_async,
+            is_async,
         }
     }
 }
@@ -322,7 +322,7 @@ impl StreamCtxInterface for V8StreamCtx {
     ) -> Option<StreamRecordAck> {
         if self.is_async {
             let internals = Arc::clone(&self.internals);
-            let stream_name: Vec<u8> = stream_name.iter().map(|v| *v).collect();
+            let stream_name: Vec<u8> = stream_name.to_vec();
             let bg_redis_client = run_ctx.get_background_redis_client();
             self.internals
                 .script_ctx

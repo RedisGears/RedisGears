@@ -26,7 +26,7 @@ pub enum RemoteFunctionData {
 }
 
 pub trait BackgroundRunFunctionCtxInterface: Send + Sync {
-    fn lock<'a>(&'a self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError>;
+    fn lock(&self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError>;
     fn run_on_key(
         &self,
         key: &[u8],

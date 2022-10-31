@@ -247,7 +247,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
         &isolate_scope.new_string("block").to_value(),
         &ctx_scope
             .new_native_function(move |args, isolate_scope, ctx_scope| {
-                if args.len() < 1 {
+                if args.is_empty() {
                     isolate_scope.raise_exception_str(
                         "Wrong number of arguments to 'isolate_scopelock' function",
                     );
@@ -261,7 +261,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 }
 
                 let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
-                if !is_already_blocked.is_none() && *is_already_blocked.unwrap() {
+                if is_already_blocked.is_some() && *is_already_blocked.unwrap() {
                     isolate_scope.raise_exception_str("Main thread is already blocked");
                     return None;
                 }
@@ -516,7 +516,7 @@ fn add_call_function(
         &isolate_scope.new_string(function_name).to_value(),
         &ctx_scope
             .new_native_function(move |args, isolate_scope, ctx_scope| {
-                if args.len() < 1 {
+                if args.is_empty() {
                     isolate_scope.raise_exception_str("Wrong number of arguments to 'call' function");
                     return None;
                 }
@@ -594,7 +594,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
         &isolate_scope.new_string("allow_block").to_value(),
         &ctx_scope
             .new_native_function(move |args, isolate_scope, _ctx_scope| {
-                if args.len() != 0 {
+                if !args.is_empty() {
                     isolate_scope.raise_exception_str(
                         "Wrong number of arguments to 'isolatellow_block' function",
                     );

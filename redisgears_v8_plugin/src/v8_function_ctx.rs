@@ -353,12 +353,12 @@ impl V8Function {
         V8Function {
             inner_function: Arc::new(V8InternalFunction {
                 script_ctx: Arc::clone(script_ctx),
-                persisted_function: persisted_function,
-                persisted_client: persisted_client,
+                persisted_function,
+                persisted_client,
             }),
             client: Arc::clone(client),
-            is_async: is_async,
-            decode_arguments: decode_arguments,
+            is_async,
+            decode_arguments,
         }
     }
 }

@@ -88,10 +88,10 @@ impl V8ScriptCtx {
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> V8ScriptCtx {
         V8ScriptCtx {
-            isolate: isolate,
-            ctx: ctx,
-            script: script,
-            compiled_library_api: compiled_library_api,
+            isolate,
+            ctx,
+            script,
+            compiled_library_api,
             is_running: AtomicBool::new(false),
             lock_state: RefCellWrapper {
                 ref_cell: RefCell::new(GilStateCtx::new()),

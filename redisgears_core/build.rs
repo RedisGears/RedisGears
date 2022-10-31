@@ -25,9 +25,9 @@ fn main() {
     let mut version_num = 0;
     let re = Regex::new(r"(\d+).(\d+).(\d+)").unwrap();
     for cap in re.captures_iter(&version_str) {
-        let major = (&cap[1]).parse::<i32>().unwrap();
-        let minor = (&cap[2]).parse::<i32>().unwrap();
-        let patch = (&cap[3]).parse::<i32>().unwrap();
+        let major = (cap[1]).parse::<i32>().unwrap();
+        let minor = (cap[2]).parse::<i32>().unwrap();
+        let patch = (cap[3]).parse::<i32>().unwrap();
         version_num = major * 10000 + minor * 100 + patch;
     }
     println!("cargo:rustc-env=VERSION_NUM={}", version_num);

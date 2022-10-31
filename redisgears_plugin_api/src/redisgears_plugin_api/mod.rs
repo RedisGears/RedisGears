@@ -15,7 +15,7 @@ pub enum GearsApiError {
 impl GearsApiError {
     pub fn get_msg(&self) -> &str {
         match self {
-            GearsApiError::Msg(s) => &s,
+            GearsApiError::Msg(s) => s,
         }
     }
 }

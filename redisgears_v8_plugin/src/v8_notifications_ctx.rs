@@ -103,7 +103,7 @@ impl V8NotificationsCtxInternal {
                         } else {
                             let ack_callback_resolve = Arc::new(RefCell::new(V8AckCallback {
                                 internal: Some(V8AckCallbackInternal {
-                                    ack_callback: ack_callback,
+                                    ack_callback,
                                     locker: notification_ctx.get_background_redis_client(),
                                 }),
                             }));
@@ -211,8 +211,8 @@ impl V8NotificationsCtxInternal {
                         } else {
                             let ack_callback_resolve = Arc::new(RefCell::new(V8AckCallback {
                                 internal: Some(V8AckCallbackInternal {
-                                    ack_callback: ack_callback,
-                                    locker: locker,
+                                    ack_callback,
+                                    locker,
                                 }),
                             }));
                             let ack_callback_reject = Arc::clone(&ack_callback_resolve);
@@ -276,10 +276,10 @@ impl V8NotificationsCtx {
         persisted_function.forget();
         V8NotificationsCtx {
             internal: Arc::new(V8NotificationsCtxInternal {
-                persisted_function: persisted_function,
+                persisted_function,
                 script_ctx: Arc::clone(script_ctx),
             }),
-            is_async: is_async,
+            is_async,
         }
     }
 }
