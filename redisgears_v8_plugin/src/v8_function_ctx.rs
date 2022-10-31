@@ -137,7 +137,7 @@ impl V8InternalFunction {
             };
 
             let args_ref = args.as_ref().map_or(None, |v| {
-                let s = v.iter().map(|v| v).collect::<Vec<&V8LocalValue>>();
+                let s = v.iter().collect::<Vec<&V8LocalValue>>();
                 Some(s)
             });
 
@@ -242,7 +242,7 @@ impl V8InternalFunction {
             };
 
             let args_ref = args.as_ref().map_or(None, |v| {
-                let s = v.iter().map(|v| v).collect::<Vec<&V8LocalValue>>();
+                let s = v.iter().collect::<Vec<&V8LocalValue>>();
                 Some(s)
             });
 

@@ -204,9 +204,7 @@ fn js_value_to_remote_function_data(
     if val.is_array_buffer() {
         let array_buff = val.as_array_buffer();
         let data = array_buff.data();
-        Some(RemoteFunctionData::Binary(
-            data.to_vec(),
-        ))
+        Some(RemoteFunctionData::Binary(data.to_vec()))
     } else {
         let arg_str = ctx_scope.json_stringify(&val);
         if arg_str.is_none() {
@@ -539,9 +537,9 @@ fn add_call_function(
                 for i in 1..args.len() {
                     let arg = args.get(i);
                     let arg = if arg.is_string() {
-                        arg.to_utf8().unwrap().as_str().as_bytes().iter().copied().collect::<Vec<u8>>()
+                        arg.to_utf8().unwrap().as_str().as_bytes().to_vec()
                     } else if arg.is_array_buffer(){
-                        arg.as_array_buffer().data().clone().iter().copied().collect::<Vec<u8>>()
+                        arg.as_array_buffer().data().clone().to_vec()
                     } else {
                         isolate_scope.raise_exception_str("Bad argument was given to 'call', argument must be either String or ArrayBuffer");
                         return None;
@@ -777,11 +775,11 @@ pub(crate) fn initialize_globals(
             let script_ctx_ref = match script_ctx_ref.upgrade() {
                 Some(s) => s,
                 None => {
-                    isolate_scope.raise_exception_str("Use of uninitialize script context");
+                    isolate_scope.raise_exception_str("Use of uninitialized script context");
                     return None;
                 }
             };
-            let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, if function_callback.is_async_function() {true} else {false});
+            let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
             let prefix = args.get(1);
             let res = if prefix.is_string() {
                 let prefix = prefix.to_utf8().unwrap();
@@ -835,11 +833,11 @@ pub(crate) fn initialize_globals(
             let script_ctx_ref = match script_ctx_ref.upgrade() {
                 Some(s) => s,
                 None => {
-                    isolate_scope.raise_exception_str("Use of uninitialize script context");
+                    isolate_scope.raise_exception_str("Use of uninitialized script context");
                     return None;
                 }
             };
-            let v8_notification_ctx = V8NotificationsCtx::new(persisted_function, &script_ctx_ref, if function_callback.is_async_function() {true} else {false});
+            let v8_notification_ctx = V8NotificationsCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
 
             let prefix = args.get(1);
             let res = if prefix.is_string() {
@@ -911,7 +909,7 @@ pub(crate) fn initialize_globals(
             let script_ctx_ref = match script_ctx_ref.upgrade() {
                 Some(s) => s,
                 None => {
-                    isolate_scope.raise_exception_str("Use of uninitialize script context");
+                    isolate_scope.raise_exception_str("Use of uninitialized script context");
                     return None;
                 }
             };
@@ -982,7 +980,7 @@ pub(crate) fn initialize_globals(
                 let script_ctx = match new_script_ctx_ref.upgrade() {
                     Some(s) => s,
                     None => {
-                        on_done(Err(GearsApiError::Msg("Use of uninitialize script context".to_string())));
+                        on_done(Err(GearsApiError::Msg("Use of uninitialized script context".to_string())));
                         return;
                     }
                 };
@@ -993,14 +991,14 @@ pub(crate) fn initialize_globals(
                     let script_ctx = match new_script_ctx_ref.upgrade() {
                         Some(s) => s,
                         None => {
-                            on_done(Err(GearsApiError::Msg("Use of uninitialize script context".to_string())));
+                            on_done(Err(GearsApiError::Msg("Use of uninitialized script context".to_string())));
                             return;
                         }
                     };
                     let persisted_function = match weak_function.upgrade() {
                         Some(s) => s,
                         None => {
-                            on_done(Err(GearsApiError::Msg("Use of uninitialize function context".to_string())));
+                            on_done(Err(GearsApiError::Msg("Use of uninitialized function context".to_string())));
                             return;
                         }
                     };
@@ -1044,11 +1042,11 @@ pub(crate) fn initialize_globals(
                                     let r = res.get_result();
                                     if res.state() == V8PromiseState::Fulfilled {
                                         let r = js_value_to_remote_function_data(&ctx_scope, r);
-                                        if r.is_none() {
-                                            let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));
+                                        if let Some(v) = r {
+                                            on_done(Ok(v));
                                         } else {
-                                            on_done(Ok(r.unwrap()));
+                                            let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
+                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                            
                                         }
                                     } else {
                                         let r = r.to_utf8().unwrap();
@@ -1068,11 +1066,11 @@ pub(crate) fn initialize_globals(
                                             let on_done = done_resolve.ref_cell.borrow_mut().take().unwrap();
                                             let trycatch = isolate_scope.new_try_catch();
                                             let r = js_value_to_remote_function_data(ctx_scope, args.get(0));
-                                            if r.is_none() {
-                                                let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));
+                                            if let Some(v) = r {
+                                                on_done(Ok(v));
                                             } else {
-                                                on_done(Ok(r.unwrap()));
+                                                let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
+                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
                                             }
                                             None
                                         });
@@ -1094,10 +1092,10 @@ pub(crate) fn initialize_globals(
                                 }
                             } else {
                                 let r = js_value_to_remote_function_data(&ctx_scope, r);
-                                if r.is_none() {
-                                    on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
+                                if let Some(v) = r {
+                                    on_done(Ok(v));
                                 } else {
-                                    on_done(Ok(r.unwrap()));
+                                    on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
                                 }
                             }
                         }
@@ -1183,7 +1181,7 @@ pub(crate) fn initialize_globals(
                 let script_ctx_ref = match script_ctx_ref.upgrade() {
                     Some(s) => s,
                     None => {
-                        isolate_scope.raise_exception_str("Use of uninitialize script context");
+                        isolate_scope.raise_exception_str("Use of uninitialized script context");
                         return None;
                     }
                 };
