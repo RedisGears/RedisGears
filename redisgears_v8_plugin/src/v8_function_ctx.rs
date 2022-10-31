@@ -380,7 +380,7 @@ impl FunctionCtxInterface for V8Function {
             // if we are going to the background we must consume all the arguments
             let mut args = Vec::new();
             while let Some(a) = run_ctx.next_arg() {
-                args.push(a.into_iter().map(|v| *v).collect::<Vec<u8>>());
+                args.push(a.to_vec());
             }
             let bg_redis_client = run_ctx.get_redis_client().get_background_redis_client();
             let decode_arguments = self.decode_arguments;

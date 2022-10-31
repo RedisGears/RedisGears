@@ -205,7 +205,7 @@ fn js_value_to_remote_function_data(
         let array_buff = val.as_array_buffer();
         let data = array_buff.data();
         Some(RemoteFunctionData::Binary(
-            data.into_iter().map(|v| *v).collect(),
+            data.to_vec(),
         ))
     } else {
         let arg_str = ctx_scope.json_stringify(&val);
@@ -416,7 +416,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
         &isolate_scope.new_string("run_on_all_shards").to_value(),
         &ctx_scope
             .new_native_function(move |args, isolate, ctx_scope| {
-                if args.len() < 1 {
+                if args.is_empty() {
                     isolate.raise_exception_str("Wrong number of arguments to 'isolate_scopelock' function");
                     return None;
                 }
@@ -539,9 +539,9 @@ fn add_call_function(
                 for i in 1..args.len() {
                     let arg = args.get(i);
                     let arg = if arg.is_string() {
-                        arg.to_utf8().unwrap().as_str().as_bytes().iter().map(|v| *v).collect::<Vec<u8>>()
+                        arg.to_utf8().unwrap().as_str().as_bytes().iter().copied().collect::<Vec<u8>>()
                     } else if arg.is_array_buffer(){
-                        arg.as_array_buffer().data().clone().iter().map(|v| *v).collect::<Vec<u8>>()
+                        arg.as_array_buffer().data().clone().iter().copied().collect::<Vec<u8>>()
                     } else {
                         isolate_scope.raise_exception_str("Bad argument was given to 'call', argument must be either String or ArrayBuffer");
                         return None;

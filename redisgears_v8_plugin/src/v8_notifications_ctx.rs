@@ -293,7 +293,7 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
     ) -> Option<Box<dyn Any>> {
         Some(Box::new(V8NotificationCtxData {
             event: event.to_string(),
-            key: key.iter().map(|v| *v).collect(),
+            key: key.to_vec(),
         }))
     }
 
