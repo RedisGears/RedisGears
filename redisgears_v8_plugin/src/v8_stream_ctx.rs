@@ -35,9 +35,9 @@ impl V8StreamCtx {
         mut persisted_function: V8PersistValue,
         script_ctx: &Arc<V8ScriptCtx>,
         is_async: bool,
-    ) -> V8StreamCtx {
+    ) -> Self {
         persisted_function.forget();
-        V8StreamCtx {
+        Self {
             internals: Arc::new(V8StreamCtxInternals {
                 persisted_function,
                 script_ctx: Arc::clone(script_ctx),

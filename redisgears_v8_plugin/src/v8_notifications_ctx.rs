@@ -46,7 +46,7 @@ impl V8NotificationsCtxInternal {
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
             let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
-            let trycatch = isolate_scope.new_try_catch();
+            let try_catch = isolate_scope.new_try_catch();
 
             let notification_data = isolate_scope.new_object();
             notification_data.set(
@@ -141,7 +141,7 @@ impl V8NotificationsCtxInternal {
                     }
                 }
                 None => {
-                    let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
+                    let error_msg = get_exception_msg(&self.script_ctx.isolate, try_catch);
                     Some(Err(error_msg))
                 }
             }
@@ -272,9 +272,9 @@ impl V8NotificationsCtx {
         mut persisted_function: V8PersistValue,
         script_ctx: &Arc<V8ScriptCtx>,
         is_async: bool,
-    ) -> V8NotificationsCtx {
+    ) -> Self {
         persisted_function.forget();
-        V8NotificationsCtx {
+        Self {
             internal: Arc::new(V8NotificationsCtxInternal {
                 persisted_function,
                 script_ctx: Arc::clone(script_ctx),

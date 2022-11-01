@@ -29,8 +29,8 @@ pub(crate) struct GilStateCtx {
 }
 
 impl GilStateCtx {
-    fn new() -> GilStateCtx {
-        GilStateCtx {
+    fn new() -> Self {
+        Self {
             state: GilState::Unlock,
             lock_time: SystemTime::now(),
             lock_timed_out: false,
@@ -86,8 +86,8 @@ impl V8ScriptCtx {
         ctx: V8Context,
         script: V8PersistedScript,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
-    ) -> V8ScriptCtx {
-        V8ScriptCtx {
+    ) -> Self {
+        Self {
             isolate,
             ctx,
             script,
@@ -124,7 +124,7 @@ impl V8ScriptCtx {
     }
 
     pub(crate) fn set_lock_timedout(&self) {
-        self.lock_state.ref_cell.borrow_mut().set_lock_timedout()
+        self.lock_state.ref_cell.borrow_mut().set_lock_timedout();
     }
 
     pub(crate) fn is_lock_timedout(&self) -> bool {

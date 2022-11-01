@@ -94,9 +94,10 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
                     return None;
                 };
                 let v_js = call_result_to_js_object(isolate_scope, ctx_scope, v, decode_responses);
-                if v_js.is_none() {
-                    return None;
-                }
+
+                // if None return None
+                v_js.as_ref()?;
+
                 let v_js = v_js.unwrap();
                 obj.set(ctx_scope, &k_js_string, &v_js);
             }
@@ -176,8 +177,8 @@ pub(crate) struct RedisClient {
 }
 
 impl RedisClient {
-    pub(crate) fn new() -> RedisClient {
-        RedisClient {
+    pub(crate) fn new() -> Self {
+        Self {
             client: None,
             allow_block: Some(true),
         }
@@ -207,9 +208,10 @@ fn js_value_to_remote_function_data(
         Some(RemoteFunctionData::Binary(data.to_vec()))
     } else {
         let arg_str = ctx_scope.json_stringify(&val);
-        if arg_str.is_none() {
-            return None;
-        }
+
+        // if None return None
+        arg_str.as_ref()?;
+
         let arg_str_utf8 = arg_str.unwrap().to_value().to_utf8().unwrap();
         Some(RemoteFunctionData::String(
             arg_str_utf8.as_str().to_string(),

@@ -271,16 +271,8 @@ impl BackendCtxInterface for V8Backend {
         match sub_command.as_ref() {
             "isolates_stats" => {
                 let l = self.script_ctx_vec.lock().unwrap();
-                let active = l
-                    .iter()
-                    .filter(|v| v.strong_count() > 0)
-                    .collect::<Vec<&Weak<V8ScriptCtx>>>()
-                    .len() as i64;
-                let not_active = l
-                    .iter()
-                    .filter(|v| v.strong_count() == 0)
-                    .collect::<Vec<&Weak<V8ScriptCtx>>>()
-                    .len() as i64;
+                let active = l.iter().filter(|v| v.strong_count() > 0).count() as i64;
+                let not_active = l.iter().filter(|v| v.strong_count() == 0).count() as i64;
                 Ok(CallResult::Array(vec![
                     CallResult::BulkStr("active".to_string()),
                     CallResult::Long(active),
