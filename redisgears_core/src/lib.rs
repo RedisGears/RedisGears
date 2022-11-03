@@ -1420,9 +1420,9 @@ fn function_install_lib_command(
 
     let calculated_sha = sha256::digest(function_code.to_string());
     if calculated_sha != gear_box_lib.installed_version_info.sha256 {
-        return Err(RedisError::String(format!(
-            "File validation failure, calculated sha256sum does not match the expected value."
-        )));
+        return Err(RedisError::Str(
+            "File validation failure, calculated sha256sum does not match the expected value.",
+        ));
     }
 
     let user = ctx.get_current_user()?;
@@ -1500,14 +1500,14 @@ fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 fn on_stream_touched(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if get_ctx().is_primary() {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_touched(event, &key);
+        stream_ctx.on_stream_touched(event, key);
     }
 }
 
 fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if event == "del" {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_deleted(event, &key);
+        stream_ctx.on_stream_deleted(event, key);
     }
 }
 
