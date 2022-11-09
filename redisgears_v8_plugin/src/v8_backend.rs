@@ -227,7 +227,7 @@ impl BackendCtxInterface for V8Backend {
                         match get_fatal_failure_policy() {
                             LibraryFatalFailurePolicy::Kill => {
                                 script_ctx.compiled_library_api.log("Fatal error policy do not allow to abort the script, server will be killed shortly.");
-                                curr_limit as usize
+                                curr_limit
                             }
                             LibraryFatalFailurePolicy::Abort => {
                                 let mut new_limit: usize = (curr_limit as f64 * 1.2 ) as usize;
