@@ -279,6 +279,17 @@ impl BackendCtxInterface for V8Backend {
             )?
             .to_lowercase();
         match sub_command.as_ref() {
+            "help" => Ok(CallResult::Array(vec![
+                CallResult::BulkStr("isolates_stats - statistics about isolates.".to_string()),
+                CallResult::BulkStr(
+                    "isolates_strong_count - For each isolate returns its strong ref count value."
+                        .to_string(),
+                ),
+                CallResult::BulkStr(
+                    "isolates_gc - Runs GC to clear none active isolates.".to_string(),
+                ),
+                CallResult::BulkStr("help - Print this message.".to_string()),
+            ])),
             "isolates_stats" => {
                 let l = self.script_ctx_vec.lock().unwrap();
                 let active = l

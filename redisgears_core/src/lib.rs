@@ -855,6 +855,16 @@ fn function_debug_command(
             get_globals_mut().allow_unsafe_redis_commands = true;
             return Ok(RedisValue::SimpleStringStatic("OK"));
         }
+        "help" => {
+            return Ok(RedisValue::Array(
+                vec![
+                    RedisValue::BulkString("allow_unsafe_redis_commands - enable the option to execute unsafe redis commands from within a function.".to_string()),
+                    RedisValue::BulkString("panic_on_thread_pool - panic on thread pool to check panic reaction.".to_string()),
+                    RedisValue::BulkString("help - print this message.".to_string()),
+                    RedisValue::BulkString("<engine> [...] - engine specific debug command.".to_string()),
+                ]
+            ));
+        }
         _ => (),
     }
     let backend = get_backends_mut().get_mut(backend_name).map_or(
