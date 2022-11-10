@@ -1,12 +1,11 @@
 use redis_module::context::thread_safe::ContextGuard;
 
-use redis_module::{
-    Status,
-};
+use redis_module::Status;
 
 use redisgears_plugin_api::redisgears_plugin_api::{
+    redisai_interface::AIModelInterface, redisai_interface::AIScriptInterface,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    CallResult, redisai_interface::AIModelInterface, GearsApiError, redisai_interface::AIScriptInterface,
+    CallResult, GearsApiError,
 };
 
 use crate::run_ctx::RedisClientCallOptions;
@@ -20,7 +19,7 @@ use std::sync::Arc;
 use redisai_rs::redisai::redisai_model::RedisAIModel;
 use redisai_rs::redisai::redisai_script::RedisAIScript;
 
-use crate::{get_globals, get_ctx};
+use crate::{get_ctx, get_globals};
 
 pub(crate) struct BackgroundRunScopeGuardCtx {
     pub(crate) _ctx_guard: ContextGuard,
@@ -72,7 +71,10 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!("Failed authenticate user {}", u)))
+                    return Err(GearsApiError::Msg(format!(
+                        "Failed authenticate user {}",
+                        u
+                    )));
                 }
                 ctx
             }
@@ -90,7 +92,10 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!("Failed authenticate user {}", u)))
+                    return Err(GearsApiError::Msg(format!(
+                        "Failed authenticate user {}",
+                        u
+                    )));
                 }
                 ctx
             }

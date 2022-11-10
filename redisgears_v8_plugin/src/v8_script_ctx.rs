@@ -4,8 +4,8 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use v8_rs::v8::{
-    isolate::V8Isolate, v8_context::V8Context, v8_promise::V8PromiseState,
-    v8_script::V8PersistedScript, v8_object_template::V8PersistedObjectTemplate,
+    isolate::V8Isolate, v8_context::V8Context, v8_object_template::V8PersistedObjectTemplate,
+    v8_promise::V8PromiseState, v8_script::V8PersistedScript,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;

@@ -4,15 +4,13 @@ use redis_module::{
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES, run_function_ctx::BackgroundRunFunctionCtxInterface,
+    load_library_ctx::FUNCTION_FLAG_NO_WRITES, redisai_interface::AIModelInterface,
+    redisai_interface::AIScriptInterface, run_function_ctx::BackgroundRunFunctionCtxInterface,
     run_function_ctx::RedisClientCtxInterface, run_function_ctx::ReplyCtxInterface,
     run_function_ctx::RunFunctionCtxInterface, CallResult, GearsApiError,
-    redisai_interface::AIModelInterface, redisai_interface::AIScriptInterface,
 };
 
-use redis_module::{
-    Status,
-};
+use redis_module::Status;
 
 use crate::{call_redis_command, get_globals, GearsLibraryMataData};
 
@@ -107,7 +105,10 @@ impl RedisClientCtxInterface for RedisClient {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!("Failed authenticate user {}", u)))
+                    return Err(GearsApiError::Msg(format!(
+                        "Failed authenticate user {}",
+                        u
+                    )));
                 }
                 ctx
             }
@@ -129,7 +130,10 @@ impl RedisClientCtxInterface for RedisClient {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!("Failed authenticate user {}", u)))
+                    return Err(GearsApiError::Msg(format!(
+                        "Failed authenticate user {}",
+                        u
+                    )));
                 }
                 ctx
             }

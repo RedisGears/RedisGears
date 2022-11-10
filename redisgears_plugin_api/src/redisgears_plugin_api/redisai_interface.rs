@@ -7,15 +7,25 @@ pub trait AITensorInterface {
 }
 
 pub trait AIModelRunnerInterface {
-    fn add_input(&mut self, name: &str, tensor: &dyn AITensorInterface) -> Result<(), GearsApiError>;
+    fn add_input(
+        &mut self,
+        name: &str,
+        tensor: &dyn AITensorInterface,
+    ) -> Result<(), GearsApiError>;
     fn add_output(&mut self, name: &str) -> Result<(), GearsApiError>;
-    fn run(&mut self, on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>);
+    fn run(
+        &mut self,
+        on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>,
+    );
 }
 
 pub trait AIScriptRunnerInterface {
     fn add_input(&mut self, tensor: &dyn AITensorInterface) -> Result<(), GearsApiError>;
     fn add_output(&mut self) -> Result<(), GearsApiError>;
-    fn run(&mut self, on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>);
+    fn run(
+        &mut self,
+        on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>,
+    );
 }
 
 pub trait AIModelInterface {

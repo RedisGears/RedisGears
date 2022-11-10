@@ -5,9 +5,9 @@ pub mod backend_ctx;
 pub mod function_ctx;
 pub mod keys_notifications_consumer_ctx;
 pub mod load_library_ctx;
+pub mod redisai_interface;
 pub mod run_function_ctx;
 pub mod stream_ctx;
-pub mod redisai_interface;
 
 pub enum GearsApiError {
     Msg(String),

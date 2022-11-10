@@ -1,6 +1,6 @@
+use crate::redisgears_plugin_api::redisai_interface::{AIModelInterface, AIScriptInterface};
 use crate::redisgears_plugin_api::CallResult;
 use crate::redisgears_plugin_api::GearsApiError;
-use crate::redisgears_plugin_api::redisai_interface::{AIModelInterface, AIScriptInterface};
 
 pub trait RedisClientCtxInterface: Send + Sync {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult;

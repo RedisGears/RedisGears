@@ -1,83 +1,70 @@
 use crate::redisai_raw::bindings::{
-    RAI_Script,
-    RAI_Error,
-    RedisAI_InitError,
-    RedisAI_GetScriptFromKeyspace,
-    RedisModuleCtx,
-    RedisModuleString,
+    RAI_Error, RAI_OnFinishCtx, RAI_Script, RAI_ScriptRunCtx,
+    RedisAI_ErrorCode_RedisAI_ErrorCode_OK, RedisAI_FreeError, RedisAI_GetAsScriptRunCtx,
+    RedisAI_GetError, RedisAI_GetErrorCode, RedisAI_GetScriptFromKeyspace, RedisAI_InitError,
+    RedisAI_ScriptFree, RedisAI_ScriptGetShallowCopy, RedisAI_ScriptRunAsync,
+    RedisAI_ScriptRunCtxAddInput, RedisAI_ScriptRunCtxAddOutput, RedisAI_ScriptRunCtxCreate,
+    RedisAI_ScriptRunCtxFree, RedisAI_ScriptRunCtxNumOutputs, RedisAI_ScriptRunCtxOutputTensor,
+    RedisAI_TensorGetShallowCopy, RedisModuleCtx, RedisModuleString, REDISMODULE_OK,
     REDISMODULE_READ,
-    REDISMODULE_OK,
-    RedisAI_GetError,
-    RedisAI_FreeError,
-    RedisAI_ScriptGetShallowCopy,
-    RedisAI_ScriptFree,
-    RedisAI_ScriptRunCtxCreate,
-    RAI_ScriptRunCtx,
-    RedisAI_ScriptRunCtxAddInput,
-    RedisAI_ScriptRunCtxAddOutput,
-    RedisAI_ScriptRunAsync,
-    RedisAI_ScriptRunCtxFree,
-    RAI_OnFinishCtx,
-    RedisAI_GetAsScriptRunCtx,
-    RedisAI_GetErrorCode,
-    RedisAI_ErrorCode_RedisAI_ErrorCode_OK,
-    RedisAI_ScriptRunCtxNumOutputs,
-    RedisAI_TensorGetShallowCopy,
-    RedisAI_ScriptRunCtxOutputTensor,
 };
 
-use redis_module::context::Context;
 use crate::RedisAIError;
+use redis_module::context::Context;
 
 use std::ffi::{CStr, CString};
 
 use crate::redisai::redisai_tensor::RedisAITensor;
 
-use std::os::raw::{c_void};
+use std::os::raw::c_void;
 
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::{
-    AIScriptInterface,
-    AIScriptRunnerInterface,
-    AITensorInterface,
+    AIScriptInterface, AIScriptRunnerInterface, AITensorInterface,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 pub struct RedisAIScript {
-    inner_script: *mut RAI_Script
+    inner_script: *mut RAI_Script,
 }
 
 impl RedisAIScript {
     pub fn open_from_key(ctx: &Context, key_name: &str) -> Result<RedisAIScript, RedisAIError> {
         if !crate::redisai_is_init() {
-            return Err("RedisAI is not initialize".to_string())
+            return Err("RedisAI is not initialize".to_string());
         }
         let key_redis_str = ctx.create_string(key_name);
         let mut inner_script: *mut RAI_Script = std::ptr::null_mut();
         let mut err: *mut RAI_Error = std::ptr::null_mut();
-        unsafe{RedisAI_InitError.unwrap()(&mut err)};
-        let res = unsafe{RedisAI_GetScriptFromKeyspace.unwrap()(ctx.ctx as *mut RedisModuleCtx,
-                                                               key_redis_str.inner as *mut RedisModuleString,
-                                                               &mut inner_script,
-                                                               REDISMODULE_READ as i32,
-                                                               err)};
+        unsafe { RedisAI_InitError.unwrap()(&mut err) };
+        let res = unsafe {
+            RedisAI_GetScriptFromKeyspace.unwrap()(
+                ctx.ctx as *mut RedisModuleCtx,
+                key_redis_str.inner as *mut RedisModuleString,
+                &mut inner_script,
+                REDISMODULE_READ as i32,
+                err,
+            )
+        };
         if res != REDISMODULE_OK as i32 {
-            let err_str = unsafe{RedisAI_GetError.unwrap()(err)};
-            let err_c_str = unsafe{CStr::from_ptr(err_str)};
+            let err_str = unsafe { RedisAI_GetError.unwrap()(err) };
+            let err_c_str = unsafe { CStr::from_ptr(err_str) };
             let err_rust_string = err_c_str.to_str().unwrap().to_string();
-            unsafe{RedisAI_FreeError.unwrap()(err)};
+            unsafe { RedisAI_FreeError.unwrap()(err) };
             return Err(err_rust_string);
         }
 
-        unsafe{RedisAI_FreeError.unwrap()(err)};
-        let inner_script = unsafe{RedisAI_ScriptGetShallowCopy.unwrap()(inner_script)};
-        Ok(RedisAIScript{inner_script})
+        unsafe { RedisAI_FreeError.unwrap()(err) };
+        let inner_script = unsafe { RedisAI_ScriptGetShallowCopy.unwrap()(inner_script) };
+        Ok(RedisAIScript { inner_script })
     }
 
     pub fn create_run_ctx(&self, func_name: &str) -> RedisAIScriptRunCtx {
         let func_name_c_str = CString::new(func_name).unwrap();
-        let inner_run_ctx = unsafe{RedisAI_ScriptRunCtxCreate.unwrap()(self.inner_script, func_name_c_str.as_ptr())};
-        RedisAIScriptRunCtx{inner_run_ctx}
+        let inner_run_ctx = unsafe {
+            RedisAI_ScriptRunCtxCreate.unwrap()(self.inner_script, func_name_c_str.as_ptr())
+        };
+        RedisAIScriptRunCtx { inner_run_ctx }
     }
 }
 
@@ -90,9 +77,9 @@ impl AIScriptInterface for RedisAIScript {
 impl Drop for RedisAIScript {
     fn drop(&mut self) {
         let mut err: *mut RAI_Error = std::ptr::null_mut();
-        unsafe{RedisAI_InitError.unwrap()(&mut err)};
-        unsafe{RedisAI_ScriptFree.unwrap()(self.inner_script, err)};
-        unsafe{RedisAI_FreeError.unwrap()(err)};
+        unsafe { RedisAI_InitError.unwrap()(&mut err) };
+        unsafe { RedisAI_ScriptFree.unwrap()(self.inner_script, err) };
+        unsafe { RedisAI_FreeError.unwrap()(err) };
     }
 }
 
@@ -100,56 +87,79 @@ pub struct RedisAIScriptRunCtx {
     inner_run_ctx: *mut RAI_ScriptRunCtx,
 }
 
-extern "C" fn script_run_done<Callback: FnOnce(Result<Vec<RedisAITensor>, RedisAIError>)>(ctx: *mut RAI_OnFinishCtx, private_data: *mut ::std::os::raw::c_void) {
-    let on_done = unsafe{Box::from_raw(private_data as *mut Callback)};
+extern "C" fn script_run_done<Callback: FnOnce(Result<Vec<RedisAITensor>, RedisAIError>)>(
+    ctx: *mut RAI_OnFinishCtx,
+    private_data: *mut ::std::os::raw::c_void,
+) {
+    let on_done = unsafe { Box::from_raw(private_data as *mut Callback) };
 
     let mut err: *mut RAI_Error = std::ptr::null_mut();
-    unsafe{RedisAI_InitError.unwrap()(&mut err)};
-    let inner_run_ctx = unsafe{RedisAI_GetAsScriptRunCtx.unwrap()(ctx, err)};
+    unsafe { RedisAI_InitError.unwrap()(&mut err) };
+    let inner_run_ctx = unsafe { RedisAI_GetAsScriptRunCtx.unwrap()(ctx, err) };
 
-    if unsafe{RedisAI_GetErrorCode.unwrap()(err)} != RedisAI_ErrorCode_RedisAI_ErrorCode_OK {
-        let err_str = unsafe{RedisAI_GetError.unwrap()(err)};
-        let err_c_str = unsafe{CStr::from_ptr(err_str)};
+    if unsafe { RedisAI_GetErrorCode.unwrap()(err) } != RedisAI_ErrorCode_RedisAI_ErrorCode_OK {
+        let err_str = unsafe { RedisAI_GetError.unwrap()(err) };
+        let err_c_str = unsafe { CStr::from_ptr(err_str) };
         let err_rust_string = err_c_str.to_str().unwrap().to_string();
-        unsafe{RedisAI_FreeError.unwrap()(err)};
+        unsafe { RedisAI_FreeError.unwrap()(err) };
         on_done(Err(err_rust_string));
         return;
     }
 
-    unsafe{RedisAI_FreeError.unwrap()(err)};
-    let num_outputs = unsafe{RedisAI_ScriptRunCtxNumOutputs.unwrap()(inner_run_ctx)};
+    unsafe { RedisAI_FreeError.unwrap()(err) };
+    let num_outputs = unsafe { RedisAI_ScriptRunCtxNumOutputs.unwrap()(inner_run_ctx) };
     let mut outputs = Vec::new();
-    for i in 0 .. num_outputs {
-        let inner_tensor = unsafe{RedisAI_TensorGetShallowCopy.unwrap()(RedisAI_ScriptRunCtxOutputTensor.unwrap()(inner_run_ctx, i))};
+    for i in 0..num_outputs {
+        let inner_tensor = unsafe {
+            RedisAI_TensorGetShallowCopy.unwrap()(RedisAI_ScriptRunCtxOutputTensor.unwrap()(
+                inner_run_ctx,
+                i,
+            ))
+        };
         outputs.push(RedisAITensor::from_inner(inner_tensor));
     }
     on_done(Ok(outputs));
-    unsafe{RedisAI_ScriptRunCtxFree.unwrap()(inner_run_ctx)};
+    unsafe { RedisAI_ScriptRunCtxFree.unwrap()(inner_run_ctx) };
 }
 
 impl RedisAIScriptRunCtx {
     pub fn add_input(&mut self, tensor: &RedisAITensor) -> Result<(), RedisAIError> {
         if self.inner_run_ctx.is_null() {
-            return Err("Invalid run ctx was used".to_string())
+            return Err("Invalid run ctx was used".to_string());
         }
-        unsafe{RedisAI_ScriptRunCtxAddInput.unwrap()(self.inner_run_ctx, tensor.inner_tensor, std::ptr::null_mut())};
+        unsafe {
+            RedisAI_ScriptRunCtxAddInput.unwrap()(
+                self.inner_run_ctx,
+                tensor.inner_tensor,
+                std::ptr::null_mut(),
+            )
+        };
         Ok(())
     }
 
     pub fn add_output(&mut self) -> Result<(), RedisAIError> {
         if self.inner_run_ctx.is_null() {
-            return Err("Invalid run ctx was used".to_string())
+            return Err("Invalid run ctx was used".to_string());
         }
-        unsafe{RedisAI_ScriptRunCtxAddOutput.unwrap()(self.inner_run_ctx)};
+        unsafe { RedisAI_ScriptRunCtxAddOutput.unwrap()(self.inner_run_ctx) };
         Ok(())
     }
 
-    pub fn run<Callback: FnOnce(Result<Vec<RedisAITensor>, RedisAIError>)>(&mut self, on_done: Callback) {
+    pub fn run<Callback: FnOnce(Result<Vec<RedisAITensor>, RedisAIError>)>(
+        &mut self,
+        on_done: Callback,
+    ) {
         if self.inner_run_ctx.is_null() {
             on_done(Err("Invalid run ctx was used".to_string()))
         } else {
             let on_done = Box::into_raw(Box::new(on_done));
-            unsafe{RedisAI_ScriptRunAsync.unwrap()(self.inner_run_ctx, Some(script_run_done::<Callback>), on_done as *mut c_void)};
+            unsafe {
+                RedisAI_ScriptRunAsync.unwrap()(
+                    self.inner_run_ctx,
+                    Some(script_run_done::<Callback>),
+                    on_done as *mut c_void,
+                )
+            };
             self.inner_run_ctx = std::ptr::null_mut();
         }
     }
@@ -157,7 +167,7 @@ impl RedisAIScriptRunCtx {
 
 impl AIScriptRunnerInterface for RedisAIScriptRunCtx {
     fn add_input(&mut self, tensor: &dyn AITensorInterface) -> Result<(), GearsApiError> {
-        let tensor = unsafe{&*(tensor as *const dyn AITensorInterface as *const RedisAITensor)};
+        let tensor = unsafe { &*(tensor as *const dyn AITensorInterface as *const RedisAITensor) };
         self.add_input(tensor).map_err(|e| GearsApiError::Msg(e))
     }
 
@@ -165,18 +175,19 @@ impl AIScriptRunnerInterface for RedisAIScriptRunCtx {
         self.add_output().map_err(|e| GearsApiError::Msg(e))
     }
 
-    fn run(&mut self, on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>) {
-        self.run(move |res|{
-            match res {
-                Ok(res) => {
-                    let mut v: Vec::<Box<dyn AITensorInterface + Send>> = Vec::new();
-                    for r in res {
-                        v.push(Box::new(r));
-                    }
-                    on_done(Ok(v));
+    fn run(
+        &mut self,
+        on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>,
+    ) {
+        self.run(move |res| match res {
+            Ok(res) => {
+                let mut v: Vec<Box<dyn AITensorInterface + Send>> = Vec::new();
+                for r in res {
+                    v.push(Box::new(r));
                 }
-                Err(e) => on_done(Err(GearsApiError::Msg(e)))
+                on_done(Ok(v));
             }
+            Err(e) => on_done(Err(GearsApiError::Msg(e))),
         });
     }
 }
@@ -184,7 +195,7 @@ impl AIScriptRunnerInterface for RedisAIScriptRunCtx {
 impl Drop for RedisAIScriptRunCtx {
     fn drop(&mut self) {
         if !self.inner_run_ctx.is_null() {
-            unsafe{RedisAI_ScriptRunCtxFree.unwrap()(self.inner_run_ctx)};
+            unsafe { RedisAI_ScriptRunCtxFree.unwrap()(self.inner_run_ctx) };
         }
     }
 }

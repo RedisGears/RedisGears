@@ -1617,7 +1617,7 @@ fn on_module_change(ctx: &Context, _event_data: ServerEventData) {
     match redisai_rs::redisai_init(ctx) {
         Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),
         Err(_) => ctx.log_notice("Failed loading RedisAI API."),
-    } 
+    }
 }
 
 fn on_flush_event(ctx: &Context, event_data: ServerEventData) {

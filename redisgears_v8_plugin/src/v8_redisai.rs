@@ -1,12 +1,9 @@
 use crate::v8_script_ctx::V8ScriptCtx;
-use std::sync::{Arc, Weak, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use v8_rs::v8::{
-    isolate_scope::V8IsolateScope,
-    v8_context_scope::V8ContextScope,
-    v8_value::V8LocalValue,
-    v8_object_template::V8PersistedObjectTemplate,
-    v8_object::V8LocalObject,
+    isolate_scope::V8IsolateScope, v8_context_scope::V8ContextScope, v8_object::V8LocalObject,
+    v8_object_template::V8PersistedObjectTemplate, v8_value::V8LocalValue,
 };
 
 use crate::v8_native_functions::RedisClient;
@@ -15,8 +12,10 @@ use std::cell::RefCell;
 
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
 
-pub(crate) fn get_tensor_from_js_tensor<'isolate, 'isolate_scope>(isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
-                                                                  js_tensor: &'isolate_scope V8LocalObject<'isolate_scope, 'isolate>) -> Option<&'isolate_scope Box<dyn AITensorInterface>> {
+pub(crate) fn get_tensor_from_js_tensor<'isolate, 'isolate_scope>(
+    isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+    js_tensor: &'isolate_scope V8LocalObject<'isolate_scope, 'isolate>,
+) -> Option<&'isolate_scope Box<dyn AITensorInterface>> {
     if js_tensor.get_internal_field_count() != 1 {
         isolate_scope.raise_exception_str("Data is not a tensor");
         return None;
@@ -30,17 +29,24 @@ pub(crate) fn get_tensor_from_js_tensor<'isolate, 'isolate_scope>(isolate_scope:
     Some(external_data.get_data::<Box<dyn AITensorInterface>>())
 }
 
-pub(crate) fn get_js_tensor_from_tensor<'isolate, 'isolate_scope>(script_ctx: &Arc<V8ScriptCtx>,
-                                                                  isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
-                                                                  ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>, 
-                                                                  tensor: Box<dyn AITensorInterface>) -> V8LocalObject<'isolate_scope, 'isolate> {
+pub(crate) fn get_js_tensor_from_tensor<'isolate, 'isolate_scope>(
+    script_ctx: &Arc<V8ScriptCtx>,
+    isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+    ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
+    tensor: Box<dyn AITensorInterface>,
+) -> V8LocalObject<'isolate_scope, 'isolate> {
     let tensor_external = isolate_scope.new_external_data(tensor);
-    let tensor_obj = script_ctx.tensor_object_template.to_local(isolate_scope).new_instance(ctx_scope);
+    let tensor_obj = script_ctx
+        .tensor_object_template
+        .to_local(isolate_scope)
+        .new_instance(ctx_scope);
     tensor_obj.set_internal_field(0, &tensor_external.to_value());
     tensor_obj
 }
 
-pub(crate) fn get_tensor_object_template<'isolate, 'isolate_scope>(isolate_scope: &'isolate_scope V8IsolateScope<'isolate>) -> V8PersistedObjectTemplate {
+pub(crate) fn get_tensor_object_template<'isolate, 'isolate_scope>(
+    isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+) -> V8PersistedObjectTemplate {
     let mut obj_template = isolate_scope.new_object_template();
 
     obj_template.add_native_function("get_data", move |args, isolate_scope, _ctx_scope| {
@@ -54,8 +60,15 @@ pub(crate) fn get_tensor_object_template<'isolate, 'isolate_scope>(isolate_scope
         let curr_self = args.get_self();
         let tensor = get_tensor_from_js_tensor(isolate_scope, &curr_self)?;
         let dims = tensor.dims();
-        let res = dims.into_iter().map(|v| isolate_scope.new_long(v)).collect::<Vec<V8LocalValue>>();
-        Some(isolate_scope.new_array(&res.iter().collect::<Vec<&V8LocalValue>>()).to_value())
+        let res = dims
+            .into_iter()
+            .map(|v| isolate_scope.new_long(v))
+            .collect::<Vec<V8LocalValue>>();
+        Some(
+            isolate_scope
+                .new_array(&res.iter().collect::<Vec<&V8LocalValue>>())
+                .to_value(),
+        )
     });
 
     obj_template.add_native_function("element_size", move |args, isolate_scope, _ctx_scope| {
@@ -75,7 +88,7 @@ pub(crate) fn get_redisai_api<'isolate, 'isolate_scope>(
     ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
 ) -> V8LocalValue<'isolate_scope, 'isolate> {
     let redis_ai = isolate_scope.new_object();
-    
+
     let script_ctx_ref = Arc::downgrade(script_ctx);
     redis_ai.set(
         ctx_scope,
@@ -117,7 +130,6 @@ pub(crate) fn get_redisai_api<'isolate, 'isolate_scope>(
                     return None;
                 }
                 let data = data.as_array_buffer();
-                
                 let s = match script_ctx_ref.upgrade() {
                     Some(s) => s,
                     None => {
@@ -317,7 +329,6 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                                         };
                                         let isolate_scope = script_ctx_ref.isolate.enter();
                                         let ctx_scope = script_ctx_ref.ctx.enter(&isolate_scope);
-                                        
                                         let resolver = persisted_resolver.take_local(&isolate_scope).as_resolver();
 
                                         match res {
@@ -333,7 +344,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
 
                                     }));
                                 }));
-                                
+
                                 Some(promise.to_value())
                             }).to_value(),
                         );
@@ -508,7 +519,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                                         };
                                         let isolate_scope = script_ctx_ref.isolate.enter();
                                         let ctx_scope = script_ctx_ref.ctx.enter(&isolate_scope);
-                                        
+
                                         let resolver = persisted_resolver.take_local(&isolate_scope).as_resolver();
 
                                         match res {
@@ -524,7 +535,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
 
                                     }));
                                 }));
-                                
+
                                 Some(promise.to_value())
                             }).to_value(),
                         );

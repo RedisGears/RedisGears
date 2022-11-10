@@ -617,7 +617,11 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
     );
 
     let redisai_client = get_redisai_client(script_ctx, isolate_scope, ctx_scope, redis_client);
-    client.set(ctx_scope, &isolate_scope.new_string("redisai").to_value(), &redisai_client);
+    client.set(
+        ctx_scope,
+        &isolate_scope.new_string("redisai").to_value(),
+        &redisai_client,
+    );
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
     let redis_client_ref = Arc::clone(redis_client);
@@ -1162,7 +1166,11 @@ pub(crate) fn initialize_globals(
     );
 
     let redis_ai = get_redisai_api(script_ctx, isolate_scope, ctx_scope);
-    redis.set(ctx_scope, &isolate_scope.new_string("redisai").to_value(), &redis_ai);
+    redis.set(
+        ctx_scope,
+        &isolate_scope.new_string("redisai").to_value(),
+        &redis_ai,
+    );
 
     globals.set(
         ctx_scope,
