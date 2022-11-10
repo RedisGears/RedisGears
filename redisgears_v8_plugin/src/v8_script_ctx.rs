@@ -5,7 +5,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use v8_rs::v8::{
     isolate::V8Isolate, v8_context::V8Context, v8_promise::V8PromiseState,
-    v8_script::V8PersistedScript,
+    v8_script::V8PersistedScript, v8_object_template::V8PersistedObjectTemplate,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
@@ -73,6 +73,7 @@ impl GilStateCtx {
 
 pub(crate) struct V8ScriptCtx {
     pub(crate) script: V8PersistedScript,
+    pub(crate) tensor_object_template: V8PersistedObjectTemplate,
     pub(crate) ctx: V8Context,
     pub(crate) isolate: V8Isolate,
     pub(crate) compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
@@ -85,12 +86,14 @@ impl V8ScriptCtx {
         isolate: V8Isolate,
         ctx: V8Context,
         script: V8PersistedScript,
+        tensor_object_template: V8PersistedObjectTemplate,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> V8ScriptCtx {
         V8ScriptCtx {
             isolate: isolate,
             ctx: ctx,
             script: script,
+            tensor_object_template: tensor_object_template,
             compiled_library_api: compiled_library_api,
             is_running: AtomicBool::new(false),
             lock_state: RefCellWrapper {

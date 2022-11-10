@@ -11,6 +11,8 @@ use v8_rs::v8::{
     v8_utf8::V8LocalUtf8, v8_value::V8LocalValue, v8_version,
 };
 
+use crate::v8_redisai::{get_redisai_api, get_redisai_client};
+
 use crate::v8_backend::log;
 use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
@@ -171,7 +173,7 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
 }
 
 pub(crate) struct RedisClient {
-    client: Option<Box<dyn RedisClientCtxInterface>>,
+    pub(crate) client: Option<Box<dyn RedisClientCtxInterface>>,
     allow_block: Option<bool>,
 }
 
@@ -613,6 +615,9 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
             })
             .to_value(),
     );
+
+    let redisai_client = get_redisai_client(script_ctx, isolate_scope, ctx_scope, redis_client);
+    client.set(ctx_scope, &isolate_scope.new_string("redisai").to_value(), &redisai_client);
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
     let redis_client_ref = Arc::clone(redis_client);
@@ -1070,7 +1075,7 @@ pub(crate) fn initialize_globals(
                                             let r = js_value_to_remote_function_data(ctx_scope, args.get(0));
                                             if r.is_none() {
                                                 let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));
+                                                on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                             } else {
                                                 on_done(Ok(r.unwrap()));
                                             }
@@ -1155,6 +1160,9 @@ pub(crate) fn initialize_globals(
             })
             .to_value(),
     );
+
+    let redis_ai = get_redisai_api(script_ctx, isolate_scope, ctx_scope);
+    redis.set(ctx_scope, &isolate_scope.new_string("redisai").to_value(), &redis_ai);
 
     globals.set(
         ctx_scope,

@@ -1,8 +1,12 @@
 use redis_module::context::thread_safe::ContextGuard;
 
+use redis_module::{
+    Status,
+};
+
 use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    CallResult,
+    CallResult, redisai_interface::AIModelInterface, GearsApiError, redisai_interface::AIScriptInterface,
 };
 
 use crate::run_ctx::RedisClientCallOptions;
@@ -12,6 +16,11 @@ use crate::{
 };
 
 use std::sync::Arc;
+
+use redisai_rs::redisai::redisai_model::RedisAIModel;
+use redisai_rs::redisai::redisai_script::RedisAIScript;
+
+use crate::{get_globals, get_ctx};
 
 pub(crate) struct BackgroundRunScopeGuardCtx {
     pub(crate) _ctx_guard: ContextGuard,
@@ -58,7 +67,39 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
         ))
     }
 
-    fn as_redis_client(&self) -> &dyn RedisClientCtxInterface {
-        self
+    fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
+        let ctx = match &self.user {
+            Some(u) => {
+                let ctx = &get_globals().authenticated_redis_ctx;
+                if ctx.autenticate_user(u) == Status::Err {
+                    return Err(GearsApiError::Msg(format!("Failed authenticate user {}", u)))
+                }
+                ctx
+            }
+            None => get_ctx(),
+        };
+        let res = RedisAIModel::open_from_key(ctx, name);
+        match res {
+            Ok(res) => Ok(Box::new(res)),
+            Err(e) => Err(GearsApiError::Msg(e)),
+        }
+    }
+
+    fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
+        let ctx = match &self.user {
+            Some(u) => {
+                let ctx = &get_globals().authenticated_redis_ctx;
+                if ctx.autenticate_user(u) == Status::Err {
+                    return Err(GearsApiError::Msg(format!("Failed authenticate user {}", u)))
+                }
+                ctx
+            }
+            None => get_ctx(),
+        };
+        let res = RedisAIScript::open_from_key(ctx, name);
+        match res {
+            Ok(res) => Ok(Box::new(res)),
+            Err(e) => Err(GearsApiError::Msg(e)),
+        }
     }
 }

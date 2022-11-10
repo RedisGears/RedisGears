@@ -12,6 +12,7 @@ use crate::v8_native_functions::initialize_globals;
 
 use crate::get_exception_msg;
 use crate::v8_script_ctx::V8LibraryCtx;
+use crate::v8_redisai::get_tensor_object_template;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::str;
@@ -165,7 +166,7 @@ impl BackendCtxInterface for V8Backend {
         );
 
         let script_ctx = {
-            let (ctx, script) = {
+            let (ctx, script, tensor_obj_template) = {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
@@ -185,9 +186,10 @@ impl BackendCtxInterface for V8Backend {
                 };
 
                 let script = script.persist();
-                (ctx, script)
+                let tensor_obj_template = get_tensor_object_template(&isolate_scope);
+                (ctx, script, tensor_obj_template)
             };
-            let script_ctx = Arc::new(V8ScriptCtx::new(isolate, ctx, script, compiled_library_api));
+            let script_ctx = Arc::new(V8ScriptCtx::new(isolate, ctx, script, tensor_obj_template, compiled_library_api));
             let len = {
                 let mut l = self.script_ctx_vec.lock().unwrap();
                 l.push(Arc::downgrade(&script_ctx));
