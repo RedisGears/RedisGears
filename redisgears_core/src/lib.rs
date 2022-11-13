@@ -1028,75 +1028,30 @@ fn function_list_command(
                                                 .iter()
                                                 .map(|(s, v)| {
                                                     let v = v.ref_cell.borrow();
-                                                    let mut res = Vec::new();
-                                                    res.push(RedisValue::BulkString(
-                                                        "name".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::BulkRedisString(
-                                                        ctx.create_string_from_slice(s),
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "last_processed_time".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Integer(
-                                                        v.last_processed_time as i64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "avg_processed_time".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Float(
-                                                        v.total_processed_time as f64
-                                                            / v.records_processed as f64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "last_lag".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Integer(
-                                                        v.last_lag as i64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "avg_lag".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Float(
-                                                        v.total_lag as f64
-                                                            / v.records_processed as f64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "total_record_processed".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Integer(
-                                                        v.records_processed as i64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "id_to_read_from".to_string(),
-                                                    ));
-                                                    match v.last_read_id {
-                                                        Some(id) => {
-                                                            res.push(RedisValue::BulkString(
-                                                                format!("{}-{}", id.ms, id.seq),
-                                                            ))
-                                                        }
-                                                        None => res.push(RedisValue::BulkString(
-                                                            "None".to_string(),
-                                                        )),
-                                                    }
-                                                    res.push(RedisValue::BulkString(
-                                                        "last_error".to_string(),
-                                                    ));
-                                                    match &v.last_error {
-                                                        Some(err) => res.push(
-                                                            RedisValue::BulkString(err.to_string()),
-                                                        ),
-                                                        None => res.push(RedisValue::BulkString(
-                                                            "None".to_string(),
-                                                        )),
-                                                    }
+                                                    let mut res = vec![
+                                                        RedisValue::BulkString("name".to_string()),
+                                                        RedisValue::BulkRedisString(ctx.create_string_from_slice(s)),
+                                                        RedisValue::BulkString("last_processed_time".to_string()),
+                                                        RedisValue::Integer(v.last_processed_time as i64),
+                                                        RedisValue::BulkString("avg_processed_time".to_string()),
+                                                        RedisValue::Float(v.total_processed_time as f64 / v.records_processed as f64),
+                                                        RedisValue::BulkString("last_lag".to_string()),
+                                                        RedisValue::Integer(v.last_lag as i64),                                            
+                                                        RedisValue::BulkString("avg_lag".to_string()),
+                                                        RedisValue::Float(v.total_lag as f64 / v.records_processed as f64),
+                                                        RedisValue::BulkString("total_record_processed".to_string()),
+                                                        RedisValue::Integer(v.records_processed as i64),
+                                                        RedisValue::BulkString("id_to_read_from".to_string()),
+                                                        match v.last_read_id {
+                                                            Some(id) => RedisValue::BulkString(format!("{}-{}", id.ms, id.seq)),
+                                                            None => RedisValue::BulkString("None".to_string()),
+                                                        },
+                                                        RedisValue::BulkString("last_error".to_string()),
+                                                        match &v.last_error {
+                                                            Some(err) => RedisValue::BulkString(err.to_string()),
+                                                            None => RedisValue::BulkString("None".to_string()),
+                                                        },
+                                                    ];
                                                     if verbosity > 2 {
                                                         res.push(RedisValue::BulkString(
                                                             "pending_ids".to_string(),
@@ -1243,13 +1198,15 @@ pub(crate) fn function_load_intrernal(
     };
     let mut libraries = get_libraries();
     let old_lib = libraries.remove(&meta_data.name);
-    if old_lib.is_some() && !upgrade {
-        let err = Err(RedisError::String(format!(
-            "Library {} already exists",
-            &meta_data.name
-        )));
-        libraries.insert(meta_data.name, old_lib.unwrap());
-        return err;
+    if !upgrade {
+        if let Some(old_lib) = old_lib {
+            let err = Err(RedisError::String(format!(
+                "Library {} already exists",
+                &meta_data.name
+            )));
+            libraries.insert(meta_data.name, old_lib);
+            return err;
+        }
     }
     let mut gears_library = GearsLibraryCtx {
         meta_data: Arc::new(meta_data),
@@ -1621,19 +1578,16 @@ fn on_module_change(ctx: &Context, _event_data: ServerEventData) {
 
 fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
     match event_data {
-        ServerEventData::FlushEvent(loading_sub_event) => match loading_sub_event {
-            FlushSubevent::Started => {
-                ctx.log_notice("Got a flush started event");
-                let globals = get_globals_mut();
-                for lib in globals.libraries.lock().unwrap().values() {
-                    for consumer in lib.gears_lib_ctx.stream_consumers.values() {
-                        let mut c = consumer.ref_cell.borrow_mut();
-                        c.clear_streams_info();
-                    }
+        ServerEventData::FlushEvent(loading_sub_event) => if let FlushSubevent::Started = loading_sub_event {
+            ctx.log_notice("Got a flush started event");
+            let globals = get_globals_mut();
+            for lib in globals.libraries.lock().unwrap().values() {
+                for consumer in lib.gears_lib_ctx.stream_consumers.values() {
+                    let mut c = consumer.ref_cell.borrow_mut();
+                    c.clear_streams_info();
                 }
-                globals.stream_ctx.clear_tracked_streams();
             }
-            _ => {}
+            globals.stream_ctx.clear_tracked_streams();
         },
         _ => panic!("got unexpected sub event"),
     }
