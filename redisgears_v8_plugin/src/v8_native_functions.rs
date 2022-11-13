@@ -250,15 +250,13 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
         &ctx_scope
             .new_native_function(move |args, isolate_scope, ctx_scope| {
                 if args.is_empty() {
-                    isolate_scope.raise_exception_str(
-                        "Wrong number of arguments to 'block' function",
-                    );
+                    isolate_scope
+                        .raise_exception_str("Wrong number of arguments to 'block' function");
                     return None;
                 }
                 let f = args.get(0);
                 if !f.is_function() {
-                    isolate_scope
-                        .raise_exception_str("Argument to 'block' must be a function");
+                    isolate_scope.raise_exception_str("Argument to 'block' must be a function");
                     return None;
                 }
 

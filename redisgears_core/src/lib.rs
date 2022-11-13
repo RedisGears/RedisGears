@@ -93,10 +93,7 @@ struct GearsFunctionCtx {
 
 impl GearsFunctionCtx {
     fn new(func: Box<dyn FunctionCtxInterface>, flags: u8) -> GearsFunctionCtx {
-        GearsFunctionCtx {
-            func,
-            flags,
-        }
+        GearsFunctionCtx { func, flags }
     }
 }
 
@@ -212,7 +209,8 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
 
         let stream_registration = if let Some(old_consumer) = self
             .old_lib
-            .as_ref().and_then(|v| v.gears_lib_ctx.stream_consumers.get(name))
+            .as_ref()
+            .and_then(|v| v.gears_lib_ctx.stream_consumers.get(name))
         {
             let mut o_c = old_consumer.ref_cell.borrow_mut();
             if o_c.prefix != prefix {
@@ -309,7 +307,8 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
 
         let consumer = if let Some(old_notification_consumer) = self
             .old_lib
-            .as_ref().and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
+            .as_ref()
+            .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
         {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
@@ -326,7 +325,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             Arc::clone(old_notification_consumer)
         } else {
             let globlas = get_globals_mut();
-            
+
             match key {
                 RegisteredKeys::Key(k) => globlas
                     .notifications_ctx
@@ -563,7 +562,9 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                             }
                         };
 
-                    Ok(stream_iterator.next().map(|e| GearsStreamRecord { record: e }))
+                    Ok(stream_iterator
+                        .next()
+                        .map(|e| GearsStreamRecord { record: e }))
                 }),
                 Box::new(|key_name, id| {
                     // trim the stream callback
@@ -945,9 +946,7 @@ fn function_list_command(
         libraries
             .values()
             .filter(|l| match lib {
-                Some(lib_name) => {
-                    l.gears_lib_ctx.meta_data.name == lib_name
-                }
+                Some(lib_name) => l.gears_lib_ctx.meta_data.name == lib_name,
                 None => true,
             })
             .map(|l| {
@@ -1030,26 +1029,60 @@ fn function_list_command(
                                                     let v = v.ref_cell.borrow();
                                                     let mut res = vec![
                                                         RedisValue::BulkString("name".to_string()),
-                                                        RedisValue::BulkRedisString(ctx.create_string_from_slice(s)),
-                                                        RedisValue::BulkString("last_processed_time".to_string()),
-                                                        RedisValue::Integer(v.last_processed_time as i64),
-                                                        RedisValue::BulkString("avg_processed_time".to_string()),
-                                                        RedisValue::Float(v.total_processed_time as f64 / v.records_processed as f64),
-                                                        RedisValue::BulkString("last_lag".to_string()),
-                                                        RedisValue::Integer(v.last_lag as i64),                                            
-                                                        RedisValue::BulkString("avg_lag".to_string()),
-                                                        RedisValue::Float(v.total_lag as f64 / v.records_processed as f64),
-                                                        RedisValue::BulkString("total_record_processed".to_string()),
-                                                        RedisValue::Integer(v.records_processed as i64),
-                                                        RedisValue::BulkString("id_to_read_from".to_string()),
+                                                        RedisValue::BulkRedisString(
+                                                            ctx.create_string_from_slice(s),
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "last_processed_time".to_string(),
+                                                        ),
+                                                        RedisValue::Integer(
+                                                            v.last_processed_time as i64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "avg_processed_time".to_string(),
+                                                        ),
+                                                        RedisValue::Float(
+                                                            v.total_processed_time as f64
+                                                                / v.records_processed as f64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "last_lag".to_string(),
+                                                        ),
+                                                        RedisValue::Integer(v.last_lag as i64),
+                                                        RedisValue::BulkString(
+                                                            "avg_lag".to_string(),
+                                                        ),
+                                                        RedisValue::Float(
+                                                            v.total_lag as f64
+                                                                / v.records_processed as f64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "total_record_processed".to_string(),
+                                                        ),
+                                                        RedisValue::Integer(
+                                                            v.records_processed as i64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "id_to_read_from".to_string(),
+                                                        ),
                                                         match v.last_read_id {
-                                                            Some(id) => RedisValue::BulkString(format!("{}-{}", id.ms, id.seq)),
-                                                            None => RedisValue::BulkString("None".to_string()),
+                                                            Some(id) => RedisValue::BulkString(
+                                                                format!("{}-{}", id.ms, id.seq),
+                                                            ),
+                                                            None => RedisValue::BulkString(
+                                                                "None".to_string(),
+                                                            ),
                                                         },
-                                                        RedisValue::BulkString("last_error".to_string()),
+                                                        RedisValue::BulkString(
+                                                            "last_error".to_string(),
+                                                        ),
                                                         match &v.last_error {
-                                                            Some(err) => RedisValue::BulkString(err.to_string()),
-                                                            None => RedisValue::BulkString("None".to_string()),
+                                                            Some(err) => RedisValue::BulkString(
+                                                                err.to_string(),
+                                                            ),
+                                                            None => RedisValue::BulkString(
+                                                                "None".to_string(),
+                                                            ),
                                                         },
                                                     ];
                                                     if verbosity > 2 {
@@ -1578,17 +1611,19 @@ fn on_module_change(ctx: &Context, _event_data: ServerEventData) {
 
 fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
     match event_data {
-        ServerEventData::FlushEvent(loading_sub_event) => if let FlushSubevent::Started = loading_sub_event {
-            ctx.log_notice("Got a flush started event");
-            let globals = get_globals_mut();
-            for lib in globals.libraries.lock().unwrap().values() {
-                for consumer in lib.gears_lib_ctx.stream_consumers.values() {
-                    let mut c = consumer.ref_cell.borrow_mut();
-                    c.clear_streams_info();
+        ServerEventData::FlushEvent(loading_sub_event) => {
+            if let FlushSubevent::Started = loading_sub_event {
+                ctx.log_notice("Got a flush started event");
+                let globals = get_globals_mut();
+                for lib in globals.libraries.lock().unwrap().values() {
+                    for consumer in lib.gears_lib_ctx.stream_consumers.values() {
+                        let mut c = consumer.ref_cell.borrow_mut();
+                        c.clear_streams_info();
+                    }
                 }
+                globals.stream_ctx.clear_tracked_streams();
             }
-            globals.stream_ctx.clear_tracked_streams();
-        },
+        }
         _ => panic!("got unexpected sub event"),
     }
 }

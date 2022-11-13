@@ -140,8 +140,8 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
             )
         };
         res.map(|r| match r {
-                StreamRecordAck::Ack => StreamReaderAck::Ack,
-                StreamRecordAck::Nack(msg) => StreamReaderAck::Nack(msg),
-            })
+            StreamRecordAck::Ack => StreamReaderAck::Ack,
+            StreamRecordAck::Nack(msg) => StreamReaderAck::Nack(msg),
+        })
     }
 }

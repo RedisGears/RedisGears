@@ -519,8 +519,7 @@ where
                 .borrow_mut();
             t_s.consumers_data.push(Arc::downgrade(&stream_info));
         }
-        stream_info.ref_cell.borrow_mut().last_read_id =
-            Some(RedisModuleStreamID { ms, seq });
+        stream_info.ref_cell.borrow_mut().last_read_id = Some(RedisModuleStreamID { ms, seq });
     }
 
     pub(crate) fn clear_tracked_streams(&mut self) {

@@ -144,7 +144,8 @@ impl KeysNotificationsCtx {
                     ConsumerKey::Key(k) => key == k,
                     ConsumerKey::Prefix(prefix) => key.starts_with(prefix),
                 }
-            }; if res {
+            };
+            if res {
                 fire_event(&consumer, event, key);
             }
         }
