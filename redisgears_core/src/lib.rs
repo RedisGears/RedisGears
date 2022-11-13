@@ -1259,7 +1259,7 @@ pub(crate) fn function_load_intrernal(
         notifications_consumers: HashMap::new(),
         revert_stream_consumers: Vec::new(),
         revert_notifications_consumers: Vec::new(),
-        old_lib: old_lib,
+        old_lib,
     };
     let res = lib_ctx.load_library(&mut gears_library);
     if let Err(err) = res {
