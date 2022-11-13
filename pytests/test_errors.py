@@ -270,3 +270,27 @@ redis.register_function("test", (client) => {
 });
     """
     env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('RedisAI is not initialize')
+
+@gearsTest()
+def testUseOfInvalidClient(env):
+    """#!js name=foo
+redis.register_function("test", (client) => {
+    return client.run_on_background(async (async_client) => {
+        return async_client.block(()=>{
+            return client.call("ping");
+        });
+    });
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Used on invalid client')
+
+@gearsTest()
+def testCallWithoutBlock(env):
+    """#!js name=foo
+redis.register_function("test", (client) => {
+    return client.run_on_background(async () => {
+            return client.call("ping");
+    });
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Main thread is not locked')
