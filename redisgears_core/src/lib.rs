@@ -94,8 +94,8 @@ struct GearsFunctionCtx {
 impl GearsFunctionCtx {
     fn new(func: Box<dyn FunctionCtxInterface>, flags: u8) -> GearsFunctionCtx {
         GearsFunctionCtx {
-            func: func,
-            flags: flags,
+            func,
+            flags,
         }
     }
 }
@@ -123,9 +123,9 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
     match r {
         RedisValue::SimpleString(s) => CallResult::SimpleStr(s),
         RedisValue::SimpleStringStatic(s) => CallResult::SimpleStr(s.to_string()),
-        RedisValue::BulkString(s) => CallResult::BulkStr(s.to_string()),
+        RedisValue::BulkString(s) => CallResult::BulkStr(s),
         RedisValue::BulkRedisString(s) => {
-            let slice = s.as_slice().into_iter().map(|v| *v).collect::<Vec<u8>>();
+            let slice = s.as_slice().to_vec();
             CallResult::StringBuffer(slice)
         }
         RedisValue::StringBuffer(s) => CallResult::StringBuffer(s),
@@ -134,7 +134,7 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
         RedisValue::Array(a) => {
             let res = a
                 .into_iter()
-                .map(|v| redis_value_to_call_reply(v))
+                .map(redis_value_to_call_reply)
                 .collect::<Vec<CallResult>>();
             CallResult::Array(res)
         }
@@ -212,8 +212,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
 
         let stream_registration = if let Some(old_consumer) = self
             .old_lib
-            .as_ref()
-            .map_or(None, |v| v.gears_lib_ctx.stream_consumers.get(name))
+            .as_ref().and_then(|v| v.gears_lib_ctx.stream_consumers.get(name))
         {
             let mut o_c = old_consumer.ref_cell.borrow_mut();
             if o_c.prefix != prefix {
@@ -310,14 +309,13 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
 
         let consumer = if let Some(old_notification_consumer) = self
             .old_lib
-            .as_ref()
-            .map_or(None, |v| v.gears_lib_ctx.notifications_consumers.get(name))
+            .as_ref().and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
         {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
             let new_key = match key {
-                RegisteredKeys::Key(s) => ConsumerKey::Key(s.iter().map(|v| *v).collect()),
-                RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.iter().map(|v| *v).collect()),
+                RegisteredKeys::Key(s) => ConsumerKey::Key(s.to_vec()),
+                RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.to_vec()),
             };
             let old_key = o_c.set_key(new_key);
             self.revert_notifications_consumers.push((
@@ -328,15 +326,15 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             Arc::clone(old_notification_consumer)
         } else {
             let globlas = get_globals_mut();
-            let consumer = match key {
+            
+            match key {
                 RegisteredKeys::Key(k) => globlas
                     .notifications_ctx
                     .add_consumer_on_key(k, fire_event_callback),
                 RegisteredKeys::Prefix(p) => globlas
                     .notifications_ctx
                     .add_consumer_on_prefix(p, fire_event_callback),
-            };
-            consumer
+            }
         };
 
         self.notifications_consumers
@@ -396,7 +394,7 @@ fn get_libraries() -> MutexGuard<'static, HashMap<String, Arc<GearsLibrary>>> {
 }
 
 pub(crate) fn get_thread_pool() -> &'static Mutex<ThreadPool> {
-    &get_globals().pool.as_ref().unwrap()
+    get_globals().pool.as_ref().unwrap()
 }
 
 struct Sentinel;
@@ -450,7 +448,7 @@ pub(crate) fn call_redis_command(
 }
 
 fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
-    let mut args = args.into_iter().skip(1); // skip the plugin
+    let mut args = args.iter().skip(1); // skip the plugin
     while let Some(config_key) = args.next() {
         let key = match config_key.try_as_str() {
             Ok(s) => s,
@@ -547,7 +545,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
             backends: HashMap::new(),
             plugins: Vec::new(),
             pool: None,
-            mgmt_pool: mgmt_pool,
+            mgmt_pool,
             stream_ctx: StreamReaderCtx::new(
                 Box::new(|key, id, include_id| {
                     // read data from the stream
@@ -565,10 +563,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                             }
                         };
 
-                    Ok(match stream_iterator.next() {
-                        Some(e) => Some(GearsStreamRecord { record: e }),
-                        None => None,
-                    })
+                    Ok(stream_iterator.next().map(|e| GearsStreamRecord { record: e }))
                 }),
                 Box::new(|key_name, id| {
                     // trim the stream callback
@@ -604,7 +599,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
             allow_unsafe_redis_commands: false,
         };
 
-        let v8_path = match args.into_iter().next() {
+        let v8_path = match args.iter().next() {
             Some(a) => a,
             None => {
                 ctx.log_warning("Path to libredisgears_v8_plugin.so must be specified");
@@ -665,10 +660,8 @@ const fn js_info(_ctx: &InfoContext, _for_crash_report: bool) {}
 pub(crate) fn verify_oom(flags: u8) -> bool {
     if (flags & FUNCTION_FLAG_NO_WRITES) == 0 {
         // function can potentially write data, make sure we are not OOM.
-        if (flags & FUNCTION_FLAG_ALLOW_OOM) == 0 {
-            if get_ctx().is_oom() {
-                return false;
-            }
+        if (flags & FUNCTION_FLAG_ALLOW_OOM) == 0 && get_ctx().is_oom() {
+            return false;
         }
     }
     true
@@ -740,7 +733,7 @@ fn function_call_command(
     {
         let _notification_blocker = get_notification_blocker();
         function.func.call(&mut RunCtx {
-            ctx: ctx,
+            ctx,
             iter: args_iter,
             flags: function.flags,
             lib_meta_data: Arc::clone(&lib.gears_lib_ctx.meta_data),
@@ -755,7 +748,7 @@ fn library_extract_matadata(
     config: Option<String>,
     user: String,
 ) -> Result<GearsLibraryMataData, RedisError> {
-    let shabeng = match code.split("\n").next() {
+    let shabeng = match code.split('\n').next() {
         Some(s) => s,
         None => return Err(RedisError::Str("could not extract library metadata")),
     };
@@ -764,7 +757,7 @@ fn library_extract_matadata(
     }
 
     let shabeng = shabeng.strip_prefix("#!").unwrap();
-    let mut data = shabeng.split(" ");
+    let mut data = shabeng.split(' ');
     let engine = match data.next() {
         Some(s) => s,
         None => return Err(RedisError::Str("could not extract engine name")),
@@ -775,7 +768,7 @@ fn library_extract_matadata(
             Some(s) => s,
             None => return Err(RedisError::Str("Failed find 'name' property")),
         };
-        let mut prop = d.split("=");
+        let mut prop = d.split('=');
         let prop_name = match prop.next() {
             Some(s) => s,
             None => return Err(RedisError::Str("could not extract property name")),
@@ -797,8 +790,8 @@ fn library_extract_matadata(
         engine: engine.to_string(),
         name: name.to_string(),
         code: code.to_string(),
-        config: config,
-        user: user,
+        config,
+        user,
     })
 }
 
@@ -831,7 +824,7 @@ fn function_call_result_to_redis_result(res: CallResult) -> RedisValue {
         CallResult::Error(s) => RedisValue::SimpleString(s),
         CallResult::Array(arr) => RedisValue::Array(
             arr.into_iter()
-                .map(|v| function_call_result_to_redis_result(v))
+                .map(function_call_result_to_redis_result)
                 .collect::<Vec<RedisValue>>(),
         ),
         _ => panic!("not yet supported"),
@@ -872,7 +865,7 @@ fn function_debug_command(
             "Backend '{}' does not exists",
             backend_name
         ))),
-        |v| Ok(v),
+        Ok,
     )?;
     let mut has_errors = false;
     let args = args
@@ -930,10 +923,10 @@ fn function_list_command(
         let arg_str = arg_str.to_lowercase();
         match arg_str.as_ref() {
             "withcode" => with_code = true,
-            "verbose" => verbosity = verbosity + 1,
-            "v" => verbosity = verbosity + 1,
-            "vv" => verbosity = verbosity + 2,
-            "vvv" => verbosity = verbosity + 3,
+            "verbose" => verbosity += 1,
+            "v" => verbosity += 1,
+            "vv" => verbosity += 2,
+            "vvv" => verbosity += 3,
             "library" => {
                 let lib_name = match args.next_arg() {
                     Ok(n) => match n.try_as_str() {
@@ -953,11 +946,7 @@ fn function_list_command(
             .values()
             .filter(|l| match lib {
                 Some(lib_name) => {
-                    if l.gears_lib_ctx.meta_data.name == lib_name {
-                        true
-                    } else {
-                        false
-                    }
+                    l.gears_lib_ctx.meta_data.name == lib_name
                 }
                 None => true,
             })
@@ -1270,7 +1259,7 @@ pub(crate) fn function_load_intrernal(
         notifications_consumers: HashMap::new(),
         revert_stream_consumers: Vec::new(),
         revert_notifications_consumers: Vec::new(),
-        old_lib: old_lib.map_or(None, |v| Some(v)),
+        old_lib: old_lib,
     };
     let res = lib_ctx.load_library(&mut gears_library);
     if let Err(err) = res {
@@ -1283,9 +1272,9 @@ pub(crate) fn function_load_intrernal(
         function_load_revert(gears_library, &mut libraries);
         return ret;
     }
-    if gears_library.functions.len() == 0
-        && gears_library.stream_consumers.len() == 0
-        && gears_library.notifications_consumers.len() == 0
+    if gears_library.functions.is_empty()
+        && gears_library.stream_consumers.is_empty()
+        && gears_library.notifications_consumers.is_empty()
     {
         function_load_revert(gears_library, &mut libraries);
         return Err(RedisError::Str(
@@ -1298,8 +1287,8 @@ pub(crate) fn function_load_intrernal(
         Arc::new(GearsLibrary {
             gears_lib_ctx: gears_library,
             _lib_ctx: lib_ctx,
-            compile_lib_internals: compile_lib_internals,
-            gears_box_lib: gears_box_lib,
+            compile_lib_internals,
+            gears_box_lib,
         }),
     );
     Ok(RedisValue::SimpleStringStatic("OK"))
@@ -1358,9 +1347,9 @@ fn get_args_values<'a>(
         Err(_) => return Err(RedisError::Str("lib code must a valid string")),
     };
     Ok(FunctionLoadArgs {
-        upgrade: upgrade,
-        config: config,
-        last_arg: last_arg,
+        upgrade,
+        config,
+        last_arg,
     })
 }
 

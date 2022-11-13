@@ -41,8 +41,8 @@ impl BackgroundRunScopeGuardCtx {
     ) -> BackgroundRunScopeGuardCtx {
         BackgroundRunScopeGuardCtx {
             _ctx_guard: ctx_guard,
-            call_options: call_options,
-            user: user,
+            call_options,
+            user,
             lib_meta_data: Arc::clone(lib_meta_data),
             _notification_blocker: get_notification_blocker(),
         }

@@ -208,7 +208,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                     &isolate_scope.new_string("get_model_runner").to_value(),
                     &ctx_scope
                     .new_native_function(move |args, isolate_scope, ctx_scope| {
-                        if args.len() != 0 {
+                        if !args.is_empty() {
                             isolate_scope.raise_exception_str(
                                 "Wrong number of arguments to 'get_model_runner' function",
                             );
@@ -296,7 +296,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             &isolate_scope.new_string("run").to_value(),
                             &ctx_scope
                             .new_native_function(move |args, isolate_scope, ctx_scope| {
-                                if args.len() != 0 {
+                                if !args.is_empty() {
                                     isolate_scope.raise_exception_str(
                                         "Wrong number of arguments to 'run' function",
                                     );
@@ -463,7 +463,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             &isolate_scope.new_string("add_output").to_value(),
                             &ctx_scope
                             .new_native_function(move |args, isolate_scope, _ctx_scope| {
-                                if args.len() != 0 {
+                                if !args.is_empty() {
                                     isolate_scope.raise_exception_str(
                                         "Wrong number of arguments to 'add_output' function",
                                     );
@@ -486,7 +486,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             &isolate_scope.new_string("run").to_value(),
                             &ctx_scope
                             .new_native_function(move |args, isolate_scope, ctx_scope| {
-                                if args.len() != 0 {
+                                if !args.is_empty() {
                                     isolate_scope.raise_exception_str(
                                         "Wrong number of arguments to 'run' function",
                                     );

@@ -18,7 +18,7 @@ impl KeysNotificationsRunCtx {
     pub(crate) fn new(meta_data: &Arc<GearsLibraryMataData>, flags: u8) -> KeysNotificationsRunCtx {
         KeysNotificationsRunCtx {
             lib_meta_data: Arc::clone(meta_data),
-            flags: flags,
+            flags,
         }
     }
 }
