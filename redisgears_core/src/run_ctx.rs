@@ -51,7 +51,7 @@ impl RedisClientCallOptions {
 
         RedisClientCallOptions {
             call_options: call_options.constract(),
-            flags: flags,
+            flags,
         }
     }
 }
@@ -74,7 +74,7 @@ impl RedisClient {
         RedisClient {
             call_options: RedisClientCallOptions::new(flags),
             lib_meta_data: Arc::clone(lib_meta_data),
-            user: user,
+            user,
         }
     }
 }
@@ -212,7 +212,7 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
         let ctx = thread_ctx.get_ctx();
         Ok(Box::new(BackgroundClientCtx {
             _thread_ctx: thread_ctx,
-            ctx: ctx,
+            ctx,
         }))
     }
 

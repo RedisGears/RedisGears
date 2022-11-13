@@ -112,7 +112,7 @@ impl KeysNotificationsCtx {
         callback: NotificationCallback,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
-            ConsumerKey::Prefix(prefix.iter().map(|v| *v).collect()),
+            ConsumerKey::Prefix(prefix.to_vec()),
             callback,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
@@ -125,7 +125,7 @@ impl KeysNotificationsCtx {
         callback: NotificationCallback,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
-            ConsumerKey::Key(key.iter().map(|v| *v).collect()),
+            ConsumerKey::Key(key.to_vec()),
             callback,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
@@ -138,13 +138,14 @@ impl KeysNotificationsCtx {
                 Some(c) => c,
                 None => continue,
             };
-            if {
+            let res = {
                 let c = consumer.borrow_mut();
                 match c.key.as_ref().unwrap() {
                     ConsumerKey::Key(k) => key == k,
                     ConsumerKey::Prefix(prefix) => key.starts_with(prefix),
                 }
-            } {
+            };
+            if res {
                 fire_event(&consumer, event, key);
             }
         }

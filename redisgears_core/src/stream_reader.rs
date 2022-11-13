@@ -59,23 +59,21 @@ impl TrackedStream {
             let consumer_info = weak_consumer_info.ref_cell.borrow();
             let first_id = {
                 let first_id = consumer_info.pending_ids.front();
-                if !first_id.is_none() {
+                if first_id.is_some() {
                     let first_id = first_id.unwrap();
                     RedisModuleStreamID {
                         ms: first_id.ms,
                         seq: first_id.seq,
                     }
-                } else {
-                    if let Some(last_read_id) = consumer_info.last_read_id.as_ref() {
-                        // if we do not have pending id's it means that last_read_id can be trimmed.
-                        // Increase the seq value to make sure we keep everything which is greater than last_read_id.
-                        RedisModuleStreamID {
-                            ms: last_read_id.ms,
-                            seq: last_read_id.seq + 1,
-                        }
-                    } else {
-                        continue;
+                } else if let Some(last_read_id) = consumer_info.last_read_id.as_ref() {
+                    // if we do not have pending id's it means that last_read_id can be trimmed.
+                    // Increase the seq value to make sure we keep everything which is greater than last_read_id.
+                    RedisModuleStreamID {
+                        ms: last_read_id.ms,
+                        seq: last_read_id.seq + 1,
                     }
+                } else {
+                    continue;
                 }
             };
             if first_id.ms < id_to_trim.ms
@@ -118,7 +116,7 @@ impl ConsumerInfo {
         self.last_processed_time = since_the_epoch - start_time;
         self.total_processed_time += self.last_processed_time;
         self.last_lag = lag;
-        self.total_lag = self.total_lag + lag;
+        self.total_lag += lag;
 
         let mut temp_list = LinkedList::new();
         while let Some(curr) = self.pending_ids.pop_front() {
@@ -127,7 +125,7 @@ impl ConsumerInfo {
             }
             temp_list.push_back(curr);
         }
-        if temp_list.len() == 0 {
+        if temp_list.is_empty() {
             return true; // indicate that the first element was removed
         }
         self.pending_ids.append(&mut temp_list);
@@ -175,7 +173,7 @@ where
         let mut is_new = false;
         let res = self
             .consumed_streams
-            .entry(name.iter().map(|v| *v).collect())
+            .entry(name.to_vec())
             .or_insert_with(|| {
                 is_new = true;
                 Arc::new(RefCellWrapper {
@@ -202,9 +200,7 @@ where
                 .iter()
                 .filter_map(|(s, v)| {
                     let v = v.ref_cell.borrow();
-                    if v.last_read_id.is_none() {
-                        return None;
-                    }
+                    v.last_read_id?;
                     let v = v.last_read_id.as_ref().unwrap();
                     Some((s.clone(), v.ms, v.seq))
                 })
@@ -250,9 +246,7 @@ fn read_next_data<T: StreamReaderRecord>(
     >,
 ) -> Result<Option<T>, String> {
     let r = stream_reader(name, id, include_id);
-    if r.is_err() {
-        return r;
-    }
+    r.as_ref()?;
     let record = r.as_ref().unwrap();
     if record.is_none() {
         return r;
@@ -466,13 +460,13 @@ where
     ) -> Arc<RefCellWrapper<ConsumerData<T, C>>> {
         let consumer_data = Arc::new(RefCellWrapper {
             ref_cell: RefCell::new(ConsumerData {
-                prefix: prefix.iter().map(|v| *v).collect(),
+                prefix: prefix.to_vec(),
                 consumer: Some(consumer),
                 consumed_streams: HashMap::new(),
                 phantom: std::marker::PhantomData::<T>,
-                window: window,
-                trim: trim,
-                on_record_acked: on_record_acked,
+                window,
+                trim,
+                on_record_acked,
             }),
         });
         self.consumers.push(Arc::downgrade(&consumer_data));
@@ -499,10 +493,10 @@ where
         name: &[u8],
     ) -> &std::sync::Arc<RefCellWrapper<TrackedStream>> {
         self.tracked_streams
-            .entry(name.iter().map(|v| *v).collect())
+            .entry(name.to_vec())
             .or_insert(Arc::new(RefCellWrapper {
                 ref_cell: RefCell::new(TrackedStream {
-                    name: name.iter().map(|v| *v).collect(),
+                    name: name.to_vec(),
                     consumers_data: Vec::new(),
                     stream_trimmer: Arc::clone(&self.stream_trimmer),
                 }),
@@ -525,8 +519,7 @@ where
                 .borrow_mut();
             t_s.consumers_data.push(Arc::downgrade(&stream_info));
         }
-        stream_info.ref_cell.borrow_mut().last_read_id =
-            Some(RedisModuleStreamID { ms: ms, seq: seq });
+        stream_info.ref_cell.borrow_mut().last_read_id = Some(RedisModuleStreamID { ms, seq });
     }
 
     pub(crate) fn clear_tracked_streams(&mut self) {
@@ -550,11 +543,7 @@ where
                 }
                 let v = v.unwrap();
                 let v = v.ref_cell.borrow();
-                if key.starts_with(&v.prefix) {
-                    true
-                } else {
-                    false
-                }
+                key.starts_with(&v.prefix)
             })
             .map(|(_, v)| {
                 let consumer = v.upgrade().unwrap();

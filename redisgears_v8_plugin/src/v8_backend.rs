@@ -119,7 +119,7 @@ impl BackendCtxInterface for V8Backend {
                         .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
                         .is_ok()
                     {
-                        let interrupt_script_ctx_clone = Weak::clone(&script_ctx_weak);
+                        let interrupt_script_ctx_clone = Weak::clone(script_ctx_weak);
                         script_ctx.isolate.request_interrupt(move|isolate|{
                             let script_ctx = match interrupt_script_ctx_clone.upgrade() {
                                 Some(s) => s,
@@ -235,7 +235,7 @@ impl BackendCtxInterface for V8Backend {
                         match get_fatal_failure_policy() {
                             LibraryFatalFailurePolicy::Kill => {
                                 script_ctx.compiled_library_api.log("Fatal error policy do not allow to abort the script, server will be killed shortly.");
-                                curr_limit as usize
+                                curr_limit
                             }
                             LibraryFatalFailurePolicy::Abort => {
                                 let mut new_limit: usize = (curr_limit as f64 * 1.2 ) as usize;
@@ -262,9 +262,7 @@ impl BackendCtxInterface for V8Backend {
             script_ctx
         };
 
-        Ok(Box::new(V8LibraryCtx {
-            script_ctx: script_ctx,
-        }))
+        Ok(Box::new(V8LibraryCtx { script_ctx }))
     }
 
     fn debug(&mut self, args: &[&str]) -> Result<CallResult, GearsApiError> {
@@ -275,7 +273,7 @@ impl BackendCtxInterface for V8Backend {
                 Err(GearsApiError::Msg(
                     "Subcommand was not provided".to_string(),
                 )),
-                |v| Ok(v),
+                Ok,
             )?
             .to_lowercase();
         match sub_command.as_ref() {
@@ -292,16 +290,8 @@ impl BackendCtxInterface for V8Backend {
             ])),
             "isolates_stats" => {
                 let l = self.script_ctx_vec.lock().unwrap();
-                let active = l
-                    .iter()
-                    .filter(|v| v.strong_count() > 0)
-                    .collect::<Vec<&Weak<V8ScriptCtx>>>()
-                    .len() as i64;
-                let not_active = l
-                    .iter()
-                    .filter(|v| v.strong_count() == 0)
-                    .collect::<Vec<&Weak<V8ScriptCtx>>>()
-                    .len() as i64;
+                let active = l.iter().filter(|v| v.strong_count() > 0).count() as i64;
+                let not_active = l.iter().filter(|v| v.strong_count() == 0).count() as i64;
                 Ok(CallResult::Array(vec![
                     CallResult::BulkStr("active".to_string()),
                     CallResult::Long(active),

@@ -93,10 +93,7 @@ struct GearsFunctionCtx {
 
 impl GearsFunctionCtx {
     fn new(func: Box<dyn FunctionCtxInterface>, flags: u8) -> GearsFunctionCtx {
-        GearsFunctionCtx {
-            func: func,
-            flags: flags,
-        }
+        GearsFunctionCtx { func, flags }
     }
 }
 
@@ -123,9 +120,9 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
     match r {
         RedisValue::SimpleString(s) => CallResult::SimpleStr(s),
         RedisValue::SimpleStringStatic(s) => CallResult::SimpleStr(s.to_string()),
-        RedisValue::BulkString(s) => CallResult::BulkStr(s.to_string()),
+        RedisValue::BulkString(s) => CallResult::BulkStr(s),
         RedisValue::BulkRedisString(s) => {
-            let slice = s.as_slice().into_iter().map(|v| *v).collect::<Vec<u8>>();
+            let slice = s.as_slice().to_vec();
             CallResult::StringBuffer(slice)
         }
         RedisValue::StringBuffer(s) => CallResult::StringBuffer(s),
@@ -134,7 +131,7 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
         RedisValue::Array(a) => {
             let res = a
                 .into_iter()
-                .map(|v| redis_value_to_call_reply(v))
+                .map(redis_value_to_call_reply)
                 .collect::<Vec<CallResult>>();
             CallResult::Array(res)
         }
@@ -213,7 +210,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         let stream_registration = if let Some(old_consumer) = self
             .old_lib
             .as_ref()
-            .map_or(None, |v| v.gears_lib_ctx.stream_consumers.get(name))
+            .and_then(|v| v.gears_lib_ctx.stream_consumers.get(name))
         {
             let mut o_c = old_consumer.ref_cell.borrow_mut();
             if o_c.prefix != prefix {
@@ -311,13 +308,13 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         let consumer = if let Some(old_notification_consumer) = self
             .old_lib
             .as_ref()
-            .map_or(None, |v| v.gears_lib_ctx.notifications_consumers.get(name))
+            .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
         {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
             let new_key = match key {
-                RegisteredKeys::Key(s) => ConsumerKey::Key(s.iter().map(|v| *v).collect()),
-                RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.iter().map(|v| *v).collect()),
+                RegisteredKeys::Key(s) => ConsumerKey::Key(s.to_vec()),
+                RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.to_vec()),
             };
             let old_key = o_c.set_key(new_key);
             self.revert_notifications_consumers.push((
@@ -328,15 +325,15 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             Arc::clone(old_notification_consumer)
         } else {
             let globlas = get_globals_mut();
-            let consumer = match key {
+
+            match key {
                 RegisteredKeys::Key(k) => globlas
                     .notifications_ctx
                     .add_consumer_on_key(k, fire_event_callback),
                 RegisteredKeys::Prefix(p) => globlas
                     .notifications_ctx
                     .add_consumer_on_prefix(p, fire_event_callback),
-            };
-            consumer
+            }
         };
 
         self.notifications_consumers
@@ -396,7 +393,7 @@ fn get_libraries() -> MutexGuard<'static, HashMap<String, Arc<GearsLibrary>>> {
 }
 
 pub(crate) fn get_thread_pool() -> &'static Mutex<ThreadPool> {
-    &get_globals().pool.as_ref().unwrap()
+    get_globals().pool.as_ref().unwrap()
 }
 
 struct Sentinel;
@@ -450,7 +447,7 @@ pub(crate) fn call_redis_command(
 }
 
 fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
-    let mut args = args.into_iter().skip(1); // skip the plugin
+    let mut args = args.iter().skip(1); // skip the plugin
     while let Some(config_key) = args.next() {
         let key = match config_key.try_as_str() {
             Ok(s) => s,
@@ -547,7 +544,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
             backends: HashMap::new(),
             plugins: Vec::new(),
             pool: None,
-            mgmt_pool: mgmt_pool,
+            mgmt_pool,
             stream_ctx: StreamReaderCtx::new(
                 Box::new(|key, id, include_id| {
                     // read data from the stream
@@ -565,10 +562,9 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                             }
                         };
 
-                    Ok(match stream_iterator.next() {
-                        Some(e) => Some(GearsStreamRecord { record: e }),
-                        None => None,
-                    })
+                    Ok(stream_iterator
+                        .next()
+                        .map(|e| GearsStreamRecord { record: e }))
                 }),
                 Box::new(|key_name, id| {
                     // trim the stream callback
@@ -604,7 +600,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
             allow_unsafe_redis_commands: false,
         };
 
-        let v8_path = match args.into_iter().next() {
+        let v8_path = match args.iter().next() {
             Some(a) => a,
             None => {
                 ctx.log_warning("Path to libredisgears_v8_plugin.so must be specified");
@@ -665,10 +661,8 @@ const fn js_info(_ctx: &InfoContext, _for_crash_report: bool) {}
 pub(crate) fn verify_oom(flags: u8) -> bool {
     if (flags & FUNCTION_FLAG_NO_WRITES) == 0 {
         // function can potentially write data, make sure we are not OOM.
-        if (flags & FUNCTION_FLAG_ALLOW_OOM) == 0 {
-            if get_ctx().is_oom() {
-                return false;
-            }
+        if (flags & FUNCTION_FLAG_ALLOW_OOM) == 0 && get_ctx().is_oom() {
+            return false;
         }
     }
     true
@@ -740,7 +734,7 @@ fn function_call_command(
     {
         let _notification_blocker = get_notification_blocker();
         function.func.call(&mut RunCtx {
-            ctx: ctx,
+            ctx,
             iter: args_iter,
             flags: function.flags,
             lib_meta_data: Arc::clone(&lib.gears_lib_ctx.meta_data),
@@ -755,7 +749,7 @@ fn library_extract_matadata(
     config: Option<String>,
     user: String,
 ) -> Result<GearsLibraryMataData, RedisError> {
-    let shabeng = match code.split("\n").next() {
+    let shabeng = match code.split('\n').next() {
         Some(s) => s,
         None => return Err(RedisError::Str("could not extract library metadata")),
     };
@@ -764,7 +758,7 @@ fn library_extract_matadata(
     }
 
     let shabeng = shabeng.strip_prefix("#!").unwrap();
-    let mut data = shabeng.split(" ");
+    let mut data = shabeng.split(' ');
     let engine = match data.next() {
         Some(s) => s,
         None => return Err(RedisError::Str("could not extract engine name")),
@@ -775,7 +769,7 @@ fn library_extract_matadata(
             Some(s) => s,
             None => return Err(RedisError::Str("Failed find 'name' property")),
         };
-        let mut prop = d.split("=");
+        let mut prop = d.split('=');
         let prop_name = match prop.next() {
             Some(s) => s,
             None => return Err(RedisError::Str("could not extract property name")),
@@ -797,8 +791,8 @@ fn library_extract_matadata(
         engine: engine.to_string(),
         name: name.to_string(),
         code: code.to_string(),
-        config: config,
-        user: user,
+        config,
+        user,
     })
 }
 
@@ -831,7 +825,7 @@ fn function_call_result_to_redis_result(res: CallResult) -> RedisValue {
         CallResult::Error(s) => RedisValue::SimpleString(s),
         CallResult::Array(arr) => RedisValue::Array(
             arr.into_iter()
-                .map(|v| function_call_result_to_redis_result(v))
+                .map(function_call_result_to_redis_result)
                 .collect::<Vec<RedisValue>>(),
         ),
         _ => panic!("not yet supported"),
@@ -872,7 +866,7 @@ fn function_debug_command(
             "Backend '{}' does not exists",
             backend_name
         ))),
-        |v| Ok(v),
+        Ok,
     )?;
     let mut has_errors = false;
     let args = args
@@ -930,10 +924,10 @@ fn function_list_command(
         let arg_str = arg_str.to_lowercase();
         match arg_str.as_ref() {
             "withcode" => with_code = true,
-            "verbose" => verbosity = verbosity + 1,
-            "v" => verbosity = verbosity + 1,
-            "vv" => verbosity = verbosity + 2,
-            "vvv" => verbosity = verbosity + 3,
+            "verbose" => verbosity += 1,
+            "v" => verbosity += 1,
+            "vv" => verbosity += 2,
+            "vvv" => verbosity += 3,
             "library" => {
                 let lib_name = match args.next_arg() {
                     Ok(n) => match n.try_as_str() {
@@ -952,13 +946,7 @@ fn function_list_command(
         libraries
             .values()
             .filter(|l| match lib {
-                Some(lib_name) => {
-                    if l.gears_lib_ctx.meta_data.name == lib_name {
-                        true
-                    } else {
-                        false
-                    }
-                }
+                Some(lib_name) => l.gears_lib_ctx.meta_data.name == lib_name,
                 None => true,
             })
             .map(|l| {
@@ -1039,75 +1027,64 @@ fn function_list_command(
                                                 .iter()
                                                 .map(|(s, v)| {
                                                     let v = v.ref_cell.borrow();
-                                                    let mut res = Vec::new();
-                                                    res.push(RedisValue::BulkString(
-                                                        "name".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::BulkRedisString(
-                                                        ctx.create_string_from_slice(s),
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "last_processed_time".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Integer(
-                                                        v.last_processed_time as i64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "avg_processed_time".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Float(
-                                                        v.total_processed_time as f64
-                                                            / v.records_processed as f64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "last_lag".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Integer(
-                                                        v.last_lag as i64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "avg_lag".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Float(
-                                                        v.total_lag as f64
-                                                            / v.records_processed as f64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "total_record_processed".to_string(),
-                                                    ));
-                                                    res.push(RedisValue::Integer(
-                                                        v.records_processed as i64,
-                                                    ));
-
-                                                    res.push(RedisValue::BulkString(
-                                                        "id_to_read_from".to_string(),
-                                                    ));
-                                                    match v.last_read_id {
-                                                        Some(id) => {
-                                                            res.push(RedisValue::BulkString(
-                                                                format!("{}-{}", id.ms, id.seq),
-                                                            ))
-                                                        }
-                                                        None => res.push(RedisValue::BulkString(
-                                                            "None".to_string(),
-                                                        )),
-                                                    }
-                                                    res.push(RedisValue::BulkString(
-                                                        "last_error".to_string(),
-                                                    ));
-                                                    match &v.last_error {
-                                                        Some(err) => res.push(
-                                                            RedisValue::BulkString(err.to_string()),
+                                                    let mut res = vec![
+                                                        RedisValue::BulkString("name".to_string()),
+                                                        RedisValue::BulkRedisString(
+                                                            ctx.create_string_from_slice(s),
                                                         ),
-                                                        None => res.push(RedisValue::BulkString(
-                                                            "None".to_string(),
-                                                        )),
-                                                    }
+                                                        RedisValue::BulkString(
+                                                            "last_processed_time".to_string(),
+                                                        ),
+                                                        RedisValue::Integer(
+                                                            v.last_processed_time as i64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "avg_processed_time".to_string(),
+                                                        ),
+                                                        RedisValue::Float(
+                                                            v.total_processed_time as f64
+                                                                / v.records_processed as f64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "last_lag".to_string(),
+                                                        ),
+                                                        RedisValue::Integer(v.last_lag as i64),
+                                                        RedisValue::BulkString(
+                                                            "avg_lag".to_string(),
+                                                        ),
+                                                        RedisValue::Float(
+                                                            v.total_lag as f64
+                                                                / v.records_processed as f64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "total_record_processed".to_string(),
+                                                        ),
+                                                        RedisValue::Integer(
+                                                            v.records_processed as i64,
+                                                        ),
+                                                        RedisValue::BulkString(
+                                                            "id_to_read_from".to_string(),
+                                                        ),
+                                                        match v.last_read_id {
+                                                            Some(id) => RedisValue::BulkString(
+                                                                format!("{}-{}", id.ms, id.seq),
+                                                            ),
+                                                            None => RedisValue::BulkString(
+                                                                "None".to_string(),
+                                                            ),
+                                                        },
+                                                        RedisValue::BulkString(
+                                                            "last_error".to_string(),
+                                                        ),
+                                                        match &v.last_error {
+                                                            Some(err) => RedisValue::BulkString(
+                                                                err.to_string(),
+                                                            ),
+                                                            None => RedisValue::BulkString(
+                                                                "None".to_string(),
+                                                            ),
+                                                        },
+                                                    ];
                                                     if verbosity > 2 {
                                                         res.push(RedisValue::BulkString(
                                                             "pending_ids".to_string(),
@@ -1254,13 +1231,15 @@ pub(crate) fn function_load_intrernal(
     };
     let mut libraries = get_libraries();
     let old_lib = libraries.remove(&meta_data.name);
-    if old_lib.is_some() && !upgrade {
-        let err = Err(RedisError::String(format!(
-            "Library {} already exists",
-            &meta_data.name
-        )));
-        libraries.insert(meta_data.name, old_lib.unwrap());
-        return err;
+    if !upgrade {
+        if let Some(old_lib) = old_lib {
+            let err = Err(RedisError::String(format!(
+                "Library {} already exists",
+                &meta_data.name
+            )));
+            libraries.insert(meta_data.name, old_lib);
+            return err;
+        }
     }
     let mut gears_library = GearsLibraryCtx {
         meta_data: Arc::new(meta_data),
@@ -1270,7 +1249,7 @@ pub(crate) fn function_load_intrernal(
         notifications_consumers: HashMap::new(),
         revert_stream_consumers: Vec::new(),
         revert_notifications_consumers: Vec::new(),
-        old_lib: old_lib.map_or(None, |v| Some(v)),
+        old_lib,
     };
     let res = lib_ctx.load_library(&mut gears_library);
     if let Err(err) = res {
@@ -1283,9 +1262,9 @@ pub(crate) fn function_load_intrernal(
         function_load_revert(gears_library, &mut libraries);
         return ret;
     }
-    if gears_library.functions.len() == 0
-        && gears_library.stream_consumers.len() == 0
-        && gears_library.notifications_consumers.len() == 0
+    if gears_library.functions.is_empty()
+        && gears_library.stream_consumers.is_empty()
+        && gears_library.notifications_consumers.is_empty()
     {
         function_load_revert(gears_library, &mut libraries);
         return Err(RedisError::Str(
@@ -1298,8 +1277,8 @@ pub(crate) fn function_load_intrernal(
         Arc::new(GearsLibrary {
             gears_lib_ctx: gears_library,
             _lib_ctx: lib_ctx,
-            compile_lib_internals: compile_lib_internals,
-            gears_box_lib: gears_box_lib,
+            compile_lib_internals,
+            gears_box_lib,
         }),
     );
     Ok(RedisValue::SimpleStringStatic("OK"))
@@ -1358,9 +1337,9 @@ fn get_args_values<'a>(
         Err(_) => return Err(RedisError::Str("lib code must a valid string")),
     };
     Ok(FunctionLoadArgs {
-        upgrade: upgrade,
-        config: config,
-        last_arg: last_arg,
+        upgrade,
+        config,
+        last_arg,
     })
 }
 
@@ -1434,9 +1413,9 @@ fn function_install_lib_command(
 
     let calculated_sha = sha256::digest(function_code.to_string());
     if calculated_sha != gear_box_lib.installed_version_info.sha256 {
-        return Err(RedisError::String(format!(
-            "File validation failure, calculated sha256sum does not match the expected value."
-        )));
+        return Err(RedisError::Str(
+            "File validation failure, calculated sha256sum does not match the expected value.",
+        ));
     }
 
     let user = ctx.get_current_user()?;
@@ -1514,14 +1493,14 @@ fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 fn on_stream_touched(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if get_ctx().is_primary() {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_touched(event, &key);
+        stream_ctx.on_stream_touched(event, key);
     }
 }
 
 fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if event == "del" {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
-        stream_ctx.on_stream_deleted(event, &key);
+        stream_ctx.on_stream_deleted(event, key);
     }
 }
 
@@ -1632,8 +1611,8 @@ fn on_module_change(ctx: &Context, _event_data: ServerEventData) {
 
 fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
     match event_data {
-        ServerEventData::FlushEvent(loading_sub_event) => match loading_sub_event {
-            FlushSubevent::Started => {
+        ServerEventData::FlushEvent(loading_sub_event) => {
+            if let FlushSubevent::Started = loading_sub_event {
                 ctx.log_notice("Got a flush started event");
                 let globals = get_globals_mut();
                 for lib in globals.libraries.lock().unwrap().values() {
@@ -1644,8 +1623,7 @@ fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
                 }
                 globals.stream_ctx.clear_tracked_streams();
             }
-            _ => {}
-        },
+        }
         _ => panic!("got unexpected sub event"),
     }
 }

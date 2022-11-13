@@ -31,9 +31,9 @@ impl BackgroundRunCtx {
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunCtx {
         BackgroundRunCtx {
-            user: user,
+            user,
             lib_meta_data: Arc::clone(lib_meta_data),
-            call_options: call_options,
+            call_options,
         }
     }
 }
@@ -50,10 +50,10 @@ impl Record for GearsRemoteFunctionInputsRecord {
                 .iter()
                 .map(|v| {
                     let buff = match v {
-                        RemoteFunctionData::Binary(b) => &b,
+                        RemoteFunctionData::Binary(b) => b,
                         RemoteFunctionData::String(s) => s.as_bytes(),
                     };
-                    RedisValue::StringBuffer(buff.into_iter().map(|v| *v).collect())
+                    RedisValue::StringBuffer(buff.to_vec())
                 })
                 .collect(),
         )
@@ -81,7 +81,7 @@ impl Record for GearsRemoteFunctionOutputRecord {
             RemoteFunctionData::Binary(b) => b,
             RemoteFunctionData::String(s) => s.as_bytes(),
         };
-        RedisValue::StringBuffer(buff.into_iter().map(|v| *v).collect())
+        RedisValue::StringBuffer(buff.to_vec())
     }
 
     fn hash_slot(&self) -> usize {
@@ -195,7 +195,7 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
             job_name: job_name.to_string(),
             user: self.user.clone(),
         };
-        let input_record = GearsRemoteFunctionInputsRecord { inputs: inputs };
+        let input_record = GearsRemoteFunctionInputsRecord { inputs };
         mr::libmr::remote_task::run_on_key(
             key,
             task,
@@ -222,13 +222,13 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
             job_name: job_name.to_string(),
             user: self.user.clone(),
         };
-        let input_record = GearsRemoteFunctionInputsRecord { inputs: inputs };
+        let input_record = GearsRemoteFunctionInputsRecord { inputs };
         mr::libmr::remote_task::run_on_all_shards(
             task,
             input_record,
             move |results: Vec<GearsRemoteFunctionOutputRecord>, errors| {
                 let errors: Vec<GearsApiError> =
-                    errors.into_iter().map(|e| GearsApiError::Msg(e)).collect();
+                    errors.into_iter().map(GearsApiError::Msg).collect();
                 let results: Vec<RemoteFunctionData> =
                     results.into_iter().map(|r| r.output).collect();
                 on_done(results, errors);

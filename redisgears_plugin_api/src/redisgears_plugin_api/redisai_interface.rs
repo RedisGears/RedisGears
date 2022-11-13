@@ -1,5 +1,8 @@
 use crate::redisgears_plugin_api::GearsApiError;
 
+type RedisAIOnDoneCallback =
+    Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>;
+
 pub trait AITensorInterface {
     fn get_data(&self) -> &[u8];
     fn dims(&self) -> Vec<i64>;
@@ -13,19 +16,13 @@ pub trait AIModelRunnerInterface {
         tensor: &dyn AITensorInterface,
     ) -> Result<(), GearsApiError>;
     fn add_output(&mut self, name: &str) -> Result<(), GearsApiError>;
-    fn run(
-        &mut self,
-        on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>,
-    );
+    fn run(&mut self, on_done: RedisAIOnDoneCallback);
 }
 
 pub trait AIScriptRunnerInterface {
     fn add_input(&mut self, tensor: &dyn AITensorInterface) -> Result<(), GearsApiError>;
     fn add_output(&mut self) -> Result<(), GearsApiError>;
-    fn run(
-        &mut self,
-        on_done: Box<dyn FnOnce(Result<Vec<Box<dyn AITensorInterface + Send>>, GearsApiError>)>,
-    );
+    fn run(&mut self, on_done: RedisAIOnDoneCallback);
 }
 
 pub trait AIModelInterface {

@@ -88,7 +88,7 @@ pub(crate) fn gears_box_get_library(library_id: &str) -> Result<GearsBoxLibraryI
     );
     let installed_version = do_http_get(installed_version_url)?;
     Ok(GearsBoxLibraryInfo {
-        general_info: general_info,
+        general_info,
         installed_version_info: installed_version,
     })
 }

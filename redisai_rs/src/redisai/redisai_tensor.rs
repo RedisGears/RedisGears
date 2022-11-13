@@ -38,6 +38,10 @@ impl RedisAITensor {
         unsafe { RedisAI_TensorLength.unwrap()(self.inner_tensor) }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn num_dims(&self) -> usize {
         unsafe { RedisAI_TensorNumDims.unwrap()(self.inner_tensor) as usize }
     }

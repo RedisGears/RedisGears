@@ -58,10 +58,8 @@ fn send_reply(
             ctx_scope,
             &isolate_scope.new_string("__reply_type").to_value(),
         );
-        if reply_type.is_some() {
-            let reply_type = reply_type.unwrap();
-            if reply_type.is_string() {
-                let reply_type_v8_str = reply_type.to_utf8().unwrap();
+        if let Some(t) = reply_type {
+            if let Some(reply_type_v8_str) = t.to_utf8() {
                 if reply_type_v8_str.as_str() == "status" {
                     client.reply_with_simple_string(val.to_utf8().unwrap().as_str());
                     return;
@@ -136,16 +134,15 @@ impl V8InternalFunction {
                 Some(args)
             };
 
-            let args_ref = args.as_ref().map_or(None, |v| {
-                let s = v.iter().map(|v| v).collect::<Vec<&V8LocalValue>>();
-                Some(s)
-            });
+            let args_ref = args
+                .as_ref()
+                .map(|v| v.iter().collect::<Vec<&V8LocalValue>>());
 
             self.script_ctx.before_run();
-            let res = self.persisted_function.as_local(&isolate_scope).call(
-                &ctx_scope,
-                args_ref.as_ref().map_or(None, |v| Some(v.as_slice())),
-            );
+            let res = self
+                .persisted_function
+                .as_local(&isolate_scope)
+                .call(&ctx_scope, args_ref.as_deref());
             self.script_ctx.after_run();
             res
         };
@@ -241,19 +238,18 @@ impl V8InternalFunction {
                 Some(args)
             };
 
-            let args_ref = args.as_ref().map_or(None, |v| {
-                let s = v.iter().map(|v| v).collect::<Vec<&V8LocalValue>>();
-                Some(s)
-            });
+            let args_ref = args
+                .as_ref()
+                .map(|v| v.iter().collect::<Vec<&V8LocalValue>>());
 
             ctx_scope.set_private_data(0, Some(&true)); // indicate we are blocked
 
             self.script_ctx.before_run();
             self.script_ctx.after_lock_gil();
-            let res = self.persisted_function.as_local(&isolate_scope).call(
-                &ctx_scope,
-                args_ref.as_ref().map_or(None, |v| Some(v.as_slice())),
-            );
+            let res = self
+                .persisted_function
+                .as_local(&isolate_scope)
+                .call(&ctx_scope, args_ref.as_deref());
             self.script_ctx.before_release_gil();
             self.script_ctx.after_run();
 
@@ -347,18 +343,18 @@ impl V8Function {
         client: &Arc<RefCell<RedisClient>>,
         is_async: bool,
         decode_arguments: bool,
-    ) -> V8Function {
+    ) -> Self {
         persisted_function.forget();
         persisted_client.forget();
-        V8Function {
+        Self {
             inner_function: Arc::new(V8InternalFunction {
                 script_ctx: Arc::clone(script_ctx),
-                persisted_function: persisted_function,
-                persisted_client: persisted_client,
+                persisted_function,
+                persisted_client,
             }),
             client: Arc::clone(client),
-            is_async: is_async,
-            decode_arguments: decode_arguments,
+            is_async,
+            decode_arguments,
         }
     }
 }
@@ -380,7 +376,7 @@ impl FunctionCtxInterface for V8Function {
             // if we are going to the background we must consume all the arguments
             let mut args = Vec::new();
             while let Some(a) = run_ctx.next_arg() {
-                args.push(a.into_iter().map(|v| *v).collect::<Vec<u8>>());
+                args.push(a.to_vec());
             }
             let bg_redis_client = run_ctx.get_redis_client().get_background_redis_client();
             let decode_arguments = self.decode_arguments;

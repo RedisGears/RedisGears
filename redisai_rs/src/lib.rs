@@ -17,7 +17,7 @@ extern "C" {
 static mut IS_INIT: bool = false;
 
 pub(crate) fn redisai_is_init() -> bool {
-    return unsafe { IS_INIT };
+    unsafe { IS_INIT }
 }
 
 pub fn redisai_init(ctx: &Context) -> Result<(), RedisAIError> {

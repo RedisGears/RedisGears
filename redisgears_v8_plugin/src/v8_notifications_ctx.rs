@@ -46,7 +46,7 @@ impl V8NotificationsCtxInternal {
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
             let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);
-            let trycatch = isolate_scope.new_try_catch();
+            let try_catch = isolate_scope.new_try_catch();
 
             let notification_data = isolate_scope.new_object();
             notification_data.set(
@@ -103,7 +103,7 @@ impl V8NotificationsCtxInternal {
                         } else {
                             let ack_callback_resolve = Arc::new(RefCell::new(V8AckCallback {
                                 internal: Some(V8AckCallbackInternal {
-                                    ack_callback: ack_callback,
+                                    ack_callback,
                                     locker: notification_ctx.get_background_redis_client(),
                                 }),
                             }));
@@ -141,7 +141,7 @@ impl V8NotificationsCtxInternal {
                     }
                 }
                 None => {
-                    let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
+                    let error_msg = get_exception_msg(&self.script_ctx.isolate, try_catch);
                     Some(Err(error_msg))
                 }
             }
@@ -211,8 +211,8 @@ impl V8NotificationsCtxInternal {
                         } else {
                             let ack_callback_resolve = Arc::new(RefCell::new(V8AckCallback {
                                 internal: Some(V8AckCallbackInternal {
-                                    ack_callback: ack_callback,
-                                    locker: locker,
+                                    ack_callback,
+                                    locker,
                                 }),
                             }));
                             let ack_callback_reject = Arc::clone(&ack_callback_resolve);
@@ -272,14 +272,14 @@ impl V8NotificationsCtx {
         mut persisted_function: V8PersistValue,
         script_ctx: &Arc<V8ScriptCtx>,
         is_async: bool,
-    ) -> V8NotificationsCtx {
+    ) -> Self {
         persisted_function.forget();
-        V8NotificationsCtx {
+        Self {
             internal: Arc::new(V8NotificationsCtxInternal {
-                persisted_function: persisted_function,
+                persisted_function,
                 script_ctx: Arc::clone(script_ctx),
             }),
-            is_async: is_async,
+            is_async,
         }
     }
 }
@@ -293,7 +293,7 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
     ) -> Option<Box<dyn Any>> {
         Some(Box::new(V8NotificationCtxData {
             event: event.to_string(),
-            key: key.iter().map(|v| *v).collect(),
+            key: key.to_vec(),
         }))
     }
 

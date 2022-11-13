@@ -19,12 +19,12 @@ mod v8_stream_ctx;
 use crate::v8_backend::V8Backend;
 use std::sync::{Arc, Mutex};
 
-pub(crate) fn get_exception_msg(isolate: &V8Isolate, trycatch: V8TryCatch) -> String {
-    if trycatch.has_terminated() {
+pub(crate) fn get_exception_msg(isolate: &V8Isolate, try_catch: V8TryCatch) -> String {
+    if try_catch.has_terminated() {
         isolate.cancel_terminate_execution();
         "Err Execution was terminated due to OOM or timeout".to_string()
     } else {
-        let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
+        let error_utf8 = try_catch.get_exception().to_utf8().unwrap();
         error_utf8.as_str().to_string()
     }
 }
@@ -32,15 +32,15 @@ pub(crate) fn get_exception_msg(isolate: &V8Isolate, trycatch: V8TryCatch) -> St
 pub(crate) fn get_exception_v8_value<'isolate_scope, 'isolate>(
     isolate: &V8Isolate,
     isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
-    trycatch: V8TryCatch<'isolate_scope, 'isolate>,
+    try_catch: V8TryCatch<'isolate_scope, 'isolate>,
 ) -> V8LocalValue<'isolate_scope, 'isolate> {
-    if trycatch.has_terminated() {
+    if try_catch.has_terminated() {
         isolate.cancel_terminate_execution();
         isolate_scope
             .new_string("Err Execution was terminated due to OOM or timeout")
             .to_value()
     } else {
-        trycatch.get_exception()
+        try_catch.get_exception()
     }
 }
 

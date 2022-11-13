@@ -31,7 +31,7 @@ impl StreamRunCtx {
     fn new(lib_meta_data: &Arc<GearsLibraryMataData>, flags: u8) -> StreamRunCtx {
         StreamRunCtx {
             lib_meta_data: Arc::clone(lib_meta_data),
-            flags: flags,
+            flags,
         }
     }
 }
@@ -95,10 +95,10 @@ impl GearsStreamConsumer {
         let mut permissions = AclPermissions::new();
         permissions.add_full_permission();
         GearsStreamConsumer {
-            ctx: ctx,
+            ctx,
             lib_meta_data: Arc::clone(user),
-            flags: flags,
-            permissions: permissions,
+            flags,
+            permissions,
         }
     }
 }
@@ -139,11 +139,9 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
                 }),
             )
         };
-        res.map_or(None, |r| {
-            Some(match r {
-                StreamRecordAck::Ack => StreamReaderAck::Ack,
-                StreamRecordAck::Nack(msg) => StreamReaderAck::Nack(msg),
-            })
+        res.map(|r| match r {
+            StreamRecordAck::Ack => StreamReaderAck::Ack,
+            StreamRecordAck::Nack(msg) => StreamReaderAck::Nack(msg),
         })
     }
 }
