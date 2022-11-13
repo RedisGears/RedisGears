@@ -1,4 +1,5 @@
 use crate::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
+use crate::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use crate::redisgears_plugin_api::CallResult;
 use crate::redisgears_plugin_api::GearsApiError;
 use std::alloc::GlobalAlloc;
@@ -7,6 +8,12 @@ pub trait CompiledLibraryInterface {
     fn log(&self, msg: &str);
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>);
     fn get_maxmemory(&self) -> usize;
+    fn redisai_create_tensor(
+        &self,
+        data_type: &str,
+        dims: &[i64],
+        data: &[u8],
+    ) -> Result<Box<dyn AITensorInterface>, GearsApiError>;
 }
 
 #[derive(Clone)]

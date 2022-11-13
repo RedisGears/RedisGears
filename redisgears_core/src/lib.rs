@@ -493,6 +493,10 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
 
 fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     mr_init(ctx, 1);
+    match redisai_rs::redisai_init(ctx) {
+        Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),
+        Err(_) => ctx.log_notice("Failed loading RedisAI API."),
+    }
     crate::background_run_ctx::GearsRemoteFunctionInputsRecord::register();
     crate::background_run_ctx::GearsRemoteFunctionOutputRecord::register();
     crate::background_run_ctx::GearsRemoteTask::register();
@@ -850,6 +854,16 @@ fn function_debug_command(
         "allow_unsafe_redis_commands" => {
             get_globals_mut().allow_unsafe_redis_commands = true;
             return Ok(RedisValue::SimpleStringStatic("OK"));
+        }
+        "help" => {
+            return Ok(RedisValue::Array(
+                vec![
+                    RedisValue::BulkString("allow_unsafe_redis_commands - enable the option to execute unsafe redis commands from within a function.".to_string()),
+                    RedisValue::BulkString("panic_on_thread_pool - panic on thread pool to check panic reaction.".to_string()),
+                    RedisValue::BulkString("help - print this message.".to_string()),
+                    RedisValue::BulkString("<engine> [...] - engine specific debug command.".to_string()),
+                ]
+            ));
         }
         _ => (),
     }
@@ -1608,6 +1622,14 @@ fn on_loading_event(ctx: &Context, event_data: ServerEventData) {
     }
 }
 
+fn on_module_change(ctx: &Context, _event_data: ServerEventData) {
+    ctx.log_notice("Got module load event, try to reload modules API.");
+    match redisai_rs::redisai_init(ctx) {
+        Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),
+        Err(_) => ctx.log_notice("Failed loading RedisAI API."),
+    }
+}
+
 fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
     match event_data {
         ServerEventData::FlushEvent(loading_sub_event) => match loading_sub_event {
@@ -1652,6 +1674,7 @@ redis_module! {
         [@RuleChanged: on_role_changed],
         [@Loading: on_loading_event],
         [@Flush: on_flush_event],
+        [@ModuleChange: on_module_change],
     ],
     string_configurations: [
         &get_globals().config.gears_box_address,

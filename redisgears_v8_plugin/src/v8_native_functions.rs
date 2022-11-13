@@ -11,6 +11,8 @@ use v8_rs::v8::{
     v8_utf8::V8LocalUtf8, v8_value::V8LocalValue, v8_version,
 };
 
+use crate::v8_redisai::{get_redisai_api, get_redisai_client};
+
 use crate::v8_backend::log;
 use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
@@ -172,7 +174,7 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
 }
 
 pub(crate) struct RedisClient {
-    client: Option<Box<dyn RedisClientCtxInterface>>,
+    pub(crate) client: Option<Box<dyn RedisClientCtxInterface>>,
     allow_block: Option<bool>,
 }
 
@@ -249,14 +251,14 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
             .new_native_function(move |args, isolate_scope, ctx_scope| {
                 if args.is_empty() {
                     isolate_scope.raise_exception_str(
-                        "Wrong number of arguments to 'isolate_scopelock' function",
+                        "Wrong number of arguments to 'block' function",
                     );
                     return None;
                 }
                 let f = args.get(0);
                 if !f.is_function() {
                     isolate_scope
-                        .raise_exception_str("Argument to 'isolate_scopelock' must be a function");
+                        .raise_exception_str("Argument to 'block' must be a function");
                     return None;
                 }
 
@@ -313,7 +315,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
         &ctx_scope
             .new_native_function(move |args, isolate, ctx_scope| {
                 if args.len() < 2 {
-                    isolate.raise_exception_str("Wrong number of arguments to 'isolate_scopelock' function");
+                    isolate.raise_exception_str("Wrong number of arguments to 'run_on_key' function");
                     return None;
                 }
 
@@ -417,7 +419,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
         &ctx_scope
             .new_native_function(move |args, isolate, ctx_scope| {
                 if args.is_empty() {
-                    isolate.raise_exception_str("Wrong number of arguments to 'isolate_scopelock' function");
+                    isolate.raise_exception_str("Wrong number of arguments to 'block' function");
                     return None;
                 }
 
@@ -541,7 +543,7 @@ fn add_call_function(
                     let arg = if arg.is_string() {
                         arg.to_utf8().unwrap().as_str().as_bytes().to_vec()
                     } else if arg.is_array_buffer(){
-                        arg.as_array_buffer().data().clone().to_vec()
+                        arg.as_array_buffer().data().to_vec()
                     } else {
                         isolate_scope.raise_exception_str("Bad argument was given to 'call', argument must be either String or ArrayBuffer");
                         return None;
@@ -612,6 +614,13 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                 Some(isolate_scope.new_bool(res))
             })
             .to_value(),
+    );
+
+    let redisai_client = get_redisai_client(script_ctx, isolate_scope, ctx_scope, redis_client);
+    client.set(
+        ctx_scope,
+        &isolate_scope.new_string("redisai").to_value(),
+        &redisai_client,
     );
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
@@ -1072,7 +1081,7 @@ pub(crate) fn initialize_globals(
                                                 on_done(Ok(v));
                                             } else {
                                                 let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
+                                                on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
                                             }
                                             None
                                         });
@@ -1154,6 +1163,13 @@ pub(crate) fn initialize_globals(
                 None
             })
             .to_value(),
+    );
+
+    let redis_ai = get_redisai_api(script_ctx, isolate_scope, ctx_scope);
+    redis.set(
+        ctx_scope,
+        &isolate_scope.new_string("redisai").to_value(),
+        &redis_ai,
     );
 
     globals.set(

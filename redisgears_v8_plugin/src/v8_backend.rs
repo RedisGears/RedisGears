@@ -11,6 +11,7 @@ use v8_rs::v8::{isolate::V8Isolate, v8_init_with_error_handlers};
 use crate::v8_native_functions::initialize_globals;
 
 use crate::get_exception_msg;
+use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -165,7 +166,7 @@ impl BackendCtxInterface for V8Backend {
         );
 
         let script_ctx = {
-            let (ctx, script) = {
+            let (ctx, script, tensor_obj_template) = {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
@@ -185,9 +186,16 @@ impl BackendCtxInterface for V8Backend {
                 };
 
                 let script = script.persist();
-                (ctx, script)
+                let tensor_obj_template = get_tensor_object_template(&isolate_scope);
+                (ctx, script, tensor_obj_template)
             };
-            let script_ctx = Arc::new(V8ScriptCtx::new(isolate, ctx, script, compiled_library_api));
+            let script_ctx = Arc::new(V8ScriptCtx::new(
+                isolate,
+                ctx,
+                script,
+                tensor_obj_template,
+                compiled_library_api,
+            ));
             let len = {
                 let mut l = self.script_ctx_vec.lock().unwrap();
                 l.push(Arc::downgrade(&script_ctx));
@@ -269,6 +277,17 @@ impl BackendCtxInterface for V8Backend {
             )?
             .to_lowercase();
         match sub_command.as_ref() {
+            "help" => Ok(CallResult::Array(vec![
+                CallResult::BulkStr("isolates_stats - statistics about isolates.".to_string()),
+                CallResult::BulkStr(
+                    "isolates_strong_count - For each isolate returns its strong ref count value."
+                        .to_string(),
+                ),
+                CallResult::BulkStr(
+                    "isolates_gc - Runs GC to clear none active isolates.".to_string(),
+                ),
+                CallResult::BulkStr("help - Print this message.".to_string()),
+            ])),
             "isolates_stats" => {
                 let l = self.script_ctx_vec.lock().unwrap();
                 let active = l.iter().filter(|v| v.strong_count() > 0).count() as i64;

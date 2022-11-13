@@ -1,5 +1,8 @@
 use crate::{execute_on_pool, get_ctx, get_globals};
+use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
+use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use std::collections::LinkedList;
 use std::sync::{Arc, Mutex};
 
@@ -84,5 +87,19 @@ impl CompiledLibraryInterface for CompiledLibraryAPI {
 
     fn get_maxmemory(&self) -> usize {
         get_globals().config.library_maxmemory.size as usize
+    }
+
+    fn redisai_create_tensor(
+        &self,
+        data_type: &str,
+        dims: &[i64],
+        data: &[u8],
+    ) -> Result<Box<dyn AITensorInterface>, GearsApiError> {
+        let mut tensor =
+            RedisAITensor::create(data_type, dims).map_err(|e| GearsApiError::Msg(e))?;
+        match tensor.set_data(data) {
+            Ok(_) => Ok(Box::new(tensor)),
+            Err(e) => Err(GearsApiError::Msg(e)),
+        }
     }
 }

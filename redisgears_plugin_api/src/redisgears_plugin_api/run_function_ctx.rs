@@ -1,10 +1,12 @@
+use crate::redisgears_plugin_api::redisai_interface::{AIModelInterface, AIScriptInterface};
 use crate::redisgears_plugin_api::CallResult;
 use crate::redisgears_plugin_api::GearsApiError;
 
 pub trait RedisClientCtxInterface: Send + Sync {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult;
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface>;
-    fn as_redis_client(&self) -> &dyn RedisClientCtxInterface;
+    fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError>;
+    fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError>;
 }
 
 pub trait ReplyCtxInterface: Send + Sync {

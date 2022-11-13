@@ -243,3 +243,30 @@ redis.register_remote_function('test', (async_client, key) => {
 });
     """
     env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Remote function must be async")
+
+@gearsTest()
+def testRedisAITensorCreateWithoutRedisAI(env):
+    """#!js name=foo
+redis.register_function("test", (client) => {
+    return redis.redisai.create_tensor("FLOAT", [1, 3], new Uint8Array(16).buffer);
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('RedisAI is not initialize')
+
+@gearsTest()
+def testRedisAIModelCreateWithoutRedisAI(env):
+    """#!js name=foo
+redis.register_function("test", (client) => {
+    return client.redisai.open_model("foo");
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('RedisAI is not initialize')
+
+@gearsTest()
+def testRedisAIScriptCreateWithoutRedisAI(env):
+    """#!js name=foo
+redis.register_function("test", (client) => {
+    return client.redisai.open_script("foo");
+});
+    """
+    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('RedisAI is not initialize')

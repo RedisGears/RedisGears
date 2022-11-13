@@ -4,10 +4,13 @@ use redis_module::{
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES, run_function_ctx::BackgroundRunFunctionCtxInterface,
+    load_library_ctx::FUNCTION_FLAG_NO_WRITES, redisai_interface::AIModelInterface,
+    redisai_interface::AIScriptInterface, run_function_ctx::BackgroundRunFunctionCtxInterface,
     run_function_ctx::RedisClientCtxInterface, run_function_ctx::ReplyCtxInterface,
     run_function_ctx::RunFunctionCtxInterface, CallResult, GearsApiError,
 };
+
+use redis_module::Status;
 
 use crate::{call_redis_command, get_globals, GearsLibraryMataData};
 
@@ -15,7 +18,12 @@ use std::slice::Iter;
 
 use crate::background_run_ctx::BackgroundRunCtx;
 
+use crate::get_ctx;
+
 use std::sync::Arc;
+
+use redisai_rs::redisai::redisai_model::RedisAIModel;
+use redisai_rs::redisai::redisai_script::RedisAIScript;
 
 #[derive(Clone)]
 pub(crate) struct RedisClientCallOptions {
@@ -80,16 +88,62 @@ impl RedisClientCtxInterface for RedisClient {
         call_redis_command(user, command, &self.call_options.call_options, args)
     }
 
-    fn as_redis_client(&self) -> &dyn RedisClientCtxInterface {
-        self
-    }
-
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
         Box::new(BackgroundRunCtx::new(
             self.user.clone(),
             &self.lib_meta_data,
             self.call_options.clone(),
         ))
+    }
+
+    fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
+        let user = match self.user.as_ref() {
+            Some(u) => Some(u),
+            None => Some(&self.lib_meta_data.user),
+        };
+        let ctx = match user {
+            Some(u) => {
+                let ctx = &get_globals().authenticated_redis_ctx;
+                if ctx.autenticate_user(u) == Status::Err {
+                    return Err(GearsApiError::Msg(format!(
+                        "Failed authenticate user {}",
+                        u
+                    )));
+                }
+                ctx
+            }
+            None => get_ctx(),
+        };
+        let res = RedisAIModel::open_from_key(ctx, name);
+        match res {
+            Ok(res) => Ok(Box::new(res)),
+            Err(e) => Err(GearsApiError::Msg(e)),
+        }
+    }
+
+    fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
+        let user = match self.user.as_ref() {
+            Some(u) => Some(u),
+            None => Some(&self.lib_meta_data.user),
+        };
+        let ctx = match user {
+            Some(u) => {
+                let ctx = &get_globals().authenticated_redis_ctx;
+                if ctx.autenticate_user(u) == Status::Err {
+                    return Err(GearsApiError::Msg(format!(
+                        "Failed authenticate user {}",
+                        u
+                    )));
+                }
+                ctx
+            }
+            None => get_ctx(),
+        };
+        let res = RedisAIScript::open_from_key(ctx, name);
+        match res {
+            Ok(res) => Ok(Box::new(res)),
+            Err(e) => Err(GearsApiError::Msg(e)),
+        }
     }
 }
 
