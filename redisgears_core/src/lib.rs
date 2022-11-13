@@ -21,8 +21,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LibraryCtxInterface, load_library_ctx::LoadLibraryCtxInterface,
     load_library_ctx::RegisteredKeys, load_library_ctx::RemoteFunctionCtx,
     load_library_ctx::FUNCTION_FLAG_ALLOW_OOM, load_library_ctx::FUNCTION_FLAG_NO_WRITES,
-    load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS, stream_ctx::StreamCtxInterface, CallResult,
-    GearsApiError,
+    stream_ctx::StreamCtxInterface, CallResult, GearsApiError,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
@@ -39,11 +38,8 @@ use crate::stream_reader::{ConsumerData, StreamReaderCtx};
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::compiled_library_api::CompiledLibraryAPI;
 use crate::compiled_library_api::CompiledLibraryInternals;
-use crate::gears_box::{
-    do_http_get_text, gears_box_get_library, gears_box_search, GearsBoxLibraryInfo,
-};
+use crate::gears_box::{gears_box_search, GearsBoxLibraryInfo};
 use crate::keys_notifications::{KeysNotificationsCtx, NotificationCallback, NotificationConsumer};
 use crate::keys_notifications_ctx::KeysNotificationsRunCtx;
 use crate::stream_run_ctx::{GearsStreamConsumer, GearsStreamRecord};
@@ -62,6 +58,9 @@ mod background_run_ctx;
 mod background_run_scope_guard;
 mod compiled_library_api;
 mod config;
+mod function_del_command;
+mod function_list_command;
+mod function_load_command;
 mod gears_box;
 mod keys_notifications;
 mod keys_notifications_ctx;
@@ -490,13 +489,23 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
 
 fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     mr_init(ctx, 1);
+    background_run_ctx::GearsRemoteFunctionInputsRecord::register();
+    background_run_ctx::GearsRemoteFunctionOutputRecord::register();
+    background_run_ctx::GearsRemoteTask::register();
+
+    function_load_command::GearsFunctionLoadInputRecord::register();
+    function_load_command::GearsFunctionLoadOutputRecord::register();
+    function_load_command::GearsFunctionLoadRemoteTask::register();
+
+    function_del_command::GearsFunctionDelInputRecord::register();
+    function_del_command::GearsFunctionDelOutputRecord::register();
+    function_del_command::GearsFunctionDelRemoteTask::register();
+
     match redisai_rs::redisai_init(ctx) {
         Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),
         Err(_) => ctx.log_notice("Failed loading RedisAI API."),
     }
-    crate::background_run_ctx::GearsRemoteFunctionInputsRecord::register();
-    crate::background_run_ctx::GearsRemoteFunctionOutputRecord::register();
-    crate::background_run_ctx::GearsRemoteTask::register();
+
     ctx.log_notice(&format!(
         "RedisGears v{}, sha='{}', branch='{}', built_on='{}.{}.{}'.",
         VERSION_STR.unwrap_or_default(),
@@ -744,77 +753,6 @@ fn function_call_command(
     Ok(RedisValue::NoReply)
 }
 
-fn library_extract_matadata(
-    code: &str,
-    config: Option<String>,
-    user: String,
-) -> Result<GearsLibraryMataData, RedisError> {
-    let shabeng = match code.split('\n').next() {
-        Some(s) => s,
-        None => return Err(RedisError::Str("could not extract library metadata")),
-    };
-    if !shabeng.starts_with("#!") {
-        return Err(RedisError::Str("could not find #! syntax"));
-    }
-
-    let shabeng = shabeng.strip_prefix("#!").unwrap();
-    let mut data = shabeng.split(' ');
-    let engine = match data.next() {
-        Some(s) => s,
-        None => return Err(RedisError::Str("could not extract engine name")),
-    };
-
-    let name = loop {
-        let d = match data.next() {
-            Some(s) => s,
-            None => return Err(RedisError::Str("Failed find 'name' property")),
-        };
-        let mut prop = d.split('=');
-        let prop_name = match prop.next() {
-            Some(s) => s,
-            None => return Err(RedisError::Str("could not extract property name")),
-        };
-        let prop_val = match prop.next() {
-            Some(s) => s,
-            None => return Err(RedisError::Str("could not extract property value")),
-        };
-        if prop_name.to_lowercase() != "name" {
-            return Err(RedisError::String(format!(
-                "unknown property '{}'",
-                prop_name
-            )));
-        }
-        break prop_val;
-    };
-
-    Ok(GearsLibraryMataData {
-        engine: engine.to_string(),
-        name: name.to_string(),
-        code: code.to_string(),
-        config,
-        user,
-    })
-}
-
-fn function_del_command(
-    ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let name = args
-        .next()
-        .map_or(Err(RedisError::Str("function name was not given")), |s| {
-            s.try_as_str()
-        })?;
-    let mut libraries = get_libraries();
-    match libraries.remove(name) {
-        Some(_) => {
-            ctx.replicate_verbatim();
-            Ok(RedisValue::SimpleStringStatic("OK"))
-        }
-        None => Err(RedisError::Str("library does not exists")),
-    }
-}
-
 fn function_call_result_to_redis_result(res: CallResult) -> RedisValue {
     match res {
         CallResult::Long(l) => RedisValue::Integer(l),
@@ -890,481 +828,8 @@ fn function_debug_command(
         },
     }
 }
-fn function_list_command_flags(flags: u8) -> RedisValue {
-    let mut res = Vec::new();
-    if (flags & FUNCTION_FLAG_NO_WRITES) != 0 {
-        res.push(RedisValue::BulkString("no-writes".to_string()));
-    }
-    if (flags & FUNCTION_FLAG_ALLOW_OOM) != 0 {
-        res.push(RedisValue::BulkString("allow-oom".to_string()));
-    }
-    if (flags & FUNCTION_FLAG_RAW_ARGUMENTS) != 0 {
-        res.push(RedisValue::BulkString("raw-arguments".to_string()));
-    }
-    RedisValue::Array(res)
-}
 
-fn function_list_command(
-    ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let mut with_code = false;
-    let mut lib = None;
-    let mut verbosity = 0;
-    loop {
-        let arg = args.next_arg();
-        if arg.is_err() {
-            break;
-        }
-        let arg = arg.unwrap();
-        let arg_str = match arg.try_as_str() {
-            Ok(arg) => arg,
-            Err(_) => return Err(RedisError::Str("Binary option is not allowed")),
-        };
-        let arg_str = arg_str.to_lowercase();
-        match arg_str.as_ref() {
-            "withcode" => with_code = true,
-            "verbose" => verbosity += 1,
-            "v" => verbosity += 1,
-            "vv" => verbosity += 2,
-            "vvv" => verbosity += 3,
-            "library" => {
-                let lib_name = match args.next_arg() {
-                    Ok(n) => match n.try_as_str() {
-                        Ok(n) => n,
-                        Err(_) => return Err(RedisError::Str("Library name is not a string")),
-                    },
-                    Err(_) => return Err(RedisError::Str("Library name was not given")),
-                };
-                lib = Some(lib_name);
-            }
-            _ => return Err(RedisError::String(format!("Unknown option '{}'", arg_str))),
-        }
-    }
-    let libraries = get_libraries();
-    Ok(RedisValue::Array(
-        libraries
-            .values()
-            .filter(|l| match lib {
-                Some(lib_name) => l.gears_lib_ctx.meta_data.name == lib_name,
-                None => true,
-            })
-            .map(|l| {
-                let mut res = vec![
-                    RedisValue::BulkString("engine".to_string()),
-                    RedisValue::BulkString(l.gears_lib_ctx.meta_data.engine.to_string()),
-                    RedisValue::BulkString("name".to_string()),
-                    RedisValue::BulkString(l.gears_lib_ctx.meta_data.name.to_string()),
-                    RedisValue::BulkString("user".to_string()),
-                    RedisValue::BulkString(l.gears_lib_ctx.meta_data.user.to_string()),
-                    RedisValue::BulkString("configuration".to_string()),
-                    {
-                        match l.gears_lib_ctx.meta_data.config.as_ref() {
-                            Some(c) => RedisValue::BulkString(c.to_string()),
-                            None => RedisValue::Null,
-                        }
-                    },
-                    RedisValue::BulkString("pending_jobs".to_string()),
-                    RedisValue::Integer(l.compile_lib_internals.pending_jobs() as i64),
-                    RedisValue::BulkString("functions".to_string()),
-                    RedisValue::Array(if verbosity > 0 {
-                        l.gears_lib_ctx
-                            .functions
-                            .iter()
-                            .map(|(k, v)| {
-                                RedisValue::Array(vec![
-                                    RedisValue::BulkString("name".to_string()),
-                                    RedisValue::BulkString(k.to_string()),
-                                    RedisValue::BulkString("flags".to_string()),
-                                    function_list_command_flags(v.flags),
-                                ])
-                            })
-                            .collect::<Vec<RedisValue>>()
-                    } else {
-                        l.gears_lib_ctx
-                            .functions
-                            .keys()
-                            .map(|k| RedisValue::BulkString(k.to_string()))
-                            .collect::<Vec<RedisValue>>()
-                    }),
-                    RedisValue::BulkString("remote_functions".to_string()),
-                    RedisValue::Array(
-                        l.gears_lib_ctx
-                            .remote_functions
-                            .keys()
-                            .map(|k| RedisValue::BulkString(k.to_string()))
-                            .collect::<Vec<RedisValue>>(),
-                    ),
-                    RedisValue::BulkString("stream_consumers".to_string()),
-                    RedisValue::Array(
-                        l.gears_lib_ctx
-                            .stream_consumers
-                            .iter()
-                            .map(|(k, v)| {
-                                let v = v.ref_cell.borrow();
-                                if verbosity > 0 {
-                                    let mut res = vec![
-                                        RedisValue::BulkString("name".to_string()),
-                                        RedisValue::BulkString(k.to_string()),
-                                        RedisValue::BulkString("prefix".to_string()),
-                                        RedisValue::BulkRedisString(
-                                            ctx.create_string_from_slice(&v.prefix),
-                                        ),
-                                        RedisValue::BulkString("window".to_string()),
-                                        RedisValue::Integer(v.window as i64),
-                                        RedisValue::BulkString("trim".to_string()),
-                                        RedisValue::BulkString(
-                                            (if v.trim { "enabled" } else { "disabled" })
-                                                .to_string(),
-                                        ),
-                                        RedisValue::BulkString("num_streams".to_string()),
-                                        RedisValue::Integer(v.consumed_streams.len() as i64),
-                                    ];
-                                    if verbosity > 1 {
-                                        res.push(RedisValue::BulkString("streams".to_string()));
-                                        res.push(RedisValue::Array(
-                                            v.consumed_streams
-                                                .iter()
-                                                .map(|(s, v)| {
-                                                    let v = v.ref_cell.borrow();
-                                                    let mut res = vec![
-                                                        RedisValue::BulkString("name".to_string()),
-                                                        RedisValue::BulkRedisString(
-                                                            ctx.create_string_from_slice(s),
-                                                        ),
-                                                        RedisValue::BulkString(
-                                                            "last_processed_time".to_string(),
-                                                        ),
-                                                        RedisValue::Integer(
-                                                            v.last_processed_time as i64,
-                                                        ),
-                                                        RedisValue::BulkString(
-                                                            "avg_processed_time".to_string(),
-                                                        ),
-                                                        RedisValue::Float(
-                                                            v.total_processed_time as f64
-                                                                / v.records_processed as f64,
-                                                        ),
-                                                        RedisValue::BulkString(
-                                                            "last_lag".to_string(),
-                                                        ),
-                                                        RedisValue::Integer(v.last_lag as i64),
-                                                        RedisValue::BulkString(
-                                                            "avg_lag".to_string(),
-                                                        ),
-                                                        RedisValue::Float(
-                                                            v.total_lag as f64
-                                                                / v.records_processed as f64,
-                                                        ),
-                                                        RedisValue::BulkString(
-                                                            "total_record_processed".to_string(),
-                                                        ),
-                                                        RedisValue::Integer(
-                                                            v.records_processed as i64,
-                                                        ),
-                                                        RedisValue::BulkString(
-                                                            "id_to_read_from".to_string(),
-                                                        ),
-                                                        match v.last_read_id {
-                                                            Some(id) => RedisValue::BulkString(
-                                                                format!("{}-{}", id.ms, id.seq),
-                                                            ),
-                                                            None => RedisValue::BulkString(
-                                                                "None".to_string(),
-                                                            ),
-                                                        },
-                                                        RedisValue::BulkString(
-                                                            "last_error".to_string(),
-                                                        ),
-                                                        match &v.last_error {
-                                                            Some(err) => RedisValue::BulkString(
-                                                                err.to_string(),
-                                                            ),
-                                                            None => RedisValue::BulkString(
-                                                                "None".to_string(),
-                                                            ),
-                                                        },
-                                                    ];
-                                                    if verbosity > 2 {
-                                                        res.push(RedisValue::BulkString(
-                                                            "pending_ids".to_string(),
-                                                        ));
-                                                        let pending_ids = v
-                                                            .pending_ids
-                                                            .iter()
-                                                            .map(|e| {
-                                                                RedisValue::BulkString(format!(
-                                                                    "{}-{}",
-                                                                    e.ms, e.seq
-                                                                ))
-                                                            })
-                                                            .collect::<Vec<RedisValue>>();
-                                                        res.push(RedisValue::Array(pending_ids));
-                                                    }
-                                                    RedisValue::Array(res)
-                                                })
-                                                .collect::<Vec<RedisValue>>(),
-                                        ));
-                                    }
-                                    RedisValue::Array(res)
-                                } else {
-                                    RedisValue::BulkString(k.to_string())
-                                }
-                            })
-                            .collect::<Vec<RedisValue>>(),
-                    ),
-                    RedisValue::BulkString("notifications_consumers".to_string()),
-                    RedisValue::Array(
-                        l.gears_lib_ctx
-                            .notifications_consumers
-                            .iter()
-                            .map(|(name, c)| {
-                                if verbosity == 0 {
-                                    RedisValue::BulkString(name.to_string())
-                                } else {
-                                    let stats = c.borrow().get_stats();
-                                    RedisValue::Array(vec![
-                                        RedisValue::BulkString("name".to_string()),
-                                        RedisValue::BulkString(name.to_string()),
-                                        RedisValue::BulkString("num_triggered".to_string()),
-                                        RedisValue::Integer(stats.num_trigger as i64),
-                                        RedisValue::BulkString("num_finished".to_string()),
-                                        RedisValue::Integer(stats.num_finished as i64),
-                                        RedisValue::BulkString("num_success".to_string()),
-                                        RedisValue::Integer(stats.num_success as i64),
-                                        RedisValue::BulkString("num_failed".to_string()),
-                                        RedisValue::Integer(stats.num_failed as i64),
-                                        RedisValue::BulkString("last_error".to_string()),
-                                        RedisValue::BulkString(match stats.last_error {
-                                            Some(s) => s,
-                                            None => "None".to_string(),
-                                        }),
-                                        RedisValue::BulkString("last_exection_time".to_string()),
-                                        RedisValue::Integer(stats.last_execution_time as i64),
-                                        RedisValue::BulkString("total_exection_time".to_string()),
-                                        RedisValue::Integer(stats.total_execution_time as i64),
-                                        RedisValue::BulkString("avg_exection_time".to_string()),
-                                        RedisValue::Float(
-                                            stats.total_execution_time as f64
-                                                / stats.num_finished as f64,
-                                        ),
-                                    ])
-                                }
-                            })
-                            .collect::<Vec<RedisValue>>(),
-                    ),
-                ];
-                if with_code {
-                    res.push(RedisValue::BulkString("code".to_string()));
-                    res.push(RedisValue::BulkString(
-                        l.gears_lib_ctx.meta_data.code.to_string(),
-                    ));
-                }
-                if verbosity > 0 {
-                    res.push(RedisValue::BulkString("gears_box_info".to_string()));
-                    let gears_box_info_str = serde_json::to_string(&l.gears_box_lib).unwrap();
-                    res.push(to_redis_value(
-                        serde_json::from_str(&gears_box_info_str).unwrap(),
-                    ));
-                }
-                RedisValue::Array(res)
-            })
-            .collect::<Vec<RedisValue>>(),
-    ))
-}
-
-pub(crate) fn function_load_revert(
-    mut gears_library: GearsLibraryCtx,
-    libraries: &mut HashMap<String, Arc<GearsLibrary>>,
-) {
-    if let Some(old_lib) = gears_library.old_lib.take() {
-        for (name, old_ctx, old_window, old_trim) in gears_library.revert_stream_consumers {
-            let stream_data = gears_library.stream_consumers.get(&name).unwrap();
-            let mut s_d = stream_data.ref_cell.borrow_mut();
-            s_d.set_consumer(old_ctx);
-            s_d.set_window(old_window);
-            s_d.set_trim(old_trim);
-        }
-
-        for (name, key, callback) in gears_library.revert_notifications_consumers {
-            let notification_consumer = gears_library.notifications_consumers.get(&name).unwrap();
-            let mut s_d = notification_consumer.borrow_mut();
-            s_d.set_key(key);
-            let _ = s_d.set_callback(callback);
-        }
-
-        libraries.insert(gears_library.meta_data.name.clone(), old_lib);
-    }
-}
-
-pub(crate) fn function_load_intrernal(
-    user: String,
-    code: &str,
-    config: Option<String>,
-    upgrade: bool,
-    gears_box_lib: Option<GearsBoxLibraryInfo>,
-) -> RedisResult {
-    let meta_data = library_extract_matadata(code, config, user)?;
-    let backend_name = meta_data.engine.as_str();
-    let backend = get_backends_mut().get_mut(backend_name);
-    if backend.is_none() {
-        return Err(RedisError::String(format!(
-            "Unknown backend {}",
-            backend_name
-        )));
-    }
-    let backend = backend.unwrap();
-    let compile_lib_ctx = CompiledLibraryAPI::new();
-    let compile_lib_internals = compile_lib_ctx.take_internals();
-    let lib_ctx =
-        backend.compile_library(code, meta_data.config.as_ref(), Box::new(compile_lib_ctx));
-    let lib_ctx = match lib_ctx {
-        Err(e) => match e {
-            GearsApiError::Msg(s) => {
-                return Err(RedisError::String(format!(
-                    "Failed library compilation {}",
-                    s
-                )))
-            }
-        },
-        Ok(lib_ctx) => lib_ctx,
-    };
-    let mut libraries = get_libraries();
-    let old_lib = libraries.remove(&meta_data.name);
-    if !upgrade {
-        if let Some(old_lib) = old_lib {
-            let err = Err(RedisError::String(format!(
-                "Library {} already exists",
-                &meta_data.name
-            )));
-            libraries.insert(meta_data.name, old_lib);
-            return err;
-        }
-    }
-    let mut gears_library = GearsLibraryCtx {
-        meta_data: Arc::new(meta_data),
-        functions: HashMap::new(),
-        remote_functions: HashMap::new(),
-        stream_consumers: HashMap::new(),
-        notifications_consumers: HashMap::new(),
-        revert_stream_consumers: Vec::new(),
-        revert_notifications_consumers: Vec::new(),
-        old_lib,
-    };
-    let res = lib_ctx.load_library(&mut gears_library);
-    if let Err(err) = res {
-        let ret = match err {
-            GearsApiError::Msg(s) => {
-                let msg = format!("Failed loading library, {}", s);
-                Err(RedisError::String(msg))
-            }
-        };
-        function_load_revert(gears_library, &mut libraries);
-        return ret;
-    }
-    if gears_library.functions.is_empty()
-        && gears_library.stream_consumers.is_empty()
-        && gears_library.notifications_consumers.is_empty()
-    {
-        function_load_revert(gears_library, &mut libraries);
-        return Err(RedisError::Str(
-            "No function nor registrations was registered",
-        ));
-    }
-    gears_library.old_lib = None;
-    libraries.insert(
-        gears_library.meta_data.name.to_string(),
-        Arc::new(GearsLibrary {
-            gears_lib_ctx: gears_library,
-            _lib_ctx: lib_ctx,
-            compile_lib_internals,
-            gears_box_lib,
-        }),
-    );
-    Ok(RedisValue::SimpleStringStatic("OK"))
-}
-
-struct FunctionLoadArgs<'a> {
-    upgrade: bool,
-    config: Option<String>,
-    last_arg: &'a str,
-}
-
-fn get_args_values<'a>(
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
-) -> Result<FunctionLoadArgs<'a>, RedisError> {
-    let mut upgrade = false;
-    let mut config = None;
-    let last_arg = loop {
-        let arg = args.next_arg();
-        if arg.is_err() {
-            break Err(RedisError::Str("Could not find library payload"));
-        }
-        let arg = arg.unwrap();
-        let arg_str = match arg.try_as_str() {
-            Ok(arg) => arg,
-            Err(_) => break Ok(arg),
-        };
-        let arg_str = arg_str.to_lowercase();
-        match arg_str.as_ref() {
-            "upgrade" => upgrade = true,
-            "config" => {
-                let arg = args
-                    .next_arg()
-                    .map_err(|_e| RedisError::Str("configuration value was not given"))?
-                    .try_as_str()
-                    .map_err(|_e| {
-                        RedisError::Str("given configuration value is not a valid string")
-                    })?;
-                let v = serde_json::from_str::<serde_json::Value>(arg).map_err(|e| {
-                    RedisError::String(format!(
-                        "configuration must be a valid json, '{}', {}.",
-                        arg, e
-                    ))
-                })?;
-                match v {
-                    serde_json::Value::Object(_) => (),
-                    _ => return Err(RedisError::Str("configuration must be a valid json object")),
-                }
-                config = Some(arg.to_string());
-            }
-            _ => break Ok(arg),
-        }
-    }?;
-
-    let last_arg = match last_arg.try_as_str() {
-        Ok(s) => s,
-        Err(_) => return Err(RedisError::Str("lib code must a valid string")),
-    };
-    Ok(FunctionLoadArgs {
-        upgrade,
-        config,
-        last_arg,
-    })
-}
-
-fn function_load_command(
-    ctx: &Context,
-    args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let function_load_args = get_args_values(args)?;
-    let user = ctx.get_current_user()?;
-    match function_load_intrernal(
-        user,
-        function_load_args.last_arg,
-        function_load_args.config,
-        function_load_args.upgrade,
-        None,
-    ) {
-        Ok(r) => {
-            ctx.replicate_verbatim();
-            Ok(r)
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn to_redis_value(val: serde_json::Value) -> RedisValue {
+pub(crate) fn to_redis_value(val: serde_json::Value) -> RedisValue {
     match val {
         serde_json::Value::Bool(b) => RedisValue::Integer(if b { 1 } else { 0 }),
         serde_json::Value::Number(n) => {
@@ -1403,49 +868,31 @@ fn function_search_lib_command(
     Ok(to_redis_value(search_result))
 }
 
-fn function_install_lib_command(
-    ctx: &Context,
-    args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let function_load_args = get_args_values(args)?;
-    let gear_box_lib = gears_box_get_library(function_load_args.last_arg)?;
-    let function_code = do_http_get_text(&gear_box_lib.installed_version_info.url)?;
-
-    let calculated_sha = sha256::digest(function_code.to_string());
-    if calculated_sha != gear_box_lib.installed_version_info.sha256 {
-        return Err(RedisError::Str(
-            "File validation failure, calculated sha256sum does not match the expected value.",
-        ));
-    }
-
-    let user = ctx.get_current_user()?;
-    match function_load_intrernal(
-        user,
-        &function_code,
-        function_load_args.config,
-        function_load_args.upgrade,
-        Some(gear_box_lib),
-    ) {
-        Ok(r) => {
-            ctx.replicate_verbatim();
-            Ok(r)
-        }
-        Err(e) => Err(e),
-    }
-}
-
 fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let args = args.into_iter().skip(1);
     function_call_command(ctx, args)
+}
+
+fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
+    match sub_command.as_ref() {
+        "load" => function_load_command::function_load_on_replica(ctx, args),
+        "del" => function_del_command::function_del_on_replica(ctx, args),
+        _ => Err(RedisError::String(format!(
+            "Unknown subcommand {}",
+            sub_command
+        ))),
+    }
 }
 
 fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let mut args = args.into_iter().skip(1);
     let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
     match sub_command.as_ref() {
-        "load" => function_load_command(ctx, args),
-        "list" => function_list_command(ctx, args),
-        "del" => function_del_command(ctx, args),
+        "load" => function_load_command::function_load_command(ctx, args),
+        "list" => function_list_command::function_list_command(ctx, args),
+        "del" => function_del_command::function_del_command(ctx, args),
         "debug" => function_debug_command(ctx, args),
         _ => Err(RedisError::String(format!(
             "Unknown subcommand {}",
@@ -1482,7 +929,7 @@ fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
     match sub_command.as_ref() {
         "search" => function_search_lib_command(ctx, args),
-        "install" => function_install_lib_command(ctx, args),
+        "install" => function_load_command::function_install_lib_command(ctx, args),
         _ => Err(RedisError::String(format!(
             "Unknown subcommand {}",
             sub_command
@@ -1637,6 +1084,7 @@ redis_module! {
     info: js_info,
     commands: [
         ["rg.function", function_command, "may-replicate deny-script", 0,0,0],
+        ["_rg.function", function_command_on_replica, "may-replicate deny-script", 0,0,0],
         ["rg.fcall", function_call, "may-replicate deny-script", 4,4,1],
         ["rg.fcall_no_keys", function_call, "may-replicate deny-script", 0,0,0],
         ["rg.box", gears_box_command, "may-replicate deny-script", 0,0,0],

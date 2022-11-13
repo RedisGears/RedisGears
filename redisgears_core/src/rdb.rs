@@ -1,4 +1,6 @@
-use crate::{function_load_intrernal, get_ctx, get_globals_mut, get_libraries};
+use crate::{
+    function_load_command::function_load_intrernal, get_ctx, get_globals_mut, get_libraries,
+};
 
 use redis_module::{
     error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB,

@@ -89,8 +89,6 @@ def verifyClusterInitialized(env):
                     allConnected = False
             if not allConnected:
                 time.sleep(0.1)
-                    
-
 
 def gearsTest(skipTest=False,
               skipOnCluster=False,
@@ -102,6 +100,7 @@ def gearsTest(skipTest=False,
               decodeResponses=True,
               enableGearsDebugCommands=False,
               cluster=False,
+              withReplicas=False,
               shardsCount=2,
               gearsConfig={},
               envArgs={}):
@@ -132,6 +131,8 @@ def gearsTest(skipTest=False,
                 if cluster:
                     final_envArgs['env'] = 'oss-cluster'
                     final_envArgs['shardsCount'] = shardsCount
+            if withReplicas:
+                final_envArgs['useSlaves'] = True
             if skipOnSingleShard and Defaults.num_shards == 1:
                 raise unittest.SkipTest()
             if skipWithTLS and Defaults.use_TLS:
@@ -152,13 +153,20 @@ def gearsTest(skipTest=False,
                 env.broadcast('REDISGEARS_2.REFRESHCLUSTER')
                 with TimeLimit(2, env, "Failed waiting for cluster to initialized"):
                     verifyClusterInitialized(env)
+            if withReplicas:
+                # make sure all shards are in sync with their replica
+                for con in shardsConnections(env):
+                    with TimeLimit(10, env, "Failed waiting for replica to be in sync"):
+                        while True:
+                            replication_info = con.execute_command('info', 'replication')
+                            if replication_info['slave0']['state'] == 'online':
+                                break
+                            time.sleep(0.1)
             version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             if test_function.__doc__ is not None:
-                for conn in shardsConnections(env):
-                    res = conn.execute_command('RG.FUNCTION', 'LOAD', test_function.__doc__)
-                    env.assertEqual(res, 'OK' if decodeResponses else b'OK')
+                env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())

@@ -158,7 +158,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
     res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)
     env.assertEqual(2, res[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
 
-@gearsTest(envArgs={'useSlaves': True})
+@gearsTest(withReplicas=True)
 def testStreamWithReplication(env):
     """#!js name=lib
 var promises = [];

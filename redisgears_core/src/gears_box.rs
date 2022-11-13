@@ -32,7 +32,7 @@ pub(crate) fn gears_box_search(token: &str) -> Result<serde_json::Value, RedisEr
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub(crate) struct GearsBoxLibraryVersionInfo {
     pub(crate) id: String,
@@ -46,14 +46,14 @@ pub(crate) struct GearsBoxLibraryVersionInfo {
     pub(crate) sha256: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub(crate) struct GearsBoxLibraryAuthorInfo {
     pub(crate) id: String,
     pub(crate) email: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub(crate) struct GearsBoxLibraryGeneralInfo {
     pub(crate) id: String,
@@ -71,7 +71,7 @@ pub(crate) struct GearsBoxLibraryGeneralInfo {
     pub(crate) active: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub(crate) struct GearsBoxLibraryInfo {
     pub(crate) general_info: GearsBoxLibraryGeneralInfo,

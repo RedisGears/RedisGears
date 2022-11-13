@@ -187,7 +187,7 @@ redis.register_function("async_set_trigger", function(client, key, val){
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
     env.expect('RG.FCALL', 'lib', 'async_set_continue', '0').error().contains('OOM Can not lock redis for write')
 
-@gearsTest(envArgs={'useSlaves': True})
+@gearsTest(withReplicas=True)
 def testRunOnReplica(env):
     """#!js name=lib
 redis.register_function("test1", function(client){
@@ -209,6 +209,25 @@ redis.register_function("test2", function(client){
         env.assertContains('can not run a function that might perform writes on a replica', str(e))
 
     env.assertEqual(1, replica.execute_command('RG.FCALL', 'lib', 'test2', '0'))
+
+@gearsTest(withReplicas=True)
+def testFunctionDelReplicatedToReplica(env):
+    """#!js name=lib
+redis.register_function("test", function(client){
+    return 1;
+},
+['no-writes']);
+    """
+    replica = env.getSlaveConnection()
+    res = replica.execute_command('RG.FCALL', 'lib', 'test', '0')
+    env.expect('RG.FUNCTION', 'DEL', 'lib').equal('OK')
+    env.expect('WAIT', '1', '7000').equal(1)
+    try:
+        replica.execute_command('RG.FCALL', 'lib', 'test', '0')
+        env.assertTrue(False, message='Command succeed though should failed')
+    except Exception as e:
+        env.assertContains('Unknown library', str(e))
+
 
 @gearsTest()
 def testNoWritesFlag(env):
