@@ -23,6 +23,7 @@ jobs:
         yum groupinstall -yqq 'Development Tools'
         yum install -yqq centos-release-scl
         yum install -yqq devtoolset-9 llvm-toolset-7
+        pip3 install --upgrade pip
     - name: install rltest
       run: pip3 install RLTest
     - name: Install redis
