@@ -52,3 +52,6 @@ jobs:
       run: pip3 install git+https://github.com/RedisLabsModules/RAMP@support_dependency_packing
     - name: Pack
       run: target/release/packer
+      env:
+          LC_ALL: en_US.utf-8
+          LANG: en_US.utf-8
