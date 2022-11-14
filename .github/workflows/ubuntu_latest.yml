@@ -32,3 +32,15 @@ jobs:
       run: pip install git+https://github.com/RedisLabsModules/RAMP@support_dependency_packing
     - name: Pack
       run: target/release/packer
+    - name: Setup s3cmd action
+      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      uses: s3-actions/s3cmd@v1.2.0
+      with:
+        provider: aws
+        region: us-east-2
+        access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        secret_key: ${{ secrets.AWS_SECRET_KEY_ID }}
+    - name: Upload artifacts
+      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      run: |
+        s3cmd put -P target/release/redisgears-release.linux-ubuntu.20.04-x86_64.master.zip s3://redismodules/redisgears/snapshots/
