@@ -1,0 +1,38 @@
+display_name: RedisGears-2.0
+author: RedisLabs
+email: meir@redislabs.com
+description: Dynamic execution framework for your Redis data
+homepage: 'http://redisgears.io'
+license: Redis Source Available License Agreement
+command_line_args: "libredisgears_v8_plugin.so"
+run_command_line_args: "{os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"
+min_redis_version: '6.0.0'
+min_redis_pack_version: '6.2.18'
+config_command: "RG.CONFIG SET"
+capabilities:
+    - types
+    - failover_migrate
+    - persistence_aof
+    - persistence_rdb
+    - clustering
+    - backup_restore
+    - reshard_rebalance
+    - eviction_expiry
+    - intershard_tls
+    - intershard_tls_pass
+exclude_commands:
+    - _RG.FUNCTION
+    - redisgears_2.REFRESHCLUSTER
+    - redisgears_2.INFOCLUSTER
+    - redisgears_2.CLUSTERSET
+    - redisgears_2.NETWORKTEST
+    - redisgears_2.INNERCOMMUNICATION
+    - redisgears_2.HELLO
+    - redisgears_2.CLUSTERSETFROMSHARD
+    - rg.config
+    - _rg_internals.update_stream_last_read_id
+    - _rg.function
+dependencies:
+    gears_v8:
+        local_path: "{os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"
+        url: http://redismodules.s3.amazonaws.com/redisgears/gears_v8.tgz

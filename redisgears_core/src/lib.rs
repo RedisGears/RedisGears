@@ -73,9 +73,11 @@ pub const GIT_SHA: Option<&str> = std::option_env!("GIT_SHA");
 pub const GIT_BRANCH: Option<&str> = std::option_env!("GIT_BRANCH");
 pub const VERSION_STR: Option<&str> = std::option_env!("VERSION_STR");
 pub const VERSION_NUM: Option<&str> = std::option_env!("VERSION_NUM");
+pub const BUILD_OS: Option<&str> = std::option_env!("BUILD_OS");
 pub const BUILD_OS_TYPE: Option<&str> = std::option_env!("BUILD_OS_TYPE");
 pub const BUILD_OS_VERSION: Option<&str> = std::option_env!("BUILD_OS_VERSION");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
+pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
 
 pub struct GearsLibraryMataData {
     name: String,
@@ -507,10 +509,12 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     }
 
     ctx.log_notice(&format!(
-        "RedisGears v{}, sha='{}', branch='{}', built_on='{}.{}.{}'.",
+        "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_on='{}-{}.{}-{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
         GIT_BRANCH.unwrap_or_default(),
+        BUILD_TYPE.unwrap_or_default(),
+        BUILD_OS.unwrap_or_default(),
         BUILD_OS_TYPE.unwrap_or_default(),
         BUILD_OS_VERSION.unwrap_or_default(),
         BUILD_OS_ARCH.unwrap_or_default()
@@ -624,7 +628,13 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
                 return Status::Err;
             }
         };
-        let lib = match Library::new(v8_path) {
+
+        let v8_path = match std::env::var("modulesdatadir") {
+            Ok(val) => format!("{}/redisgears_2/{}/deps/gears_v8/{}", val, VERSION_NUM.unwrap(), v8_path),
+            Err(_) => v8_path.to_string(),
+        };
+
+        let lib = match Library::new(&v8_path) {
             Ok(l) => l,
             Err(e) => {
                 ctx.log_warning(&format!("Failed loading '{}', {}", v8_path, e));

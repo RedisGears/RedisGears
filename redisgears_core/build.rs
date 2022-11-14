@@ -34,7 +34,9 @@ fn main() {
 
     let info = os_info::get();
 
-    println!("cargo:rustc-env=BUILD_OS_TYPE={}", info.os_type());
+    println!("cargo:rustc-env=BUILD_OS={}", std::env::consts::OS.to_string().to_lowercase());
+    println!("cargo:rustc-env=BUILD_OS_TYPE={}", info.os_type().to_string().to_lowercase());
     println!("cargo:rustc-env=BUILD_OS_VERSION={}", info.version());
     println!("cargo:rustc-env=BUILD_OS_ARCH={}", std::env::consts::ARCH);
+    println!("cargo:rustc-env=BUILD_TYPE={}", std::env::var("PROFILE").expect("Can not get PROFILE env var"));
 }
