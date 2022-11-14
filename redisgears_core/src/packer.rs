@@ -26,22 +26,72 @@ fn main() {
     redisgears_v8_plugin_so_path.push("libredisgears_v8_plugin.so");
 
     println!("{:?}", redisgears_v8_plugin_so_path);
-    
-    let gears_snapeshot_file_name = format!("redisgears2-{}.{}-{}.{}-{}.{}.zip", BUILD_TYPE.unwrap(), BUILD_OS.unwrap(), BUILD_OS_TYPE.unwrap(), BUILD_OS_VERSION.unwrap(), BUILD_OS_ARCH.unwrap(), GIT_BRANCH.unwrap());
-    let gears_release_file_name = format!("redisgears2-{}.{}-{}.{}-{}.{}.zip", BUILD_TYPE.unwrap(), BUILD_OS.unwrap(), BUILD_OS_TYPE.unwrap(), BUILD_OS_VERSION.unwrap(), BUILD_OS_ARCH.unwrap(), VERSION_NUM.unwrap());
+
+    let gears_snapeshot_file_name = format!(
+        "redisgears2-{}.{}-{}.{}-{}.{}.zip",
+        BUILD_TYPE.unwrap(),
+        BUILD_OS.unwrap(),
+        BUILD_OS_TYPE.unwrap(),
+        BUILD_OS_VERSION.unwrap(),
+        BUILD_OS_ARCH.unwrap(),
+        GIT_BRANCH.unwrap()
+    );
+    let gears_release_file_name = format!(
+        "redisgears2-{}.{}-{}.{}-{}.{}.zip",
+        BUILD_TYPE.unwrap(),
+        BUILD_OS.unwrap(),
+        BUILD_OS_TYPE.unwrap(),
+        BUILD_OS_VERSION.unwrap(),
+        BUILD_OS_ARCH.unwrap(),
+        VERSION_NUM.unwrap()
+    );
 
     let mut gears_snapeshot_file_path = curr_path.clone();
     gears_snapeshot_file_path.push(gears_snapeshot_file_name);
 
     let mut gears_release_file_path = curr_path.clone();
     gears_release_file_path.push(gears_release_file_name);
-    
-    if !Command::new("ramp").args(["pack", "--debug", "-m", ramp_yml_path.to_str().unwrap(), "-o", &gears_snapeshot_file_path.to_str().unwrap(), redisgears_so_path.to_str().unwrap()]).env("REDISGEARS_V8_PLUGIN_PATH", redisgears_v8_plugin_so_path.to_str().unwrap()).status().expect("Failed ramp snapeshot").success() {
+
+    if !Command::new("ramp")
+        .args([
+            "pack",
+            "--debug",
+            "-m",
+            ramp_yml_path.to_str().unwrap(),
+            "-o",
+            &gears_snapeshot_file_path.to_str().unwrap(),
+            redisgears_so_path.to_str().unwrap(),
+        ])
+        .env(
+            "REDISGEARS_V8_PLUGIN_PATH",
+            redisgears_v8_plugin_so_path.to_str().unwrap(),
+        )
+        .status()
+        .expect("Failed ramp snapeshot")
+        .success()
+    {
         println!("Failed ramp snapeshot");
         std::process::exit(1);
     }
-    
-    if !Command::new("ramp").args(["pack", "--debug", "-m", ramp_yml_path.to_str().unwrap(), "-o", &gears_release_file_path.to_str().unwrap(), redisgears_so_path.to_str().unwrap()]).env("REDISGEARS_V8_PLUGIN_PATH", redisgears_v8_plugin_so_path.to_str().unwrap()).status().expect("Failed ramp release").success() {
+
+    if !Command::new("ramp")
+        .args([
+            "pack",
+            "--debug",
+            "-m",
+            ramp_yml_path.to_str().unwrap(),
+            "-o",
+            &gears_release_file_path.to_str().unwrap(),
+            redisgears_so_path.to_str().unwrap(),
+        ])
+        .env(
+            "REDISGEARS_V8_PLUGIN_PATH",
+            redisgears_v8_plugin_so_path.to_str().unwrap(),
+        )
+        .status()
+        .expect("Failed ramp release")
+        .success()
+    {
         println!("Failed ramp release");
         std::process::exit(1);
     }

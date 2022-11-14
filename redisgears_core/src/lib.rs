@@ -630,7 +630,12 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
         };
 
         let v8_path = match std::env::var("modulesdatadir") {
-            Ok(val) => format!("{}/redisgears_2/{}/deps/gears_v8/{}", val, VERSION_NUM.unwrap(), v8_path),
+            Ok(val) => format!(
+                "{}/redisgears_2/{}/deps/gears_v8/{}",
+                val,
+                VERSION_NUM.unwrap(),
+                v8_path
+            ),
             Err(_) => v8_path.to_string(),
         };
 
