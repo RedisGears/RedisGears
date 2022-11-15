@@ -14,6 +14,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: update pip3
+      run: pip3 install -U pip
     - name: install rltest
       run: pip3 install RLTest
     - name: install gcc9
