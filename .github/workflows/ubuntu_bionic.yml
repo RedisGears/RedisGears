@@ -1,9 +1,7 @@
-name: Ubuntu Latest
+name: Ubuntu Bionic
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
     branches: [ master ]
 
 env:
@@ -12,7 +10,7 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
 
     steps:
     - uses: actions/checkout@v3
@@ -43,4 +41,4 @@ jobs:
     - name: Upload artifacts
       if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
       run: |
-        s3cmd put -P target/release/redisgears2-release.linux-ubuntu.20.04-x86_64.master.zip s3://redismodules/redisgears/snapshots/
+        s3cmd put -P target/release/redisgears2-release.linux-ubuntu.18.04-x86_64.master.zip s3://redismodules/redisgears/snapshots/
