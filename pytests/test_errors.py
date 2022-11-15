@@ -105,10 +105,11 @@ redis.register_function('test', test);
 @gearsTest()
 def testJSStackOverflowOnLoading(env):
     script = """#!js name=foo
-function test() {
-    test();
+function test(i) {
+    redis.log(JSON.stringify(i))
+    test(i+1);
 }
-test();
+test(1);
 redis.register_function('test', test);
     """
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("Maximum call stack size exceeded")
