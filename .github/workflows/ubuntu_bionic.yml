@@ -18,7 +18,7 @@ jobs:
       run: pip install RLTest
     - name: install gcc9
       run: |
-        add-apt-repository ppa:ubuntu-toolchain-r/test
+        sudo add-apt-repository ppa:ubuntu-toolchain-r/test
         sudo apt update
         sudo apt install gcc-9
     - name: install redis
