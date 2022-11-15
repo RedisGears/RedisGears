@@ -2,6 +2,7 @@
 name = "redisgears_plugin_api"
 version = "0.1.0"
 edition = "2021"
+license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public License v1 (SSPLv1)"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
