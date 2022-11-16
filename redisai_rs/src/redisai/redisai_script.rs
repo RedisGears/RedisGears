@@ -1,3 +1,9 @@
+/*
+ * Copyright Redis Ltd. 2018 - present
+ * Licensed under your choice of the Redis Source Available License 2.0 (RSALv2) or
+ * the Server Side Public License v1 (SSPLv1).
+ */
+
 use crate::redisai_raw::bindings::{
     RAI_Error, RAI_OnFinishCtx, RAI_Script, RAI_ScriptRunCtx,
     RedisAI_ErrorCode_RedisAI_ErrorCode_OK, RedisAI_FreeError, RedisAI_GetAsScriptRunCtx,

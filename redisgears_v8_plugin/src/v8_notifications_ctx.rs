@@ -1,3 +1,9 @@
+/*
+ * Copyright Redis Ltd. 2018 - present
+ * Licensed under your choice of the Redis Source Available License 2.0 (RSALv2) or
+ * the Server Side Public License v1 (SSPLv1).
+ */
+
 use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface,
     keys_notifications_consumer_ctx::NotificationFiredDataInterface,

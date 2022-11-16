@@ -1,3 +1,9 @@
+/*
+ * Copyright Redis Ltd. 2018 - present
+ * Licensed under your choice of the Redis Source Available License 2.0 (RSALv2) or
+ * the Server Side Public License v1 (SSPLv1).
+ */
+
 use v8_rs::v8::{
     isolate::V8Isolate, isolate_scope::V8IsolateScope, try_catch::V8TryCatch,
     v8_array::V8LocalArray, v8_context_scope::V8ContextScope, v8_value::V8LocalValue,
