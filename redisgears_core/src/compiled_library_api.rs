@@ -1,3 +1,9 @@
+/*
+ * Copyright Redis Ltd. 2018 - present
+ * Licensed under your choice of the Redis Source Available License 2.0 (RSALv2) or
+ * the Server Side Public License v1 (SSPLv1).
+ */
+
 use crate::{execute_on_pool, get_ctx, get_globals};
 use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
