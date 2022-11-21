@@ -24,7 +24,6 @@ exclude_commands:
     - _RG.FUNCTION
     - redisgears_2.REFRESHCLUSTER
     - redisgears_2.INFOCLUSTER
-    - redisgears_2.CLUSTERSET
     - redisgears_2.NETWORKTEST
     - redisgears_2.INNERCOMMUNICATION
     - redisgears_2.HELLO
