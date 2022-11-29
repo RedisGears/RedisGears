@@ -249,7 +249,7 @@ def _is_ipv6_enabled():
         sock = None
         try:
             sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            sock.bind(("::0", 0))
+            sock.bind(("::1", 0))
             return True
         except OSError:
             pass
