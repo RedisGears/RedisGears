@@ -644,8 +644,27 @@ static void Cluster_Set(RedisModuleCtx* ctx, RedisModuleString** argv, int argc)
 
         addr = passEnd + 1;
 
-        char* ipEnd = strstr(addr, ":");
+        if (addr[0] == '[') {
+            addr += 1; /* skip ipv6 opener `[` */
+        }
+
+        /* Find last `:` */
+        char* iter = strstr(addr, ":");
+        char* ipEnd = NULL;
+        while (iter) {
+            ipEnd = iter;
+            iter++;
+            iter = strstr(iter, ":");
+        }
+
+        RedisModule_Assert(ipEnd);
+
         size_t ipSize = ipEnd - addr;
+
+        if (addr[ipSize - 1] == ']') {
+            --ipSize; /* Skip ipv6 closer `]` */
+        }
+
         char ip[ipSize + 1];
         memcpy(ip, addr, ipSize);
         ip[ipSize] = '\0';

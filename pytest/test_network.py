@@ -175,9 +175,10 @@ class Connection(object):
 
 
 class ShardMock():
-    def __init__(self, env):
+    def __init__(self, env, host='localhost'):
         self.env = env
         self.new_conns = gevent.queue.Queue()
+        self.host = host
 
     def _handle_conn(self, sock, client_addr):
         conn = Connection(sock)
@@ -199,7 +200,7 @@ class ShardMock():
                      '0',
                      '8192',
                      'NO-USED',
-                     'password@localhost:6379',
+                     'password@%s:6379' % self.host,
                      'NO-USED',
                      'NO-USED',
                      '2',
@@ -207,12 +208,12 @@ class ShardMock():
                      '8193',
                      '16383',
                      'NO-USED',
-                     'password@localhost:%d' % self.port
+                     'password@%s:%d' % (self.host, self.port)
                      )
 
     def __enter__(self):
         self.port = random.randint(10000,20000)
-        self.stream_server = gevent.server.StreamServer(('localhost', self.port), self._handle_conn)
+        self.stream_server = gevent.server.StreamServer((self.host, self.port), self._handle_conn)
         self.stream_server.start()
         self._send_cluster_set()
         self.runId = self.env.cmd('RG.INFOCLUSTER')[3]
@@ -238,230 +239,239 @@ class ShardMock():
         self.stream_server.stop()
 
     def StartListening(self):
-        self.stream_server = gevent.server.StreamServer(('localhost', self.port), self._handle_conn)
+        self.stream_server = gevent.server.StreamServer((self.host, self.port), self._handle_conn)
         self.stream_server.start()
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageIdCorrectness(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection()
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection()
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
-        conn.send_status('OK')
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            conn.send_status('OK')
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
-        conn.send_status('OK')
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
+            conn.send_status('OK')
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testErrorHelloResponse(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetCleanConnection()
-        env.assertEqual(conn.read_request(), ['AUTH', 'password'])
-        env.assertEqual(conn.read_request(), ['RG.HELLO'])
-        conn.send_status('OK')  # auth response
-        conn.send_error('err')  # sending error for the RG.HELLO request
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetCleanConnection()
+            env.assertEqual(conn.read_request(), ['AUTH', 'password'])
+            env.assertEqual(conn.read_request(), ['RG.HELLO'])
+            conn.send_status('OK')  # auth response
+            conn.send_error('err')  # sending error for the RG.HELLO request
 
-        # expect the rg.hello to be sent again
-        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+            # expect the rg.hello to be sent again
+            env.assertEqual(conn.read_request(), ['RG.HELLO'])
 
-        # closing the connection befor reply
-        conn.close()
+            # closing the connection befor reply
+            conn.close()
 
-        # expect a new connection to arrive
-        conn = shardMock.GetConnection()
+            # expect a new connection to arrive
+            conn = shardMock.GetConnection()
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageResentAfterDisconnect(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection()
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection()
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
-        conn.send_status('OK')
+            conn.send_status('OK')
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
-        conn.close()
+            conn.close()
 
-        conn = shardMock.GetConnection()
+            conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
-        conn.send_status('duplicate message ignored')  # reply to the second message with duplicate reply
+            conn.send_status('duplicate message ignored')  # reply to the second message with duplicate reply
 
-        conn.close()
+            conn.close()
 
-        conn = shardMock.GetConnection()
+            conn = shardMock.GetConnection()
 
-        # make sure message 2 will not be sent again
-        try:
-            with TimeLimit(1):
-                conn.read_request()
-                env.assertTrue(False)  # we should not get any data after crash
-        except Exception:
-            pass
+            # make sure message 2 will not be sent again
+            try:
+                with TimeLimit(1):
+                    conn.read_request()
+                    env.assertTrue(False)  # we should not get any data after crash
+            except Exception:
+                pass
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageNotResentAfterCrash(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection()
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection()
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
-        conn.send_status('OK')
+            conn.send_status('OK')
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
-        conn.close()
+            conn.close()
 
-        conn = shardMock.GetConnection(runid='2')  # shard crash
+            conn = shardMock.GetConnection(runid='2')  # shard crash
 
-        try:
-            with TimeLimit(1):
-                conn.read_request()
-                env.assertTrue(False)  # we should not get any data after crash
-        except Exception:
-            pass
+            try:
+                with TimeLimit(1):
+                    conn.read_request()
+                    env.assertTrue(False)  # we should not get any data after crash
+            except Exception:
+                pass
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testSendRetriesMechanizm(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection()
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection()
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
-        conn.send('-Err\r\n')
+            conn.send('-Err\r\n')
 
-        env.assertTrue(conn.is_close())
+            env.assertTrue(conn.is_close())
 
-        # should be a retry
+            # should be a retry
 
-        conn = shardMock.GetConnection()
+            conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
-        conn.send('-Err\r\n')
+            conn.send('-Err\r\n')
 
-        env.assertTrue(conn.is_close())
+            env.assertTrue(conn.is_close())
 
-        # should be a retry
+            # should be a retry
 
-        conn = shardMock.GetConnection()
+            conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
-        conn.send('-Err\r\n')
+            conn.send('-Err\r\n')
 
-        env.assertTrue(conn.is_close())
+            env.assertTrue(conn.is_close())
 
-        # should not retry
+            # should not retry
 
-        conn = shardMock.GetConnection()
+            conn = shardMock.GetConnection()
 
-        # make sure message will not be sent again
-        try:
-            with TimeLimit(1):
-                conn.read_request()
-                env.assertTrue(False)  # we should not get any data after crash
-        except Exception:
-            pass
+            # make sure message will not be sent again
+            try:
+                with TimeLimit(1):
+                    conn.read_request()
+                    env.assertTrue(False)  # we should not get any data after crash
+            except Exception:
+                pass
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testSendTopology(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection()
-        
-        env.expect('RG.NETWORKTEST').equal('OK')
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection()
+            
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
-        conn.send_error('ERRCLUSTER')
+            conn.send_error('ERRCLUSTER')
 
-        env.assertTrue(conn.is_close())
+            env.assertTrue(conn.is_close())
 
-        # should reconnect
-        conn = shardMock.GetConnection(sendHelloResponse=False)
+            # should reconnect
+            conn = shardMock.GetConnection(sendHelloResponse=False)
 
-        # should recieve the topology
-        env.assertEqual(conn.read_request(), ['RG.CLUSTERSETFROMSHARD', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', '0000000000000000000000000000000000000002', 'NO-USED', '2', 'NO-USED', '1', 'NO-USED', '0', '8192', 'NO-USED', 'password@localhost:6379', 'NO-USED', 'NO-USED', '2', 'NO-USED', '8193', '16383', 'NO-USED', 'password@localhost:%d' % shardMock.port])
+            # should recieve the topology
+            env.assertEqual(conn.read_request(), ['RG.CLUSTERSETFROMSHARD', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', 'NO-USED', '0000000000000000000000000000000000000002', 'NO-USED', '2', 'NO-USED', '1', 'NO-USED', '0', '8192', 'NO-USED', 'password@%s:6379' % shardMock.host, 'NO-USED', 'NO-USED', '2', 'NO-USED', '8193', '16383', 'NO-USED', 'password@%s:%d' % (shardMock.host, shardMock.port)])
 
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testStopListening(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection()
-        
-        env.expect('RG.NETWORKTEST').equal('OK')
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection()
+            
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
 
-        conn.send_status('OK')
+            conn.send_status('OK')
 
-        shardMock.StopListening()
+            shardMock.StopListening()
 
-        conn.close()
+            conn.close()
 
-        time.sleep(0.5)
+            time.sleep(0.5)
 
-        env.expect('RG.NETWORKTEST').equal('OK')
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        shardMock.StartListening()
+            shardMock.StartListening()
 
-        conn = shardMock.GetConnection()
+            conn = shardMock.GetConnection()
 
-        env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
+            env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '1'])
 
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testDuplicateMessagesAreIgnored(env):
 
-    with ShardMock(env) as shardMock:
-        shardMock.GetConnection()
-        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000' , 'RG_NetworkTest', 'test', '0').equal('OK')
-        env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            shardMock.GetConnection()
+            env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000' , 'RG_NetworkTest', 'test', '0').equal('OK')
+            env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000', 'RG_NetworkTest', 'test', '0').equal('duplicate message ignored')
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessagesResentAfterHelloResponse(env):
 
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection(sendHelloResponse=False)
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection(sendHelloResponse=False)
 
-        # read RG.HELLO request
-        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+            # read RG.HELLO request
+            env.assertEqual(conn.read_request(), ['RG.HELLO'])
 
-        # this will send 'test' msg to the shard before he replied the RG.HELLO message
-        env.expect('RG.NETWORKTEST').equal('OK')
+            # this will send 'test' msg to the shard before he replied the RG.HELLO message
+            env.expect('RG.NETWORKTEST').equal('OK')
 
-        # send RG.HELLO reply
-        conn.send_bulk('1')  # hello response, sending runid
+            # send RG.HELLO reply
+            conn.send_bulk('1')  # hello response, sending runid
 
-        # make sure we get the 'test' msg
-        try:
-            with TimeLimit(2):
-                env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
-        except Exception:
-            env.assertTrue(False, message='did not get the "test" message')
+            # make sure we get the 'test' msg
+            try:
+                with TimeLimit(2):
+                    env.assertEqual(conn.read_request(), ['RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000001', shardMock.runId, 'RG_NetworkTest', 'test', '0'])
+            except Exception:
+                env.assertTrue(False, message='did not get the "test" message')
 
 @gearsTest(skipOnSingleShard=True, skipCleanups=True, skipWithTLS=True)
 def testClusterRefreshOnOnlySingleNode(env):
@@ -477,107 +487,112 @@ def testClusterRefreshOnOnlySingleNode(env):
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testClusterSetAfterHelloResponseFailure(env):
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection(sendHelloResponse=False)
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection(sendHelloResponse=False)
 
-        # read RG.HELLO request
-        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+            # read RG.HELLO request
+            env.assertEqual(conn.read_request(), ['RG.HELLO'])
 
-        # send RG.HELLO bad reply
-        conn.send_error('err')  # hello response, sending runid
+            # send RG.HELLO bad reply
+            conn.send_error('err')  # hello response, sending runid
 
-        # resend cluster set
-        res = env.cmd('RG.CLUSTERSET',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '0',
-                     '8192',
-                     'NO-USED',
-                     'password@localhost:6379',
-                     'NO-USED',
-                     )
+            # resend cluster set
+            res = env.cmd('RG.CLUSTERSET',
+                            'NO-USED',
+                            'NO-USED',
+                            'NO-USED',
+                            'NO-USED',
+                            'NO-USED',
+                            '1',
+                            'NO-USED',
+                            '1',
+                            'NO-USED',
+                            '1',
+                            'NO-USED',
+                            '0',
+                            '8192',
+                            'NO-USED',
+                            'password@%s:6379' % shardMock.host,
+                            'NO-USED',
+                            )
 
-        time.sleep(2) # make sure the RG.HELLO resend callback is not called
+            time.sleep(2) # make sure the RG.HELLO resend callback is not called
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testClusterSetAfterDisconnect(env):
-    with ShardMock(env) as shardMock:
-        conn = shardMock.GetConnection(sendHelloResponse=False)
 
-        # read RG.HELLO request
-        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            conn = shardMock.GetConnection(sendHelloResponse=False)
 
-        conn.close()
+            # read RG.HELLO request
+            env.assertEqual(conn.read_request(), ['RG.HELLO'])
 
-        # resend cluster set
-        res = env.cmd('RG.CLUSTERSET',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '0',
-                     '8192',
-                     'NO-USED',
-                     'password@localhost:6379',
-                     'NO-USED',
-                     )
+            conn.close()
 
-        shardMock._send_cluster_set()
+            # resend cluster set
+            res = env.cmd('RG.CLUSTERSET',
+                        'NO-USED',
+                        'NO-USED',
+                        'NO-USED',
+                        'NO-USED',
+                        'NO-USED',
+                        '1',
+                        'NO-USED',
+                        '1',
+                        'NO-USED',
+                        '1',
+                        'NO-USED',
+                        '0',
+                        '8192',
+                        'NO-USED',
+                        'password@%s:6379' % shardMock.host,
+                        'NO-USED',
+                        )
 
-        conn = shardMock.GetConnection(sendHelloResponse=False)
+            shardMock._send_cluster_set()
 
-        # read RG.HELLO request
-        env.assertEqual(conn.read_request(), ['RG.HELLO'])
+            conn = shardMock.GetConnection(sendHelloResponse=False)
+
+            # read RG.HELLO request
+            env.assertEqual(conn.read_request(), ['RG.HELLO'])
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMassiveClusterSet(env):
-    with ShardMock(env) as shardMock:
-        for i in range(1000):
-            conn = shardMock.GetConnection(sendHelloResponse=False)
-            shardMock._send_cluster_set()
+    for host in ['localhost', '::1']:
+        with ShardMock(env, host) as shardMock:
+            for i in range(1000):
+                conn = shardMock.GetConnection(sendHelloResponse=False)
+                shardMock._send_cluster_set()
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMassiveClusterSetFromShard(env):
-    with ShardMock(env) as shardMock:
-        for i in range(1000):
-            env.cmd('RG.CLUSTERSETFROMSHARD',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '2',
-                     'NO-USED',
-                     '1',
-                     'NO-USED',
-                     '0',
-                     '8192',
-                     'NO-USED',
-                     'password@localhost:6379',
-                     'NO-USED',
-                     'NO-USED',
-                     '2',
-                     'NO-USED',
-                     '8193',
-                     '16383',
-                     'NO-USED',
-                     'password@localhost:%d' % shardMock.port
-                     )
+    for host in ['localhost', '::1']:
+            with ShardMock(env, host) as shardMock:
+                for i in range(1000):
+                    env.cmd('RG.CLUSTERSETFROMSHARD',
+                            'NO-USED',
+                            'NO-USED',
+                            'NO-USED',
+                            'NO-USED',
+                            'NO-USED',
+                            '1',
+                            'NO-USED',
+                            '2',
+                            'NO-USED',
+                            '1',
+                            'NO-USED',
+                            '0',
+                            '8192',
+                            'NO-USED',
+                            'password@%s:6379' % shardMock.host,
+                            'NO-USED',
+                            'NO-USED',
+                            '2',
+                            'NO-USED',
+                            '8193',
+                            '16383',
+                            'NO-USED',
+                            'password@%s:%d' % (shardMock.host, shardMock.port)
+                            )
