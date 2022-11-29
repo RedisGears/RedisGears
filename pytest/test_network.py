@@ -8,6 +8,7 @@ from RLTest import Env
 from common import TimeLimit
 from includes import *
 from common import gearsTest
+import socket
 
 
 class Connection(object):
@@ -242,10 +243,13 @@ class ShardMock():
         self.stream_server = gevent.server.StreamServer((self.host, self.port), self._handle_conn)
         self.stream_server.start()
 
+def _get_hosts():
+    return ['localhost', '::1'] if socket.has_ipv6 else ['localhost']
+
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageIdCorrectness(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection()
 
@@ -262,7 +266,7 @@ def testMessageIdCorrectness(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testErrorHelloResponse(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetCleanConnection()
             env.assertEqual(conn.read_request(), ['AUTH', 'password'])
@@ -282,7 +286,7 @@ def testErrorHelloResponse(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageResentAfterDisconnect(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection()
 
@@ -319,7 +323,7 @@ def testMessageResentAfterDisconnect(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageNotResentAfterCrash(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection()
 
@@ -347,7 +351,7 @@ def testMessageNotResentAfterCrash(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testSendRetriesMechanizm(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection()
 
@@ -394,7 +398,7 @@ def testSendRetriesMechanizm(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testSendTopology(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection()
             
@@ -416,7 +420,7 @@ def testSendTopology(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testStopListening(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection()
             
@@ -444,7 +448,7 @@ def testStopListening(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testDuplicateMessagesAreIgnored(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             shardMock.GetConnection()
             env.expect('RG.INNERMSGCOMMAND', '0000000000000000000000000000000000000002', '0000000000000000000000000000000000000000' , 'RG_NetworkTest', 'test', '0').equal('OK')
@@ -453,7 +457,7 @@ def testDuplicateMessagesAreIgnored(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessagesResentAfterHelloResponse(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection(sendHelloResponse=False)
 
@@ -487,7 +491,7 @@ def testClusterRefreshOnOnlySingleNode(env):
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testClusterSetAfterHelloResponseFailure(env):
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection(sendHelloResponse=False)
 
@@ -522,7 +526,7 @@ def testClusterSetAfterHelloResponseFailure(env):
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testClusterSetAfterDisconnect(env):
 
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             conn = shardMock.GetConnection(sendHelloResponse=False)
 
@@ -560,7 +564,7 @@ def testClusterSetAfterDisconnect(env):
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMassiveClusterSet(env):
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
         with ShardMock(env, host) as shardMock:
             for i in range(1000):
                 conn = shardMock.GetConnection(sendHelloResponse=False)
@@ -568,7 +572,7 @@ def testMassiveClusterSet(env):
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMassiveClusterSetFromShard(env):
-    for host in ['localhost', '::1']:
+    for host in _get_hosts():
             with ShardMock(env, host) as shardMock:
                 for i in range(1000):
                     env.cmd('RG.CLUSTERSETFROMSHARD',
