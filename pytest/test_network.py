@@ -243,8 +243,23 @@ class ShardMock():
         self.stream_server = gevent.server.StreamServer((self.host, self.port), self._handle_conn)
         self.stream_server.start()
 
+def _is_ipv6_enabled():
+    """Check whether IPv6 is enabled on this host."""
+    if socket.has_ipv6:
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            sock.bind(("::0", 0))
+            return True
+        except OSError:
+            pass
+        finally:
+            if sock:
+                sock.close()
+    return False
+
 def _get_hosts():
-    return ['localhost', '::1'] if socket.has_ipv6 else ['localhost']
+    return ['localhost', '::0'] if _is_ipv6_enabled() else ['localhost']
 
 @gearsTest(skipOnCluster=True, skipCleanups=True, skipWithTLS=True)
 def testMessageIdCorrectness(env):
