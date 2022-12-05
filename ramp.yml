@@ -20,6 +20,7 @@ capabilities:
     - eviction_expiry
     - intershard_tls
     - intershard_tls_pass
+    - ipv6
 exclude_commands:
     - _RG.FUNCTION
     - redisgears_2.REFRESHCLUSTER

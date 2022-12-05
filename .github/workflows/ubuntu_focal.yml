@@ -29,7 +29,7 @@ jobs:
     - name: Tests
       run: cd pytests;./run_tests.sh
     - name: install ramp packer
-      run: pip install git+https://github.com/RedisLabsModules/RAMP@master
+      run: pip install ramp-packer
     - name: Pack
       run: target/release/packer
     - name: Setup s3cmd action
