@@ -112,6 +112,7 @@ function test(i) {
 test(1);
 redis.register_function('test', test);
     """
+    env.expect('CONFIG', 'SET', 'redisgears_2.lock-redis-timeout', '10000')
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("Maximum call stack size exceeded")
 
 @gearsTest()
