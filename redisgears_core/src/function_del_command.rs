@@ -14,8 +14,8 @@ use crate::{get_ctx, get_libraries};
 use mr_derive::BaseObject;
 
 use mr::libmr::{
-    record::Record as LibMRRecord, remote_task::run_on_all_shards,
-    remote_task::RemoteTask, RustMRError,
+    record::Record as LibMRRecord, remote_task::run_on_all_shards, remote_task::RemoteTask,
+    RustMRError,
 };
 
 #[derive(Clone, Serialize, Deserialize, BaseObject)]

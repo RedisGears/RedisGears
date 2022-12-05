@@ -17,8 +17,8 @@ use crate::{
 };
 
 use mr::libmr::{
-    record::Record as LibMRRecord, remote_task::run_on_all_shards,
-    remote_task::RemoteTask, RustMRError,
+    record::Record as LibMRRecord, remote_task::run_on_all_shards, remote_task::RemoteTask,
+    RustMRError,
 };
 
 use std::iter::Skip;

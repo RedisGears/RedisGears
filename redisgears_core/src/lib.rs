@@ -58,7 +58,7 @@ use std::cell::RefCell;
 
 use crate::keys_notifications::ConsumerKey;
 
-use mr::libmr::{mr_init};
+use mr::libmr::mr_init;
 
 mod background_run_ctx;
 mod background_run_scope_guard;

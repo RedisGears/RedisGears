@@ -17,9 +17,7 @@ use redis_module::{RedisValue, ThreadSafeContext};
 
 use std::sync::Arc;
 
-use mr::libmr::{
-    calc_slot, record::Record, remote_task::RemoteTask, RustMRError,
-};
+use mr::libmr::{calc_slot, record::Record, remote_task::RemoteTask, RustMRError};
 
 use mr_derive::BaseObject;
 
