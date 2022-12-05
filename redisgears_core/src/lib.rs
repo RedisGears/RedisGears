@@ -58,7 +58,7 @@ use std::cell::RefCell;
 
 use crate::keys_notifications::ConsumerKey;
 
-use mr::libmr::{mr_init, record::Record, remote_task::RemoteTask};
+use mr::libmr::{mr_init};
 
 mod background_run_ctx;
 mod background_run_scope_guard;
@@ -497,17 +497,6 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
 
 fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     mr_init(ctx, 1);
-    background_run_ctx::GearsRemoteFunctionInputsRecord::register();
-    background_run_ctx::GearsRemoteFunctionOutputRecord::register();
-    background_run_ctx::GearsRemoteTask::register();
-
-    function_load_command::GearsFunctionLoadInputRecord::register();
-    function_load_command::GearsFunctionLoadOutputRecord::register();
-    function_load_command::GearsFunctionLoadRemoteTask::register();
-
-    function_del_command::GearsFunctionDelInputRecord::register();
-    function_del_command::GearsFunctionDelOutputRecord::register();
-    function_del_command::GearsFunctionDelRemoteTask::register();
 
     match redisai_rs::redisai_init(ctx) {
         Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),

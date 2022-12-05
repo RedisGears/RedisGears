@@ -10,6 +10,8 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 #redis-module = { version="1.0", features = ["experimental-api"]}
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "api_extentions", features = ["experimental-api"]}
 lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api" }
+lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api" }
+linkme = "0.3"
 redisai_rs = { path = "../redisai_rs" }
 libloading = "0.7"
 redisgears_plugin_api = {path="../redisgears_plugin_api/"}

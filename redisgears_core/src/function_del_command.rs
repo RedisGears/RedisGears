@@ -11,12 +11,14 @@ use std::vec::IntoIter;
 
 use crate::{get_ctx, get_libraries};
 
+use mr_derive::BaseObject;
+
 use mr::libmr::{
-    base_object::BaseObject, record::Record as LibMRRecord, remote_task::run_on_all_shards,
+    record::Record as LibMRRecord, remote_task::run_on_all_shards,
     remote_task::RemoteTask, RustMRError,
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsFunctionDelInputRecord {
     lib_name: String,
 }
@@ -31,13 +33,7 @@ impl LibMRRecord for GearsFunctionDelInputRecord {
     }
 }
 
-impl BaseObject for GearsFunctionDelInputRecord {
-    fn get_name() -> &'static str {
-        "GearsFunctionDelInputRecord\0"
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsFunctionDelOutputRecord;
 
 impl LibMRRecord for GearsFunctionDelOutputRecord {
@@ -50,13 +46,7 @@ impl LibMRRecord for GearsFunctionDelOutputRecord {
     }
 }
 
-impl BaseObject for GearsFunctionDelOutputRecord {
-    fn get_name() -> &'static str {
-        "GearsFunctionDelOutputRecord\0"
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsFunctionDelRemoteTask;
 
 impl RemoteTask for GearsFunctionDelRemoteTask {
@@ -82,12 +72,6 @@ impl RemoteTask for GearsFunctionDelRemoteTask {
             None => Err("library does not exists".to_string()),
         };
         on_done(res);
-    }
-}
-
-impl BaseObject for GearsFunctionDelRemoteTask {
-    fn get_name() -> &'static str {
-        "GearsFunctionDelRemoteTask\0"
     }
 }
 

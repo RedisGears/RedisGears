@@ -17,7 +17,7 @@ use crate::{
 };
 
 use mr::libmr::{
-    base_object::BaseObject, record::Record as LibMRRecord, remote_task::run_on_all_shards,
+    record::Record as LibMRRecord, remote_task::run_on_all_shards,
     remote_task::RemoteTask, RustMRError,
 };
 
@@ -28,6 +28,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::gears_box::{do_http_get_text, gears_box_get_library};
+
+use mr_derive::BaseObject;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct FunctionLoadArgs {
@@ -255,7 +257,7 @@ fn get_args_values(
     })
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsFunctionLoadInputRecord {
     args: FunctionLoadArgs,
 }
@@ -270,13 +272,7 @@ impl LibMRRecord for GearsFunctionLoadInputRecord {
     }
 }
 
-impl BaseObject for GearsFunctionLoadInputRecord {
-    fn get_name() -> &'static str {
-        "GearsFunctionLoadInputsRecord\0"
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsFunctionLoadOutputRecord;
 
 impl LibMRRecord for GearsFunctionLoadOutputRecord {
@@ -289,13 +285,7 @@ impl LibMRRecord for GearsFunctionLoadOutputRecord {
     }
 }
 
-impl BaseObject for GearsFunctionLoadOutputRecord {
-    fn get_name() -> &'static str {
-        "GearsFunctionLoadOutputRecord\0"
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsFunctionLoadRemoteTask;
 
 impl RemoteTask for GearsFunctionLoadRemoteTask {
@@ -335,12 +325,6 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
             res
         };
         on_done(res.map(|_v| GearsFunctionLoadOutputRecord));
-    }
-}
-
-impl BaseObject for GearsFunctionLoadRemoteTask {
-    fn get_name() -> &'static str {
-        "GearsFunctionLoadRemoteTask\0"
     }
 }
 

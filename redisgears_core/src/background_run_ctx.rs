@@ -18,8 +18,10 @@ use redis_module::{RedisValue, ThreadSafeContext};
 use std::sync::Arc;
 
 use mr::libmr::{
-    base_object::BaseObject, calc_slot, record::Record, remote_task::RemoteTask, RustMRError,
+    calc_slot, record::Record, remote_task::RemoteTask, RustMRError,
 };
+
+use mr_derive::BaseObject;
 
 pub(crate) struct BackgroundRunCtx {
     call_options: RedisClientCallOptions,
@@ -44,7 +46,7 @@ impl BackgroundRunCtx {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsRemoteFunctionInputsRecord {
     inputs: Vec<RemoteFunctionData>,
 }
@@ -70,13 +72,7 @@ impl Record for GearsRemoteFunctionInputsRecord {
     }
 }
 
-impl BaseObject for GearsRemoteFunctionInputsRecord {
-    fn get_name() -> &'static str {
-        "GearsRemoteFunctionInputsRecord\0"
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsRemoteFunctionOutputRecord {
     output: RemoteFunctionData,
 }
@@ -99,13 +95,7 @@ impl Record for GearsRemoteFunctionOutputRecord {
     }
 }
 
-impl BaseObject for GearsRemoteFunctionOutputRecord {
-    fn get_name() -> &'static str {
-        "GearsRemoteFunctionOutputRecord\0"
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, BaseObject)]
 pub(crate) struct GearsRemoteTask {
     lib_name: String,
     job_name: String,
@@ -159,12 +149,6 @@ impl RemoteTask for GearsRemoteTask {
                 on_done(res);
             }),
         );
-    }
-}
-
-impl BaseObject for GearsRemoteTask {
-    fn get_name() -> &'static str {
-        "GearsRemoteTask\0"
     }
 }
 
