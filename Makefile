@@ -1,4 +1,6 @@
 
+override GCC=1
+
 WITH_PYTHON ?= 1
 
 ifeq ($(VG),1)
@@ -10,14 +12,13 @@ override DEBUG:=1
 endif
 
 ROOT=.
-MK.pyver:=3
 include deps/readies/mk/main
 
 BINDIR=$(BINROOT)/$(SRCDIR)
 
 #----------------------------------------------------------------------------------------------
 
-define HELP
+define HELPTEXT
 
 make build
   DEBUG=1         # build debug variant
@@ -89,7 +90,6 @@ include build/hiredis/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
 
-CC=gcc
 SRCDIR=src
 
 define _SOURCES:=

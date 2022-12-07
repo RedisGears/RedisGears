@@ -1,11 +1,12 @@
 
+GCC=1
+
 ROOT=../..
-MK.pyver:=3
 include $(ROOT)/deps/readies/mk/main
 
 MK.configure=1
 
-define HELP
+define HELPTEXT
 make build    # configure and compile
 make clean    # clean generated sbinaries
   ALL=1       # remote entire binary directory
@@ -19,7 +20,11 @@ SRCDIR=$(ROOT)/deps/libevent
 
 TARGET=$(BINDIR)/.libs/libevent.a
 
-export CFLAGS += -fPIC
+$(info ### $(BINROOT)/libevent/include)
+
+export CFLAGS += \
+	-fPIC \
+	-I$(BINROOT)/libevent/include
 
 #----------------------------------------------------------------------------------------------
 
@@ -28,9 +33,9 @@ include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
 
-source: $(SRCDIR)/configure
-
-.PHONY: source
-
-$(SRCDIR)/configure:
-	$(SHOW)cd $(SRCDIR); ./autogen.sh
+#source: $(SRCDIR)/configure
+#
+#.PHONY: source
+#
+#$(SRCDIR)/configure:
+#	$(SHOW)cd $(SRCDIR); ./autogen.sh
