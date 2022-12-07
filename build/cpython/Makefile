@@ -1,5 +1,5 @@
 
-override GCC=1
+GCC=1
 
 # built-in rules are needed here
 # MAKEFLAGS syntax differs in gnu make v3 and v4

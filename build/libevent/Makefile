@@ -20,8 +20,6 @@ SRCDIR=$(ROOT)/deps/libevent
 
 TARGET=$(BINDIR)/.libs/libevent.a
 
-$(info ### $(BINROOT)/libevent/include)
-
 export CFLAGS += \
 	-fPIC \
 	-I$(BINROOT)/libevent/include
@@ -33,9 +31,9 @@ include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
 
-#source: $(SRCDIR)/configure
-#
-#.PHONY: source
-#
-#$(SRCDIR)/configure:
-#	$(SHOW)cd $(SRCDIR); ./autogen.sh
+source: $(SRCDIR)/configure
+
+.PHONY: source
+
+$(SRCDIR)/configure:
+	$(SHOW)cd $(SRCDIR); ./autogen.sh

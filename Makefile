@@ -1,5 +1,5 @@
 
-override GCC=1
+GCC=1
 
 WITH_PYTHON ?= 1
 
