@@ -7,11 +7,12 @@ ifeq ($(VALGRIND),1)
 override DEBUG:=1
 endif
 
+GCC=1
+
 ROOT=../..
-MK.pyver:=3
 include $(ROOT)/deps/readies/mk/main
 
-define HELP
+define HELPTEXT
 make build
   DEBUG=1         # build debug variant
   VG|VALGRIND=1   # build with VALGRIND (implies DEBUG=1)
@@ -56,8 +57,6 @@ CPYTHON_BINROOT=$(ROOT)/bin/$(FULL_VARIANT.release)
 include $(ROOT)/build/cpython/Makefile.defs
 
 #----------------------------------------------------------------------------------------------
-
-CC=gcc
 
 define _SOURCES
 	plugins/python/redisgears_python.c
@@ -135,7 +134,7 @@ endif
 
 ifeq ($(OS),macos)
 LD_FLAGS += \
-	$(GETTEXT_PREFIX)/lib/libintl.a \
+	$(gettext_prefix)/lib/libintl.a \
 	-liconv
 else
 EMBEDDED_LIBS += -lutil -luuid
