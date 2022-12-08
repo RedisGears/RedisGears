@@ -1,9 +1,10 @@
 
+GCC=1
+
 ROOT=../..
-MK.pyver:=3
 include $(ROOT)/deps/readies/mk/main
 
-define HELP
+define HELPTEXT
 make build    # configure and compile
 make clean    # clean generated sbinaries
   ALL=1       # remote entire binary directory
@@ -23,8 +24,6 @@ TARGET=$(BINDIR)/libhiredis.a
 MK_CUSTOM_CLEAN=1
 
 include $(MK)/defs
-
-CC=gcc
 
 _SOURCES=net.c hiredis.c sds.c async.c read.c alloc.c  dict.c sockcompat.c ssl.c
 
