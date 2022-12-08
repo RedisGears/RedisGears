@@ -10,6 +10,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     FunctionCallResult,
 };
 
+use v8_rs::v8::v8_utf8::V8LocalUtf8;
 use v8_rs::v8::{
     isolate_scope::V8IsolateScope, v8_context_scope::V8ContextScope, v8_promise::V8PromiseState,
     v8_value::V8LocalValue, v8_value::V8PersistValue,
@@ -23,6 +24,8 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use std::str;
+
+use v8_derive::new_native_function;
 
 struct BackgroundClientHolder {
     c: Option<Box<dyn ReplyCtxInterface>>,
@@ -171,23 +174,22 @@ impl V8InternalFunction {
                         let bg_execution_ctx = BackgroundClientHolder { c: Some(bg_client) };
                         let execution_ctx_resolve = Arc::new(RefCell::new(bg_execution_ctx));
                         let execution_ctx_reject = Arc::clone(&execution_ctx_resolve);
-                        let resolve =
-                            ctx_scope.new_native_function(move |args, isolate, context| {
+                        let resolve = ctx_scope.new_native_function(new_native_function!(
+                            move |isolate, context, rep: V8LocalValue| {
                                 let mut execution_ctx = execution_ctx_resolve.borrow_mut();
                                 send_reply(
                                     0,
                                     isolate,
                                     context,
                                     execution_ctx.c.as_ref().unwrap().as_ref(),
-                                    args.get(0),
+                                    rep,
                                 );
                                 execution_ctx.unblock();
-                                None
-                            });
-                        let reject = ctx_scope.new_native_function(
-                            move |args, _isolate_scope, _ctx_scope| {
-                                let reply = args.get(0);
-                                let reply = reply.to_utf8().unwrap();
+                                Ok::<_, String>(None)
+                            }
+                        ));
+                        let reject = ctx_scope.new_native_function(new_native_function!(
+                            move |_isolate_scope, _ctx_scope, reply: V8LocalUtf8| {
                                 let mut execution_ctx = execution_ctx_reject.borrow_mut();
                                 execution_ctx
                                     .c
@@ -195,9 +197,9 @@ impl V8InternalFunction {
                                     .unwrap()
                                     .reply_with_error(reply.as_str());
                                 execution_ctx.unblock();
-                                None
-                            },
-                        );
+                                Ok::<_, String>(None)
+                            }
+                        ));
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }
@@ -291,10 +293,8 @@ impl V8InternalFunction {
                         let bg_execution_ctx = BackgroundClientHolder { c: Some(bc) };
                         let execution_ctx_resolve = Arc::new(RefCell::new(bg_execution_ctx));
                         let execution_ctx_reject = Arc::clone(&execution_ctx_resolve);
-                        let resolve =
-                            ctx_scope.new_native_function(move |args, _isolate_scope, _context| {
-                                let reply = args.get(0);
-                                let reply = reply.to_utf8().unwrap();
+                        let resolve = ctx_scope.new_native_function(new_native_function!(
+                            move |_isolate_scope, _context, reply: V8LocalUtf8| {
                                 let mut execution_ctx = execution_ctx_resolve.borrow_mut();
                                 execution_ctx
                                     .c
@@ -302,12 +302,11 @@ impl V8InternalFunction {
                                     .unwrap()
                                     .reply_with_bulk_string(reply.as_str());
                                 execution_ctx.unblock();
-                                None
-                            });
-                        let reject = ctx_scope.new_native_function(
-                            move |args, _isolate_scope, _ctx_scope| {
-                                let reply = args.get(0);
-                                let reply = reply.to_utf8().unwrap();
+                                Ok::<_, String>(None)
+                            }
+                        ));
+                        let reject = ctx_scope.new_native_function(new_native_function!(
+                            move |_isolate_scope, _ctx_scope, reply: V8LocalUtf8| {
                                 let mut execution_ctx = execution_ctx_reject.borrow_mut();
                                 execution_ctx
                                     .c
@@ -315,9 +314,9 @@ impl V8InternalFunction {
                                     .unwrap()
                                     .reply_with_error(reply.as_str());
                                 execution_ctx.unblock();
-                                None
-                            },
-                        );
+                                Ok::<_, String>(None)
+                            }
+                        ));
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }

@@ -11,11 +11,14 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::RemoteFunctionData, CallResult, GearsApiError, RefCellWrapper,
 };
 
+use v8_rs::v8::v8_array::V8LocalArray;
 use v8_rs::v8::{
     isolate_scope::V8IsolateScope, v8_array_buffer::V8LocalArrayBuffer,
     v8_context_scope::V8ContextScope, v8_object::V8LocalObject, v8_promise::V8PromiseState,
     v8_utf8::V8LocalUtf8, v8_value::V8LocalValue, v8_version,
 };
+
+use v8_derive::new_native_function;
 
 use crate::v8_redisai::{get_redisai_api, get_redisai_client};
 
@@ -248,268 +251,241 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
     redis_background_client: Arc<Box<dyn BackgroundRunFunctionCtxInterface>>,
 ) -> V8LocalObject<'isolate_scope, 'isolate> {
     let bg_client = isolate_scope.new_object();
+
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    bg_client.set(
+    bg_client.set_native_function(
         ctx_scope,
-        &isolate_scope.new_string("block").to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate_scope, ctx_scope| {
-                if args.is_empty() {
-                    isolate_scope
-                        .raise_exception_str("Wrong number of arguments to 'block' function");
-                    return None;
-                }
-                let f = args.get(0);
-                if !f.is_function() {
-                    isolate_scope.raise_exception_str("Argument to 'block' must be a function");
-                    return None;
-                }
+        "block",
+        new_native_function!(move |isolate_scope, ctx_scope, f: V8LocalValue| {
+            if !f.is_function() {
+                return Err("Argument to 'block' must be a function".into());
+            }
 
-                let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
-                if is_already_blocked.is_some() && *is_already_blocked.unwrap() {
-                    isolate_scope.raise_exception_str("Main thread is already blocked");
-                    return None;
-                }
+            let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
+            if is_already_blocked.is_some() && *is_already_blocked.unwrap() {
+                return Err("Main thread is already blocked".into());
+            }
 
-                let redis_client = {
-                    let _unlocker = isolate_scope.new_unlocker();
-                    match redis_background_client_ref.lock() {
-                        Ok(l) => l,
-                        Err(err) => {
-                            isolate_scope.raise_exception_str(&format!(
-                                "Can not lock Redis, {}",
-                                err.get_msg()
-                            ));
-                            return None;
-                        }
+            let redis_client = {
+                let _unlocker = isolate_scope.new_unlocker();
+                match redis_background_client_ref.lock() {
+                    Ok(l) => l,
+                    Err(err) => {
+                        return Err(format!("Can not lock Redis, {}", err.get_msg()));
                     }
-                };
-                let script_ctx_ref = match script_ctx_ref.upgrade() {
-                    Some(s) => s,
-                    None => {
-                        isolate_scope.raise_exception_str("Function were unregistered");
-                        return None;
-                    }
-                };
+                }
+            };
+            let script_ctx_ref = match script_ctx_ref.upgrade() {
+                Some(s) => s,
+                None => {
+                    return Err("Function were unregistered".into());
+                }
+            };
 
-                let r_client = Arc::new(RefCell::new(RedisClient::new()));
-                r_client.borrow_mut().set_client(redis_client);
-                let c = get_redis_client(&script_ctx_ref, isolate_scope, ctx_scope, &r_client);
+            let r_client = Arc::new(RefCell::new(RedisClient::new()));
+            r_client.borrow_mut().set_client(redis_client);
+            let c = get_redis_client(&script_ctx_ref, isolate_scope, ctx_scope, &r_client);
 
-                ctx_scope.set_private_data(0, Some(&true)); // indicate we are blocked
+            ctx_scope.set_private_data(0, Some(&true)); // indicate we are blocked
 
-                script_ctx_ref.after_lock_gil();
-                let res = f.call(ctx_scope, Some(&[&c.to_value()]));
-                script_ctx_ref.before_release_gil();
+            script_ctx_ref.after_lock_gil();
+            let res = f.call(ctx_scope, Some(&[&c.to_value()]));
+            script_ctx_ref.before_release_gil();
 
-                ctx_scope.set_private_data::<bool>(0, None);
+            ctx_scope.set_private_data::<bool>(0, None);
 
-                r_client.borrow_mut().make_invalid();
-                res
-            })
-            .to_value(),
+            r_client.borrow_mut().make_invalid();
+            Ok(res)
+        }),
     );
 
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_weak_ref = Arc::downgrade(script_ctx);
-    bg_client.set(
-        ctx_scope,
-        &isolate_scope.new_string("run_on_key").to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate, ctx_scope| {
-                if args.len() < 2 {
-                    isolate.raise_exception_str("Wrong number of arguments to 'run_on_key' function");
-                    return None;
+    bg_client.set_native_function(ctx_scope, "run_on_key", move |args, isolate, ctx_scope| {
+        if args.len() < 2 {
+            isolate.raise_exception_str("Wrong number of arguments to 'run_on_key' function");
+            return None;
+        }
+
+        let key = args.get(0);
+        let key = if key.is_string() || key.is_string_object() {
+            BinaryDataHelper::V8Uft(key.to_utf8().unwrap())
+        } else if key.is_array_buffer() {
+            BinaryDataHelper::V8Binary(key.as_array_buffer())
+        } else {
+            isolate.raise_exception_str("First argument to 'run_on_key' must be a string represnting a key name");
+            return None;
+        };
+
+        let remote_function_name = args.get(1);
+        if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
+            isolate.raise_exception_str("Second argument to 'run_on_key' must be a string represnting a remote function name");
+            return None;
+        }
+        let remote_function_name = remote_function_name.to_utf8().unwrap();
+
+        let mut args_vec = Vec::new();
+        for i in 2 .. args.len() {
+            let arg = args.get(i);
+            let arg = js_value_to_remote_function_data(ctx_scope, arg);
+            match  arg {
+                Some(arg) => args_vec.push(arg),
+                None => return None,
+            };
+        }
+
+        let _ = match script_ctx_weak_ref.upgrade() {
+            Some(s) => s,
+            None => {
+                isolate.raise_exception_str("Function were unregistered");
+                return None;
+            }
+        };
+
+        let resolver = ctx_scope.new_resolver();
+        let promise = resolver.get_promise();
+        let mut resolver = resolver.to_value().persist();
+        let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
+        redis_background_client_ref.run_on_key(key.as_bytes(), remote_function_name.as_str(), args_vec, Box::new(move |result|{
+            let script_ctx = match script_ctx_weak_ref.upgrade() {
+                Some(s) => s,
+                None => {
+                    resolver.forget();
+                    log("Library was delete while not all the remote jobs were done");
+                    return;
                 }
+            };
 
-                let key = args.get(0);
-                let key = if key.is_string() || key.is_string_object() {
-                    BinaryDataHelper::V8Uft(key.to_utf8().unwrap())
-                } else if key.is_array_buffer() {
-                    BinaryDataHelper::V8Binary(key.as_array_buffer())
-                } else {
-                    isolate.raise_exception_str("First argument to 'run_on_key' must be a string represnting a key name");
-                    return None;
-                };
-
-                let remote_function_name = args.get(1);
-                if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
-                    isolate.raise_exception_str("Second argument to 'run_on_key' must be a string represnting a remote function name");
-                    return None;
-                }
-                let remote_function_name = remote_function_name.to_utf8().unwrap();
-
-                let mut args_vec = Vec::new();
-                for i in 2 .. args.len() {
-                    let arg = args.get(i);
-                    let arg = js_value_to_remote_function_data(ctx_scope, arg);
-                    match  arg {
-                        Some(arg) => args_vec.push(arg),
-                        None => return None,
-                    };
-                }
-
-                let _ = match script_ctx_weak_ref.upgrade() {
+            script_ctx.compiled_library_api.run_on_background(Box::new(move||{
+                let script_ctx = match script_ctx_weak_ref.upgrade() {
                     Some(s) => s,
                     None => {
-                        isolate.raise_exception_str("Function were unregistered");
-                        return None;
+                        resolver.forget();
+                        log("Library was delete while not all the remote jobs were done");
+                        return;
                     }
                 };
 
-                let resolver = ctx_scope.new_resolver();
-                let promise = resolver.get_promise();
-                let mut resolver = resolver.to_value().persist();
-                let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
-                redis_background_client_ref.run_on_key(key.as_bytes(), remote_function_name.as_str(), args_vec, Box::new(move |result|{
-                    let script_ctx = match script_ctx_weak_ref.upgrade() {
-                        Some(s) => s,
-                        None => {
-                            resolver.forget();
-                            log("Library was delete while not all the remote jobs were done");
-                            return;
-                        }
-                    };
+                let isolate_scope = script_ctx.isolate.enter();
+                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
 
-                    script_ctx.compiled_library_api.run_on_background(Box::new(move||{
-                        let script_ctx = match script_ctx_weak_ref.upgrade() {
-                            Some(s) => s,
-                            None => {
-                                resolver.forget();
-                                log("Library was delete while not all the remote jobs were done");
-                                return;
+                let resolver = resolver.take_local(&isolate_scope).as_resolver();
+                match result {
+                    Ok(r) => {
+                        let v = match &r {
+                            RemoteFunctionData::Binary(b) => isolate_scope.new_array_buffer(b).to_value(),
+                            RemoteFunctionData::String(s) => {
+                                let v8_str = isolate_scope.new_string(s);
+                                let v8_obj = ctx_scope.new_object_from_json(&v8_str);
+                                if v8_obj.is_none() {
+                                    resolver.reject(&ctx_scope, &isolate_scope.new_string("Failed deserializing remote function result").to_value());
+                                    return;
+                                }
+                                v8_obj.unwrap()
                             }
                         };
-
-                        let isolate_scope = script_ctx.isolate.enter();
-                        let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
-
-                        let resolver = resolver.take_local(&isolate_scope).as_resolver();
-                        match result {
-                            Ok(r) => {
-                                let v = match &r {
-                                    RemoteFunctionData::Binary(b) => isolate_scope.new_array_buffer(b).to_value(),
-                                    RemoteFunctionData::String(s) => {
-                                        let v8_str = isolate_scope.new_string(s);
-                                        let v8_obj = ctx_scope.new_object_from_json(&v8_str);
-                                        if v8_obj.is_none() {
-                                            resolver.reject(&ctx_scope, &isolate_scope.new_string("Failed deserializing remote function result").to_value());
-                                            return;
-                                        }
-                                        v8_obj.unwrap()
-                                    }
-                                };
-                                resolver.resolve(&ctx_scope, &v)
-                            },
-                            Err(e) => {
-                                match e {
-                                    GearsApiError::Msg(msg) => resolver.reject(&ctx_scope, &isolate_scope.new_string(&msg).to_value())
-                                }
-                            }
+                        resolver.resolve(&ctx_scope, &v)
+                    },
+                    Err(e) => {
+                        match e {
+                            GearsApiError::Msg(msg) => resolver.reject(&ctx_scope, &isolate_scope.new_string(&msg).to_value())
                         }
-                    }));
-                }));
-                Some(promise.to_value())
-            })
-            .to_value(),
-    );
+                    }
+                }
+            }));
+        }));
+        Some(promise.to_value())
+    });
 
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_weak_ref = Arc::downgrade(script_ctx);
-    bg_client.set(
-        ctx_scope,
-        &isolate_scope.new_string("run_on_all_shards").to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate, ctx_scope| {
-                if args.is_empty() {
-                    isolate.raise_exception_str("Wrong number of arguments to 'block' function");
-                    return None;
-                }
+    bg_client.set_native_function(ctx_scope, "run_on_all_shards", move |args, isolate, ctx_scope| {
+        if args.is_empty() {
+            isolate.raise_exception_str("Wrong number of arguments to 'block' function");
+            return None;
+        }
 
-                let remote_function_name = args.get(0);
-                if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
-                    isolate.raise_exception_str("Second argument to 'run_on_all_shards' must be a string represnting a remote function name");
-                    return None;
-                }
-                let remote_function_name = remote_function_name.to_utf8().unwrap();
+        let remote_function_name = args.get(0);
+        if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
+            isolate.raise_exception_str("Second argument to 'run_on_all_shards' must be a string represnting a remote function name");
+            return None;
+        }
+        let remote_function_name = remote_function_name.to_utf8().unwrap();
 
-                let mut args_vec = Vec::new();
-                for i in 1 .. args.len() {
-                    let arg = args.get(i);
-                    let arg = js_value_to_remote_function_data(ctx_scope, arg);
-                    match  arg {
-                        Some(arg) => args_vec.push(arg),
-                        None => return None,
-                    };
-                }
+        let mut args_vec = Vec::new();
+        for i in 1 .. args.len() {
+            let arg = args.get(i);
+            let arg = js_value_to_remote_function_data(ctx_scope, arg);
+            match  arg {
+                Some(arg) => args_vec.push(arg),
+                None => return None,
+            };
+        }
 
-                let _ = match script_ctx_weak_ref.upgrade() {
+        let _ = match script_ctx_weak_ref.upgrade() {
+            Some(s) => s,
+            None => {
+                isolate.raise_exception_str("Function were unregistered");
+                return None;
+            }
+        };
+
+        let resolver = ctx_scope.new_resolver();
+        let promise = resolver.get_promise();
+        let mut resolver = resolver.to_value().persist();
+        let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
+        redis_background_client_ref.run_on_all_shards(remote_function_name.as_str(), args_vec, Box::new(move |results, mut errors|{
+            let script_ctx = match script_ctx_weak_ref.upgrade() {
+                Some(s) => s,
+                None => {
+                    resolver.forget();
+                    log("Library was delete while not all the remote jobs were done");
+                    return;
+                }
+            };
+
+            script_ctx.compiled_library_api.run_on_background(Box::new(move||{
+                let script_ctx = match script_ctx_weak_ref.upgrade() {
                     Some(s) => s,
                     None => {
-                        isolate.raise_exception_str("Function were unregistered");
-                        return None;
+                        resolver.forget();
+                        log("Library was delete while not all the remote jobs were done");
+                        return;
                     }
                 };
 
-                let resolver = ctx_scope.new_resolver();
-                let promise = resolver.get_promise();
-                let mut resolver = resolver.to_value().persist();
-                let script_ctx_weak_ref = Weak::clone(&script_ctx_weak_ref);
-                redis_background_client_ref.run_on_all_shards(remote_function_name.as_str(), args_vec, Box::new(move |results, mut errors|{
-                    let script_ctx = match script_ctx_weak_ref.upgrade() {
-                        Some(s) => s,
-                        None => {
-                            resolver.forget();
-                            log("Library was delete while not all the remote jobs were done");
-                            return;
+                let isolate_scope = script_ctx.isolate.enter();
+                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
+
+                let resolver = resolver.take_local(&isolate_scope).as_resolver();
+                let results: Vec<V8LocalValue> = results.into_iter().map(|v| {
+                    match v {
+                        RemoteFunctionData::Binary(b) => isolate_scope.new_array_buffer(&b).to_value(),
+                        RemoteFunctionData::String(s) => {
+                            let v8_str = isolate_scope.new_string(&s);
+                            let v8_obj = ctx_scope.new_object_from_json(&v8_str);
+                            if v8_obj.is_none() {
+                                errors.push(GearsApiError::Msg(format!("Failed deserializing remote function result '{}'", s)));
+                            }
+                            v8_obj.unwrap()
                         }
-                    };
+                    }
+                }).collect();
+                let errors: Vec<V8LocalValue> = errors.into_iter().map(|e| isolate_scope.new_string(e.get_msg()).to_value()).collect();
+                let results_array = isolate_scope.new_array(&results.iter().collect::<Vec<&V8LocalValue>>()).to_value();
+                let errors_array = isolate_scope.new_array(&errors.iter().collect::<Vec<&V8LocalValue>>()).to_value();
 
-                    script_ctx.compiled_library_api.run_on_background(Box::new(move||{
-                        let script_ctx = match script_ctx_weak_ref.upgrade() {
-                            Some(s) => s,
-                            None => {
-                                resolver.forget();
-                                log("Library was delete while not all the remote jobs were done");
-                                return;
-                            }
-                        };
-
-                        let isolate_scope = script_ctx.isolate.enter();
-                        let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
-
-                        let resolver = resolver.take_local(&isolate_scope).as_resolver();
-                        let results: Vec<V8LocalValue> = results.into_iter().map(|v| {
-                            match v {
-                                RemoteFunctionData::Binary(b) => isolate_scope.new_array_buffer(&b).to_value(),
-                                RemoteFunctionData::String(s) => {
-                                    let v8_str = isolate_scope.new_string(&s);
-                                    let v8_obj = ctx_scope.new_object_from_json(&v8_str);
-                                    if v8_obj.is_none() {
-                                        errors.push(GearsApiError::Msg(format!("Failed deserializing remote function result '{}'", s)));
-                                    }
-                                    v8_obj.unwrap()
-                                }
-                            }
-                        }).collect();
-                        let errors: Vec<V8LocalValue> = errors.into_iter().map(|e| isolate_scope.new_string(e.get_msg()).to_value()).collect();
-                        let results_array = isolate_scope.new_array(&results.iter().collect::<Vec<&V8LocalValue>>()).to_value();
-                        let errors_array = isolate_scope.new_array(&errors.iter().collect::<Vec<&V8LocalValue>>()).to_value();
-
-                        resolver.resolve(&ctx_scope, &isolate_scope.new_array(&[&results_array, &errors_array]).to_value());
-                    }));
-                }));
-                Some(promise.to_value())
-            })
-            .to_value(),
-    );
+                resolver.resolve(&ctx_scope, &isolate_scope.new_array(&[&results_array, &errors_array]).to_value());
+            }));
+        }));
+        Some(promise.to_value())
+    });
 
     bg_client
 }
 
 fn add_call_function(
-    isolate_scope: &V8IsolateScope,
     ctx_scope: &V8ContextScope,
     redis_client: &Arc<RefCell<RedisClient>>,
     client: &V8LocalObject,
@@ -517,56 +493,50 @@ fn add_call_function(
     decode_response: bool,
 ) {
     let redis_client_ref = Arc::clone(redis_client);
-    client.set(
-        ctx_scope,
-        &isolate_scope.new_string(function_name).to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate_scope, ctx_scope| {
-                if args.is_empty() {
-                    isolate_scope.raise_exception_str("Wrong number of arguments to 'call' function");
-                    return None;
-                }
+    client.set_native_function(ctx_scope, function_name,move |args, isolate_scope, ctx_scope| {
+        if args.is_empty() {
+            isolate_scope.raise_exception_str("Wrong number of arguments to 'call' function");
+            return None;
+        }
 
-                let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
-                if is_already_blocked.is_none() || !*is_already_blocked.unwrap() {
-                    isolate_scope.raise_exception_str("Main thread is not locked");
-                    return None;
-                }
+        let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
+        if is_already_blocked.is_none() || !*is_already_blocked.unwrap() {
+            isolate_scope.raise_exception_str("Main thread is not locked");
+            return None;
+        }
 
-                let command = args.get(0);
-                if !command.is_string() {
-                    isolate_scope.raise_exception_str("First argument to 'command' must be a string");
-                    return None;
-                }
+        let command = args.get(0);
+        if !command.is_string() {
+            isolate_scope.raise_exception_str("First argument to 'command' must be a string");
+            return None;
+        }
 
-                let command_utf8 = command.to_utf8().unwrap();
+        let command_utf8 = command.to_utf8().unwrap();
 
-                let mut commands_args = Vec::new();
-                for i in 1..args.len() {
-                    let arg = args.get(i);
-                    let arg = if arg.is_string() {
-                        arg.to_utf8().unwrap().as_str().as_bytes().to_vec()
-                    } else if arg.is_array_buffer(){
-                        arg.as_array_buffer().data().to_vec()
-                    } else {
-                        isolate_scope.raise_exception_str("Bad argument was given to 'call', argument must be either String or ArrayBuffer");
-                        return None;
-                    };
-                    commands_args.push(arg);
-                }
+        let mut commands_args = Vec::new();
+        for i in 1..args.len() {
+            let arg = args.get(i);
+            let arg = if arg.is_string() {
+                arg.to_utf8().unwrap().as_str().as_bytes().to_vec()
+            } else if arg.is_array_buffer(){
+                arg.as_array_buffer().data().to_vec()
+            } else {
+                isolate_scope.raise_exception_str("Bad argument was given to 'call', argument must be either String or ArrayBuffer");
+                return None;
+            };
+            commands_args.push(arg);
+        }
 
-                let res = match redis_client_ref.borrow().client.as_ref() {
-                    Some(c) => c.call(command_utf8.as_str(), &commands_args.iter().map(|v| v.as_slice()).collect::<Vec<&[u8]>>()),
-                    None => {
-                        isolate_scope.raise_exception_str("Used on invalid client");
-                        return None;
-                    }
-                };
+        let res = match redis_client_ref.borrow().client.as_ref() {
+            Some(c) => c.call(command_utf8.as_str(), &commands_args.iter().map(|v| v.as_slice()).collect::<Vec<&[u8]>>()),
+            None => {
+                isolate_scope.raise_exception_str("Used on invalid client");
+                return None;
+            }
+        };
 
-                call_result_to_js_object(isolate_scope, ctx_scope, res, decode_response)
-            })
-            .to_value(),
-    );
+        call_result_to_js_object(isolate_scope, ctx_scope, res, decode_response)
+    });
 }
 
 pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
@@ -577,47 +547,23 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
 ) -> V8LocalObject<'isolate_scope, 'isolate> {
     let client = isolate_scope.new_object();
 
-    add_call_function(
-        isolate_scope,
-        ctx_scope,
-        redis_client,
-        &client,
-        "call",
-        true,
-    );
-    add_call_function(
-        isolate_scope,
-        ctx_scope,
-        redis_client,
-        &client,
-        "call_raw",
-        false,
-    );
+    add_call_function(ctx_scope, redis_client, &client, "call", true);
+    add_call_function(ctx_scope, redis_client, &client, "call_raw", false);
 
     let redis_client_ref = Arc::clone(redis_client);
-    client.set(
+    client.set_native_function(
         ctx_scope,
-        &isolate_scope.new_string("allow_block").to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate_scope, _ctx_scope| {
-                if !args.is_empty() {
-                    isolate_scope.raise_exception_str(
-                        "Wrong number of arguments to 'isolatellow_block' function",
-                    );
-                    return None;
+        "allow_block",
+        new_native_function!(move |isolate_scope, _ctx_scope| {
+            let res = match redis_client_ref.borrow().allow_block.as_ref() {
+                Some(c) => *c,
+                None => {
+                    return Err("Used on invalid client");
                 }
+            };
 
-                let res = match redis_client_ref.borrow().allow_block.as_ref() {
-                    Some(c) => *c,
-                    None => {
-                        isolate_scope.raise_exception_str("Used on invalid client");
-                        return None;
-                    }
-                };
-
-                Some(isolate_scope.new_bool(res))
-            })
-            .to_value(),
+            Ok(Some(isolate_scope.new_bool(res)))
+        }),
     );
 
     let redisai_client = get_redisai_client(script_ctx, isolate_scope, ctx_scope, redis_client);
@@ -629,79 +575,64 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
     let redis_client_ref = Arc::clone(redis_client);
-    client.set(
+    client.set_native_function(
         ctx_scope,
-        &isolate_scope.new_string("run_on_background").to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate, ctx_scope| {
-                if args.len() != 1 {
-                    isolate.raise_exception_str(
-                        "Wrong number of arguments to 'run_on_background' function",
-                    );
-                    return None;
+        "run_on_background",
+        new_native_function!(move |_isolate, ctx_scope, f: V8LocalValue| {
+            let bg_redis_client = match redis_client_ref.borrow().client.as_ref() {
+                Some(c) => c.get_background_redis_client(),
+                None => {
+                    return Err("Called 'run_on_background' out of context");
                 }
+            };
 
-                let bg_redis_client = match redis_client_ref.borrow().client.as_ref() {
-                    Some(c) => c.get_background_redis_client(),
-                    None => {
-                        isolate.raise_exception_str("Called 'run_on_background' out of context");
-                        return None;
-                    }
-                };
+            if !f.is_async_function() {
+                return Err("First argument to 'run_on_background' must be an async function");
+            }
 
-                let f = args.get(0);
-                if !f.is_async_function() {
-                    isolate.raise_exception_str(
-                        "First argument to 'run_on_background' must be an async function",
-                    );
-                    return None;
+            let script_ctx_ref = match script_ctx_ref.upgrade() {
+                Some(s) => s,
+                None => {
+                    return Err("Use of invalid function context");
                 }
+            };
+            let mut f = f.persist();
+            let new_script_ctx_ref = Arc::clone(&script_ctx_ref);
+            let resolver = ctx_scope.new_resolver();
+            let promise = resolver.get_promise();
+            let mut resolver = resolver.to_value().persist();
+            script_ctx_ref
+                .compiled_library_api
+                .run_on_background(Box::new(move || {
+                    let isolate_scope = new_script_ctx_ref.isolate.enter();
+                    let ctx_scope = new_script_ctx_ref.ctx.enter(&isolate_scope);
+                    let trycatch = isolate_scope.new_try_catch();
 
-                let script_ctx_ref = match script_ctx_ref.upgrade() {
-                    Some(s) => s,
-                    None => {
-                        isolate.raise_exception_str("Use of invalid function context");
-                        return None;
-                    }
-                };
-                let mut f = f.persist();
-                let new_script_ctx_ref = Arc::clone(&script_ctx_ref);
-                let resolver = ctx_scope.new_resolver();
-                let promise = resolver.get_promise();
-                let mut resolver = resolver.to_value().persist();
-                script_ctx_ref
-                    .compiled_library_api
-                    .run_on_background(Box::new(move || {
-                        let isolate_scope = new_script_ctx_ref.isolate.enter();
-                        let ctx_scope = new_script_ctx_ref.ctx.enter(&isolate_scope);
-                        let trycatch = isolate_scope.new_try_catch();
+                    let background_client = get_backgrounnd_client(
+                        &new_script_ctx_ref,
+                        &isolate_scope,
+                        &ctx_scope,
+                        Arc::new(bg_redis_client),
+                    );
+                    let res = f
+                        .take_local(&isolate_scope)
+                        .call(&ctx_scope, Some(&[&background_client.to_value()]));
 
-                        let background_client = get_backgrounnd_client(
-                            &new_script_ctx_ref,
-                            &isolate_scope,
-                            &ctx_scope,
-                            Arc::new(bg_redis_client),
-                        );
-                        let res = f
-                            .take_local(&isolate_scope)
-                            .call(&ctx_scope, Some(&[&background_client.to_value()]));
-
-                        let resolver = resolver.take_local(&isolate_scope).as_resolver();
-                        match res {
-                            Some(r) => resolver.resolve(&ctx_scope, &r),
-                            None => {
-                                let error_utf8 = get_exception_v8_value(
-                                    &new_script_ctx_ref.isolate,
-                                    &isolate_scope,
-                                    trycatch,
-                                );
-                                resolver.reject(&ctx_scope, &error_utf8);
-                            }
+                    let resolver = resolver.take_local(&isolate_scope).as_resolver();
+                    match res {
+                        Some(r) => resolver.resolve(&ctx_scope, &r),
+                        None => {
+                            let error_utf8 = get_exception_v8_value(
+                                &new_script_ctx_ref.isolate,
+                                &isolate_scope,
+                                trycatch,
+                            );
+                            resolver.reject(&ctx_scope, &error_utf8);
                         }
-                    }));
-                Some(promise.to_value())
-            })
-            .to_value(),
+                    }
+                }));
+            Ok(Some(promise.to_value()))
+        }),
     );
     client
 }
@@ -744,254 +675,202 @@ pub(crate) fn initialize_globals(
     }
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set(ctx_scope,
-        &isolate_scope.new_string("register_stream_consumer").to_value(), 
-        &ctx_scope.new_native_function(move|args, isolate_scope, curr_ctx_scope| {
-            if args.len() != 5 {
-                isolate_scope.raise_exception_str("Wrong number of arguments to 'register_stream_consumer' function");
-                return None;
-            }
+    redis.set_native_function(ctx_scope, "register_stream_consumer", new_native_function!(move|
+        _isolate_scope,
+        curr_ctx_scope,
+        registration_name_utf8: V8LocalUtf8,
+        prefix: V8LocalValue,
+        window: i64,
+        trim: bool,
+        function_callback: V8LocalValue,
+    | {
+        if !function_callback.is_function() {
+            return Err("Fith argument to 'register_stream_consumer' must be a function".into());
+        }
+        let persisted_function = function_callback.persist();
 
-            let consumer_name = args.get(0);
-            if !consumer_name.is_string() {
-                isolate_scope.raise_exception_str("First argument to 'register_stream_consumer' must be a string representing the function name");
-                return None;
-            }
-            let registration_name_utf8 = consumer_name.to_utf8().unwrap();
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+        if load_ctx.is_none() {
+            return Err("Called 'register_function' out of context".into());
+        }
+        let load_ctx = load_ctx.unwrap();
 
-            let window = args.get(2);
-            if !window.is_long() {
-                isolate_scope.raise_exception_str("Third argument to 'register_stream_consumer' must be a long representing the window size");
-                return None;
+        let script_ctx_ref = match script_ctx_ref.upgrade() {
+            Some(s) => s,
+            None => {
+                return Err("Use of uninitialized script context".into());
             }
-            let window = window.get_long();
+        };
 
-            let trim = args.get(3);
-            if !trim.is_boolean() {
-                isolate_scope.raise_exception_str("Dourth argument to 'register_stream_consumer' must be a boolean representing the trim option");
-                return None;
+        let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
+        let res = if prefix.is_string() {
+            let prefix = prefix.to_utf8().unwrap();
+            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.as_str().as_bytes(), Box::new(v8_stream_ctx), window as usize, trim)
+        } else if prefix.is_array_buffer() {
+            let prefix = prefix.as_array_buffer();
+            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.data(), Box::new(v8_stream_ctx), window as usize, trim)
+        } else {
+            return Err("Second argument to 'register_stream_consumer' must be a String or ArrayBuffer representing the prefix".into());
+        };
+        if let Err(err) = res {
+            match err {
+                GearsApiError::Msg(s) => return Err(s),
             }
-            let trim = trim.get_boolean();
-
-            let function_callback = args.get(4);
-            if !function_callback.is_function() {
-                isolate_scope.raise_exception_str("Fith argument to 'register_stream_consumer' must be a function");
-                return None;
-            }
-            let persisted_function = function_callback.persist();
-
-            let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
-            if load_ctx.is_none() {
-                isolate_scope.raise_exception_str("Called 'register_function' out of context");
-                return None;
-            }
-            let load_ctx = load_ctx.unwrap();
-
-            let script_ctx_ref = match script_ctx_ref.upgrade() {
-                Some(s) => s,
-                None => {
-                    isolate_scope.raise_exception_str("Use of uninitialized script context");
-                    return None;
-                }
-            };
-            let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
-            let prefix = args.get(1);
-            let res = if prefix.is_string() {
-                let prefix = prefix.to_utf8().unwrap();
-                load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.as_str().as_bytes(), Box::new(v8_stream_ctx), window as usize, trim)
-            } else if prefix.is_array_buffer() {
-                let prefix = prefix.as_array_buffer();
-                load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.data(), Box::new(v8_stream_ctx), window as usize, trim)
-            } else {
-                isolate_scope.raise_exception_str("Second argument to 'register_stream_consumer' must be a String or ArrayBuffer representing the prefix");
-                return None;
-            };
-            if let Err(err) = res {
-                match err {
-                    GearsApiError::Msg(s) => isolate_scope.raise_exception_str(&s),
-                }
-                return None;
-            }
-            None
-    }).to_value());
+        }
+        Ok(None)
+    }));
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set(ctx_scope,
-        &isolate_scope.new_string("register_notifications_consumer").to_value(), 
-        &ctx_scope.new_native_function(move|args, isolate_scope, curr_ctx_scope| {
-            if args.len() != 3 {
-                isolate_scope.raise_exception_str("Wrong number of arguments to 'register_notifications_consumer' function");
-                return None;
-            }
+    redis.set_native_function(ctx_scope, "register_notifications_consumer", new_native_function!(move|
+        _isolate_scope,
+        curr_ctx_scope,
+        registration_name_utf8: V8LocalUtf8,
+        prefix: V8LocalValue,
+        function_callback: V8LocalValue,
+    | {
+        if !function_callback.is_function() {
+            return Err("Third argument to 'register_notifications_consumer' must be a function".into());
+        }
+        let persisted_function = function_callback.persist();
 
-            let consumer_name = args.get(0);
-            if !consumer_name.is_string() {
-                isolate_scope.raise_exception_str("First argument to 'register_notifications_consumer' must be a string representing the consumer name");
-                return None;
-            }
-            let registration_name_utf8 = consumer_name.to_utf8().unwrap();
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+        if load_ctx.is_none() {
+            return Err("Called 'register_notifications_consumer' out of context".into());
+        }
+        let load_ctx = load_ctx.unwrap();
 
-            let function_callback = args.get(2);
-            if !function_callback.is_function() {
-                isolate_scope.raise_exception_str("Third argument to 'register_notifications_consumer' must be a function");
-                return None;
+        let script_ctx_ref = match script_ctx_ref.upgrade() {
+            Some(s) => s,
+            None => {
+                return Err("Use of uninitialized script context".into());
             }
-            let persisted_function = function_callback.persist();
+        };
+        let v8_notification_ctx = V8NotificationsCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
 
-            let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
-            if load_ctx.is_none() {
-                isolate_scope.raise_exception_str("Called 'register_notifications_consumer' out of context");
-                return None;
+        let res = if prefix.is_string() {
+            let prefix = prefix.to_utf8().unwrap();
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx))
+        } else if prefix.is_array_buffer() {
+            let prefix = prefix.as_array_buffer();
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx))
+        } else {
+            return Err("Second argument to 'register_notifications_consumer' must be a string or ArrayBuffer representing the prefix".into());
+        };
+        if let Err(err) = res {
+            match err {
+                GearsApiError::Msg(s) => return Err(s),
             }
-            let load_ctx = load_ctx.unwrap();
-
-            let script_ctx_ref = match script_ctx_ref.upgrade() {
-                Some(s) => s,
-                None => {
-                    isolate_scope.raise_exception_str("Use of uninitialized script context");
-                    return None;
-                }
-            };
-            let v8_notification_ctx = V8NotificationsCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
-
-            let prefix = args.get(1);
-            let res = if prefix.is_string() {
-                let prefix = prefix.to_utf8().unwrap();
-                load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx))
-            } else if prefix.is_array_buffer() {
-                let prefix = prefix.as_array_buffer();
-                load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx))
-            } else {
-                isolate_scope.raise_exception_str("Second argument to 'register_notifications_consumer' must be a string or ArrayBuffer representing the prefix");
-                return None;
-            };
-            if let Err(err) = res {
-                match err {
-                    GearsApiError::Msg(s) => isolate_scope.raise_exception_str(&s),
-                }
-                return None;
-            }
-            None
-    }).to_value());
+        }
+        Ok(None)
+    }));
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set(ctx_scope,
-        &isolate_scope.new_string("register_function").to_value(),
-        &ctx_scope.new_native_function(move|args, isolate_scope, curr_ctx_scope| {
-            if args.len() < 2 {
-                isolate_scope.raise_exception_str("Wrong number of arguments to 'register_function' function");
-                return None;
-            }
-
-            let function_name = args.get(0);
-            if !function_name.is_string() {
-                isolate_scope.raise_exception_str("First argument to 'register_function' must be a string representing the function name");
-                return None;
-            }
-            let function_name_utf8 = function_name.to_utf8().unwrap();
-
-            let function_callback = args.get(1);
-            if !function_callback.is_function() {
-                isolate_scope.raise_exception_str("Second argument to 'register_function' must be a function");
-                return None;
-            }
-            let persisted_function = function_callback.persist();
-
-            let function_flags = if args.len() == 3 {
-                let function_flags = args.get(2);
-                if !function_flags.is_array() {
-                    isolate_scope.raise_exception_str("Second argument to 'register_function' must be an array of functions flags");
-                    return None;
+    redis.set_native_function(
+        ctx_scope,
+        "register_function",
+        new_native_function!(
+            move |isolate_scope,
+                  curr_ctx_scope,
+                  function_name_utf8: V8LocalUtf8,
+                  function_callback: V8LocalValue,
+                  function_flags: Option<V8LocalArray>| {
+                if !function_callback.is_function() {
+                    return Err("Second argument to 'register_function' must be a function".into());
                 }
-                let function_flags = function_flags.as_array();
-                match get_function_flags(curr_ctx_scope, &function_flags) {
-                    Ok(flags) => flags,
-                    Err(e) => {
-                        isolate_scope.raise_exception_str(&format!("Failed parsing function flags, {}", e));
-                        return None;
+                let persisted_function = function_callback.persist();
+
+                let function_flags = match function_flags {
+                    Some(function_flags) => {
+                        match get_function_flags(curr_ctx_scope, &function_flags) {
+                            Ok(flags) => flags,
+                            Err(e) => {
+                                return Err(format!("Failed parsing function flags, {}", e));
+                            }
+                        }
+                    }
+                    None => 0,
+                };
+
+                let load_ctx =
+                    curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+                if load_ctx.is_none() {
+                    return Err("Called 'register_function' out of context".into());
+                }
+
+                let script_ctx_ref = match script_ctx_ref.upgrade() {
+                    Some(s) => s,
+                    None => {
+                        return Err("Use of uninitialized script context".into());
+                    }
+                };
+
+                let load_ctx = load_ctx.unwrap();
+                let c = Arc::new(RefCell::new(RedisClient::new()));
+                let redis_client =
+                    get_redis_client(&script_ctx_ref, isolate_scope, curr_ctx_scope, &c);
+
+                let f = V8Function::new(
+                    &script_ctx_ref,
+                    persisted_function,
+                    redis_client.to_value().persist(),
+                    &c,
+                    function_callback.is_async_function(),
+                    function_flags & FUNCTION_FLAG_RAW_ARGUMENTS == 0,
+                );
+
+                let res = load_ctx.register_function(
+                    function_name_utf8.as_str(),
+                    Box::new(f),
+                    function_flags,
+                );
+                if let Err(err) = res {
+                    match err {
+                        GearsApiError::Msg(s) => return Err(s),
                     }
                 }
-            } else {
-                0
-            };
-
-            let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
-            if load_ctx.is_none() {
-                isolate_scope.raise_exception_str("Called 'register_function' out of context");
-                return None;
+                Ok(None)
             }
-
-            let script_ctx_ref = match script_ctx_ref.upgrade() {
-                Some(s) => s,
-                None => {
-                    isolate_scope.raise_exception_str("Use of uninitialized script context");
-                    return None;
-                }
-            };
-
-            let load_ctx = load_ctx.unwrap();
-            let c = Arc::new(RefCell::new(RedisClient::new()));
-            let redis_client = get_redis_client(&script_ctx_ref, isolate_scope, curr_ctx_scope, &c);
-
-            let f = V8Function::new(
-                &script_ctx_ref,
-                persisted_function,
-                redis_client.to_value().persist(),
-                &c,
-                function_callback.is_async_function(),
-                function_flags & FUNCTION_FLAG_RAW_ARGUMENTS == 0,
-            );
-
-            let res = load_ctx.register_function(function_name_utf8.as_str(), Box::new(f), function_flags);
-            if let Err(err) = res {
-                match err {
-                    GearsApiError::Msg(s) => isolate_scope.raise_exception_str(&s),
-                }
-                return None;
-            }
-            None
-    }).to_value());
+        ),
+    );
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set(ctx_scope,
-        &isolate_scope.new_string("register_remote_function").to_value(),
-        &ctx_scope.new_native_function(move|args, isolate_scope, curr_ctx_scope| {
-            if args.len() < 2 {
-                isolate_scope.raise_exception_str("Wrong number of arguments to 'register_remote_function' function");
-                return None;
-            }
+    redis.set_native_function(ctx_scope, "register_remote_function", new_native_function!(move|
+        _isolate_scope,
+        curr_ctx_scope,
+        function_name_utf8: V8LocalUtf8,
+        function_callback: V8LocalValue,
+    | {
+        if !function_callback.is_function() {
+            return Err("Second argument to 'register_remote_function' must be a function".into());
+        }
 
-            let function_name = args.get(0);
-            if !function_name.is_string() {
-                isolate_scope.raise_exception_str("First argument to 'register_remote_function' must be a string representing the function name");
-                return None;
-            }
-            let function_name_utf8 = function_name.to_utf8().unwrap();
+        if !function_callback.is_async_function() {
+            return Err("Remote function must be async".into());
+        }
 
-            let function_callback = args.get(1);
-            if !function_callback.is_function() {
-                isolate_scope.raise_exception_str("Second argument to 'register_remote_function' must be a function");
-                return None;
-            }
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+        if load_ctx.is_none() {
+            return Err("Called 'register_remote_function' out of context".into());
+        }
 
-            if !function_callback.is_async_function() {
-                isolate_scope.raise_exception_str("Remote function must be async");
-                return None;
-            }
+        let mut persisted_function = function_callback.persist();
+        persisted_function.forget();
+        let persisted_function = Arc::new(persisted_function);
 
-            let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
-            if load_ctx.is_none() {
-                isolate_scope.raise_exception_str("Called 'register_remote_function' out of context");
-                return None;
-            }
+        let load_ctx = load_ctx.unwrap();
+        let new_script_ctx_ref = Weak::clone(&script_ctx_ref);
+        let res = load_ctx.register_remote_task(function_name_utf8.as_str(), Box::new(move |inputs, background_ctx, on_done|{
+            let script_ctx = match new_script_ctx_ref.upgrade() {
+                Some(s) => s,
+                None => {
+                    on_done(Err(GearsApiError::Msg("Use of uninitialized script context".to_string())));
+                    return;
+                }
+            };
 
-            let mut persisted_function = function_callback.persist();
-            persisted_function.forget();
-            let persisted_function = Arc::new(persisted_function);
-
-            let load_ctx = load_ctx.unwrap();
-            let new_script_ctx_ref = Weak::clone(&script_ctx_ref);
-            let res = load_ctx.register_remote_task(function_name_utf8.as_str(), Box::new(move |inputs, background_ctx, on_done|{
+            let new_script_ctx_ref = Weak::clone(&new_script_ctx_ref);
+            let weak_function = Arc::downgrade(&persisted_function);
+            script_ctx.compiled_library_api.run_on_background(Box::new(move || {
                 let script_ctx = match new_script_ctx_ref.upgrade() {
                     Some(s) => s,
                     None => {
@@ -999,174 +878,145 @@ pub(crate) fn initialize_globals(
                         return;
                     }
                 };
-
-                let new_script_ctx_ref = Weak::clone(&new_script_ctx_ref);
-                let weak_function = Arc::downgrade(&persisted_function);
-                script_ctx.compiled_library_api.run_on_background(Box::new(move || {
-                    let script_ctx = match new_script_ctx_ref.upgrade() {
-                        Some(s) => s,
-                        None => {
-                            on_done(Err(GearsApiError::Msg("Use of uninitialized script context".to_string())));
-                            return;
-                        }
-                    };
-                    let persisted_function = match weak_function.upgrade() {
-                        Some(s) => s,
-                        None => {
-                            on_done(Err(GearsApiError::Msg("Use of uninitialized function context".to_string())));
-                            return;
-                        }
-                    };
-                    let isolate_scope = script_ctx.isolate.enter();
-                    let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
-                    let trycatch = isolate_scope.new_try_catch();
-
-                    let mut args = Vec::new();
-                    args.push(get_backgrounnd_client(&script_ctx, &isolate_scope, &ctx_scope, Arc::new(background_ctx)).to_value());
-                    for input in inputs {
-                        args.push(match input {
-                            RemoteFunctionData::Binary(b) => isolate_scope.new_array_buffer(&b).to_value(),
-                            RemoteFunctionData::String(s) => {
-                                let v8_str = isolate_scope.new_string(&s);
-                                let v8_obj = ctx_scope.new_object_from_json(&v8_str);
-                                if v8_obj.is_none() {
-                                    on_done(Err(GearsApiError::Msg("Failed deserializing remote function argument".to_string())));
-                                    return;
-                                }
-                                v8_obj.unwrap()
-                            }
-                        });
+                let persisted_function = match weak_function.upgrade() {
+                    Some(s) => s,
+                    None => {
+                        on_done(Err(GearsApiError::Msg("Use of uninitialized function context".to_string())));
+                        return;
                     }
-                    let args_refs = args.iter().collect::<Vec<&V8LocalValue>>();
+                };
+                let isolate_scope = script_ctx.isolate.enter();
+                let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
+                let trycatch = isolate_scope.new_try_catch();
 
-                    script_ctx.before_run();
-                    let res = persisted_function
-                        .as_local(&isolate_scope)
-                        .call(
-                            &ctx_scope,
-                            Some(&args_refs),
-                        );
-                    script_ctx.after_run();
-                    match res {
-                        Some(r) => {
-                            if r.is_promise() {
-                                let res = r.as_promise();
-                                if res.state() == V8PromiseState::Fulfilled
-                                    || res.state() == V8PromiseState::Rejected
-                                {
-                                    let r = res.get_result();
-                                    if res.state() == V8PromiseState::Fulfilled {
-                                        let r = js_value_to_remote_function_data(&ctx_scope, r);
+                let mut args = Vec::new();
+                args.push(get_backgrounnd_client(&script_ctx, &isolate_scope, &ctx_scope, Arc::new(background_ctx)).to_value());
+                for input in inputs {
+                    args.push(match input {
+                        RemoteFunctionData::Binary(b) => isolate_scope.new_array_buffer(&b).to_value(),
+                        RemoteFunctionData::String(s) => {
+                            let v8_str = isolate_scope.new_string(&s);
+                            let v8_obj = ctx_scope.new_object_from_json(&v8_str);
+                            if v8_obj.is_none() {
+                                on_done(Err(GearsApiError::Msg("Failed deserializing remote function argument".to_string())));
+                                return;
+                            }
+                            v8_obj.unwrap()
+                        }
+                    });
+                }
+                let args_refs = args.iter().collect::<Vec<&V8LocalValue>>();
+
+                script_ctx.before_run();
+                let res = persisted_function
+                    .as_local(&isolate_scope)
+                    .call(
+                        &ctx_scope,
+                        Some(&args_refs),
+                    );
+                script_ctx.after_run();
+                match res {
+                    Some(r) => {
+                        if r.is_promise() {
+                            let res = r.as_promise();
+                            if res.state() == V8PromiseState::Fulfilled
+                                || res.state() == V8PromiseState::Rejected
+                            {
+                                let r = res.get_result();
+                                if res.state() == V8PromiseState::Fulfilled {
+                                    let r = js_value_to_remote_function_data(&ctx_scope, r);
+                                    if let Some(v) = r {
+                                        on_done(Ok(v));
+                                    } else {
+                                        let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
+                                        on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                            
+                                    }
+                                } else {
+                                    let r = r.to_utf8().unwrap();
+                                    on_done(Err(GearsApiError::Msg(r.as_str().to_string())));
+                                }
+                            } else {
+                                // Notice, we are allowed to do this trick because we are protected by the isolate GIL
+                                let done_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(Some(on_done))});
+                                let done_reject = Arc::clone(&done_resolve);
+                                let resolve =
+                                    ctx_scope.new_native_function(new_native_function!(move |isolate_scope, ctx_scope, arg: V8LocalValue| {
+                                        {
+                                            if done_resolve.ref_cell.borrow().is_none() {
+                                                return Ok::<_, String>(None)
+                                            }
+                                        }
+                                        let on_done = done_resolve.ref_cell.borrow_mut().take().unwrap();
+                                        let trycatch = isolate_scope.new_try_catch();
+                                        let r = js_value_to_remote_function_data(ctx_scope, arg);
                                         if let Some(v) = r {
                                             on_done(Ok(v));
                                         } else {
                                             let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                            
+                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
                                         }
-                                    } else {
-                                        let r = r.to_utf8().unwrap();
-                                        on_done(Err(GearsApiError::Msg(r.as_str().to_string())));
-                                    }
-                                } else {
-                                    // Notice, we are allowed to do this trick because we are protected by the isolate GIL
-                                    let done_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(Some(on_done))});
-                                    let done_reject = Arc::clone(&done_resolve);
-                                    let resolve =
-                                        ctx_scope.new_native_function(move |args, isolate_scope, ctx_scope| {
-                                            {
-                                                if done_resolve.ref_cell.borrow().is_none() {
-                                                    return None;
-                                                }
+                                        Ok(None)
+                                    }));
+                                let reject =
+                                    ctx_scope.new_native_function(new_native_function!(move |_isolate_scope, _ctx_scope, utf8_str: V8LocalUtf8| {
+                                        {
+                                            if done_reject.ref_cell.borrow().is_none() {
+                                                return Ok::<_, String>(None);
                                             }
-                                            let on_done = done_resolve.ref_cell.borrow_mut().take().unwrap();
-                                            let trycatch = isolate_scope.new_try_catch();
-                                            let r = js_value_to_remote_function_data(ctx_scope, args.get(0));
-                                            if let Some(v) = r {
-                                                on_done(Ok(v));
-                                            } else {
-                                                let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                                on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
-                                            }
-                                            None
-                                        });
-                                    let reject =
-                                        ctx_scope.new_native_function(move |args, _isolate_scope, _ctx_scope| {
-                                            {
-                                                if done_reject.ref_cell.borrow().is_none() {
-                                                    return None;
-                                                }
-                                            }
-                                            let on_done = done_reject.ref_cell.borrow_mut().take().unwrap();
+                                        }
+                                        let on_done = done_reject.ref_cell.borrow_mut().take().unwrap();
 
-                                            let r = args.get(0);
-                                            let utf8_str = r.to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::Msg(utf8_str.as_str().to_string())));
-                                            None
-                                        });
-                                    res.then(&ctx_scope, &resolve, &reject);
-                                }
+                                        on_done(Err(GearsApiError::Msg(utf8_str.as_str().to_string())));
+                                        Ok(None)
+                                    }));
+                                res.then(&ctx_scope, &resolve, &reject);
+                            }
+                        } else {
+                            let r = js_value_to_remote_function_data(&ctx_scope, r);
+                            if let Some(v) = r {
+                                on_done(Ok(v));
                             } else {
-                                let r = js_value_to_remote_function_data(&ctx_scope, r);
-                                if let Some(v) = r {
-                                    on_done(Ok(v));
-                                } else {
-                                    on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
-                                }
+                                on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
                             }
                         }
-                        None => {
-                            let error_msg = get_exception_msg(&script_ctx.isolate, trycatch);
-                            on_done(Err(GearsApiError::Msg(error_msg)));
-                        }
-                    };
-                }));
+                    }
+                    None => {
+                        let error_msg = get_exception_msg(&script_ctx.isolate, trycatch);
+                        on_done(Err(GearsApiError::Msg(error_msg)));
+                    }
+                };
             }));
+        }));
 
-            if let Err(err) = res {
-                match err {
-                    GearsApiError::Msg(s) => isolate_scope.raise_exception_str(&s),
-                }
+        if let Err(err) = res {
+            match err {
+                GearsApiError::Msg(s) => return Err(s),
             }
-            None
-    }).to_value());
+        }
+        Ok(None)
+    }));
 
-    redis.set(
+    redis.set_native_function(
         ctx_scope,
-        &isolate_scope.new_string("v8_version").to_value(),
-        &ctx_scope
-            .new_native_function(|_args, isolate, _curr_ctx_scope| {
-                let v = v8_version();
-                let v_v8_str = isolate.new_string(v);
-                Some(v_v8_str.to_value())
-            })
-            .to_value(),
+        "v8_version",
+        new_native_function!(move |isolate_scope, _curr_ctx_scope| {
+            let v = v8_version();
+            let v_v8_str = isolate_scope.new_string(v);
+            Ok::<Option<V8LocalValue>, String>(Some(v_v8_str.to_value()))
+        }),
     );
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set(
+    redis.set_native_function(
         ctx_scope,
-        &isolate_scope.new_string("log").to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate, _curr_ctx_scope| {
-                if args.len() != 1 {
-                    isolate.raise_exception_str("Wrong number of arguments to 'log' function");
-                    return None;
-                }
-
-                let msg = args.get(0);
-                if !msg.is_string() && !msg.is_string_object() {
-                    isolate.raise_exception_str("First argument to 'log' must be a string message");
-                    return None;
-                }
-
-                let msg_utf8 = msg.to_utf8().unwrap();
-                match script_ctx_ref.upgrade() {
-                    Some(s) => s.compiled_library_api.log(msg_utf8.as_str()),
-                    None => crate::v8_backend::log(msg_utf8.as_str()), /* do not abort logs */
-                }
-                None
-            })
-            .to_value(),
+        "log",
+        new_native_function!(move |_isolate, _curr_ctx_scope, msg: V8LocalUtf8| {
+            match script_ctx_ref.upgrade() {
+                Some(s) => s.compiled_library_api.log(msg.as_str()),
+                None => crate::v8_backend::log(msg.as_str()), /* do not abort logs */
+            }
+            Ok::<Option<V8LocalValue>, String>(None)
+        }),
     );
 
     let redis_ai = get_redisai_api(script_ctx, isolate_scope, ctx_scope);
@@ -1183,30 +1033,18 @@ pub(crate) fn initialize_globals(
     );
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    globals.set(
+    globals.set_native_function(
         ctx_scope,
-        &isolate_scope.new_string("Promise").to_value(),
-        &ctx_scope
-            .new_native_function(move |args, isolate_scope, curr_ctx_scope| {
-                if args.len() != 1 {
-                    isolate_scope
-                        .raise_exception_str("Wrong number of arguments to 'Promise' function");
-                    return None;
-                }
-
-                let function = args.get(0);
+        "Promise",
+        new_native_function!(
+            move |_isolate_scope, curr_ctx_scope, function: V8LocalValue| {
                 if !function.is_function() || function.is_async_function() {
-                    isolate_scope.raise_exception_str("Bad argument to 'Promise' function");
-                    return None;
+                    return Err("Bad argument to 'Promise' function");
                 }
 
-                let script_ctx_ref = match script_ctx_ref.upgrade() {
-                    Some(s) => s,
-                    None => {
-                        isolate_scope.raise_exception_str("Use of uninitialized script context");
-                        return None;
-                    }
-                };
+                let script_ctx_ref = script_ctx_ref
+                    .upgrade()
+                    .ok_or("Use of uninitialized script context")?;
 
                 let script_ctx_ref_resolve = Arc::downgrade(&script_ctx_ref);
                 let script_ctx_ref_reject = Arc::downgrade(&script_ctx_ref);
@@ -1217,25 +1055,17 @@ pub(crate) fn initialize_globals(
                 });
                 let resolver_reject = Arc::clone(&resolver_resolve);
 
-                let resolve =
-                    curr_ctx_scope.new_native_function(move |args, isolate, _curr_ctx_scope| {
-                        if args.len() != 1 {
-                            isolate.raise_exception_str(
-                                "Wrong number of arguments to 'resolve' function",
-                            );
-                            return None;
-                        }
-
+                let resolve = curr_ctx_scope.new_native_function(new_native_function!(
+                    move |_isolate, _curr_ctx_scope, arg: V8LocalValue| {
                         let script_ctx_ref_resolve = match script_ctx_ref_resolve.upgrade() {
                             Some(s) => s,
                             None => {
                                 resolver_resolve.ref_cell.borrow_mut().forget();
-                                isolate.raise_exception_str("Library was deleted");
-                                return None;
+                                return Err("Library was deleted");
                             }
                         };
 
-                        let mut res = args.get(0).persist();
+                        let mut res = arg.persist();
                         let new_script_ctx_ref_resolve = Arc::downgrade(&script_ctx_ref_resolve);
                         let resolver_resolve = Arc::clone(&resolver_resolve);
                         script_ctx_ref_resolve
@@ -1264,28 +1094,21 @@ pub(crate) fn initialize_globals(
                                     .as_resolver();
                                 resolver.resolve(&ctx_scope, &res);
                             }));
-                        None
-                    });
+                        Ok(None)
+                    }
+                ));
 
-                let reject = curr_ctx_scope.new_native_function(
-                    move |args, isolate_scope, _curr_ctx_scope| {
-                        if args.len() != 1 {
-                            isolate_scope.raise_exception_str(
-                                "Wrong number of arguments to 'resolve' function",
-                            );
-                            return None;
-                        }
-
+                let reject = curr_ctx_scope.new_native_function(new_native_function!(
+                    move |_isolate_scope, _curr_ctx_scope, arg: V8LocalValue| {
                         let script_ctx_ref_reject = match script_ctx_ref_reject.upgrade() {
                             Some(s) => s,
                             None => {
                                 resolver_reject.ref_cell.borrow_mut().forget();
-                                isolate_scope.raise_exception_str("Library was deleted");
-                                return None;
+                                return Err("Library was deleted");
                             }
                         };
 
-                        let mut res = args.get(0).persist();
+                        let mut res = arg.persist();
                         let new_script_ctx_ref_reject = Arc::downgrade(&script_ctx_ref_reject);
                         let resolver_reject = Arc::clone(&resolver_reject);
                         script_ctx_ref_reject
@@ -1313,17 +1136,17 @@ pub(crate) fn initialize_globals(
                                     .as_resolver();
                                 resolver.reject(&ctx_scope, &res);
                             }));
-                        None
-                    },
-                );
+                        Ok(None)
+                    }
+                ));
 
                 let _ = function.call(
                     curr_ctx_scope,
                     Some(&[&resolve.to_value(), &reject.to_value()]),
                 );
-                Some(promise.to_value())
-            })
-            .to_value(),
+                Ok(Some(promise.to_value()))
+            }
+        ),
     );
 
     Ok(())

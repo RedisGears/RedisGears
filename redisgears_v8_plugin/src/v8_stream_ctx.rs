@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use v8_rs::v8::v8_utf8::V8LocalUtf8;
 use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8LocalValue, v8_value::V8PersistValue};
 
 use redisgears_plugin_api::redisgears_plugin_api::stream_ctx::{
@@ -19,6 +20,8 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use std::str;
+
+use v8_derive::new_native_function;
 
 use crate::get_exception_msg;
 
@@ -284,17 +287,16 @@ impl V8StreamCtxInternals {
                                     }
                                     None
                                 });
-                            let reject =
-                                ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
-                                    let res = args.get(0);
-                                    let res = res.to_utf8().unwrap();
+                            let reject = ctx_scope.new_native_function(new_native_function!(
+                                move |isolate, _ctx_scope, res: V8LocalUtf8| {
                                     let res = res.as_str().to_string();
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) = ack_callback_reject.borrow_mut().ack.take() {
                                         ack(StreamRecordAck::Nack(res));
                                     }
-                                    None
-                                });
+                                    Ok::<_, String>(None)
+                                }
+                            ));
                             res.then(&ctx_scope, &resolve, &reject);
                             None
                         }

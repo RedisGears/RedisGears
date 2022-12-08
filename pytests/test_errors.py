@@ -37,7 +37,7 @@ redis.register_function(1, function(client){
     return 2
 })
     '''
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("must be a string")
+    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("Value is not string")
 
 @gearsTest()
 def testWrongArguments2(env):
@@ -219,7 +219,7 @@ def testRegisterRemoteFunctionWorngNumberOfArgs(env):
     script = """#!js name=foo
 redis.register_remote_function();
     """
-    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Wrong number of arguments to 'register_remote_function' function")
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Worng number of argument given")
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType(env):
@@ -228,7 +228,7 @@ redis.register_remote_function(1, async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, key);
 });
     """
-    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("First argument to 'register_remote_function' must be a string")
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Value is not string")
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType2(env):

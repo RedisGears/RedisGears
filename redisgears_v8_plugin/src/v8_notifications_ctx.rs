@@ -11,6 +11,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::BackgroundRunFunctionCtxInterface,
 };
 
+use v8_rs::v8::v8_utf8::V8LocalUtf8;
 use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8PersistValue};
 
 use crate::get_exception_msg;
@@ -20,6 +21,8 @@ use crate::v8_script_ctx::V8ScriptCtx;
 use std::any::Any;
 use std::cell::RefCell;
 use std::sync::Arc;
+
+use v8_derive::new_native_function;
 
 struct V8NotificationCtxData {
     event: String,
@@ -114,8 +117,8 @@ impl V8NotificationsCtxInternal {
                                 }),
                             }));
                             let ack_callback_reject = Arc::clone(&ack_callback_resolve);
-                            let resolve =
-                                ctx_scope.new_native_function(move |_args, isolate, _context| {
+                            let resolve = ctx_scope.new_native_function(new_native_function!(
+                                move |isolate, _context| {
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
                                         ack_callback_resolve.borrow_mut().internal.take()
@@ -123,12 +126,11 @@ impl V8NotificationsCtxInternal {
                                         let _locker = ack.locker.lock();
                                         (ack.ack_callback)(Ok(()));
                                     }
-                                    None
-                                });
-                            let reject =
-                                ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
-                                    let res = args.get(0);
-                                    let res = res.to_utf8().unwrap();
+                                    Ok::<_, String>(None)
+                                }
+                            ));
+                            let reject = ctx_scope.new_native_function(new_native_function!(
+                                move |isolate, _ctx_scope, res: V8LocalUtf8| {
                                     let res = res.as_str().to_string();
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
@@ -137,8 +139,9 @@ impl V8NotificationsCtxInternal {
                                         let _locker = ack.locker.lock();
                                         (ack.ack_callback)(Err(res));
                                     }
-                                    None
-                                });
+                                    Ok::<_, String>(None)
+                                }
+                            ));
                             res.then(&ctx_scope, &resolve, &reject);
                             return;
                         }
@@ -222,8 +225,8 @@ impl V8NotificationsCtxInternal {
                                 }),
                             }));
                             let ack_callback_reject = Arc::clone(&ack_callback_resolve);
-                            let resolve =
-                                ctx_scope.new_native_function(move |_args, isolate, _context| {
+                            let resolve = ctx_scope.new_native_function(new_native_function!(
+                                move |isolate, _context| {
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
                                         ack_callback_resolve.borrow_mut().internal.take()
@@ -231,12 +234,11 @@ impl V8NotificationsCtxInternal {
                                         let _locker = ack.locker.lock();
                                         (ack.ack_callback)(Ok(()));
                                     }
-                                    None
-                                });
-                            let reject =
-                                ctx_scope.new_native_function(move |args, isolate, _ctx_scope| {
-                                    let res = args.get(0);
-                                    let res = res.to_utf8().unwrap();
+                                    Ok::<_, String>(None)
+                                }
+                            ));
+                            let reject = ctx_scope.new_native_function(new_native_function!(
+                                move |isolate, _ctx_scope, res: V8LocalUtf8| {
                                     let res = res.as_str().to_string();
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
@@ -245,8 +247,9 @@ impl V8NotificationsCtxInternal {
                                         let _locker = ack.locker.lock();
                                         (ack.ack_callback)(Err(res));
                                     }
-                                    None
-                                });
+                                    Ok::<_, String>(None)
+                                }
+                            ));
                             res.then(&ctx_scope, &resolve, &reject);
                             return;
                         }
