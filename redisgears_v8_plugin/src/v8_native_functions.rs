@@ -230,20 +230,6 @@ fn js_value_to_remote_function_data(
     }
 }
 
-enum BinaryDataHelper<'isolate_scope, 'isolate> {
-    V8Uft(V8LocalUtf8<'isolate_scope, 'isolate>),
-    V8Binary(V8LocalArrayBuffer<'isolate_scope, 'isolate>),
-}
-
-impl<'isolate_scope, 'isolate> BinaryDataHelper<'isolate_scope, 'isolate> {
-    fn as_bytes(&self) -> &[u8] {
-        match self {
-            BinaryDataHelper::V8Uft(val) => val.as_str().as_bytes(),
-            BinaryDataHelper::V8Binary(val) => val.data(),
-        }
-    }
-}
-
 pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
     script_ctx: &Arc<V8ScriptCtx>,
     isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
@@ -302,46 +288,16 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
 
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_weak_ref = Arc::downgrade(script_ctx);
-    bg_client.set_native_function(ctx_scope, "run_on_key", move |args, isolate, ctx_scope| {
-        if args.len() < 2 {
-            isolate.raise_exception_str("Wrong number of arguments to 'run_on_key' function");
-            return None;
-        }
+    bg_client.set_native_function(ctx_scope, "run_on_key", new_native_function!(move |
+        _isolate,
+        ctx_scope,
+        key: V8RedisCallArgs,
+        remote_function_name: V8LocalUtf8,
+        args: Vec<V8LocalValue>,
+    | {
+        let args_vec:Vec<RemoteFunctionData> = args.into_iter().map(|v| js_value_to_remote_function_data(ctx_scope, v).ok_or("Failed serializing arguments")).collect::<Result<_,_>>()?;
 
-        let key = args.get(0);
-        let key = if key.is_string() || key.is_string_object() {
-            BinaryDataHelper::V8Uft(key.to_utf8().unwrap())
-        } else if key.is_array_buffer() {
-            BinaryDataHelper::V8Binary(key.as_array_buffer())
-        } else {
-            isolate.raise_exception_str("First argument to 'run_on_key' must be a string represnting a key name");
-            return None;
-        };
-
-        let remote_function_name = args.get(1);
-        if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
-            isolate.raise_exception_str("Second argument to 'run_on_key' must be a string represnting a remote function name");
-            return None;
-        }
-        let remote_function_name = remote_function_name.to_utf8().unwrap();
-
-        let mut args_vec = Vec::new();
-        for i in 2 .. args.len() {
-            let arg = args.get(i);
-            let arg = js_value_to_remote_function_data(ctx_scope, arg);
-            match  arg {
-                Some(arg) => args_vec.push(arg),
-                None => return None,
-            };
-        }
-
-        let _ = match script_ctx_weak_ref.upgrade() {
-            Some(s) => s,
-            None => {
-                isolate.raise_exception_str("Function were unregistered");
-                return None;
-            }
-        };
+        let _ = script_ctx_weak_ref.upgrade().ok_or("Function were unregistered")?;
 
         let resolver = ctx_scope.new_resolver();
         let promise = resolver.get_promise();
@@ -395,39 +351,23 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 }
             }));
         }));
-        Some(promise.to_value())
-    });
+        Ok::<_, &'static str>(Some(promise.to_value()))
+    }));
 
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_weak_ref = Arc::downgrade(script_ctx);
-    bg_client.set_native_function(ctx_scope, "run_on_all_shards", move |args, isolate, ctx_scope| {
-        if args.is_empty() {
-            isolate.raise_exception_str("Wrong number of arguments to 'block' function");
-            return None;
-        }
-
-        let remote_function_name = args.get(0);
-        if !remote_function_name.is_string() && !remote_function_name.is_string_object() {
-            isolate.raise_exception_str("Second argument to 'run_on_all_shards' must be a string represnting a remote function name");
-            return None;
-        }
-        let remote_function_name = remote_function_name.to_utf8().unwrap();
-
-        let mut args_vec = Vec::new();
-        for i in 1 .. args.len() {
-            let arg = args.get(i);
-            let arg = js_value_to_remote_function_data(ctx_scope, arg);
-            match  arg {
-                Some(arg) => args_vec.push(arg),
-                None => return None,
-            };
-        }
+    bg_client.set_native_function(ctx_scope, "run_on_all_shards", new_native_function!(move |
+        _isolate,
+        ctx_scope,
+        remote_function_name: V8LocalUtf8,
+        args: Vec<V8LocalValue>,
+    | {
+        let args_vec:Vec<RemoteFunctionData> = args.into_iter().map(|v| js_value_to_remote_function_data(ctx_scope, v).ok_or("Failed serializing arguments")).collect::<Result<_,_>>()?;
 
         let _ = match script_ctx_weak_ref.upgrade() {
             Some(s) => s,
             None => {
-                isolate.raise_exception_str("Function were unregistered");
-                return None;
+                return Err("Function were unregistered");
             }
         };
 
@@ -479,10 +419,43 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 resolver.resolve(&ctx_scope, &isolate_scope.new_array(&[&results_array, &errors_array]).to_value());
             }));
         }));
-        Some(promise.to_value())
-    });
+        Ok(Some(promise.to_value()))
+    }));
 
     bg_client
+}
+
+enum V8RedisCallArgs<'isolate_scope, 'isolate> {
+    Utf8(V8LocalUtf8<'isolate_scope, 'isolate>),
+    ArrBuff(V8LocalArrayBuffer<'isolate_scope, 'isolate>),
+}
+
+impl<'isolate_scope, 'isolate> V8RedisCallArgs<'isolate_scope, 'isolate> {
+    fn as_bytes(&self) -> &[u8] {
+        match self {
+            V8RedisCallArgs::Utf8(val) => val.as_str().as_bytes(),
+            V8RedisCallArgs::ArrBuff(val) => val.data(),
+        }
+    }
+}
+
+impl<'isolate_scope, 'isolate> TryFrom<V8LocalValue<'isolate_scope, 'isolate>>
+    for V8RedisCallArgs<'isolate_scope, 'isolate>
+{
+    type Error = &'static str;
+
+    fn try_from(val: V8LocalValue<'isolate_scope, 'isolate>) -> Result<Self, Self::Error> {
+        if val.is_string() || val.is_string_object() {
+            match val.to_utf8() {
+                Some(val) => Ok(V8RedisCallArgs::Utf8(val)),
+                None => Err("Can not convert value into bytes buffer"),
+            }
+        } else if val.is_array_buffer() {
+            Ok(V8RedisCallArgs::ArrBuff(val.as_array_buffer()))
+        } else {
+            Err("Can not convert value into bytes buffer")
+        }
+    }
 }
 
 fn add_call_function(
@@ -493,50 +466,39 @@ fn add_call_function(
     decode_response: bool,
 ) {
     let redis_client_ref = Arc::clone(redis_client);
-    client.set_native_function(ctx_scope, function_name,move |args, isolate_scope, ctx_scope| {
-        if args.is_empty() {
-            isolate_scope.raise_exception_str("Wrong number of arguments to 'call' function");
-            return None;
-        }
+    client.set_native_function(
+        ctx_scope,
+        function_name,
+        new_native_function!(
+            move |isolate_scope,
+                  ctx_scope,
+                  command_utf8: V8LocalUtf8,
+                  commands_args: Vec<V8RedisCallArgs>| {
+                let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
+                if is_already_blocked.is_none() || !*is_already_blocked.unwrap() {
+                    return Err("Main thread is not locked");
+                }
 
-        let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
-        if is_already_blocked.is_none() || !*is_already_blocked.unwrap() {
-            isolate_scope.raise_exception_str("Main thread is not locked");
-            return None;
-        }
+                let res = match redis_client_ref.borrow().client.as_ref() {
+                    Some(c) => c.call(
+                        command_utf8.as_str(),
+                        &commands_args
+                            .iter()
+                            .map(|v| v.as_bytes())
+                            .collect::<Vec<&[u8]>>(),
+                    ),
+                    None => return Err("Used on invalid client"),
+                };
 
-        let command = args.get(0);
-        if !command.is_string() {
-            isolate_scope.raise_exception_str("First argument to 'command' must be a string");
-            return None;
-        }
-
-        let command_utf8 = command.to_utf8().unwrap();
-
-        let mut commands_args = Vec::new();
-        for i in 1..args.len() {
-            let arg = args.get(i);
-            let arg = if arg.is_string() {
-                arg.to_utf8().unwrap().as_str().as_bytes().to_vec()
-            } else if arg.is_array_buffer(){
-                arg.as_array_buffer().data().to_vec()
-            } else {
-                isolate_scope.raise_exception_str("Bad argument was given to 'call', argument must be either String or ArrayBuffer");
-                return None;
-            };
-            commands_args.push(arg);
-        }
-
-        let res = match redis_client_ref.borrow().client.as_ref() {
-            Some(c) => c.call(command_utf8.as_str(), &commands_args.iter().map(|v| v.as_slice()).collect::<Vec<&[u8]>>()),
-            None => {
-                isolate_scope.raise_exception_str("Used on invalid client");
-                return None;
+                Ok(call_result_to_js_object(
+                    isolate_scope,
+                    ctx_scope,
+                    res,
+                    decode_response,
+                ))
             }
-        };
-
-        call_result_to_js_object(isolate_scope, ctx_scope, res, decode_response)
-    });
+        ),
+    );
 }
 
 pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
