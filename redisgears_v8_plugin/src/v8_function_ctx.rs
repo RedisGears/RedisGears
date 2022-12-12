@@ -309,13 +309,12 @@ impl V8InternalFunction {
                                 } else {
                                     None
                                 };
-                                let r = reply.as_ref().map(|v| v.as_str()).unwrap_or("Give error is not a string");
-                                let mut execution_ctx = execution_ctx_reject.borrow_mut();
-                                execution_ctx
-                                    .c
+                                let r = reply
                                     .as_ref()
-                                    .unwrap()
-                                    .reply_with_error(r);
+                                    .map(|v| v.as_str())
+                                    .unwrap_or("Give error is not a string");
+                                let mut execution_ctx = execution_ctx_reject.borrow_mut();
+                                execution_ctx.c.as_ref().unwrap().reply_with_error(r);
                                 execution_ctx.unblock();
                                 Ok::<_, String>(None)
                             }
