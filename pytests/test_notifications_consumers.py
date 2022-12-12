@@ -233,4 +233,4 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, [['engine', 'js', 'name', 'lib', 'user', 'default', 'configuration', None, 'pending_jobs', 0, 'functions', [], 'remote_functions', [], 'stream_consumers', [], 'notifications_consumers', [['name', 'consumer', 'num_triggered', 1, 'num_finished', 1, 'num_success', 1, 'num_failed', 0, 'last_error', 'None', 'last_exection_time', 0, 'total_exection_time', 0, 'avg_exection_time', '0']], 'gears_box_info', None]], lambda: env.cmd('RG.FUNCTION', 'LIST', 'v'))
+    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
