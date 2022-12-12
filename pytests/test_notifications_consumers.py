@@ -179,3 +179,58 @@ redis.register_function("notifications_stats", async function(){
     env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([0, None, None])
     env.expect('SET', b'\xff\xff', b'\xaa').equal(True)
     env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([1, None, b'\xff\xff'])
+
+@gearsTest()
+def testSyncNotificationsReturnPromise(env):
+    """#!js name=lib
+redis.register_notifications_consumer("consumer", "", (client) => {
+    return client.run_on_background(async ()=>{return 1});
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+
+@gearsTest()
+def testSyncNotificationsReturnPromiseRaiseError(env):
+    """#!js name=lib
+redis.register_notifications_consumer("consumer", "", (client) => {
+    return client.run_on_background(async ()=>{throw "SomeError"});
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+
+@gearsTest()
+def testAsyncNotificationsReturnPromise(env):
+    """#!js name=lib
+redis.register_notifications_consumer("consumer", "", async (client) => {
+    return client.block((client) => {return client.run_on_background(async() => {return 1;})});
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+
+@gearsTest()
+def testAsyncNotificationsReturnPromiseRaiseError(env):
+    """#!js name=lib
+redis.register_notifications_consumer("consumer", "", async (client) => {
+    return client.block((client) => {return client.run_on_background(async() => {throw "SomeError";})});
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+
+@gearsTest()
+def testSyncNotificationsReturnResolvedPromise(env):
+    """#!js name=lib
+redis.register_notifications_consumer("consumer", "", (client) => {
+    var resolve_promise = null;
+    var promise = new Promise((resolve, reject) => {
+        resolve_promise = resolve;
+    });
+    resolve_promise(1)
+    return promise;
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    runUntil(env, [['engine', 'js', 'name', 'lib', 'user', 'default', 'configuration', None, 'pending_jobs', 0, 'functions', [], 'remote_functions', [], 'stream_consumers', [], 'notifications_consumers', [['name', 'consumer', 'num_triggered', 1, 'num_finished', 1, 'num_success', 1, 'num_failed', 0, 'last_error', 'None', 'last_exection_time', 0, 'total_exection_time', 0, 'avg_exection_time', '0']], 'gears_box_info', None]], lambda: env.cmd('RG.FUNCTION', 'LIST', 'v'))

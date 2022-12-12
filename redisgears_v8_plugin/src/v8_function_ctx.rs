@@ -294,25 +294,28 @@ impl V8InternalFunction {
                         let execution_ctx_resolve = Arc::new(RefCell::new(bg_execution_ctx));
                         let execution_ctx_reject = Arc::clone(&execution_ctx_resolve);
                         let resolve = ctx_scope.new_native_function(new_native_function!(
-                            move |_isolate_scope, _context, reply: V8LocalUtf8| {
+                            move |isolate_scope, ctx_scope, reply: V8LocalValue| {
                                 let mut execution_ctx = execution_ctx_resolve.borrow_mut();
-                                execution_ctx
-                                    .c
-                                    .as_ref()
-                                    .unwrap()
-                                    .reply_with_bulk_string(reply.as_str());
+                                let client = execution_ctx.c.as_ref().unwrap();
+                                send_reply(0, isolate_scope, ctx_scope, client.as_ref(), reply);
                                 execution_ctx.unblock();
                                 Ok::<_, String>(None)
                             }
                         ));
                         let reject = ctx_scope.new_native_function(new_native_function!(
-                            move |_isolate_scope, _ctx_scope, reply: V8LocalUtf8| {
+                            move |_isolate_scope, _ctx_scope, reply: V8LocalValue| {
+                                let reply = if reply.is_string() || reply.is_string_object() {
+                                    reply.to_utf8()
+                                } else {
+                                    None
+                                };
+                                let r = reply.as_ref().map(|v| v.as_str()).unwrap_or("Give error is not a string");
                                 let mut execution_ctx = execution_ctx_reject.borrow_mut();
                                 execution_ctx
                                     .c
                                     .as_ref()
                                     .unwrap()
-                                    .reply_with_error(reply.as_str());
+                                    .reply_with_error(r);
                                 execution_ctx.unblock();
                                 Ok::<_, String>(None)
                             }

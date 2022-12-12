@@ -606,3 +606,86 @@ redis.register_function("test", (c, key) => {
     env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
     env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').error().contains('Binary map key is not supported')
 
+@gearsTest()
+def testFunctionListWithLibraryOption(env):
+    code = """#!js name=lib
+redis.register_function("test", (c, key) => {
+    return typeof Object.keys(c.call_raw("hgetall", key))[0];
+},
+["raw-arguments", "allow-oom", "raw-arguments"]);
+
+redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+    num_events++;
+})
+
+redis.register_notifications_consumer("consumer", "", function(client, data) {});
+    """
+    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
+    env.expect('RG.FUNCTION', 'list', 'library', 'lib', 'v').equal([['engine', 'js', 'name', 'lib', 'user', 'default', 'configuration', '{"foo":"bar"}', 'pending_jobs', 0, 'functions', [['name', 'test', 'flags', ['allow-oom', 'raw-arguments']]], 'remote_functions', [], 'stream_consumers', [['name', 'consumer', 'prefix', 'stream', 'window', 1, 'trim', 'disabled', 'num_streams', 0]], 'notifications_consumers', [['name', 'consumer', 'num_triggered', 0, 'num_finished', 0, 'num_success', 0, 'num_failed', 0, 'last_error', 'None', 'last_exection_time', 0, 'total_exection_time', 0, 'avg_exection_time', '-nan']], 'gears_box_info', None]])
+    env.expect('RG.FUNCTION', 'list', 'library', 'lib', 'vv').equal([['engine', 'js', 'name', 'lib', 'user', 'default', 'configuration', '{"foo":"bar"}', 'pending_jobs', 0, 'functions', [['name', 'test', 'flags', ['allow-oom', 'raw-arguments']]], 'remote_functions', [], 'stream_consumers', [['name', 'consumer', 'prefix', 'stream', 'window', 1, 'trim', 'disabled', 'num_streams', 0, 'streams', []]], 'notifications_consumers', [['name', 'consumer', 'num_triggered', 0, 'num_finished', 0, 'num_success', 0, 'num_failed', 0, 'last_error', 'None', 'last_exection_time', 0, 'total_exection_time', 0, 'avg_exection_time', '-nan']], 'gears_box_info', None]])
+    env.expect('RG.FUNCTION', 'list', 'library', 'lib').equal([['engine', 'js', 'name', 'lib', 'user', 'default', 'configuration', '{"foo":"bar"}', 'pending_jobs', 0, 'functions', ['test'], 'remote_functions', [], 'stream_consumers', ['consumer'], 'notifications_consumers', ['consumer']]])
+    env.expect('RG.FUNCTION', 'list', 'withcode').equal([['engine', 'js', 'name', 'lib', 'user', 'default', 'configuration', '{"foo":"bar"}', 'pending_jobs', 0, 'functions', ['test'], 'remote_functions', [], 'stream_consumers', ['consumer'], 'notifications_consumers', ['consumer'], 'code', '#!js name=lib\nredis.register_function("test", (c, key) => {\n    return typeof Object.keys(c.call_raw("hgetall", key))[0];\n},\n["raw-arguments", "allow-oom", "raw-arguments"]);\n\nredis.register_stream_consumer("consumer", "stream", 1, false, function(){\n    num_events++;\n})\n\nredis.register_notifications_consumer("consumer", "", function(client, data) {});\n    ']])
+
+@gearsTest()
+def testReplyWithSimpleString(env):
+    """#!js name=lib
+redis.register_function("test", async () => {
+    var res = new String('test');
+    res.__reply_type = 'status';
+    return res;
+});
+    """
+    env.expect('RG.FCALL', 'lib', 'test', '0').equal("test")
+
+@gearsTest()
+def testReplyWithDouble(env):
+    """#!js name=lib
+redis.register_function("test", () => {
+    return 1.1;
+});
+    """
+    env.expect('RG.FCALL', 'lib', 'test', '0').contains("1.1")
+
+@gearsTest()
+def testReplyWithDoubleAsync(env):
+    """#!js name=lib
+redis.register_function("test", async () => {
+    return 1.1;
+});
+    """
+    env.expect('RG.FCALL', 'lib', 'test', '0').contains("1.1")
+
+@gearsTest()
+def testRunOnBackgroundThatRaisesError(env):
+    """#!js name=lib
+redis.register_function("test", (c) => {
+    return c.run_on_background(async (c) => {
+        throw "Some Error"        
+    });
+});
+    """
+    env.expect('RG.FCALL', 'lib', 'test', '0').error().equal("Some Error")
+
+@gearsTest()
+def testRunOnBackgroundThatReturnInteger(env):
+    """#!js name=lib
+redis.register_function("test", (c) => {
+    return c.run_on_background(async (c) => {
+        return 1;
+    });
+});
+    """
+    env.expect('RG.FCALL', 'lib', 'test', '0').equal(1)
+
+@gearsTest()
+def testOver100Isolates(env):
+    code = """#!js name=lib%d
+redis.register_function("test", (c) => {
+    return c.run_on_background(async (c) => {
+        return 1;
+    });
+});
+    """
+    for i in range(101):
+        env.expect('RG.FUNCTION', 'LOAD', code % (i)).equal('OK')
+

@@ -296,3 +296,170 @@ redis.register_function("test", (client) => {
 });
     """
     env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Main thread is not locked')
+
+@gearsTest()
+def testDelNoneExistingFunction(env):
+    env.expect('RG.FUNCTION', 'DEL', 'FOO').error().contains('library does not exists')
+
+@gearsTest()
+def testFunctionListWithBinaryOption(env):
+    env.expect('RG.FUNCTION', 'LIST', b'\xaa').error().contains('Binary option is not allowed')
+
+@gearsTest()
+def testFunctionListWithBinaryLibraryName(env):
+    env.expect('RG.FUNCTION', 'LIST', 'LIBRARY', b'\xaa').error().contains('Library name is not a string')
+
+@gearsTest()
+def testFunctionListWithUngivenLibraryName(env):
+    env.expect('RG.FUNCTION', 'LIST', 'LIBRARY').error().contains('Library name was not given')
+
+@gearsTest()
+def testFunctionListWithUnknownOption(env):
+    env.expect('RG.FUNCTION', 'LIST', 'FOO').error().contains('Unknown option')
+
+@gearsTest()
+def testMalformedLibarayMetaData(env):
+    code = 'js name=foo' # no #!
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('could not find #! syntax')
+
+@gearsTest()
+def testMalformedLibarayMetaData2(env):
+    code = '#!js name'
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('could not extract property value')
+
+@gearsTest()
+def testMalformedLibarayMetaData3(env):
+    code = '#!js foo=bar' # unknown property
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('unknown property')
+
+@gearsTest()
+def testNoLibraryCode(env):
+    env.expect('RG.FUNCTION', 'LOAD').error().contains('Could not find library payload')
+
+@gearsTest()
+def testNoValidJsonConfig(env):
+    code = '''#!js name=lib
+redis.register_function('test', () => {return 1})
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', b'\xaa', code).error().contains("given configuration value is not a valid string")
+
+@gearsTest()
+def testSetUserAsArgument(env):
+    code = '''#!js name=lib
+redis.register_function('test', () => {return 1})
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', 'USER', 'foo', code).error().contains("Unknown argument user")
+
+@gearsTest()
+def testBinaryLibCode(env):
+    env.expect('RG.FUNCTION', 'LOAD', b'\xaa').error().contains("lib code must a valid string")
+
+
+@gearsTest()
+def testUploadSameLibraryName(env):
+    code = '''#!js name=lib
+redis.register_function('test', () => {return 1})
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', code).equal('OK')
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('already exists')
+
+@gearsTest()
+def testUnknownFunctionSubCommand(env):
+    code = '''#!js name=lib
+redis.register_function('test', () => {return 1})
+    '''
+    env.expect('RG.FUNCTION', 'Foo').error().contains('Unknown subcommand')
+
+@gearsTest()
+def testUnknownFunctionName(env):
+    '''#!js name=lib
+redis.register_function('test', () => {return 1})
+    '''
+    env.expect('RG.FCALL', 'lib', 'foo', '0').error().contains("Unknown function")
+
+@gearsTest()
+def testCallFunctionOnOOM(env):
+    '''#!js name=lib
+redis.register_function('test', () => {return 1})
+    '''
+    env.expect('config', 'set', 'maxmemory', '1').equal('OK')
+    env.expect('RG.FCALL', 'lib', 'test', '0').error().contains("OOM can not run the function when out of memory")
+
+@gearsTest()
+def testRegisterSameConsumerTwice(env):
+    code = '''#!js name=lib
+redis.register_notifications_consumer("consumer", "key", async function(client, data) {
+    client.block(function(client){
+        client.call('incr', 'count')
+    });
+});
+
+redis.register_notifications_consumer("consumer", "key", async function(client, data) {
+    client.block(function(client){
+        client.call('incr', 'count')
+    });
+});
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Notification consumer already exists')
+
+@gearsTest()
+def testRegisterSameStreamConsumerTwice(env):
+    code = '''#!js name=lib
+redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+    return 0;
+});
+redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+    return 0;
+});
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Stream registration already exists')
+
+@gearsTest()
+def testUpgradeStreamConsumerWithDifferentPrefix(env):
+    code = '''#!js name=lib
+redis.register_stream_consumer("consumer", "%s", 1, false, function(){
+    return 0;
+});
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', code % 'prefix1').equal('OK')
+    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', code % 'prefix2').error().contains('Can not upgrade an existing consumer with different prefix')
+
+@gearsTest()
+def testRegisterSameRemoteTaskTwice(env):
+    code = '''#!js name=lib
+redis.register_remote_function("remote", async(client, key) => {
+    return 1;
+});
+redis.register_remote_function("remote", async(client, key) => {
+    return 1;
+});
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('already exists')
+
+@gearsTest()
+def testWrongFlagValue(env):
+    code = '''#!js name=lib
+redis.register_function('test', () => {return 1}, [1])
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('wrong type of string value')
+
+@gearsTest()
+def testUnknownFlagValue(env):
+    code = '''#!js name=lib
+redis.register_function('test', () => {return 1}, ["unknown"])
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknow flag')
+
+@gearsTest()
+def testArgDecodeFailure(env):
+    '''#!js name=lib
+redis.register_function('test', () => {return 1})
+    '''
+    env.expect('RG.FCALL', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
+
+@gearsTest()
+def testArgDecodeFailureAsync(env):
+    '''#!js name=lib
+redis.register_function('test', async () => {return 1})
+    '''
+    env.expect('RG.FCALL', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')

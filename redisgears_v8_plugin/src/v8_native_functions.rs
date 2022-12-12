@@ -582,7 +582,9 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
 
                     let resolver = resolver.take_local(&isolate_scope).as_resolver();
                     match res {
-                        Some(r) => resolver.resolve(&ctx_scope, &r),
+                        Some(r) => {
+                            resolver.resolve(&ctx_scope, &r);
+                        }
                         None => {
                             let error_utf8 = get_exception_v8_value(
                                 &new_script_ctx_ref.isolate,

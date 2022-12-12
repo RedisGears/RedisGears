@@ -343,7 +343,7 @@ impl RedisEnumConfigCtx for EnableDebugCommand {
     }
 
     fn values(&self) -> Vec<(&str, i32)> {
-        vec![("yes", true as i32), ("no", true as i32)]
+        vec![("yes", true as i32), ("no", false as i32)]
     }
 
     fn get(&self, _name: &str) -> i32 {
@@ -550,14 +550,14 @@ impl Config {
             x if x == self.libraray_fatal_failure_policy.name() => {
                 Self::is_emmutable(&mut self.libraray_fatal_failure_policy)
             }
-            x if x == self.enable_debug_command.name() => {
-                Self::is_emmutable(&mut self.enable_debug_command)
-            }
             x if x == self.lock_regis_timeout.name() => {
                 Self::is_emmutable(&mut self.lock_regis_timeout)
             }
             x if x == self.remote_task_default_timeout.name() => {
                 Self::is_emmutable(&mut self.remote_task_default_timeout)
+            }
+            x if x == self.enable_debug_command.name() => {
+                Self::is_emmutable(&mut self.enable_debug_command)
             }
             _ => {
                 return Err(RedisError::String(format!(
@@ -586,6 +586,9 @@ impl Config {
             x if x == self.lock_regis_timeout.name() => Ok(format!("{}", self.lock_regis_timeout)),
             x if x == self.remote_task_default_timeout.name() => {
                 Ok(format!("{}", self.remote_task_default_timeout))
+            }
+            x if x == self.enable_debug_command.name() => {
+                Ok(format!("{}", self.enable_debug_command))
             }
             _ => Err(RedisError::String(format!(
                 "No such configuration {}",
