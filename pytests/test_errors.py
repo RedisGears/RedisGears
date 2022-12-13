@@ -219,7 +219,7 @@ def testRegisterRemoteFunctionWorngNumberOfArgs(env):
     script = """#!js name=foo
 redis.register_remote_function();
     """
-    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Worng number of argument given")
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Wrong number of arguments given")
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType(env):

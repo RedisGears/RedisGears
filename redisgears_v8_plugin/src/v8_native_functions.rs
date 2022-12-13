@@ -16,6 +16,7 @@ use v8_rs::v8::{
     isolate_scope::V8IsolateScope, v8_array_buffer::V8LocalArrayBuffer,
     v8_context_scope::V8ContextScope, v8_object::V8LocalObject, v8_promise::V8PromiseState,
     v8_utf8::V8LocalUtf8, v8_value::V8LocalValue, v8_version,
+    v8_native_function_template::V8LocalNativeFunctionArgsIter,
 };
 
 use v8_derive::new_native_function;
@@ -455,6 +456,16 @@ impl<'isolate_scope, 'isolate> TryFrom<V8LocalValue<'isolate_scope, 'isolate>>
         } else {
             Err("Can not convert value into bytes buffer")
         }
+    }
+}
+
+impl<'isolate_scope, 'isolate, 'a> TryFrom<&mut V8LocalNativeFunctionArgsIter<'isolate_scope, 'isolate, 'a>>
+    for V8RedisCallArgs<'isolate_scope, 'isolate>
+{
+    type Error = &'static str;
+
+    fn try_from(val: &mut V8LocalNativeFunctionArgsIter<'isolate_scope, 'isolate, 'a>) -> Result<Self, Self::Error> {
+        val.next().ok_or("Wrong number of arguments.")?.try_into()
     }
 }
 
