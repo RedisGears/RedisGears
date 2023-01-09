@@ -375,6 +375,7 @@ endif
 artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml jvmplugin
 	@echo Packing module...
 	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) $(RAMP_OPT) ./pack.sh $(TARGET)
+	python append_deps.py
 
 artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot): $(CPYTHON_PREFIX) $(GEARS_PYTHON)
 	@echo Packing Python plugin...
