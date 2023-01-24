@@ -1,6 +1,6 @@
 # Cluster Support
 
-**Notice** on oss cluster, before executing any gears function, you must send `REDISGEARS_2.REFRESHCLUSTER` command to all the shards so that all the shards will be aware of the cluster topology. Without this step, each shard will be act as a single oss instance.
+**Notice** on oss cluster, before executing any gears function, you must send `REDISGEARS_2.REFRESHCLUSTER` command to all the shards so that all the shards will be aware of the cluster topology. Without this step, each shard will act as a single oss instance.
 
 RedisGears-2.0 support cross shard operation on Redis cluster. This means that it is possible to call a function that will be invoke on another shard. We call such function a remote function.
 
