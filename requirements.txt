@@ -1,2 +1,2 @@
-rltest==0.5.2
-ramp-packer==2.3.0
+RLTest~=0.5.11
+ramp-packer~=2.4.0
