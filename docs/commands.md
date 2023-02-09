@@ -34,7 +34,6 @@ RG.FUNCTION DEL "<library name>"
 
 _Arguments_
 
-* UPGRADE - an optional argument, instructs RedisGears to upgrade the function if its already exists.
 * _library name_ - the name of the library to delete
 
 _Return_
