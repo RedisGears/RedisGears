@@ -150,7 +150,7 @@ And we can test our function:
 Now lets use some external library, for example `mathjs`. To install the library run the following npm command on the project root directory:
 
 ```
-npm install mathjs
+npm install mathjs --save
 ```
 
 Lets change our program to use `pi` variable imported from `mathjs` library:
@@ -315,9 +315,7 @@ For convenience, let add this build processes to be part of our `npm run deploy`
 Now we will need to create a single bundled file that contain it all (`JS` and `webassembly`). We will generate a `JS` code that contains the webassembly code as base64 encoded string. On runtime, we will decode the string and run our webassembly code. Before we modify our `src/index.js` code to do that, let install some needed libraries:
 
 ```bash
-npm i base-64
-npm i modify-source-webpack-plugin
-npm i text-encoding
+npm install base-64 modify-source-webpack-plugin text-encoding --save
 ```
 
 Now lets modify `src/index.js` to decode our base64 string and load the webassembly module. Then we will call `test` function that was exported by our rust code.
@@ -325,12 +323,12 @@ Now lets modify `src/index.js` to decode our base64 string and load the webassem
 ```js
 import wasm_base_64 from "../redisgears_rust/pkg/rust_webpack_template_bg.wasm";
 import {test, initSync} from "../redisgears_rust/pkg/rust_webpack_template.js";
+import base64 from 'base-64';
 
-var base64 = require('base-64');
 var data = wasm_base_64.split(",")[1];
-var wasmcode = base64.decode(data);
+var wasm_code = base64.decode(data);
 
-var decoded_wasm = Uint8Array.from(wasmcode, c => c.charCodeAt(0));
+var decoded_wasm = Uint8Array.from(wasm_code, c => c.charCodeAt(0));
 initSync(decoded_wasm)
 
 redis.register_function("foo", function(){
@@ -483,7 +481,8 @@ OK
 Now if we will call `foo` function using [`FCALL`](commands.md#rgfcall), we will see that `Hello, World!` is printed to the Redis log file.
 
 ```bash
-> RG.FCALL foo foo 0
+> redis-cli RG.FCALL foo foo 0
+"undefined"
 ```
 
 On Redis log file:
@@ -501,12 +500,12 @@ Lets change `./src/index.js` to the following:
 ```js
 import wasm_base_64 from "../redisgears_rust/pkg/rust_webpack_template_bg.wasm";
 import {test, initSync} from "../redisgears_rust/pkg/rust_webpack_template.js";
+import base64 from 'base-64';
 
-var base64 = require('base-64');
 var data = wasm_base_64.split(",")[1];
-var wasmcode = base64.decode(data);
+var wasm_code = base64.decode(data);
 
-var decoded_wasm = Uint8Array.from(wasmcode, c => c.charCodeAt(0));
+var decoded_wasm = Uint8Array.from(wasm_code, c => c.charCodeAt(0));
 initSync(decoded_wasm)
 
 redis.register_function("foo", function(client){
@@ -548,6 +547,7 @@ pub fn test(client: &Client) -> Option<String> {
 We define a new `Client` type and declare its `get` function. Then we use it on our `test` function and fetch the value of `x`. We can now recompile and deploy and if everything done correctly we can see that our rust code fetches `x` and returns its value:
 
 ```bash
+> redis-cli 
 127.0.0.1:6379> RG.FCALL foo foo 0
 "undefined"
 127.0.0.1:6379> set x 1
