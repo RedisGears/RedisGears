@@ -150,7 +150,7 @@ And we can test our function:
 Now lets use some external library, for example `mathjs`. To install the library run the following npm command on the project root directory:
 
 ```
-npm install mathjs
+npm install mathjs --save
 ```
 
 Lets change our program to use `pi` variable imported from `mathjs` library:
