@@ -28,6 +28,8 @@ jobs:
         yum -yqq install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
         yum install -yqq git
     - uses: actions/checkout@v3
+    - name: Add RedisGears directory to git safe directory
+      run: git config --global --add safe.directory /__w/RedisGears/RedisGears
     - name: install rltest
       run: pip3 install RLTest
     - name: Install redis
