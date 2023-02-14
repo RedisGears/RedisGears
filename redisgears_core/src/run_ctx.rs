@@ -18,7 +18,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use redis_module::Status;
 
-use crate::{call_redis_command, get_globals, GearsLibraryMataData};
+use crate::{call_redis_command, get_globals, get_msg_verbose, GearsLibraryMataData};
 
 use std::slice::Iter;
 
@@ -111,7 +111,7 @@ impl RedisClientCtxInterface for RedisClient {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!(
+                    return Err(GearsApiError::new(format!(
                         "Failed authenticate user {}",
                         u
                     )));
@@ -123,7 +123,7 @@ impl RedisClientCtxInterface for RedisClient {
         let res = RedisAIModel::open_from_key(ctx, name);
         match res {
             Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::Msg(e)),
+            Err(e) => Err(GearsApiError::new(e)),
         }
     }
 
@@ -136,7 +136,7 @@ impl RedisClientCtxInterface for RedisClient {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!(
+                    return Err(GearsApiError::new(format!(
                         "Failed authenticate user {}",
                         u
                     )));
@@ -148,7 +148,7 @@ impl RedisClientCtxInterface for RedisClient {
         let res = RedisAIScript::open_from_key(ctx, name);
         match res {
             Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::Msg(e)),
+            Err(e) => Err(GearsApiError::new(e)),
         }
     }
 }
@@ -165,8 +165,8 @@ impl<'a> ReplyCtxInterface for RunCtx<'a> {
         self.ctx.reply_simple_string(val);
     }
 
-    fn reply_with_error(&self, val: &str) {
-        self.ctx.reply_error_string(val);
+    fn reply_with_error(&self, val: GearsApiError) {
+        self.ctx.reply_error_string(get_msg_verbose(&val));
     }
 
     fn reply_with_long(&self, val: i64) {
@@ -208,7 +208,7 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
 
     fn get_background_client(&self) -> Result<Box<dyn ReplyCtxInterface>, GearsApiError> {
         if !self.allow_block() {
-            return Err(GearsApiError::Msg(
+            return Err(GearsApiError::new(
                 "Blocking is not allow inside multi/exec, Lua, or within another module (RM_Call)"
                     .to_string(),
             ));
@@ -248,8 +248,8 @@ impl ReplyCtxInterface for BackgroundClientCtx {
         self.ctx.reply_simple_string(val);
     }
 
-    fn reply_with_error(&self, val: &str) {
-        self.ctx.reply_error_string(val);
+    fn reply_with_error(&self, val: GearsApiError) {
+        self.ctx.reply_error_string(get_msg_verbose(&val));
     }
 
     fn reply_with_long(&self, val: i64) {

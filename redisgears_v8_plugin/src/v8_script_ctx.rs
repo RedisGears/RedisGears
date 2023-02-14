@@ -173,11 +173,11 @@ impl LibraryCtxInterface for V8LibraryCtx {
             .set_private_data::<&mut dyn LoadLibraryCtxInterface>(0, None);
 
         if res.is_none() {
-            let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
-            return Err(GearsApiError::Msg(format!(
-                "Failed evaluating module: {}",
-                error_msg
-            )));
+            return Err(get_exception_msg(
+                &self.script_ctx.isolate,
+                trycatch,
+                &ctx_scope,
+            ));
         }
         let res = res.unwrap();
         if res.is_promise() {
@@ -185,7 +185,7 @@ impl LibraryCtxInterface for V8LibraryCtx {
             if promise.state() == V8PromiseState::Rejected {
                 let error = promise.get_result();
                 let error_utf8 = error.to_utf8().unwrap();
-                return Err(GearsApiError::Msg(format!(
+                return Err(GearsApiError::new(format!(
                     "Failed evaluating module: {}",
                     error_utf8.as_str()
                 )));

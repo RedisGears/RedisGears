@@ -8,6 +8,8 @@ use crate::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInte
 use crate::redisgears_plugin_api::run_function_ctx::RedisClientCtxInterface;
 use std::any::Any;
 
+use super::GearsApiError;
+
 pub trait NotificationFiredDataInterface {}
 
 pub trait NotificationRunCtxInterface {
@@ -27,6 +29,6 @@ pub trait KeysNotificationsConsumerCtxInterface {
         &self,
         notificaion_data: Option<Box<dyn Any>>,
         notification_ctx: Box<dyn NotificationRunCtxInterface>,
-        ack_callback: Box<dyn FnOnce(Result<(), String>) + Send + Sync>,
+        ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     );
 }

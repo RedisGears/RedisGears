@@ -5,6 +5,7 @@
  */
 
 use redis_module::raw::RedisModuleStreamID;
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 use std::collections::HashMap;
 
@@ -29,7 +30,7 @@ where
 
 pub(crate) enum StreamReaderAck {
     Ack,
-    Nack(String),
+    Nack(GearsApiError),
 }
 
 pub(crate) trait StreamConsumer<T: StreamReaderRecord> {
@@ -108,7 +109,7 @@ pub(crate) struct ConsumerInfo {
     pub(crate) records_processed: usize,  // average lag in ms
     pub(crate) pending_ids: LinkedList<RedisModuleStreamID>,
     pub(crate) last_read_id: Option<RedisModuleStreamID>,
-    pub(crate) last_error: Option<String>,
+    pub(crate) last_error: Option<GearsApiError>,
 }
 
 impl ConsumerInfo {

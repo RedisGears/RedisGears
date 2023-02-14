@@ -4,7 +4,6 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use v8_rs::v8::v8_utf8::V8LocalUtf8;
 use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8LocalValue, v8_value::V8PersistValue};
 
 use redisgears_plugin_api::redisgears_plugin_api::stream_ctx::{
@@ -23,7 +22,7 @@ use std::str;
 
 use v8_derive::new_native_function;
 
-use crate::get_exception_msg;
+use crate::{get_error_from_object, get_exception_msg};
 
 struct V8StreamAckCtx {
     ack: Option<Box<dyn FnOnce(StreamRecordAck) + Send>>,
@@ -162,7 +161,7 @@ impl V8StreamCtxInternals {
             Some(_) => StreamRecordAck::Ack,
             None => {
                 // todo: handle promise
-                let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
+                let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope);
                 StreamRecordAck::Nack(error_msg)
             }
         })
@@ -271,8 +270,9 @@ impl V8StreamCtxInternals {
                     if res.is_promise() {
                         let res = res.as_promise();
                         if res.state() == V8PromiseState::Rejected {
-                            let error_utf8 = res.get_result().to_utf8().unwrap();
-                            Some(StreamRecordAck::Nack(error_utf8.as_str().to_string()))
+                            let res = res.get_result();
+                            let error = get_error_from_object(&res, &ctx_scope);
+                            Some(StreamRecordAck::Nack(error))
                         } else if res.state() == V8PromiseState::Fulfilled {
                             Some(StreamRecordAck::Ack)
                         } else {
@@ -288,11 +288,11 @@ impl V8StreamCtxInternals {
                                     None
                                 });
                             let reject = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, _ctx_scope, res: V8LocalUtf8| {
-                                    let res = res.as_str().to_string();
+                                move |isolate, ctx_scope, res: V8LocalValue| {
+                                    let error = get_error_from_object(&res, &ctx_scope);
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) = ack_callback_reject.borrow_mut().ack.take() {
-                                        ack(StreamRecordAck::Nack(res));
+                                        ack(StreamRecordAck::Nack(error));
                                     }
                                     Ok::<_, String>(None)
                                 }
@@ -306,7 +306,8 @@ impl V8StreamCtxInternals {
                 }
                 None => {
                     // todo: hanlde promise
-                    let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
+                    let error_msg =
+                        get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope);
                     Some(StreamRecordAck::Nack(error_msg))
                 }
             }

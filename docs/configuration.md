@@ -142,3 +142,27 @@ Unlimited
 _Runtime Configurability_
 
 Yes
+
+## error-verbosity
+
+The `error-verbosity` configuration option controls the error verbosity messages that will be provided by RedisGears, the higher the value the more verbose the error messages will be (include stack traces and extra information for better analysis and debugging).
+
+_Expected Value_
+
+Integer
+
+_Default_
+
+1
+
+_Minimum Value_
+
+1
+
+_Maximum Value_
+
+2
+
+_Runtime Configurability_
+
+Yes

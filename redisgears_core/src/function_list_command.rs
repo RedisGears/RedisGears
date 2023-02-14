@@ -14,7 +14,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::{get_libraries, to_redis_value};
+use crate::{get_libraries, get_msg_verbose, to_redis_value};
 
 fn function_list_command_flags(flags: u8) -> RedisValue {
     let mut res = Vec::new();
@@ -204,7 +204,7 @@ pub(crate) fn function_list_command(
                                                         ),
                                                         match &v.last_error {
                                                             Some(err) => RedisValue::BulkString(
-                                                                err.to_string(),
+                                                                get_msg_verbose(err).to_string(),
                                                             ),
                                                             None => RedisValue::BulkString(
                                                                 "None".to_string(),
@@ -262,7 +262,7 @@ pub(crate) fn function_list_command(
                                         RedisValue::Integer(stats.num_failed as i64),
                                         RedisValue::BulkString("last_error".to_string()),
                                         RedisValue::BulkString(match stats.last_error {
-                                            Some(s) => s,
+                                            Some(s) => get_msg_verbose(&s).to_string(),
                                             None => "None".to_string(),
                                         }),
                                         RedisValue::BulkString("last_exection_time".to_string()),

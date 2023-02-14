@@ -4,21 +4,21 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use redisgears_plugin_api::redisgears_plugin_api::{
     function_ctx::FunctionCtxInterface, run_function_ctx::BackgroundRunFunctionCtxInterface,
     run_function_ctx::ReplyCtxInterface, run_function_ctx::RunFunctionCtxInterface,
     FunctionCallResult,
 };
 
-use v8_rs::v8::v8_utf8::V8LocalUtf8;
 use v8_rs::v8::{
     isolate_scope::V8IsolateScope, v8_context_scope::V8ContextScope, v8_promise::V8PromiseState,
     v8_value::V8LocalValue, v8_value::V8PersistValue,
 };
 
-use crate::get_exception_msg;
 use crate::v8_native_functions::{get_backgrounnd_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
+use crate::{get_error_from_object, get_exception_msg};
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -130,7 +130,9 @@ impl V8InternalFunction {
                         let arg = match str::from_utf8(arg) {
                             Ok(s) => s,
                             Err(_) => {
-                                bg_client.reply_with_error("Can not convert argument to string");
+                                bg_client.reply_with_error(GearsApiError::new(
+                                    "Can not convert argument to string",
+                                ));
                                 return FunctionCallResult::Done;
                             }
                         };
@@ -167,8 +169,7 @@ impl V8InternalFunction {
                         if res.state() == V8PromiseState::Fulfilled {
                             send_reply(0, &isolate_scope, &ctx_scope, bg_client.as_ref(), r);
                         } else {
-                            let r = r.to_utf8().unwrap();
-                            bg_client.reply_with_error(r.as_str());
+                            bg_client.reply_with_error(get_error_from_object(&r, &ctx_scope));
                         }
                     } else {
                         let bg_execution_ctx = BackgroundClientHolder { c: Some(bg_client) };
@@ -188,18 +189,18 @@ impl V8InternalFunction {
                                 Ok::<_, String>(None)
                             }
                         ));
-                        let reject = ctx_scope.new_native_function(new_native_function!(
-                            move |_isolate_scope, _ctx_scope, reply: V8LocalUtf8| {
-                                let mut execution_ctx = execution_ctx_reject.borrow_mut();
-                                execution_ctx
-                                    .c
-                                    .as_ref()
-                                    .unwrap()
-                                    .reply_with_error(reply.as_str());
-                                execution_ctx.unblock();
-                                Ok::<_, String>(None)
-                            }
-                        ));
+                        let reject =
+                            ctx_scope.new_native_function(new_native_function!(
+                                move |_isolate_scope, ctx_scope, reply: V8LocalValue| {
+                                    let mut execution_ctx = execution_ctx_reject.borrow_mut();
+                                    // see if we can extract trace
+                                    execution_ctx.c.as_ref().unwrap().reply_with_error(
+                                        get_error_from_object(&reply, &ctx_scope),
+                                    );
+                                    execution_ctx.unblock();
+                                    Ok::<_, String>(None)
+                                }
+                            ));
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }
@@ -208,8 +209,8 @@ impl V8InternalFunction {
                 }
             }
             None => {
-                let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
-                bg_client.reply_with_error(&error_msg);
+                let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope);
+                bg_client.reply_with_error(error_msg);
             }
         }
         FunctionCallResult::Done
@@ -233,7 +234,9 @@ impl V8InternalFunction {
                         let arg = match str::from_utf8(a) {
                             Ok(s) => s,
                             Err(_) => {
-                                run_ctx.reply_with_error("Can not convert argument to string");
+                                run_ctx.reply_with_error(GearsApiError::new(
+                                    "Can not convert argument to string",
+                                ));
                                 return FunctionCallResult::Done;
                             }
                         };
@@ -276,17 +279,16 @@ impl V8InternalFunction {
                         if res.state() == V8PromiseState::Fulfilled {
                             send_reply(0, &isolate_scope, &ctx_scope, run_ctx.as_client(), r);
                         } else {
-                            let r = r.to_utf8().unwrap();
-                            run_ctx.reply_with_error(r.as_str());
+                            run_ctx.reply_with_error(get_error_from_object(&r, &ctx_scope));
                         }
                     } else {
                         let bc = match run_ctx.get_background_client() {
                             Ok(bc) => bc,
                             Err(e) => {
-                                run_ctx.reply_with_error(&format!(
+                                run_ctx.reply_with_error(GearsApiError::new(&format!(
                                     "Can not block client for background execution, {}.",
                                     e.get_msg()
-                                ));
+                                )));
                                 return FunctionCallResult::Done;
                             }
                         };
@@ -302,23 +304,17 @@ impl V8InternalFunction {
                                 Ok::<_, String>(None)
                             }
                         ));
-                        let reject = ctx_scope.new_native_function(new_native_function!(
-                            move |_isolate_scope, _ctx_scope, reply: V8LocalValue| {
-                                let reply = if reply.is_string() || reply.is_string_object() {
-                                    reply.to_utf8()
-                                } else {
-                                    None
-                                };
-                                let r = reply
-                                    .as_ref()
-                                    .map(|v| v.as_str())
-                                    .unwrap_or("Give error is not a string");
-                                let mut execution_ctx = execution_ctx_reject.borrow_mut();
-                                execution_ctx.c.as_ref().unwrap().reply_with_error(r);
-                                execution_ctx.unblock();
-                                Ok::<_, String>(None)
-                            }
-                        ));
+                        let reject =
+                            ctx_scope.new_native_function(new_native_function!(
+                                move |_isolate_scope, ctx_scope, reply: V8LocalValue| {
+                                    let mut execution_ctx = execution_ctx_reject.borrow_mut();
+                                    execution_ctx.c.as_ref().unwrap().reply_with_error(
+                                        get_error_from_object(&reply, &ctx_scope),
+                                    );
+                                    execution_ctx.unblock();
+                                    Ok::<_, String>(None)
+                                }
+                            ));
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }
@@ -327,8 +323,8 @@ impl V8InternalFunction {
                 }
             }
             None => {
-                let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
-                run_ctx.reply_with_error(&error_msg);
+                let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope);
+                run_ctx.reply_with_error(error_msg);
             }
         }
         FunctionCallResult::Done
@@ -372,10 +368,10 @@ impl FunctionCtxInterface for V8Function {
             let bg_client = match run_ctx.get_background_client() {
                 Ok(bc) => bc,
                 Err(e) => {
-                    run_ctx.reply_with_error(&format!(
+                    run_ctx.reply_with_error(GearsApiError::new(format!(
                         "Can not block client for background execution, {}.",
                         e.get_msg()
-                    ));
+                    )));
                     return FunctionCallResult::Done;
                 }
             };

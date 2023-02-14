@@ -28,6 +28,8 @@ use crate::get_notification_blocker;
 
 use std::sync::Arc;
 
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
+
 pub(crate) struct StreamRunCtx {
     lib_meta_data: Arc<GearsLibraryMataData>,
     flags: u8,
@@ -120,12 +122,12 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
         let key_redis_str = RedisString::create_from_slice(std::ptr::null_mut(), stream_name);
         if let Err(e) = get_ctx().acl_check_key_permission(user, &key_redis_str, &self.permissions)
         {
-            return Some(StreamReaderAck::Nack(format!(
+            return Some(StreamReaderAck::Nack(GearsApiError::new(format!(
                 "User '{}' has no permissions on key '{}', {}.",
                 user,
                 std::str::from_utf8(stream_name).unwrap_or("[binary data]"),
                 e
-            )));
+            ))));
         }
 
         let res = {

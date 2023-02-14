@@ -12,6 +12,7 @@ use v8_rs::v8::{
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtxInterface, load_library_ctx::FUNCTION_FLAG_ALLOW_OOM,
     load_library_ctx::FUNCTION_FLAG_NO_WRITES, load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
+    GearsApiError,
 };
 
 mod v8_backend;
@@ -25,14 +26,37 @@ mod v8_stream_ctx;
 use crate::v8_backend::V8Backend;
 use std::sync::{Arc, Mutex};
 
-pub(crate) fn get_exception_msg(isolate: &V8Isolate, try_catch: V8TryCatch) -> String {
+pub(crate) fn get_exception_msg(
+    isolate: &V8Isolate,
+    try_catch: V8TryCatch,
+    ctx_scope: &V8ContextScope,
+) -> GearsApiError {
     if try_catch.has_terminated() {
         isolate.cancel_terminate_execution();
-        "Err Execution was terminated due to OOM or timeout".to_string()
+        GearsApiError::new("Err Execution was terminated due to OOM or timeout")
     } else {
         let error_utf8 = try_catch.get_exception().to_utf8().unwrap();
-        error_utf8.as_str().to_string()
+        let trace_utf8 = try_catch.get_trace(ctx_scope).map(|v| v.to_utf8().unwrap());
+        GearsApiError::new_verbose(
+            error_utf8.as_str(),
+            trace_utf8.as_ref().map(|v| v.as_str().replace("\n", "|")),
+        )
     }
+}
+
+pub(crate) fn get_error_from_object(
+    val: &V8LocalValue,
+    ctx_scope: &V8ContextScope,
+) -> GearsApiError {
+    let msg = val.to_utf8().unwrap().as_str().to_string();
+    let trace = if val.is_object() {
+        let val = val.as_object();
+        val.get_str_field(&ctx_scope, "stack")
+            .map(|v| v.to_utf8().unwrap().as_str().to_string())
+    } else {
+        None
+    };
+    GearsApiError::new_verbose(msg, trace.map(|v| v.replace("\n", "|")))
 }
 
 pub(crate) fn get_exception_v8_value<'isolate_scope, 'isolate>(

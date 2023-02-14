@@ -8,8 +8,6 @@ use redis_module::{Context, NextArg, RedisError, RedisResult, RedisValue, Thread
 
 use crate::gears_box::GearsBoxLibraryInfo;
 
-use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
-
 use crate::compiled_library_api::CompiledLibraryAPI;
 
 use crate::{
@@ -28,6 +26,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::gears_box::{do_http_get_text, gears_box_get_library};
+
+use crate::get_msg_verbose;
 
 use mr_derive::BaseObject;
 
@@ -135,9 +135,7 @@ pub(crate) fn function_load_intrernal(
     let lib_ctx =
         backend.compile_library(code, meta_data.config.as_ref(), Box::new(compile_lib_ctx));
     let lib_ctx = match lib_ctx {
-        Err(e) => match e {
-            GearsApiError::Msg(s) => return Err(format!("Failed library compilation {}", s)),
-        },
+        Err(e) => return Err(format!("Failed library compilation {}", e.get_msg())),
         Ok(lib_ctx) => lib_ctx,
     };
     let mut libraries = get_libraries();
@@ -161,12 +159,7 @@ pub(crate) fn function_load_intrernal(
     };
     let res = lib_ctx.load_library(&mut gears_library);
     if let Err(err) = res {
-        let ret = match err {
-            GearsApiError::Msg(s) => {
-                let msg = format!("Failed loading library, {}", s);
-                Err(msg)
-            }
-        };
+        let ret = Err(format!("Failed loading library, {}", get_msg_verbose(&err)));
         function_load_revert(gears_library, &mut libraries);
         return ret;
     }

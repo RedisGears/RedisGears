@@ -183,11 +183,7 @@ impl BackendCtxInterface for V8Backend {
                 let script = match ctx_scope.compile(&v8code_str) {
                     Some(s) => s,
                     None => {
-                        let error_msg = get_exception_msg(&isolate, trycatch);
-                        return Err(GearsApiError::Msg(format!(
-                            "Failed compiling code, {}",
-                            error_msg
-                        )));
+                        return Err(get_exception_msg(&isolate, trycatch, &ctx_scope));
                     }
                 };
 
@@ -275,12 +271,7 @@ impl BackendCtxInterface for V8Backend {
         let mut args = args.iter();
         let sub_command = args
             .next()
-            .map_or(
-                Err(GearsApiError::Msg(
-                    "Subcommand was not provided".to_string(),
-                )),
-                Ok,
-            )?
+            .map_or(Err(GearsApiError::new("Subcommand was not provided")), Ok)?
             .to_lowercase();
         match sub_command.as_ref() {
             "help" => Ok(CallResult::Array(vec![
@@ -317,7 +308,7 @@ impl BackendCtxInterface for V8Backend {
                 self.isolates_gc();
                 Ok(CallResult::SimpleStr("OK".to_string()))
             }
-            _ => Err(GearsApiError::Msg(format!(
+            _ => Err(GearsApiError::new(&format!(
                 "Unknown subcommand '{}'",
                 sub_command
             ))),

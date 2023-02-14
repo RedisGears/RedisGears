@@ -17,7 +17,7 @@ pub trait RedisClientCtxInterface: Send + Sync {
 
 pub trait ReplyCtxInterface: Send + Sync {
     fn reply_with_simple_string(&self, val: &str);
-    fn reply_with_error(&self, val: &str);
+    fn reply_with_error(&self, val: GearsApiError);
     fn reply_with_long(&self, val: i64);
     fn reply_with_double(&self, val: f64);
     fn reply_with_bulk_string(&self, val: &str);

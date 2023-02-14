@@ -140,9 +140,7 @@ impl RemoteTask for GearsRemoteTask {
             Box::new(move |result| {
                 let res = match result {
                     Ok(r) => Ok(GearsRemoteFunctionOutputRecord { output: r }),
-                    Err(e) => match e {
-                        GearsApiError::Msg(msg) => Err(msg),
-                    },
+                    Err(e) => Err(e.get_msg().to_string()),
                 };
                 on_done(res);
             }),
@@ -154,12 +152,12 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
     fn lock<'a>(&'a self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError> {
         let ctx_guard = ThreadSafeContext::new().lock();
         if !verify_ok_on_replica(self.call_options.flags) {
-            return Err(GearsApiError::Msg(
+            return Err(GearsApiError::new(
                 "Can not lock redis for write on replica".to_string(),
             ));
         }
         if !verify_oom(self.call_options.flags) {
-            return Err(GearsApiError::Msg(
+            return Err(GearsApiError::new(
                 "OOM Can not lock redis for write".to_string(),
             ));
         }
@@ -191,7 +189,7 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
             move |result: Result<GearsRemoteFunctionOutputRecord, RustMRError>| {
                 let res = match result {
                     Ok(r) => Ok(r.output),
-                    Err(e) => Err(GearsApiError::Msg(e)),
+                    Err(e) => Err(GearsApiError::new(e)),
                 };
                 on_done(res);
             },
@@ -216,7 +214,7 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
             input_record,
             move |results: Vec<GearsRemoteFunctionOutputRecord>, errors| {
                 let errors: Vec<GearsApiError> =
-                    errors.into_iter().map(GearsApiError::Msg).collect();
+                    errors.into_iter().map(GearsApiError::new).collect();
                 let results: Vec<RemoteFunctionData> =
                     results.into_iter().map(|r| r.output).collect();
                 on_done(results, errors);

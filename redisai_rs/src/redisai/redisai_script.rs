@@ -174,11 +174,11 @@ impl RedisAIScriptRunCtx {
 impl AIScriptRunnerInterface for RedisAIScriptRunCtx {
     fn add_input(&mut self, tensor: &dyn AITensorInterface) -> Result<(), GearsApiError> {
         let tensor = unsafe { &*(tensor as *const dyn AITensorInterface as *const RedisAITensor) };
-        self.add_input(tensor).map_err(GearsApiError::Msg)
+        self.add_input(tensor).map_err(GearsApiError::new)
     }
 
     fn add_output(&mut self) -> Result<(), GearsApiError> {
-        self.add_output().map_err(GearsApiError::Msg)
+        self.add_output().map_err(GearsApiError::new)
     }
 
     fn run(
@@ -193,7 +193,7 @@ impl AIScriptRunnerInterface for RedisAIScriptRunCtx {
                 }
                 on_done(Ok(v));
             }
-            Err(e) => on_done(Err(GearsApiError::Msg(e))),
+            Err(e) => on_done(Err(GearsApiError::new(e))),
         });
     }
 }

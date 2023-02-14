@@ -16,6 +16,62 @@ use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::LibraryFatalFailu
 
 use std::fmt;
 
+pub(crate) struct ErrorVerbosity {
+    pub(crate) val: usize,
+    flags: ConfigFlags,
+}
+
+impl ErrorVerbosity {
+    fn new() -> ErrorVerbosity {
+        ErrorVerbosity {
+            val: 1,
+            flags: ConfigFlags::new(),
+        }
+    }
+}
+
+impl fmt::Display for ErrorVerbosity {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.val)
+    }
+}
+
+impl RedisConfigCtx for ErrorVerbosity {
+    fn name(&self) -> &'static str {
+        "error-verbosity"
+    }
+
+    fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
+        Ok(())
+    }
+
+    fn flags(&self) -> &ConfigFlags {
+        &self.flags
+    }
+}
+
+impl RedisNumberConfigCtx for ErrorVerbosity {
+    fn default(&self) -> i64 {
+        1
+    }
+
+    fn min(&self) -> i64 {
+        1
+    }
+    fn max(&self) -> i64 {
+        2
+    }
+
+    fn get(&self, _name: &str) -> i64 {
+        self.val as i64
+    }
+
+    fn set(&mut self, _name: &str, value: i64) -> Result<(), RedisError> {
+        self.val = value as usize;
+        Ok(())
+    }
+}
+
 pub(crate) struct ExecutionThreads {
     pub(crate) size: usize,
     flags: ConfigFlags,
@@ -424,6 +480,7 @@ pub(crate) struct Config {
     pub(crate) lock_regis_timeout: LockRedisTimeout,
     pub(crate) enable_debug_command: EnableDebugCommand,
     pub(crate) remote_task_default_timeout: RemoteTaskDefaultTimeout,
+    pub(crate) error_verbosity: ErrorVerbosity,
 }
 
 impl Config {
@@ -436,6 +493,7 @@ impl Config {
             lock_regis_timeout: LockRedisTimeout::new(),
             enable_debug_command: EnableDebugCommand::new(),
             remote_task_default_timeout: RemoteTaskDefaultTimeout::new(),
+            error_verbosity: ErrorVerbosity::new(),
         }
     }
 
@@ -523,6 +581,9 @@ impl Config {
             x if x == self.remote_task_default_timeout.name() => {
                 Self::set_numeric_value(&mut self.remote_task_default_timeout, val)
             }
+            x if x == self.error_verbosity.name() => {
+                Self::set_numeric_value(&mut self.error_verbosity, val)
+            }
             _ => {
                 return Err(RedisError::String(format!(
                     "No such configuration {}",
@@ -590,6 +651,7 @@ impl Config {
             x if x == self.enable_debug_command.name() => {
                 Ok(format!("{}", self.enable_debug_command))
             }
+            x if x == self.error_verbosity.name() => Ok(format!("{}", self.error_verbosity)),
             _ => Err(RedisError::String(format!(
                 "No such configuration {}",
                 name

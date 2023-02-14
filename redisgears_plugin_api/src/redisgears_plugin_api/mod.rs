@@ -15,15 +15,36 @@ pub mod redisai_interface;
 pub mod run_function_ctx;
 pub mod stream_ctx;
 
-pub enum GearsApiError {
-    Msg(String),
+#[derive(Clone)]
+pub struct GearsApiError {
+    msg: String,
+    verbose_msg: Option<String>,
 }
 
 impl GearsApiError {
-    pub fn get_msg(&self) -> &str {
-        match self {
-            Self::Msg(s) => s,
+    pub fn new_verbose<T: Into<String>, F: Into<String>>(
+        msg: T,
+        verbose_msg: Option<F>,
+    ) -> GearsApiError {
+        GearsApiError {
+            msg: msg.into(),
+            verbose_msg: verbose_msg.map(|v| v.into()),
         }
+    }
+
+    pub fn new<T: Into<String>>(msg: T) -> GearsApiError {
+        GearsApiError {
+            msg: msg.into(),
+            verbose_msg: None,
+        }
+    }
+
+    pub fn get_msg(&self) -> &str {
+        &self.msg
+    }
+
+    pub fn get_msg_verbose(&self) -> &str {
+        self.verbose_msg.as_ref().unwrap_or(&self.msg)
     }
 }
 

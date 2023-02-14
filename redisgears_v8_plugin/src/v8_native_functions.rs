@@ -345,9 +345,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                         resolver.resolve(&ctx_scope, &v)
                     },
                     Err(e) => {
-                        match e {
-                            GearsApiError::Msg(msg) => resolver.reject(&ctx_scope, &isolate_scope.new_string(&msg).to_value())
-                        }
+                        resolver.reject(&ctx_scope, &isolate_scope.new_string(e.get_msg()).to_value());
                     }
                 }
             }));
@@ -407,7 +405,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                             let v8_str = isolate_scope.new_string(&s);
                             let v8_obj = ctx_scope.new_object_from_json(&v8_str);
                             if v8_obj.is_none() {
-                                errors.push(GearsApiError::Msg(format!("Failed deserializing remote function result '{}'", s)));
+                                errors.push(GearsApiError::new(format!("Failed deserializing remote function result '{}'", s)));
                             }
                             v8_obj.unwrap()
                         }
@@ -630,11 +628,7 @@ pub(crate) fn initialize_globals(
             let trycatch = isolate_scope.new_try_catch();
             let config_json = ctx_scope.new_object_from_json(&string);
             if config_json.is_none() {
-                let error_msg = get_exception_msg(&script_ctx.isolate, trycatch);
-                return Err(GearsApiError::Msg(format!(
-                    "Failed parsing configuration as json, {}",
-                    error_msg
-                )));
+                return Err(get_exception_msg(&script_ctx.isolate, trycatch, ctx_scope));
             }
             redis.set(
                 ctx_scope,
@@ -691,9 +685,7 @@ pub(crate) fn initialize_globals(
             return Err("Second argument to 'register_stream_consumer' must be a String or ArrayBuffer representing the prefix".into());
         };
         if let Err(err) = res {
-            match err {
-                GearsApiError::Msg(s) => return Err(s),
-            }
+            return Err(err.get_msg().to_string());
         }
         Ok(None)
     }));
@@ -735,9 +727,7 @@ pub(crate) fn initialize_globals(
             return Err("Second argument to 'register_notifications_consumer' must be a string or ArrayBuffer representing the prefix".into());
         };
         if let Err(err) = res {
-            match err {
-                GearsApiError::Msg(s) => return Err(s),
-            }
+            return Err(err.get_msg().to_string());
         }
         Ok(None)
     }));
@@ -802,9 +792,7 @@ pub(crate) fn initialize_globals(
                     function_flags,
                 );
                 if let Err(err) = res {
-                    match err {
-                        GearsApiError::Msg(s) => return Err(s),
-                    }
+                    return Err(err.get_msg().into());
                 }
                 Ok(None)
             }
@@ -841,7 +829,7 @@ pub(crate) fn initialize_globals(
             let script_ctx = match new_script_ctx_ref.upgrade() {
                 Some(s) => s,
                 None => {
-                    on_done(Err(GearsApiError::Msg("Use of uninitialized script context".to_string())));
+                    on_done(Err(GearsApiError::new("Use of uninitialized script context".to_string())));
                     return;
                 }
             };
@@ -852,14 +840,14 @@ pub(crate) fn initialize_globals(
                 let script_ctx = match new_script_ctx_ref.upgrade() {
                     Some(s) => s,
                     None => {
-                        on_done(Err(GearsApiError::Msg("Use of uninitialized script context".to_string())));
+                        on_done(Err(GearsApiError::new("Use of uninitialized script context".to_string())));
                         return;
                     }
                 };
                 let persisted_function = match weak_function.upgrade() {
                     Some(s) => s,
                     None => {
-                        on_done(Err(GearsApiError::Msg("Use of uninitialized function context".to_string())));
+                        on_done(Err(GearsApiError::new("Use of uninitialized function context".to_string())));
                         return;
                     }
                 };
@@ -876,7 +864,7 @@ pub(crate) fn initialize_globals(
                             let v8_str = isolate_scope.new_string(&s);
                             let v8_obj = ctx_scope.new_object_from_json(&v8_str);
                             if v8_obj.is_none() {
-                                on_done(Err(GearsApiError::Msg("Failed deserializing remote function argument".to_string())));
+                                on_done(Err(GearsApiError::new("Failed deserializing remote function argument".to_string())));
                                 return;
                             }
                             v8_obj.unwrap()
@@ -907,11 +895,11 @@ pub(crate) fn initialize_globals(
                                         on_done(Ok(v));
                                     } else {
                                         let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                        on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                            
+                                        on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                            
                                     }
                                 } else {
                                     let r = r.to_utf8().unwrap();
-                                    on_done(Err(GearsApiError::Msg(r.as_str().to_string())));
+                                    on_done(Err(GearsApiError::new(r.as_str().to_string())));
                                 }
                             } else {
                                 // Notice, we are allowed to do this trick because we are protected by the isolate GIL
@@ -931,7 +919,7 @@ pub(crate) fn initialize_globals(
                                             on_done(Ok(v));
                                         } else {
                                             let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::Msg(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
+                                            on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
                                         }
                                         Ok(None)
                                     }));
@@ -944,7 +932,7 @@ pub(crate) fn initialize_globals(
                                         }
                                         let on_done = done_reject.ref_cell.borrow_mut().take().unwrap();
 
-                                        on_done(Err(GearsApiError::Msg(utf8_str.as_str().to_string())));
+                                        on_done(Err(GearsApiError::new(utf8_str.as_str().to_string())));
                                         Ok(None)
                                     }));
                                 res.then(&ctx_scope, &resolve, &reject);
@@ -954,22 +942,20 @@ pub(crate) fn initialize_globals(
                             if let Some(v) = r {
                                 on_done(Ok(v));
                             } else {
-                                on_done(Err(GearsApiError::Msg("Failed serializing result".to_string())));
+                                on_done(Err(GearsApiError::new("Failed serializing result".to_string())));
                             }
                         }
                     }
                     None => {
-                        let error_msg = get_exception_msg(&script_ctx.isolate, trycatch);
-                        on_done(Err(GearsApiError::Msg(error_msg)));
+                        let error_msg = get_exception_msg(&script_ctx.isolate, trycatch, &ctx_scope);
+                        on_done(Err(error_msg));
                     }
                 };
             }));
         }));
 
         if let Err(err) = res {
-            match err {
-                GearsApiError::Msg(s) => return Err(s),
-            }
+            return Err(err.get_msg().to_string());
         }
         Ok(None)
     }));

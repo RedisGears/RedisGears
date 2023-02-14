@@ -77,7 +77,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!(
+                    return Err(GearsApiError::new(format!(
                         "Failed authenticate user {}",
                         u
                     )));
@@ -89,7 +89,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
         let res = RedisAIModel::open_from_key(ctx, name);
         match res {
             Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::Msg(e)),
+            Err(e) => Err(GearsApiError::new(e)),
         }
     }
 
@@ -98,7 +98,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
             Some(u) => {
                 let ctx = &get_globals().authenticated_redis_ctx;
                 if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::Msg(format!(
+                    return Err(GearsApiError::new(format!(
                         "Failed authenticate user {}",
                         u
                     )));
@@ -110,7 +110,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
         let res = RedisAIScript::open_from_key(ctx, name);
         match res {
             Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::Msg(e)),
+            Err(e) => Err(GearsApiError::new(e)),
         }
     }
 }

@@ -101,10 +101,10 @@ impl CompiledLibraryInterface for CompiledLibraryAPI {
         dims: &[i64],
         data: &[u8],
     ) -> Result<Box<dyn AITensorInterface>, GearsApiError> {
-        let mut tensor = RedisAITensor::create(data_type, dims).map_err(GearsApiError::Msg)?;
+        let mut tensor = RedisAITensor::create(data_type, dims).map_err(GearsApiError::new)?;
         match tensor.set_data(data) {
             Ok(_) => Ok(Box::new(tensor)),
-            Err(e) => Err(GearsApiError::Msg(e)),
+            Err(e) => Err(GearsApiError::new(e)),
         }
     }
 }

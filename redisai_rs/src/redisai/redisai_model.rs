@@ -179,11 +179,11 @@ impl AIModelRunnerInterface for RedisAIModelRunCtx {
         tensor: &dyn AITensorInterface,
     ) -> Result<(), GearsApiError> {
         let tensor = unsafe { &*(tensor as *const dyn AITensorInterface as *const RedisAITensor) };
-        self.add_input(name, tensor).map_err(GearsApiError::Msg)
+        self.add_input(name, tensor).map_err(GearsApiError::new)
     }
 
     fn add_output(&mut self, name: &str) -> Result<(), GearsApiError> {
-        self.add_output(name).map_err(GearsApiError::Msg)
+        self.add_output(name).map_err(GearsApiError::new)
     }
 
     fn run(
@@ -198,7 +198,7 @@ impl AIModelRunnerInterface for RedisAIModelRunCtx {
                 }
                 on_done(Ok(v));
             }
-            Err(e) => on_done(Err(GearsApiError::Msg(e))),
+            Err(e) => on_done(Err(GearsApiError::new(e))),
         });
     }
 }

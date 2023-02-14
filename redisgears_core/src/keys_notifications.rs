@@ -4,13 +4,13 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
+use redisgears_plugin_api::redisgears_plugin_api::{GearsApiError, RefCellWrapper};
 use std::cell::RefCell;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 
 pub(crate) type NotificationCallback =
-    Box<dyn Fn(&str, &[u8], Box<dyn FnOnce(Result<(), String>) + Send + Sync>)>;
+    Box<dyn Fn(&str, &[u8], Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>)>;
 
 pub(crate) enum ConsumerKey {
     Key(Vec<u8>),
@@ -23,7 +23,7 @@ pub(crate) struct NotificationConsumerStats {
     pub(crate) num_success: usize,
     pub(crate) num_failed: usize,
     pub(crate) num_finished: usize,
-    pub(crate) last_error: Option<String>,
+    pub(crate) last_error: Option<GearsApiError>,
     pub(crate) last_execution_time: u128,
     pub(crate) total_execution_time: u128,
 }

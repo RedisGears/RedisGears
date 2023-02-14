@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface,
     keys_notifications_consumer_ctx::NotificationFiredDataInterface,
@@ -11,12 +12,12 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::BackgroundRunFunctionCtxInterface,
 };
 
-use v8_rs::v8::v8_utf8::V8LocalUtf8;
+use v8_rs::v8::v8_value::V8LocalValue;
 use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8PersistValue};
 
-use crate::get_exception_msg;
 use crate::v8_native_functions::{get_backgrounnd_client, get_redis_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
+use crate::{get_error_from_object, get_exception_msg};
 
 use std::any::Any;
 use std::cell::RefCell;
@@ -32,7 +33,7 @@ struct V8NotificationCtxData {
 impl NotificationFiredDataInterface for V8NotificationCtxData {}
 
 struct V8AckCallbackInternal {
-    ack_callback: Box<dyn FnOnce(Result<(), String>) + Send + Sync>,
+    ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     locker: Box<dyn BackgroundRunFunctionCtxInterface>,
 }
 
@@ -50,7 +51,7 @@ impl V8NotificationsCtxInternal {
         &self,
         notification_ctx: Box<dyn NotificationRunCtxInterface>,
         data: Box<V8NotificationCtxData>,
-        ack_callback: Box<dyn FnOnce(Result<(), String>) + Send + Sync>,
+        ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
@@ -105,8 +106,8 @@ impl V8NotificationsCtxInternal {
                     if res.is_promise() {
                         let res = res.as_promise();
                         if res.state() == V8PromiseState::Rejected {
-                            let error_utf8 = res.get_result().to_utf8().unwrap();
-                            Some(Err(error_utf8.as_str().to_string()))
+                            let res = res.get_result();
+                            Some(Err(get_error_from_object(&res, &ctx_scope)))
                         } else if res.state() == V8PromiseState::Fulfilled {
                             Some(Ok(()))
                         } else {
@@ -130,8 +131,8 @@ impl V8NotificationsCtxInternal {
                                 }
                             ));
                             let reject = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, _ctx_scope, res: V8LocalUtf8| {
-                                    let res = res.as_str().to_string();
+                                move |isolate, ctx_scope, res: V8LocalValue| {
+                                    let res = get_error_from_object(&res, ctx_scope);
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
                                         ack_callback_reject.borrow_mut().internal.take()
@@ -150,7 +151,8 @@ impl V8NotificationsCtxInternal {
                     }
                 }
                 None => {
-                    let error_msg = get_exception_msg(&self.script_ctx.isolate, try_catch);
+                    let error_msg =
+                        get_exception_msg(&self.script_ctx.isolate, try_catch, &ctx_scope);
                     Some(Err(error_msg))
                 }
             }
@@ -166,7 +168,7 @@ impl V8NotificationsCtxInternal {
         background_client: Box<dyn BackgroundRunFunctionCtxInterface>,
         locker: Box<dyn BackgroundRunFunctionCtxInterface>,
         data: Box<V8NotificationCtxData>,
-        ack_callback: Box<dyn FnOnce(Result<(), String>) + Send + Sync>,
+        ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
         let res = {
             let isolate_scope = self.script_ctx.isolate.enter();
@@ -213,8 +215,8 @@ impl V8NotificationsCtxInternal {
                     if res.is_promise() {
                         let res = res.as_promise();
                         if res.state() == V8PromiseState::Rejected {
-                            let error_utf8 = res.get_result().to_utf8().unwrap();
-                            Some(Err(error_utf8.as_str().to_string()))
+                            let res = res.get_result();
+                            Some(Err(get_error_from_object(&res, &ctx_scope)))
                         } else if res.state() == V8PromiseState::Fulfilled {
                             Some(Ok(()))
                         } else {
@@ -238,8 +240,8 @@ impl V8NotificationsCtxInternal {
                                 }
                             ));
                             let reject = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, _ctx_scope, res: V8LocalUtf8| {
-                                    let res = res.as_str().to_string();
+                                move |isolate, ctx_scope, res: V8LocalValue| {
+                                    let res = get_error_from_object(&res, &ctx_scope);
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
                                         ack_callback_reject.borrow_mut().internal.take()
@@ -258,7 +260,8 @@ impl V8NotificationsCtxInternal {
                     }
                 }
                 None => {
-                    let error_msg = get_exception_msg(&self.script_ctx.isolate, trycatch);
+                    let error_msg =
+                        get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope);
                     Some(Err(error_msg))
                 }
             }
@@ -310,7 +313,7 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
         &self,
         notificaion_data: Option<Box<dyn Any>>,
         notification_ctx: Box<dyn NotificationRunCtxInterface>,
-        ack_callback: Box<dyn FnOnce(Result<(), String>) + Send + Sync>,
+        ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
         let notificaion_data = notificaion_data
             .unwrap()

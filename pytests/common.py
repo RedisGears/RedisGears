@@ -102,6 +102,7 @@ def gearsTest(skipTest=False,
               cluster=False,
               withReplicas=False,
               shardsCount=2,
+              errorVerbosity=1,
               gearsConfig={},
               envArgs={}):
     def test_func_generator(test_function):
@@ -144,6 +145,7 @@ def gearsTest(skipTest=False,
                 module_args += ["enable-debug-command", "yes"]
             for k, v in gearsConfig.items():
                 module_args += [k, v]
+            module_args += ["error-verbosity", str(errorVerbosity)]
             env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**final_envArgs)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 

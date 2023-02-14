@@ -174,7 +174,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         flags: u8,
     ) -> Result<(), GearsApiError> {
         if self.functions.contains_key(name) {
-            return Err(GearsApiError::Msg(format!(
+            return Err(GearsApiError::new(format!(
                 "Function {} already exists",
                 name
             )));
@@ -190,7 +190,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         remote_function_callback: RemoteFunctionCtx,
     ) -> Result<(), GearsApiError> {
         if self.remote_functions.contains_key(name) {
-            return Err(GearsApiError::Msg(format!(
+            return Err(GearsApiError::new(format!(
                 "Remote function {} already exists",
                 name
             )));
@@ -209,7 +209,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         trim: bool,
     ) -> Result<(), GearsApiError> {
         if self.stream_consumers.contains_key(name) {
-            return Err(GearsApiError::Msg(
+            return Err(GearsApiError::new(
                 "Stream registration already exists".to_string(),
             ));
         }
@@ -221,7 +221,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         {
             let mut o_c = old_consumer.ref_cell.borrow_mut();
             if o_c.prefix != prefix {
-                return Err(GearsApiError::Msg(
+                return Err(GearsApiError::new(
                     format!("Can not upgrade an existing consumer with different prefix, consumer: '{}', old_prefix: {}, new_prefix: {}.",
                     name, std::str::from_utf8(&o_c.prefix).unwrap_or("[binary data]"), std::str::from_utf8(prefix).unwrap_or("[binary data]"))
                 ));
@@ -275,7 +275,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
     ) -> Result<(), GearsApiError> {
         if self.notifications_consumers.contains_key(name) {
-            return Err(GearsApiError::Msg(
+            return Err(GearsApiError::new(
                 "Notification consumer already exists".to_string(),
             ));
         }
@@ -291,12 +291,12 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                     &key_redis_str,
                     &permissions,
                 ) {
-                    done_callback(Err(format!(
+                    done_callback(Err(GearsApiError::new(format!(
                         "User '{}' has no permissions on key '{}', {}.",
                         meta_data.user,
                         std::str::from_utf8(key).unwrap_or("[binary data]"),
                         e
-                    )));
+                    ))));
                     return;
                 }
                 let _notification_blocker = get_notification_blocker();
@@ -833,9 +833,7 @@ fn function_debug_command(
     let res = backend.debug(args.as_slice());
     match res {
         Ok(res) => Ok(function_call_result_to_redis_result(res)),
-        Err(e) => match e {
-            GearsApiError::Msg(msg) => Err(RedisError::String(msg)),
-        },
+        Err(e) => Err(RedisError::String(e.get_msg().to_string())),
     }
 }
 
@@ -1085,6 +1083,13 @@ fn on_flush_event(ctx: &Context, event_data: ServerEventData) {
     }
 }
 
+pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
+    if get_globals().config.error_verbosity.val == 1 {
+        return err.get_msg();
+    }
+    err.get_msg_verbose()
+}
+
 redis_module! {
     name: "redisgears_2",
     version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
@@ -1120,6 +1125,7 @@ redis_module! {
         &get_globals().config.library_maxmemory,
         &get_globals().config.lock_regis_timeout,
         &get_globals().config.remote_task_default_timeout,
+        &get_globals().config.error_verbosity,
     ],
     enum_configurations: [
         &get_globals().config.libraray_fatal_failure_policy,

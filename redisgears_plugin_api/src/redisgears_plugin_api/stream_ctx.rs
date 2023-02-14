@@ -7,6 +7,8 @@
 use crate::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInterface;
 use crate::redisgears_plugin_api::run_function_ctx::RedisClientCtxInterface;
 
+use super::GearsApiError;
+
 pub trait StreamProcessCtxInterface {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface>;
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface>;
@@ -19,7 +21,7 @@ pub trait StreamRecordInterface {
 
 pub enum StreamRecordAck {
     Ack,
-    Nack(String),
+    Nack(GearsApiError),
 }
 
 pub trait StreamCtxInterface {
