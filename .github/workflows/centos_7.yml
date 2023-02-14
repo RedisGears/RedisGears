@@ -49,8 +49,8 @@ jobs:
       run: |
         . scl_source enable  devtoolset-9 || true
         . scl_source enable llvm-toolset-7 || true
-        $HOME/.cargo/bin/cargo build --verbose
-        $HOME/.cargo/bin/cargo build --release --verbose
+        $HOME/.cargo/bin/cargo build -vv
+        $HOME/.cargo/bin/cargo build --release -vv
     - name: Tests
       run: cd pytests;./run_tests.sh
     - name: install ramp packer

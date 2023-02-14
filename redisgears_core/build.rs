@@ -12,17 +12,27 @@ use std::process::Command;
 fn main() {
     // Expose GIT_SHA env var
     let git_sha = Command::new("git").args(["rev-parse", "HEAD"]).output();
-    if let Ok(sha) = git_sha {
-        let sha = String::from_utf8(sha.stdout).unwrap();
-        println!("cargo:rustc-env=GIT_SHA={}", sha);
+    match git_sha {
+        Ok(sha) => {
+            let sha = String::from_utf8(sha.stdout).unwrap();
+            println!("cargo:rustc-env=GIT_SHA={}", sha);
+        }
+        Err(e) => {
+            println!("Failed extracting git sha value, {}.", e);
+        }
     }
     // Expose GIT_BRANCH env var
     let git_branch = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .output();
-    if let Ok(branch) = git_branch {
-        let branch = String::from_utf8(branch.stdout).unwrap();
-        println!("cargo:rustc-env=GIT_BRANCH={}", branch);
+    match git_branch {
+        Ok(branch) => {
+            let branch = String::from_utf8(branch.stdout).unwrap();
+            println!("cargo:rustc-env=GIT_BRANCH={}", branch);
+        }
+        Err(e) => {
+            println!("Failed extracting git branch value, {}.", e);
+        }
     }
 
     let version_str = String::from(clap::crate_version!());
