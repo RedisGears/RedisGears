@@ -48,14 +48,21 @@ fn main() {
 
     let os_type = info.os_type().to_string().to_lowercase();
     let (os_type, os_version) = if rhel_like_os.contains(&os_type) {
-        ("rhel".to_string(), info.version().to_string().split(".").into_iter().next().expect("Failed getting os version").to_string())
+        (
+            "rhel".to_string(),
+            info.version()
+                .to_string()
+                .split(".")
+                .into_iter()
+                .next()
+                .expect("Failed getting os version")
+                .to_string(),
+        )
     } else {
         (os_type, info.version().to_string())
     };
     println!("cargo:rustc-env=BUILD_OS_TYPE={}", os_type);
-    println!(
-        "cargo:rustc-env=BUILD_OS_VERSION={}", os_version
-    );
+    println!("cargo:rustc-env=BUILD_OS_VERSION={}", os_version);
     println!("cargo:rustc-env=BUILD_OS_ARCH={}", std::env::consts::ARCH);
     println!(
         "cargo:rustc-env=BUILD_TYPE={}",
