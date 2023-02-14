@@ -18,11 +18,15 @@ jobs:
       run: yum update -qqy
     - name: Install requirements 
       run: |
-        yum install -yqq git openssl wget python3 xz-utils lsb-release sudo dialog apt-utils redhat-lsb subversion chrpath openssl-devel python3-devel
+        yum install -yqq openssl wget python3 xz-utils lsb-release sudo dialog apt-utils redhat-lsb subversion chrpath openssl-devel python3-devel
         yum groupinstall -yqq 'Development Tools'
         yum install -yqq centos-release-scl
         yum install -yqq devtoolset-9 llvm-toolset-7
         pip3 install --upgrade pip
+    - name: Install latest git
+      run: |
+        yum -yqq install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
+        yum install -yqq git
     - uses: actions/checkout@v3
     - name: install rltest
       run: pip3 install RLTest
