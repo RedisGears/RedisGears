@@ -14,12 +14,16 @@ fn main() {
     let git_sha = Command::new("git").args(["rev-parse", "HEAD"]).output();
     match git_sha {
         Ok(sha) => {
-            if sha.status.success() { 
+            if sha.status.success() {
                 let sha = String::from_utf8(sha.stdout).unwrap();
                 println!("cargo:rustc-env=GIT_SHA={}", sha);
             } else {
                 // print the stdout and stderr
-                println!("Failed extracting git sha value, stdout='{}', stderr='{}'", String::from_utf8(sha.stdout).unwrap(), String::from_utf8(sha.stderr).unwrap());
+                println!(
+                    "Failed extracting git sha value, stdout='{}', stderr='{}'",
+                    String::from_utf8(sha.stdout).unwrap(),
+                    String::from_utf8(sha.stderr).unwrap()
+                );
             }
         }
         Err(e) => {
