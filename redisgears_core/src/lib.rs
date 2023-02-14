@@ -504,7 +504,7 @@ fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     }
 
     ctx.log_notice(&format!(
-        "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_on='{}-{}.{}-{}'.",
+        "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_for='{}-{}.{}-{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
         GIT_BRANCH.unwrap_or_default(),
