@@ -44,10 +44,7 @@ fn main() {
         "cargo:rustc-env=BUILD_OS={}",
         std::env::consts::OS.to_string().to_lowercase()
     );
-    let rhel_like_os = vec![
-        "centos".to_string(),
-        "rocky".to_string(),
-    ];
+    let rhel_like_os = vec!["centos".to_string(), "rocky".to_string()];
 
     let os_type = info.os_type().to_string().to_lowercase();
     let os_type = if rhel_like_os.contains(&os_type) {
@@ -55,10 +52,16 @@ fn main() {
     } else {
         os_type
     };
+    println!("cargo:rustc-env=BUILD_OS_TYPE={}", os_type);
     println!(
-        "cargo:rustc-env=BUILD_OS_TYPE={}", os_type
+        "cargo:rustc-env=BUILD_OS_VERSION={}",
+        info.version()
+            .to_string()
+            .split(".")
+            .into_iter()
+            .next()
+            .expect("Failed getting os version")
     );
-    println!("cargo:rustc-env=BUILD_OS_VERSION={}", info.version().to_string().split(".").into_iter().next().expect("Failed getting os version"));
     println!("cargo:rustc-env=BUILD_OS_ARCH={}", std::env::consts::ARCH);
     println!(
         "cargo:rustc-env=BUILD_TYPE={}",
