@@ -62,13 +62,13 @@ fn main() {
         std::env::consts::OS.to_string().to_lowercase()
     );
 
-    let (os_type, os_ver) = if std::env::consts::OS != "linux" {
+    let (os_type, os_ver) = if std::env::consts::OS == "linux" {
         // on linux we have lsb release, let use it.
         let os_type = Command::new("lsb_release").args(["-i", "-s"]).output();
         let os_type = match os_type {
             Ok(os) => {
                 if os.status.success() {
-                    String::from_utf8(os.stdout).unwrap().to_lowercase()
+                    String::from_utf8(os.stdout).unwrap().trim().to_lowercase()
                 } else {
                     // print the stdout and stderr
                     println!(
@@ -90,7 +90,7 @@ fn main() {
         let os_ver = match os_ver {
             Ok(os_ver) => {
                 if os_ver.status.success() {
-                    String::from_utf8(os_ver.stdout).unwrap().to_lowercase()
+                    String::from_utf8(os_ver.stdout).unwrap().trim().to_lowercase()
                 } else {
                     // print the stdout and stderr
                     println!(
