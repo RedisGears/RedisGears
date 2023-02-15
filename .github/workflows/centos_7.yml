@@ -14,9 +14,6 @@ jobs:
     container: centos:centos7
 
     steps:
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
     - name: Update yum
       run: yum update -qqy
     - name: Install requirements 
@@ -30,11 +27,16 @@ jobs:
       run: |
         yum -yqq install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
         yum install -yqq git
+    - name: Install python38
+      run: |
+        yum install centos-release-scl-rh
+        yum install rh-python38-python
+        yum -y install rh-python38-python-pip
     - uses: actions/checkout@v3
     - name: Add RedisGears directory to git safe directory
       run: git config --global --add safe.directory /__w/RedisGears/RedisGears
     - name: install rltest
-      run: pip3 install RLTest
+      run: /opt/rh/rh-python38/root/usr/bin/python -m pip install RLTest
     - name: Install redis
       run: |
         set -x
@@ -57,11 +59,15 @@ jobs:
         $HOME/.cargo/bin/cargo build -vv
         $HOME/.cargo/bin/cargo build --release -vv
     - name: Tests
-      run: cd pytests;./run_tests.sh
+      run: |
+        PATH=/opt/rh/rh-python38/root/usr/local/bin:$PATH
+        cd pytests;./run_tests.sh
     - name: install ramp packer
-      run: pip3 install git+https://github.com/RedisLabsModules/RAMP.git@master
+      run: /opt/rh/rh-python38/root/usr/bin/python -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
     - name: Pack
-      run: target/release/packer
+      run: |
+        PATH=/opt/rh/rh-python38/root/usr/local/bin:$PATH
+        target/release/packer
       env:
           LC_ALL: en_US.utf-8
           LANG: en_US.utf-8
