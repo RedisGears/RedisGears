@@ -29,9 +29,9 @@ jobs:
         yum install -yqq git
     - name: Install python38
       run: |
-        yum install centos-release-scl-rh
-        yum install rh-python38-python
-        yum -y install rh-python38-python-pip
+        yum -yqq install centos-release-scl-rh
+        yum -yqq install rh-python38-python
+        yum -yqq install rh-python38-python-pip
     - uses: actions/checkout@v3
     - name: Add RedisGears directory to git safe directory
       run: git config --global --add safe.directory /__w/RedisGears/RedisGears
