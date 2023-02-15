@@ -56,7 +56,7 @@ jobs:
     - name: Tests
       run: cd pytests;./run_tests.sh
     - name: install ramp packer
-      run: pip3 install ramp-packer
+      run: pip3 install git+https://github.com/RedisLabsModules/RAMP.git@master
     - name: Pack
       run: target/release/packer
       env:
