@@ -62,7 +62,6 @@ fn main() {
         std::env::consts::OS.to_string().to_lowercase()
     );
 
-    
     let (os_type, os_ver) = if std::env::consts::OS != "linux" {
         // on linux we have lsb release, let use it.
         let os_type = Command::new("lsb_release").args(["-i", "-s"]).output();
@@ -111,14 +110,18 @@ fn main() {
     } else {
         // fallback to os_info library
         let info = os_info::get();
-        (info.os_type().to_string().to_lowercase(), info.version().to_string().to_lowercase())
+        (
+            info.os_type().to_string().to_lowercase(),
+            info.version().to_string().to_lowercase(),
+        )
     };
 
     let rhel_like_os = vec!["centos".to_string(), "rocky".to_string()];
     let (os_type, os_version) = if rhel_like_os.contains(&os_type) {
         (
             "rhel".to_string(),
-            os_ver.split(".")
+            os_ver
+                .split(".")
                 .into_iter()
                 .next()
                 .expect("Failed getting os version")
