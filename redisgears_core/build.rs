@@ -90,7 +90,10 @@ fn main() {
         let os_ver = match os_ver {
             Ok(os_ver) => {
                 if os_ver.status.success() {
-                    String::from_utf8(os_ver.stdout).unwrap().trim().to_lowercase()
+                    String::from_utf8(os_ver.stdout)
+                        .unwrap()
+                        .trim()
+                        .to_lowercase()
                 } else {
                     // print the stdout and stderr
                     println!(
