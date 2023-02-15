@@ -1,4 +1,4 @@
-name: Centos 7
+name: Centos 8
 
 on:
   push:
