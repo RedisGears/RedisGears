@@ -57,28 +57,75 @@ fn main() {
     }
     println!("cargo:rustc-env=VERSION_NUM={}", version_num);
 
-    let info = os_info::get();
-
     println!(
         "cargo:rustc-env=BUILD_OS={}",
         std::env::consts::OS.to_string().to_lowercase()
     );
-    let rhel_like_os = vec!["centos".to_string(), "rocky".to_string()];
 
-    let os_type = info.os_type().to_string().to_lowercase();
+    
+    let (os_type, os_ver) = if std::env::consts::OS != "linux" {
+        // on linux we have lsb release, let use it.
+        let os_type = Command::new("lsb_release").args(["-i", "-s"]).output();
+        let os_type = match os_type {
+            Ok(os) => {
+                if os.status.success() {
+                    String::from_utf8(os.stdout).unwrap().to_lowercase()
+                } else {
+                    // print the stdout and stderr
+                    println!(
+                        "Failed extracting os, stdout='{}', stderr='{}'",
+                        String::from_utf8(os.stdout).unwrap(),
+                        String::from_utf8(os.stderr).unwrap()
+                    );
+                    "unknown".to_string()
+                }
+            }
+            Err(e) => {
+                println!("Failed extracting os, {}.", e);
+                "unknown".to_string()
+            }
+        };
+
+        // extrac os version using lsb_release
+        let os_ver = Command::new("lsb_release").args(["-r", "-s"]).output();
+        let os_ver = match os_ver {
+            Ok(os_ver) => {
+                if os_ver.status.success() {
+                    String::from_utf8(os_ver.stdout).unwrap().to_lowercase()
+                } else {
+                    // print the stdout and stderr
+                    println!(
+                        "Failed extracting os version, stdout='{}', stderr='{}'",
+                        String::from_utf8(os_ver.stdout).unwrap(),
+                        String::from_utf8(os_ver.stderr).unwrap()
+                    );
+                    "0.0".to_string()
+                }
+            }
+            Err(e) => {
+                println!("Failed extracting os version, {}.", e);
+                "0.0".to_string()
+            }
+        };
+        (os_type, os_ver)
+    } else {
+        // fallback to os_info library
+        let info = os_info::get();
+        (info.os_type().to_string().to_lowercase(), info.version().to_string().to_lowercase())
+    };
+
+    let rhel_like_os = vec!["centos".to_string(), "rocky".to_string()];
     let (os_type, os_version) = if rhel_like_os.contains(&os_type) {
         (
             "rhel".to_string(),
-            info.version()
-                .to_string()
-                .split(".")
+            os_ver.split(".")
                 .into_iter()
                 .next()
                 .expect("Failed getting os version")
                 .to_string(),
         )
     } else {
-        (os_type, info.version().to_string())
+        (os_type, os_ver)
     };
     println!("cargo:rustc-env=BUILD_OS_TYPE={}", os_type);
     println!("cargo:rustc-env=BUILD_OS_VERSION={}", os_version);

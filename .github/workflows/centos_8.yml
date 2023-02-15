@@ -1,0 +1,68 @@
+name: Centos 7
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    container: rockylinux:8
+
+    steps:
+    - name: Update yum
+      run: yum update -qqy
+    - name: Install requirements 
+      run: |
+        yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang
+        dnf install -y gcc-toolset-11-gcc gcc-toolset-11-gcc-c++
+        dnf install -y gcc-toolset-11-libatomic-devel
+        dnf -y install autoconf automake libtool
+    - uses: actions/checkout@v3
+    - name: install rltest
+      run: python3 -m pip install RLTest
+    - name: Install redis
+      run: |
+        . /opt/rh/gcc-toolset-11/enable
+        git clone https://github.com/redis/redis
+        cd redis
+        git checkout 7.0.3
+        make install
+    - name: Install rust
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
+        sh install_rust.sh -y
+    - name: format
+      run: $HOME/.cargo/bin/cargo fmt -- --check
+    - name: Build
+      run: |
+        . /opt/rh/gcc-toolset-11/enable
+        $HOME/.cargo/bin/cargo build -vv
+        $HOME/.cargo/bin/cargo build --release -vv
+    - name: Tests
+      run: |
+        cd pytests;./run_tests.sh
+    - name: install ramp packer
+      run: python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
+    - name: Pack
+      run: |
+        target/release/packer
+      env:
+          LC_ALL: en_US.utf-8
+          LANG: en_US.utf-8
+    - name: Setup s3cmd action
+      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      uses: s3-actions/s3cmd@v1.2.0
+      with:
+        provider: aws
+        region: us-east-2
+        access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    - name: Upload artifacts
+      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      run: |
+        s3cmd put -P target/release/redisgears2-release.linux-rhel.8-x86_64.master.zip s3://redismodules/redisgears/snapshots/
