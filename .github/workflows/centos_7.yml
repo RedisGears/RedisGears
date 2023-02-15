@@ -14,6 +14,9 @@ jobs:
     container: centos:centos7
 
     steps:
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
     - name: Update yum
       run: yum update -qqy
     - name: Install requirements 
