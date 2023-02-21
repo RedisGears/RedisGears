@@ -9,7 +9,7 @@ use redis_module::{Context, RedisError, RedisResult, RedisValue, ThreadSafeConte
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::{get_ctx, get_libraries};
+use crate::{get_ctx, get_libraries, Deserialize, Serialize};
 
 use mr_derive::BaseObject;
 

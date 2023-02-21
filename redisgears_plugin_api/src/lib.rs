@@ -1,4 +1,3 @@
-#[macro_use]
-extern crate serde_derive;
+use serde::{Deserialize, Serialize};
 
 pub mod redisgears_plugin_api;

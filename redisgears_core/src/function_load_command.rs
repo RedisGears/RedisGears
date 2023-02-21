@@ -6,9 +6,9 @@
 
 use redis_module::{Context, NextArg, RedisError, RedisResult, RedisValue, ThreadSafeContext};
 
-use crate::gears_box::GearsBoxLibraryInfo;
-
 use crate::compiled_library_api::CompiledLibraryAPI;
+use crate::gears_box::GearsBoxLibraryInfo;
+use crate::{Deserialize, Serialize};
 
 use crate::{
     get_backends_mut, get_ctx, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMataData,

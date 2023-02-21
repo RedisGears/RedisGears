@@ -4,8 +4,6 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-extern crate clap;
-
 use regex::Regex;
 use std::process::Command;
 

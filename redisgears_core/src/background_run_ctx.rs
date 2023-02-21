@@ -11,7 +11,10 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;
-use crate::{get_globals, get_libraries, verify_ok_on_replica, verify_oom, GearsLibraryMataData};
+use crate::{
+    get_globals, get_libraries, verify_ok_on_replica, verify_oom, Deserialize,
+    GearsLibraryMataData, Serialize,
+};
 
 use redis_module::{RedisValue, ThreadSafeContext};
 

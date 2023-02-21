@@ -4,10 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-#[macro_use]
-extern crate serde_derive;
-
-extern crate redis_module;
+use serde::{Deserialize, Serialize};
 
 use redis_module::raw::{RedisModule_GetDetachedThreadSafeContext, RedisModule__Assert};
 use threadpool::ThreadPool;
@@ -16,9 +13,8 @@ use redis_module::{
     context::keys_cursor::KeysCursor, context::server_events::FlushSubevent,
     context::server_events::LoadingSubevent, context::server_events::ServerEventData,
     context::server_events::ServerRole, context::AclPermissions, context::CallOptions,
-    raw::KeyType::Stream, redis_command, redis_event_handler, redis_module, Context, InfoContext,
-    NextArg, NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status,
-    ThreadSafeContext,
+    raw::KeyType::Stream, redis_command, redis_event_handler, Context, InfoContext, NextArg,
+    NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -1090,7 +1086,7 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
-redis_module! {
+redis_module::redis_module! {
     name: "redisgears_2",
     version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
     data_types: [REDIS_GEARS_TYPE],

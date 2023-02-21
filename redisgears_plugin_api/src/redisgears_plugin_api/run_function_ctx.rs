@@ -4,6 +4,8 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use crate::{Deserialize, Serialize};
+
 use crate::redisgears_plugin_api::redisai_interface::{AIModelInterface, AIScriptInterface};
 use crate::redisgears_plugin_api::CallResult;
 use crate::redisgears_plugin_api::GearsApiError;
