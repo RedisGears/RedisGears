@@ -31,11 +31,7 @@ pub(crate) fn do_http_get_text(url: &str) -> Result<String, RedisError> {
 pub(crate) fn gears_box_search(token: &str) -> Result<serde_json::Value, RedisError> {
     let gears_box_address = &get_globals().config.gears_box_address.address;
     let url = &format!("{}/api/v1/recipes?q={}", gears_box_address, token);
-    let res = do_http_get(url);
-    match res {
-        Ok(r) => Ok(r),
-        Err(e) => Err(e),
-    }
+    do_http_get(url)
 }
 
 #[derive(Clone, Serialize, Deserialize)]

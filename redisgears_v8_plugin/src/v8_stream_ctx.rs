@@ -289,7 +289,7 @@ impl V8StreamCtxInternals {
                                 });
                             let reject = ctx_scope.new_native_function(new_native_function!(
                                 move |isolate, ctx_scope, res: V8LocalValue| {
-                                    let error = get_error_from_object(&res, &ctx_scope);
+                                    let error = get_error_from_object(&res, ctx_scope);
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) = ack_callback_reject.borrow_mut().ack.take() {
                                         ack(StreamRecordAck::Nack(error));

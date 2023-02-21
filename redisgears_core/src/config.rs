@@ -78,10 +78,12 @@ pub(crate) struct ExecutionThreads {
 }
 
 impl ExecutionThreads {
+    const OPTION_NAME: &str = "execution-threads";
+
     fn new() -> ExecutionThreads {
         ExecutionThreads {
             size: 1,
-            flags: ConfigFlags::new().emmutable(),
+            flags: ConfigFlags::new().immutable(),
         }
     }
 }
@@ -94,7 +96,7 @@ impl fmt::Display for ExecutionThreads {
 
 impl RedisConfigCtx for ExecutionThreads {
     fn name(&self) -> &'static str {
-        "execution-threads"
+        Self::OPTION_NAME
     }
 
     fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
@@ -134,6 +136,8 @@ pub(crate) struct RemoteTaskDefaultTimeout {
 }
 
 impl RemoteTaskDefaultTimeout {
+    const OPTION_NAME: &str = "remote-task-default-timeout";
+
     fn new() -> RemoteTaskDefaultTimeout {
         RemoteTaskDefaultTimeout {
             timeout: 500, // 500 ms
@@ -150,7 +154,7 @@ impl fmt::Display for RemoteTaskDefaultTimeout {
 
 impl RedisConfigCtx for RemoteTaskDefaultTimeout {
     fn name(&self) -> &'static str {
-        "remote-task-default-timeout"
+        Self::OPTION_NAME
     }
 
     fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
@@ -190,10 +194,12 @@ pub(crate) struct LibraryMaxMemory {
 }
 
 impl LibraryMaxMemory {
+    const OPTION_NAME: &str = "library-maxmemory";
+
     fn new() -> LibraryMaxMemory {
         LibraryMaxMemory {
             size: 1024 * 1024 * 1024, // 1G
-            flags: ConfigFlags::new().emmutable().memory(),
+            flags: ConfigFlags::new().immutable().memory(),
         }
     }
 }
@@ -206,7 +212,7 @@ impl fmt::Display for LibraryMaxMemory {
 
 impl RedisConfigCtx for LibraryMaxMemory {
     fn name(&self) -> &'static str {
-        "library-maxmemory"
+        Self::OPTION_NAME
     }
 
     fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
@@ -246,6 +252,8 @@ pub(crate) struct GearBoxAddress {
 }
 
 impl GearBoxAddress {
+    const OPTION_NAME: &str = "gearsbox-address";
+
     fn new() -> GearBoxAddress {
         GearBoxAddress {
             address: "http://localhost:3000".to_string(),
@@ -262,7 +270,7 @@ impl fmt::Display for GearBoxAddress {
 
 impl RedisConfigCtx for GearBoxAddress {
     fn name(&self) -> &'static str {
-        "gearsbox-address"
+        Self::OPTION_NAME
     }
 
     fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
@@ -295,6 +303,8 @@ pub(crate) struct LibraryOnFatalFailurePolicy {
 }
 
 impl LibraryOnFatalFailurePolicy {
+    const OPTION_NAME: &str = "library-fatal-failure-policy";
+
     fn new() -> LibraryOnFatalFailurePolicy {
         LibraryOnFatalFailurePolicy {
             policy: LibraryFatalFailurePolicy::Abort,
@@ -314,7 +324,7 @@ impl fmt::Display for LibraryOnFatalFailurePolicy {
 
 impl RedisConfigCtx for LibraryOnFatalFailurePolicy {
     fn name(&self) -> &'static str {
-        "library-fatal-failure-policy"
+        Self::OPTION_NAME
     }
 
     fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
@@ -362,10 +372,11 @@ pub(crate) struct EnableDebugCommand {
 }
 
 impl EnableDebugCommand {
+    const OPTION_NAME: &str = "enable-debug-command";
     fn new() -> EnableDebugCommand {
         EnableDebugCommand {
             enabled: false,
-            flags: ConfigFlags::new().emmutable(),
+            flags: ConfigFlags::new().immutable(),
         }
     }
 }
@@ -381,7 +392,7 @@ impl fmt::Display for EnableDebugCommand {
 
 impl RedisConfigCtx for EnableDebugCommand {
     fn name(&self) -> &'static str {
-        "enable-debug-command"
+        Self::OPTION_NAME
     }
 
     fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
@@ -422,6 +433,8 @@ pub(crate) struct LockRedisTimeout {
 }
 
 impl LockRedisTimeout {
+    const OPTION_NAME: &str = "lock-redis-timeout";
+
     fn new() -> LockRedisTimeout {
         LockRedisTimeout {
             size: 1000,
@@ -438,7 +451,7 @@ impl fmt::Display for LockRedisTimeout {
 
 impl RedisConfigCtx for LockRedisTimeout {
     fn name(&self) -> &'static str {
-        "lock-redis-timeout"
+        Self::OPTION_NAME
     }
 
     fn apply(&self, _ctx: &Context) -> Result<(), RedisError> {
@@ -593,40 +606,32 @@ impl Config {
         }
     }
 
-    pub fn is_emmutable<T: RedisConfigCtx>(config: &T) -> bool {
-        config.flags().is_emmutable()
+    pub fn is_immutable<T: RedisConfigCtx>(config: &T) -> bool {
+        config.flags().is_immutable()
     }
 
     pub(crate) fn set(&mut self, name: &str, val: &str) -> Result<(), RedisError> {
-        if match name {
-            x if x == self.execution_threads.name() => {
-                Self::is_emmutable(&mut self.execution_threads)
+        let is_config_immutable = match name {
+            ExecutionThreads::OPTION_NAME => Self::is_immutable(&self.execution_threads),
+            LibraryMaxMemory::OPTION_NAME => Self::is_immutable(&self.library_maxmemory),
+            GearBoxAddress::OPTION_NAME => Self::is_immutable(&self.gears_box_address),
+            LibraryOnFatalFailurePolicy::OPTION_NAME => {
+                Self::is_immutable(&self.libraray_fatal_failure_policy)
             }
-            x if x == self.library_maxmemory.name() => {
-                Self::is_emmutable(&mut self.library_maxmemory)
+            LockRedisTimeout::OPTION_NAME => Self::is_immutable(&self.lock_regis_timeout),
+            RemoteTaskDefaultTimeout::OPTION_NAME => {
+                Self::is_immutable(&self.remote_task_default_timeout)
             }
-            x if x == self.gears_box_address.name() => {
-                Self::is_emmutable(&mut self.gears_box_address)
-            }
-            x if x == self.libraray_fatal_failure_policy.name() => {
-                Self::is_emmutable(&mut self.libraray_fatal_failure_policy)
-            }
-            x if x == self.lock_regis_timeout.name() => {
-                Self::is_emmutable(&mut self.lock_regis_timeout)
-            }
-            x if x == self.remote_task_default_timeout.name() => {
-                Self::is_emmutable(&mut self.remote_task_default_timeout)
-            }
-            x if x == self.enable_debug_command.name() => {
-                Self::is_emmutable(&mut self.enable_debug_command)
-            }
+            EnableDebugCommand::OPTION_NAME => Self::is_immutable(&self.enable_debug_command),
             _ => {
                 return Err(RedisError::String(format!(
                     "No such configuration {}",
                     name
                 )))
             }
-        } {
+        };
+
+        if is_config_immutable {
             return Err(RedisError::String(format!(
                 "Configuration {} can not be changed at runtime",
                 name

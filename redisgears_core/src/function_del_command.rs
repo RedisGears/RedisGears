@@ -65,7 +65,7 @@ impl RemoteTask for GearsFunctionDelRemoteTask {
                 redis_module::replicate_slices(
                     get_ctx().ctx,
                     "_rg.function",
-                    &vec!["del".as_bytes(), r.lib_name.as_bytes()],
+                    &["del".as_bytes(), r.lib_name.as_bytes()],
                 );
                 Ok(GearsFunctionDelOutputRecord)
             }

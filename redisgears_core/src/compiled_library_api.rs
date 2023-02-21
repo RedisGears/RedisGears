@@ -92,7 +92,7 @@ impl CompiledLibraryInterface for CompiledLibraryAPI {
     }
 
     fn get_maxmemory(&self) -> usize {
-        get_globals().config.library_maxmemory.size as usize
+        get_globals().config.library_maxmemory.size
     }
 
     fn redisai_create_tensor(
