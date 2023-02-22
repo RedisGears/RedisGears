@@ -6,7 +6,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  rust_msrv: 1.56.0
+  rust_msrv: 1.57.0
 
 jobs:
   build:
