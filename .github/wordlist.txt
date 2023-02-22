@@ -54,3 +54,4 @@ openssl
 RLTest
 pytests
 oss
+MSRV
