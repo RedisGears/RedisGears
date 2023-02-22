@@ -29,7 +29,7 @@ jobs:
       run: cargo fmt -- --check
     - name: Build
       run: |
-        export PKG_CONFIG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig/
+        export PKG_CONFIG_PATH=/opt/homebrew/opt/openssl@1.1/lib/pkgconfig/
         cargo build --verbose
     - name: Tests
       run: cd pytests; python3 -m RLTest
