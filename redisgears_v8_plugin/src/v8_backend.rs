@@ -218,8 +218,7 @@ impl BackendCtxInterface for V8Backend {
                     .isolate
                     .set_near_oom_callback(move |curr_limit, initial_limit| {
                         let msg = format!(
-                            "V8 near OOM notification arrive, curr_limit={}, initial_limit={}",
-                            curr_limit, initial_limit
+                            "V8 near OOM notification arrive, curr_limit={curr_limit}, initial_limit={initial_limit}"
                         );
                         let script_ctx = match oom_script_ctx.upgrade() {
                             Some(s_c) => s_c,
@@ -230,7 +229,7 @@ impl BackendCtxInterface for V8Backend {
                             }
                         };
 
-                        let msg = format!("{}, used_heap_size={}, total_heap_size={}", msg, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
+                        let msg = format!("{msg}, used_heap_size={}, total_heap_size={}", script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
 
                         script_ctx.compiled_library_api.log(&msg);
 
@@ -251,7 +250,7 @@ impl BackendCtxInterface for V8Backend {
 
                                 script_ctx
                                     .compiled_library_api
-                                    .log(&format!("Temporarly increase max memory to {} memory and aborting the script", new_limit));
+                                    .log(&format!("Temporarly increase max memory to {new_limit} memory and aborting the script"));
 
                                 new_limit
                             }
@@ -308,9 +307,8 @@ impl BackendCtxInterface for V8Backend {
                 self.isolates_gc();
                 Ok(CallResult::SimpleStr("OK".to_string()))
             }
-            _ => Err(GearsApiError::new(&format!(
-                "Unknown subcommand '{}'",
-                sub_command
+            _ => Err(GearsApiError::new(format!(
+                "Unknown subcommand '{sub_command}'",
             ))),
         }
     }

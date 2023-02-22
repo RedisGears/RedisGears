@@ -11,7 +11,10 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;
-use crate::{get_globals, get_libraries, verify_ok_on_replica, verify_oom, GearsLibraryMataData};
+use crate::{
+    get_globals, get_libraries, verify_ok_on_replica, verify_oom, Deserialize,
+    GearsLibraryMataData, Serialize,
+};
 
 use redis_module::{RedisValue, ThreadSafeContext};
 
@@ -149,7 +152,7 @@ impl RemoteTask for GearsRemoteTask {
 }
 
 impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
-    fn lock<'a>(&'a self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError> {
+    fn lock(&self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError> {
         let ctx_guard = ThreadSafeContext::new().lock();
         if !verify_ok_on_replica(self.call_options.flags) {
             return Err(GearsApiError::new(

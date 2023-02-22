@@ -9,7 +9,7 @@ use redis_module::{Context, RedisError, RedisResult, RedisValue, ThreadSafeConte
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::{get_ctx, get_libraries};
+use crate::{get_ctx, get_libraries, Deserialize, Serialize};
 
 use mr_derive::BaseObject;
 
@@ -65,7 +65,7 @@ impl RemoteTask for GearsFunctionDelRemoteTask {
                 redis_module::replicate_slices(
                     get_ctx().ctx,
                     "_rg.function",
-                    &vec!["del".as_bytes(), r.lib_name.as_bytes()],
+                    &["del".as_bytes(), r.lib_name.as_bytes()],
                 );
                 Ok(GearsFunctionDelOutputRecord)
             }

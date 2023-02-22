@@ -189,18 +189,19 @@ impl V8InternalFunction {
                                 Ok::<_, String>(None)
                             }
                         ));
-                        let reject =
-                            ctx_scope.new_native_function(new_native_function!(
-                                move |_isolate_scope, ctx_scope, reply: V8LocalValue| {
-                                    let mut execution_ctx = execution_ctx_reject.borrow_mut();
-                                    // see if we can extract trace
-                                    execution_ctx.c.as_ref().unwrap().reply_with_error(
-                                        get_error_from_object(&reply, &ctx_scope),
-                                    );
-                                    execution_ctx.unblock();
-                                    Ok::<_, String>(None)
-                                }
-                            ));
+                        let reject = ctx_scope.new_native_function(new_native_function!(
+                            move |_isolate_scope, ctx_scope, reply: V8LocalValue| {
+                                let mut execution_ctx = execution_ctx_reject.borrow_mut();
+                                // see if we can extract trace
+                                execution_ctx
+                                    .c
+                                    .as_ref()
+                                    .unwrap()
+                                    .reply_with_error(get_error_from_object(&reply, ctx_scope));
+                                execution_ctx.unblock();
+                                Ok::<_, String>(None)
+                            }
+                        ));
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }
@@ -285,7 +286,7 @@ impl V8InternalFunction {
                         let bc = match run_ctx.get_background_client() {
                             Ok(bc) => bc,
                             Err(e) => {
-                                run_ctx.reply_with_error(GearsApiError::new(&format!(
+                                run_ctx.reply_with_error(GearsApiError::new(format!(
                                     "Can not block client for background execution, {}.",
                                     e.get_msg()
                                 )));
@@ -304,17 +305,18 @@ impl V8InternalFunction {
                                 Ok::<_, String>(None)
                             }
                         ));
-                        let reject =
-                            ctx_scope.new_native_function(new_native_function!(
-                                move |_isolate_scope, ctx_scope, reply: V8LocalValue| {
-                                    let mut execution_ctx = execution_ctx_reject.borrow_mut();
-                                    execution_ctx.c.as_ref().unwrap().reply_with_error(
-                                        get_error_from_object(&reply, &ctx_scope),
-                                    );
-                                    execution_ctx.unblock();
-                                    Ok::<_, String>(None)
-                                }
-                            ));
+                        let reject = ctx_scope.new_native_function(new_native_function!(
+                            move |_isolate_scope, ctx_scope, reply: V8LocalValue| {
+                                let mut execution_ctx = execution_ctx_reject.borrow_mut();
+                                execution_ctx
+                                    .c
+                                    .as_ref()
+                                    .unwrap()
+                                    .reply_with_error(get_error_from_object(&reply, ctx_scope));
+                                execution_ctx.unblock();
+                                Ok::<_, String>(None)
+                            }
+                        ));
                         res.then(&ctx_scope, &resolve, &reject);
                         return FunctionCallResult::Hold;
                     }

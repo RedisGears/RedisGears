@@ -65,7 +65,7 @@ fn main() {
             "-m",
             ramp_yml_path.to_str().unwrap(),
             "-o",
-            &gears_snapeshot_file_path.to_str().unwrap(),
+            gears_snapeshot_file_path.to_str().unwrap(),
             redisgears_so_path.to_str().unwrap(),
         ])
         .env(
@@ -87,7 +87,7 @@ fn main() {
             "-m",
             ramp_yml_path.to_str().unwrap(),
             "-o",
-            &gears_release_file_path.to_str().unwrap(),
+            gears_release_file_path.to_str().unwrap(),
             redisgears_so_path.to_str().unwrap(),
         ])
         .env(

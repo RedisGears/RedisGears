@@ -6,9 +6,9 @@
 
 use redis_module::{Context, NextArg, RedisError, RedisResult, RedisValue, ThreadSafeContext};
 
-use crate::gears_box::GearsBoxLibraryInfo;
-
 use crate::compiled_library_api::CompiledLibraryAPI;
+use crate::gears_box::GearsBoxLibraryInfo;
+use crate::{Deserialize, Serialize};
 
 use crate::{
     get_backends_mut, get_ctx, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMataData,
@@ -60,7 +60,7 @@ fn library_extract_matadata(
         None => return Err(RedisError::Str("could not extract engine name")),
     };
 
-    let name = loop {
+    let name = {
         let d = match data.next() {
             Some(s) => s,
             None => return Err(RedisError::Str("Failed find 'name' property")),
@@ -80,7 +80,7 @@ fn library_extract_matadata(
                 prop_name
             )));
         }
-        break prop_val;
+        prop_val
     };
 
     Ok(GearsLibraryMataData {

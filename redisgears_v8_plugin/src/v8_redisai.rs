@@ -21,8 +21,13 @@ use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInt
 
 use v8_derive::new_native_function;
 
-pub(crate) fn get_tensor_from_js_tensor<'isolate, 'isolate_scope>(
-    js_tensor: &'isolate_scope V8LocalObject<'isolate_scope, 'isolate>,
+// Silenced due to actually having a need to return a reference to a
+// boxed trait object, as we store boxed trait objects. We could store
+// the fat pointers of trait objects but those don't have a stable ABI
+// and so we have to deal with another level of indirection.
+#[allow(clippy::borrowed_box)]
+pub(crate) fn get_tensor_from_js_tensor<'isolate_scope>(
+    js_tensor: &'isolate_scope V8LocalObject<'isolate_scope, '_>,
 ) -> Result<&'isolate_scope Box<dyn AITensorInterface>, String> {
     if js_tensor.get_internal_field_count() != 1 {
         return Err("Data is not a tensor".into());
@@ -50,8 +55,8 @@ pub(crate) fn get_js_tensor_from_tensor<'isolate, 'isolate_scope>(
     tensor_obj
 }
 
-pub(crate) fn get_tensor_object_template<'isolate, 'isolate_scope>(
-    isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+pub(crate) fn get_tensor_object_template(
+    isolate_scope: &V8IsolateScope,
 ) -> V8PersistedObjectTemplate {
     let mut obj_template = isolate_scope.new_object_template();
 

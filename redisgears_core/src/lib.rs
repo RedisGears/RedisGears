@@ -4,10 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-#[macro_use]
-extern crate serde_derive;
-
-extern crate redis_module;
+use serde::{Deserialize, Serialize};
 
 use redis_module::raw::{RedisModule_GetDetachedThreadSafeContext, RedisModule__Assert};
 use threadpool::ThreadPool;
@@ -16,9 +13,8 @@ use redis_module::{
     context::keys_cursor::KeysCursor, context::server_events::FlushSubevent,
     context::server_events::LoadingSubevent, context::server_events::ServerEventData,
     context::server_events::ServerRole, context::AclPermissions, context::CallOptions,
-    raw::KeyType::Stream, redis_command, redis_event_handler, redis_module, Context, InfoContext,
-    NextArg, NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status,
-    ThreadSafeContext,
+    raw::KeyType::Stream, redis_command, redis_event_handler, Context, InfoContext, NextArg,
+    NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -373,7 +369,7 @@ pub(crate) fn get_notification_blocker() -> NotificationBlocker {
     NotificationBlocker
 }
 
-impl<'a> Drop for NotificationBlocker {
+impl Drop for NotificationBlocker {
     fn drop(&mut self) {
         get_globals_mut().avoid_key_space_notifications = false;
     }
@@ -453,7 +449,7 @@ pub(crate) fn call_redis_command(
     }
 }
 
-fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
+fn js_post_init(ctx: &Context, args: &[RedisString]) -> Status {
     let mut args = args.iter().skip(1); // skip the plugin
     while let Some(config_key) = args.next() {
         let key = match config_key.try_as_str() {
@@ -495,7 +491,7 @@ fn js_post_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
     Status::Ok
 }
 
-fn js_init(ctx: &Context, args: &Vec<RedisString>) -> Status {
+fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
     mr_init(ctx, 1);
 
     match redisai_rs::redisai_init(ctx) {
@@ -1004,20 +1000,22 @@ fn scan_key_space_for_streams() {
         let cursor = KeysCursor::new();
         let ctx = get_ctx();
         let thread_ctx = ThreadSafeContext::new();
-        let mut _gaurd = Some(thread_ctx.lock());
-        while cursor.scan(ctx, &|ctx, key_name, key| {
-            let key_type = match key {
-                Some(k) => k.key_type(),
-                None => ctx.open_key(&key_name).key_type(),
-            };
-            if key_type == Stream {
-                get_globals_mut()
-                    .stream_ctx
-                    .on_stream_touched("created", key_name.as_slice());
+        loop {
+            let _guard = Some(thread_ctx.lock());
+            let scanned = cursor.scan(ctx, &|ctx, key_name, key| {
+                let key_type = match key {
+                    Some(k) => k.key_type(),
+                    None => ctx.open_key(&key_name).key_type(),
+                };
+                if key_type == Stream {
+                    get_globals_mut()
+                        .stream_ctx
+                        .on_stream_touched("created", key_name.as_slice());
+                }
+            });
+            if !scanned {
+                break;
             }
-        }) {
-            _gaurd = None; // will release the lock
-            _gaurd = Some(thread_ctx.lock());
         }
     })
 }
@@ -1090,7 +1088,7 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
-redis_module! {
+redis_module::redis_module! {
     name: "redisgears_2",
     version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
     data_types: [REDIS_GEARS_TYPE],

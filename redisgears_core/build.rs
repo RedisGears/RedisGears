@@ -4,8 +4,6 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-extern crate clap;
-
 use regex::Regex;
 use std::process::Command;
 
@@ -124,7 +122,7 @@ fn main() {
         (
             "rhel".to_string(),
             os_ver
-                .split(".")
+                .split('.')
                 .into_iter()
                 .next()
                 .expect("Failed getting os version")

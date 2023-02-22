@@ -50,7 +50,7 @@ impl V8NotificationsCtxInternal {
     fn run_sync(
         &self,
         notification_ctx: Box<dyn NotificationRunCtxInterface>,
-        data: Box<V8NotificationCtxData>,
+        data: &V8NotificationCtxData,
         ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
         let res = {
@@ -167,7 +167,7 @@ impl V8NotificationsCtxInternal {
         &self,
         background_client: Box<dyn BackgroundRunFunctionCtxInterface>,
         locker: Box<dyn BackgroundRunFunctionCtxInterface>,
-        data: Box<V8NotificationCtxData>,
+        data: &V8NotificationCtxData,
         ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
         let res = {
@@ -241,7 +241,7 @@ impl V8NotificationsCtxInternal {
                             ));
                             let reject = ctx_scope.new_native_function(new_native_function!(
                                 move |isolate, ctx_scope, res: V8LocalValue| {
-                                    let res = get_error_from_object(&res, &ctx_scope);
+                                    let res = get_error_from_object(&res, ctx_scope);
                                     let _unlocker = isolate.new_unlocker();
                                     if let Some(ack) =
                                         ack_callback_reject.borrow_mut().internal.take()
@@ -330,13 +330,13 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
                     internal.run_async(
                         redis_background_client,
                         locker,
-                        notificaion_data,
+                        &notificaion_data,
                         ack_callback,
                     );
                 }));
         } else {
             self.internal
-                .run_sync(notification_ctx, notificaion_data, ack_callback);
+                .run_sync(notification_ctx, &notificaion_data, ack_callback);
         }
     }
 }

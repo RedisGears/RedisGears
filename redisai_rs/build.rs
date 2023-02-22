@@ -4,9 +4,6 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-extern crate bindgen;
-extern crate cc;
-
 use std::env;
 use std::path::PathBuf;
 

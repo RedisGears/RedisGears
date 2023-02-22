@@ -1,0 +1,42 @@
+name: MSRV
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+  rust_msrv: 1.56.0
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install toolchain (${{ env.rust_msrv }})
+      run: |
+        rustup install --profile minimal ${{ env.rust_msrv }}
+        rustup override set ${{ env.rust_msrv }}
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - name: update pip3
+      run: pip3 install -U pip
+    - name: install rltest
+      run: pip3 install RLTest
+    - name: install gcc9
+      run: |
+        sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+        sudo apt update
+        sudo apt install gcc-9 g++-9
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 9
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 9
+    - name: install redis
+      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+    - name: Build debug
+      run: cargo build --verbose
+    - name: Build release
+      run: cargo build --release --verbose
+    - name: Tests
+      run: cd pytests;./run_tests.sh

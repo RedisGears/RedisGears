@@ -39,7 +39,7 @@ pub(crate) fn get_exception_msg(
         let trace_utf8 = try_catch.get_trace(ctx_scope).map(|v| v.to_utf8().unwrap());
         GearsApiError::new_verbose(
             error_utf8.as_str(),
-            trace_utf8.as_ref().map(|v| v.as_str().replace("\n", "|")),
+            trace_utf8.as_ref().map(|v| v.as_str().replace('\n', "|")),
         )
     }
 }
@@ -51,12 +51,12 @@ pub(crate) fn get_error_from_object(
     let msg = val.to_utf8().unwrap().as_str().to_string();
     let trace = if val.is_object() {
         let val = val.as_object();
-        val.get_str_field(&ctx_scope, "stack")
+        val.get_str_field(ctx_scope, "stack")
             .map(|v| v.to_utf8().unwrap().as_str().to_string())
     } else {
         None
     };
-    GearsApiError::new_verbose(msg, trace.map(|v| v.replace("\n", "|")))
+    GearsApiError::new_verbose(msg, trace.map(|v| v.replace('\n', "|")))
 }
 
 pub(crate) fn get_exception_v8_value<'isolate_scope, 'isolate>(

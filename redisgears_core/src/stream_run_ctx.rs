@@ -135,7 +135,7 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
             self.ctx.process_record(
                 stream_name,
                 Box::new(record),
-                &mut StreamRunCtx::new(&self.lib_meta_data, self.flags),
+                &StreamRunCtx::new(&self.lib_meta_data, self.flags),
                 Box::new(|ack| {
                     // here we must take the redis lock
                     let ctx = ThreadSafeContext::new();

@@ -17,6 +17,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::RefCellWrapper;
 
+pub type RecordAcknowledgeCallback = dyn Fn(&[u8], u64, u64);
+pub type StreamReaderCallback<T> =
+    dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String> + Sync + Send;
+pub type StreamTrimmerCallback = dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send;
+
 pub(crate) trait StreamReaderRecord {
     fn get_id(&self) -> RedisModuleStreamID;
 }
@@ -45,7 +50,7 @@ pub(crate) trait StreamConsumer<T: StreamReaderRecord> {
 pub(crate) struct TrackedStream {
     name: Vec<u8>,
     consumers_data: Vec<Weak<RefCellWrapper<ConsumerInfo>>>,
-    stream_trimmer: Arc<Box<dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send>>,
+    stream_trimmer: Arc<Box<StreamTrimmerCallback>>,
 }
 
 impl TrackedStream {
@@ -66,8 +71,7 @@ impl TrackedStream {
             let consumer_info = weak_consumer_info.ref_cell.borrow();
             let first_id = {
                 let first_id = consumer_info.pending_ids.front();
-                if first_id.is_some() {
-                    let first_id = first_id.unwrap();
+                if let Some(first_id) = first_id {
                     RedisModuleStreamID {
                         ms: first_id.ms,
                         seq: first_id.seq,
@@ -146,7 +150,7 @@ pub(crate) struct ConsumerData<T: StreamReaderRecord, C: StreamConsumer<T>> {
     pub(crate) consumed_streams: HashMap<Vec<u8>, Arc<RefCellWrapper<ConsumerInfo>>>,
     pub(crate) window: usize, // represent the max amount of elements that can be processed at the same time
     pub(crate) trim: bool,
-    pub(crate) on_record_acked: Option<Box<dyn Fn(&[u8], u64, u64)>>,
+    pub(crate) on_record_acked: Option<Box<RecordAcknowledgeCallback>>,
     phantom: std::marker::PhantomData<T>,
 }
 
@@ -228,14 +232,8 @@ where
 {
     // map between consumers to streams the consumer is reading from
     consumers: Vec<Weak<RefCellWrapper<ConsumerData<T, C>>>>,
-    stream_reader: Arc<
-        Box<
-            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
-                + Sync
-                + Send,
-        >,
-    >,
-    stream_trimmer: Arc<Box<dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send>>,
+    stream_reader: Arc<Box<StreamReaderCallback<T>>>,
+    stream_trimmer: Arc<Box<StreamTrimmerCallback>>,
     tracked_streams: HashMap<Vec<u8>, Arc<RefCellWrapper<TrackedStream>>>,
 }
 
@@ -244,13 +242,7 @@ fn read_next_data<T: StreamReaderRecord>(
     id: Option<RedisModuleStreamID>,
     include_id: bool,
     consumer_info: &Arc<RefCellWrapper<ConsumerInfo>>,
-    stream_reader: &Arc<
-        Box<
-            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
-                + Sync
-                + Send,
-        >,
-    >,
+    stream_reader: &Arc<Box<StreamReaderCallback<T>>>,
 ) -> Result<Option<T>, String> {
     let r = stream_reader(name, id, include_id);
     r.as_ref()?;
@@ -270,13 +262,7 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
     consumer_weak: Weak<RefCellWrapper<ConsumerData<T, C>>>,
     mut actual_record: Result<Option<T>, String>,
     consumer_info: Arc<RefCellWrapper<ConsumerInfo>>,
-    stream_reader: Arc<
-        Box<
-            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
-                + Sync
-                + Send,
-        >,
-    >,
+    stream_reader: Arc<Box<StreamReaderCallback<T>>>,
 ) {
     let consumer = match consumer_weak.upgrade() {
         Some(c) => c,
@@ -437,17 +423,13 @@ where
     C: StreamConsumer<T> + 'static,
 {
     pub(crate) fn new(
-        stream_reader: Box<
-            dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
-                + Sync
-                + Send,
-        >,
-        steam_trimmer: Box<dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send>,
+        stream_reader: Box<StreamReaderCallback<T>>,
+        stream_trimmer: Box<StreamTrimmerCallback>,
     ) -> Self {
         StreamReaderCtx {
             consumers: Vec::new(),
             stream_reader: Arc::new(stream_reader),
-            stream_trimmer: Arc::new(steam_trimmer),
+            stream_trimmer: Arc::new(stream_trimmer),
             tracked_streams: HashMap::new(),
         }
     }
@@ -463,7 +445,7 @@ where
         consumer: C,
         window: usize,
         trim: bool,
-        on_record_acked: Option<Box<dyn Fn(&[u8], u64, u64)>>,
+        on_record_acked: Option<Box<RecordAcknowledgeCallback>>,
     ) -> Arc<RefCellWrapper<ConsumerData<T, C>>> {
         let consumer_data = Arc::new(RefCellWrapper {
             ref_cell: RefCell::new(ConsumerData {
