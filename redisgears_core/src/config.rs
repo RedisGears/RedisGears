@@ -78,7 +78,7 @@ pub(crate) struct ExecutionThreads {
 }
 
 impl ExecutionThreads {
-    const OPTION_NAME: &str = "execution-threads";
+    const OPTION_NAME: &'static str = "execution-threads";
 
     fn new() -> ExecutionThreads {
         ExecutionThreads {
@@ -136,7 +136,7 @@ pub(crate) struct RemoteTaskDefaultTimeout {
 }
 
 impl RemoteTaskDefaultTimeout {
-    const OPTION_NAME: &str = "remote-task-default-timeout";
+    const OPTION_NAME: &'static str = "remote-task-default-timeout";
 
     fn new() -> RemoteTaskDefaultTimeout {
         RemoteTaskDefaultTimeout {
@@ -194,7 +194,7 @@ pub(crate) struct LibraryMaxMemory {
 }
 
 impl LibraryMaxMemory {
-    const OPTION_NAME: &str = "library-maxmemory";
+    const OPTION_NAME: &'static str = "library-maxmemory";
 
     fn new() -> LibraryMaxMemory {
         LibraryMaxMemory {
@@ -252,7 +252,7 @@ pub(crate) struct GearBoxAddress {
 }
 
 impl GearBoxAddress {
-    const OPTION_NAME: &str = "gearsbox-address";
+    const OPTION_NAME: &'static str = "gearsbox-address";
 
     fn new() -> GearBoxAddress {
         GearBoxAddress {
@@ -303,7 +303,7 @@ pub(crate) struct LibraryOnFatalFailurePolicy {
 }
 
 impl LibraryOnFatalFailurePolicy {
-    const OPTION_NAME: &str = "library-fatal-failure-policy";
+    const OPTION_NAME: &'static str = "library-fatal-failure-policy";
 
     fn new() -> LibraryOnFatalFailurePolicy {
         LibraryOnFatalFailurePolicy {
@@ -372,7 +372,7 @@ pub(crate) struct EnableDebugCommand {
 }
 
 impl EnableDebugCommand {
-    const OPTION_NAME: &str = "enable-debug-command";
+    const OPTION_NAME: &'static str = "enable-debug-command";
     fn new() -> EnableDebugCommand {
         EnableDebugCommand {
             enabled: false,
@@ -433,7 +433,7 @@ pub(crate) struct LockRedisTimeout {
 }
 
 impl LockRedisTimeout {
-    const OPTION_NAME: &str = "lock-redis-timeout";
+    const OPTION_NAME: &'static str = "lock-redis-timeout";
 
     fn new() -> LockRedisTimeout {
         LockRedisTimeout {
