@@ -26,7 +26,7 @@ Then run the built image:
 
 ### From Source
 
-See the [build](docs/build_insturctions.md) page for more information.
+See the [build](docs/build_instructions.md) page for more information.
 
 ## Getting started
 
