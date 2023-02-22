@@ -56,7 +56,7 @@ pub(crate) fn get_js_tensor_from_tensor<'isolate, 'isolate_scope>(
 }
 
 pub(crate) fn get_tensor_object_template(
-    isolate_scope: &'_ V8IsolateScope<'_>,
+    isolate_scope: &V8IsolateScope,
 ) -> V8PersistedObjectTemplate {
     let mut obj_template = isolate_scope.new_object_template();
 
