@@ -108,6 +108,7 @@ impl BackendCtxInterface for V8Backend {
                 }
                 panic!("{}", msg);
             }),
+            1
         );
 
         let script_ctxs = Arc::clone(&self.script_ctx_vec);
