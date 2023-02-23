@@ -28,10 +28,9 @@ jobs:
     - name: format
       run: cargo fmt -- --check
     - name: Build
-      run: |
-        cargo build --verbose
+      run: cargo build --verbose
       env:
-        PKG_CONFIG_PATH: /opt/homebrew/opt/openssl@1.1/lib/pkgconfig/
-        OPENSSL_PREFIX: /opt/homebrew/opt/openssl@1.1
+        PKG_CONFIG_PATH: /usr/local/opt/openssl@1.1/lib/pkgconfig/
+        OPENSSL_PREFIX: /usr/local/opt/openssl@1.1
     - name: Tests
       run: cd pytests; python3 -m RLTest
