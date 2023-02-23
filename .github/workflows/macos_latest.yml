@@ -30,6 +30,7 @@ jobs:
     - name: Build
       run: |
         export PKG_CONFIG_PATH=/opt/homebrew/opt/openssl@1.1/lib/pkgconfig/
+        export OPENSSL_PREFIX=/opt/homebrew/opt/openssl@1.1/
         cargo build --verbose
     - name: Tests
       run: cd pytests; python3 -m RLTest
