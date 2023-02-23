@@ -20,3 +20,5 @@ Cargo.lock
 .vscode
 
 wordlist.dic
+
+dump.rdb
