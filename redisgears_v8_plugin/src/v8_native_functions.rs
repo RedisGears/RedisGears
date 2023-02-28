@@ -4,9 +4,9 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, load_library_ctx::RegisteredKeys,
-    load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
     run_function_ctx::RemoteFunctionData, CallResult, GearsApiError, RefCellWrapper,
 };
@@ -756,8 +756,14 @@ pub(crate) fn initialize_globals(
                             }
                         }
                     }
-                    None => 0,
+                    None => FunctionFlags::empty(),
                 };
+                // TODO
+                // let function_flags = match function_flags {
+                //     Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
+                //         .map_err(|e| format!("Failed parsing function flags, {}", e))?,
+                //     None => FunctionFlags::empty(),
+                // };
 
                 let load_ctx =
                     curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
@@ -783,7 +789,7 @@ pub(crate) fn initialize_globals(
                     redis_client.to_value().persist(),
                     &c,
                     function_callback.is_async_function(),
-                    function_flags & FUNCTION_FLAG_RAW_ARGUMENTS == 0,
+                    !function_flags.contains(FunctionFlags::RAW_ARGUMENTS),
                 );
 
                 let res = load_ctx.register_function(
@@ -895,7 +901,7 @@ pub(crate) fn initialize_globals(
                                         on_done(Ok(v));
                                     } else {
                                         let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                        on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                            
+                                        on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                     }
                                 } else {
                                     let r = r.to_utf8().unwrap();
@@ -919,7 +925,7 @@ pub(crate) fn initialize_globals(
                                             on_done(Ok(v));
                                         } else {
                                             let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
+                                            on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                         }
                                         Ok(None)
                                     }));

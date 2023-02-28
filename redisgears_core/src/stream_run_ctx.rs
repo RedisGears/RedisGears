@@ -5,9 +5,10 @@
  */
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    stream_ctx::StreamCtxInterface, stream_ctx::StreamProcessCtxInterface,
-    stream_ctx::StreamRecordAck, stream_ctx::StreamRecordInterface,
+    load_library_ctx::FunctionFlags, run_function_ctx::BackgroundRunFunctionCtxInterface,
+    run_function_ctx::RedisClientCtxInterface, stream_ctx::StreamCtxInterface,
+    stream_ctx::StreamProcessCtxInterface, stream_ctx::StreamRecordAck,
+    stream_ctx::StreamRecordInterface,
 };
 
 use redis_module::{
@@ -32,11 +33,11 @@ use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 pub(crate) struct StreamRunCtx {
     lib_meta_data: Arc<GearsLibraryMetaData>,
-    flags: u8,
+    flags: FunctionFlags,
 }
 
 impl StreamRunCtx {
-    fn new(lib_meta_data: &Arc<GearsLibraryMetaData>, flags: u8) -> StreamRunCtx {
+    fn new(lib_meta_data: &Arc<GearsLibraryMetaData>, flags: FunctionFlags) -> StreamRunCtx {
         StreamRunCtx {
             lib_meta_data: Arc::clone(lib_meta_data),
             flags,
@@ -90,14 +91,14 @@ impl StreamRecordInterface for GearsStreamRecord {
 pub(crate) struct GearsStreamConsumer {
     pub(crate) ctx: Box<dyn StreamCtxInterface>,
     lib_meta_data: Arc<GearsLibraryMetaData>,
-    flags: u8,
+    flags: FunctionFlags,
     permissions: AclPermissions,
 }
 
 impl GearsStreamConsumer {
     pub(crate) fn new(
         user: &Arc<GearsLibraryMetaData>,
-        flags: u8,
+        flags: FunctionFlags,
         ctx: Box<dyn StreamCtxInterface>,
     ) -> GearsStreamConsumer {
         let mut permissions = AclPermissions::new();

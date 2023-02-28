@@ -4,9 +4,10 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES, run_function_ctx::BackgroundRunFunctionCtxInterface,
-    run_function_ctx::RedisClientCtxInterface, run_function_ctx::RemoteFunctionData, GearsApiError,
+    run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
+    run_function_ctx::RemoteFunctionData, GearsApiError,
 };
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
@@ -138,7 +139,7 @@ impl RemoteTask for GearsRemoteTask {
             Box::new(BackgroundRunCtx::new(
                 self.user,
                 &library.gears_lib_ctx.meta_data,
-                RedisClientCallOptions::new(FUNCTION_FLAG_NO_WRITES),
+                RedisClientCallOptions::new(FunctionFlags::NO_WRITES),
             )),
             Box::new(move |result| {
                 let res = match result {

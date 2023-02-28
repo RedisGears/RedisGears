@@ -10,6 +10,7 @@
 
 #![deny(missing_docs)]
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use serde::{Deserialize, Serialize};
 
 use redis_module::raw::{RedisModule_GetDetachedThreadSafeContext, RedisModule__Assert};
@@ -28,7 +29,6 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface,
     load_library_ctx::LibraryCtxInterface, load_library_ctx::LoadLibraryCtxInterface,
     load_library_ctx::RegisteredKeys, load_library_ctx::RemoteFunctionCtx,
-    load_library_ctx::FUNCTION_FLAG_ALLOW_OOM, load_library_ctx::FUNCTION_FLAG_NO_WRITES,
     stream_ctx::StreamCtxInterface, CallResult, GearsApiError,
 };
 
@@ -134,11 +134,11 @@ pub struct GearsLibraryMetaData {
 /// The context of a single gears function.
 struct GearsFunctionCtx {
     func: Box<dyn FunctionCtxInterface>,
-    flags: u8,
+    flags: FunctionFlags,
 }
 
 impl GearsFunctionCtx {
-    fn new(func: Box<dyn FunctionCtxInterface>, flags: u8) -> GearsFunctionCtx {
+    fn new(func: Box<dyn FunctionCtxInterface>, flags: FunctionFlags) -> GearsFunctionCtx {
         GearsFunctionCtx { func, flags }
     }
 }
@@ -227,7 +227,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         &mut self,
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
-        flags: u8,
+        flags: FunctionFlags,
     ) -> Result<(), GearsApiError> {
         if self.functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
@@ -284,7 +284,11 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                     name, std::str::from_utf8(&o_c.prefix).unwrap_or("[binary data]"), std::str::from_utf8(prefix).unwrap_or("[binary data]"))
                 ));
             }
-            let old_ctx = o_c.set_consumer(GearsStreamConsumer::new(&self.meta_data, 0, ctx));
+            let old_ctx = o_c.set_consumer(GearsStreamConsumer::new(
+                &self.meta_data,
+                FunctionFlags::empty(),
+                ctx,
+            ));
             let old_window = o_c.set_window(window);
             let old_trim = o_c.set_trim(trim);
             self.revert_stream_consumers
@@ -297,7 +301,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             let consumer_name = name.to_string();
             let consumer = stream_ctx.add_consumer(
                 prefix,
-                GearsStreamConsumer::new(&self.meta_data, 0, ctx),
+                GearsStreamConsumer::new(&self.meta_data, FunctionFlags::empty(), ctx),
                 window,
                 trim,
                 Some(Box::new(move |stream_name, ms, seq| {
@@ -361,11 +365,17 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                 let val = keys_notifications_consumer_ctx.on_notification_fired(
                     event,
                     key,
-                    Box::new(KeysNotificationsRunCtx::new(&meta_data, 0)),
+                    Box::new(KeysNotificationsRunCtx::new(
+                        &meta_data,
+                        FunctionFlags::empty(),
+                    )),
                 );
                 keys_notifications_consumer_ctx.post_command_notification(
                     val,
-                    Box::new(KeysNotificationsRunCtx::new(&meta_data, 0)),
+                    Box::new(KeysNotificationsRunCtx::new(
+                        &meta_data,
+                        FunctionFlags::empty(),
+                    )),
                     done_callback,
                 )
             });
@@ -732,10 +742,10 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
 
 const fn js_info(_ctx: &InfoContext, _for_crash_report: bool) {}
 
-pub(crate) fn verify_oom(flags: u8) -> bool {
-    if (flags & FUNCTION_FLAG_NO_WRITES) == 0 {
+pub(crate) fn verify_oom(flags: FunctionFlags) -> bool {
+    if !flags.contains(FunctionFlags::NO_WRITES) {
         // function can potentially write data, make sure we are not OOM.
-        if (flags & FUNCTION_FLAG_ALLOW_OOM) == 0 && get_ctx().is_oom() {
+        if !flags.contains(FunctionFlags::ALLOW_OOM) && get_ctx().is_oom() {
             return false;
         }
     }
@@ -744,10 +754,9 @@ pub(crate) fn verify_oom(flags: u8) -> bool {
 
 /// Returns true if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
-pub(crate) fn verify_ok_on_replica(flags: u8) -> bool {
-    //     get_ctx().is_primary() || flags.contains(FunctionFlags::NO_WRITES)
+pub(crate) fn verify_ok_on_replica(flags: FunctionFlags) -> bool {
     // not replica, ok to run || we can run function with no writes on replica.
-    get_ctx().is_primary() || (flags & FUNCTION_FLAG_NO_WRITES) != 0
+    get_ctx().is_primary() || flags.contains(FunctionFlags::NO_WRITES)
 }
 
 fn function_call_command(
