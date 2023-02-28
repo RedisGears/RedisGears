@@ -13,7 +13,7 @@ use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;
 use crate::{
     get_globals, get_libraries, verify_ok_on_replica, verify_oom, Deserialize,
-    GearsLibraryMataData, Serialize,
+    GearsLibraryMetaData, Serialize,
 };
 
 use redis_module::{RedisValue, ThreadSafeContext};
@@ -26,7 +26,7 @@ use mr_derive::BaseObject;
 
 pub(crate) struct BackgroundRunCtx {
     call_options: RedisClientCallOptions,
-    lib_meta_data: Arc<GearsLibraryMataData>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
     user: Option<String>,
 }
 
@@ -36,7 +36,7 @@ unsafe impl Send for BackgroundRunCtx {}
 impl BackgroundRunCtx {
     pub(crate) fn new(
         user: Option<String>,
-        lib_meta_data: &Arc<GearsLibraryMataData>,
+        lib_meta_data: &Arc<GearsLibraryMetaData>,
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunCtx {
         BackgroundRunCtx {

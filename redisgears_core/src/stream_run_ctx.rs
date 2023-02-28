@@ -19,7 +19,7 @@ use crate::{
     background_run_ctx::BackgroundRunCtx,
     get_ctx,
     run_ctx::{RedisClient, RedisClientCallOptions},
-    GearsLibraryMataData,
+    GearsLibraryMetaData,
 };
 
 use crate::stream_reader::{StreamConsumer, StreamReaderAck};
@@ -31,12 +31,12 @@ use std::sync::Arc;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 pub(crate) struct StreamRunCtx {
-    lib_meta_data: Arc<GearsLibraryMataData>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
     flags: u8,
 }
 
 impl StreamRunCtx {
-    fn new(lib_meta_data: &Arc<GearsLibraryMataData>, flags: u8) -> StreamRunCtx {
+    fn new(lib_meta_data: &Arc<GearsLibraryMetaData>, flags: u8) -> StreamRunCtx {
         StreamRunCtx {
             lib_meta_data: Arc::clone(lib_meta_data),
             flags,
@@ -89,14 +89,14 @@ impl StreamRecordInterface for GearsStreamRecord {
 
 pub(crate) struct GearsStreamConsumer {
     pub(crate) ctx: Box<dyn StreamCtxInterface>,
-    lib_meta_data: Arc<GearsLibraryMataData>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
     flags: u8,
     permissions: AclPermissions,
 }
 
 impl GearsStreamConsumer {
     pub(crate) fn new(
-        user: &Arc<GearsLibraryMataData>,
+        user: &Arc<GearsLibraryMetaData>,
         flags: u8,
         ctx: Box<dyn StreamCtxInterface>,
     ) -> GearsStreamConsumer {

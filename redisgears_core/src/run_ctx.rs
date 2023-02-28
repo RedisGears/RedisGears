@@ -18,7 +18,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use redis_module::Status;
 
-use crate::{call_redis_command, get_globals, get_msg_verbose, GearsLibraryMataData};
+use crate::{call_redis_command, get_globals, get_msg_verbose, GearsLibraryMetaData};
 
 use std::slice::Iter;
 
@@ -64,7 +64,7 @@ impl RedisClientCallOptions {
 
 pub(crate) struct RedisClient {
     call_options: RedisClientCallOptions,
-    lib_meta_data: Arc<GearsLibraryMataData>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
     user: Option<String>,
 }
 
@@ -73,7 +73,7 @@ unsafe impl Send for RedisClient {}
 
 impl RedisClient {
     pub(crate) fn new(
-        lib_meta_data: &Arc<GearsLibraryMataData>,
+        lib_meta_data: &Arc<GearsLibraryMetaData>,
         user: Option<String>,
         flags: u8,
     ) -> RedisClient {
@@ -157,7 +157,7 @@ pub(crate) struct RunCtx<'a> {
     pub(crate) ctx: &'a Context,
     pub(crate) iter: Iter<'a, redis_module::RedisString>,
     pub(crate) flags: u8,
-    pub(crate) lib_meta_data: Arc<GearsLibraryMataData>,
+    pub(crate) lib_meta_data: Arc<GearsLibraryMetaData>,
 }
 
 impl<'a> ReplyCtxInterface for RunCtx<'a> {
@@ -223,10 +223,7 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
     }
 
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
-        let user = match self.ctx.get_current_user() {
-            Ok(u) => Some(u),
-            Err(_) => None,
-        };
+        let user = self.ctx.get_current_user().ok();
         Box::new(RedisClient::new(&self.lib_meta_data, user, self.flags))
     }
 

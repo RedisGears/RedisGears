@@ -14,7 +14,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::{get_libraries, get_msg_verbose, to_redis_value};
+use crate::{get_libraries, get_msg_verbose, json_to_redis_value};
 
 fn function_list_command_flags(flags: u8) -> RedisValue {
     let mut res = Vec::new();
@@ -289,7 +289,7 @@ pub(crate) fn function_list_command(
                 if verbosity > 0 {
                     res.push(RedisValue::BulkString("gears_box_info".to_string()));
                     let gears_box_info_str = serde_json::to_string(&l.gears_box_lib).unwrap();
-                    res.push(to_redis_value(
+                    res.push(json_to_redis_value(
                         serde_json::from_str(&gears_box_info_str).unwrap(),
                     ));
                 }

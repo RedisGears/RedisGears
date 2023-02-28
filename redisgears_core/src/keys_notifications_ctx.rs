@@ -11,17 +11,17 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use crate::background_run_ctx::BackgroundRunCtx;
 use crate::run_ctx::{RedisClient, RedisClientCallOptions};
-use crate::GearsLibraryMataData;
+use crate::GearsLibraryMetaData;
 
 use std::sync::Arc;
 
 pub(crate) struct KeysNotificationsRunCtx {
-    lib_meta_data: Arc<GearsLibraryMataData>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
     flags: u8,
 }
 
 impl KeysNotificationsRunCtx {
-    pub(crate) fn new(meta_data: &Arc<GearsLibraryMataData>, flags: u8) -> KeysNotificationsRunCtx {
+    pub(crate) fn new(meta_data: &Arc<GearsLibraryMetaData>, flags: u8) -> KeysNotificationsRunCtx {
         KeysNotificationsRunCtx {
             lib_meta_data: Arc::clone(meta_data),
             flags,

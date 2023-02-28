@@ -6,7 +6,7 @@ from common import runFor
 import time
 
 @gearsTest()
-def testBasicNotifcations(env):
+def testBasicNotifications(env):
     """#!js name=lib
 var n_notifications = 0;
 redis.register_notifications_consumer("consumer", "", function(client, data) {
@@ -145,7 +145,7 @@ redis.register_function("n_notifications", async function(){
 
 redis.register_stream_consumer("consumer", "stream", 1, true, function(client) {
     client.call('set', 'X' , '2');
-}) 
+})
     """
     env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
