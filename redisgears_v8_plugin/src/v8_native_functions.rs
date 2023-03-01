@@ -743,27 +743,17 @@ pub(crate) fn initialize_globals(
                   function_callback: V8LocalValue,
                   function_flags: Option<V8LocalArray>| {
                 if !function_callback.is_function() {
-                    return Err("Second argument to 'register_function' must be a function".into());
+                    return Err(
+                        "Second argument to 'register_function' must be a function".to_owned()
+                    );
                 }
                 let persisted_function = function_callback.persist();
 
                 let function_flags = match function_flags {
-                    Some(function_flags) => {
-                        match get_function_flags(curr_ctx_scope, &function_flags) {
-                            Ok(flags) => flags,
-                            Err(e) => {
-                                return Err(format!("Failed parsing function flags, {}", e));
-                            }
-                        }
-                    }
+                    Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
+                        .map_err(|e| format!("Failed parsing function flags, {}", e))?,
                     None => FunctionFlags::empty(),
                 };
-                // TODO
-                // let function_flags = match function_flags {
-                //     Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
-                //         .map_err(|e| format!("Failed parsing function flags, {}", e))?,
-                //     None => FunctionFlags::empty(),
-                // };
 
                 let load_ctx =
                     curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
