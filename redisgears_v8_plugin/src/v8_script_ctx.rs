@@ -157,20 +157,13 @@ impl LibraryCtxInterface for V8LibraryCtx {
         let script = self.script_ctx.script.to_local(&isolate_scope);
 
         // set private content
-        self.script_ctx
-            .ctx
-            .set_private_data(0, Some(&load_library_ctx));
+        let _load_library_guard = self.script_ctx.ctx.set_private_data(0, &load_library_ctx);
 
         self.script_ctx.before_run();
         self.script_ctx.after_lock_gil();
         let res = script.run(&ctx_scope);
         self.script_ctx.before_release_gil();
         self.script_ctx.after_run();
-
-        // reset private data
-        self.script_ctx
-            .ctx
-            .set_private_data::<&mut dyn LoadLibraryCtxInterface>(0, None);
 
         if res.is_none() {
             return Err(get_exception_msg(
