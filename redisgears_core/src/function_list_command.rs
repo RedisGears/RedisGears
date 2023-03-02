@@ -5,26 +5,22 @@
  */
 
 use redis_module::{Context, NextArg, RedisError, RedisResult, RedisValue};
-
-use redisgears_plugin_api::redisgears_plugin_api::{
-    load_library_ctx::FUNCTION_FLAG_ALLOW_OOM, load_library_ctx::FUNCTION_FLAG_NO_WRITES,
-    load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
-};
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::{get_libraries, get_msg_verbose, to_redis_value};
+use crate::{get_libraries, get_msg_verbose, json_to_redis_value};
 
-fn function_list_command_flags(flags: u8) -> RedisValue {
+fn function_list_command_flags(flags: FunctionFlags) -> RedisValue {
     let mut res = Vec::new();
-    if (flags & FUNCTION_FLAG_NO_WRITES) != 0 {
+    if flags.contains(FunctionFlags::NO_WRITES) {
         res.push(RedisValue::BulkString("no-writes".to_string()));
     }
-    if (flags & FUNCTION_FLAG_ALLOW_OOM) != 0 {
+    if flags.contains(FunctionFlags::ALLOW_OOM) {
         res.push(RedisValue::BulkString("allow-oom".to_string()));
     }
-    if (flags & FUNCTION_FLAG_RAW_ARGUMENTS) != 0 {
+    if flags.contains(FunctionFlags::RAW_ARGUMENTS) {
         res.push(RedisValue::BulkString("raw-arguments".to_string()));
     }
     RedisValue::Array(res)
@@ -43,10 +39,9 @@ pub(crate) fn function_list_command(
             break;
         }
         let arg = arg.unwrap();
-        let arg_str = match arg.try_as_str() {
-            Ok(arg) => arg,
-            Err(_) => return Err(RedisError::Str("Binary option is not allowed")),
-        };
+        let arg_str = arg
+            .try_as_str()
+            .map_err(|_| RedisError::Str("Binary option is not allowed"))?;
         let arg_str = arg_str.to_lowercase();
         match arg_str.as_ref() {
             "withcode" => with_code = true,
@@ -55,13 +50,11 @@ pub(crate) fn function_list_command(
             "vv" => verbosity += 2,
             "vvv" => verbosity += 3,
             "library" => {
-                let lib_name = match args.next_arg() {
-                    Ok(n) => match n.try_as_str() {
-                        Ok(n) => n,
-                        Err(_) => return Err(RedisError::Str("Library name is not a string")),
-                    },
-                    Err(_) => return Err(RedisError::Str("Library name was not given")),
-                };
+                let lib_name = args
+                    .next_arg()
+                    .map_err(|_| RedisError::Str("Library name was not given"))?
+                    .try_as_str()
+                    .map_err(|_| RedisError::Str("Library name is not a string"))?;
                 lib = Some(lib_name);
             }
             _ => return Err(RedisError::String(format!("Unknown option '{}'", arg_str))),
@@ -289,7 +282,7 @@ pub(crate) fn function_list_command(
                 if verbosity > 0 {
                     res.push(RedisValue::BulkString("gears_box_info".to_string()));
                     let gears_box_info_str = serde_json::to_string(&l.gears_box_lib).unwrap();
-                    res.push(to_redis_value(
+                    res.push(json_to_redis_value(
                         serde_json::from_str(&gears_box_info_str).unwrap(),
                     ));
                 }

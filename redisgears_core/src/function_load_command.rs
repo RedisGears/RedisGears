@@ -11,7 +11,7 @@ use crate::gears_box::GearsBoxLibraryInfo;
 use crate::{Deserialize, Serialize};
 
 use crate::{
-    get_backends_mut, get_ctx, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMataData,
+    get_backends_mut, get_ctx, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData,
 };
 
 use mr::libmr::{
@@ -44,7 +44,7 @@ fn library_extract_matadata(
     code: &str,
     config: Option<String>,
     user: String,
-) -> Result<GearsLibraryMataData, RedisError> {
+) -> Result<GearsLibraryMetaData, RedisError> {
     let shabeng = match code.split('\n').next() {
         Some(s) => s,
         None => return Err(RedisError::Str("could not extract library metadata")),
@@ -83,7 +83,7 @@ fn library_extract_matadata(
         prop_val
     };
 
-    Ok(GearsLibraryMataData {
+    Ok(GearsLibraryMetaData {
         engine: engine.to_string(),
         name: name.to_string(),
         code: code.to_string(),

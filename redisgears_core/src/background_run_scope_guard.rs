@@ -17,7 +17,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 use crate::run_ctx::RedisClientCallOptions;
 use crate::{
     background_run_ctx::BackgroundRunCtx, call_redis_command, get_notification_blocker,
-    GearsLibraryMataData, NotificationBlocker,
+    GearsLibraryMetaData, NotificationBlocker,
 };
 
 use std::sync::Arc;
@@ -31,7 +31,7 @@ pub(crate) struct BackgroundRunScopeGuardCtx {
     pub(crate) _ctx_guard: ContextGuard,
     call_options: RedisClientCallOptions,
     user: Option<String>,
-    lib_meta_data: Arc<GearsLibraryMataData>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
     _notification_blocker: NotificationBlocker,
 }
 
@@ -42,7 +42,7 @@ impl BackgroundRunScopeGuardCtx {
     pub(crate) fn new(
         ctx_guard: ContextGuard,
         user: Option<String>,
-        lib_meta_data: &Arc<GearsLibraryMataData>,
+        lib_meta_data: &Arc<GearsLibraryMetaData>,
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunScopeGuardCtx {
         BackgroundRunScopeGuardCtx {

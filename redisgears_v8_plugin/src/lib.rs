@@ -10,9 +10,7 @@ use v8_rs::v8::{
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    backend_ctx::BackendCtxInterface, load_library_ctx::FUNCTION_FLAG_ALLOW_OOM,
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES, load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
-    GearsApiError,
+    backend_ctx::BackendCtxInterface, load_library_ctx::FunctionFlags, GearsApiError,
 };
 
 mod v8_backend;
@@ -77,8 +75,8 @@ pub(crate) fn get_exception_v8_value<'isolate_scope, 'isolate>(
 pub(crate) fn get_function_flags(
     curr_ctx_scope: &V8ContextScope,
     flags: &V8LocalArray,
-) -> Result<u8, String> {
-    let mut flags_val = 0;
+) -> Result<FunctionFlags, String> {
+    let mut flags_val = FunctionFlags::empty();
     for i in 0..flags.len() {
         let flag = flags.get(curr_ctx_scope, i);
         if !flag.is_string() {
@@ -86,9 +84,9 @@ pub(crate) fn get_function_flags(
         }
         let flag_str = flag.to_utf8().unwrap();
         match flag_str.as_str() {
-            "no-writes" => flags_val |= FUNCTION_FLAG_NO_WRITES,
-            "allow-oom" => flags_val |= FUNCTION_FLAG_ALLOW_OOM,
-            "raw-arguments" => flags_val |= FUNCTION_FLAG_RAW_ARGUMENTS,
+            "no-writes" => flags_val.insert(FunctionFlags::NO_WRITES),
+            "allow-oom" => flags_val.insert(FunctionFlags::ALLOW_OOM),
+            "raw-arguments" => flags_val.insert(FunctionFlags::RAW_ARGUMENTS),
             _ => return Err(format!("Unknow flag '{}' was given", flag_str.as_str())),
         }
     }

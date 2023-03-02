@@ -4,9 +4,9 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, load_library_ctx::RegisteredKeys,
-    load_library_ctx::FUNCTION_FLAG_RAW_ARGUMENTS,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
     run_function_ctx::RemoteFunctionData, CallResult, GearsApiError, RefCellWrapper,
 };
@@ -249,7 +249,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 return Err("Argument to 'block' must be a function".into());
             }
 
-            let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
+            let is_already_blocked = ctx_scope.get_private_data::<bool, _>(0);
             if is_already_blocked.is_some() && *is_already_blocked.unwrap() {
                 return Err("Main thread is already blocked".into());
             }
@@ -274,13 +274,11 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
             r_client.borrow_mut().set_client(redis_client);
             let c = get_redis_client(&script_ctx_ref, isolate_scope, ctx_scope, &r_client);
 
-            ctx_scope.set_private_data(0, Some(&true)); // indicate we are blocked
+            let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
             script_ctx_ref.after_lock_gil();
             let res = f.call(ctx_scope, Some(&[&c.to_value()]));
             script_ctx_ref.before_release_gil();
-
-            ctx_scope.set_private_data::<bool>(0, None);
 
             r_client.borrow_mut().make_invalid();
             Ok(res)
@@ -486,7 +484,7 @@ fn add_call_function(
                   ctx_scope,
                   command_utf8: V8LocalUtf8,
                   commands_args: Vec<V8RedisCallArgs>| {
-                let is_already_blocked = ctx_scope.get_private_data::<bool>(0);
+                let is_already_blocked = ctx_scope.get_private_data::<bool, _>(0);
                 if is_already_blocked.is_none() || !*is_already_blocked.unwrap() {
                     return Err("Main thread is not locked");
                 }
@@ -661,7 +659,7 @@ pub(crate) fn initialize_globals(
         }
         let persisted_function = function_callback.persist();
 
-        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
         if load_ctx.is_none() {
             return Err("Called 'register_function' out of context".into());
         }
@@ -703,7 +701,7 @@ pub(crate) fn initialize_globals(
         }
         let persisted_function = function_callback.persist();
 
-        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
         if load_ctx.is_none() {
             return Err("Called 'register_notifications_consumer' out of context".into());
         }
@@ -743,24 +741,20 @@ pub(crate) fn initialize_globals(
                   function_callback: V8LocalValue,
                   function_flags: Option<V8LocalArray>| {
                 if !function_callback.is_function() {
-                    return Err("Second argument to 'register_function' must be a function".into());
+                    return Err(
+                        "Second argument to 'register_function' must be a function".to_owned()
+                    );
                 }
                 let persisted_function = function_callback.persist();
 
                 let function_flags = match function_flags {
-                    Some(function_flags) => {
-                        match get_function_flags(curr_ctx_scope, &function_flags) {
-                            Ok(flags) => flags,
-                            Err(e) => {
-                                return Err(format!("Failed parsing function flags, {}", e));
-                            }
-                        }
-                    }
-                    None => 0,
+                    Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
+                        .map_err(|e| format!("Failed parsing function flags, {}", e))?,
+                    None => FunctionFlags::empty(),
                 };
 
                 let load_ctx =
-                    curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+                    curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
                 if load_ctx.is_none() {
                     return Err("Called 'register_function' out of context".into());
                 }
@@ -783,7 +777,7 @@ pub(crate) fn initialize_globals(
                     redis_client.to_value().persist(),
                     &c,
                     function_callback.is_async_function(),
-                    function_flags & FUNCTION_FLAG_RAW_ARGUMENTS == 0,
+                    !function_flags.contains(FunctionFlags::RAW_ARGUMENTS),
                 );
 
                 let res = load_ctx.register_function(
@@ -814,7 +808,7 @@ pub(crate) fn initialize_globals(
             return Err("Remote function must be async".into());
         }
 
-        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface>(0);
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
         if load_ctx.is_none() {
             return Err("Called 'register_remote_function' out of context".into());
         }
@@ -895,7 +889,7 @@ pub(crate) fn initialize_globals(
                                         on_done(Ok(v));
                                     } else {
                                         let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                        on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                            
+                                        on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                     }
                                 } else {
                                     let r = r.to_utf8().unwrap();
@@ -919,7 +913,7 @@ pub(crate) fn initialize_globals(
                                             on_done(Ok(v));
                                         } else {
                                             let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                            on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));                                                
+                                            on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                         }
                                         Ok(None)
                                     }));

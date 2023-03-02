@@ -42,13 +42,13 @@ impl CompiledLibraryInternals {
     }
 
     fn add_job(internals: &Arc<CompiledLibraryInternals>, job: Box<dyn FnOnce() + Send>) {
-        let pending_jons = {
+        let pending_jobs = {
             let mut queue = internals.mutex.lock().unwrap();
             let pending_jons = queue.len();
             queue.push_front(job);
             pending_jons
         };
-        if pending_jons == 0 {
+        if pending_jobs == 0 {
             let internals_ref = Arc::clone(internals);
             execute_on_pool(move || {
                 Self::run_next_job(&internals_ref);
@@ -102,9 +102,9 @@ impl CompiledLibraryInterface for CompiledLibraryAPI {
         data: &[u8],
     ) -> Result<Box<dyn AITensorInterface>, GearsApiError> {
         let mut tensor = RedisAITensor::create(data_type, dims).map_err(GearsApiError::new)?;
-        match tensor.set_data(data) {
-            Ok(_) => Ok(Box::new(tensor)),
-            Err(e) => Err(GearsApiError::new(e)),
-        }
+        Ok(tensor
+            .set_data(data)
+            .map(|_| Box::new(tensor))
+            .map_err(GearsApiError::new)?)
     }
 }

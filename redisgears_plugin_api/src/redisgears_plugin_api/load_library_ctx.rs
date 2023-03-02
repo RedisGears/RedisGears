@@ -23,9 +23,19 @@ pub enum RegisteredKeys<'a> {
     Prefix(&'a [u8]),
 }
 
-pub const FUNCTION_FLAG_NO_WRITES: u8 = 0x01;
-pub const FUNCTION_FLAG_ALLOW_OOM: u8 = 0x02;
-pub const FUNCTION_FLAG_RAW_ARGUMENTS: u8 = 0x04;
+bitflags::bitflags! {
+    /// The flags a function might have related to the way it is
+    /// executed.
+    #[derive(Default)]
+    pub struct FunctionFlags: u8 {
+        /// The function is not performing writes.
+        const NO_WRITES = 0x01;
+        /// TODO
+        const ALLOW_OOM = 0x02;
+        /// TODO
+        const RAW_ARGUMENTS = 0x04;
+    }
+}
 
 pub type RemoteFunctionCtx = Box<
     dyn Fn(
@@ -40,7 +50,7 @@ pub trait LoadLibraryCtxInterface {
         &mut self,
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
-        flags: u8,
+        flags: FunctionFlags,
     ) -> Result<(), GearsApiError>;
     fn register_remote_task(
         &mut self,

@@ -86,7 +86,7 @@ impl V8NotificationsCtxInternal {
             let r_client =
                 get_redis_client(&self.script_ctx, &isolate_scope, &ctx_scope, &redis_client);
 
-            ctx_scope.set_private_data(0, Some(&true)); // indicate we are blocked
+            let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
             self.script_ctx.before_run();
             self.script_ctx.after_lock_gil();
@@ -96,8 +96,6 @@ impl V8NotificationsCtxInternal {
             );
             self.script_ctx.before_release_gil();
             self.script_ctx.after_run();
-
-            ctx_scope.set_private_data::<bool>(0, None); // indicate we are not blocked
 
             redis_client.borrow_mut().make_invalid();
 

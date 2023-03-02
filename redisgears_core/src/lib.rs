@@ -3,7 +3,14 @@
  * Licensed under your choice of the Redis Source Available License 2.0 (RSALv2) or
  * the Server Side Public License v1 (SSPLv1).
  */
+//! RedisGears core.
+//! This crate contains the implementation of RedisGears Redis module.
+//! RedisGears allows for custom functions to be executed within Redis.
+//! The functions may be written in JavaScript or WebAssembly.
 
+#![deny(missing_docs)]
+
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use serde::{Deserialize, Serialize};
 
 use redis_module::raw::{RedisModule_GetDetachedThreadSafeContext, RedisModule__Assert};
@@ -22,7 +29,6 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface,
     load_library_ctx::LibraryCtxInterface, load_library_ctx::LoadLibraryCtxInterface,
     load_library_ctx::RegisteredKeys, load_library_ctx::RemoteFunctionCtx,
-    load_library_ctx::FUNCTION_FLAG_ALLOW_OOM, load_library_ctx::FUNCTION_FLAG_NO_WRITES,
     stream_ctx::StreamCtxInterface, CallResult, GearsApiError,
 };
 
@@ -32,7 +38,7 @@ use crate::run_ctx::RunCtx;
 
 use libloading::{Library, Symbol};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -71,17 +77,53 @@ mod run_ctx;
 mod stream_reader;
 mod stream_run_ctx;
 
+/// GIT commit hash used for this build.
 pub const GIT_SHA: Option<&str> = std::option_env!("GIT_SHA");
+/// GIT branch used for this build.
 pub const GIT_BRANCH: Option<&str> = std::option_env!("GIT_BRANCH");
+/// Crate version (string) used for this build.
 pub const VERSION_STR: Option<&str> = std::option_env!("VERSION_STR");
+/// Crate version (number) used for this build.
 pub const VERSION_NUM: Option<&str> = std::option_env!("VERSION_NUM");
+/// The operating system used for building the crate.
 pub const BUILD_OS: Option<&str> = std::option_env!("BUILD_OS");
+/// The type of the operating system used for building the crate.
 pub const BUILD_OS_TYPE: Option<&str> = std::option_env!("BUILD_OS_TYPE");
+/// The version of the operating system used for building the crate.
 pub const BUILD_OS_VERSION: Option<&str> = std::option_env!("BUILD_OS_VERSION");
+/// The CPU architeture of the operating system used for building the crate.
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
+/// The build type of the crate.
 pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
 
-pub struct GearsLibraryMataData {
+fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
+    use redis_module::Version;
+
+    const VERSION: Version = Version {
+        major: 7,
+        minor: 0,
+        patch: 3,
+    };
+
+    match ctx.get_redis_version() {
+        Ok(v) => {
+            if v.cmp(&VERSION) == std::cmp::Ordering::Less {
+                return Err(format!(
+                    "Redis version must be {}.{}.{} or greater",
+                    VERSION.major, VERSION.minor, VERSION.patch
+                ));
+            }
+        }
+        Err(e) => {
+            return Err(format!("Failed getting Redis version, version is probably to old, please use Redis 7.0 or above. {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// The meta information about the gears library instance at runtime.
+pub struct GearsLibraryMetaData {
     name: String,
     engine: String,
     code: String,
@@ -89,19 +131,23 @@ pub struct GearsLibraryMataData {
     user: String,
 }
 
+/// The context of a single gears function.
 struct GearsFunctionCtx {
     func: Box<dyn FunctionCtxInterface>,
-    flags: u8,
+    flags: FunctionFlags,
 }
 
 impl GearsFunctionCtx {
-    fn new(func: Box<dyn FunctionCtxInterface>, flags: u8) -> GearsFunctionCtx {
+    fn new(func: Box<dyn FunctionCtxInterface>, flags: FunctionFlags) -> GearsFunctionCtx {
         GearsFunctionCtx { func, flags }
     }
 }
 
+/// The gears library runtime context. It contains the live "instance"
+/// of the global library state: all the functions registered and other
+/// state information.
 struct GearsLibraryCtx {
-    meta_data: Arc<GearsLibraryMataData>,
+    meta_data: Arc<GearsLibraryMetaData>,
     functions: HashMap<String, GearsFunctionCtx>,
     remote_functions: HashMap<String, RemoteFunctionCtx>,
     stream_consumers:
@@ -139,19 +185,14 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
             CallResult::Array(res)
         }
         RedisValue::Map(m) => {
-            let mut map = HashMap::new();
-            for (k, v) in m {
-                map.insert(k, redis_value_to_call_reply(v));
-            }
+            let map = m
+                .into_iter()
+                .map(|(k, v)| (k, redis_value_to_call_reply(v)))
+                .collect();
+
             CallResult::Map(map)
         }
-        RedisValue::Set(s) => {
-            let mut set = HashSet::new();
-            for v in s {
-                set.insert(v);
-            }
-            CallResult::Set(set)
-        }
+        RedisValue::Set(s) => CallResult::Set(s),
         RedisValue::Bool(b) => CallResult::Bool(b),
         RedisValue::Double(d) => CallResult::Double(d),
         RedisValue::BigNumber(s) => CallResult::BigNumber(s),
@@ -167,7 +208,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         &mut self,
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
-        flags: u8,
+        flags: FunctionFlags,
     ) -> Result<(), GearsApiError> {
         if self.functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
@@ -185,6 +226,8 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
         name: &str,
         remote_function_callback: RemoteFunctionCtx,
     ) -> Result<(), GearsApiError> {
+        // TODO move to <https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert>
+        // once stabilised.
         if self.remote_functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Remote function {} already exists",
@@ -222,7 +265,11 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                     name, std::str::from_utf8(&o_c.prefix).unwrap_or("[binary data]"), std::str::from_utf8(prefix).unwrap_or("[binary data]"))
                 ));
             }
-            let old_ctx = o_c.set_consumer(GearsStreamConsumer::new(&self.meta_data, 0, ctx));
+            let old_ctx = o_c.set_consumer(GearsStreamConsumer::new(
+                &self.meta_data,
+                FunctionFlags::empty(),
+                ctx,
+            ));
             let old_window = o_c.set_window(window);
             let old_trim = o_c.set_trim(trim);
             self.revert_stream_consumers
@@ -235,7 +282,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             let consumer_name = name.to_string();
             let consumer = stream_ctx.add_consumer(
                 prefix,
-                GearsStreamConsumer::new(&self.meta_data, 0, ctx),
+                GearsStreamConsumer::new(&self.meta_data, FunctionFlags::empty(), ctx),
                 window,
                 trim,
                 Some(Box::new(move |stream_name, ms, seq| {
@@ -299,11 +346,17 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                 let val = keys_notifications_consumer_ctx.on_notification_fired(
                     event,
                     key,
-                    Box::new(KeysNotificationsRunCtx::new(&meta_data, 0)),
+                    Box::new(KeysNotificationsRunCtx::new(
+                        meta_data.clone(),
+                        FunctionFlags::empty(),
+                    )),
                 );
                 keys_notifications_consumer_ctx.post_command_notification(
                     val,
-                    Box::new(KeysNotificationsRunCtx::new(&meta_data, 0)),
+                    Box::new(KeysNotificationsRunCtx::new(
+                        meta_data.clone(),
+                        FunctionFlags::empty(),
+                    )),
                     done_callback,
                 )
             });
@@ -327,13 +380,13 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
             ));
             Arc::clone(old_notification_consumer)
         } else {
-            let globlas = get_globals_mut();
+            let globals = get_globals_mut();
 
             match key {
-                RegisteredKeys::Key(k) => globlas
+                RegisteredKeys::Key(k) => globals
                     .notifications_ctx
                     .add_consumer_on_key(k, fire_event_callback),
-                RegisteredKeys::Prefix(p) => globlas
+                RegisteredKeys::Prefix(p) => globals
                     .notifications_ctx
                     .add_consumer_on_prefix(p, fire_event_callback),
             }
@@ -383,6 +436,8 @@ fn get_globals_mut() -> &'static mut GlobalCtx {
     unsafe { GLOBALS.as_mut().unwrap() }
 }
 
+/// Returns the global redis module context after the module has been
+/// initialized.
 pub fn get_ctx() -> &'static Context {
     &get_globals().redis_ctx
 }
@@ -415,12 +470,15 @@ impl Drop for Sentinel {
     }
 }
 
+/// Executes the passed job object in a dedicated thread allocated
+/// from the global module thread pool.
 pub(crate) fn execute_on_pool<F: FnOnce() + Send + 'static>(job: F) {
     get_thread_pool().lock().unwrap().execute(move || {
         job();
     });
 }
 
+/// Calls a redis command and returns the value.
 pub(crate) fn call_redis_command(
     user: Option<&String>,
     command: &str,
@@ -510,17 +568,9 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
         BUILD_OS_VERSION.unwrap_or_default(),
         BUILD_OS_ARCH.unwrap_or_default()
     ));
-    match ctx.get_redis_version() {
-        Ok(v) => {
-            if v.major < 7 || (v.major == 7 && v.minor == 0 && v.patch < 3) {
-                ctx.log_warning("Redis version must be 7.0.3 or greater");
-                return Status::Err;
-            }
-        }
-        Err(e) => {
-            ctx.log_warning(&format!("Failed getting Redis version, version is probably to old, please use Redis 7.0 or above. {}", e));
-            return Status::Err;
-        }
+    if let Err(e) = check_redis_version_compatible(ctx) {
+        ctx.log_warning(&e);
+        return Status::Err;
     }
     std::panic::set_hook(Box::new(|panic_info| {
         get_ctx().log_warning(&format!("Application paniced, {}", panic_info));
@@ -673,27 +723,24 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
 
 const fn js_info(_ctx: &InfoContext, _for_crash_report: bool) {}
 
-pub(crate) fn verify_oom(flags: u8) -> bool {
-    if (flags & FUNCTION_FLAG_NO_WRITES) == 0 {
-        // function can potentially write data, make sure we are not OOM.
-        if (flags & FUNCTION_FLAG_ALLOW_OOM) == 0 && get_ctx().is_oom() {
-            return false;
-        }
-    }
-    true
+/// Verifies that we haven't reached an Out Of Memory situation.
+/// Returns `true` if the OOM isn't reached.
+///
+/// # Note
+///
+/// We can only reach the error if the function flags don't allow writes
+/// and OOM and when the context returns an OOM error.
+pub(crate) fn verify_oom(flags: FunctionFlags) -> bool {
+    flags.contains(FunctionFlags::NO_WRITES)
+        || flags.contains(FunctionFlags::ALLOW_OOM)
+        || !get_ctx().is_oom()
 }
 
-pub(crate) fn verify_ok_on_replica(flags: u8) -> bool {
-    let ctx = get_ctx();
-    if ctx.is_primary() {
-        // not replica, ok to run.
-        return true;
-    }
-    if (flags & FUNCTION_FLAG_NO_WRITES) != 0 {
-        // we can run functions with no-writes flag on replica
-        return true;
-    }
-    false
+/// Returns true if the function with the specified flags is allowed
+/// to run on replicas in case the current instance is a replica.
+pub(crate) fn verify_ok_on_replica(flags: FunctionFlags) -> bool {
+    // not replica, ok to run || we can run function with no writes on replica.
+    get_ctx().is_primary() || flags.contains(FunctionFlags::NO_WRITES)
 }
 
 fn function_call_command(
@@ -705,24 +752,15 @@ fn function_call_command(
     let num_keys = args.next_arg()?.try_as_str()?.parse::<usize>()?;
     let libraries = get_libraries();
 
-    let lib = libraries.get(library_name);
-    if lib.is_none() {
-        return Err(RedisError::String(format!(
-            "Unknown library {}",
-            library_name
-        )));
-    }
+    let lib = libraries
+        .get(library_name)
+        .ok_or_else(|| RedisError::String(format!("Unknown library {}", library_name)))?;
 
-    let lib = lib.unwrap();
-    let function = lib.gears_lib_ctx.functions.get(function_name);
-    if function.is_none() {
-        return Err(RedisError::String(format!(
-            "Unknown function {}",
-            function_name
-        )));
-    }
-
-    let function = function.unwrap();
+    let function = lib
+        .gears_lib_ctx
+        .functions
+        .get(function_name)
+        .ok_or_else(|| RedisError::String(format!("Unknown function {}", function_name)))?;
 
     if !verify_ok_on_replica(function.flags) {
         return Err(RedisError::Str(
@@ -833,7 +871,7 @@ fn function_debug_command(
     }
 }
 
-pub(crate) fn to_redis_value(val: serde_json::Value) -> RedisValue {
+pub(crate) fn json_to_redis_value(val: serde_json::Value) -> RedisValue {
     match val {
         serde_json::Value::Bool(b) => RedisValue::Integer(if b { 1 } else { 0 }),
         serde_json::Value::Number(n) => {
@@ -848,7 +886,7 @@ pub(crate) fn to_redis_value(val: serde_json::Value) -> RedisValue {
         serde_json::Value::Array(a) => {
             let mut res = Vec::new();
             for v in a {
-                res.push(to_redis_value(v));
+                res.push(json_to_redis_value(v));
             }
             RedisValue::Array(res)
         }
@@ -856,7 +894,7 @@ pub(crate) fn to_redis_value(val: serde_json::Value) -> RedisValue {
             let mut res = Vec::new();
             for (k, v) in o.into_iter() {
                 res.push(RedisValue::BulkString(k));
-                res.push(to_redis_value(v));
+                res.push(json_to_redis_value(v));
             }
             RedisValue::Array(res)
         }
@@ -869,7 +907,7 @@ fn function_search_lib_command(
 ) -> RedisResult {
     let search_token = args.next_arg()?.try_as_str()?;
     let search_result = gears_box_search(search_token)?;
-    Ok(to_redis_value(search_result))
+    Ok(json_to_redis_value(search_result))
 }
 
 fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
@@ -1088,45 +1126,50 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
-redis_module::redis_module! {
-    name: "redisgears_2",
-    version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
-    data_types: [REDIS_GEARS_TYPE],
-    init: js_init,
-    post_init: js_post_init,
-    info: js_info,
-    commands: [
-        ["rg.function", function_command, "may-replicate deny-script", 0,0,0],
-        ["_rg.function", function_command_on_replica, "may-replicate deny-script", 0,0,0],
-        ["rg.fcall", function_call, "may-replicate deny-script", 4,4,1],
-        ["rg.fcall_no_keys", function_call, "may-replicate deny-script", 0,0,0],
-        ["rg.box", gears_box_command, "may-replicate deny-script", 0,0,0],
-        ["rg.config", config_command, "readonly deny-script", 0,0,0],
-        ["_rg_internals.update_stream_last_read_id", update_stream_last_read_id, "readonly", 0,0,0],
-    ],
-    event_handlers: [
-        [@STREAM: on_stream_touched],
-        [@GENERIC: generic_notification],
-        [@ALL @MISSED: key_space_notification],
-    ],
-    server_events: [
-        [@RuleChanged: on_role_changed],
-        [@Loading: on_loading_event],
-        [@Flush: on_flush_event],
-        [@ModuleChange: on_module_change],
-    ],
-    string_configurations: [
-        &get_globals().config.gears_box_address,
-    ],
-    numeric_configurations: [
-        &get_globals().config.execution_threads,
-        &get_globals().config.library_maxmemory,
-        &get_globals().config.lock_regis_timeout,
-        &get_globals().config.remote_task_default_timeout,
-        &get_globals().config.error_verbosity,
-    ],
-    enum_configurations: [
-        &get_globals().config.libraray_fatal_failure_policy,
-        &get_globals().config.enable_debug_command,
-    ]
+#[allow(missing_docs)]
+mod gears_module {
+    use super::*;
+
+    redis_module::redis_module! {
+        name: "redisgears_2",
+        version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
+        data_types: [REDIS_GEARS_TYPE],
+        init: js_init,
+        post_init: js_post_init,
+        info: js_info,
+        commands: [
+            ["rg.function", function_command, "may-replicate deny-script", 0,0,0],
+            ["_rg.function", function_command_on_replica, "may-replicate deny-script", 0,0,0],
+            ["rg.fcall", function_call, "may-replicate deny-script", 4,4,1],
+            ["rg.fcall_no_keys", function_call, "may-replicate deny-script", 0,0,0],
+            ["rg.box", gears_box_command, "may-replicate deny-script", 0,0,0],
+            ["rg.config", config_command, "readonly deny-script", 0,0,0],
+            ["_rg_internals.update_stream_last_read_id", update_stream_last_read_id, "readonly", 0,0,0],
+        ],
+        event_handlers: [
+            [@STREAM: on_stream_touched],
+            [@GENERIC: generic_notification],
+            [@ALL @MISSED: key_space_notification],
+        ],
+        server_events: [
+            [@RuleChanged: on_role_changed],
+            [@Loading: on_loading_event],
+            [@Flush: on_flush_event],
+            [@ModuleChange: on_module_change],
+        ],
+        string_configurations: [
+            &get_globals().config.gears_box_address,
+        ],
+        numeric_configurations: [
+            &get_globals().config.execution_threads,
+            &get_globals().config.library_maxmemory,
+            &get_globals().config.lock_regis_timeout,
+            &get_globals().config.remote_task_default_timeout,
+            &get_globals().config.error_verbosity,
+        ],
+        enum_configurations: [
+            &get_globals().config.libraray_fatal_failure_policy,
+            &get_globals().config.enable_debug_command,
+        ]
+    }
 }

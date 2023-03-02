@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::NotificationRunCtxInterface,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
@@ -11,19 +12,22 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use crate::background_run_ctx::BackgroundRunCtx;
 use crate::run_ctx::{RedisClient, RedisClientCallOptions};
-use crate::GearsLibraryMataData;
+use crate::GearsLibraryMetaData;
 
 use std::sync::Arc;
 
 pub(crate) struct KeysNotificationsRunCtx {
-    lib_meta_data: Arc<GearsLibraryMataData>,
-    flags: u8,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
+    flags: FunctionFlags,
 }
 
 impl KeysNotificationsRunCtx {
-    pub(crate) fn new(meta_data: &Arc<GearsLibraryMataData>, flags: u8) -> KeysNotificationsRunCtx {
+    pub(crate) fn new(
+        lib_meta_data: Arc<GearsLibraryMetaData>,
+        flags: FunctionFlags,
+    ) -> KeysNotificationsRunCtx {
         KeysNotificationsRunCtx {
-            lib_meta_data: Arc::clone(meta_data),
+            lib_meta_data,
             flags,
         }
     }
@@ -31,7 +35,11 @@ impl KeysNotificationsRunCtx {
 
 impl NotificationRunCtxInterface for KeysNotificationsRunCtx {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
-        Box::new(RedisClient::new(&self.lib_meta_data, None, self.flags))
+        Box::new(RedisClient::new(
+            self.lib_meta_data.clone(),
+            None,
+            self.flags,
+        ))
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {

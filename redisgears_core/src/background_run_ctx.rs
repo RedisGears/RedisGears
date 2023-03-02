@@ -4,16 +4,17 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
-    load_library_ctx::FUNCTION_FLAG_NO_WRITES, run_function_ctx::BackgroundRunFunctionCtxInterface,
-    run_function_ctx::RedisClientCtxInterface, run_function_ctx::RemoteFunctionData, GearsApiError,
+    run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
+    run_function_ctx::RemoteFunctionData, GearsApiError,
 };
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;
 use crate::{
     get_globals, get_libraries, verify_ok_on_replica, verify_oom, Deserialize,
-    GearsLibraryMataData, Serialize,
+    GearsLibraryMetaData, Serialize,
 };
 
 use redis_module::{RedisValue, ThreadSafeContext};
@@ -26,7 +27,7 @@ use mr_derive::BaseObject;
 
 pub(crate) struct BackgroundRunCtx {
     call_options: RedisClientCallOptions,
-    lib_meta_data: Arc<GearsLibraryMataData>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
     user: Option<String>,
 }
 
@@ -36,7 +37,7 @@ unsafe impl Send for BackgroundRunCtx {}
 impl BackgroundRunCtx {
     pub(crate) fn new(
         user: Option<String>,
-        lib_meta_data: &Arc<GearsLibraryMataData>,
+        lib_meta_data: &Arc<GearsLibraryMetaData>,
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunCtx {
         BackgroundRunCtx {
@@ -138,7 +139,7 @@ impl RemoteTask for GearsRemoteTask {
             Box::new(BackgroundRunCtx::new(
                 self.user,
                 &library.gears_lib_ctx.meta_data,
-                RedisClientCallOptions::new(FUNCTION_FLAG_NO_WRITES),
+                RedisClientCallOptions::new(FunctionFlags::NO_WRITES),
             )),
             Box::new(move |result| {
                 let res = match result {

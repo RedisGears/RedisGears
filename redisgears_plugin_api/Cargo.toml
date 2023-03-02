@@ -9,5 +9,6 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
+bitflags = "1"
 
 [build-dependencies]

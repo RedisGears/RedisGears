@@ -5,9 +5,10 @@
  */
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    stream_ctx::StreamCtxInterface, stream_ctx::StreamProcessCtxInterface,
-    stream_ctx::StreamRecordAck, stream_ctx::StreamRecordInterface,
+    load_library_ctx::FunctionFlags, run_function_ctx::BackgroundRunFunctionCtxInterface,
+    run_function_ctx::RedisClientCtxInterface, stream_ctx::StreamCtxInterface,
+    stream_ctx::StreamProcessCtxInterface, stream_ctx::StreamRecordAck,
+    stream_ctx::StreamRecordInterface,
 };
 
 use redis_module::{
@@ -19,7 +20,7 @@ use crate::{
     background_run_ctx::BackgroundRunCtx,
     get_ctx,
     run_ctx::{RedisClient, RedisClientCallOptions},
-    GearsLibraryMataData,
+    GearsLibraryMetaData,
 };
 
 use crate::stream_reader::{StreamConsumer, StreamReaderAck};
@@ -31,12 +32,12 @@ use std::sync::Arc;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 pub(crate) struct StreamRunCtx {
-    lib_meta_data: Arc<GearsLibraryMataData>,
-    flags: u8,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
+    flags: FunctionFlags,
 }
 
 impl StreamRunCtx {
-    fn new(lib_meta_data: &Arc<GearsLibraryMataData>, flags: u8) -> StreamRunCtx {
+    fn new(lib_meta_data: &Arc<GearsLibraryMetaData>, flags: FunctionFlags) -> StreamRunCtx {
         StreamRunCtx {
             lib_meta_data: Arc::clone(lib_meta_data),
             flags,
@@ -46,7 +47,11 @@ impl StreamRunCtx {
 
 impl StreamProcessCtxInterface for StreamRunCtx {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
-        Box::new(RedisClient::new(&self.lib_meta_data, None, self.flags))
+        Box::new(RedisClient::new(
+            self.lib_meta_data.clone(),
+            None,
+            self.flags,
+        ))
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
@@ -89,15 +94,15 @@ impl StreamRecordInterface for GearsStreamRecord {
 
 pub(crate) struct GearsStreamConsumer {
     pub(crate) ctx: Box<dyn StreamCtxInterface>,
-    lib_meta_data: Arc<GearsLibraryMataData>,
-    flags: u8,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
+    flags: FunctionFlags,
     permissions: AclPermissions,
 }
 
 impl GearsStreamConsumer {
     pub(crate) fn new(
-        user: &Arc<GearsLibraryMataData>,
-        flags: u8,
+        user: &Arc<GearsLibraryMetaData>,
+        flags: FunctionFlags,
         ctx: Box<dyn StreamCtxInterface>,
     ) -> GearsStreamConsumer {
         let mut permissions = AclPermissions::new();
