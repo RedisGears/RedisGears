@@ -81,7 +81,7 @@ class RedisGearsSetup(paella.Setup):
         self.pip_install("gevent")
 
     def common_last(self):
-        self.run("{PYTHON} {READIES}/bin/getrmpytools --reinstall --modern --ramp-version pypi:2.4.0".format(PYTHON=self.python, READIES=READIES))
+        self.run("{PYTHON} {READIES}/bin/getrmpytools --reinstall --modern".format(PYTHON=self.python, READIES=READIES))
         if self.with_python:
             self.run("{PYTHON} {ROOT}/build/cpython/system-setup.py {NOP}".
                      format(PYTHON=self.python, ROOT=ROOT, NOP="--nop" if self.runner.nop else ""),
