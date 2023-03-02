@@ -73,13 +73,13 @@ unsafe impl Send for RedisClient {}
 
 impl RedisClient {
     pub(crate) fn new(
-        lib_meta_data: &Arc<GearsLibraryMetaData>,
+        lib_meta_data: Arc<GearsLibraryMetaData>,
         user: Option<String>,
         flags: FunctionFlags,
     ) -> RedisClient {
         RedisClient {
             call_options: RedisClientCallOptions::new(flags),
-            lib_meta_data: Arc::clone(lib_meta_data),
+            lib_meta_data,
             user,
         }
     }
@@ -221,7 +221,11 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
 
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
         let user = self.ctx.get_current_user().ok();
-        Box::new(RedisClient::new(&self.lib_meta_data, user, self.flags))
+        Box::new(RedisClient::new(
+            self.lib_meta_data.clone(),
+            user,
+            self.flags,
+        ))
     }
 
     fn allow_block(&self) -> bool {

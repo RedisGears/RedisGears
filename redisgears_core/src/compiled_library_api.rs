@@ -102,20 +102,9 @@ impl CompiledLibraryInterface for CompiledLibraryAPI {
         data: &[u8],
     ) -> Result<Box<dyn AITensorInterface>, GearsApiError> {
         let mut tensor = RedisAITensor::create(data_type, dims).map_err(GearsApiError::new)?;
-        // 1. Rust-idiomatic
-        // tensor.set_data(data).map_err(GearsApiError::new)?;
-        // Ok(Box::new(tensor))
-
-        // 2. Rust-idiomatic
         Ok(tensor
             .set_data(data)
             .map(|_| Box::new(tensor))
             .map_err(GearsApiError::new)?)
-
-        // 3. C-switch
-        // match tensor.set_data(data) {
-        //     Ok(_) => Ok(Box::new(tensor)),
-        //     Err(e) => Err(GearsApiError::new(e)),
-        // }
     }
 }

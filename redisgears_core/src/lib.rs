@@ -185,33 +185,14 @@ fn redis_value_to_call_reply(r: RedisValue) -> CallResult {
             CallResult::Array(res)
         }
         RedisValue::Map(m) => {
-            // 1. Rust-idiomatic.
             let map = m
                 .into_iter()
                 .map(|(k, v)| (k, redis_value_to_call_reply(v)))
                 .collect();
 
-            // 2. C++ recreation.
-            // let mut map = HashMap::new();
-            // for (k, v) in m {
-            //     map.insert(k, redis_value_to_call_reply(v));
-            // }
-
             CallResult::Map(map)
         }
-        RedisValue::Set(s) => {
-            // 1. Rust-idiomatic - direct move.
-            CallResult::Set(s)
-
-            // 2. Creating a clone, populating it and returning, using
-            // twice as more memory and spending extra cpu time.
-            //
-            // let mut set = HashSet::new();
-            // for v in s {
-            //     set.insert(v);
-            // }
-            // CallResult::Set(set)
-        }
+        RedisValue::Set(s) => CallResult::Set(s),
         RedisValue::Bool(b) => CallResult::Bool(b),
         RedisValue::Double(d) => CallResult::Double(d),
         RedisValue::BigNumber(s) => CallResult::BigNumber(s),
@@ -366,14 +347,14 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
                     event,
                     key,
                     Box::new(KeysNotificationsRunCtx::new(
-                        &meta_data,
+                        meta_data.clone(),
                         FunctionFlags::empty(),
                     )),
                 );
                 keys_notifications_consumer_ctx.post_command_notification(
                     val,
                     Box::new(KeysNotificationsRunCtx::new(
-                        &meta_data,
+                        meta_data.clone(),
                         FunctionFlags::empty(),
                     )),
                     done_callback,
@@ -742,14 +723,17 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
 
 const fn js_info(_ctx: &InfoContext, _for_crash_report: bool) {}
 
+/// Verifies that we haven't reached an Out Of Memory situation.
+/// Returns `true` if the OOM isn't reached.
+///
+/// # Note
+///
+/// We can only reach the error if the function flags don't allow writes
+/// and OOM and when the context returns an OOM error.
 pub(crate) fn verify_oom(flags: FunctionFlags) -> bool {
-    if !flags.contains(FunctionFlags::NO_WRITES) {
-        // function can potentially write data, make sure we are not OOM.
-        if !flags.contains(FunctionFlags::ALLOW_OOM) && get_ctx().is_oom() {
-            return false;
-        }
-    }
-    true
+    flags.contains(FunctionFlags::NO_WRITES)
+        || flags.contains(FunctionFlags::ALLOW_OOM)
+        || !get_ctx().is_oom()
 }
 
 /// Returns true if the function with the specified flags is allowed

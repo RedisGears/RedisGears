@@ -47,7 +47,11 @@ impl StreamRunCtx {
 
 impl StreamProcessCtxInterface for StreamRunCtx {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
-        Box::new(RedisClient::new(&self.lib_meta_data, None, self.flags))
+        Box::new(RedisClient::new(
+            self.lib_meta_data.clone(),
+            None,
+            self.flags,
+        ))
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {

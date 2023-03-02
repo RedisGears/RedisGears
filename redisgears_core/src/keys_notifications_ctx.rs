@@ -23,11 +23,11 @@ pub(crate) struct KeysNotificationsRunCtx {
 
 impl KeysNotificationsRunCtx {
     pub(crate) fn new(
-        meta_data: &Arc<GearsLibraryMetaData>,
+        lib_meta_data: Arc<GearsLibraryMetaData>,
         flags: FunctionFlags,
     ) -> KeysNotificationsRunCtx {
         KeysNotificationsRunCtx {
-            lib_meta_data: Arc::clone(meta_data),
+            lib_meta_data,
             flags,
         }
     }
@@ -35,7 +35,11 @@ impl KeysNotificationsRunCtx {
 
 impl NotificationRunCtxInterface for KeysNotificationsRunCtx {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
-        Box::new(RedisClient::new(&self.lib_meta_data, None, self.flags))
+        Box::new(RedisClient::new(
+            self.lib_meta_data.clone(),
+            None,
+            self.flags,
+        ))
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
