@@ -90,7 +90,7 @@ commands:
           name: System setup
           shell: /bin/bash -l -eo pipefail
           command: |
-            ./system-setup.py
+            ./sbin/system-setup.py
             ./plugins/jvmplugin/system-setup.py
           no_output_timeout: 30m
       - run:
@@ -443,7 +443,8 @@ workflows:
             parameters:
               redis_version: ["6.0.9", "6.2.7", "7.0.4"]
       - build-platforms:
-          <<: *on-integ-and-version-tags
+          #@@<<: *on-integ-and-version-tags
+          <<: *always
           context: common
           matrix:
             parameters:
@@ -453,7 +454,8 @@ workflows:
       - tls-tests:
           <<: *on-integ-and-version-tags
       - build-macos:
-          <<: *on-integ-and-version-tags
+          #@@<<: *on-integ-and-version-tags
+          <<: *always
       - jvmpublish:
           context: common
           <<: *on-integ-and-version-tags
