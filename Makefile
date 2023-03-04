@@ -1,15 +1,9 @@
 
+.NOTPARALLEL:
+
 GCC=1
 
 WITH_PYTHON ?= 1
-
-ifeq ($(VG),1)
-override VALGRIND:=1
-endif
-
-ifeq ($(VALGRIND),1)
-override DEBUG:=1
-endif
 
 ROOT=.
 include deps/readies/mk/main
@@ -19,7 +13,6 @@ BINDIR=$(BINROOT)/$(SRCDIR)
 #----------------------------------------------------------------------------------------------
 
 define HELPTEXT
-
 make build
   DEBUG=1         # build debug variant
   VG|VALGRIND=1   # build with VALGRIND (implies DEBUG=1)
@@ -58,8 +51,8 @@ MK_ALL_TARGETS=bindirs deps build ramp-pack verify-packs
 
 include $(MK)/defs
 
-GEARS_VERSION:=$(shell $(ROOT)/getver)
-OS_VERSION_DESC:=$(shell python3 $(ROOT)/getos.py)
+GEARS_VERSION:=$(shell $(ROOT)/sbin/getver)
+OS_VERSION_DESC:=$(shell python3 $(ROOT)/sbin/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -78,12 +71,8 @@ ifeq ($(WITH_PYTHON),1)
 include plugins/python/Makefile.defs
 endif
 
-#----------------------------------------------------------------------------------------------
-
 LIBEVENT_BINDIR=bin/$(FULL_VARIANT.release)/libevent
 include build/libevent/Makefile.defs
-
-#----------------------------------------------------------------------------------------------
 
 HIREDIS_BINDIR=bin/$(FULL_VARIANT.release)/hiredis
 include build/hiredis/Makefile.defs
@@ -127,23 +116,28 @@ OBJECTS=$(patsubst $(SRCDIR)/%.c,$(BINDIR)/%.o,$(SOURCES))
 
 CC_DEPS = $(patsubst $(SRCDIR)/%.c, $(BINDIR)/%.d, $(SOURCES))
 
+define CC_INCLUDES +=
+	$(SRCDIR)
+	$(BINDIR)
+	deps
+	.
+	deps/libevent/include
+	bin/$(FULL_VARIANT.release)/libevent/include
+	deps/hiredis
+	deps/hiredis/adapters
+endef
+
+define CC_DEFS +=
+	REDISGEARS_GIT_SHA=\"$(GIT_SHA)\"
+	REDISGEARS_OS_VERSION=\"$(OS_VERSION_DESC)\"
+	REDISMODULE_EXPERIMENTAL_API
+endef
+
 define _CC_FLAGS
 	-fPIC
 	-std=gnu99
 	-MMD
 	-MF $(@:.o=.d)
-	-I$(SRCDIR)
-	-I$(BINDIR)
-	-Ideps
-	-I.
-	-Ideps/libevent/include
-	-Ibin/$(FULL_VARIANT.release)/libevent/include
-	-Ideps/hiredis
-	-Ideps/hiredis/adapters
-
-	-DREDISGEARS_GIT_SHA=\"$(GIT_SHA)\"
-	-DREDISGEARS_OS_VERSION=\"$(OS_VERSION_DESC)\"
-	-DREDISMODULE_EXPERIMENTAL_API
 endef
 CC_FLAGS += $(filter %,$(subst $(__NL), ,$(_CC_FLAGS)))
 
@@ -151,27 +145,27 @@ TARGET=$(BINROOT)/redisgears.so
 TARGET.snapshot=$(BINROOT)/snapshot/redisgears.so
 
 ifeq ($(VALGRIND),1)
-CC_FLAGS += -DVALGRIND
+CC_DEFS += VALGRIND
 endif
 
-ifeq ($(DEBUG),1)
-CC_FLAGS += -g -O0
-LD_FLAGS += -g
-else
-CC_FLAGS += -O3 -Wno-unused-result
-endif
+#ifeq ($(DEBUG),1)
+#CC_FLAGS += -g -O0
+#LD_FLAGS += -g
+#else
+#CC_FLAGS += -O3 -Wno-unused-result
+#endif
+#
+#ifeq ($(GCOV),1)
+#CC_FLAGS += -fprofile-arcs -ftest-coverage
+#LD_FLAGS += -fprofile-arcs -ftest-coverage
+#endif
 
-ifeq ($(GCOV),1)
-CC_FLAGS += -fprofile-arcs -ftest-coverage
-LD_FLAGS += -fprofile-arcs -ftest-coverage
-endif
-
-ifeq ($(OS),macos)
-CC_FLAGS += -I/usr/local/opt/openssl/include/
-LD_FLAGS += \
-	-framework CoreFoundation \
-	-undefined dynamic_lookup
-endif
+#ifeq ($(OS),macos)
+#CC_FLAGS += -I/usr/local/opt/openssl/include/
+#LD_FLAGS += \
+#	-framework CoreFoundation \
+#	-undefined dynamic_lookup
+#endif
 
 #----------------------------------------------------------------------------------------------
 
@@ -204,8 +198,6 @@ endif
 
 #----------------------------------------------------------------------------------------------
 
-.NOTPARALLEL:
-
 MK_CUSTOM_CLEAN=1
 
 .PHONY: deps $(DEPENDENCIES) static pack ramp ramp-pack test setup verify-packs platform jvmplugin
@@ -218,20 +210,20 @@ include $(MK)/rules
 
 $(BINDIR)/global.o: $(SRCDIR)/global.c
 	@echo Compiling $<...
-	$(SHOW)$(CC) $(CC_FLAGS) -c $< -o $@
+	$(SHOW)$(CC) $(CC_FLAGS) $(CC_C_FLAGS) -c $< -o $@
 
 $(BINDIR)/%.o: $(SRCDIR)/%.c
 	@echo Compiling $<...
-	$(SHOW)$(CC) $(CC_FLAGS) -c -include $(SRCDIR)/common.h $< -o $@
+	$(SHOW)$(CC) $(CC_FLAGS)  $(CC_C_FLAGS) -c -include $(SRCDIR)/common.h $< -o $@
 
 #----------------------------------------------------------------------------------------------
 
 RAMP_VARIANT=$(subst release,,$(FLAVOR))$(_VARIANT.string)
 
-RAMP.release:=$(shell JUST_PRINT=1 RAMP=1 RELEASE=1 SNAPSHOT=0 VARIANT=$(RAMP_VARIANT) ./pack.sh)
-RAMP.snapshot:=$(shell JUST_PRINT=1 RAMP=1 RELEASE=0 SNAPSHOT=1 VARIANT=$(RAMP_VARIANT) ./pack.sh)
-GEARS_PYTHON_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 GEARSPY=1 RELEASE=1 SNAPSHOT=0 ./pack.sh)
-GEARS_PYTHON_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 GEARSPY=1 RELEASE=0 SNAPSHOT=1 ./pack.sh)
+RAMP.release:=$(shell JUST_PRINT=1 RAMP=1 RELEASE=1 SNAPSHOT=0 VARIANT=$(RAMP_VARIANT) ./sbin/pack.sh)
+RAMP.snapshot:=$(shell JUST_PRINT=1 RAMP=1 RELEASE=0 SNAPSHOT=1 VARIANT=$(RAMP_VARIANT) ./sbin/pack.sh)
+GEARS_PYTHON_TAR.release:=$(shell JUST_PRINT=1 RAMP=0 GEARSPY=1 RELEASE=1 SNAPSHOT=0 ./sbin/pack.sh)
+GEARS_PYTHON_TAR.snapshot:=$(shell JUST_PRINT=1 RAMP=0 GEARSPY=1 RELEASE=0 SNAPSHOT=1 ./sbin/pack.sh)
 
 #----------------------------------------------------------------------------------------------
 
@@ -240,10 +232,10 @@ DEPS_URL_BASE.release=$(DEPS_URL_BASE)
 DEPS_URL_BASE.snapshot=$(DEPS_URL_BASE)/snapshots
 
 define build_deps_args # type (release|snapshot)
-$$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c artifacts/$(1)/$(GEARS_PYTHON_TAR.$(1))
+$$(BINDIR)/$(1)-deps.o : $$(SRCDIR)/deps-args.c bin/artifacts/$(1)/$(GEARS_PYTHON_TAR.$(1))
 	$$(SHOW)$$(CC) $$(CC_FLAGS) -c $$< -o $$@ \
 		-DGEARS_PYTHON_URL=\"$$(DEPS_URL_BASE.$(1))/$$(GEARS_PYTHON_TAR.$(1))\" \
-		-DGEARS_PYTHON_SHA256=\"$$(shell cat artifacts/$(1)/$$(GEARS_PYTHON_TAR.$(1)).sha256)\"
+		-DGEARS_PYTHON_SHA256=\"$$(shell cat bin/artifacts/$(1)/$$(GEARS_PYTHON_TAR.$(1)).sha256)\"
 endef
 
 $(eval $(call build_deps_args,release))
@@ -260,11 +252,11 @@ EMBEDDED_LIBS_FLAGS=\
 	-lssl -lcrypt
 endif
 
-define extract_symbols
-$(SHOW)objcopy --only-keep-debug $1 $1.debug
-$(SHOW)objcopy --strip-debug $1
-$(SHOW)objcopy --add-gnu-debuglink $1.debug $1
-endef
+# define extract_symbols
+# $(SHOW)objcopy --only-keep-debug $1 $1.debug
+# $(SHOW)objcopy --strip-debug $1
+# $(SHOW)objcopy --add-gnu-debuglink $1.debug $1
+# endef
 
 $(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o $(BINDIR)/snapshot-deps.o
 	@echo Linking $@...
@@ -275,7 +267,7 @@ $(TARGET): $(MISSING_DEPS) $(OBJECTS) $(BINDIR)/release-deps.o $(BINDIR)/snapsho
 #	$(call extract_symbols,$@)
 #	$(call extract_symbols,$(dir $@)/snapshot/$(notdir $@))
 #endif
-	$(SHOW)$(READIES)/bin/symlink -f -d $(ROOT) -t $(TARGET)
+#	$(SHOW)$(READIES)/bin/symlink -f -d $(ROOT) -t $(TARGET)
 
 static: $(TARGET:.so=.a)
 
@@ -285,12 +277,9 @@ $(TARGET:.so=.a): $(OBJECTS) $(LIBEVENT) $(LIBPYTHON) $(HIREDIS)
 
 #----------------------------------------------------------------------------------------------
 
-# we avoid $(SUDO) here since we expect 'sudo make setup'
-
 setup:
 	@echo Setting up system...
-	$(SHOW)./deps/readies/bin/getpy3
-	$(SHOW)python3 ./system-setup.py
+	$(SHOW)./sbin/setup
 
 #----------------------------------------------------------------------------------------------
 
@@ -351,7 +340,7 @@ clean: clean-gears-python
 	$(SHOW)rm -rf $(BINDIR) $(TARGET) $(TARGET.snapshot) $(notdir $(TARGET)) $(BINROOT)/redislabs
 	-$(SHOW)find $(BINDIR) -name '*.[oadh]' -type f -delete
 	$(SHOW)rm -f $(TARGET) $(TARGET.snapshot) $(TARGET:.so=.a) $(notdir $(TARGET)) \
-		artifacts/release/$(GEARS_PYTHON_TAR.release)* artifacts/snapshot/$(DGEARS_PYTHON_TAR.snapshot)*
+		bin/artifacts/release/$(GEARS_PYTHON_TAR.release)* bin/artifacts/snapshot/$(DGEARS_PYTHON_TAR.snapshot)*
 ifeq ($(DEPS),1)
 	${MAKE} -C build/hiredis clean
 	${MAKE} -C build/libevent clean
@@ -372,20 +361,20 @@ ifeq ($(WITH_PYTHON),1)
 RAMP_OPT += GEARSPY_PATH=$(abspath $(GEARS_PYTHON))
 endif
 
-artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml jvmplugin
+bin/artifacts/release/$(RAMP.release) bin/artifacts/snapshot/$(RAMP.snapshot) : $(TARGET) ramp.yml jvmplugin
 	@echo Packing module...
-	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) $(RAMP_OPT) ./pack.sh $(TARGET)
-	python3 append_deps.py
+	$(SHOW)RAMP=1 SYM=0 VARIANT=$(RAMP_VARIANT) $(RAMP_OPT) ./sbin/pack.sh $(TARGET)
+	./sbin/append_deps.py
 
-artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot): $(CPYTHON_PREFIX) $(GEARS_PYTHON)
+bin/artifacts/release/$(GEARS_PYTHON_TAR.release) bin/artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot): $(CPYTHON_PREFIX) $(GEARS_PYTHON)
 	@echo Packing Python plugin...
-	$(SHOW)RAMP=0 GEARSPY=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./pack.sh $(TARGET)
+	$(SHOW)RAMP=0 GEARSPY=1 CPYTHON_PREFIX=$(CPYTHON_PREFIX) GEARSPY_PATH=$(abspath $(GEARS_PYTHON)) ./sbin/pack.sh $(TARGET)
 
-ramp ramp-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot)
+ramp ramp-pack: bin/artifacts/release/$(RAMP.release) bin/artifacts/snapshot/$(RAMP.snapshot)
 
 # keeping jvmplugin in case it's called explicitly. worst case it regenerates
-pack: artifacts/release/$(RAMP.release) artifacts/snapshot/$(RAMP.snapshot) \
-		artifacts/release/$(GEARS_PYTHON_TAR.release) artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot) \
+pack: bin/artifacts/release/$(RAMP.release) bin/artifacts/snapshot/$(RAMP.snapshot) \
+		bin/artifacts/release/$(GEARS_PYTHON_TAR.release) bin/artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot) \
 		jvmplugin
 
 verify-packs:
@@ -395,8 +384,8 @@ verify-packs:
 		>&2 cat /tmp/redisgears-sha.err ;\
 		exit 1 ;\
 	fi ;\
-	REL=`cat artifacts/release/$(GEARS_PYTHON_TAR.release).sha256` ;\
-	SNAP=`cat artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot).sha256` ;\
+	REL=`cat bin/artifacts/release/$(GEARS_PYTHON_TAR.release).sha256` ;\
+	SNAP=`cat bin/artifacts/snapshot/$(GEARS_PYTHON_TAR.snapshot).sha256` ;\
 	if [[ $$MOD != $$REL || $$REL != $$SNAP ]]; then \
 		>&2 echo "Module and package SHA256 don't match." ;\
 		>&2 echo "\"$$MOD\"" ;\
@@ -423,9 +412,9 @@ TEST_FLAGS += VALGRIND=1
 endif
 
 ifeq ($(OS),macos)
-PARALLELISM?=1
+PARALLELISM ?= 1
 else
-PARALLELISM?=4
+PARALLELISM ?= 4
 endif
 
 test: __sep

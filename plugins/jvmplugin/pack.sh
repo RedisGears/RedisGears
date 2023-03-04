@@ -2,6 +2,12 @@
 
 set -e
 
+PROGNAME="${BASH_SOURCE[0]}"
+HERE="$(cd "$(dirname "$PROGNAME")" &>/dev/null && pwd)"
+ROOT=$(cd $HERE/../.. && pwd)
+export READIES=$ROOT/deps/readies
+. $READIES/shibumi/defs
+
 # consistency - lifted from pack.sh, until we rewrite
 [[ $OSNICK == trusty ]]  && OSNICK=ubuntu14.04
 [[ $OSNICK == xenial ]]  && OSNICK=ubuntu16.04
@@ -18,16 +24,18 @@ else
     JVM_PATH=./bin/OpenJDK/jdk-11.0.9.1+1/
 fi
 
-tar -czf ../../artifacts/snapshot/redisgears-jvm.Linux-$OSNICK-x86_64.$GIT_BRANCH.tgz \
---transform "s,^./src/,./plugin/," \
-$JVM_PATH/* \
-./src/gears_jvm.so \
-./gears_runtime/target/gear_runtime-jar-with-dependencies.jar
-sha256sum ../../artifacts/snapshot/redisgears-jvm.Linux-$OSNICK-x86_64.$GIT_BRANCH.tgz |cut -d ' ' -f 1-1 > ../../artifacts/snapshot/redisgears-jvm.Linux-$OSNICK-x86_64.$GIT_BRANCH.tgz.sha256
+ARTDIR=$ROOT/bin/artifacts
 
-tar -czf ../../artifacts/release/redisgears-jvm.Linux-$OSNICK-x86_64.$VERSION.tgz \
+tar -czf $ARTDIR/snapshot/redisgears-jvm.Linux-$OSNICK-x86_64.$GIT_BRANCH.tgz \
 --transform "s,^./src/,./plugin/," \
 $JVM_PATH/* \
 ./src/gears_jvm.so \
 ./gears_runtime/target/gear_runtime-jar-with-dependencies.jar
-sha256sum ../../artifacts/release/redisgears-jvm.Linux-$OSNICK-x86_64.$VERSION.tgz | cut -d ' ' -f 1-1 > ../../artifacts/release/redisgears-jvm.Linux-$OSNICK-x86_64.$VERSION.tgz.sha256
+sha256sum $ARTDIR/snapshot/redisgears-jvm.Linux-$OSNICK-x86_64.$GIT_BRANCH.tgz |cut -d ' ' -f 1-1 > $ARTDIR/snapshot/redisgears-jvm.Linux-$OSNICK-x86_64.$GIT_BRANCH.tgz.sha256
+
+tar -czf $ARTDIR/release/redisgears-jvm.Linux-$OSNICK-x86_64.$VERSION.tgz \
+--transform "s,^./src/,./plugin/," \
+$JVM_PATH/* \
+./src/gears_jvm.so \
+./gears_runtime/target/gear_runtime-jar-with-dependencies.jar
+sha256sum $ARTDIR/release/redisgears-jvm.Linux-$OSNICK-x86_64.$VERSION.tgz | cut -d ' ' -f 1-1 > $ARTDIR/release/redisgears-jvm.Linux-$OSNICK-x86_64.$VERSION.tgz.sha256

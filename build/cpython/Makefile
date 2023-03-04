@@ -1,21 +1,23 @@
 
+.NOTPARALLEL:
+
 GCC=1
 
 # built-in rules are needed here
 # MAKEFLAGS syntax differs in gnu make v3 and v4
-override MAKEFLAGS:=$(filter-out r -r no-builtin-rules --no-builtin-rules,$(MAKEFLAGS))
+# override MAKEFLAGS:=$(filter-out r -r no-builtin-rules --no-builtin-rules,$(MAKEFLAGS))
 
 ROOT=../..
 include $(ROOT)/deps/readies/mk/main
 
 MK.configure=1
-GEARS_VERSION:=$(shell $(ROOT)/getver)
+GEARS_VERSION:=$(shell $(ROOT)/sbin/getver)
 
 #----------------------------------------------------------------------------------------------
 
 BINDIR=$(BINROOT)/cpython
 
-CONFIGURE_BUILD_DIR=$(BINDIR)
+# CONFIGURE_BUILD_DIR=$(BINDIR)
 
 SRCDIR=$(ROOT)/deps/cpython
 

@@ -13,8 +13,8 @@ import paella
 #----------------------------------------------------------------------------------------------
 
 class Python3Setup(paella.Setup):
-    def __init__(self, nop=False):
-        paella.Setup.__init__(self, nop)
+    def __init__(self, args):
+        paella.Setup.__init__(self, args.nop)
 
     def common_first(self):
         self.install_downloaders()
@@ -89,4 +89,4 @@ parser = argparse.ArgumentParser(description='Set up system for RedisGears build
 parser.add_argument('-n', '--nop', action="store_true", help='no operation')
 args = parser.parse_args()
 
-Python3Setup(nop = args.nop).setup()
+Python3Setup(args).setup()

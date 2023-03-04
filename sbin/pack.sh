@@ -1,23 +1,20 @@
 #!/bin/bash
 
-[[ $V == 1 || $VERBOSE == 1 ]] && set -x
-[[ $IGNERR == 1 ]] || set -e
-
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-ROOT=$HERE
+PROGNAME="${BASH_SOURCE[0]}"
+HERE="$(cd "$(dirname "$PROGNAME")" &>/dev/null && pwd)"
+ROOT=$(cd $HERE/.. && pwd)
 export READIES=$ROOT/deps/readies
 . $READIES/shibumi/defs
-
-cd $ROOT
 
 export PYTHONWARNINGS=ignore
 export LC_CTYPE=en_US.utf-8
 
+cd $ROOT
 
 #----------------------------------------------------------------------------------------------
 
-if [[ $1 == --help || $1 == help ]]; then
-	cat <<-END
+if [[ $1 == --help || $1 == help || $HELP == 1 ]]; then
+	cat <<-'END'
 		Generate RedisGears distribution packages.
 
 		[ARGVARS...] pack.sh [--help|help] [<module-so-path>]
@@ -29,8 +26,8 @@ if [[ $1 == --help || $1 == help ]]; then
 		RAMP=1        Generate RAMP package
 		GEARSPY=1     Generate Gears Python plugin package
 		SYM=1         Generate packages of debug symbols
-		RELEASE=1     Generate "release" packages (artifacts/release/)
-		SNAPSHOT=1    Generate "shapshot" packages (artifacts/snapshot/)
+		RELEASE=1     Generate "release" packages (bin/artifacts/release/)
+		SNAPSHOT=1    Generate "shapshot" packages (bin/artifacts/snapshot/)
 		JUST_PRINT=1  Only print package names, do not generate
 
 		VARIANT=name        Build variant (empty for standard packages)
@@ -65,14 +62,20 @@ OSNICK=$($READIES/bin/platform --osnick)
 [[ $OSNICK == xenial ]]  && OSNICK=ubuntu16.04
 [[ $OSNICK == bionic ]]  && OSNICK=ubuntu18.04
 [[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
+[[ $OSNICK == jammy ]]   && OSNICK=ubuntu22.04
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
 [[ $OSNICK == ol8 ]]     && OSNICK=rhel8
 [[ $OSNICK == rocky8 ]]  && OSNICK=rhel8
 
+[[ $OSNICK == bigsur ]]  && OSNICK=catalina
+
+PLATFORM="$OS-$OSNICK-$ARCH"
+
+#----------------------------------------------------------------------------------------------
 
 PYTHON_BIN=python3
-OS_DESC=$(${PYTHON_BIN} $ROOT/getos.py)
+OS_DESC=$(${PYTHON_BIN} $ROOT/sbin/getos.py)
 
 #----------------------------------------------------------------------------------------------
 
@@ -82,7 +85,7 @@ pack() {
 	local pack_fname="$2"
 
 	cd $ROOT
-	local packfile=artifacts/$artifact/$pack_fname
+	local packfile=bin/artifacts/$artifact/$pack_fname
 	if [[ -z $3 ]]; then
 		${PYTHON_BIN} $READIES/bin/xtx \
 			-d GEARS_PYTHON_NAME=python3_$SEMVER \
@@ -135,7 +138,7 @@ pack_gearspy() {
 		exit 1
 	fi
 
-	local TAR=artifacts/release/$RELEASE_gearspy
+	local TAR=bin/artifacts/release/$RELEASE_gearspy
 	TAR_PATH=$(realpath $TAR)
 	GEARSPY_PATH=$(realpath $GEARSPY_PATH)
 	cd $CPYTHON_PREFIX
@@ -150,10 +153,10 @@ pack_gearspy() {
 	sha256sum $TAR | awk '{print $1}' > $TAR.sha256
 	echo "Created $TAR"
 
-	local TAR1=artifacts/snapshot/$SNAPSHOT_gearspy
+	local TAR1=bin/artifacts/snapshot/$SNAPSHOT_gearspy
 	cp $TAR $TAR1
 	cp $TAR.sha256 $TAR1.sha256
-	# ( cd artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
+	# ( cd bin/artifacts/snapshot; ln -sf ../../$TAR $TAR1; ln -sf ../../$TAR.sha256 $TAR1.sha256; )
 	echo "Created $TAR1"
 }
 
@@ -189,15 +192,15 @@ pack_deps() {
 
 pack_sym() {
 	echo "Building debug symbols dependencies ..."
-	echo $(dirname $RELEASE_SO) > artifacts/release/debug.dir
-	echo $(basename $RELEASE_SO).debug > artifacts/release/debug.files
-	echo "" > artifacts/release/debug.prefix
-	pack_deps debug artifacts/release $RELEASE_debug
+	echo $(dirname $RELEASE_SO) > bin/artifacts/release/debug.dir
+	echo $(basename $RELEASE_SO).debug > bin/artifacts/release/debug.files
+	echo "" > bin/artifacts/release/debug.prefix
+	pack_deps debug bin/artifacts/release $RELEASE_debug
 
-	echo $(dirname $SNAPSHOT_SO) > artifacts/snapshot/debug.dir
-	echo $(basename $SNAPSHOT_SO).debug > artifacts/snapshot/debug.files
-	echo "" > artifacts/snapshot/debug.prefix
-	pack_deps debug artifacts/snapshot $SNAPSHOT_debug
+	echo $(dirname $SNAPSHOT_SO) > bin/artifacts/snapshot/debug.dir
+	echo $(basename $SNAPSHOT_SO).debug > bin/artifacts/snapshot/debug.files
+	echo "" > bin/artifacts/snapshot/debug.prefix
+	pack_deps debug bin/artifacts/snapshot $SNAPSHOT_debug
 	echo "Done."
 }
 
@@ -205,30 +208,30 @@ pack_sym() {
 
 PACKAGE_NAME=redisgears
 
-[[ -z $BRANCH ]] && BRANCH=${GEARS_PACK_BRANCH:-`git rev-parse --abbrev-ref HEAD`}
-BRANCH=${BRANCH//[^A-Za-z0-9._-]/_}
+[[ -z $BRANCH ]] && BRANCH="${GEARS_PACK_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+BRANCH="${BRANCH//[^A-Za-z0-9._-]/_}"
 if [[ $GITSHA == 1 ]]; then
-	GIT_COMMIT=$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)
+	GIT_COMMIT="$(git describe --always --abbrev=7 --dirty="+" 2>/dev/null || git rev-parse --short HEAD)"
 	BRANCH="${BRANCH}-${GIT_COMMIT}"
 fi
 
-NUMVER=$(NUMERIC=1 $ROOT/getver)
-SEMVER=$($ROOT/getver)
+NUMVER="$(NUMERIC=1 $ROOT/sbin/getver)"
+SEMVER="$($ROOT/sbin/getver)"
 
 if [[ ! -z $VARIANT ]]; then
 	VARIANT=-${VARIANT}
 fi
-platform="$OS-$OSNICK-$ARCH"
-RELEASE_ramp=${PACKAGE_NAME}.$platform.${SEMVER}${VARIANT}.zip
-SNAPSHOT_ramp=${PACKAGE_NAME}.$platform.${BRANCH}${VARIANT}.zip
-RELEASE_python_ramp=${PACKAGE_NAME}_python.$platform.${SEMVER}${VARIANT}.zip
-SNAPSHOT_python_ramp=${PACKAGE_NAME}_python.$platform.${BRANCH}${VARIANT}.zip
-RELEASE_gearspy=${PACKAGE_NAME}-python.$platform.$SEMVER.tgz
-SNAPSHOT_gearspy=${PACKAGE_NAME}-python.$platform.$BRANCH.tgz
-RELEASE_debug=${PACKAGE_NAME}-debug.$platform.$SEMVER.tgz
-SNAPSHOT_debug=${PACKAGE_NAME}-debug.$platform.$BRANCH.tgz
-RELEASE_jvm=${PACKAGE_NAME}-jvm.$platform.$SEMVER.tgz
-SNAPSHOT_jvm=${PACKAGE_NAME}-jvm.$platform.$BRANCH.tgz
+
+RELEASE_ramp=${PACKAGE_NAME}.${PLATFORM}.${SEMVER}${VARIANT}.zip
+SNAPSHOT_ramp=${PACKAGE_NAME}.${PLATFORM}.${BRANCH}${VARIANT}.zip
+RELEASE_python_ramp=${PACKAGE_NAME}_python.${PLATFORM}.${SEMVER}${VARIANT}.zip
+SNAPSHOT_python_ramp=${PACKAGE_NAME}_python.${PLATFORM}.${BRANCH}${VARIANT}.zip
+RELEASE_gearspy=${PACKAGE_NAME}-python.${PLATFORM}.$SEMVER.tgz
+SNAPSHOT_gearspy=${PACKAGE_NAME}-python.${PLATFORM}.$BRANCH.tgz
+RELEASE_debug=${PACKAGE_NAME}-debug.${PLATFORM}.$SEMVER.tgz
+SNAPSHOT_debug=${PACKAGE_NAME}-debug.${PLATFORM}.$BRANCH.tgz
+RELEASE_jvm=${PACKAGE_NAME}-jvm.${PLATFORM}.$SEMVER.tgz
+SNAPSHOT_jvm=${PACKAGE_NAME}-jvm.${PLATFORM}.$BRANCH.tgz
 
 #----------------------------------------------------------------------------------------------
 
@@ -246,7 +249,7 @@ fi
 
 #----------------------------------------------------------------------------------------------
 
-mkdir -p artifacts/snapshot artifacts/release
+mkdir -p bin/artifacts/snapshot bin/artifacts/release
 
 if [[ ! -z $MOD ]]; then
 	RELEASE_SO=$(realpath $MOD)
@@ -255,12 +258,12 @@ fi
 
 if [[ $RAMP == 1 ]]; then
 	if ! command -v redis-server > /dev/null; then
-		eprint "$0: Cannot find redis-server. Aborting."
+		eprint "Cannot find redis-server. Aborting."
 		exit 1
 	fi
 
-	[[ -z $MOD ]] && { eprint "$0: Nothing to pack. Aborting."; exit 1; }
-	[[ ! -f $MOD ]] && { eprint "$0: $MOD does not exist. Aborting."; exit 1; }
+	[[ -z $MOD ]] && { eprint "Nothing to pack. Aborting."; exit 1; }
+	[[ ! -f $MOD ]] && { eprint "$MOD does not exist. Aborting."; exit 1; }
 fi
 
 if [[ $SYM == 1 ]]; then
@@ -272,8 +275,16 @@ if [[ $GEARSPY == 1 ]]; then
 fi
 
 if [[ $RAMP == 1 ]]; then
-	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_ramp"
-	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_ramp"
-	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm GEARSPY_PKG=artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy pack release "$RELEASE_python_ramp" "true"
-	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm GEARSPY_PKG=artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy pack snapshot "$SNAPSHOT_python_ramp" "true"
+	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=bin/artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm \
+		GEARSPY_PKG=bin/artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy \
+		pack release "$RELEASE_ramp"
+	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=bin/artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm \
+		GEARSPY_PKG=bin/artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy \
+		pack snapshot "$SNAPSHOT_ramp"
+	GEARS_SO=$RELEASE_SO GEARSJVM_PKG=bin/artifacts/release/$RELEASE_jvm JAVA_URL_FNAME=$RELEASE_jvm \
+		GEARSPY_PKG=bin/artifacts/release/$RELEASE_gearspy URL_FNAME=$RELEASE_gearspy \
+		pack release "$RELEASE_python_ramp" "true"
+	GEARS_SO=$SNAPSHOT_SO GEARSJVM_PKG=bin/artifacts/snapshot/$SNAPSHOT_jvm JAVA_URL_FNAME=snapshots/$SNAPSHOT_jvm \
+		GEARSPY_PKG=bin/artifacts/snapshot/$SNAPSHOT_gearspy URL_FNAME=snapshots/$SNAPSHOT_gearspy \
+		pack snapshot "$SNAPSHOT_python_ramp" "true"
 fi

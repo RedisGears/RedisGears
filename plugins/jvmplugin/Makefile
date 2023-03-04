@@ -1,8 +1,8 @@
 OS?=$(shell uname -s)
 ARCH?=$(shell uname -m)
 OSNICK?=$(shell ../../deps/readies/bin/platform --osnick)
-GIT_BRANCH=$(shell ../../getbranch)
-VERSION=$(shell ../../getver)
+GIT_BRANCH=$(shell ../../sbin/getbranch)
+VERSION=$(shell ../../sbin/getver)
 
 ifndef NOGEARS
 ifndef PYTHONDIR

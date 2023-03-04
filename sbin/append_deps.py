@@ -1,15 +1,18 @@
+#!/usr/bin/env python3
+
 import zipfile
 import os
 import shutil
 import json
 import tempfile
 
-directories = ["artifacts/release/", "artifacts/snapshot/"]
+HERE = os.path.abspath(os.path.dirname(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, ".."))
 
-BASE_DIR = dir_path = os.path.dirname(os.path.realpath(__file__))
+directories = ["bin/artifacts/release/", "bin/artifacts/snapshot/"]
 
 for dir in directories:
-    dir = os.path.join(BASE_DIR, dir)
+    dir = os.path.join(ROOT, dir)
     for f in [a for a in os.listdir(dir)]:
         name, ext = os.path.splitext(f)
         if ext == '.zip' and 'withdeps' not in name:
@@ -24,4 +27,4 @@ for dir in directories:
                         url = dep['url']
                         deps_file_name = url.split('/')[-1]
                         shutil.copy(os.path.join(dir, deps_file_name), os.path.join(os.getcwd(), 'deps', deps_file_name))
-                shutil.make_archive(os.path.join(dir, '%s-withdeps' % name), 'zip', './')
+                shutil.make_archive(os.path.join(dir, f'{name}-withdeps'), 'zip', './')

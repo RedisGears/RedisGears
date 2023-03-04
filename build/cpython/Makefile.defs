@@ -7,5 +7,5 @@ endif
 
 LIBPYTHON=$(CPYTHON_BINDIR)/libpython3.7m-fixed.a
 
-GEARS_VERSION:=$(shell $(ROOT)/getver)
+GEARS_VERSION:=$(shell $(ROOT)/sbin/getver)
 export CPYTHON_PREFIX=$(abspath $(CPYTHON_BINDIR)/../python3_$(GEARS_VERSION))

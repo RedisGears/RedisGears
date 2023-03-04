@@ -1,6 +1,6 @@
 # BUILD redisfab/redisgears:${VERSION}-${ARCH}-${OSNICK}
 
-ARG REDIS_VER=6.2.5
+ARG REDIS_VER=6.2.10
 
 # OSNICK=bullseye|centos7|centos8|xenial|bionic
 ARG OSNICK=bullseye
@@ -23,6 +23,9 @@ ARG OS
 ARG ARCH
 ARG REDIS_VER
 
+RUN if [ -f /root/.profile ]; then sed -ie 's/mesg n/tty -s \&\& mesg -n/g' /root/.profile; fi
+SHELL ["/bin/bash", "-l", "-c"]
+
 RUN echo "Building for ${OSNICK} (${OS}) for ${ARCH}"
 
 WORKDIR /build
@@ -30,20 +33,18 @@ COPY --from=redis /usr/local/ /usr/local/
 
 ADD . /build
 
-RUN ./deps/readies/bin/getpy2
-RUN ./deps/readies/bin/getpy3
+RUN ./sbin/setup
 RUN ./deps/readies/bin/getredis -v ${REDIS_VER}
-RUN ./system-setup.py
 RUN ./plugins/jvmplugin/system-setup.py
-RUN bash -l -c "make all SHOW=1"
-RUN ./getver > artifacts/VERSION
+RUN make all SHOW=1
+RUN ./sbin/getver > artifacts/VERSION
 
 ARG PACK
 ARG TEST
 
-RUN if [ "$PACK" = "1" ]; then bash -l -c "make pack"; fi
+RUN if [ "$PACK" = "1" ]; then make pack; fi
 RUN if [ "$TEST" = "1" ]; then \
-		bash -l -c "TEST= make test PARALLELISM=1" && \
+		TEST= make test PARALLELISM=1 && \
 		tar -C  /build/pytest/logs/ -czf /build/artifacts/pytest-logs-${ARCH}-${OSNICK}.tgz . ;\
 	fi
 
@@ -71,16 +72,20 @@ COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/gears_runtime/t
 # This is needed in order to allow extraction of artifacts from platform-specific build
 # There is no use in removing this directory if $PACK !=1, because image side will only
 #   increase if `docker build --squash` if not used.
-# COPY --from=builder /build/artifacts/VERSION /var/opt/redislabs/artifacts/VERSION
-# COPY --from=builder /build/artifacts/snapshot/ /var/opt/redislabs/artifacts/snapshot
-COPY --from=builder /build/artifacts/ /var/opt/redislabs/artifacts
+# COPY --from=builder /build/bin/artifacts/VERSION /var/opt/redislabs/artifacts/VERSION
+# COPY --from=builder /build/bin/artifacts/snapshot/ /var/opt/redislabs/artifacts/snapshot
+COPY --from=builder /build/bin/artifacts/ /var/opt/redislabs/artifacts
 
 RUN	set -e ;\
 	cd /var/opt/redislabs/modules/rg/ ;\
-	ln -s python3 python3_`cat /var/opt/redislabs/artifacts/VERSION`
+	ln -s python3 python3_$(cat /var/opt/redislabs/artifacts/VERSION)
 
 RUN if [ ! -z $(command -v apt-get) ]; then apt-get -qq update; apt-get -q install -y git; fi
 RUN if [ ! -z $(command -v yum) ]; then yum install -y git; fi
 RUN rm -rf /var/cache/apt /var/cache/yum
 
-CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so", "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_jvm.so", "JvmOptions", "-Djava.class.path=/var/opt/redislabs/modules/rg/gear_runtime-jar-with-dependencies.jar", "JvmPath", "/var/opt/redislabs/modules/rg/OpenJDK/jdk-11.0.9.1+1/"]
+CMD ["--loadmodule", "/var/opt/redislabs/lib/modules/redisgears.so",
+	 "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_python.so",
+     "Plugin", "/var/opt/redislabs/modules/rg/plugin/gears_jvm.so",
+	 "JvmOptions", "-Djava.class.path=/var/opt/redislabs/modules/rg/gear_runtime-jar-with-dependencies.jar",
+	 "JvmPath", "/var/opt/redislabs/modules/rg/OpenJDK/jdk-11.0.9.1+1/"]

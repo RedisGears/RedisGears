@@ -39,16 +39,18 @@ commands:
             apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
             bash <(curl -fsSL https://raw.githubusercontent.com/docker/docker-install/master/install.sh)
       - setup_remote_docker:
-          version: 20.10.6
+          version: 20.10.14
           docker_layer_caching: true
 
   checkout-all:
     steps:
-      - run: |
-          if [ -f /usr/bin/apt-get ]; then
-              apt-get update -q
-              apt install -qy git
-          fi
+      - run:
+          name: Install git
+          command: |
+            if command -v apt-get; then
+                apt-get update -qq
+                apt-get install -qy git
+            fi
       - checkout
       - run:
           name: Checkout submodules
@@ -60,7 +62,19 @@ commands:
           name: Setup automation
           command: |
             git submodule update --init deps/readies
+            if [[ $(uname -s) == Darwin ]]; then rm -f /usr/local/bin/python3; fi
             ./deps/readies/bin/getpy3
+      - run:
+          name: Setup automation (2)
+          shell: /bin/bash -l -eo pipefail
+          no_output_timeout: 30m
+          command: |
+            export HOMEBREW_NO_AUTO_UPDATE=1
+            ./deps/readies/bin/getaws
+            ls -l /usr/local/bin/python* || true
+            echo "python3: $(command -v python3)"
+            python3 --version
+            python3 -m pip list
 
   install-prerequisites:
     parameters:
@@ -74,14 +88,16 @@ commands:
       - setup-automation
       - run:
           name: System setup
+          shell: /bin/bash -l -eo pipefail
           command: |
             ./system-setup.py
             ./plugins/jvmplugin/system-setup.py
           no_output_timeout: 30m
       - run:
           name: Install Redis
+          shell: /bin/bash -l -eo pipefail
           command: |
-            bash -l -c "python3 ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>"
+            ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>
             redis-server --version
 
   save-tests-logs:
@@ -99,11 +115,17 @@ commands:
   persist-artifacts:
     steps:
       - early-return-for-forked-pull-requests
+      - run:
+          name: List artifacts
+          command: |
+            cd bin/artifacts
+            du -ah --apparent-size *
       - persist_to_workspace:
-          root: artifacts
+          root: bin/
           paths:
-            - 'snapshot/*'
-            - 'release/*'
+            - artifacts/*.zip
+            - artifacts/*.tgz
+            - artifacts/*.tar
 
   build-steps:
     parameters:
@@ -129,8 +151,9 @@ commands:
           getredis_params: <<parameters.getredis_params>>
       - run:
           name: Build
+          shell: /bin/bash -l -eo pipefail
           command: |
-            bash -l -c "make all <<parameters.build_params>> SHOW=1"
+            make all <<parameters.build_params>> SHOW=1
       - run:
           name: Gears Tests
           command: make test <<parameters.test_params>>
@@ -149,6 +172,7 @@ commands:
       - setup-automation
       - run:
           name: Build for platform
+          shell: /bin/bash -l -eo pipefail
           command: |
             pushd build/docker
             make build $(./version-params) OSNICK=<<parameters.platform>> VERSION=$CIRCLE_TAG BRANCH=$CIRCLE_BRANCH ARTIFACTS=1 TEST=1 SHOW=1
@@ -161,6 +185,7 @@ commands:
       - early-return-for-forked-pull-requests
       - run:
           name: Deploy for platform
+          shell: /bin/bash -l -eo pipefail
           command: |
             docker login -u redisfab -p $DOCKER_REDISFAB_PWD
             cd build/docker
@@ -174,7 +199,7 @@ commands:
 jobs:
   build-redis-versions:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     resource_class: medium+
     parameters:
       redis_version:
@@ -187,7 +212,7 @@ jobs:
 
   valgrind:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     steps:
       - build-steps:
           platform: debian
@@ -195,9 +220,9 @@ jobs:
           test_params: VALGRIND=1
           getredis_params: --valgrind
 
-  tls:
+  tls-tests:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     steps:
       - build-steps:
           platform: debian
@@ -209,7 +234,7 @@ jobs:
       platform:
         type: string
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     resource_class: medium+
     steps:
       - build-platforms-steps:
@@ -217,18 +242,20 @@ jobs:
 
   jvmpublish:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     steps:
       - early-returns
       - checkout-all
       - install-prerequisites
       - run:
           name: publish jvmplugin to maven central
-          command: bash -l -c "make -C plugins/jvmplugin publish NOGEARS=1"
+          shell: /bin/bash -l -eo pipefail
+          command: make -C plugins/jvmplugin publish NOGEARS=1
 
   build-macos:
     macos:
-      xcode: 11.7.0
+      xcode: 12.5.1
+    resource_class: macos.x86.medium.gen2
     steps:
       - run:
           name: Fix macOS setup
@@ -281,13 +308,13 @@ jobs:
             apt install -qy python3 python3-dev python3-pip
             pip install awscli
             ls -lR artifacts
-            for f in artifacts/snapshot/*; do
+            for f in bin/artifacts/snapshot/*; do
               aws s3 cp $f s3://redismodules/redisgears/snapshots/ --acl public-read
             done
 
   deploy-releases:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -304,7 +331,7 @@ jobs:
 
   release-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -316,7 +343,7 @@ jobs:
 
   nightly-automation:
     docker:
-      - image: redisfab/rmbuilder:6.2.5-x64-bullseye
+      - image: redisfab/rmbuilder:6.2.7-x64-bullseye
     steps:
       - early-returns
       - early-return-for-forked-pull-requests
@@ -327,7 +354,16 @@ jobs:
           command: MODULE_VERSION="$CIRCLE_BRANCH" VERBOSE=1 TEST=nightly QUICK=1 ./tests/qa/run
 
 
+#----------------------------------------------------------------------------------------------------------------------------------
+
 on-any-branch: &on-any-branch
+  filters:
+    branches:
+      only: /.*/
+    tags:
+      only: /.*/
+
+always: &always
   filters:
     branches:
       only: /.*/
@@ -357,6 +393,14 @@ on-integ-branch: &on-integ-branch
         - /^feature-.*$/
     tags:
       ignore: /.*/
+
+on-integ-branch-cron: &on-integ-branch-cron
+  filters:
+    branches:
+      only:
+        - master
+        - /^\d+\.\d+.*$/
+        - /^feature-.*$/
 
 not-on-integ-branch: &not-on-integ-branch
   filters:
@@ -406,7 +450,7 @@ workflows:
               platform: [focal, bionic, xenial, centos7, rocky8, bullseye]
       - valgrind:
           <<: *on-integ-and-version-tags
-      - tls:
+      - tls-tests:
           <<: *on-integ-and-version-tags
       - build-macos:
           <<: *on-integ-and-version-tags

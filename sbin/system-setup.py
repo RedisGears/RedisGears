@@ -4,7 +4,8 @@ import sys
 import os
 import argparse
 
-ROOT = HERE = os.path.abspath(os.path.dirname(__file__))
+HERE = os.path.abspath(os.path.dirname(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, ".."))
 READIES = os.path.join(ROOT, "deps/readies")
 sys.path.insert(0, READIES)
 import paella
@@ -12,9 +13,9 @@ import paella
 #----------------------------------------------------------------------------------------------
 
 class RedisGearsSetup(paella.Setup):
-    def __init__(self, nop=False, with_python=True):
-        paella.Setup.__init__(self, nop=nop)
-        self.with_python = with_python
+    def __init__(self, args):
+        paella.Setup.__init__(self, args.nop)
+        self.with_python = args.with_python
 
     def common_first(self):
         self.install_downloaders()
@@ -94,4 +95,4 @@ parser.add_argument('-n', '--nop', action="store_true", help='no operation')
 parser.add_argument('--with-python', action="store_true", default=True, help='with Python')
 args = parser.parse_args()
 
-RedisGearsSetup(nop = args.nop, with_python=args.with_python).setup()
+RedisGearsSetup(args).setup()
