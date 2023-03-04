@@ -97,7 +97,7 @@ commands:
           name: Install Redis
           shell: /bin/bash -l -eo pipefail
           command: |
-            ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>
+            ./deps/readies/bin/getredis -v <<parameters.redis_version>> --force <<parameters.getredis_params>>
             redis-server --version
 
   save-tests-logs:
