@@ -20,11 +20,11 @@ RUN make all SHOW=1
 RUN ./getver > artifacts/VERSION
 
 {% if PACK == "1" %}
-RUN mkdir -p bin/artifacts
+RUN mkdir -p artifacts
 RUN make pack
 RUN set -e ;\
     echo "Artifacts:" ;\
-    du -ah --apparent-size /build/bin/artifacts
+    du -ah --apparent-size /build/artifacts
 {% endif %}
 
 {% if TEST == "1" %}

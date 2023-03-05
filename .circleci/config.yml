@@ -116,7 +116,7 @@ commands:
       - run:
           name: List artifacts
           command: |
-            cd bin/artifacts
+            cd artifacts
             du -ah --apparent-size *
       - persist_to_workspace:
           root: artifacts
