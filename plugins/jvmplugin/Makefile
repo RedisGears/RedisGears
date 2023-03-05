@@ -48,16 +48,16 @@ InstallOpenJDK: bin/OpenJDK
 
 bin/OpenJDK: /tmp/openjdk-hotspot.zip
 	test -d ./bin/OpenJDK || mkdir -p ./bin/OpenJDK
-	tar -C ./bin/OpenJDK -xvf /tmp/openjdk-hotspot.zip
+	tar -C ./bin/OpenJDK -xf /tmp/openjdk-hotspot.zip
 
 GearsRuntime:
 	cd gears_runtime; mvn -q package
 
 clean:
-	make -C ./src/ clean
+	make -C src clean
 
 tests: gears_jvm
-	cd ./pytest; ./run_test.sh ${PYTHONDIR} ${GEARSPYTHONLIB} ${GEARSLIB} --parallelism ${PARALLELISM}
+	cd pytest; ./run_test.sh ${PYTHONDIR} ${GEARSPYTHONLIB} ${GEARSLIB} --parallelism ${PARALLELISM}
 
 run: gears_jvm
 	redis-server --loadmodule ${GEARSLIB} Plugin ./src/gears_jvm.so JvmOptions "-Djava.class.path=./gears_runtime/target/gear_runtime-jar-with-dependencies.jar" JvmPath ./bin/OpenJDK/jdk-11.0.9.1+1/
@@ -72,7 +72,7 @@ run_valgrind:
 	valgrind --leak-check=full --log-file=output.val redis-server --loadmodule ${GEARSLIB} Plugin ./src/gears_jvm.so JvmOptions "-Djava.class.path=./gears_runtime/target/gear_runtime-jar-with-dependencies.jar" JvmPath ./bin/OpenJDK/jdk-11.0.9.1+1/
 
 pack: gears_jvm
-	OSNICK=$(OSNICK) GIT_BRANCH=$(GIT_BRANCH) VERSION=$(VERSION) ./pack.sh
+	OSNICK=$(OSNICK) OS=$(OS) ARCH=$(ARCH) GIT_BRANCH=$(GIT_BRANCH) VERSION=$(VERSION) ./pack.sh
 
 publish:
 	cd gears_runtime; mvn -s .circleci.settings.xml -DskipTests deploy
