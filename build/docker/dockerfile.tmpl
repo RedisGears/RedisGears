@@ -28,7 +28,7 @@ RUN set -e ;\
 {% endif %}
 
 {% if TEST == "1" %}
-RUN TEST= make test PARALLELISM=1"
+RUN TEST= make test PARALLELISM=1
 RUN set -e ;\
 	cd /build/pytest/logs ;\
     rm -f *.aof *.rdb ;\
