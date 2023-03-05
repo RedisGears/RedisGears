@@ -44,9 +44,9 @@ RUN mkdir -p $REDIS_MODULES/ /var/opt/redislabs/artifacts
 RUN chown -R redis:redis /var/opt/redislabs
 
 COPY --from=builder --chown=redis:redis /build/redisgears.so $REDIS_MODULES/
-COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/python3_* /var/opt/redislabs/modules/rg/python3/
+COPY --from=builder --chown=redis:redis /build/bin/linux-{{ARCH}}-release/python3_* /var/opt/redislabs/modules/rg/python3/
 COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/bin/OpenJDK /var/opt/redislabs/modules/rg/OpenJDK/
-COPY --from=builder --chown=redis:redis /build/bin/linux-${ARCH}-release/gears_python/gears_python.so /var/opt/redislabs/modules/rg/plugin/
+COPY --from=builder --chown=redis:redis /build/bin/linux-{{ARCH}}-release/gears_python/gears_python.so /var/opt/redislabs/modules/rg/plugin/
 COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/src/gears_jvm.so /var/opt/redislabs/modules/rg/plugin/
 COPY --from=builder --chown=redis:redis /build/plugins/jvmplugin/gears_runtime/target/gear_runtime-jar-with-dependencies.jar /var/opt/redislabs/modules/rg/
 

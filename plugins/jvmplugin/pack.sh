@@ -7,10 +7,13 @@ set -e
 [[ $OSNICK == xenial ]]  && OSNICK=ubuntu16.04
 [[ $OSNICK == bionic ]]  && OSNICK=ubuntu18.04
 [[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
+[[ $OSNICK == jammy ]]   && OSNICK=ubuntu22.04
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
 [[ $OSNICK == ol8 ]] && OSNICK=rhel8
 [[ $OSNICK == rocky8 ]] && OSNICK=rhel8
+
+[[ $OSNICK == bigsur ]]  && OSNICK=catalina
 
 if [[ $OSNICK == catalina ]]; then
     JVM_PATH=./bin/OpenJDK/jdk-11.0.14+9/Contents/Home/
