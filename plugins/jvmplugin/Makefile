@@ -1,8 +1,12 @@
 OS?=$(shell uname -s)
 ARCH?=$(shell uname -m)
 OSNICK?=$(shell ../../deps/readies/bin/platform --osnick)
-GIT_BRANCH=$(shell ../../getbranch)
-VERSION=$(shell ../../getver)
+ifeq ($(OSNICK),bigsur)
+override OSNICK:=catalina
+endif
+
+GIT_BRANCH:=$(shell ../../getbranch)
+VERSION:=$(shell ../../getver)
 
 ifndef NOGEARS
 ifndef PYTHONDIR
