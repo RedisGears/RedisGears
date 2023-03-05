@@ -448,7 +448,7 @@ workflows:
       - tls:
           <<: *on-integ-and-version-tags
       - build-macos:
-          @@<<: *on-integ-and-version-tags
+          #@@<<: *on-integ-and-version-tags
           <<: *always
       - jvmpublish:
           context: common
