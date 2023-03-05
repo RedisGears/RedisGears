@@ -445,8 +445,7 @@ endif
 #----------------------------------------------------------------------------------------------
 
 platform:
-	$(SHOW)make -C build/docker build $(shell ./build/docker/version-params) OSNICK=$(OSNICK) \
-		TEST=$(TEST) ARTIFACTS=$(ARTIFACTS)
+	$(SHOW)make -C build/docker build
 
 coverage_report:
 	gcovr -r . --html --html-details -o result.html -e "src/utils/*" -e "src/*.h" -e "deps/*" -e "plugins/python/redisai.h"
