@@ -3,6 +3,8 @@ name: Ubuntu Bionic
 on:
   push:
     branches: [ master ]
+  pull_request:
+    branches: [ master ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -10,36 +12,46 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
+    container: ubuntu:bionic
 
     steps:
+    - name: Update apt
+      run: apt update
+    - name: Install pre-requisites
+      run: |
+        apt -yqq install software-properties-common
+        add-apt-repository ppa:deadsnakes/ppa
+        add-apt-repository ppa:ubuntu-toolchain-r/test
+        apt update
+        apt -yqq install git gcc-9 g++-9 curl wget python3.10 python3.10-dev dialog subversion chrpath libssl-dev python3-dev clang autoconf automake libtool pkg-config
+        update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 9
+        update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 9
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 10
+        curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        TZ: Etc/UTC
     - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
     - name: update pip3
       run: pip3 install -U pip
     - name: install rltest
       run: pip3 install RLTest
-    - name: install gcc9
-      run: |
-        sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-        sudo apt update
-        sudo apt install gcc-9 g++-9
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 9
-        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 9
     - name: install redis
       run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+    - name: install rust
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     - name: format
-      run: cargo fmt -- --check
+      run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build debug
-      run: cargo build --verbose
+      run: $HOME/.cargo/bin/cargo build --verbose
     - name: Build release
-      run: cargo build --release --verbose
+      run: $HOME/.cargo/bin/cargo build --release --verbose
     - name: Tests
       run: cd pytests;./run_tests.sh
     - name: install ramp packer
-      run: pip3 install git+https://github.com/RedisLabsModules/RAMP.git@master
+      run: python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
     - name: Pack
       run: target/release/packer
     - name: Setup s3cmd action
