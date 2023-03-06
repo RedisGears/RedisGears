@@ -184,24 +184,25 @@ def gearsTest(skipTest=False,
                     verifyClusterInitialized(env)
             if withReplicas:
                 # make sure all shards are in sync with their replica
+                def synchronise_replicas():
+                    replication_info = con.execute_command('info', 'replication')
+                    return replication_info['slave0']['state']
+
                 for con in shardsConnections(env):
-                    with TimeLimit(10, env, "Failed waiting for replica to be in sync"):
-                        while True:
-                            replication_info = con.execute_command('info', 'replication')
-                            try:
-                                if replication_info['slave0']['state'] == 'online':
-                                    break
-                            except KeyError:
-                                pass
-                            time.sleep(0.1)
+                    runUntil(env, 'online', synchronise_replicas, timeout=10)
             version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             if test_function.__doc__ is not None:
-                if withReplicas:
-                    num_replicas = shardsCount - 1
-                    env.expect('WAIT', num_replicas, 0).equal(num_replicas if decodeResponses else num_replicas.to_bytes())
                 env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
+                if withReplicas:
+                    # make sure all shards are in sync with their replica
+                    for con in shardsConnections(env):
+                        def synchronise_replicas():
+                            status = con.execute_command('wait', '1', '0')
+                            return status
+
+                        runUntil(env, 1, synchronise_replicas, timeout=10)
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())
