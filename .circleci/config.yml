@@ -438,8 +438,7 @@ workflows:
           <<: *on-any-branch
           matrix:
             parameters:
-              #@@redis_version: ["6.0.9", "6.2.10", "7.0.4"]
-              redis_version: ["6.2.10"]
+              redis_version: ["6.0.9", "6.2.10", "7.0.4"]
       - build-platforms:
           <<: *on-integ-and-version-tags
           context: common
@@ -451,8 +450,7 @@ workflows:
       - tls:
           <<: *on-integ-and-version-tags
       - build-macos:
-          #@@<<: *on-integ-and-version-tags
-          <<: *always
+          <<: *on-integ-and-version-tags
       - jvmpublish:
           context: common
           <<: *on-integ-and-version-tags
