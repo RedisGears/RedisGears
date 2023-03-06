@@ -1,6 +1,7 @@
-OS?=$(shell uname -s)
-ARCH?=$(shell uname -m)
-OSNICK?=$(shell ../../deps/readies/bin/platform --osnick)
+
+OS ?= $(shell ../../deps/readies/bin/platform --os)
+ARCH ?= $(shell ../../deps/readies/bin/platform --arch)
+OSNICK ?= $(shell ../../deps/readies/bin/platform --osnick)
 ifeq ($(OSNICK),bigsur)
 override OSNICK:=catalina
 endif
@@ -20,7 +21,7 @@ endif
 
 endif # NOGEARS
 
-ifeq ($(OSNICK),catalina)
+ifeq ($(OS),macos)
 	JVM_DOWNLOAD_LINK=https://github.com/adoptium/temurin11-binaries/releases/download/jdk-11.0.14%2B9/OpenJDK11U-jdk_x64_mac_hotspot_11.0.14_9.tar.gz
 	JDK_VER=11.0.14+9
 	PARALLELISM=1
