@@ -65,11 +65,13 @@ OSNICK=$($READIES/bin/platform --osnick)
 [[ $OSNICK == xenial ]]  && OSNICK=ubuntu16.04
 [[ $OSNICK == bionic ]]  && OSNICK=ubuntu18.04
 [[ $OSNICK == focal ]]   && OSNICK=ubuntu20.04
+[[ $OSNICK == jammy ]]   && OSNICK=ubuntu22.04
 [[ $OSNICK == centos7 ]] && OSNICK=rhel7
 [[ $OSNICK == centos8 ]] && OSNICK=rhel8
 [[ $OSNICK == ol8 ]]     && OSNICK=rhel8
 [[ $OSNICK == rocky8 ]]  && OSNICK=rhel8
 
+[[ $OSNICK == bigsur ]]  && OSNICK=catalina
 
 PYTHON_BIN=python3
 OS_DESC=$(${PYTHON_BIN} $ROOT/getos.py)
