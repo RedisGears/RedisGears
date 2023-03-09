@@ -172,4 +172,4 @@ redis.register_function("test", async (async_client) => {
 });
     """
     cluster_conn.execute_command('set', 'z', '1')
-    env.expect('RG.FCALL', 'foo', 'test', '1', 'z').error().contains('Timeout')
+    env.expect('RG.FCALL', 'foo', 'test', '1', 'z').error().contains('Timeout1')
