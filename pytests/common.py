@@ -3,6 +3,7 @@ import time
 import unittest
 import os.path
 from RLTest import Env, Defaults
+import json
 
 def toDictionary(res, max_recursion=1000):
     if  max_recursion == 0:
@@ -70,11 +71,31 @@ class TimeLimit(object):
             self.env.assertTrue(False, message='Timedout %s' % (str(self.msg) if self.msg is not None else 'Error'))
         raise Exception('timeout')
 
-def extractInfoOnfailure(env, prefix):
-    pass
+def getShardInfo(conn, log_file):
+    try:
+        info = conn.execute_command('info', 'everything')
+    except Exception as e:
+        info = 'Failed getting shard info, shards probably crashed.'
+    try:
+        with open(log_file) as f:
+            log = f.read()
+    except Exception as e:
+        log = 'Failed to open log file %s, %s.' % (log_file, str(e))
+    
+    return {
+        'info': info,
+        'log': log,
+    }
 
-def doCleanups(env):
-    pass
+def extractInfoOnfailure(env, log_files):
+    shards_data = []
+    for index, log_file in enumerate(log_files):
+        shards_data.append(getShardInfo(env.getConnection(shardId=index + 1), log_file))
+    data = {
+        'test_name': env.testName,
+        'shards_data': shards_data,
+    }
+    env.debugPrint(json.dumps(data, indent=2).replace('\\n', '\n'), force=True)
 
 def verifyClusterInitialized(env):
     for conn in shardsConnections(env):
@@ -147,6 +168,12 @@ def gearsTest(skipTest=False,
                 module_args += [k, v]
             module_args += ["error-verbosity", str(errorVerbosity)]
             env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**final_envArgs)
+            log_files = []
+            for con in shardsConnections(env):
+                file_name = con.execute_command('config', 'get', 'logfile')[1]
+                file_dir = con.execute_command('config', 'get', 'dir')[1]
+                log_file = os.path.abspath(os.path.join(file_dir, file_name))
+                log_files.append(log_file)
             if env.isCluster():
                 # make sure cluster will not turn to failed state and we will not be 
                 # able to execute commands on shards, on slow envs, run with valgrind,
@@ -174,10 +201,6 @@ def gearsTest(skipTest=False,
                 test_args.append(env.envRunner.getClusterConnection())
             test_function(*test_args)
             if len(env.assertionFailedSummary) > 0:
-                extractInfoOnfailure(env, 'before_cleanups')
-            if not skipCleanups:
-                doCleanups(env)
-            if len(env.assertionFailedSummary) > 0:
-                extractInfoOnfailure(env, 'after_cleanups')
+                extractInfoOnfailure(env, log_files)
         return test_func
     return test_func_generator
