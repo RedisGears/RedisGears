@@ -113,7 +113,7 @@ redis.register_function("test", async (async_client, key) => {
 });
     """
     cluster_conn.execute_command('set', 'x', '1')
-    env.expect('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x').error().contains('Timeout')
+    env.expect('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x').error().contains('Remote task timeout')
 
 @gearsTest(cluster=True)
 def testRunOnAllShards(env, cluster_conn):
