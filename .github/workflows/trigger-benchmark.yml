@@ -54,7 +54,10 @@ jobs:
           --upload_results_s3 \
           --triggering_env circleci \
           --fail_fast \
-          --push_results_redistimeseries
+          --push_results_redistimeseries \
+          --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \
+          --redistimeseries_port ${{ secrets.PERFORMANCE_RTS_PORT }} \
+          --redistimeseries_pass '${{ secrets.PERFORMANCE_RTS_AUTH }}'
   
     - name: Generate Pull Request Performance info
       if: ${{ github.ref_type == 'branch' }}
@@ -63,4 +66,7 @@ jobs:
           --defaults_filename ./tests/benchmarks/defaults.yml \
           --comparison-branch ${{ github.head_ref || github.ref_name }} \
           --auto-approve \
-          --pull-request ${{github.event.pull_request.number}}
+          --pull-request ${{github.event.pull_request.number}} \
+          --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \
+          --redistimeseries_port ${{ secrets.PERFORMANCE_RTS_PORT }} \
+          --redistimeseries_pass '${{ secrets.PERFORMANCE_RTS_AUTH }}'
