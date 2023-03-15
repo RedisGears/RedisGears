@@ -1,0 +1,13 @@
+version: 0.2
+name: "rg_fcall_simple"
+description: ""
+remote:
+ - type: oss-1nodes
+ - setup: c5.4xlarge
+dbconfig:
+  - init_commands:
+    - ["RG.FUNCTION","LOAD","#!js name=lib\n redis.register_function('foo', ()=>{return 1;});"]
+clientconfig:
+  benchmark_type: "read-only"
+  tool: memtier_benchmark
+  arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --command 'rg.fcall lib foo 0'"
