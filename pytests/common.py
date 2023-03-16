@@ -175,7 +175,7 @@ def gearsTest(skipTest=False,
                 log_file = os.path.abspath(os.path.join(file_dir, file_name))
                 log_files.append(log_file)
             if env.isCluster():
-                # make sure cluster will not turn to failed state and we will not be 
+                # make sure cluster will not turn to failed state and we will not be
                 # able to execute commands on shards, on slow envs, run with valgrind,
                 # or mac, it is needed.
                 env.broadcast('CONFIG', 'set', 'cluster-node-timeout', '60000')
@@ -184,18 +184,25 @@ def gearsTest(skipTest=False,
                     verifyClusterInitialized(env)
             if withReplicas:
                 # make sure all shards are in sync with their replica
+                def synchronise_replicas():
+                    replication_info = con.execute_command('info', 'replication')
+                    return replication_info['slave0']['state']
+
                 for con in shardsConnections(env):
-                    with TimeLimit(10, env, "Failed waiting for replica to be in sync"):
-                        while True:
-                            replication_info = con.execute_command('info', 'replication')
-                            if replication_info['slave0']['state'] == 'online':
-                                break
-                            time.sleep(0.1)
+                    runUntil(env, 'online', synchronise_replicas, timeout=10)
             version = env.cmd('info', 'server')['redis_version']
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             if test_function.__doc__ is not None:
                 env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
+                if withReplicas:
+                    # make sure all shards are in sync with their replica
+                    for con in shardsConnections(env):
+                        def synchronise_replicas():
+                            status = con.execute_command('wait', '1', '0')
+                            return status
+
+                        runUntil(env, 1, synchronise_replicas, timeout=10)
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())

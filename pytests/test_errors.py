@@ -5,7 +5,7 @@ def testWrongEngine(env):
     script = '''#!js1 name=foo
 redis.register_function("test", function(client){
     return 2
-})  
+})
     '''
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains('Unknown backend')
 
@@ -14,7 +14,7 @@ def testNoName(env):
     script = '''#!js
 redis.register_function("test", function(client){
     return 2
-})  
+})
     '''
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("Failed find 'name' property")
 
@@ -63,7 +63,7 @@ redis.register_function('test', async function(c1){
 })
     """
     env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('thread is already blocked')
-    
+
 @gearsTest()
 def testCallRedisWhenNotBlocked(env):
     """#!js name=foo
@@ -76,7 +76,7 @@ redis.register_function('test', async function(c){
 })
     """
     env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('thread is not locked')
-    
+
 @gearsTest()
 def testCommandsNotAllowedOnScript(env):
     """#!js name=foo
