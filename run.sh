@@ -11,6 +11,7 @@ GEARS_V8_DEBUG_PATH=$PWD/target/debug/libredisgears_v8_plugin.so
 REDIS_ARGUMENTS="--enable-debug-command yes"
 REDIS_GLOBAL_PATH=redis-server
 DEBUGGER_SCRIPT="gdb --args"
+VALGRIND="valgrind --leak-check=full --show-leak-kinds=all"
 
 function launch() {
     local redis_path=$1
@@ -28,7 +29,7 @@ function parse_args_and_launch() {
     local redis_arguments=$REDIS_ARGUMENTS
     local prefix=""
 
-    while getopts 'dDs:h' opt; do
+    while getopts 'dDs:l:vh' opt; do
     case "$opt" in
         d)
         echo "Setting up to run against the debug binaries."
@@ -49,8 +50,20 @@ function parse_args_and_launch() {
         redis_path=${OPTARG}
         ;;
 
+        l)
+        arg="$OPTARG"
+        echo "Setting up a custom gears library path: '${OPTARG}'"
+        gears_module_path="${OPTARG}/libredisgears.so"
+        gears_v8_plugin_path="${OPTARG}/libredisgears_v8_plugin.so"
+        ;;
+
+        v)
+        echo "Setting up to run through valgrind."
+        prefix="${VALGRIND}"
+        ;;
+
         ?|h)
-        printf "Usage: $(basename $0) [-d] [-D] [-s custom-redis-path]\nArguments:\n\t-d\tUse debug binaries\n\t-D\tRun in debugger\n\t-s\tSpecify custom redis server\n\nExample: $(basename $0) -d -s ../redis/src/redis-server\n"
+        printf "Usage: $(basename $0) [-d] [-D] [-v] [-s custom-redis-path] [-l custom-library-path]\nArguments:\n\t-d\tUse debug binaries\n\t-D\tRun in debugger\n\t-v\tRun via valgrind\n\t-s\tSpecify custom redis server\n\t-l\tSpecify custom library path\n\nExample: $(basename $0) -d -s ../redis/src/redis-server\n"
         exit 1
         ;;
     esac
