@@ -23,6 +23,7 @@ jobs:
         apt -yqq install software-properties-common
         add-apt-repository ppa:deadsnakes/ppa
         add-apt-repository ppa:ubuntu-toolchain-r/test
+        add-apt-repository ppa:git-core/ppa
         apt update
         apt -yqq install git gcc-9 g++-9 curl wget python3.10 python3.10-dev dialog subversion chrpath libssl-dev python3-dev clang autoconf automake libtool pkg-config
         update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 9
@@ -33,6 +34,8 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
         TZ: Etc/UTC
     - uses: actions/checkout@v3
+    - name: configure git
+      run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
     - name: update pip3
       run: pip3 install -U pip
     - name: install rltest
@@ -40,8 +43,7 @@ jobs:
     - name: install redis
       run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
     - name: install rust
-      run: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     - name: format
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build debug
