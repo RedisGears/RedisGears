@@ -43,7 +43,7 @@ jobs:
         export AWS_ACCESS_KEY_ID=${{ secrets.PERFORMANCE_EC2_ACCESS_KEY }}
         export AWS_SECRET_ACCESS_KEY=${{ secrets.PERFORMANCE_EC2_SECRET_KEY }}
         export AWS_DEFAULT_REGION=${{ secrets.PERFORMANCE_EC2_REGION }}
-        export EC2_PRIVATE_PEM=${{ secrets.PERFORMANCE_EC2_PRIVATE_PEM }}
+        export EC2_PRIVATE_PEM="${{ secrets.PERFORMANCE_EC2_PRIVATE_PEM }}"
         redisbench-admin run-remote \
           --required-module redisgears_2 \
           --module_path "../../target/release/libredisgears.so ../../target/release/libredisgears_v8_plugin.so" \
