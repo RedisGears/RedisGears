@@ -101,3 +101,24 @@ point, however, for future use, the compatibility is suggested to be:
 
 This should allow to have a long room for warning the users about the
 changes and letting to change the module code adapt to the new APIs.
+
+# Examples
+
+## Versioning scheme
+
+When a user specifies version `1.2`, it designates the lower
+set of APIs with looking forward (so the APIs introduced in `1.3` or
+`1.2 + n` don't break the module from working (and so means nothing will
+be broken)). In other words, it means the user wants to have a version
+`>= 1.2 < 2.0`.
+
+This is quite an open approach and allows the user to avoid rewriting
+the first line every time for each new release of the API if it is not
+a breaking change, it allows the system to pick any version that satisfies
+the semantic version scheme and the user's module, as long as it **can**
+work in principle.
+
+If there is an API `X` introduced in `1.3`, and the user specifies the
+`1.2`, the user's module will be operating just fine, but access to
+this `X` API isn't guaranteed (it isn't promised that it will be
+accessible nor inaccessible, it solely depends on the implementation).
