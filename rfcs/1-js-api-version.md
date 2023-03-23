@@ -104,7 +104,7 @@ changes and letting to change the module code adapt to the new APIs.
 
 # Examples
 
-## Versioning scheme
+## Picking a version for the module
 
 When a user specifies version `1.2`, it designates the lower
 set of APIs with looking forward (so the APIs introduced in `1.3` or
@@ -122,3 +122,12 @@ If there is an API `X` introduced in `1.3`, and the user specifies the
 `1.2`, the user's module will be operating just fine, but access to
 this `X` API isn't guaranteed (it isn't promised that it will be
 accessible nor inaccessible, it solely depends on the implementation).
+
+## Deprecation of an API for already existing and new user modules
+
+When a set of APIs is no longer supported, such a module is not loaded
+with an appropriate error message listing the APIs which are used within
+the module's code but aren't available. The reason as to why those are
+not available is not stated to the user, as it would complicate the
+implementation due to having a need to keep a list of previously
+introduced but deprecated/removed APIs just for this single reason.
