@@ -320,17 +320,32 @@ def testFunctionListWithUnknownOption(env):
 @gearsTest()
 def testMalformedLibarayMetaData(env):
     code = 'js name=foo' # no #!
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('could not find #! syntax')
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Invalid or missing prologue.')
 
 @gearsTest()
 def testMalformedLibarayMetaData2(env):
     code = '#!js name'
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('could not extract property value')
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The module name is missing from the prologue.')
 
 @gearsTest()
 def testMalformedLibarayMetaData3(env):
     code = '#!js foo=bar' # unknown property
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('unknown property')
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The module name is missing from the prologue.')
+
+@gearsTest()
+def testMalformedLibarayMetaData4(env):
+    code = '#!js name=foo foo=bar xxx=yyy' # unknown properties
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknown prologue properties provided: "xxx", "foo".')
+
+@gearsTest()
+def testMalformedLibarayMetaData5(env):
+    code = '#!js name=foo name=bar' # unknown properties
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknown prologue properties provided: "xxx", "foo".')
+
+@gearsTest()
+def testMalformedLibarayMetaData6(env):
+    code = '#!js name=foo x' # invalid syntax
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknown prologue properties provided: "xxx", "foo".')
 
 @gearsTest()
 def testNoLibraryCode(env):

@@ -12,6 +12,18 @@ use crate::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
 use crate::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use crate::redisgears_plugin_api::GearsApiError;
 
+use super::prologue::ApiVersion;
+
+// /// Defines an API version consisting of major an minor parts.
+// #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+// pub struct ApiVersion {
+//     major: u8,
+//     minor: u8,
+// }
+// impl ApiVersion {
+
+// }
+
 pub trait CompiledLibraryInterface {
     fn log(&self, msg: &str);
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>);
@@ -30,6 +42,12 @@ pub enum LibraryFatalFailurePolicy {
     Kill = 1,
 }
 
+impl Default for LibraryFatalFailurePolicy {
+    fn default() -> Self {
+        Self::Abort
+    }
+}
+
 pub struct BackendCtx {
     pub allocator: &'static dyn GlobalAlloc,
     pub log: Box<dyn Fn(&str) + 'static>,
@@ -43,7 +61,9 @@ pub trait BackendCtxInterfaceInitialised {
     fn get_version(&self) -> String;
     fn compile_library(
         &mut self,
+        module_name: &str,
         code: &str,
+        api_version: ApiVersion,
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError>;

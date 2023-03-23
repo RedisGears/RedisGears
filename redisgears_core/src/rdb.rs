@@ -5,8 +5,7 @@
  */
 
 use crate::{
-    function_load_command::function_load_intrernal, get_globals_mut, get_libraries,
-    DETACHED_CONTEXT,
+    function_load_command::function_load_internal, get_globals_mut, get_libraries, DETACHED_CONTEXT,
 };
 
 use redis_module::{
@@ -153,7 +152,7 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
             None
         };
 
-        match function_load_intrernal(ctx, user, &code, config, false, gears_box_info) {
+        match function_load_internal(ctx, user, &code, config, false, gears_box_info) {
             Ok(_) => {}
             Err(e) => return Err(Error::generic(&format!("Failed loading librart, {}", e))),
         }

@@ -10,11 +10,12 @@ pub mod backend_ctx;
 pub mod function_ctx;
 pub mod keys_notifications_consumer_ctx;
 pub mod load_library_ctx;
+pub mod prologue;
 pub mod redisai_interface;
 pub mod run_function_ctx;
 pub mod stream_ctx;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GearsApiError {
     msg: String,
     verbose_msg: Option<String>,
@@ -44,6 +45,12 @@ impl GearsApiError {
 
     pub fn get_msg_verbose(&self) -> &str {
         self.verbose_msg.as_ref().unwrap_or(&self.msg)
+    }
+}
+
+impl std::fmt::Display for GearsApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.msg)
     }
 }
 
