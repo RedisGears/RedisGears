@@ -99,7 +99,7 @@ redis.register_function("test", async(async_client, key) => {
         env.assertEqual(res, 'final_value')
 
 @gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
-def testRemoteTaksTimeout(env, cluster_conn):
+def testRemoteTaskTimeout(env, cluster_conn):
     """#!js name=foo
 const remote_get = "remote_get";
 

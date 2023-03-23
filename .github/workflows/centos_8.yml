@@ -16,7 +16,7 @@ jobs:
     steps:
     - name: Update yum
       run: yum update -qqy
-    - name: Install requirements 
+    - name: Install requirements
       run: |
         yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang
         dnf install -y gcc-toolset-11-gcc gcc-toolset-11-gcc-c++
