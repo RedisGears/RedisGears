@@ -693,7 +693,7 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
             let backend = Box::from_raw(func());
             let name = backend.get_name();
             let version = backend.get_version();
-            ctx.log_notice(&format!("registering backend: {} v{}", name, version));
+            ctx.log_notice(&format!("registering backend: {}, {}", name, version));
             if global_ctx.backends.contains_key(name) {
                 ctx.log_warning(&format!("Backend {} already exists", name));
                 return Status::Err;

@@ -37,7 +37,7 @@ pub struct BackendCtx {
 
 pub trait BackendCtxInterface {
     fn get_name(&self) -> &'static str;
-    fn get_version(&self) -> &'static str;
+    fn get_version(&self) -> String;
     fn initialize(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError>;
     fn compile_library(
         &mut self,

@@ -86,8 +86,8 @@ impl BackendCtxInterface for V8Backend {
         "js"
     }
 
-    fn get_version(&self) -> &'static str {
-        v8_version()
+    fn get_version(&self) -> String {
+        format!("Version: {}, v8-rs: {}", v8_version(), v8_rs::GIT_SEMVER)
     }
 
     fn initialize(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError> {
