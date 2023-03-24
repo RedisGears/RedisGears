@@ -558,17 +558,16 @@ impl Config {
         val: &str,
     ) -> Result<(), RedisError> {
         let values = config.values();
-        for (n, v) in config.values() {
-            if n == val {
-                return config.set(config.name(), v);
-            }
+        let found = values.iter().find(|(k, _)| k == &val);
+        if let Some((_, v)) = found {
+            return config.set(config.name(), *v);
         }
 
-        return Err(RedisError::String(format!(
+        Err(RedisError::String(format!(
             "Unknow configration value '{}', options are {:?}.",
             val,
             values.iter().map(|(k, _v)| *k).collect::<Vec<&str>>()
-        )));
+        )))
     }
 
     pub(crate) fn initial_set(&mut self, name: &str, val: &str) -> Result<(), RedisError> {
@@ -597,12 +596,7 @@ impl Config {
             x if x == self.error_verbosity.name() => {
                 Self::set_numeric_value(&mut self.error_verbosity, val)
             }
-            _ => {
-                return Err(RedisError::String(format!(
-                    "No such configuration {}",
-                    name
-                )))
-            }
+            _ => Err(RedisError::String(format!("No such configuration {name}"))),
         }
     }
 
