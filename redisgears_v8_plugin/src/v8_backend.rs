@@ -9,6 +9,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::CompiledLibraryInterface, backend_ctx::LibraryFatalFailurePolicy,
     load_library_ctx::LibraryCtxInterface, CallResult, GearsApiError,
 };
+use v8_rs::v8::v8_version;
 
 use crate::v8_script_ctx::V8ScriptCtx;
 
@@ -83,6 +84,10 @@ impl V8Backend {
 impl BackendCtxInterface for V8Backend {
     fn get_name(&self) -> &'static str {
         "js"
+    }
+
+    fn get_version(&self) -> &'static str {
+        v8_version()
     }
 
     fn initialize(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError> {
