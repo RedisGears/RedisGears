@@ -10,6 +10,7 @@
 
 #![deny(missing_docs)]
 
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +26,8 @@ use redis_module::{
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    backend_ctx::BackendCtx, backend_ctx::BackendCtxInterface, function_ctx::FunctionCtxInterface,
+    backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
+    function_ctx::FunctionCtxInterface,
     keys_notifications_consumer_ctx::KeysNotificationsConsumerCtxInterface,
     load_library_ctx::LibraryCtxInterface, load_library_ctx::LoadLibraryCtxInterface,
     load_library_ctx::RegisteredKeys, load_library_ctx::RemoteFunctionCtx,
@@ -400,7 +402,7 @@ impl LoadLibraryCtxInterface for GearsLibraryCtx {
 
 struct GlobalCtx {
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
-    backends: HashMap<String, Box<dyn BackendCtxInterface>>,
+    backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
     redis_ctx: Context,
     authenticated_redis_ctx: Context,
     plugins: Vec<Library>,
@@ -442,7 +444,7 @@ pub fn get_ctx() -> &'static Context {
     &get_globals().redis_ctx
 }
 
-fn get_backends_mut() -> &'static mut HashMap<String, Box<dyn BackendCtxInterface>> {
+fn get_backends_mut() -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceInitialised>> {
     &mut get_globals_mut().backends
 }
 
@@ -688,15 +690,16 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
             }
         };
         {
-            let func: Symbol<unsafe fn() -> *mut dyn BackendCtxInterface> =
+            let func: Symbol<unsafe fn() -> *mut dyn BackendCtxInterfaceUninitialised> =
                 lib.get(b"initialize_plugin").unwrap();
-            let backend = Box::from_raw(func());
-            let name = backend.get_name();
+            let uninitialised_backend = Box::from_raw(func());
+            let name = uninitialised_backend.get_name();
             if global_ctx.backends.contains_key(name) {
-                ctx.log_warning(&format!("Backend {} already exists", name));
+                ctx.log_warning(&format!("Backend {name} already exists."));
                 return Status::Err;
             }
-            if let Err(e) = backend.initialize(BackendCtx {
+
+            let initialised_backend = match uninitialised_backend.initialize(BackendCtx {
                 allocator: &redis_module::ALLOC,
                 log: Box::new(|msg| get_ctx().log_notice(msg)),
                 get_on_oom_policy: Box::new(|| {
@@ -708,12 +711,18 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
                 }),
                 get_lock_timeout: Box::new(|| get_globals().config.lock_regis_timeout.size),
             }) {
-                ctx.log_warning(&format!("Failed loading {} backend, {}", name, e.get_msg()));
-                return Status::Err;
-            }
-            let version = backend.get_version();
-            ctx.log_notice(&format!("registered backend: {}, {}", name, version));
-            global_ctx.backends.insert(name.to_string(), backend);
+                Ok(b) => b,
+                Err(e) => {
+                    ctx.log_warning(&format!("Failed loading {name} backend, {}.", e.get_msg()));
+                    return Status::Err;
+                }
+            };
+
+            let version = initialised_backend.get_version();
+            ctx.log_notice(&format!("Registered backend: {name}, {version}."));
+            global_ctx
+                .backends
+                .insert(name.to_string(), initialised_backend);
         }
         global_ctx.plugins.push(lib);
 
