@@ -35,9 +35,10 @@ pub struct BackendCtx {
     pub get_lock_timeout: Box<dyn Fn() -> u128 + 'static>,
 }
 
-pub trait BackendCtxInterface {
-    fn get_name(&self) -> &'static str;
-    fn initialize(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError>;
+/// The trait which is only implemented for a successfully initialised
+/// backend.
+pub trait BackendCtxInterfaceInitialised {
+    fn get_version(&self) -> String;
     fn compile_library(
         &mut self,
         code: &str,
@@ -45,4 +46,16 @@ pub trait BackendCtxInterface {
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError>;
     fn debug(&mut self, args: &[&str]) -> Result<CallResult, GearsApiError>;
+}
+
+pub trait BackendCtxInterfaceUninitialised {
+    /// Returns the name of the backend.
+    fn get_name(&self) -> &'static str;
+
+    /// Initialises the backend with the information passed and returns
+    /// a successfully initialised instance.
+    fn initialize(
+        self: Box<Self>,
+        backend_ctx_info: BackendCtx,
+    ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError>;
 }

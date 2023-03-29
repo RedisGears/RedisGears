@@ -4,11 +4,13 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::{
-    backend_ctx::BackendCtx, backend_ctx::BackendCtxInterface,
+    backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
     backend_ctx::CompiledLibraryInterface, backend_ctx::LibraryFatalFailurePolicy,
     load_library_ctx::LibraryCtxInterface, CallResult, GearsApiError,
 };
+use v8_rs::v8::v8_version;
 
 use crate::v8_script_ctx::V8ScriptCtx;
 
@@ -80,12 +82,15 @@ impl V8Backend {
     }
 }
 
-impl BackendCtxInterface for V8Backend {
+impl BackendCtxInterfaceUninitialised for V8Backend {
     fn get_name(&self) -> &'static str {
         "js"
     }
 
-    fn initialize(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError> {
+    fn initialize(
+        self: Box<Self>,
+        backend_ctx: BackendCtx,
+    ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
         unsafe {
             GLOBAL.backend_ctx = Some(backend_ctx);
         }
@@ -158,7 +163,13 @@ impl BackendCtxInterface for V8Backend {
             }
         });
 
-        Ok(())
+        Ok(self)
+    }
+}
+
+impl BackendCtxInterfaceInitialised for V8Backend {
+    fn get_version(&self) -> String {
+        format!("Version: {}, v8-rs: {}", v8_version(), v8_rs::GIT_SEMVER)
     }
 
     fn compile_library(

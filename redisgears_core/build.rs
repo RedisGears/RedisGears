@@ -123,7 +123,6 @@ fn main() {
             "rhel".to_string(),
             os_ver
                 .split('.')
-                .into_iter()
                 .next()
                 .expect("Failed getting os version")
                 .to_string(),
