@@ -692,8 +692,6 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
                 lib.get(b"initialize_plugin").unwrap();
             let backend = Box::from_raw(func());
             let name = backend.get_name();
-            let version = backend.get_version();
-            ctx.log_notice(&format!("registering backend: {}, {}", name, version));
             if global_ctx.backends.contains_key(name) {
                 ctx.log_warning(&format!("Backend {} already exists", name));
                 return Status::Err;
@@ -713,6 +711,8 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
                 ctx.log_warning(&format!("Failed loading {} backend, {}", name, e.get_msg()));
                 return Status::Err;
             }
+            let version = backend.get_version();
+            ctx.log_notice(&format!("registered backend: {}, {}", name, version));
             global_ctx.backends.insert(name.to_string(), backend);
         }
         global_ctx.plugins.push(lib);
