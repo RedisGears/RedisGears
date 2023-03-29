@@ -32,18 +32,21 @@ jobs:
       run: cargo build --release --verbose
 
     - name: Install terraform
-      run: VERSION=0.14.8 ./tests/benchmarks/getterraform
+      env:
+        VERSION: 0.14.8
+      run: ./tests/benchmarks/getterraform
     
     - name: install benchmark dependencies
       run: pip3 install -r ./tests/benchmarks/requirements.txt
     
     - name: Run benchmarks
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.PERFORMANCE_EC2_ACCESS_KEY }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.PERFORMANCE_EC2_SECRET_KEY }}
+        AWS_DEFAULT_REGION: ${{ secrets.PERFORMANCE_EC2_REGION }}
+        EC2_PRIVATE_PEM: ${{ secrets.PERFORMANCE_EC2_PRIVATE_PEM }}
       run: |
         cd tests/benchmarks
-        export AWS_ACCESS_KEY_ID=${{ secrets.PERFORMANCE_EC2_ACCESS_KEY }}
-        export AWS_SECRET_ACCESS_KEY=${{ secrets.PERFORMANCE_EC2_SECRET_KEY }}
-        export AWS_DEFAULT_REGION=${{ secrets.PERFORMANCE_EC2_REGION }}
-        export EC2_PRIVATE_PEM="${{ secrets.PERFORMANCE_EC2_PRIVATE_PEM }}"
         redisbench-admin run-remote \
           --required-module redisgears_2 \
           --module_path "../../target/release/libredisgears.so ../../target/release/libredisgears_v8_plugin.so" \
