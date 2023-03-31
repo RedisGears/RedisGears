@@ -2,7 +2,7 @@ from common import gearsTest
 
 @gearsTest()
 def testWrongEngine(env):
-    script = '''#!js1 name=foo
+    script = '''#!js1 api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return 2
 })
@@ -10,17 +10,26 @@ redis.register_function("test", function(client){
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains('Unknown backend')
 
 @gearsTest()
-def testNoName(env):
-    script = '''#!js
+def testNoApiVersion(env):
+    script = '''#!js name=foo
 redis.register_function("test", function(client){
     return 2
 })
     '''
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("Failed find 'name' property")
+    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("The api version is missing from the prologue.")
+
+@gearsTest()
+def testNoName(env):
+    script = '''#!js api_version=1.0
+redis.register_function("test", function(client){
+    return 2
+})
+    '''
+    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("The module name is missing from the prologue.")
 
 @gearsTest()
 def testSameFunctionName(env):
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return 2
 })
@@ -32,7 +41,7 @@ redis.register_function("test", function(client){
 
 @gearsTest()
 def testWrongArguments1(env):
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 redis.register_function(1, function(client){
     return 2
 })
@@ -41,21 +50,21 @@ redis.register_function(1, function(client){
 
 @gearsTest()
 def testWrongArguments2(env):
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 redis.register_function("test", "foo")
     '''
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("must be a function")
 
 @gearsTest()
 def testNoRegistrations(env):
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 
     '''
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("No function nor registrations was registered")
 
 @gearsTest()
 def testBlockRedisTwice(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function('test', async function(c1){
     return await c1.block(function(c2){
         c1.block(function(c3){}); // blocking again
@@ -66,7 +75,7 @@ redis.register_function('test', async function(c1){
 
 @gearsTest()
 def testCallRedisWhenNotBlocked(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function('test', async function(c){
     return await c.block(function(c1){
         return c1.run_on_background(async function(c2){
@@ -79,7 +88,7 @@ redis.register_function('test', async function(c){
 
 @gearsTest()
 def testCommandsNotAllowedOnScript(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function('test1', function(c){
     return c.call('eval', 'return 1', '0');
 })
@@ -94,7 +103,7 @@ redis.register_function('test2', async function(c1){
 
 @gearsTest()
 def testJSStackOverflow(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 function test() {
     test();
 }
@@ -104,7 +113,7 @@ redis.register_function('test', test);
 
 @gearsTest()
 def testJSStackOverflowOnLoading(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 function test(i) {
     redis.log(JSON.stringify(i))
     test(i+1);
@@ -117,7 +126,7 @@ redis.register_function('test', test);
 
 @gearsTest()
 def testMissingConfig(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 function test() {
     test();
 }
@@ -128,7 +137,7 @@ redis.register_function('test', test);
 
 @gearsTest()
 def testNoJsonConfig(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 function test() {
     test();
 }
@@ -139,7 +148,7 @@ redis.register_function('test', test);
 
 @gearsTest()
 def testNoJsonObjectConfig(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 function test() {
     test();
 }
@@ -150,7 +159,7 @@ redis.register_function('test', test);
 
 @gearsTest()
 def testLongNestedReply(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 function test() {
     var a = [];
     a[0] = a;
@@ -163,7 +172,7 @@ redis.register_function('test', test);
 
 @gearsTest()
 def testFcallWithWrangArgumets(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 function test() {
     return 'test';
 }
@@ -174,7 +183,7 @@ redis.register_function('test', test);
 
 @gearsTest()
 def testNotExistsRemoteFunction(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", async (async_client) => {
     return await async_client.run_on_key('x', 'not_exists');
 });
@@ -183,7 +192,7 @@ redis.register_function("test", async (async_client) => {
 
 @gearsTest()
 def testRemoteFunctionNotSerializableInput(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
 redis.register_remote_function(remote_get, async(client, key) => {
@@ -201,7 +210,7 @@ redis.register_function("test", async (async_client, key) => {
 
 @gearsTest()
 def testRemoteFunctionNotSerializableOutput(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
 redis.register_remote_function(remote_get, async(client, key) => {
@@ -216,14 +225,14 @@ redis.register_function("test", async (async_client, key) => {
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngNumberOfArgs(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 redis.register_remote_function();
     """
     env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Wrong number of arguments given")
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 redis.register_remote_function(1, async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, key);
 });
@@ -232,14 +241,14 @@ redis.register_remote_function(1, async (async_client, key) => {
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType2(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 redis.register_remote_function('test', 'test');
     """
     env.expect('RG.FUNCTION', 'LOAD', script).error().contains("Second argument to 'register_remote_function' must be a function")
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType3(env):
-    script = """#!js name=foo
+    script = """#!js api_version=1.0 name=foo
 redis.register_remote_function('test', (async_client, key) => {
     return async_client.run_on_key(key, remote_get, key);
 });
@@ -248,7 +257,7 @@ redis.register_remote_function('test', (async_client, key) => {
 
 @gearsTest()
 def testRedisAITensorCreateWithoutRedisAI(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", (client) => {
     return redis.redisai.create_tensor("FLOAT", [1, 3], new Uint8Array(16).buffer);
 });
@@ -257,7 +266,7 @@ redis.register_function("test", (client) => {
 
 @gearsTest()
 def testRedisAIModelCreateWithoutRedisAI(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", (client) => {
     return client.redisai.open_model("foo");
 });
@@ -266,7 +275,7 @@ redis.register_function("test", (client) => {
 
 @gearsTest()
 def testRedisAIScriptCreateWithoutRedisAI(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", (client) => {
     return client.redisai.open_script("foo");
 });
@@ -275,7 +284,7 @@ redis.register_function("test", (client) => {
 
 @gearsTest()
 def testUseOfInvalidClient(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", (client) => {
     return client.run_on_background(async (async_client) => {
         return async_client.block(()=>{
@@ -288,7 +297,7 @@ redis.register_function("test", (client) => {
 
 @gearsTest()
 def testCallWithoutBlock(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", (client) => {
     return client.run_on_background(async () => {
             return client.call("ping");
@@ -318,34 +327,36 @@ def testFunctionListWithUnknownOption(env):
     env.expect('RG.FUNCTION', 'LIST', 'FOO').error().contains('Unknown option')
 
 @gearsTest()
-def testMalformedLibarayMetaData(env):
-    code = 'js name=foo' # no #!
+def testMalformedLibraryMetaData(env):
+    code = 'js api_version=1.0 name=foo' # no shebang(#!)
     env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Invalid or missing prologue.')
 
 @gearsTest()
-def testMalformedLibarayMetaData2(env):
-    code = '#!js name'
+def testMalformedLibraryMetaData2(env):
+    code = '#!js name' # no api version and no module version, invalid prologue.
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Invalid or missing prologue.')
+
+@gearsTest()
+def testMalformedLibraryMetaData3(env):
+    code = '#!js api_version=1.0 foo=bar' # unknown property
     env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The module name is missing from the prologue.')
 
 @gearsTest()
-def testMalformedLibarayMetaData3(env):
-    code = '#!js foo=bar' # unknown property
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The module name is missing from the prologue.')
+def testMalformedLibraryMetaData4(env):
+    code = '#!js api_version=1.0 name=foo foo=bar xxx=yyy' # unknown properties
+    error = env.expect('RG.FUNCTION', 'LOAD', code).error()
+    error.contains('"foo"')
+    error.contains('"xxx"')
 
 @gearsTest()
-def testMalformedLibarayMetaData4(env):
-    code = '#!js name=foo foo=bar xxx=yyy' # unknown properties
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknown prologue properties provided: "xxx", "foo".')
+def testMalformedLibraryMetaData5(env):
+    code = '#!js name=foo name=bar' # duplicated property name
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Duplicated prologue properties found: name')
 
 @gearsTest()
-def testMalformedLibarayMetaData5(env):
-    code = '#!js name=foo name=bar' # unknown properties
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknown prologue properties provided: "xxx", "foo".')
-
-@gearsTest()
-def testMalformedLibarayMetaData6(env):
-    code = '#!js name=foo x' # invalid syntax
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknown prologue properties provided: "xxx", "foo".')
+def testMalformedLibraryMetaData6(env):
+    code = '#!js api_version=1.0 name=foo x' # invalid syntax
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Invalid or missing prologue.')
 
 @gearsTest()
 def testNoLibraryCode(env):
@@ -353,14 +364,14 @@ def testNoLibraryCode(env):
 
 @gearsTest()
 def testNoValidJsonConfig(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1})
     '''
     env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', b'\xaa', code).error().contains("given configuration value is not a valid string")
 
 @gearsTest()
 def testSetUserAsArgument(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1})
     '''
     env.expect('RG.FUNCTION', 'LOAD', 'USER', 'foo', code).error().contains("Unknown argument user")
@@ -372,7 +383,7 @@ def testBinaryLibCode(env):
 
 @gearsTest()
 def testUploadSameLibraryName(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1})
     '''
     env.expect('RG.FUNCTION', 'LOAD', code).equal('OK')
@@ -380,21 +391,21 @@ redis.register_function('test', () => {return 1})
 
 @gearsTest()
 def testUnknownFunctionSubCommand(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1})
     '''
     env.expect('RG.FUNCTION', 'Foo').error().contains('Unknown subcommand')
 
 @gearsTest()
 def testUnknownFunctionName(env):
-    '''#!js name=lib
+    '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1})
     '''
     env.expect('RG.FCALL', 'lib', 'foo', '0').error().contains("Unknown function")
 
 @gearsTest()
 def testCallFunctionOnOOM(env):
-    '''#!js name=lib
+    '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1})
     '''
     env.expect('config', 'set', 'maxmemory', '1').equal('OK')
@@ -402,7 +413,7 @@ redis.register_function('test', () => {return 1})
 
 @gearsTest()
 def testRegisterSameConsumerTwice(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
@@ -419,7 +430,7 @@ redis.register_notifications_consumer("consumer", "key", async function(client, 
 
 @gearsTest()
 def testRegisterSameStreamConsumerTwice(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_stream_consumer("consumer", "stream", 1, false, function(){
     return 0;
 });
@@ -431,7 +442,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
 
 @gearsTest()
 def testUpgradeStreamConsumerWithDifferentPrefix(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_stream_consumer("consumer", "%s", 1, false, function(){
     return 0;
 });
@@ -441,7 +452,7 @@ redis.register_stream_consumer("consumer", "%s", 1, false, function(){
 
 @gearsTest()
 def testRegisterSameRemoteTaskTwice(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_remote_function("remote", async(client, key) => {
     return 1;
 });
@@ -453,28 +464,28 @@ redis.register_remote_function("remote", async(client, key) => {
 
 @gearsTest()
 def testWrongFlagValue(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1}, [1])
     '''
     env.expect('RG.FUNCTION', 'LOAD', code).error().contains('wrong type of string value')
 
 @gearsTest()
 def testUnknownFlagValue(env):
-    code = '''#!js name=lib
+    code = '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1}, ["unknown"])
     '''
     env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Unknow flag')
 
 @gearsTest()
 def testArgDecodeFailure(env):
-    '''#!js name=lib
+    '''#!js api_version=1.0 name=lib
 redis.register_function('test', () => {return 1})
     '''
     env.expect('RG.FCALL', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
 
 @gearsTest()
 def testArgDecodeFailureAsync(env):
-    '''#!js name=lib
+    '''#!js api_version=1.0 name=lib
 redis.register_function('test', async () => {return 1})
     '''
     env.expect('RG.FCALL', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
