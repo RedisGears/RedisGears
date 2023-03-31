@@ -14,16 +14,6 @@ use crate::redisgears_plugin_api::GearsApiError;
 
 use super::prologue::ApiVersion;
 
-// /// Defines an API version consisting of major an minor parts.
-// #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-// pub struct ApiVersion {
-//     major: u8,
-//     minor: u8,
-// }
-// impl ApiVersion {
-
-// }
-
 pub trait CompiledLibraryInterface {
     fn log(&self, msg: &str);
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>);

@@ -48,7 +48,7 @@ unsafe impl GlobalAlloc for Globals {
     }
 }
 
-// #[cfg_attr(not(feature = "test"), global_allocator)]
+#[global_allocator]
 static mut GLOBAL: Globals = Globals { backend_ctx: None };
 
 pub(crate) fn log(msg: &str) {
@@ -309,7 +309,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     );
 
                     log(compiled_message);
-                    script_ctx.compiled_library_api.log(&compiled_message);
+                    script_ctx.compiled_library_api.log(compiled_message);
                 }
             }
 

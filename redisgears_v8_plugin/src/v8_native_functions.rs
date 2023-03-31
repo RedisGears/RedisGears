@@ -621,28 +621,32 @@ impl PartialOrd for ApiVersionSupported {
         self.0.partial_cmp(&other.0)
     }
 }
-impl PartialEq for ApiVersionSupported {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
-    }
-}
 impl Ord for ApiVersionSupported {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.cmp(&other.0)
     }
 }
+impl PartialEq for ApiVersionSupported {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
 impl Eq for ApiVersionSupported {}
+impl std::fmt::Debug for ApiVersionSupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl ApiVersionSupported {
-    /// The default RedisGears API version used when omitted in the prologue.
-    const DEFAULT: Self = Self(ApiVersion(1, 0), initialize_globals_1_0);
     /// A list of all currently supported and non-deprecated versions.
     const SUPPORTED: [ApiVersionSupported; 2] = [
-        Self::DEFAULT,
+        Self(ApiVersion(1, 0), initialize_globals_1_0),
         Self(ApiVersion(1, 1), initialize_globals_1_1),
     ];
     /// The versions which are going to be removed soon and for which a
     /// warning message should be printed out.
-    const DEPRECATED: [ApiVersion; 1] = [ApiVersion(1, 0)];
+    const DEPRECATED: [ApiVersion; 0] = [];
 
     /// Returns the version stored.
     pub fn get_version(&self) -> ApiVersion {
@@ -655,21 +659,29 @@ impl ApiVersionSupported {
     }
 
     /// Returns the minimum supported version.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are no supported versions available.
     pub fn minimum_supported() -> Self {
-        if let Some(v) = Self::SUPPORTED.iter().min() {
-            *v
-        } else {
-            Self::DEFAULT
-        }
+        Self::SUPPORTED
+            .iter()
+            .min()
+            .cloned()
+            .expect("No supported versions found.")
     }
 
     /// Returns the maximum supported version.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are no supported versions available.
     pub fn maximum_supported() -> Self {
-        if let Some(v) = Self::SUPPORTED.iter().max() {
-            *v
-        } else {
-            Self::DEFAULT
-        }
+        Self::SUPPORTED
+            .iter()
+            .max()
+            .cloned()
+            .expect("No supported versions found.")
     }
 
     /// Returns all the version supported.
@@ -692,6 +704,34 @@ impl ApiVersionSupported {
         Self::DEPRECATED.iter().any(|v| v == &self.0)
     }
 
+    /// Converts the current version into the latest compatible,
+    /// following the semantic versioning scheme.
+    ///
+    /// # Example
+    ///
+    /// If there are versions supported: 1.0, 1.1, 1.2 and 1.3, then
+    /// for the any of those versions, the latest compatible one is the
+    /// version 1.3, so with the same major number (1) but the maximum
+    /// minor number (3).
+    ///
+    /// ```rust,no_run,ignore
+    /// use redisgears_v8_plugin::v8_native_functions::ApiVersionSupported;
+    ///
+    /// let api_version = ApiVersionSupported::default();
+    /// assert_eq!(
+    ///    api_version.into_latest_compatible(),
+    ///    ApiVersionSupported::maximum_supported()
+    /// );
+    /// ```
+    pub fn into_latest_compatible(self) -> ApiVersionSupported {
+        Self::SUPPORTED
+            .iter()
+            .filter(|v| v.get_version().get_major() == self.get_version().get_major())
+            .max()
+            .cloned()
+            .unwrap_or(self)
+    }
+
     /// Validates the code against using this API version.
     pub(crate) fn validate_code(&self, _code: &str) -> Result<(), Vec<GearsApiError>> {
         let mut errors = Vec::new();
@@ -702,13 +742,19 @@ impl ApiVersionSupported {
             )));
         }
 
-        // Potentially check if uses deprecated symbols here.
+        // Potentially check if uses deprecated symbols here using a JS parser.
 
         if errors.is_empty() {
             Ok(())
         } else {
             Err(errors)
         }
+    }
+}
+
+impl Default for ApiVersionSupported {
+    fn default() -> Self {
+        Self::minimum_supported()
     }
 }
 
@@ -746,6 +792,7 @@ pub(crate) fn initialize_globals_for_version(
 ) -> Result<ApiVersionSupported, GearsApiError> {
     let redis = isolate_scope.new_object();
     let api_version: ApiVersionSupported = api_version.try_into()?;
+    let api_version = api_version.into_latest_compatible();
     api_version.get_implementation()(
         api_version,
         &redis,
@@ -1290,4 +1337,18 @@ pub(crate) fn initialize_globals_1_0(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_latest_supported_version_available() {
+        let api_version = ApiVersionSupported::default();
+        assert_eq!(
+            api_version.into_latest_compatible(),
+            ApiVersionSupported::maximum_supported()
+        );
+    }
 }
