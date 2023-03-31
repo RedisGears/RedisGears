@@ -46,5 +46,7 @@ jobs:
       run: $HOME/.cargo/bin/cargo build --verbose
     - name: Build release
       run: $HOME/.cargo/bin/cargo build --release --verbose
-    - name: Tests
+    - name: Unit tests
+      run: $HOME/.cargo/bin/cargo test --verbose
+    - name: Component tests
       run: cd pytests;./run_tests.sh

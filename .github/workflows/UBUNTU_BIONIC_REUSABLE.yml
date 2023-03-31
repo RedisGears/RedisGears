@@ -69,8 +69,10 @@ jobs:
       run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build --verbose
     - name: Build release
       run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build --release --verbose
-    - name: Tests
-      run: cd pytests;./run_tests.sh
+    - name: Unit tests
+      run: $HOME/.cargo/bin/cargo test --verbose
+    - name: Component tests
+      run: cd pytests; ./run_tests.sh
     - name: install ramp packer
       run: python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
     - name: Pack
