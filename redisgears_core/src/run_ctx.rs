@@ -5,26 +5,20 @@
  */
 
 use redis_module::{
-    context::{CallOptions, CallOptionsBuilder},
-    Context, ThreadSafeContext,
+    CallResult, Context, ContextFlags, RedisError, RedisResult, RedisString, ThreadSafeContext,
+    {CallOptionResp, CallOptions, CallOptionsBuilder},
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::FunctionFlags, redisai_interface::AIModelInterface,
     redisai_interface::AIScriptInterface, run_function_ctx::BackgroundRunFunctionCtxInterface,
     run_function_ctx::RedisClientCtxInterface, run_function_ctx::ReplyCtxInterface,
-    run_function_ctx::RunFunctionCtxInterface, CallResult, GearsApiError,
+    run_function_ctx::RunFunctionCtxInterface, GearsApiError,
 };
-
-use redis_module::Status;
 
 use crate::{call_redis_command, get_globals, get_msg_verbose, GearsLibraryMetaData};
 
-use std::slice::Iter;
-
 use crate::background_run_ctx::BackgroundRunCtx;
-
-use crate::get_ctx;
 
 use std::sync::Arc;
 
@@ -43,7 +37,7 @@ impl RedisClientCallOptions {
             .replicate()
             .verify_acl()
             .errors_as_replies()
-            .resp_3();
+            .resp(CallOptionResp::Resp3);
         let call_options = if !get_globals().allow_unsafe_redis_commands {
             call_options.script_mode()
         } else {
@@ -56,28 +50,31 @@ impl RedisClientCallOptions {
         };
 
         RedisClientCallOptions {
-            call_options: call_options.constract(),
+            call_options: call_options.build(),
             flags,
         }
     }
 }
 
-pub(crate) struct RedisClient {
+pub(crate) struct RedisClient<'ctx> {
+    ctx: &'ctx Context,
     call_options: RedisClientCallOptions,
     lib_meta_data: Arc<GearsLibraryMetaData>,
-    user: Option<String>,
+    user: RedisString,
 }
 
-unsafe impl Sync for RedisClient {}
-unsafe impl Send for RedisClient {}
+unsafe impl<'ctx> Sync for RedisClient<'ctx> {}
+unsafe impl<'ctx> Send for RedisClient<'ctx> {}
 
-impl RedisClient {
+impl<'ctx> RedisClient<'ctx> {
     pub(crate) fn new(
+        ctx: &'ctx Context,
         lib_meta_data: Arc<GearsLibraryMetaData>,
-        user: Option<String>,
+        user: RedisString,
         flags: FunctionFlags,
     ) -> RedisClient {
         RedisClient {
+            ctx: ctx,
             call_options: RedisClientCallOptions::new(flags),
             lib_meta_data,
             user,
@@ -85,39 +82,31 @@ impl RedisClient {
     }
 }
 
-impl RedisClientCtxInterface for RedisClient {
+impl<'ctx> RedisClientCtxInterface for RedisClient<'ctx> {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
-        let user = self.user.as_ref().or(Some(&self.lib_meta_data.user));
-        call_redis_command(user, command, &self.call_options.call_options, args)
+        call_redis_command(
+            self.ctx,
+            &self.user,
+            command,
+            &self.call_options.call_options,
+            args,
+        )
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
         Box::new(BackgroundRunCtx::new(
-            self.user.clone(),
+            self.user.safe_clone(self.ctx),
             &self.lib_meta_data,
             self.call_options.clone(),
         ))
     }
 
     fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
-        let user = match self.user.as_ref() {
-            Some(u) => Some(u),
-            None => Some(&self.lib_meta_data.user),
-        };
-        let ctx = match user {
-            Some(u) => {
-                let ctx = &get_globals().authenticated_redis_ctx;
-                if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::new(format!(
-                        "Failed authenticate user {}",
-                        u
-                    )));
-                }
-                ctx
-            }
-            None => get_ctx(),
-        };
-        let res = RedisAIModel::open_from_key(ctx, name);
+        let _authenticate_scope = self
+            .ctx
+            .autenticate_user(&self.user)
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
+        let res = RedisAIModel::open_from_key(self.ctx, name);
         match res {
             Ok(res) => Ok(Box::new(res)),
             Err(e) => Err(GearsApiError::new(e)),
@@ -125,24 +114,11 @@ impl RedisClientCtxInterface for RedisClient {
     }
 
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
-        let user = match self.user.as_ref() {
-            Some(u) => Some(u),
-            None => Some(&self.lib_meta_data.user),
-        };
-        let ctx = match user {
-            Some(u) => {
-                let ctx = &get_globals().authenticated_redis_ctx;
-                if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::new(format!(
-                        "Failed authenticate user {}",
-                        u
-                    )));
-                }
-                ctx
-            }
-            None => get_ctx(),
-        };
-        let res = RedisAIScript::open_from_key(ctx, name);
+        let _authenticate_scope = self
+            .ctx
+            .autenticate_user(&self.user)
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
+        let res = RedisAIScript::open_from_key(self.ctx, name);
         match res {
             Ok(res) => Ok(Box::new(res)),
             Err(e) => Err(GearsApiError::new(e)),
@@ -152,42 +128,18 @@ impl RedisClientCtxInterface for RedisClient {
 
 pub(crate) struct RunCtx<'a> {
     pub(crate) ctx: &'a Context,
-    pub(crate) iter: Iter<'a, redis_module::RedisString>,
+    pub(crate) args: Vec<redis_module::RedisString>,
     pub(crate) flags: FunctionFlags,
     pub(crate) lib_meta_data: Arc<GearsLibraryMetaData>,
 }
 
 impl<'a> ReplyCtxInterface for RunCtx<'a> {
-    fn reply_with_simple_string(&self, val: &str) {
-        self.ctx.reply_simple_string(val);
+    fn send_reply(&self, reply: RedisResult) {
+        self.ctx.reply(reply);
     }
 
     fn reply_with_error(&self, val: GearsApiError) {
         self.ctx.reply_error_string(get_msg_verbose(&val));
-    }
-
-    fn reply_with_long(&self, val: i64) {
-        self.ctx.reply_long(val);
-    }
-
-    fn reply_with_double(&self, val: f64) {
-        self.ctx.reply_double(val);
-    }
-
-    fn reply_with_bulk_string(&self, val: &str) {
-        self.ctx.reply_bulk_string(val);
-    }
-
-    fn reply_with_array(&self, size: usize) {
-        self.ctx.reply_array(size);
-    }
-
-    fn reply_with_slice(&self, val: &[u8]) {
-        self.ctx.reply_bulk_slice(val);
-    }
-
-    fn reply_with_null(&self) {
-        self.ctx.reply_null();
     }
 
     fn as_client(&self) -> &dyn ReplyCtxInterface {
@@ -199,8 +151,8 @@ unsafe impl<'a> Sync for RunCtx<'a> {}
 unsafe impl<'a> Send for RunCtx<'a> {}
 
 impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
-    fn next_arg(&mut self) -> Option<&[u8]> {
-        Some(self.iter.next()?.as_slice())
+    fn get_args(&self) -> Box<dyn Iterator<Item = &[u8]> + '_> {
+        Box::new(self.args.iter().map(|v| v.as_slice()))
     }
 
     fn get_background_client(&self) -> Result<Box<dyn ReplyCtxInterface>, GearsApiError> {
@@ -212,66 +164,40 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
         }
         let blocked_client = self.ctx.block_client();
         let thread_ctx = ThreadSafeContext::with_blocked_client(blocked_client);
-        let ctx = thread_ctx.get_ctx();
         Ok(Box::new(BackgroundClientCtx {
-            _thread_ctx: thread_ctx,
-            ctx,
+            thread_ctx: thread_ctx,
         }))
     }
 
-    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
-        let user = self.ctx.get_current_user().ok();
+    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_> {
         Box::new(RedisClient::new(
+            self.ctx,
             self.lib_meta_data.clone(),
-            user,
+            self.ctx.get_current_user(),
             self.flags,
         ))
     }
 
     fn allow_block(&self) -> bool {
-        self.ctx.allow_block()
+        !self.ctx.get_flags().contains(ContextFlags::DENY_BLOCKING)
     }
 }
 
 pub(crate) struct BackgroundClientCtx {
-    _thread_ctx: ThreadSafeContext<redis_module::BlockedClient>,
-    ctx: Context,
+    thread_ctx: ThreadSafeContext<redis_module::BlockedClient>,
 }
 
 unsafe impl Sync for BackgroundClientCtx {}
 unsafe impl Send for BackgroundClientCtx {}
 
 impl ReplyCtxInterface for BackgroundClientCtx {
-    fn reply_with_simple_string(&self, val: &str) {
-        self.ctx.reply_simple_string(val);
+    fn send_reply(&self, reply: RedisResult) {
+        self.thread_ctx.reply(reply);
     }
 
     fn reply_with_error(&self, val: GearsApiError) {
-        self.ctx.reply_error_string(get_msg_verbose(&val));
-    }
-
-    fn reply_with_long(&self, val: i64) {
-        self.ctx.reply_long(val);
-    }
-
-    fn reply_with_double(&self, val: f64) {
-        self.ctx.reply_double(val);
-    }
-
-    fn reply_with_bulk_string(&self, val: &str) {
-        self.ctx.reply_bulk_string(val);
-    }
-
-    fn reply_with_array(&self, size: usize) {
-        self.ctx.reply_array(size);
-    }
-
-    fn reply_with_slice(&self, val: &[u8]) {
-        self.ctx.reply_bulk_slice(val);
-    }
-
-    fn reply_with_null(&self) {
-        self.ctx.reply_null();
+        self.thread_ctx
+            .reply(Err(RedisError::String(get_msg_verbose(&val).into())));
     }
 
     fn as_client(&self) -> &dyn ReplyCtxInterface {

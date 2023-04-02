@@ -4,11 +4,12 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::{CallReply, CallResult};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, load_library_ctx::RegisteredKeys,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    run_function_ctx::RemoteFunctionData, CallResult, GearsApiError, RefCellWrapper,
+    run_function_ctx::RemoteFunctionData, GearsApiError, RefCellWrapper,
 };
 
 use v8_rs::v8::v8_array::V8LocalArray;
@@ -31,6 +32,7 @@ use crate::v8_stream_ctx::V8StreamCtx;
 use crate::{get_exception_msg, get_exception_v8_value, get_function_flags};
 
 use std::cell::RefCell;
+use std::ptr::NonNull;
 use std::sync::{Arc, Weak};
 
 pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
@@ -38,153 +40,126 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
     ctx_scope: &V8ContextScope,
     res: CallResult,
     decode_responses: bool,
-) -> Option<V8LocalValue<'isolate_scope, 'isolate>> {
+) -> Result<V8LocalValue<'isolate_scope, 'isolate>, String> {
+    let res = res.map_err(|err| {
+        err.to_string()
+            .unwrap_or("Failed converting error to utf8".into())
+    })?;
     match res {
-        CallResult::SimpleStr(s) => {
-            let s = isolate_scope.new_string(&s).to_string_object();
-            s.set(
-                ctx_scope,
-                &isolate_scope.new_string("__reply_type").to_value(),
-                &isolate_scope.new_string("status").to_value(),
-            );
-            Some(s.to_value())
-        }
-        CallResult::BulkStr(s) => {
-            let s = isolate_scope.new_string(&s).to_string_object();
-            s.set(
-                ctx_scope,
-                &isolate_scope.new_string("__reply_type").to_value(),
-                &isolate_scope.new_string("bulk_string").to_value(),
-            );
-            Some(s.to_value())
-        }
-        CallResult::Error(e) => {
-            isolate_scope.raise_exception_str(&e);
-            None
-        }
-        CallResult::Long(l) => Some(isolate_scope.new_long(l)),
-        CallResult::Double(d) => Some(isolate_scope.new_double(d)),
-        CallResult::Array(a) => {
-            let mut has_error = false;
-            let vals = a
-                .into_iter()
-                .map(|v| {
-                    let res =
-                        call_result_to_js_object(isolate_scope, ctx_scope, v, decode_responses);
-                    if res.is_none() {
-                        has_error = true;
-                    }
-                    res
-                })
-                .collect::<Vec<Option<V8LocalValue>>>();
-            if has_error {
-                return None;
-            }
-
-            let array = isolate_scope.new_array(
-                &vals
-                    .iter()
-                    .map(|v| v.as_ref().unwrap())
-                    .collect::<Vec<&V8LocalValue>>(),
-            );
-            Some(array.to_value())
-        }
-        CallResult::Map(m) => {
-            let obj = isolate_scope.new_object();
-            for (k, v) in m {
-                let k_js_string = if decode_responses {
-                    let s = match String::from_utf8(k) {
-                        Ok(s) => s,
-                        Err(_) => {
-                            isolate_scope.raise_exception_str("Could not decode value as string");
-                            return None;
-                        }
-                    };
-                    isolate_scope.new_string(&s).to_value()
-                } else {
-                    isolate_scope.raise_exception_str("Binary map key is not supported");
-                    return None;
-                };
-                let v_js = call_result_to_js_object(isolate_scope, ctx_scope, v, decode_responses);
-
-                // if None return None
-                v_js.as_ref()?;
-
-                let v_js = v_js.unwrap();
-                obj.set(ctx_scope, &k_js_string, &v_js);
-            }
-            Some(obj.to_value())
-        }
-        CallResult::Set(s) => {
-            let set = isolate_scope.new_set();
-            for v in s {
-                let v_js_string = if decode_responses {
-                    let s = match String::from_utf8(v) {
-                        Ok(s) => s,
-                        Err(_) => {
-                            isolate_scope.raise_exception_str("Could not decode value as string");
-                            return None;
-                        }
-                    };
-                    isolate_scope.new_string(&s).to_value()
-                } else {
-                    isolate_scope.raise_exception_str("Binary set element is not supported");
-                    return None;
-                };
-                set.add(ctx_scope, &v_js_string);
-            }
-            Some(set.to_value())
-        }
-        CallResult::Bool(b) => Some(isolate_scope.new_bool(b)),
-        CallResult::BigNumber(s) => {
-            let s = isolate_scope.new_string(&s).to_string_object();
-            s.set(
-                ctx_scope,
-                &isolate_scope.new_string("__reply_type").to_value(),
-                &isolate_scope.new_string("big_number").to_value(),
-            );
-            Some(s.to_value())
-        }
-        CallResult::VerbatimString((ext, s)) => {
-            let s = isolate_scope.new_string(&s).to_string_object();
-            s.set(
-                ctx_scope,
-                &isolate_scope.new_string("__reply_type").to_value(),
-                &isolate_scope.new_string("verbatim").to_value(),
-            );
-            s.set(
-                ctx_scope,
-                &isolate_scope.new_string("__ext").to_value(),
-                &isolate_scope.new_string(&ext).to_value(),
-            );
-            Some(s.to_value())
-        }
-        CallResult::Null => Some(isolate_scope.new_null()),
-        CallResult::StringBuffer(s) => {
+        CallReply::String(s) => {
             if decode_responses {
-                let s = match String::from_utf8(s) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        isolate_scope.raise_exception_str("Could not decode value as string");
-                        return None;
-                    }
-                };
+                let s = s
+                    .to_string()
+                    .ok_or("Could not decode value as string".to_string())?;
                 let s = isolate_scope.new_string(&s).to_string_object();
                 s.set(
                     ctx_scope,
                     &isolate_scope.new_string("__reply_type").to_value(),
                     &isolate_scope.new_string("bulk_string").to_value(),
                 );
-                Some(s.to_value())
+                Ok(s.to_value())
             } else {
-                Some(isolate_scope.new_array_buffer(&s).to_value())
+                Ok(isolate_scope.new_array_buffer(s.as_bytes()).to_value())
             }
         }
+        CallReply::I64(l) => Ok(isolate_scope.new_long(l.to_i64())),
+        CallReply::Double(d) => Ok(isolate_scope.new_double(d.to_double())),
+        CallReply::Bool(b) => Ok(isolate_scope.new_bool(b.to_bool())),
+        CallReply::Null(_b) => Ok(isolate_scope.new_null()),
+        CallReply::Unknown => Ok(isolate_scope.new_null()),
+        CallReply::VerbatimString(s) => Ok(isolate_scope
+            .new_array_buffer(
+                s.as_parts()
+                    .ok_or("Could not decode format as string".to_string())?
+                    .1,
+            )
+            .to_value()),
+        CallReply::BigNumber(b) => {
+            let s = b
+                .to_string()
+                .ok_or("Could not decode big number as string".to_string())?;
+            let s = isolate_scope.new_string(&s).to_string_object();
+            s.set(
+                ctx_scope,
+                &isolate_scope.new_string("__reply_type").to_value(),
+                &isolate_scope.new_string("big_number").to_value(),
+            );
+            Ok(s.to_value())
+        }
+        CallReply::Array(a) => {
+            let res: Vec<V8LocalValue> = a.iter().fold(Ok::<_, String>(Vec::new()), |agg, v| {
+                let mut agg = agg?;
+                agg.push(call_result_to_js_object(
+                    isolate_scope,
+                    ctx_scope,
+                    v,
+                    decode_responses,
+                )?);
+                Ok(agg)
+            })?;
+            Ok(isolate_scope
+                .new_array(&res.iter().collect::<Vec<&V8LocalValue>>())
+                .to_value())
+        }
+        CallReply::Set(s) => Ok(s
+            .iter()
+            .fold(Ok::<_, String>(isolate_scope.new_set()), |agg, v| {
+                let agg = agg?;
+                agg.add(
+                    ctx_scope,
+                    &call_result_to_js_object(isolate_scope, ctx_scope, v, decode_responses)?,
+                );
+                Ok(agg)
+            })?
+            .to_value()),
+        CallReply::Map(m) => Ok(m
+            .iter()
+            .fold(Ok(isolate_scope.new_object()), |agg, (k, v)| {
+                let key = k.map_err(|e| {
+                    e.to_string()
+                        .unwrap_or("Failed converting error to utf8".to_string())
+                })?;
+                match key {
+                    CallReply::String(k) => {
+                        let key = k
+                            .to_string()
+                            .ok_or("Binary map key is not supported".to_string())?;
+                        let agg = agg?;
+                        agg.set(
+                            ctx_scope,
+                            &isolate_scope.new_string(&key).to_value(),
+                            &call_result_to_js_object(
+                                isolate_scope,
+                                ctx_scope,
+                                v,
+                                decode_responses,
+                            )?,
+                        );
+                        Ok(agg)
+                    }
+                    CallReply::I64(i) => {
+                        let agg = agg?;
+                        agg.set(
+                            ctx_scope,
+                            &isolate_scope.new_long(i.to_i64()),
+                            &call_result_to_js_object(
+                                isolate_scope,
+                                ctx_scope,
+                                v,
+                                decode_responses,
+                            )?,
+                        );
+                        Ok(agg)
+                    }
+                    _ => Err("Given object can not be a object key".to_string()),
+                }
+            })?
+            .to_value()),
     }
 }
 
 pub(crate) struct RedisClient {
-    pub(crate) client: Option<Box<dyn RedisClientCtxInterface>>,
+    pub(crate) client: Option<NonNull<dyn RedisClientCtxInterface>>,
     allow_block: Option<bool>,
 }
 
@@ -201,8 +176,14 @@ impl RedisClient {
         self.allow_block = None;
     }
 
-    pub(crate) fn set_client(&mut self, c: Box<dyn RedisClientCtxInterface>) {
-        self.client = Some(c);
+    pub(crate) fn get(&self) -> Option<&dyn RedisClientCtxInterface> {
+        self.client.map(|c| unsafe { &*c.as_ptr() })
+    }
+
+    pub(crate) fn set_client(&mut self, c: &dyn RedisClientCtxInterface) {
+        self.client = NonNull::new(
+            c as *const dyn RedisClientCtxInterface as *mut dyn RedisClientCtxInterface,
+        );
     }
 
     pub(crate) fn set_allow_block(&mut self, allow_block: bool) {
@@ -271,7 +252,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
             };
 
             let r_client = Arc::new(RefCell::new(RedisClient::new()));
-            r_client.borrow_mut().set_client(redis_client);
+            r_client.borrow_mut().set_client(redis_client.as_ref());
             let c = get_redis_client(&script_ctx_ref, isolate_scope, ctx_scope, &r_client);
 
             let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
@@ -279,7 +260,6 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
             script_ctx_ref.after_lock_gil();
             let res = f.call(ctx_scope, Some(&[&c.to_value()]));
             script_ctx_ref.before_release_gil();
-
             r_client.borrow_mut().make_invalid();
             Ok(res)
         }),
@@ -486,10 +466,11 @@ fn add_call_function(
                   commands_args: Vec<V8RedisCallArgs>| {
                 let is_already_blocked = ctx_scope.get_private_data::<bool, _>(0);
                 if is_already_blocked.is_none() || !*is_already_blocked.unwrap() {
-                    return Err("Main thread is not locked");
+                    return Err("Main thread is not locked".to_string());
                 }
 
-                let res = match redis_client_ref.borrow().client.as_ref() {
+                let borrow_client = redis_client_ref.borrow();
+                let res = match borrow_client.get() {
                     Some(c) => c.call(
                         command_utf8.as_str(),
                         &commands_args
@@ -497,15 +478,15 @@ fn add_call_function(
                             .map(|v| v.as_bytes())
                             .collect::<Vec<&[u8]>>(),
                     ),
-                    None => return Err("Used on invalid client"),
+                    None => return Err("Used on invalid client".to_string()),
                 };
 
-                Ok(call_result_to_js_object(
+                Ok(Some(call_result_to_js_object(
                     isolate_scope,
                     ctx_scope,
                     res,
                     decode_response,
-                ))
+                )?))
             }
         ),
     );
@@ -551,7 +532,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
         ctx_scope,
         "run_on_background",
         new_native_function!(move |_isolate, ctx_scope, f: V8LocalValue| {
-            let bg_redis_client = match redis_client_ref.borrow().client.as_ref() {
+            let bg_redis_client = match redis_client_ref.borrow().get() {
                 Some(c) => c.get_background_redis_client(),
                 None => {
                     return Err("Called 'run_on_background' out of context");

@@ -4,12 +4,14 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::{execute_on_pool, get_ctx, get_globals};
+use crate::config::LIBRARY_MAX_MEMORY;
+use crate::{execute_on_pool, DETACH_CONTEXT};
 use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use std::collections::LinkedList;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct CompiledLibraryInternals {
@@ -84,7 +86,7 @@ impl CompiledLibraryAPI {
 
 impl CompiledLibraryInterface for CompiledLibraryAPI {
     fn log(&self, msg: &str) {
-        get_ctx().log_notice(msg);
+        DETACH_CONTEXT.log_notice(msg);
     }
 
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>) {
@@ -92,7 +94,7 @@ impl CompiledLibraryInterface for CompiledLibraryAPI {
     }
 
     fn get_maxmemory(&self) -> usize {
-        get_globals().config.library_maxmemory.size
+        LIBRARY_MAX_MEMORY.load(Ordering::Relaxed) as usize
     }
 
     fn redisai_create_tensor(

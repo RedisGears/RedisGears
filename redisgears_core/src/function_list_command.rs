@@ -127,7 +127,7 @@ pub(crate) fn function_list_command(
                                         RedisValue::BulkString(k.to_string()),
                                         RedisValue::BulkString("prefix".to_string()),
                                         RedisValue::BulkRedisString(
-                                            ctx.create_string_from_slice(&v.prefix),
+                                            ctx.create_string(v.prefix.as_slice()),
                                         ),
                                         RedisValue::BulkString("window".to_string()),
                                         RedisValue::Integer(v.window as i64),
@@ -149,7 +149,7 @@ pub(crate) fn function_list_command(
                                                     let mut res = vec![
                                                         RedisValue::BulkString("name".to_string()),
                                                         RedisValue::BulkRedisString(
-                                                            ctx.create_string_from_slice(s),
+                                                            ctx.create_string(s.as_slice()),
                                                         ),
                                                         RedisValue::BulkString(
                                                             "last_processed_time".to_string(),

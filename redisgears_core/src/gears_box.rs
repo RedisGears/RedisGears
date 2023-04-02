@@ -4,8 +4,9 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::get_globals;
-use redis_module::RedisError;
+use crate::config::GEARS_BOX_ADDRESS;
+use lazy_static::__Deref;
+use redis_module::{Context, RedisError};
 use serde::{Deserialize, Serialize};
 
 pub(crate) fn do_http_get<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T, RedisError> {
@@ -28,9 +29,12 @@ pub(crate) fn do_http_get_text(url: &str) -> Result<String, RedisError> {
     }
 }
 
-pub(crate) fn gears_box_search(token: &str) -> Result<serde_json::Value, RedisError> {
-    let gears_box_address = &get_globals().config.gears_box_address.address;
-    let url = &format!("{}/api/v1/recipes?q={}", gears_box_address, token);
+pub(crate) fn gears_box_search(
+    ctx: &Context,
+    token: &str,
+) -> Result<serde_json::Value, RedisError> {
+    let gears_box_address = GEARS_BOX_ADDRESS.lock(ctx);
+    let url = &format!("{}/api/v1/recipes?q={}", gears_box_address.deref(), token);
     do_http_get(url)
 }
 
@@ -82,13 +86,21 @@ pub(crate) struct GearsBoxLibraryInfo {
     pub(crate) installed_version_info: GearsBoxLibraryVersionInfo,
 }
 
-pub(crate) fn gears_box_get_library(library_id: &str) -> Result<GearsBoxLibraryInfo, RedisError> {
-    let gears_box_address = &get_globals().config.gears_box_address.address;
-    let general_info_url = &format!("{}/api/v1/recipes/{}/", gears_box_address, library_id);
+pub(crate) fn gears_box_get_library(
+    ctx: &Context,
+    library_id: &str,
+) -> Result<GearsBoxLibraryInfo, RedisError> {
+    let gears_box_address = GEARS_BOX_ADDRESS.lock(ctx);
+    let general_info_url = &format!(
+        "{}/api/v1/recipes/{}/",
+        gears_box_address.deref(),
+        library_id
+    );
     let general_info = do_http_get(general_info_url)?;
     let installed_version_url = &format!(
         "{}/api/v1/recipes/{}/versions/latest",
-        gears_box_address, library_id
+        gears_box_address.deref(),
+        library_id
     );
     let installed_version = do_http_get(installed_version_url)?;
     Ok(GearsBoxLibraryInfo {

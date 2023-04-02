@@ -5,7 +5,6 @@
  */
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
 
 pub mod backend_ctx;
 pub mod function_ctx;
@@ -51,22 +50,6 @@ impl GearsApiError {
 pub enum FunctionCallResult {
     Done,
     Hold,
-}
-
-pub enum CallResult {
-    Error(String),
-    SimpleStr(String),
-    BulkStr(String),
-    StringBuffer(Vec<u8>),
-    Long(i64),
-    Double(f64),
-    Array(Vec<CallResult>),
-    Map(HashMap<Vec<u8>, CallResult>),
-    Set(HashSet<Vec<u8>>),
-    Bool(bool),
-    BigNumber(String),
-    VerbatimString((String, String)),
-    Null,
 }
 
 pub struct RefCellWrapper<T> {

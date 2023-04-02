@@ -19,7 +19,7 @@ function launch() {
     local gears_v8_plugin_path=$3
     local redis_arguments="$4 $5"
 
-    $redis_path --loadmodule $gears_module_path $gears_v8_plugin_path $redis_arguments
+    $redis_path --loadmodule $gears_module_path v8-plugin-path $gears_v8_plugin_path $redis_arguments
 }
 
 function parse_args_and_launch() {

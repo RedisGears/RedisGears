@@ -4,10 +4,11 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::{CallResult, RedisResult};
+
 use crate::{Deserialize, Serialize};
 
 use crate::redisgears_plugin_api::redisai_interface::{AIModelInterface, AIScriptInterface};
-use crate::redisgears_plugin_api::CallResult;
 use crate::redisgears_plugin_api::GearsApiError;
 
 pub trait RedisClientCtxInterface: Send + Sync {
@@ -18,14 +19,8 @@ pub trait RedisClientCtxInterface: Send + Sync {
 }
 
 pub trait ReplyCtxInterface: Send + Sync {
-    fn reply_with_simple_string(&self, val: &str);
-    fn reply_with_error(&self, val: GearsApiError);
-    fn reply_with_long(&self, val: i64);
-    fn reply_with_double(&self, val: f64);
-    fn reply_with_bulk_string(&self, val: &str);
-    fn reply_with_slice(&self, val: &[u8]);
-    fn reply_with_array(&self, size: usize);
-    fn reply_with_null(&self);
+    fn send_reply(&self, reply: RedisResult);
+    fn reply_with_error(&self, err: GearsApiError);
     fn as_client(&self) -> &dyn ReplyCtxInterface;
 }
 
@@ -53,8 +48,8 @@ pub trait BackgroundRunFunctionCtxInterface: Send + Sync {
 }
 
 pub trait RunFunctionCtxInterface: ReplyCtxInterface {
-    fn next_arg(&mut self) -> Option<&[u8]>;
+    fn get_args(&self) -> Box<dyn Iterator<Item = &'_ [u8]> + '_>;
     fn get_background_client(&self) -> Result<Box<dyn ReplyCtxInterface>, GearsApiError>;
-    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface>;
+    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_>;
     fn allow_block(&self) -> bool;
 }

@@ -24,7 +24,7 @@ jobs:
     - name: install openssl
       run: brew install openssl@1.1
     - name: install redis
-      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.2-rc1; make install
     - name: format
       run: cargo fmt -- --check
     - name: Build

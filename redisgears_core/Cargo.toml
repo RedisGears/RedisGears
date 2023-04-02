@@ -9,9 +9,10 @@ rust-version = "1.63"
 
 [dependencies]
 #redis-module = { version="1.0", features = ["experimental-api"]}
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "api_extentions", features = ["experimental-api"]}
-lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api" }
-lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api" }
+redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "ap_fixes_changes", features = ["experimental-api"]}
+redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "ap_fixes_changes"}
+lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
+lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
 linkme = "0.3"
 redisai_rs = { path = "../redisai_rs" }
 libloading = "0.7"
@@ -22,6 +23,7 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 sha256 = "1.0.3"
+lazy_static = "1.4.0"
 
 [build-dependencies]
 regex = "1"

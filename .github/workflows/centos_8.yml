@@ -30,7 +30,7 @@ jobs:
         . /opt/rh/gcc-toolset-11/enable
         git clone https://github.com/redis/redis
         cd redis
-        git checkout 7.0.3
+        git checkout 7.2-rc1
         make install
     - name: Install rust
       run: |

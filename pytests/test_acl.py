@@ -15,7 +15,7 @@ redis.register_function("get", function(client, dummy, key){
     env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
     env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('acl verification failed')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('No permissions to access a key')
     env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
@@ -33,7 +33,7 @@ redis.register_function("get", async function(client, dummy, key){
     env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
     env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('acl verification failed')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('No permissions to access a key')
     env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
@@ -55,7 +55,7 @@ redis.register_function("get", async function(client, dummy, key){
     env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
     env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('acl verification failed')
+    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains('No permissions to access a key')
     env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
@@ -104,7 +104,7 @@ redis.register_function("async_get_start", function(client, dummy, key){
         c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
-        env.assertContains("acl verification failed", str(e))
+        env.assertContains("No permissions to access a key", str(e))
 
     env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
     try:
@@ -118,7 +118,7 @@ redis.register_function("async_get_start", function(client, dummy, key){
         c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
-        env.assertContains("Failed authenticating client", str(e))
+        env.assertContains("User does not exists or disabled", str(e))
 
 @gearsTest()
 def testAclOnNotificationConsumer(env):
@@ -138,7 +138,7 @@ redis.register_notifications_consumer("test", "", function(client, data) {
     env.assertContains('User does not have permissions on key', last_error)
     env.expect('set', 'cached:x', '1').equal(True)
     last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
-    env.assertContains("can't access at least one of the keys mentioned in the command", last_error)
+    env.assertContains("NOPERM No permissions to access a key", last_error)
 
 @gearsTest()
 def testAclOnAsyncNotificationConsumer(env):
@@ -164,7 +164,7 @@ redis.register_notifications_consumer("test", "", async function(client, data) {
     env.expect('set', 'cached:x', '1').equal(True)
     runUntil(env, 2, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
     last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
-    env.assertContains("can't access at least one of the keys mentioned in the command", last_error)
+    env.assertContains("NOPERM No permissions to access a key", last_error)
 
 @gearsTest()
 def testAclOnStreamConsumer(env):
@@ -187,7 +187,7 @@ redis.register_stream_consumer("consumer", "", 1, false, function(client){
 
     env.cmd('xadd', 'cached:x', '*', 'foo', 'bar')
     last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
-    env.assertContains("can't access at least one of the keys mentioned in the command", last_error)
+    env.assertContains("NOPERM No permissions to access a key", last_error)
 
 @gearsTest()
 def testAclOnAsyncStreamConsumer(env):
@@ -215,5 +215,5 @@ redis.register_stream_consumer("consumer", "", 1, false, async function(client){
     env.cmd('xadd', 'cached:x', '*', 'foo', 'bar')
     runUntil(env, 1, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
     last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
-    env.assertContains("can't access at least one of the keys mentioned in the command", last_error)
+    env.assertContains("NOPERM No permissions to access a key", last_error)
 

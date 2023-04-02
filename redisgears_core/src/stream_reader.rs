@@ -5,6 +5,7 @@
  */
 
 use redis_module::raw::RedisModuleStreamID;
+use redis_module::Context;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 use std::collections::HashMap;
@@ -17,10 +18,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::RefCellWrapper;
 
-pub type RecordAcknowledgeCallback = dyn Fn(&[u8], u64, u64);
-pub type StreamReaderCallback<T> =
-    dyn Fn(&[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String> + Sync + Send;
-pub type StreamTrimmerCallback = dyn Fn(&[u8], RedisModuleStreamID) + Sync + Send;
+pub type RecordAcknowledgeCallback = dyn Fn(&Context, &[u8], u64, u64);
+pub type StreamReaderCallback<T> = dyn Fn(&Context, &[u8], Option<RedisModuleStreamID>, bool) -> Result<Option<T>, String>
+    + Sync
+    + Send;
+pub type StreamTrimmerCallback = dyn Fn(&Context, &[u8], RedisModuleStreamID) + Sync + Send;
 
 pub(crate) trait StreamReaderRecord {
     fn get_id(&self) -> RedisModuleStreamID;
@@ -41,9 +43,10 @@ pub(crate) enum StreamReaderAck {
 pub(crate) trait StreamConsumer<T: StreamReaderRecord> {
     fn new_data(
         &self,
+        ctx: &Context,
         stream_name: &[u8],
         record: T,
-        ack_callback: Box<dyn FnOnce(StreamReaderAck) + Send>,
+        ack_callback: Box<dyn FnOnce(&Context, StreamReaderAck) + Send>,
     ) -> Option<StreamReaderAck>;
 }
 
@@ -54,7 +57,7 @@ pub(crate) struct TrackedStream {
 }
 
 impl TrackedStream {
-    fn trim(&mut self) {
+    fn trim(&mut self, ctx: &Context) {
         let mut id_to_trim: RedisModuleStreamID = RedisModuleStreamID {
             ms: u64::MAX,
             seq: u64::MAX,
@@ -96,7 +99,7 @@ impl TrackedStream {
 
         if id_to_trim.ms < u64::MAX {
             // do not accidently trimm by u64::MAX
-            (self.stream_trimmer)(&self.name, id_to_trim);
+            (self.stream_trimmer)(ctx, &self.name, id_to_trim);
         }
 
         for id in indexes_to_delete.iter().rev() {
@@ -238,13 +241,14 @@ where
 }
 
 fn read_next_data<T: StreamReaderRecord>(
+    ctx: &Context,
     name: &[u8],
     id: Option<RedisModuleStreamID>,
     include_id: bool,
     consumer_info: &Arc<RefCellWrapper<ConsumerInfo>>,
     stream_reader: &Arc<Box<StreamReaderCallback<T>>>,
 ) -> Result<Option<T>, String> {
-    let r = stream_reader(name, id, include_id);
+    let r = stream_reader(ctx, name, id, include_id);
     r.as_ref()?;
     let record = r.as_ref().unwrap();
     if record.is_none() {
@@ -258,6 +262,7 @@ fn read_next_data<T: StreamReaderRecord>(
 }
 
 fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static>(
+    ctx: &Context,
     stream: Arc<RefCellWrapper<TrackedStream>>,
     consumer_weak: Weak<RefCellWrapper<ConsumerData<T, C>>>,
     mut actual_record: Result<Option<T>, String>,
@@ -296,9 +301,10 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
             let clone_stream = Arc::clone(&stream);
             let clone_stream_reader = Arc::clone(&stream_reader);
             c.consumer.as_ref().unwrap().new_data(
+                ctx,
                 &t_s.name,
                 record,
-                Box::new(move |ack| {
+                Box::new(move |ctx, ack| {
                     // if weak ref returns None it means that stream was deleted
                     if let Some(clone_consumer_info) = clone_consumer_info.upgrade() {
                         let record = {
@@ -317,7 +323,7 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
                                             if let Some(on_record_acked) =
                                                 c.ref_cell.borrow().on_record_acked.as_ref()
                                             {
-                                                on_record_acked(&t_s.name, id.ms, id.seq);
+                                                on_record_acked(ctx, &t_s.name, id.ms, id.seq);
                                             }
                                         }
                                     } else {
@@ -331,11 +337,12 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
                                     (trimmed_first, c_i.last_read_id)
                                 };
                                 if trimmed_first && trim {
-                                    t_s.trim();
+                                    t_s.trim(ctx);
                                 }
                                 last_read_id
                             };
                             read_next_data(
+                                ctx,
                                 &t_s.name,
                                 last_read_id,
                                 false,
@@ -344,6 +351,7 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
                             )
                         };
                         send_new_data(
+                            ctx,
                             clone_stream,
                             clone_consumer_weak,
                             record,
@@ -371,7 +379,7 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
                             if let Some(on_record_acked) =
                                 c.ref_cell.borrow().on_record_acked.as_ref()
                             {
-                                on_record_acked(&t_s.name, id.ms, id.seq);
+                                on_record_acked(ctx, &t_s.name, id.ms, id.seq);
                             }
                         }
                     } else {
@@ -385,7 +393,7 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
                     (trimmed_first, c_i.last_read_id)
                 };
                 if trimmed_first && trim {
-                    t_s.trim();
+                    t_s.trim(ctx);
                 }
                 last_read_id
             }
@@ -399,6 +407,7 @@ fn send_new_data<T: StreamReaderRecord + 'static, C: StreamConsumer<T> + 'static
             }
         };
         actual_record = read_next_data(
+            ctx,
             &t_s.name,
             last_read_id,
             false,
@@ -515,7 +524,7 @@ where
         self.tracked_streams.clear();
     }
 
-    pub(crate) fn on_stream_touched(&mut self, _event: &str, key: &[u8]) {
+    pub(crate) fn on_stream_touched(&mut self, ctx: &Context, _event: &str, key: &[u8]) {
         let mut ids_to_remove = Vec::new();
 
         let tracked_stream = Arc::clone(self.get_or_create_tracked_stream(key));
@@ -553,6 +562,7 @@ where
 
                     (
                         read_next_data(
+                            ctx,
                             key,
                             last_read_id,
                             false,
@@ -576,6 +586,7 @@ where
             .map(|res| {
                 if let Some((consumer_weak, record, consumer_info)) = res {
                     send_new_data(
+                        ctx,
                         Arc::clone(&tracked_stream),
                         consumer_weak,
                         record,

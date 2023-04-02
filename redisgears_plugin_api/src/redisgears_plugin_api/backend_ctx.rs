@@ -4,11 +4,11 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::RedisValue;
+
 use crate::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
 use crate::redisgears_plugin_api::redisai_interface::AITensorInterface;
-use crate::redisgears_plugin_api::CallResult;
 use crate::redisgears_plugin_api::GearsApiError;
-use std::alloc::GlobalAlloc;
 
 pub trait CompiledLibraryInterface {
     fn log(&self, msg: &str);
@@ -29,7 +29,6 @@ pub enum LibraryFatalFailurePolicy {
 }
 
 pub struct BackendCtx {
-    pub allocator: &'static dyn GlobalAlloc,
     pub log: Box<dyn Fn(&str) + 'static>,
     pub get_on_oom_policy: Box<dyn Fn() -> LibraryFatalFailurePolicy + 'static>,
     pub get_lock_timeout: Box<dyn Fn() -> u128 + 'static>,
@@ -45,7 +44,7 @@ pub trait BackendCtxInterfaceInitialised {
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError>;
-    fn debug(&mut self, args: &[&str]) -> Result<CallResult, GearsApiError>;
+    fn debug(&mut self, args: &[&str]) -> Result<RedisValue, GearsApiError>;
 }
 
 pub trait BackendCtxInterfaceUninitialised {

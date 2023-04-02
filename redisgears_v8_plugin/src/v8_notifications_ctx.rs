@@ -49,7 +49,7 @@ struct V8NotificationsCtxInternal {
 impl V8NotificationsCtxInternal {
     fn run_sync(
         &self,
-        notification_ctx: Box<dyn NotificationRunCtxInterface>,
+        notification_ctx: &dyn NotificationRunCtxInterface,
         data: &V8NotificationCtxData,
         ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
@@ -80,9 +80,8 @@ impl V8NotificationsCtxInternal {
             );
 
             let c = notification_ctx.get_redis_client();
-            let mut redis_client = RedisClient::new();
-            redis_client.set_client(c);
-            let redis_client = Arc::new(RefCell::new(redis_client));
+            let redis_client = Arc::new(RefCell::new(RedisClient::new()));
+            redis_client.borrow_mut().set_client(c.as_ref());
             let r_client =
                 get_redis_client(&self.script_ctx, &isolate_scope, &ctx_scope, &redis_client);
 
@@ -299,7 +298,7 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
         &self,
         event: &str,
         key: &[u8],
-        _notification_ctx: Box<dyn NotificationRunCtxInterface>,
+        _notification_ctx: &dyn NotificationRunCtxInterface,
     ) -> Option<Box<dyn Any>> {
         Some(Box::new(V8NotificationCtxData {
             event: event.to_string(),
@@ -310,7 +309,7 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
     fn post_command_notification(
         &self,
         notificaion_data: Option<Box<dyn Any>>,
-        notification_ctx: Box<dyn NotificationRunCtxInterface>,
+        notification_ctx: &dyn NotificationRunCtxInterface,
         ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
         let notificaion_data = notificaion_data

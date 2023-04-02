@@ -4,13 +4,14 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::Context;
 use redisgears_plugin_api::redisgears_plugin_api::{GearsApiError, RefCellWrapper};
 use std::cell::RefCell;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 
 pub(crate) type NotificationCallback =
-    Box<dyn Fn(&str, &[u8], Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>)>;
+    Box<dyn Fn(&Context, &str, &[u8], Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>)>;
 
 pub(crate) enum ConsumerKey {
     Key(Vec<u8>),
@@ -70,7 +71,12 @@ impl NotificationConsumer {
     }
 }
 
-fn fire_event(consumer: &Arc<RefCell<NotificationConsumer>>, event: &str, key: &[u8]) {
+fn fire_event(
+    ctx: &Context,
+    consumer: &Arc<RefCell<NotificationConsumer>>,
+    event: &str,
+    key: &[u8],
+) {
     let c = consumer.borrow();
     {
         let mut stats = c.stats.ref_cell.borrow_mut();
@@ -80,6 +86,7 @@ fn fire_event(consumer: &Arc<RefCell<NotificationConsumer>>, event: &str, key: &
     let start_time = SystemTime::now();
 
     (c.callback.as_ref().unwrap())(
+        ctx,
         event,
         key,
         Box::new(move |res| {
@@ -138,7 +145,7 @@ impl KeysNotificationsCtx {
         consumer
     }
 
-    pub(crate) fn on_key_touched(&self, event: &str, key: &[u8]) {
+    pub(crate) fn on_key_touched(&self, ctx: &Context, event: &str, key: &[u8]) {
         for consumer in self.consumers.iter() {
             let consumer = match consumer.upgrade() {
                 Some(c) => c,
@@ -152,7 +159,7 @@ impl KeysNotificationsCtx {
                 }
             };
             if res {
-                fire_event(&consumer, event, key);
+                fire_event(ctx, &consumer, event, key);
             }
         }
     }

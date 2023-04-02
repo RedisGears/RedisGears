@@ -8,7 +8,7 @@ command_line_args: "libredisgears_v8_plugin.so"
 run_command_line_args: "{os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"
 min_redis_version: '6.0.0'
 min_redis_pack_version: '6.2.18'
-config_command: "RG.CONFIG SET"
+config_command: "RG.CONFIGSET"
 capabilities:
     - types
     - failover_migrate
@@ -29,7 +29,8 @@ exclude_commands:
     - redisgears_2.INNERCOMMUNICATION
     - redisgears_2.HELLO
     - redisgears_2.CLUSTERSETFROMSHARD
-    - rg.config
+    - rg.configset
+    - RG.CONFIGSET
     - _rg_internals.update_stream_last_read_id
     - _rg.function
 dependencies:

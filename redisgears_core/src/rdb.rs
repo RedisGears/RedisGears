@@ -5,11 +5,11 @@
  */
 
 use crate::{
-    function_load_command::function_load_intrernal, get_ctx, get_globals_mut, get_libraries,
+    function_load_command::function_load_intrernal, get_globals_mut, get_libraries, DETACH_CONTEXT,
 };
 
 use redis_module::{
-    error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB,
+    error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB, Context,
     RedisModuleTypeMethods,
 };
 
@@ -55,7 +55,7 @@ extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     for val in libraries.values() {
         raw::save_string(rdb, &val.gears_lib_ctx.meta_data.name);
         raw::save_string(rdb, &val.gears_lib_ctx.meta_data.code);
-        raw::save_string(rdb, &val.gears_lib_ctx.meta_data.user);
+        raw::save_redis_string(rdb, &val.gears_lib_ctx.meta_data.user);
         if let Some(config) = &val.gears_lib_ctx.meta_data.config.as_ref() {
             raw::save_unsigned(rdb, 1); // config exists
             raw::save_string(rdb, config);
@@ -91,7 +91,7 @@ extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     }
 }
 
-fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
+fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
     let num_of_libs = raw::load_unsigned(rdb)?;
 
     for _ in 0..num_of_libs {
@@ -107,12 +107,8 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
             .map_err(|e| {
                 Error::generic(&format!("Failed parsing code from rdb as string, {}.", e))
             })?;
-        let user = raw::load_string_buffer(rdb)
-            .map_err(|e| Error::generic(&format!("Failed loading user from rdb, {}.", e)))?
-            .to_string()
-            .map_err(|e| {
-                Error::generic(&format!("Failed parsing user from rdb as string, {}.", e))
-            })?;
+        let user = raw::load_string(rdb)
+            .map_err(|e| Error::generic(&format!("Failed loading user from rdb, {}.", e)))?;
 
         let has_config = raw::load_unsigned(rdb).map_err(|e| {
             Error::generic(&format!("Failed loading config indicator from rdb, {}.", e))
@@ -156,7 +152,7 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
             None
         };
 
-        match function_load_intrernal(user, &code, config, false, gears_box_info) {
+        match function_load_intrernal(ctx, user, &code, config, false, gears_box_info) {
             Ok(_) => {}
             Err(e) => return Err(Error::generic(&format!("Failed loading librart, {}", e))),
         }
@@ -231,17 +227,20 @@ fn aux_load_internals(rdb: *mut raw::RedisModuleIO) -> Result<(), Error> {
 
 unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when: c_int) -> c_int {
     if encver > REDIS_GEARS_VERSION {
-        get_ctx().log_notice(&format!(
+        DETACH_CONTEXT.log_notice(&format!(
             "Can not load RedisGears data type version '{}', max supported version '{}'",
             encver, REDIS_GEARS_VERSION
         ));
         return raw::REDISMODULE_ERR as i32;
     }
 
-    match aux_load_internals(rdb) {
+    let inner_ctx = unsafe { raw::RedisModule_GetContextFromIO.unwrap()(rdb) };
+    let ctx = Context::new(inner_ctx);
+
+    match aux_load_internals(&ctx, rdb) {
         Ok(_) => raw::REDISMODULE_OK as i32,
         Err(e) => {
-            get_ctx().log_warning(&format!("Failed loading functions from rdb, {}.", e));
+            DETACH_CONTEXT.log_warning(&format!("Failed loading functions from rdb, {}.", e));
             raw::REDISMODULE_ERR as i32
         }
     }
