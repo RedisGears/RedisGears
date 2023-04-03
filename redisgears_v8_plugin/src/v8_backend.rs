@@ -66,7 +66,7 @@ pub(crate) fn get_fatal_failure_policy() -> LibraryFatalFailurePolicy {
         (GLOBAL.backend_ctx.as_ref().unwrap().get_on_oom_policy)()
     }
     #[cfg(feature = "test")]
-    ..Default::default()
+    LibraryFatalFailurePolicy::Abort
 }
 
 pub(crate) fn gil_lock_timeout() -> u128 {
@@ -75,7 +75,7 @@ pub(crate) fn gil_lock_timeout() -> u128 {
         (GLOBAL.backend_ctx.as_ref().unwrap().get_lock_timeout)()
     }
     #[cfg(feature = "test")]
-    ..Default::default()
+    0u128
 }
 
 pub(crate) struct V8Backend {

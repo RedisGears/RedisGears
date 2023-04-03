@@ -5,7 +5,7 @@
  */
 //! The validation mechanism of the user modules.
 //!
-//! Performs the basic validation and API compatibility checks.
+//! Performs the basic prologue parsing and validation.
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -47,7 +47,7 @@ impl FromStr for ApiVersion {
         const EXPECTED_FORMAT: &str = "<major>.<minor>";
         const EXAMPLE: &str = "1.1";
 
-        let create_error = || Error::ApiVersionSyntaxViolation {
+        let syntax_error = || Error::ApiVersionSyntaxViolation {
             current: s.to_owned(),
             expected_format: EXPECTED_FORMAT.to_owned(),
             example: EXAMPLE.to_owned(),
@@ -57,15 +57,15 @@ impl FromStr for ApiVersion {
 
         let major = version
             .next()
-            .ok_or_else(create_error)?
+            .ok_or_else(syntax_error)?
             .parse()
-            .map_err(|_| create_error())?;
+            .map_err(|_| syntax_error())?;
 
         let minor = version
             .next()
-            .ok_or_else(create_error)?
+            .ok_or_else(syntax_error)?
             .parse()
-            .map_err(|_| create_error())?;
+            .map_err(|_| syntax_error())?;
 
         Ok(Self(major, minor))
     }
@@ -131,8 +131,7 @@ impl From<Error> for GearsApiError {
                 supported,
             } => {
                 format!(
-                    "An unsupported API version was requested: {requested}.
-                \nThe supported versions are {}.",
+                    "An unsupported API version was requested: {requested}. The supported versions are {}.",
                     supported
                         .into_iter()
                         .map(|v| v.to_string())
@@ -146,7 +145,7 @@ impl From<Error> for GearsApiError {
                 example,
             } => {
                 format!(
-                    "The API version has been incorrectly specified: \"{current}\".\nThe expected format is \"{expected_format}\".\nAn example: \"{example}\""
+                    "The API version has been incorrectly specified: \"{current}\". The expected format is \"{expected_format}\". An example: \"{example}\"."
                 )
             }
             Error::MissingApiVersion => "The api version is missing from the prologue.".to_owned(),
@@ -158,9 +157,7 @@ impl From<Error> for GearsApiError {
                 )
             }
             Error::InvalidOrMissingPrologue => {
-                "Invalid or missing prologue. The rules for the prologue are:
-            \n\t1. It starts on the first line.
-            \n\t2. It is formatted as follows: \"#!<engine name> <key>=<value>\""
+                "Invalid or missing prologue. The rules for the prologue are: a) It starts on the first line. b) It is formatted as follows: \"#!<engine name> <key>=<value>\"."
                     .to_owned()
             }
             Error::UnknownPrologueProperties {
@@ -168,7 +165,7 @@ impl From<Error> for GearsApiError {
                 known_properties,
             } => {
                 format!(
-                    "Unknown prologue properties provided: {}.\nKnown properties: {}",
+                    "Unknown prologue properties provided: {}. Known properties: {}.",
                     specified_properties.join(", "),
                     known_properties.join(", ")
                 )
@@ -177,7 +174,7 @@ impl From<Error> for GearsApiError {
                 duplicated_properties,
             } => {
                 format!(
-                    "Duplicated prologue properties found: {}",
+                    "Duplicated prologue properties found: {}.",
                     duplicated_properties.join(", ")
                 )
             }

@@ -32,12 +32,6 @@ pub enum LibraryFatalFailurePolicy {
     Kill = 1,
 }
 
-impl Default for LibraryFatalFailurePolicy {
-    fn default() -> Self {
-        Self::Abort
-    }
-}
-
 pub struct BackendCtx {
     pub allocator: &'static dyn GlobalAlloc,
     pub log: Box<dyn Fn(&str) + 'static>,

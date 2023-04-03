@@ -359,6 +359,12 @@ def testMalformedLibraryMetaData6(env):
     env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Invalid or missing prologue.')
 
 @gearsTest()
+def testMalformedLibraryMetaData7(env):
+    code = '#!js name=foo' # no shebang(#!)
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The api version is missing from the prologue.')
+
+
+@gearsTest()
 def testNoLibraryCode(env):
     env.expect('RG.FUNCTION', 'LOAD').error().contains('Could not find library payload')
 
