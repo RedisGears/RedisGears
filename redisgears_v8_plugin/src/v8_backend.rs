@@ -48,7 +48,6 @@ unsafe impl GlobalAlloc for Globals {
     }
 }
 
-#[global_allocator]
 static mut GLOBAL: Globals = Globals { backend_ctx: None };
 
 pub(crate) fn log(msg: &str) {
