@@ -111,7 +111,7 @@ pub(crate) fn function_load_internal(
         Box::new(compile_lib_ctx),
     );
     let lib_ctx = match lib_ctx {
-        Err(e) => return Err(format!("Failed library compilation:\n{}", e.get_msg())),
+        Err(e) => return Err(format!("Failed library compilation: {}", e.get_msg())),
         Ok(lib_ctx) => lib_ctx,
     };
     let mut libraries = get_libraries();

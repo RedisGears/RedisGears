@@ -14,7 +14,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 use v8_rs::v8::v8_version;
 
-use crate::v8_native_functions::initialize_globals_for_version;
+use crate::v8_native_functions::{initialize_globals_for_version, ApiVersionSupported};
 use crate::v8_script_ctx::V8ScriptCtx;
 
 use v8_rs::v8::{isolate::V8Isolate, v8_init_with_error_handlers};
@@ -286,23 +286,17 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                         }
                     });
 
-                let api_version_supported = initialize_globals_for_version(
-                    api_version,
-                    &script_ctx,
-                    &globals,
-                    &isolate_scope,
-                    &ctx_scope,
-                    config,
-                )?;
+                let api_version_supported: ApiVersionSupported = api_version.try_into()?;
 
-                if let Err(errors) = api_version_supported.validate_code(code) {
-                    let messages = errors
-                        .iter()
-                        .enumerate()
-                        .map(|(index, error)| format!("\t{index}. {}", error.get_msg()))
-                        .collect::<Vec<String>>()
-                        .join("\n");
+                let messages = api_version_supported
+                    .validate_code(code)
+                    .iter()
+                    .enumerate()
+                    .map(|(index, error)| format!("\t{}. {}", index + 1, error.get_msg()))
+                    .collect::<Vec<String>>()
+                    .join("\n");
 
+                if !messages.is_empty() {
                     let compiled_message = &format!(
                         "The module \"{module_name}\" compilation got these messages:\n{}",
                         messages
@@ -311,6 +305,16 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     log(compiled_message);
                     script_ctx.compiled_library_api.log(compiled_message);
                 }
+
+                let api_version_supported = api_version_supported.into_latest_compatible();
+                initialize_globals_for_version(
+                    api_version_supported,
+                    &script_ctx,
+                    &globals,
+                    &isolate_scope,
+                    &ctx_scope,
+                    config,
+                )?;
             }
 
             script_ctx

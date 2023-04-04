@@ -615,47 +615,67 @@ pub(crate) type ApiVersionImplementation = fn(
 /// An object of type type is impossible to create if the version isn't
 /// supported.
 #[derive(Copy, Clone)]
-pub struct ApiVersionSupported(ApiVersion, ApiVersionImplementation);
+pub struct ApiVersionSupported {
+    version: ApiVersion,
+    implementation: ApiVersionImplementation,
+    is_deprecated: bool,
+}
 impl PartialOrd for ApiVersionSupported {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        self.version.partial_cmp(&other.version)
     }
 }
 impl Ord for ApiVersionSupported {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
+        self.version.cmp(&other.version)
     }
 }
 impl PartialEq for ApiVersionSupported {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
+        self.version.eq(&other.version)
     }
 }
 impl Eq for ApiVersionSupported {}
 impl std::fmt::Debug for ApiVersionSupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        f.debug_struct("ApiVersionSupported")
+            .field("version", &self.version)
+            .field(
+                "implementation",
+                &(self.implementation as *const std::ffi::c_void),
+            )
+            .field("is_deprecated", &self.is_deprecated)
+            .finish()
     }
 }
 
 impl ApiVersionSupported {
-    /// A list of all currently supported and non-deprecated versions.
+    /// A list of all currently supported and deprecated versions.
     const SUPPORTED: [ApiVersionSupported; 2] = [
-        Self(ApiVersion(1, 0), initialize_globals_1_0),
-        Self(ApiVersion(1, 1), initialize_globals_1_1),
+        Self::new(ApiVersion(1, 0), initialize_globals_1_0, false),
+        Self::new(ApiVersion(1, 1), initialize_globals_1_1, false),
     ];
-    /// The versions which are going to be removed soon and for which a
-    /// warning message should be printed out.
-    const DEPRECATED: [ApiVersion; 0] = [];
+
+    const fn new(
+        version: ApiVersion,
+        implementation: ApiVersionImplementation,
+        is_deprecated: bool,
+    ) -> Self {
+        Self {
+            version,
+            implementation,
+            is_deprecated,
+        }
+    }
 
     /// Returns the version stored.
     pub fn get_version(&self) -> ApiVersion {
-        self.0
+        self.version
     }
 
     /// Returns a pointer to the API implementation of this version.
     pub(crate) fn get_implementation(&self) -> &ApiVersionImplementation {
-        &self.1
+        &self.implementation
     }
 
     /// Returns the minimum supported version.
@@ -690,18 +710,22 @@ impl ApiVersionSupported {
     }
 
     /// Returns all the version deprecated.
-    pub const fn all_deprecated() -> &'static [ApiVersion] {
-        &Self::DEPRECATED
+    pub fn all_deprecated() -> Vec<ApiVersion> {
+        Self::SUPPORTED
+            .iter()
+            .filter(|v| v.is_deprecated)
+            .map(|v| v.version)
+            .collect()
     }
 
     /// Returns `true` if the version is supported.
     pub fn is_supported(version: ApiVersion) -> bool {
-        Self::SUPPORTED.iter().any(|v| v.0 == version)
+        Self::SUPPORTED.iter().any(|v| v.version == version)
     }
 
     /// Returns `true` if the version is supported but deprecated.
     pub fn is_deprecated(&self) -> bool {
-        Self::DEPRECATED.iter().any(|v| v == &self.0)
+        self.is_deprecated
     }
 
     /// Converts the current version into the latest compatible,
@@ -733,22 +757,18 @@ impl ApiVersionSupported {
     }
 
     /// Validates the code against using this API version.
-    pub(crate) fn validate_code(&self, _code: &str) -> Result<(), Vec<GearsApiError>> {
-        let mut errors = Vec::new();
+    pub(crate) fn validate_code(&self, _code: &str) -> Vec<GearsApiError> {
+        let mut messages = Vec::new();
 
         if self.is_deprecated() {
-            errors.push(GearsApiError::new(format!(
+            messages.push(GearsApiError::new(format!(
                 "The code uses a deprecated version of the API: {self}"
             )));
         }
 
         // Potentially check if uses deprecated symbols here using a JS parser.
 
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
+        messages
     }
 }
 
@@ -764,35 +784,32 @@ impl TryFrom<ApiVersion> for ApiVersionSupported {
     fn try_from(value: ApiVersion) -> Result<Self, Self::Error> {
         Self::SUPPORTED
             .iter()
-            .find(|v| v.0 == value)
+            .find(|v| v.version == value)
             .cloned()
             .ok_or_else(|| Self::Error::UnsupportedApiVersion {
                 requested: value,
-                supported: Self::all_supported().iter().map(|v| v.0).collect(),
+                supported: Self::all_supported().iter().map(|v| v.version).collect(),
             })
     }
 }
 
 impl std::fmt::Display for ApiVersionSupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        self.version.fmt(f)
     }
 }
 
 /// Initialises the global `redis` object by populating it with methods
-/// for the provided API version if it is supported and there is an
-/// implementation for it.
+/// for the provided supported API version.
 pub(crate) fn initialize_globals_for_version(
-    api_version: ApiVersion,
+    api_version: ApiVersionSupported,
     script_ctx: &Arc<V8ScriptCtx>,
     globals: &V8LocalObject,
     isolate_scope: &V8IsolateScope,
     ctx_scope: &V8ContextScope,
     config: Option<&String>,
-) -> Result<ApiVersionSupported, GearsApiError> {
+) -> Result<(), GearsApiError> {
     let redis = isolate_scope.new_object();
-    let api_version: ApiVersionSupported = api_version.try_into()?;
-    let api_version = api_version.into_latest_compatible();
     api_version.get_implementation()(
         api_version,
         &redis,
@@ -801,8 +818,7 @@ pub(crate) fn initialize_globals_for_version(
         isolate_scope,
         ctx_scope,
         config,
-    )?;
-    Ok(api_version)
+    )
 }
 
 /// Creates a global `redis` object with methods for the API of version "1.1".
