@@ -46,9 +46,7 @@ pub struct V8InternalFunction {
     script_ctx: Arc<V8ScriptCtx>,
 }
 
-fn v8_value_to_redis_value_key(
-    val: V8LocalValue,
-) -> Result<RedisValueKey, RedisError> {
+fn v8_value_to_redis_value_key(val: V8LocalValue) -> Result<RedisValueKey, RedisError> {
     if val.is_long() {
         Ok(RedisValueKey::Integer(val.get_long()))
     } else if val.is_string() || val.is_string_object() {
