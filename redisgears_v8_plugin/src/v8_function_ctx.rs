@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::redisvalue::RedisValueKey;
 use redis_module::{RedisError, RedisResult, RedisValue};
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -43,6 +44,25 @@ pub struct V8InternalFunction {
     persisted_client: V8PersistValue,
     persisted_function: V8PersistValue,
     script_ctx: Arc<V8ScriptCtx>,
+}
+
+fn v8_value_to_redis_value_key(
+    val: V8LocalValue,
+) -> Result<RedisValueKey, RedisError> {
+    if val.is_long() {
+        Ok(RedisValueKey::Integer(val.get_long()))
+    } else if val.is_string() || val.is_string_object() {
+        Ok(RedisValueKey::String(
+            val.to_utf8().unwrap().as_str().to_string(),
+        ))
+    } else if val.is_array_buffer() {
+        let val = val.as_array_buffer();
+        Ok(RedisValueKey::BulkString(val.data().to_vec()))
+    } else if val.is_boolean() {
+        Ok(RedisValueKey::Bool(val.get_boolean()))
+    } else {
+        Err(RedisError::Str("Give value is not a key"))
+    }
 }
 
 fn v8_value_to_call_result(
@@ -107,7 +127,7 @@ fn v8_value_to_call_result(
             let key = keys.get(ctx_scope, i);
             let obj = res.get(ctx_scope, &key).unwrap();
             result.insert(
-                v8_value_to_call_result(nesting_level + 1, isolate_scope, ctx_scope, key)?,
+                v8_value_to_redis_value_key(key)?,
                 v8_value_to_call_result(nesting_level + 1, isolate_scope, ctx_scope, obj)?,
             );
         }

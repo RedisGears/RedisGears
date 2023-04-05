@@ -42,7 +42,7 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
     decode_responses: bool,
 ) -> Result<V8LocalValue<'isolate_scope, 'isolate>, String> {
     let res = res.map_err(|err| {
-        err.to_string()
+        err.to_utf8_string()
             .unwrap_or("Failed converting error to utf8".into())
     })?;
     match res {
@@ -116,7 +116,7 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
             .iter()
             .fold(Ok(isolate_scope.new_object()), |agg, (k, v)| {
                 let key = k.map_err(|e| {
-                    e.to_string()
+                    e.to_utf8_string()
                         .unwrap_or("Failed converting error to utf8".to_string())
                 })?;
                 match key {

@@ -11,7 +11,7 @@
 #![deny(missing_docs)]
 
 use lazy_static::__Deref;
-use redis_module::{CallResult, ContextFlags, DetachContext, ErrorReply};
+use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use serde::{Deserialize, Serialize};
@@ -401,7 +401,7 @@ struct GlobalCtx {
     allow_unsafe_redis_commands: bool,
 }
 lazy_static::lazy_static! {
-    static ref DETACH_CONTEXT: DetachContext = DetachContext::default();
+    static ref DETACH_CONTEXT: DetachedContext = DetachedContext::default();
 }
 static mut GLOBALS: Option<GlobalCtx> = None;
 
@@ -474,7 +474,7 @@ pub(crate) fn call_redis_command(
 ) -> CallResult<'static> {
     let _authenticate_scope = ctx
         .autenticate_user(user)
-        .map_err(|e| ErrorReply::Msg(e.to_string()))?;
+        .map_err(|e| ErrorReply::Message(e.to_string()))?;
     ctx.call_ext(command, call_options, args)
 }
 
@@ -517,7 +517,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         }
     }));
     let mgmt_pool = ThreadPool::new(1);
-    DETACH_CONTEXT.set_context(ctx);
+    DETACH_CONTEXT.set_context(ctx).unwrap(); // can not return an error here.
     let mut global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
