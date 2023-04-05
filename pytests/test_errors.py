@@ -360,7 +360,7 @@ def testMalformedLibraryMetaData6(env):
 
 @gearsTest()
 def testMalformedLibraryMetaData7(env):
-    code = '#!js name=foo' # no shebang(#!)
+    code = '#!js name=foo' # no API version
     env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The api version is missing from the prologue.')
 
 

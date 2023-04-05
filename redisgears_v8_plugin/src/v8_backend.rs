@@ -22,7 +22,7 @@ use v8_rs::v8::{isolate::V8Isolate, v8_init_with_error_handlers};
 use crate::get_exception_msg;
 use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
-use std::alloc::{GlobalAlloc, Layout, System};
+
 use std::str;
 
 use std::sync::atomic::Ordering;
@@ -30,22 +30,6 @@ use std::sync::{Arc, Mutex, Weak};
 
 struct Globals {
     backend_ctx: Option<BackendCtx>,
-}
-
-unsafe impl GlobalAlloc for Globals {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        match self.backend_ctx.as_ref() {
-            Some(a) => a.allocator.alloc(layout),
-            None => System.alloc(layout),
-        }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        match self.backend_ctx.as_ref() {
-            Some(a) => a.allocator.dealloc(ptr, layout),
-            None => System.dealloc(ptr, layout),
-        }
-    }
 }
 
 static mut GLOBAL: Globals = Globals { backend_ctx: None };
@@ -287,23 +271,16 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
                 let api_version_supported: ApiVersionSupported = api_version.try_into()?;
 
-                let messages = api_version_supported
+                api_version_supported
                     .validate_code(code)
                     .iter()
                     .enumerate()
                     .map(|(index, error)| format!("\t{}. {}", index + 1, error.get_msg()))
-                    .collect::<Vec<String>>()
-                    .join("\n");
-
-                if !messages.is_empty() {
-                    let compiled_message = &format!(
-                        "The module \"{module_name}\" compilation got these messages:\n{}",
-                        messages
-                    );
-
-                    log(compiled_message);
-                    script_ctx.compiled_library_api.log(compiled_message);
-                }
+                    .for_each(|message| {
+                        script_ctx
+                            .compiled_library_api
+                            .log(&format!("Module \"{module_name}\": {message}"))
+                    });
 
                 let api_version_supported = api_version_supported.into_latest_compatible();
                 initialize_globals_for_version(

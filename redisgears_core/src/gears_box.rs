@@ -9,13 +9,10 @@ use redis_module::{Context, RedisError};
 use serde::{Deserialize, Serialize};
 
 pub(crate) fn do_http_get<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T, RedisError> {
-    match reqwest::blocking::get(url) {
-        Ok(r) => match r.json::<T>() {
-            Ok(r) => Ok(r),
-            Err(e) => Err(RedisError::String(e.to_string())),
-        },
-        Err(e) => Err(RedisError::String(e.to_string())),
-    }
+    reqwest::blocking::get(url)
+        .map_err(|e| RedisError::String(e.to_string()))?
+        .json()
+        .map_err(|e| RedisError::String(e.to_string()))
 }
 
 pub(crate) fn do_http_get_text(url: &str) -> Result<String, RedisError> {
