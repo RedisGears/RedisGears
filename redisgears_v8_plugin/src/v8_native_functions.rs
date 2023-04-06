@@ -611,9 +611,21 @@ pub(crate) type ApiVersionImplementation = fn(
     config: Option<&String>,
 ) -> Result<(), GearsApiError>;
 
-/// Strongly-supported API version.
-/// An object of type type is impossible to create if the version isn't
-/// supported.
+/// Defines a supported API version.
+/// An object of type [`ApiVersionSupported`] is impossible to create if
+/// the version isn't supported.
+///
+/// # Example
+///
+/// The only way to create an object of this type is to use the
+/// [`std::convert::TryFrom`] with an object of [`ApiVersion`]:
+///
+/// ```rust,no_run,ignore
+/// use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
+///
+/// let api_version = ApiVersion(1, 0);
+/// let api_version_supported: ApiVersionSupported = api_version.try_into().unwrap();
+/// ```
 #[derive(Copy, Clone)]
 pub struct ApiVersionSupported {
     version: ApiVersion,
