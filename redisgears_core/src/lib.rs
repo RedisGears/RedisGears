@@ -700,7 +700,7 @@ fn js_init(ctx: &Context, args: &[RedisString]) -> Status {
             }
 
             let initialised_backend = match uninitialised_backend.initialize(BackendCtx {
-                allocator: &redis_module::ALLOC,
+                allocator: &gears_module::ALLOCATOR,
                 log: Box::new(|msg| get_ctx().log_notice(msg)),
                 get_on_oom_policy: Box::new(|| {
                     get_globals()
@@ -1140,9 +1140,38 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
 mod gears_module {
     use super::*;
 
+    pub(crate) struct Allocator(redis_module::alloc::RedisAlloc, std::alloc::System);
+    impl Allocator {
+        const fn new() -> Self {
+            Self(redis_module::alloc::RedisAlloc, std::alloc::System)
+        }
+    }
+    unsafe impl std::alloc::GlobalAlloc for Allocator {
+        unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+            #[cfg(not(test))]
+            return self.0.alloc(layout);
+
+            #[cfg(test)]
+            self.1.alloc(layout)
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+            #[cfg(not(test))]
+            return self.0.dealloc(ptr, layout);
+
+            #[cfg(test)]
+            self.1.dealloc(ptr, layout)
+        }
+    }
+    pub(crate) static ALLOCATOR: Allocator = Allocator::new();
+
     redis_module::redis_module! {
         name: "redisgears_2",
         version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
+        allocator: (
+            Allocator,
+            Allocator::new()
+        ),
         data_types: [REDIS_GEARS_TYPE],
         init: js_init,
         post_init: js_post_init,
