@@ -5,9 +5,9 @@
  */
 
 use crate::config::GEARS_BOX_ADDRESS;
-use lazy_static::__Deref;
 use redis_module::{Context, RedisError};
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 pub(crate) fn do_http_get<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T, RedisError> {
     match reqwest::blocking::get(url) {
@@ -20,13 +20,10 @@ pub(crate) fn do_http_get<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Res
 }
 
 pub(crate) fn do_http_get_text(url: &str) -> Result<String, RedisError> {
-    match reqwest::blocking::get(url) {
-        Ok(r) => match r.text() {
-            Ok(r) => Ok(r),
-            Err(e) => Err(RedisError::String(e.to_string())),
-        },
-        Err(e) => Err(RedisError::String(e.to_string())),
-    }
+    reqwest::blocking::get(url)
+        .map_err(|e| RedisError::String(e.to_string()))?
+        .text()
+        .map_err(|e| RedisError::String(e.to_string()))
 }
 
 pub(crate) fn gears_box_search(

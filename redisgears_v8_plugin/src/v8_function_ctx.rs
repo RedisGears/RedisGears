@@ -47,20 +47,23 @@ pub struct V8InternalFunction {
 }
 
 fn v8_value_to_redis_value_key(val: V8LocalValue) -> Result<RedisValueKey, RedisError> {
-    if val.is_long() {
-        Ok(RedisValueKey::Integer(val.get_long()))
+    Ok(if val.is_long() {
+        RedisValueKey::Integer(val.get_long())
     } else if val.is_string() || val.is_string_object() {
-        Ok(RedisValueKey::String(
-            val.to_utf8().unwrap().as_str().to_string(),
-        ))
+        RedisValueKey::String(
+            val.to_utf8()
+                .ok_or(RedisError::Str("Failed converting value into String"))?
+                .as_str()
+                .to_string(),
+        )
     } else if val.is_array_buffer() {
         let val = val.as_array_buffer();
-        Ok(RedisValueKey::BulkString(val.data().to_vec()))
+        RedisValueKey::BulkString(val.data().to_vec())
     } else if val.is_boolean() {
-        Ok(RedisValueKey::Bool(val.get_boolean()))
+        RedisValueKey::Bool(val.get_boolean())
     } else {
-        Err(RedisError::Str("Give value is not a key"))
-    }
+        return Err(RedisError::Str("Give value is not a key"));
+    })
 }
 
 fn v8_value_to_call_result(
@@ -72,14 +75,12 @@ fn v8_value_to_call_result(
     if nesting_level > 100 {
         return Err(RedisError::Str("nesting level reached"));
     }
-    if val.is_long() {
-        return Ok(RedisValue::Integer(val.get_long()));
+    Ok(if val.is_long() {
+        RedisValue::Integer(val.get_long())
     } else if val.is_number() {
-        return Ok(RedisValue::Float(val.get_number()));
+        RedisValue::Float(val.get_number())
     } else if val.is_string() {
-        return Ok(RedisValue::BulkString(
-            val.to_utf8().unwrap().as_str().to_string(),
-        ));
+        RedisValue::BulkString(val.to_utf8().unwrap().as_str().to_string())
     } else if val.is_string_object() {
         // check the type of the reply
         let obj_reply = val.as_object();
@@ -96,14 +97,12 @@ fn v8_value_to_call_result(
                 }
             }
         }
-        return Ok(RedisValue::BulkString(
-            val.to_utf8().unwrap().as_str().to_string(),
-        ));
+        RedisValue::BulkString(val.to_utf8().unwrap().as_str().to_string())
     } else if val.is_array_buffer() {
         let val = val.as_array_buffer();
-        return Ok(RedisValue::StringBuffer(val.data().to_vec()));
+        RedisValue::StringBuffer(val.data().to_vec())
     } else if val.is_null() {
-        return Ok(RedisValue::Null);
+        RedisValue::Null
     } else if val.is_array() {
         let arr = val.as_array();
         let mut res = Vec::new();
@@ -116,7 +115,7 @@ fn v8_value_to_call_result(
                 val,
             )?);
         }
-        return Ok(RedisValue::Array(res));
+        RedisValue::Array(res)
     } else if val.is_object() {
         let res = val.as_object();
         let keys = res.get_property_names(ctx_scope);
@@ -129,12 +128,10 @@ fn v8_value_to_call_result(
                 v8_value_to_call_result(nesting_level + 1, isolate_scope, ctx_scope, obj)?,
             );
         }
-        return Ok(RedisValue::Map(result));
+        RedisValue::Map(result)
     } else {
-        return Ok(RedisValue::BulkString(
-            val.to_utf8().unwrap().as_str().to_string(),
-        ));
-    }
+        RedisValue::BulkString(val.to_utf8().unwrap().as_str().to_string())
+    })
 }
 
 fn send_reply(
@@ -421,10 +418,7 @@ impl FunctionCtxInterface for V8Function {
             };
             let inner_function = Arc::clone(&self.inner_function);
             // if we are going to the background we must consume all the arguments
-            let mut args = Vec::new();
-            for arg in run_ctx.get_args() {
-                args.push(arg.to_vec());
-            }
+            let args = run_ctx.get_args().map(|v| v.to_vec()).collect::<Vec<_>>();
             let bg_redis_client = run_ctx.get_redis_client().get_background_redis_client();
             let decode_arguments = self.decode_arguments;
             self.inner_function
@@ -436,10 +430,11 @@ impl FunctionCtxInterface for V8Function {
             FunctionCallResult::Done
         } else {
             let redis_client = run_ctx.get_redis_client();
-            self.client
-                .borrow_mut()
-                .set_allow_block(run_ctx.allow_block());
-            self.client.borrow_mut().set_client(redis_client.as_ref());
+            {
+                let mut c = self.client.borrow_mut();
+                c.set_allow_block(run_ctx.allow_block());
+                c.set_client(redis_client.as_ref());
+            }
             self.inner_function
                 .call_sync(run_ctx, self.decode_arguments);
             self.client.borrow_mut().make_invalid();

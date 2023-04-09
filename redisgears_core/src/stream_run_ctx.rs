@@ -4,13 +4,13 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use lazy_static::__Deref;
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::FunctionFlags, run_function_ctx::BackgroundRunFunctionCtxInterface,
     run_function_ctx::RedisClientCtxInterface, stream_ctx::StreamCtxInterface,
     stream_ctx::StreamProcessCtxInterface, stream_ctx::StreamRecordAck,
     stream_ctx::StreamRecordInterface,
 };
+use std::ops::Deref;
 
 use redis_module::{
     raw::RedisModuleStreamID, stream::StreamRecord, AclPermissions, Context, RedisString,

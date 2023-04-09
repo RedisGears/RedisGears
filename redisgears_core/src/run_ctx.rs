@@ -74,7 +74,7 @@ impl<'ctx> RedisClient<'ctx> {
         flags: FunctionFlags,
     ) -> RedisClient {
         RedisClient {
-            ctx: ctx,
+            ctx,
             call_options: RedisClientCallOptions::new(flags),
             lib_meta_data,
             user,
@@ -106,11 +106,9 @@ impl<'ctx> RedisClientCtxInterface for RedisClient<'ctx> {
             .ctx
             .autenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
-        let res = RedisAIModel::open_from_key(self.ctx, name);
-        match res {
-            Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::new(e)),
-        }
+        RedisAIModel::open_from_key(self.ctx, name)
+            .map(|v| Box::new(v) as Box<dyn AIModelInterface>)
+            .map_err(GearsApiError::new)
     }
 
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
@@ -118,11 +116,9 @@ impl<'ctx> RedisClientCtxInterface for RedisClient<'ctx> {
             .ctx
             .autenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
-        let res = RedisAIScript::open_from_key(self.ctx, name);
-        match res {
-            Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::new(e)),
-        }
+        RedisAIScript::open_from_key(self.ctx, name)
+            .map(|v| Box::new(v) as Box<dyn AIScriptInterface>)
+            .map_err(GearsApiError::new)
     }
 }
 
@@ -164,9 +160,7 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
         }
         let blocked_client = self.ctx.block_client();
         let thread_ctx = ThreadSafeContext::with_blocked_client(blocked_client);
-        Ok(Box::new(BackgroundClientCtx {
-            thread_ctx: thread_ctx,
-        }))
+        Ok(Box::new(BackgroundClientCtx { thread_ctx }))
     }
 
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_> {

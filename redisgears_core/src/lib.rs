@@ -10,11 +10,11 @@
 
 #![deny(missing_docs)]
 
-use lazy_static::__Deref;
 use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 use config::{
     FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
@@ -576,15 +576,16 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
 
     let v8_path = V8_PLUGIN_PATH.lock(ctx);
 
-    let v8_path = match std::env::var("modulesdatadir") {
-        Ok(val) => format!(
-            "{}/redisgears_2/{}/deps/gears_v8/{}",
-            val,
-            VERSION_NUM.unwrap(),
-            v8_path.as_str()
-        ),
-        Err(_) => v8_path.to_string(),
-    };
+    let v8_path = std::env::var("modulesdatadir")
+        .map(|val| {
+            format!(
+                "{}/redisgears_2/{}/deps/gears_v8/{}",
+                val,
+                VERSION_NUM.unwrap(),
+                v8_path.as_str()
+            )
+        })
+        .unwrap_or(v8_path.to_string());
 
     let lib = match unsafe { Library::new(&v8_path) } {
         Ok(l) => l,
@@ -1027,8 +1028,8 @@ mod gears_module {
                 ["library-fatal-failure-policy", &*FATAL_FAILURE_POLICY , config::FatalFailurePolicyConfiguration::Abort, ConfigurationFlags::DEFAULT, None],
             ],
             module_args_as_configuration: true,
-            module_config_get: "RG.CONFIGGET",
-            module_config_set: "RG.CONFIGSET",
+            module_config_get: "RG.CONFIG_GET",
+            module_config_set: "RG.CONFIG_SET",
         ]
     }
 }

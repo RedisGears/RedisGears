@@ -4,12 +4,12 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use lazy_static::__Deref;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
     run_function_ctx::RemoteFunctionData, GearsApiError,
 };
+use std::ops::Deref;
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;

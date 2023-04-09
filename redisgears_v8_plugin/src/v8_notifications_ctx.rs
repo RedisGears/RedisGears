@@ -80,8 +80,7 @@ impl V8NotificationsCtxInternal {
             );
 
             let c = notification_ctx.get_redis_client();
-            let redis_client = Arc::new(RefCell::new(RedisClient::new()));
-            redis_client.borrow_mut().set_client(c.as_ref());
+            let redis_client = Arc::new(RefCell::new(RedisClient::with_client(c.as_ref())));
             let r_client =
                 get_redis_client(&self.script_ctx, &isolate_scope, &ctx_scope, &redis_client);
 

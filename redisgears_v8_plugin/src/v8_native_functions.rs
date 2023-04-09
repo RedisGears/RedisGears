@@ -45,7 +45,7 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
         err.to_utf8_string()
             .unwrap_or("Failed converting error to utf8".into())
     })?;
-    match res {
+    Ok(match res {
         CallReply::String(s) => {
             if decode_responses {
                 let s = s
@@ -57,23 +57,23 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
                     &isolate_scope.new_string("__reply_type").to_value(),
                     &isolate_scope.new_string("bulk_string").to_value(),
                 );
-                Ok(s.to_value())
+                s.to_value()
             } else {
-                Ok(isolate_scope.new_array_buffer(s.as_bytes()).to_value())
+                isolate_scope.new_array_buffer(s.as_bytes()).to_value()
             }
         }
-        CallReply::I64(l) => Ok(isolate_scope.new_long(l.to_i64())),
-        CallReply::Double(d) => Ok(isolate_scope.new_double(d.to_double())),
-        CallReply::Bool(b) => Ok(isolate_scope.new_bool(b.to_bool())),
-        CallReply::Null(_b) => Ok(isolate_scope.new_null()),
-        CallReply::Unknown => Ok(isolate_scope.new_null()),
-        CallReply::VerbatimString(s) => Ok(isolate_scope
+        CallReply::I64(l) => isolate_scope.new_long(l.to_i64()),
+        CallReply::Double(d) => isolate_scope.new_double(d.to_double()),
+        CallReply::Bool(b) => isolate_scope.new_bool(b.to_bool()),
+        CallReply::Null(_b) => isolate_scope.new_null(),
+        CallReply::Unknown => isolate_scope.new_null(),
+        CallReply::VerbatimString(s) => isolate_scope
             .new_array_buffer(
                 s.as_parts()
                     .ok_or("Could not decode format as string".to_string())?
                     .1,
             )
-            .to_value()),
+            .to_value(),
         CallReply::BigNumber(b) => {
             let s = b
                 .to_string()
@@ -84,7 +84,7 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
                 &isolate_scope.new_string("__reply_type").to_value(),
                 &isolate_scope.new_string("big_number").to_value(),
             );
-            Ok(s.to_value())
+            s.to_value()
         }
         CallReply::Array(a) => {
             let res: Vec<V8LocalValue> = a.iter().fold(Ok::<_, String>(Vec::new()), |agg, v| {
@@ -97,11 +97,11 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
                 )?);
                 Ok(agg)
             })?;
-            Ok(isolate_scope
+            isolate_scope
                 .new_array(&res.iter().collect::<Vec<&V8LocalValue>>())
-                .to_value())
+                .to_value()
         }
-        CallReply::Set(s) => Ok(s
+        CallReply::Set(s) => s
             .iter()
             .fold(Ok::<_, String>(isolate_scope.new_set()), |agg, v| {
                 let agg = agg?;
@@ -111,8 +111,8 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
                 );
                 Ok(agg)
             })?
-            .to_value()),
-        CallReply::Map(m) => Ok(m
+            .to_value(),
+        CallReply::Map(m) => m
             .iter()
             .fold(Ok(isolate_scope.new_object()), |agg, (k, v)| {
                 let key = k.map_err(|e| {
@@ -154,8 +154,8 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
                     _ => Err("Given object can not be a object key".to_string()),
                 }
             })?
-            .to_value()),
-    }
+            .to_value(),
+    })
 }
 
 pub(crate) struct RedisClient {
@@ -169,6 +169,12 @@ impl RedisClient {
             client: None,
             allow_block: Some(true),
         }
+    }
+
+    pub(crate) fn with_client(client: &dyn RedisClientCtxInterface) -> Self {
+        let mut c = Self::new();
+        c.set_client(client);
+        c
     }
 
     pub(crate) fn make_invalid(&mut self) {
@@ -251,8 +257,9 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 }
             };
 
-            let r_client = Arc::new(RefCell::new(RedisClient::new()));
-            r_client.borrow_mut().set_client(redis_client.as_ref());
+            let r_client = Arc::new(RefCell::new(RedisClient::with_client(
+                redis_client.as_ref(),
+            )));
             let c = get_redis_client(&script_ctx_ref, isolate_scope, ctx_scope, &r_client);
 
             let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked

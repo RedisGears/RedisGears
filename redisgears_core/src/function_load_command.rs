@@ -4,10 +4,10 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use lazy_static::__Deref;
 use redis_module::{
     Context, NextArg, RedisError, RedisResult, RedisString, RedisValue, ThreadSafeContext,
 };
+use std::ops::Deref;
 
 use crate::compiled_library_api::CompiledLibraryAPI;
 use crate::gears_box::GearsBoxLibraryInfo;
@@ -163,7 +163,7 @@ pub(crate) fn function_load_intrernal(
         old_lib,
     };
     let res = lib_ctx.load_library(&GearsLoadLibraryCtx {
-        ctx: ctx,
+        ctx,
         gears_lib_ctx: &mut gears_library,
     });
     if let Err(err) = res {

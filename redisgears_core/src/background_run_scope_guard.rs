@@ -4,10 +4,10 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use lazy_static::__Deref;
 use redis_module::CallResult;
 use redis_module::ContextGuard;
 use redis_module::RedisString;
+use std::ops::Deref;
 
 use redisgears_plugin_api::redisgears_plugin_api::{
     redisai_interface::AIModelInterface, redisai_interface::AIScriptInterface,
