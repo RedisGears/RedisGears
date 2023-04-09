@@ -8,8 +8,8 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 
 [dependencies]
 redisgears_plugin_api = {path="../redisgears_plugin_api/"}
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "ap_fixes_changes", features = ["experimental-api"]}
-redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "ap_fixes_changes"}
+redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", features = ["experimental-api"]}
+redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master"}
 
 [build-dependencies]
 bindgen = "0.59.2"

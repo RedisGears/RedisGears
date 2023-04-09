@@ -9,8 +9,8 @@ rust-version = "1.64"
 
 [dependencies]
 #redis-module = { version="1.0", features = ["experimental-api"]}
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "ap_fixes_changes", features = ["experimental-api"]}
-redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "ap_fixes_changes"}
+redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", features = ["experimental-api"]}
+redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master"}
 lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
 lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
 linkme = "0.3"
