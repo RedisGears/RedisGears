@@ -13,3 +13,6 @@ jobs:
     with:
       redis_version: 7.2-rc1
       upload_artifacts: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_KEY_ID: ${{ secrets.AWS_SECRET_KEY_ID }}

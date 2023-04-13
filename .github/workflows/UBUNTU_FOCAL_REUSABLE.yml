@@ -20,9 +20,9 @@ on:
         type: boolean
     secrets:
       AWS_ACCESS_KEY_ID:
-        required: true
+        required: false
       AWS_SECRET_KEY_ID:
-        required: true
+        required: false
 
 env:
   CARGO_TERM_COLOR: always
