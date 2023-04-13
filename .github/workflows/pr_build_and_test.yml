@@ -12,3 +12,9 @@ jobs:
     uses: ./.github/workflows/UBUNTU_FOCAL_REUSABLE.yml
   build-and-test-bionic:
     uses: ./.github/workflows/UBUNTU_BIONIC_REUSABLE.yml
+  build-and-test-centos_8:
+    uses: ./.github/workflows/CENTOS_8_REUSABLE.yml
+  build-and-test-centos_7:
+    uses: ./.github/workflows/CENTOS_7_REUSABLE.yml
+  build-and-test-macos:
+    uses: ./.github/workflows/MACOS_REUSABLE.yml
