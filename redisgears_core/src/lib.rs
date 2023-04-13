@@ -479,7 +479,7 @@ pub(crate) fn call_redis_command(
 }
 
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
-    mr_init(ctx, 1);
+    mr_init(ctx, 1, None);
 
     match redisai_rs::redisai_init(ctx) {
         Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),
