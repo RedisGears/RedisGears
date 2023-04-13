@@ -72,9 +72,6 @@ jobs:
     - name: Pack
       run: |
         target/release/packer
-      env:
-          LC_ALL: en_US.utf-8
-          LANG: en_US.utf-8
     - name: Setup s3cmd action
       if: ${{ inputs.upload_artifacts }}
       uses: s3-actions/s3cmd@v1.2.0
