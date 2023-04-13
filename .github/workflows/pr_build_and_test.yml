@@ -2,7 +2,7 @@ name: PR Build and Test
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ master, refactoring_according_to_changes_on_redismodule_rs ]
 
 env:
   CARGO_TERM_COLOR: always
