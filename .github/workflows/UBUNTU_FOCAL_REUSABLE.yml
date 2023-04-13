@@ -13,11 +13,11 @@ on:
         type: string
       redis_version:
         required: true
-        type: bool
+        type: boolean
       upload_artifacts:
         default: false
         required: false
-        type: bool
+        type: boolean
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
