@@ -1,0 +1,14 @@
+name: PR Build and Test
+
+on:
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test-focal:
+    uses: ./.github/workflows/UBUNTU_FOCAL_REUSABLE.yml
+    with:
+      redis_version: 7.2-rc1
