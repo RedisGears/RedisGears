@@ -10,5 +10,5 @@ env:
 jobs:
   build-and-test-focal:
     uses: ./.github/workflows/UBUNTU_FOCAL_REUSABLE.yml
-    with:
-      redis_version: 7.2-rc1
+  build-and-test-bionic:
+    uses: ./.github/workflows/UBUNTU_BIONIC_REUSABLE.yml

@@ -12,7 +12,8 @@ on:
         required: false
         type: string
       redis_version:
-        required: true
+        default: 7.2-rc1
+        required: false
         type: string
       upload_artifacts:
         default: false
@@ -51,7 +52,7 @@ jobs:
     - name: Pack
       run: target/release/packer
     - name: Setup s3cmd action
-      if: ${{ inputs.v8_update_headers }}
+      if: ${{ inputs.upload_artifacts }}
       uses: s3-actions/s3cmd@v1.2.0
       with:
         provider: aws
@@ -59,6 +60,6 @@ jobs:
         access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
         secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     - name: Upload artifacts
-      if: ${{ inputs.v8_update_headers }}
+      if: ${{ inputs.upload_artifacts }}
       run: |
         s3cmd put -P target/release/redisgears2-release.linux-ubuntu.20.04-x86_64.master.zip s3://redismodules/redisgears/snapshots/
