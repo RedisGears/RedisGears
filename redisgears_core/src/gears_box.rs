@@ -7,7 +7,6 @@
 use crate::config::GEARS_BOX_ADDRESS;
 use redis_module::{Context, RedisError};
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 
 pub(crate) fn do_http_get<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T, RedisError> {
     match reqwest::blocking::get(url) {
@@ -31,7 +30,7 @@ pub(crate) fn gears_box_search(
     token: &str,
 ) -> Result<serde_json::Value, RedisError> {
     let gears_box_address = GEARS_BOX_ADDRESS.lock(ctx);
-    let url = &format!("{}/api/v1/recipes?q={}", gears_box_address.deref(), token);
+    let url = &format!("{}/api/v1/recipes?q={}", *gears_box_address, token);
     do_http_get(url)
 }
 
@@ -88,16 +87,11 @@ pub(crate) fn gears_box_get_library(
     library_id: &str,
 ) -> Result<GearsBoxLibraryInfo, RedisError> {
     let gears_box_address = GEARS_BOX_ADDRESS.lock(ctx);
-    let general_info_url = &format!(
-        "{}/api/v1/recipes/{}/",
-        gears_box_address.deref(),
-        library_id
-    );
+    let general_info_url = &format!("{}/api/v1/recipes/{}/", *gears_box_address, library_id);
     let general_info = do_http_get(general_info_url)?;
     let installed_version_url = &format!(
         "{}/api/v1/recipes/{}/versions/latest",
-        gears_box_address.deref(),
-        library_id
+        *gears_box_address, library_id
     );
     let installed_version = do_http_get(installed_version_url)?;
     Ok(GearsBoxLibraryInfo {

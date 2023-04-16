@@ -3,7 +3,7 @@ name = "redisgears_core"
 version = "99.99.99"
 edition = "2021"
 license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public License v1 (SSPLv1)"
-rust-version = "1.64"
+rust-version = "1.63"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

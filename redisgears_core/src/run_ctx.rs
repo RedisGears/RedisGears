@@ -147,7 +147,7 @@ unsafe impl<'a> Sync for RunCtx<'a> {}
 unsafe impl<'a> Send for RunCtx<'a> {}
 
 impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
-    fn get_args(&self) -> Box<dyn Iterator<Item = &[u8]> + '_> {
+    fn get_args_iter(&self) -> Box<dyn Iterator<Item = &[u8]> + '_> {
         Box::new(self.args.iter().map(|v| v.as_slice()))
     }
 

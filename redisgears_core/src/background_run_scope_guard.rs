@@ -7,7 +7,6 @@
 use redis_module::CallResult;
 use redis_module::ContextGuard;
 use redis_module::RedisString;
-use std::ops::Deref;
 
 use redisgears_plugin_api::redisgears_plugin_api::{
     redisai_interface::AIModelInterface, redisai_interface::AIScriptInterface,
@@ -57,7 +56,7 @@ impl BackgroundRunScopeGuardCtx {
 impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
         call_redis_command(
-            self.ctx_guard.deref(),
+            &self.ctx_guard,
             &self.user,
             command,
             &self.call_options.call_options,
@@ -74,26 +73,22 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     }
 
     fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
-        let ctx = self.ctx_guard.deref();
+        let ctx = &self.ctx_guard;
         let _authenticate_scope = ctx
             .autenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
-        let res = RedisAIModel::open_from_key(ctx, name);
-        match res {
-            Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::new(e)),
-        }
+        RedisAIModel::open_from_key(ctx, name)
+            .map(|v| Box::new(v) as Box<dyn AIModelInterface>)
+            .map_err(|e| GearsApiError::new(e))
     }
 
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
-        let ctx = self.ctx_guard.deref();
+        let ctx = &self.ctx_guard;
         let _authenticate_scope = ctx
             .autenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
-        let res = RedisAIScript::open_from_key(ctx, name);
-        match res {
-            Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::new(e)),
-        }
+        RedisAIScript::open_from_key(ctx, name)
+            .map(|v| Box::new(v) as Box<dyn AIScriptInterface>)
+            .map_err(|e| GearsApiError::new(e))
     }
 }

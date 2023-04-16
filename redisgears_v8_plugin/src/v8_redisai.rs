@@ -145,12 +145,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
     let redis_client_ref = Arc::clone(redis_client);
     redis_ai_client.set_native_function(ctx_scope, "open_model", new_native_function!(move |isolate_scope, ctx_scope, name_utf8: V8LocalUtf8| {
         let client = redis_client_ref.borrow();
-        let client = match client.get() {
-            Some(c) => c,
-            None => {
-                return Err("Used on invalid client".to_string());
-            }
-        };
+        let client = client.get().ok_or_else(|| "Used on invalid client".to_owned())?;
 
         let model = match client.open_ai_model(name_utf8.as_str()) {
             Ok(model) => model,
@@ -245,7 +240,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
     let redis_client_ref = Arc::clone(redis_client);
     redis_ai_client.set_native_function(ctx_scope, "open_script", new_native_function!(move |isolate_scope, ctx_scope, name_utf8: V8LocalUtf8| {
         let client = redis_client_ref.borrow();
-        let client = client.get().ok_or("Used on invalid client".to_string())?;
+        let client = client.get().ok_or_else(|| "Used on invalid client".to_owned())?;
 
         let script = client.open_ai_script(name_utf8.as_str()).map_err(|e| e.get_msg().to_string())?;
 

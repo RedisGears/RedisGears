@@ -9,7 +9,6 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
     run_function_ctx::RemoteFunctionData, GearsApiError,
 };
-use std::ops::Deref;
 
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;
@@ -158,17 +157,17 @@ impl RemoteTask for GearsRemoteTask {
 impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
     fn lock(&self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError> {
         let ctx_guard = ThreadSafeContext::new().lock();
-        if !verify_ok_on_replica(ctx_guard.deref(), self.call_options.flags) {
+        if !verify_ok_on_replica(&ctx_guard, self.call_options.flags) {
             return Err(GearsApiError::new(
                 "Can not lock redis for write on replica".to_string(),
             ));
         }
-        if !verify_oom(ctx_guard.deref(), self.call_options.flags) {
+        if !verify_oom(&ctx_guard, self.call_options.flags) {
             return Err(GearsApiError::new(
                 "OOM Can not lock redis for write".to_string(),
             ));
         }
-        let user = self.user.safe_clone(ctx_guard.deref());
+        let user = self.user.safe_clone(&ctx_guard);
         Ok(Box::new(BackgroundRunScopeGuardCtx::new(
             ctx_guard,
             user,

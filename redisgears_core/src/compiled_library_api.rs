@@ -5,7 +5,7 @@
  */
 
 use crate::config::LIBRARY_MAX_MEMORY;
-use crate::{execute_on_pool, DETACH_CONTEXT};
+use crate::{execute_on_pool, DETACHED_CONTEXT};
 use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
@@ -86,7 +86,7 @@ impl CompiledLibraryAPI {
 
 impl CompiledLibraryInterface for CompiledLibraryAPI {
     fn log(&self, msg: &str) {
-        DETACH_CONTEXT.log_notice(msg);
+        DETACHED_CONTEXT.log_notice(msg);
     }
 
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>) {
