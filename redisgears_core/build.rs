@@ -93,7 +93,7 @@ fn main() {
             .map_or_else(
                 |e| {
                     println!("Failed extracting os version, {}.", e);
-                    "0.0".to_string()
+                    "x.x".to_string()
                 },
                 |os_ver| {
                     if os_ver.status.success() {
@@ -108,7 +108,7 @@ fn main() {
                             String::from_utf8(os_ver.stdout).unwrap(),
                             String::from_utf8(os_ver.stderr).unwrap()
                         );
-                        "0.0".to_string()
+                        "x.x".to_string()
                     }
                 },
             );
