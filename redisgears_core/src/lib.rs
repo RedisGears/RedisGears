@@ -25,9 +25,9 @@ use redis_module::raw::RedisModule__Assert;
 use threadpool::ThreadPool;
 
 use redis_module::{
-    configuration::ConfigurationFlags, raw::KeyType::Stream, redis_command, redis_event_handler,
-    AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg, NotifyEvent,
-    RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
+    alloc::RedisAlloc, configuration::ConfigurationFlags, raw::KeyType::Stream, redis_command,
+    redis_event_handler, AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg,
+    NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
 };
 
 use redis_module::server_events::{
@@ -603,6 +603,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             return Status::Err;
         }
         let initialised_backend = match backend.initialize(BackendCtx {
+            allocator: &RedisAlloc,
             log: Box::new(|msg| DETACHED_CONTEXT.log_notice(msg)),
             get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
                 FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
@@ -992,6 +993,7 @@ mod gears_module {
     redis_module::redis_module! {
         name: "redisgears_2",
         version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
+        allocator: (RedisAlloc, RedisAlloc),
         data_types: [REDIS_GEARS_TYPE],
         init: js_init,
         info: js_info,

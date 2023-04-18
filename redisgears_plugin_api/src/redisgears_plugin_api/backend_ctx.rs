@@ -4,6 +4,8 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use std::alloc::GlobalAlloc;
+
 use redis_module::RedisValue;
 
 use crate::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
@@ -29,6 +31,7 @@ pub enum LibraryFatalFailurePolicy {
 }
 
 pub struct BackendCtx {
+    pub allocator: &'static dyn GlobalAlloc,
     pub log: Box<dyn Fn(&str) + 'static>,
     pub get_on_oom_policy: Box<dyn Fn() -> LibraryFatalFailurePolicy + 'static>,
     pub get_lock_timeout: Box<dyn Fn() -> u128 + 'static>,
