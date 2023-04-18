@@ -148,7 +148,7 @@ pub(crate) struct V8LibraryCtx {
 impl LibraryCtxInterface for V8LibraryCtx {
     fn load_library(
         &self,
-        load_library_ctx: &mut dyn LoadLibraryCtxInterface,
+        load_library_ctx: &dyn LoadLibraryCtxInterface,
     ) -> Result<(), GearsApiError> {
         let isolate_scope = self.script_ctx.isolate.enter();
         let ctx_scope = self.script_ctx.ctx.enter(&isolate_scope);

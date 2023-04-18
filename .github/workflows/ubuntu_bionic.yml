@@ -41,7 +41,7 @@ jobs:
     - name: install rltest
       run: pip3 install RLTest
     - name: install redis
-      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.2-rc1; make install
     - name: install rust
       run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     - name: format

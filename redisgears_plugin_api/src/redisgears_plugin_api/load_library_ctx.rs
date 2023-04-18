@@ -14,7 +14,7 @@ use crate::redisgears_plugin_api::GearsApiError;
 pub trait LibraryCtxInterface {
     fn load_library(
         &self,
-        load_library_ctx: &mut dyn LoadLibraryCtxInterface,
+        load_library_ctx: &dyn LoadLibraryCtxInterface,
     ) -> Result<(), GearsApiError>;
 }
 

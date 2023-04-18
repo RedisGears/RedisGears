@@ -44,7 +44,7 @@ jobs:
         . scl_source enable llvm-toolset-7 || true
         git clone https://github.com/redis/redis
         cd redis
-        git checkout 7.0.3
+        git checkout 7.2-rc1
         make install
     - name: Install rust
       run: |

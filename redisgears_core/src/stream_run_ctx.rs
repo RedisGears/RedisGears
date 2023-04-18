@@ -12,13 +12,12 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 
 use redis_module::{
-    context::AclPermissions, raw::RedisModuleStreamID, stream::StreamRecord, RedisString,
+    raw::RedisModuleStreamID, stream::StreamRecord, AclPermissions, Context, RedisString,
     ThreadSafeContext,
 };
 
 use crate::{
     background_run_ctx::BackgroundRunCtx,
-    get_ctx,
     run_ctx::{RedisClient, RedisClientCallOptions},
     GearsLibraryMetaData,
 };
@@ -31,32 +30,39 @@ use std::sync::Arc;
 
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
-pub(crate) struct StreamRunCtx {
+pub(crate) struct StreamRunCtx<'ctx> {
+    ctx: &'ctx Context,
     lib_meta_data: Arc<GearsLibraryMetaData>,
     flags: FunctionFlags,
 }
 
-impl StreamRunCtx {
-    fn new(lib_meta_data: &Arc<GearsLibraryMetaData>, flags: FunctionFlags) -> StreamRunCtx {
+impl<'ctx> StreamRunCtx<'ctx> {
+    fn new(
+        ctx: &'ctx Context,
+        lib_meta_data: &Arc<GearsLibraryMetaData>,
+        flags: FunctionFlags,
+    ) -> StreamRunCtx<'ctx> {
         StreamRunCtx {
+            ctx: ctx,
             lib_meta_data: Arc::clone(lib_meta_data),
             flags,
         }
     }
 }
 
-impl StreamProcessCtxInterface for StreamRunCtx {
-    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface> {
+impl<'ctx> StreamProcessCtxInterface for StreamRunCtx<'ctx> {
+    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_> {
         Box::new(RedisClient::new(
+            self.ctx,
             self.lib_meta_data.clone(),
-            None,
+            self.lib_meta_data.user.safe_clone(self.ctx),
             self.flags,
         ))
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
         Box::new(BackgroundRunCtx::new(
-            None,
+            self.lib_meta_data.user.safe_clone(self.ctx),
             &self.lib_meta_data,
             RedisClientCallOptions::new(self.flags),
         ))
@@ -105,8 +111,7 @@ impl GearsStreamConsumer {
         flags: FunctionFlags,
         ctx: Box<dyn StreamCtxInterface>,
     ) -> GearsStreamConsumer {
-        let mut permissions = AclPermissions::new();
-        permissions.add_full_permission();
+        let permissions = AclPermissions::all();
         GearsStreamConsumer {
             ctx,
             lib_meta_data: Arc::clone(user),
@@ -119,14 +124,14 @@ impl GearsStreamConsumer {
 impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
     fn new_data(
         &self,
+        ctx: &Context,
         stream_name: &[u8],
         record: GearsStreamRecord,
-        ack_callback: Box<dyn FnOnce(StreamReaderAck) + Send>,
+        ack_callback: Box<dyn FnOnce(&Context, StreamReaderAck) + Send>,
     ) -> Option<StreamReaderAck> {
         let user = &self.lib_meta_data.user;
         let key_redis_str = RedisString::create_from_slice(std::ptr::null_mut(), stream_name);
-        if let Err(e) = get_ctx().acl_check_key_permission(user, &key_redis_str, &self.permissions)
-        {
+        if let Err(e) = ctx.acl_check_key_permission(user, &key_redis_str, &self.permissions) {
             return Some(StreamReaderAck::Nack(GearsApiError::new(format!(
                 "User '{}' has no permissions on key '{}', {}.",
                 user,
@@ -140,15 +145,18 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
             self.ctx.process_record(
                 stream_name,
                 Box::new(record),
-                &StreamRunCtx::new(&self.lib_meta_data, self.flags),
+                &StreamRunCtx::new(ctx, &self.lib_meta_data, self.flags),
                 Box::new(|ack| {
                     // here we must take the redis lock
                     let ctx = ThreadSafeContext::new();
-                    let _gaurd = ctx.lock();
-                    ack_callback(match ack {
-                        StreamRecordAck::Ack => StreamReaderAck::Ack,
-                        StreamRecordAck::Nack(msg) => StreamReaderAck::Nack(msg),
-                    })
+                    let gaurd = ctx.lock();
+                    ack_callback(
+                        &gaurd,
+                        match ack {
+                            StreamRecordAck::Ack => StreamReaderAck::Ack,
+                            StreamRecordAck::Nack(msg) => StreamReaderAck::Nack(msg),
+                        },
+                    )
                 }),
             )
         };

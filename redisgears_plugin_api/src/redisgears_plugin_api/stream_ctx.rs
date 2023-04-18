@@ -10,7 +10,7 @@ use crate::redisgears_plugin_api::run_function_ctx::RedisClientCtxInterface;
 use super::GearsApiError;
 
 pub trait StreamProcessCtxInterface {
-    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface>;
+    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_>;
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface>;
 }
 

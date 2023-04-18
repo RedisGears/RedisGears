@@ -16,7 +16,7 @@ use crate::redisai_raw::bindings::{
 };
 
 use crate::RedisAIError;
-use redis_module::context::Context;
+use redis_module::Context;
 
 use std::ffi::{CStr, CString};
 

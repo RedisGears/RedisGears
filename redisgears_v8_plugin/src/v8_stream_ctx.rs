@@ -136,9 +136,7 @@ impl V8StreamCtxInternals {
         );
 
         let c = run_ctx.get_redis_client();
-        let mut redis_client = RedisClient::new();
-        redis_client.set_client(c);
-        let redis_client = Arc::new(RefCell::new(redis_client));
+        let redis_client = Arc::new(RefCell::new(RedisClient::with_client(c.as_ref())));
         let r_client =
             get_redis_client(&self.script_ctx, &isolate_scope, &ctx_scope, &redis_client);
 

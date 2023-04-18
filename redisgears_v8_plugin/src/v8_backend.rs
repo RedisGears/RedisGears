@@ -4,11 +4,12 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::RedisValue;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
     backend_ctx::CompiledLibraryInterface, backend_ctx::LibraryFatalFailurePolicy,
-    load_library_ctx::LibraryCtxInterface, CallResult, GearsApiError,
+    load_library_ctx::LibraryCtxInterface, GearsApiError,
 };
 use v8_rs::v8::v8_version;
 
@@ -21,7 +22,6 @@ use crate::v8_native_functions::initialize_globals;
 use crate::get_exception_msg;
 use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
-
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::str;
 
@@ -278,46 +278,46 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         Ok(Box::new(V8LibraryCtx { script_ctx }))
     }
 
-    fn debug(&mut self, args: &[&str]) -> Result<CallResult, GearsApiError> {
+    fn debug(&mut self, args: &[&str]) -> Result<RedisValue, GearsApiError> {
         let mut args = args.iter();
         let sub_command = args
             .next()
             .map_or(Err(GearsApiError::new("Subcommand was not provided")), Ok)?
             .to_lowercase();
         match sub_command.as_ref() {
-            "help" => Ok(CallResult::Array(vec![
-                CallResult::BulkStr("isolates_stats - statistics about isolates.".to_string()),
-                CallResult::BulkStr(
+            "help" => Ok(RedisValue::Array(vec![
+                RedisValue::BulkString("isolates_stats - statistics about isolates.".to_string()),
+                RedisValue::BulkString(
                     "isolates_strong_count - For each isolate returns its strong ref count value."
                         .to_string(),
                 ),
-                CallResult::BulkStr(
+                RedisValue::BulkString(
                     "isolates_gc - Runs GC to clear none active isolates.".to_string(),
                 ),
-                CallResult::BulkStr("help - Print this message.".to_string()),
+                RedisValue::BulkString("help - Print this message.".to_string()),
             ])),
             "isolates_stats" => {
                 let l = self.script_ctx_vec.lock().unwrap();
                 let active = l.iter().filter(|v| v.strong_count() > 0).count() as i64;
                 let not_active = l.iter().filter(|v| v.strong_count() == 0).count() as i64;
-                Ok(CallResult::Array(vec![
-                    CallResult::BulkStr("active".to_string()),
-                    CallResult::Long(active),
-                    CallResult::BulkStr("not_active".to_string()),
-                    CallResult::Long(not_active),
+                Ok(RedisValue::Array(vec![
+                    RedisValue::BulkString("active".to_string()),
+                    RedisValue::Integer(active),
+                    RedisValue::BulkString("not_active".to_string()),
+                    RedisValue::Integer(not_active),
                 ]))
             }
             "isolates_strong_count" => {
                 let l = self.script_ctx_vec.lock().unwrap();
                 let isolates_strong_count = l
                     .iter()
-                    .map(|v| CallResult::Long(v.strong_count() as i64))
-                    .collect::<Vec<CallResult>>();
-                Ok(CallResult::Array(isolates_strong_count))
+                    .map(|v| RedisValue::Integer(v.strong_count() as i64))
+                    .collect::<Vec<RedisValue>>();
+                Ok(RedisValue::Array(isolates_strong_count))
             }
             "isolates_gc" => {
                 self.isolates_gc();
-                Ok(CallResult::SimpleStr("OK".to_string()))
+                Ok(RedisValue::SimpleString("OK".to_string()))
             }
             _ => Err(GearsApiError::new(format!(
                 "Unknown subcommand '{sub_command}'",

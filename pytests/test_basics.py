@@ -464,7 +464,7 @@ redis.register_function("test", function(client){
     }
 
     res = client.call("debug", "protocol", "verbatim");
-    if (typeof res !== "object" || res.__reply_type !== "verbatim") {
+    if (!(res instanceof ArrayBuffer)) {
         throw `verbatim protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
     }
 
@@ -592,7 +592,7 @@ redis.register_function("test", (c, key) => {
 },
 ["raw-arguments"]);
     """
-    env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
+    env.expect('hset', b'\xaa', b'foo', b'\xaa').equal(True)
     env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').error().contains('Could not decode value as string')
 
 @gearsTest(decodeResponses=False)

@@ -4,7 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use redis_module::context::Context;
+use redis_module::Context;
 use std::os::raw::c_int;
 
 pub mod redisai;

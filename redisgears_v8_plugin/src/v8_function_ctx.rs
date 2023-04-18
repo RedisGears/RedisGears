@@ -4,6 +4,8 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::redisvalue::RedisValueKey;
+use redis_module::{RedisError, RedisResult, RedisValue};
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use redisgears_plugin_api::redisgears_plugin_api::{
     function_ctx::FunctionCtxInterface, run_function_ctx::BackgroundRunFunctionCtxInterface,
@@ -21,6 +23,7 @@ use crate::v8_script_ctx::V8ScriptCtx;
 use crate::{get_error_from_object, get_exception_msg};
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use std::str;
@@ -43,23 +46,41 @@ pub struct V8InternalFunction {
     script_ctx: Arc<V8ScriptCtx>,
 }
 
-fn send_reply(
+fn v8_value_to_redis_value_key(val: V8LocalValue) -> Result<RedisValueKey, RedisError> {
+    Ok(if val.is_long() {
+        RedisValueKey::Integer(val.get_long())
+    } else if val.is_string() || val.is_string_object() {
+        RedisValueKey::String(
+            val.to_utf8()
+                .ok_or(RedisError::Str("Failed converting value into String"))?
+                .as_str()
+                .to_string(),
+        )
+    } else if val.is_array_buffer() {
+        let val = val.as_array_buffer();
+        RedisValueKey::BulkString(val.data().to_vec())
+    } else if val.is_boolean() {
+        RedisValueKey::Bool(val.get_boolean())
+    } else {
+        return Err(RedisError::Str("Give value is not a key"));
+    })
+}
+
+fn v8_value_to_call_result(
     nesting_level: usize,
     isolate_scope: &V8IsolateScope,
     ctx_scope: &V8ContextScope,
-    client: &dyn ReplyCtxInterface,
     val: V8LocalValue,
-) {
+) -> RedisResult {
     if nesting_level > 100 {
-        client.reply_with_simple_string("nesting level reached");
-        return;
+        return Err(RedisError::Str("nesting level reached"));
     }
-    if val.is_long() {
-        client.reply_with_long(val.get_long());
+    Ok(if val.is_long() {
+        RedisValue::Integer(val.get_long())
     } else if val.is_number() {
-        client.reply_with_double(val.get_number());
+        RedisValue::Float(val.get_number())
     } else if val.is_string() {
-        client.reply_with_bulk_string(val.to_utf8().unwrap().as_str());
+        RedisValue::BulkString(val.to_utf8().unwrap().as_str().to_string())
     } else if val.is_string_object() {
         // check the type of the reply
         let obj_reply = val.as_object();
@@ -70,37 +91,57 @@ fn send_reply(
         if let Some(t) = reply_type {
             if let Some(reply_type_v8_str) = t.to_utf8() {
                 if reply_type_v8_str.as_str() == "status" {
-                    client.reply_with_simple_string(val.to_utf8().unwrap().as_str());
-                    return;
+                    return Ok(RedisValue::SimpleString(
+                        val.to_utf8().unwrap().as_str().to_string(),
+                    ));
                 }
             }
         }
-        client.reply_with_bulk_string(val.to_utf8().unwrap().as_str());
+        RedisValue::BulkString(val.to_utf8().unwrap().as_str().to_string())
     } else if val.is_array_buffer() {
         let val = val.as_array_buffer();
-        client.reply_with_slice(val.data());
+        RedisValue::StringBuffer(val.data().to_vec())
     } else if val.is_null() {
-        client.reply_with_null();
+        RedisValue::Null
     } else if val.is_array() {
         let arr = val.as_array();
-        client.reply_with_array(arr.len());
+        let mut res = Vec::new();
         for i in 0..arr.len() {
             let val = arr.get(ctx_scope, i);
-            send_reply(nesting_level + 1, isolate_scope, ctx_scope, client, val);
+            res.push(v8_value_to_call_result(
+                nesting_level + 1,
+                isolate_scope,
+                ctx_scope,
+                val,
+            )?);
         }
+        RedisValue::Array(res)
     } else if val.is_object() {
         let res = val.as_object();
         let keys = res.get_property_names(ctx_scope);
-        client.reply_with_array(keys.len() * 2);
+        let mut result = HashMap::new();
         for i in 0..keys.len() {
             let key = keys.get(ctx_scope, i);
             let obj = res.get(ctx_scope, &key).unwrap();
-            send_reply(nesting_level + 1, isolate_scope, ctx_scope, client, key);
-            send_reply(nesting_level + 1, isolate_scope, ctx_scope, client, obj);
+            result.insert(
+                v8_value_to_redis_value_key(key)?,
+                v8_value_to_call_result(nesting_level + 1, isolate_scope, ctx_scope, obj)?,
+            );
         }
+        RedisValue::Map(result)
     } else {
-        client.reply_with_bulk_string(val.to_utf8().unwrap().as_str());
-    }
+        RedisValue::BulkString(val.to_utf8().unwrap().as_str().to_string())
+    })
+}
+
+fn send_reply(
+    isolate_scope: &V8IsolateScope,
+    ctx_scope: &V8ContextScope,
+    client: &dyn ReplyCtxInterface,
+    val: V8LocalValue,
+) {
+    let reply = v8_value_to_call_result(0, isolate_scope, ctx_scope, val);
+    client.send_reply(reply);
 }
 
 impl V8InternalFunction {
@@ -167,7 +208,7 @@ impl V8InternalFunction {
                     {
                         let r = res.get_result();
                         if res.state() == V8PromiseState::Fulfilled {
-                            send_reply(0, &isolate_scope, &ctx_scope, bg_client.as_ref(), r);
+                            send_reply(&isolate_scope, &ctx_scope, bg_client.as_ref(), r);
                         } else {
                             bg_client.reply_with_error(get_error_from_object(&r, &ctx_scope));
                         }
@@ -179,7 +220,6 @@ impl V8InternalFunction {
                             move |isolate, context, rep: V8LocalValue| {
                                 let mut execution_ctx = execution_ctx_resolve.borrow_mut();
                                 send_reply(
-                                    0,
                                     isolate,
                                     context,
                                     execution_ctx.c.as_ref().unwrap().as_ref(),
@@ -206,7 +246,7 @@ impl V8InternalFunction {
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(0, &isolate_scope, &ctx_scope, bg_client.as_ref(), r);
+                    send_reply(&isolate_scope, &ctx_scope, bg_client.as_ref(), r);
                 }
             }
             None => {
@@ -219,7 +259,7 @@ impl V8InternalFunction {
 
     fn call_sync(
         &self,
-        run_ctx: &mut dyn RunFunctionCtxInterface,
+        run_ctx: &dyn RunFunctionCtxInterface,
         decode_arguments: bool,
     ) -> FunctionCallResult {
         let isolate_scope = self.script_ctx.isolate.enter();
@@ -230,9 +270,9 @@ impl V8InternalFunction {
             let args = {
                 let mut args = Vec::new();
                 args.push(self.persisted_client.as_local(&isolate_scope));
-                while let Some(a) = run_ctx.next_arg() {
+                for arg in run_ctx.get_args_iter() {
                     let arg = if decode_arguments {
-                        let arg = match str::from_utf8(a) {
+                        let arg = match str::from_utf8(arg) {
                             Ok(s) => s,
                             Err(_) => {
                                 run_ctx.reply_with_error(GearsApiError::new(
@@ -243,7 +283,7 @@ impl V8InternalFunction {
                         };
                         isolate_scope.new_string(arg).to_value()
                     } else {
-                        isolate_scope.new_array_buffer(a).to_value()
+                        isolate_scope.new_array_buffer(arg).to_value()
                     };
                     args.push(arg);
                 }
@@ -277,7 +317,7 @@ impl V8InternalFunction {
                     {
                         let r = res.get_result();
                         if res.state() == V8PromiseState::Fulfilled {
-                            send_reply(0, &isolate_scope, &ctx_scope, run_ctx.as_client(), r);
+                            send_reply(&isolate_scope, &ctx_scope, run_ctx.as_client(), r);
                         } else {
                             run_ctx.reply_with_error(get_error_from_object(&r, &ctx_scope));
                         }
@@ -299,7 +339,7 @@ impl V8InternalFunction {
                             move |isolate_scope, ctx_scope, reply: V8LocalValue| {
                                 let mut execution_ctx = execution_ctx_resolve.borrow_mut();
                                 let client = execution_ctx.c.as_ref().unwrap();
-                                send_reply(0, isolate_scope, ctx_scope, client.as_ref(), reply);
+                                send_reply(isolate_scope, ctx_scope, client.as_ref(), reply);
                                 execution_ctx.unblock();
                                 Ok::<_, String>(None)
                             }
@@ -320,7 +360,7 @@ impl V8InternalFunction {
                         return FunctionCallResult::Hold;
                     }
                 } else {
-                    send_reply(0, &isolate_scope, &ctx_scope, run_ctx.as_client(), r);
+                    send_reply(&isolate_scope, &ctx_scope, run_ctx.as_client(), r);
                 }
             }
             None => {
@@ -364,24 +404,24 @@ impl V8Function {
 }
 
 impl FunctionCtxInterface for V8Function {
-    fn call(&self, run_ctx: &mut dyn RunFunctionCtxInterface) -> FunctionCallResult {
+    fn call(&self, run_ctx: &dyn RunFunctionCtxInterface) -> FunctionCallResult {
         if self.is_async {
             let bg_client = match run_ctx.get_background_client() {
                 Ok(bc) => bc,
                 Err(e) => {
-                    run_ctx.reply_with_error(GearsApiError::new(format!(
+                    run_ctx.send_reply(Err(RedisError::String(format!(
                         "Can not block client for background execution, {}.",
                         e.get_msg()
-                    )));
+                    ))));
                     return FunctionCallResult::Done;
                 }
             };
             let inner_function = Arc::clone(&self.inner_function);
             // if we are going to the background we must consume all the arguments
-            let mut args = Vec::new();
-            while let Some(a) = run_ctx.next_arg() {
-                args.push(a.to_vec());
-            }
+            let args = run_ctx
+                .get_args_iter()
+                .map(|v| v.to_vec())
+                .collect::<Vec<_>>();
             let bg_redis_client = run_ctx.get_redis_client().get_background_redis_client();
             let decode_arguments = self.decode_arguments;
             self.inner_function
@@ -393,10 +433,11 @@ impl FunctionCtxInterface for V8Function {
             FunctionCallResult::Done
         } else {
             let redis_client = run_ctx.get_redis_client();
-            self.client.borrow_mut().set_client(redis_client);
-            self.client
-                .borrow_mut()
-                .set_allow_block(run_ctx.allow_block());
+            {
+                let mut c = self.client.borrow_mut();
+                c.set_allow_block(run_ctx.allow_block());
+                c.set_client(redis_client.as_ref());
+            }
             self.inner_function
                 .call_sync(run_ctx, self.decode_arguments);
             self.client.borrow_mut().make_invalid();

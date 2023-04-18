@@ -41,7 +41,7 @@ jobs:
     - name: install rltest
       run: python3 -m pip install RLTest
     - name: install redis
-      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.2-rc1; make install
     - name: Build debug
       run: $HOME/.cargo/bin/cargo build --verbose
     - name: Build release
