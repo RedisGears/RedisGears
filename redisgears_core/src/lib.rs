@@ -516,7 +516,9 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         }
     }));
     let mgmt_pool = ThreadPool::new(1);
-    DETACHED_CONTEXT.set_context(ctx).unwrap(); // can not return an error here.
+    DETACHED_CONTEXT
+        .set_context(ctx)
+        .expect("Couldn't set the detached context");
     let mut global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
