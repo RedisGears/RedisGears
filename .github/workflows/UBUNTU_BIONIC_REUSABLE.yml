@@ -86,4 +86,4 @@ jobs:
     - name: Upload artifacts
       if: ${{ inputs.upload_artifacts }}
       run: |
-        s3cmd put -P target/release/redisgears2-release.linux-ubuntu.18.04-x86_64.master.zip s3://redismodules/redisgears/snapshots/
+        s3cmd put -P target/release/redisgears2.Linux-bionic-x86_64.master.zip s3://redismodules/redisgears/snapshots/

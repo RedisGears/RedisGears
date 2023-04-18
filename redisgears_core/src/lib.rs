@@ -102,9 +102,7 @@ pub const VERSION_NUM: Option<&str> = std::option_env!("VERSION_NUM");
 /// The operating system used for building the crate.
 pub const BUILD_OS: Option<&str> = std::option_env!("BUILD_OS");
 /// The type of the operating system used for building the crate.
-pub const BUILD_OS_TYPE: Option<&str> = std::option_env!("BUILD_OS_TYPE");
-/// The version of the operating system used for building the crate.
-pub const BUILD_OS_VERSION: Option<&str> = std::option_env!("BUILD_OS_VERSION");
+pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 /// The CPU architeture of the operating system used for building the crate.
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 /// The build type of the crate.
@@ -486,14 +484,13 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     }
 
     ctx.log_notice(&format!(
-        "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_for='{}-{}.{}-{}'.",
+        "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_for='{}-{}.{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
         GIT_BRANCH.unwrap_or_default(),
         BUILD_TYPE.unwrap_or_default(),
         BUILD_OS.unwrap_or_default(),
-        BUILD_OS_TYPE.unwrap_or_default(),
-        BUILD_OS_VERSION.unwrap_or_default(),
+        BUILD_OS_NICK.unwrap_or_default(),
         BUILD_OS_ARCH.unwrap_or_default()
     ));
     if let Err(e) = check_redis_version_compatible(ctx) {
