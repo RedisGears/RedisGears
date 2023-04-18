@@ -270,7 +270,7 @@ impl V8InternalFunction {
             let args = {
                 let mut args = Vec::new();
                 args.push(self.persisted_client.as_local(&isolate_scope));
-                for arg in run_ctx.get_args() {
+                for arg in run_ctx.get_args_iter() {
                     let arg = if decode_arguments {
                         let arg = match str::from_utf8(arg) {
                             Ok(s) => s,
@@ -418,7 +418,10 @@ impl FunctionCtxInterface for V8Function {
             };
             let inner_function = Arc::clone(&self.inner_function);
             // if we are going to the background we must consume all the arguments
-            let args = run_ctx.get_args().map(|v| v.to_vec()).collect::<Vec<_>>();
+            let args = run_ctx
+                .get_args_iter()
+                .map(|v| v.to_vec())
+                .collect::<Vec<_>>();
             let bg_redis_client = run_ctx.get_redis_client().get_background_redis_client();
             let decode_arguments = self.decode_arguments;
             self.inner_function

@@ -14,7 +14,6 @@ use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
 
 use config::{
     FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
@@ -26,9 +25,9 @@ use redis_module::raw::RedisModule__Assert;
 use threadpool::ThreadPool;
 
 use redis_module::{
-    configuration::ConfigurationFlags, raw::KeyType::Stream, redis_command, redis_event_handler,
-    AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg, NotifyEvent,
-    RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
+    alloc::RedisAlloc, configuration::ConfigurationFlags, raw::KeyType::Stream, redis_command,
+    redis_event_handler, AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg,
+    NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
 };
 
 use redis_module::server_events::{
@@ -401,7 +400,7 @@ struct GlobalCtx {
     allow_unsafe_redis_commands: bool,
 }
 lazy_static::lazy_static! {
-    static ref DETACH_CONTEXT: DetachedContext = DetachedContext::default();
+    static ref DETACHED_CONTEXT: DetachedContext = DetachedContext::default();
 }
 static mut GLOBALS: Option<GlobalCtx> = None;
 
@@ -502,7 +501,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         return Status::Err;
     }
     std::panic::set_hook(Box::new(|panic_info| {
-        DETACH_CONTEXT.log_warning(&format!("Application paniced, {}", panic_info));
+        DETACHED_CONTEXT.log_warning(&format!("Application paniced, {}", panic_info));
         let (file, line) = match panic_info.location() {
             Some(l) => (l.file(), l.line()),
             None => ("", 0),
@@ -517,7 +516,9 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         }
     }));
     let mgmt_pool = ThreadPool::new(1);
-    DETACH_CONTEXT.set_context(ctx).unwrap(); // can not return an error here.
+    DETACHED_CONTEXT
+        .set_context(ctx)
+        .expect("Couldn't set the detached context");
     let mut global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
@@ -585,7 +586,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
                 v8_path.as_str()
             )
         })
-        .unwrap_or(v8_path.to_string());
+        .unwrap_or_else(|_| v8_path.to_string());
 
     let lib = match unsafe { Library::new(&v8_path) } {
         Ok(l) => l,
@@ -604,8 +605,9 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             return Status::Err;
         }
         let initialised_backend = match backend.initialize(BackendCtx {
-            log: Box::new(|msg| DETACH_CONTEXT.log_notice(msg)),
-            get_on_oom_policy: Box::new(|| match FATAL_FAILURE_POLICY.lock().unwrap().deref() {
+            allocator: &RedisAlloc,
+            log: Box::new(|msg| DETACHED_CONTEXT.log_notice(msg)),
+            get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
                 FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
                 FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
             }),
@@ -910,7 +912,7 @@ fn scan_key_space_for_streams() {
         let thread_ctx = ThreadSafeContext::new();
         loop {
             let guard = thread_ctx.lock();
-            let ctx = guard.deref();
+            let ctx = &guard;
             let scanned = cursor.scan(ctx, &|ctx, key_name, key| {
                 let key_type = match key {
                     Some(k) => k.key_type(),
@@ -993,6 +995,7 @@ mod gears_module {
     redis_module::redis_module! {
         name: "redisgears_2",
         version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
+        allocator: (RedisAlloc, RedisAlloc),
         data_types: [REDIS_GEARS_TYPE],
         init: js_init,
         info: js_info,

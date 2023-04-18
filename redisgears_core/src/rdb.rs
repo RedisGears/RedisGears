@@ -5,7 +5,8 @@
  */
 
 use crate::{
-    function_load_command::function_load_intrernal, get_globals_mut, get_libraries, DETACH_CONTEXT,
+    function_load_command::function_load_intrernal, get_globals_mut, get_libraries,
+    DETACHED_CONTEXT,
 };
 
 use redis_module::{
@@ -227,7 +228,7 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
 
 unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when: c_int) -> c_int {
     if encver > REDIS_GEARS_VERSION {
-        DETACH_CONTEXT.log_notice(&format!(
+        DETACHED_CONTEXT.log_notice(&format!(
             "Can not load RedisGears data type version '{}', max supported version '{}'",
             encver, REDIS_GEARS_VERSION
         ));
@@ -240,7 +241,7 @@ unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when
     match aux_load_internals(&ctx, rdb) {
         Ok(_) => raw::REDISMODULE_OK as i32,
         Err(e) => {
-            DETACH_CONTEXT.log_warning(&format!("Failed loading functions from rdb, {}.", e));
+            DETACHED_CONTEXT.log_warning(&format!("Failed loading functions from rdb, {}.", e));
             raw::REDISMODULE_ERR as i32
         }
     }

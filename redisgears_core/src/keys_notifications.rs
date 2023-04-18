@@ -10,8 +10,13 @@ use std::cell::RefCell;
 use std::sync::{Arc, Weak};
 use std::time::SystemTime;
 
-pub(crate) type NotificationCallback =
-    Box<dyn Fn(&Context, &str, &[u8], Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>)>;
+/// A callback that will be provider to the user to call when he finished to
+/// processes the notification
+type AckCallback = Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>;
+
+/// A callback that is provided by the user that will be called when a
+/// key space notification arrives.
+pub(crate) type NotificationCallback = Box<dyn Fn(&Context, &str, &[u8], AckCallback)>;
 
 pub(crate) enum ConsumerKey {
     Key(Vec<u8>),

@@ -7,7 +7,6 @@
 use redis_module::{
     Context, NextArg, RedisError, RedisResult, RedisString, RedisValue, ThreadSafeContext,
 };
-use std::ops::Deref;
 
 use crate::compiled_library_api::CompiledLibraryAPI;
 use crate::gears_box::GearsBoxLibraryInfo;
@@ -298,8 +297,8 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
             let ctx_guard = ThreadSafeContext::new().lock();
             let user = r.args.user.unwrap();
             let res = function_load_intrernal(
-                ctx_guard.deref(),
-                user.safe_clone(ctx_guard.deref()),
+                &ctx_guard,
+                user.safe_clone(&ctx_guard),
                 &r.args.code,
                 r.args.config.clone(),
                 r.args.upgrade,

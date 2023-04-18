@@ -10,7 +10,6 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     stream_ctx::StreamProcessCtxInterface, stream_ctx::StreamRecordAck,
     stream_ctx::StreamRecordInterface,
 };
-use std::ops::Deref;
 
 use redis_module::{
     raw::RedisModuleStreamID, stream::StreamRecord, AclPermissions, Context, RedisString,
@@ -152,7 +151,7 @@ impl StreamConsumer<GearsStreamRecord> for GearsStreamConsumer {
                     let ctx = ThreadSafeContext::new();
                     let gaurd = ctx.lock();
                     ack_callback(
-                        gaurd.deref(),
+                        &gaurd,
                         match ack {
                             StreamRecordAck::Ack => StreamReaderAck::Ack,
                             StreamRecordAck::Nack(msg) => StreamReaderAck::Nack(msg),

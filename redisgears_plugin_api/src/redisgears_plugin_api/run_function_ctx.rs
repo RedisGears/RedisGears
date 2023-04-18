@@ -48,7 +48,7 @@ pub trait BackgroundRunFunctionCtxInterface: Send + Sync {
 }
 
 pub trait RunFunctionCtxInterface: ReplyCtxInterface {
-    fn get_args(&self) -> Box<dyn Iterator<Item = &'_ [u8]> + '_>;
+    fn get_args_iter(&self) -> Box<dyn Iterator<Item = &'_ [u8]> + '_>;
     fn get_background_client(&self) -> Result<Box<dyn ReplyCtxInterface>, GearsApiError>;
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_>;
     fn allow_block(&self) -> bool;
