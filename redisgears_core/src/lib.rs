@@ -586,7 +586,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
                 v8_path.as_str()
             )
         })
-        .unwrap_or(v8_path.to_string());
+        .unwrap_or_else(|_| v8_path.to_string());
 
     let lib = match unsafe { Library::new(&v8_path) } {
         Ok(l) => l,
