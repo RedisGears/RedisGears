@@ -1,10 +1,29 @@
 name: Ubuntu Focal
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  workflow_call:
+    inputs:
+      v8_version:
+        default: 'default'
+        required: false
+        type: string
+      v8_update_headers:
+        default: 'no'
+        required: false
+        type: string
+      redis_version:
+        default: 7.2-rc1
+        required: false
+        type: string
+      upload_artifacts:
+        default: false
+        required: false
+        type: boolean
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_KEY_ID:
+        required: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,13 +38,13 @@ jobs:
     - name: install rltest
       run: pip install RLTest
     - name: install redis
-      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.2-rc1; make install
+      run: git clone https://github.com/redis/redis; cd redis; git checkout ${{ inputs.redis_version }}; make install
     - name: format
       run: cargo fmt -- --check
     - name: Build debug
-      run: cargo build --verbose
+      run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} cargo build --verbose
     - name: Build release
-      run: cargo build --release --verbose
+      run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} cargo build --release --verbose
     - name: Tests
       run: cd pytests;./run_tests.sh
     - name: install ramp packer
@@ -33,7 +52,7 @@ jobs:
     - name: Pack
       run: target/release/packer
     - name: Setup s3cmd action
-      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      if: ${{ inputs.upload_artifacts }}
       uses: s3-actions/s3cmd@v1.2.0
       with:
         provider: aws
@@ -41,6 +60,6 @@ jobs:
         access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
         secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     - name: Upload artifacts
-      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      if: ${{ inputs.upload_artifacts }}
       run: |
         s3cmd put -P target/release/redisgears2-release.linux-ubuntu.20.04-x86_64.master.zip s3://redismodules/redisgears/snapshots/
