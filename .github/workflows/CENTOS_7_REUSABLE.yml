@@ -22,7 +22,7 @@ on:
     secrets:
       AWS_ACCESS_KEY_ID:
         required: false
-      AWS_SECRET_KEY_ID:
+      AWS_SECRET_ACCESS_KEY:
         required: false
 
 env:
