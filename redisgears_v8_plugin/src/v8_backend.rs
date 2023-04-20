@@ -23,6 +23,7 @@ use crate::get_exception_msg;
 use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::str;
 
 use std::sync::atomic::Ordering;
@@ -32,6 +33,23 @@ struct Globals {
     backend_ctx: Option<BackendCtx>,
 }
 
+unsafe impl GlobalAlloc for Globals {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        match self.backend_ctx.as_ref() {
+            Some(a) => a.allocator.alloc(layout),
+            None => System.alloc(layout),
+        }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        match self.backend_ctx.as_ref() {
+            Some(a) => a.allocator.dealloc(ptr, layout),
+            None => System.dealloc(ptr, layout),
+        }
+    }
+}
+
+#[global_allocator]
 static mut GLOBAL: Globals = Globals { backend_ctx: None };
 
 pub(crate) fn log(msg: &str) {

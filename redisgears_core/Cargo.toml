@@ -7,7 +7,7 @@ rust-version = "1.63"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dev-dependencies]
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", features = ["experimental-api"] }
+redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
 
 [dependencies]
 #redis-module = { version="1.0", features = ["experimental-api"]}
