@@ -34,7 +34,7 @@ use redis_module::{
 use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
-use redis_module_derive::{
+use redis_module_macros::{
     flush_event_handler, loading_event_handler, module_changed_event_handler,
     role_changed_event_handler,
 };
