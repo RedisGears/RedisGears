@@ -12,7 +12,7 @@ todo:
 
 @gearsTest()
 def testBasicStreamReader(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var num_events = 0;
 redis.register_function("num_events", function(){
     return num_events;
@@ -29,7 +29,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
 
 @gearsTest(decodeResponses=False)
 def testBasicStreamReaderWithBinaryData(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var last_key = null;
 var last_key_raw = null;
 var last_data = null;
@@ -55,7 +55,7 @@ redis.register_stream_consumer("consumer", new Uint8Array([255]).buffer, 1, fals
 
 @gearsTest()
 def testAsyncStreamReader(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var num_events = 0;
 redis.register_function("num_events", function(){
     return num_events;
@@ -72,7 +72,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(){
 
 @gearsTest()
 def testStreamTrim(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var num_events = 0;
 redis.register_function("num_events", function(){
     return num_events;
@@ -91,7 +91,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(){
 
 @gearsTest()
 def testStreamProccessError(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_stream_consumer("consumer", "stream", 1, false, function(){
     throw 'Error';
 })
@@ -102,7 +102,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
 
 @gearsTest()
 def testStreamWindow(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var promises = [];
 redis.register_function("num_pending", function(){
     return promises.length;
@@ -131,7 +131,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
-    
+
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
 
@@ -140,7 +140,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
     env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
     runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
-    
+
     runUntil(env, 2, lambda: len(toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['pending_ids']))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
@@ -160,7 +160,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
 @gearsTest(withReplicas=True)
 def testStreamWithReplication(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var promises = [];
 redis.register_function("num_pending", function(){
     return promises.length;
@@ -217,7 +217,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(cli
 
 @gearsTest()
 def testStreamDeletoin(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var promises = [];
 redis.register_function("num_pending", function(){
     return promises.length;
@@ -246,7 +246,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
-    
+
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
 
@@ -266,7 +266,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
 @gearsTest()
 def testFlushall(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var promises = [];
 redis.register_function("num_pending", function(){
     return promises.length;
@@ -295,7 +295,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
-    
+
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
 
@@ -315,7 +315,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
 @gearsTest()
 def testMultipleConsumers(env):
-    script = """#!js name=%s
+    script = """#!js api_version=1.0 name=%s
 var promises = [];
 redis.register_function("num_pending", function(){
     return promises.length;
@@ -375,7 +375,7 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 
 @gearsTest()
 def testMultipleStreamsForConsumer(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var streams = [];
 
 redis.register_function("get_stream", function(){
@@ -405,7 +405,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(cli
 
 @gearsTest()
 def testRDBSaveAndLoad(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 
 redis.register_stream_consumer("consumer", "stream", 1, false, async function(client, data){
     redis.log(data.id);
@@ -427,20 +427,20 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(cl
 
 @gearsTest()
 def testCallingRedisCommandOnStreamConsumer(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 
 redis.register_stream_consumer("consumer", "stream", 1, false, function(client, data){
     client.call('ping');
 })
     """
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    
+
     runUntil(env, 1, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
     env.assertEqual('None', toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error'])
 
 @gearsTest()
 def testBecomeReplicaWhileProcessingData(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var promise = null;
 var done = null;
 
@@ -463,7 +463,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(cli
         promise = resume;
     });
     done("OK");
-}) 
+})
     """
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
@@ -475,7 +475,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(cli
     env.cmd('slaveof', '127.0.0.1', '3300')
     runUntil(env, 'OK', lambda: env.cmd('RG.FCALL', 'lib', 'continue_process', '0'))
     runUntil(env, 2, lambda: toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed'])
-    
+
     runFor('no data to processes', lambda: env.cmd('RG.FCALL', 'lib', 'continue_process', '0'))
     res = toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed']
     env.assertEqual(2, res)

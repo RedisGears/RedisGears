@@ -12,6 +12,8 @@ use crate::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
 use crate::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use crate::redisgears_plugin_api::GearsApiError;
 
+use super::prologue::ApiVersion;
+
 pub trait CompiledLibraryInterface {
     fn log(&self, msg: &str);
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>);
@@ -43,7 +45,9 @@ pub trait BackendCtxInterfaceInitialised {
     fn get_version(&self) -> String;
     fn compile_library(
         &mut self,
+        module_name: &str,
         code: &str,
+        api_version: ApiVersion,
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError>;

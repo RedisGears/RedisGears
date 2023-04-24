@@ -6,6 +6,7 @@
 
 use redis_module::RedisValue;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
+use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
     backend_ctx::CompiledLibraryInterface, backend_ctx::LibraryFatalFailurePolicy,
@@ -13,15 +14,15 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 };
 use v8_rs::v8::v8_version;
 
+use crate::v8_native_functions::{initialize_globals_for_version, ApiVersionSupported};
 use crate::v8_script_ctx::V8ScriptCtx;
 
 use v8_rs::v8::{isolate::V8Isolate, v8_init_with_error_handlers};
 
-use crate::v8_native_functions::initialize_globals;
-
 use crate::get_exception_msg;
 use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::str;
 
@@ -52,15 +53,30 @@ unsafe impl GlobalAlloc for Globals {
 static mut GLOBAL: Globals = Globals { backend_ctx: None };
 
 pub(crate) fn log(msg: &str) {
-    unsafe { (GLOBAL.backend_ctx.as_ref().unwrap().log)(msg) };
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().log)(msg)
+    };
+    #[cfg(test)]
+    println!("log message: {msg}");
 }
 
 pub(crate) fn get_fatal_failure_policy() -> LibraryFatalFailurePolicy {
-    unsafe { (GLOBAL.backend_ctx.as_ref().unwrap().get_on_oom_policy)() }
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().get_on_oom_policy)()
+    }
+    #[cfg(test)]
+    LibraryFatalFailurePolicy::Abort
 }
 
 pub(crate) fn gil_lock_timeout() -> u128 {
-    unsafe { (GLOBAL.backend_ctx.as_ref().unwrap().get_lock_timeout)() }
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().get_lock_timeout)()
+    }
+    #[cfg(test)]
+    0u128
 }
 
 pub(crate) struct V8Backend {
@@ -174,7 +190,9 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
     fn compile_library(
         &mut self,
-        blob: &str,
+        module_name: &str,
+        code: &str,
+        api_version: ApiVersion,
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError> {
@@ -189,7 +207,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
 
-                let v8code_str = isolate_scope.new_string(blob);
+                let v8code_str = isolate_scope.new_string(code);
 
                 let trycatch = isolate_scope.new_try_catch();
                 let script = match ctx_scope.compile(&v8code_str) {
@@ -262,14 +280,35 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
                                 script_ctx
                                     .compiled_library_api
-                                    .log(&format!("Temporarly increase max memory to {new_limit} memory and aborting the script"));
+                                    .log(&format!("Temporarily increasing max memory to {new_limit} memory and aborting the script"));
 
                                 new_limit
                             }
                         }
                     });
 
-                initialize_globals(&script_ctx, &globals, &isolate_scope, &ctx_scope, config)?;
+                let api_version_supported: ApiVersionSupported = api_version.try_into()?;
+
+                api_version_supported
+                    .validate_code(code)
+                    .iter()
+                    .enumerate()
+                    .map(|(index, error)| format!("\t{}. {}", index + 1, error.get_msg()))
+                    .for_each(|message| {
+                        script_ctx
+                            .compiled_library_api
+                            .log(&format!("Module \"{module_name}\": {message}"))
+                    });
+
+                let api_version_supported = api_version_supported.into_latest_compatible();
+                initialize_globals_for_version(
+                    api_version_supported,
+                    &script_ctx,
+                    &globals,
+                    &isolate_scope,
+                    &ctx_scope,
+                    config,
+                )?;
             }
 
             script_ctx

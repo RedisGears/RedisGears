@@ -22,3 +22,5 @@ Cargo.lock
 wordlist.dic
 
 dump.rdb
+
+.gdb_history

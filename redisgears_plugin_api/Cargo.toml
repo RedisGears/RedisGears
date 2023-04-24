@@ -8,8 +8,8 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 
 [dependencies]
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
-serde = { version = "1.0", features = ["derive"] }
-serde_derive = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_derive = "1"
 bitflags = "1"
 
 [build-dependencies]

@@ -84,8 +84,8 @@ npx webpack --config webpack.config.js
 If all was done correctly you will see a new directory, `dist`, with a single file, `main.js`, that contains the following code:
 
 ```js
-#!js name=foo
-redis.register_function("foo",(function(){return"foo"}));
+#!js api_version=1.0 name=foo
+redis.register_function("foo", (function() { return"foo" }));
 ```
 
 This file can be send to be evaluated by RedisGears using `redis-cli`. From the project root directory, run the following:
@@ -128,7 +128,7 @@ npx webpack --config webpack.config.js
 We will see that the generated file content has changed and it is now contains the following code:
 
 ```js
-#!js name=foo
+#!js api_version=1.0 name=foo
 (()=>{"use strict";redis.register_function("foo",(function(){return"test"}))})();
 ```
 
@@ -547,7 +547,7 @@ pub fn test(client: &Client) -> Option<String> {
 We define a new `Client` type and declare its `get` function. Then we use it on our `test` function and fetch the value of `x`. We can now recompile and deploy and if everything done correctly we can see that our rust code fetches `x` and returns its value:
 
 ```bash
-> redis-cli 
+> redis-cli
 127.0.0.1:6379> RG.FCALL foo foo 0
 "undefined"
 127.0.0.1:6379> set x 1

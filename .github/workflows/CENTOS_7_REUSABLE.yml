@@ -33,11 +33,14 @@ jobs:
 
     runs-on: ubuntu-latest
     container: centos:centos7
+    env:
+      V8_VERSION: ${{ inputs.v8_version }}
+      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
     - name: Update yum
       run: yum update -qqy
-    - name: Install requirements 
+    - name: Install requirements
       run: |
         yum install -yqq openssl wget python3 xz-utils lsb-release sudo dialog apt-utils redhat-lsb subversion chrpath openssl-devel python3-devel
         yum groupinstall -yqq 'Development Tools'
@@ -61,7 +64,7 @@ jobs:
     - name: Install redis
       run: |
         set -x
-        . scl_source enable  devtoolset-9 || true
+        . scl_source enable devtoolset-9 || true
         . scl_source enable llvm-toolset-7 || true
         git clone https://github.com/redis/redis
         cd redis
@@ -75,14 +78,19 @@ jobs:
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build
       run: |
-        . scl_source enable  devtoolset-9 || true
+        . scl_source enable devtoolset-9 || true
         . scl_source enable llvm-toolset-7 || true
-        V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build -vv
-        V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build --release -vv
-    - name: Tests
+        $HOME/.cargo/bin/cargo build -vv
+        $HOME/.cargo/bin/cargo build --release -vv
+    - name: Unit tests
+      run: |
+        . scl_source enable devtoolset-9 || true
+        . scl_source enable llvm-toolset-7 || true
+        $HOME/.cargo/bin/cargo test --verbose
+    - name: Integration tests
       run: |
         PATH=/opt/rh/rh-python38/root/usr/local/bin:$PATH
-        cd pytests;./run_tests.sh
+        cd pytests; ./run_tests.sh
     - name: install ramp packer
       run: /opt/rh/rh-python38/root/usr/bin/python -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
     - name: Pack

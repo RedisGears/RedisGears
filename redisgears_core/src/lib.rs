@@ -13,6 +13,7 @@
 use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
+use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use serde::{Deserialize, Serialize};
 
 use config::{
@@ -135,9 +136,11 @@ fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
 }
 
 /// The meta information about the gears library instance at runtime.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GearsLibraryMetaData {
     name: String,
     engine: String,
+    api_version: ApiVersion,
     code: String,
     config: Option<String>,
     user: RedisString,
@@ -498,7 +501,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         return Status::Err;
     }
     std::panic::set_hook(Box::new(|panic_info| {
-        DETACHED_CONTEXT.log_warning(&format!("Application paniced, {}", panic_info));
+        DETACHED_CONTEXT.log_warning(&format!("Application panicked, {}", panic_info));
         let (file, line) = match panic_info.location() {
             Some(l) => (l.file(), l.line()),
             None => ("", 0),
@@ -986,6 +989,7 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
 }
 
 #[allow(missing_docs)]
+#[cfg(not(test))]
 mod gears_module {
     use super::*;
 

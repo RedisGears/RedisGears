@@ -32,6 +32,9 @@ jobs:
   build:
 
     runs-on: ubuntu-20.04
+    env:
+      V8_VERSION: ${{ inputs.v8_version }}
+      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
     - uses: actions/checkout@v3
@@ -42,10 +45,12 @@ jobs:
     - name: format
       run: cargo fmt -- --check
     - name: Build debug
-      run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} cargo build --verbose
+      run:  cargo build --verbose
     - name: Build release
-      run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} cargo build --release --verbose
-    - name: Tests
+      run:  cargo build --release --verbose
+    - name: Unit tests
+      run: $HOME/.cargo/bin/cargo test --verbose
+    - name: Integration tests
       run: cd pytests;./run_tests.sh
     - name: install ramp packer
       run: pip install git+https://github.com/RedisLabsModules/RAMP.git@master
