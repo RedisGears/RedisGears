@@ -6,9 +6,6 @@ license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public
 rust-version = "1.63"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dev-dependencies]
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
-
 [dependencies]
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
 redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }

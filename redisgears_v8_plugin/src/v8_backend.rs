@@ -53,29 +53,29 @@ unsafe impl GlobalAlloc for Globals {
 static mut GLOBAL: Globals = Globals { backend_ctx: None };
 
 pub(crate) fn log(msg: &str) {
-    #[cfg(not(feature = "test"))]
+    #[cfg(not(test))]
     unsafe {
         (GLOBAL.backend_ctx.as_ref().unwrap().log)(msg)
     };
-    #[cfg(feature = "test")]
+    #[cfg(test)]
     println!("log message: {msg}");
 }
 
 pub(crate) fn get_fatal_failure_policy() -> LibraryFatalFailurePolicy {
-    #[cfg(not(feature = "test"))]
+    #[cfg(not(test))]
     unsafe {
         (GLOBAL.backend_ctx.as_ref().unwrap().get_on_oom_policy)()
     }
-    #[cfg(feature = "test")]
+    #[cfg(test)]
     LibraryFatalFailurePolicy::Abort
 }
 
 pub(crate) fn gil_lock_timeout() -> u128 {
-    #[cfg(not(feature = "test"))]
+    #[cfg(not(test))]
     unsafe {
         (GLOBAL.backend_ctx.as_ref().unwrap().get_lock_timeout)()
     }
-    #[cfg(feature = "test")]
+    #[cfg(test)]
     0u128
 }
 

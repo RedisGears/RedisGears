@@ -55,7 +55,7 @@ fn library_extract_metadata(
     Ok(GearsLibraryMetaData {
         engine: prologue.engine.to_owned(),
         api_version: prologue.api_version,
-        name: prologue.module_name.to_owned(),
+        name: prologue.library_name.to_owned(),
         code: code.to_string(),
         config,
         user,

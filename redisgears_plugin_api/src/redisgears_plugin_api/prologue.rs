@@ -3,7 +3,7 @@
  * Licensed under your choice of the Redis Source Available License 2.0 (RSALv2) or
  * the Server Side Public License v1 (SSPLv1).
  */
-//! The validation mechanism of the user modules.
+//! The validation mechanism of the user libraries.
 //!
 //! Performs the basic prologue parsing and validation.
 
@@ -16,8 +16,8 @@ use super::GearsApiError;
 const ENGINE_PREFIX: &str = "#!";
 /// The key string for the api version within the prologue.
 const PROLOGUE_API_VERSION_KEY: &str = "api_version";
-/// The key string for the module name within the prologue.
-const PROLOGUE_MODULE_NAME_KEY: &str = "name";
+/// The key string for the library name within the prologue.
+const PROLOGUE_LIBRARY_NAME_KEY: &str = "name";
 
 /// The RedisGears API version.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -71,21 +71,21 @@ impl FromStr for ApiVersion {
     }
 }
 
-/// The prologue of the module.
+/// The prologue of the library.
 #[derive(Debug, Clone)]
 pub struct Prologue<'a> {
     /// A hint as to what engine should be used for the user code.
     pub engine: &'a str,
     /// The version the user code is written for.
     pub api_version: ApiVersion,
-    /// The name of the user module.
-    pub module_name: &'a str,
+    /// The name of the user library.
+    pub library_name: &'a str,
 }
 
 /// The errors which the validator may find.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Error {
-    /// Indicates that the user module requested an API
+    /// Indicates that the user library requested an API
     /// version which is unsupported. Returns the requested
     /// version alongside with the minimum and maximum supported
     /// versions.
@@ -102,8 +102,8 @@ pub enum Error {
     },
     /// Indicates that the api version is missing from the prologue.
     MissingApiVersion,
-    /// Indicates that the module name is missing from the prologue.
-    MissingModuleName,
+    /// Indicates that the library name is missing from the prologue.
+    MissingLibraryName,
     /// Indicates that the validator couldn't find the engine
     /// name within the code prologue.
     ///
@@ -111,7 +111,7 @@ pub enum Error {
     NoEngineNameFound {
         available_engines: Vec<String>,
     },
-    /// Indicates that the user module doesn't have the prologue or it
+    /// Indicates that the user library doesn't have the prologue or it
     /// is invalid.
     InvalidOrMissingPrologue,
     UnknownPrologueProperties {
@@ -149,7 +149,7 @@ impl From<Error> for GearsApiError {
                 )
             }
             Error::MissingApiVersion => "The api version is missing from the prologue.".to_owned(),
-            Error::MissingModuleName => "The module name is missing from the prologue.".to_owned(),
+            Error::MissingLibraryName => "The library name is missing from the prologue.".to_owned(),
             Error::NoEngineNameFound { available_engines } => {
                 format!(
                     "No engine found. The available engines are: {}.",
@@ -189,10 +189,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Parses out the prologue (metadata).
 ///
-/// The full user module code is expected to be passed here, or at
+/// The full user library code is expected to be passed here, or at
 /// least the very first line of it.
 pub fn parse_prologue(code: &str) -> Result<Prologue> {
-    const KNOWN_PROPERTIES: [&str; 2] = [PROLOGUE_API_VERSION_KEY, PROLOGUE_MODULE_NAME_KEY];
+    const KNOWN_PROPERTIES: [&str; 2] = [PROLOGUE_API_VERSION_KEY, PROLOGUE_LIBRARY_NAME_KEY];
 
     let first_line = code.lines().next().ok_or(Error::InvalidOrMissingPrologue)?;
 
@@ -242,9 +242,9 @@ pub fn parse_prologue(code: &str) -> Result<Prologue> {
         .ok_or(Error::MissingApiVersion)
         .map(ApiVersion::from_str)??;
 
-    let module_name = properties
-        .remove(PROLOGUE_MODULE_NAME_KEY)
-        .ok_or(Error::MissingModuleName)?;
+    let library_name = properties
+        .remove(PROLOGUE_LIBRARY_NAME_KEY)
+        .ok_or(Error::MissingLibraryName)?;
 
     if !properties.is_empty() {
         let specified_properties = properties
@@ -260,7 +260,7 @@ pub fn parse_prologue(code: &str) -> Result<Prologue> {
     Ok(Prologue {
         engine,
         api_version,
-        module_name,
+        library_name,
     })
 }
 
@@ -274,7 +274,7 @@ mod tests {
         let prologue = parse_prologue(s).unwrap();
         assert_eq!(prologue.engine, "js");
         assert_eq!(prologue.api_version, ApiVersion(1, 0));
-        assert_eq!(prologue.module_name, "test_lib");
+        assert_eq!(prologue.library_name, "test_lib");
     }
 
     #[test]
@@ -320,7 +320,7 @@ mod tests {
                 specified_properties: vec!["\"unknown_key\"".to_owned()],
                 known_properties: vec![
                     PROLOGUE_API_VERSION_KEY.to_owned(),
-                    PROLOGUE_MODULE_NAME_KEY.to_owned()
+                    PROLOGUE_LIBRARY_NAME_KEY.to_owned()
                 ]
             }
         );
@@ -338,9 +338,9 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_module_name() {
+    fn test_missing_library_name() {
         let s = "#!js api_version=1.0";
         let err = parse_prologue(s).unwrap_err();
-        assert_eq!(err, Error::MissingModuleName);
+        assert_eq!(err, Error::MissingLibraryName);
     }
 }

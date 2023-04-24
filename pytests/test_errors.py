@@ -25,7 +25,7 @@ redis.register_function("test", function(client){
     return 2
 })
     '''
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("The module name is missing from the prologue.")
+    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains("The library name is missing from the prologue.")
 
 @gearsTest()
 def testSameFunctionName(env):
@@ -333,13 +333,13 @@ def testMalformedLibraryMetaData(env):
 
 @gearsTest()
 def testMalformedLibraryMetaData2(env):
-    code = '#!js name' # no api version and no module version, invalid prologue.
+    code = '#!js name' # no api version and no library version, invalid prologue.
     env.expect('RG.FUNCTION', 'LOAD', code).error().contains('Invalid or missing prologue.')
 
 @gearsTest()
 def testMalformedLibraryMetaData3(env):
     code = '#!js api_version=1.0 foo=bar' # unknown property
-    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The module name is missing from the prologue.')
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('The library name is missing from the prologue.')
 
 @gearsTest()
 def testMalformedLibraryMetaData4(env):
