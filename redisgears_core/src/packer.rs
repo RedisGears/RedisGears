@@ -11,10 +11,8 @@ pub const GIT_BRANCH: Option<&str> = std::option_env!("GIT_BRANCH");
 pub const VERSION_STR: Option<&str> = std::option_env!("VERSION_STR");
 pub const VERSION_NUM: Option<&str> = std::option_env!("VERSION_NUM");
 pub const BUILD_OS: Option<&str> = std::option_env!("BUILD_OS");
-pub const BUILD_OS_TYPE: Option<&str> = std::option_env!("BUILD_OS_TYPE");
-pub const BUILD_OS_VERSION: Option<&str> = std::option_env!("BUILD_OS_VERSION");
+pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
-pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
 
 fn main() {
     let mut curr_path = std::env::current_exe().expect("Could not get binary location");
@@ -34,20 +32,16 @@ fn main() {
     println!("{:?}", redisgears_v8_plugin_so_path);
 
     let gears_snapeshot_file_name = format!(
-        "redisgears2-{}.{}-{}.{}-{}.{}.zip",
-        BUILD_TYPE.unwrap(),
+        "redisgears2.{}-{}-{}.{}.zip",
         BUILD_OS.unwrap(),
-        BUILD_OS_TYPE.unwrap(),
-        BUILD_OS_VERSION.unwrap(),
+        BUILD_OS_NICK.unwrap(),
         BUILD_OS_ARCH.unwrap(),
         GIT_BRANCH.unwrap()
     );
     let gears_release_file_name = format!(
-        "redisgears2-{}.{}-{}.{}-{}.{}.zip",
-        BUILD_TYPE.unwrap(),
+        "redisgears2.{}-{}-{}.{}.zip",
         BUILD_OS.unwrap(),
-        BUILD_OS_TYPE.unwrap(),
-        BUILD_OS_VERSION.unwrap(),
+        BUILD_OS_NICK.unwrap(),
         BUILD_OS_ARCH.unwrap(),
         VERSION_NUM.unwrap()
     );

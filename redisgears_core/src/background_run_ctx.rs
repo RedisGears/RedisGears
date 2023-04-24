@@ -13,22 +13,24 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 use crate::background_run_scope_guard::BackgroundRunScopeGuardCtx;
 use crate::run_ctx::RedisClientCallOptions;
 use crate::{
-    get_globals, get_libraries, verify_ok_on_replica, verify_oom, Deserialize,
-    GearsLibraryMetaData, Serialize,
+    get_libraries, verify_ok_on_replica, verify_oom, Deserialize, GearsLibraryMetaData, Serialize,
 };
 
-use redis_module::{RedisValue, ThreadSafeContext};
+use redis_module::{RedisString, RedisValue, ThreadSafeContext};
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use mr::libmr::{calc_slot, record::Record, remote_task::RemoteTask, RustMRError};
 
 use mr_derive::BaseObject;
 
+use crate::config::REMOTE_TASK_DEFAULT_TIMEOUT;
+
 pub(crate) struct BackgroundRunCtx {
     call_options: RedisClientCallOptions,
     lib_meta_data: Arc<GearsLibraryMetaData>,
-    user: Option<String>,
+    user: RedisString,
 }
 
 unsafe impl Sync for BackgroundRunCtx {}
@@ -36,7 +38,7 @@ unsafe impl Send for BackgroundRunCtx {}
 
 impl BackgroundRunCtx {
     pub(crate) fn new(
-        user: Option<String>,
+        user: RedisString,
         lib_meta_data: &Arc<GearsLibraryMetaData>,
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunCtx {
@@ -101,7 +103,7 @@ impl Record for GearsRemoteFunctionOutputRecord {
 pub(crate) struct GearsRemoteTask {
     lib_name: String,
     job_name: String,
-    user: Option<String>,
+    user: RedisString,
 }
 
 impl RemoteTask for GearsRemoteTask {
@@ -155,19 +157,20 @@ impl RemoteTask for GearsRemoteTask {
 impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
     fn lock(&self) -> Result<Box<dyn RedisClientCtxInterface>, GearsApiError> {
         let ctx_guard = ThreadSafeContext::new().lock();
-        if !verify_ok_on_replica(self.call_options.flags) {
+        if !verify_ok_on_replica(&ctx_guard, self.call_options.flags) {
             return Err(GearsApiError::new(
                 "Can not lock redis for write on replica".to_string(),
             ));
         }
-        if !verify_oom(self.call_options.flags) {
+        if !verify_oom(&ctx_guard, self.call_options.flags) {
             return Err(GearsApiError::new(
                 "OOM Can not lock redis for write".to_string(),
             ));
         }
+        let user = self.user.safe_clone(&ctx_guard);
         Ok(Box::new(BackgroundRunScopeGuardCtx::new(
             ctx_guard,
-            self.user.clone(),
+            user,
             &self.lib_meta_data,
             self.call_options.clone(),
         )))
@@ -197,7 +200,7 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
                 };
                 on_done(res);
             },
-            get_globals().config.remote_task_default_timeout.timeout,
+            REMOTE_TASK_DEFAULT_TIMEOUT.load(Ordering::Relaxed) as usize,
         );
     }
 
@@ -223,7 +226,7 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
                     results.into_iter().map(|r| r.output).collect();
                 on_done(results, errors);
             },
-            get_globals().config.remote_task_default_timeout.timeout,
+            REMOTE_TASK_DEFAULT_TIMEOUT.load(Ordering::Relaxed) as usize,
         )
     }
 }

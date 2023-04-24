@@ -4,13 +4,14 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::{init_api, Context};
 use v8_rs::v8::{
     isolate::V8Isolate, isolate_scope::V8IsolateScope, try_catch::V8TryCatch,
     v8_array::V8LocalArray, v8_context_scope::V8ContextScope, v8_value::V8LocalValue,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    backend_ctx::BackendCtxInterface, load_library_ctx::FunctionFlags, GearsApiError,
+    backend_ctx::BackendCtxInterfaceUninitialised, load_library_ctx::FunctionFlags, GearsApiError,
 };
 
 mod v8_backend;
@@ -95,7 +96,8 @@ pub(crate) fn get_function_flags(
 
 #[no_mangle]
 #[allow(improper_ctypes_definitions)]
-pub extern "C" fn initialize_plugin() -> *mut dyn BackendCtxInterface {
+pub extern "C" fn initialize_plugin(ctx: &Context) -> *mut dyn BackendCtxInterfaceUninitialised {
+    init_api(ctx);
     Box::into_raw(Box::new(V8Backend {
         script_ctx_vec: Arc::new(Mutex::new(Vec::new())),
     }))

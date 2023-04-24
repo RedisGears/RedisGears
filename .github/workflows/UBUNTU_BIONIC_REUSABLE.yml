@@ -1,10 +1,29 @@
 name: Ubuntu Bionic
 
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  workflow_call:
+    inputs:
+      v8_version:
+        default: 'default'
+        required: false
+        type: string
+      v8_update_headers:
+        default: 'no'
+        required: false
+        type: string
+      redis_version:
+        default: 7.2-rc1
+        required: false
+        type: string
+      upload_artifacts:
+        default: false
+        required: false
+        type: boolean
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,6 +33,9 @@ jobs:
 
     runs-on: ubuntu-latest
     container: ubuntu:bionic
+    env:
+      V8_VERSION: ${{ inputs.v8_version }}
+      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
     - name: Update apt
@@ -23,8 +45,9 @@ jobs:
         apt -yqq install software-properties-common
         add-apt-repository ppa:deadsnakes/ppa
         add-apt-repository ppa:ubuntu-toolchain-r/test
+        add-apt-repository ppa:git-core/ppa
         apt update
-        apt -yqq install git gcc-9 g++-9 curl wget python3.10 python3.10-dev dialog subversion chrpath libssl-dev python3-dev clang autoconf automake libtool pkg-config
+        apt -yqq install git gcc-9 g++-9 curl wget python3.10 python3.10-dev dialog subversion chrpath libssl-dev python3-dev clang autoconf automake libtool pkg-config unzip
         update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 9
         update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 9
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 10
@@ -33,29 +56,32 @@ jobs:
         DEBIAN_FRONTEND: noninteractive
         TZ: Etc/UTC
     - uses: actions/checkout@v3
+    - name: configure git
+      run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
     - name: update pip3
       run: pip3 install -U pip
     - name: install rltest
       run: pip3 install RLTest
     - name: install redis
-      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+      run: git clone https://github.com/redis/redis; cd redis; git checkout ${{ inputs.redis_version }}; make install
     - name: install rust
-      run: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     - name: format
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build debug
       run: $HOME/.cargo/bin/cargo build --verbose
     - name: Build release
       run: $HOME/.cargo/bin/cargo build --release --verbose
-    - name: Tests
-      run: cd pytests;./run_tests.sh
+    - name: Unit tests
+      run: $HOME/.cargo/bin/cargo test --verbose
+    - name: Integration tests
+      run: cd pytests; ./run_tests.sh
     - name: install ramp packer
       run: python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
     - name: Pack
       run: target/release/packer
     - name: Setup s3cmd action
-      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      if: ${{ inputs.upload_artifacts }}
       uses: s3-actions/s3cmd@v1.2.0
       with:
         provider: aws
@@ -63,6 +89,6 @@ jobs:
         access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
         secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     - name: Upload artifacts
-      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      if: ${{ inputs.upload_artifacts }}
       run: |
-        s3cmd put -P target/release/redisgears2-release.linux-ubuntu.18.04-x86_64.master.zip s3://redismodules/redisgears/snapshots/
+        s3cmd put -P target/release/redisgears2.Linux-bionic-x86_64.master.zip s3://redismodules/redisgears/snapshots/

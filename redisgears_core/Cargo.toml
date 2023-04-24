@@ -3,25 +3,25 @@ name = "redisgears_core"
 version = "99.99.99"
 edition = "2021"
 license = "Redis Source Available License 2.0 (RSALv2) or the Server Side Public License v1 (SSPLv1)"
-rust-version = "1.62"
+rust-version = "1.63"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-#redis-module = { version="1.0", features = ["experimental-api"]}
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "api_extentions", features = ["experimental-api"]}
-lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api" }
-lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api" }
+redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
+redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
+lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
+lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
 linkme = "0.3"
 redisai_rs = { path = "../redisai_rs" }
 libloading = "0.7"
-redisgears_plugin_api = {path="../redisgears_plugin_api/"}
-threadpool = "1.8.1"
+redisgears_plugin_api = { path="../redisgears_plugin_api/" }
+threadpool = "1"
 reqwest = { version = "0.11", features = ["json", "blocking"] }
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_derive = "1.0"
-sha256 = "1.0.3"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+serde_derive = "1"
+sha256 = "1"
+lazy_static = "1"
 
 [build-dependencies]
 regex = "1"

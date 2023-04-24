@@ -9,7 +9,7 @@ todo:
 
 @gearsTest()
 def testBasicJSInvocation(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", function(){
     return 1
 })
@@ -18,24 +18,24 @@ redis.register_function("test", function(){
 
 @gearsTest()
 def testCommandInvocation(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return client.call('ping')
-})  
+})
     """
     env.expect('RG.FCALL', 'foo', 'test', 0).equal('PONG')
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgrade(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return 1
-})  
+})
     """
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return 2
-})  
+})
     '''
     env.expect('RG.FCALL', 'foo', 'test', 0).equal(1)
     env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).equal('OK')
@@ -48,12 +48,12 @@ redis.register_function("test", function(client){
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailure(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return 1
-})  
+})
     """
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return 2
 })
@@ -70,14 +70,14 @@ redis.register_function("test", "bar"); // this will fail
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithStreamConsumer(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_stream_consumer("consumer", "stream", 1, false, async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
     """
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 redis.register_stream_consumer("consumer", "stream", 1, false, async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
@@ -98,14 +98,14 @@ redis.register_function("test", "bar"); // this will fail
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithNotificationConsumer(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_notifications_consumer("consumer", "key", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
     """
-    script = '''#!js name=foo
+    script = '''#!js api_version=1.0 name=foo
 redis.register_notifications_consumer("consumer", "key", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
@@ -126,19 +126,19 @@ redis.register_function("test", "bar"); // this will fail
 
 @gearsTest()
 def testRedisCallNullReply(env):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 redis.register_function("test", function(client){
     return client.call('get', 'x');
-})  
+})
     """
     env.expect('RG.FCALL', 'foo', 'test', 0).equal(None)
 
 @gearsTest()
 def testOOM(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("set", function(client, key, val){
     return client.call('set', key, val);
-})  
+})
     """
     env.expect('RG.FCALL', 'lib', 'set', '1', 'x', '1').equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
@@ -146,7 +146,7 @@ redis.register_function("set", function(client, key, val){
 
 @gearsTest()
 def testOOMOnAsyncFunction(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var continue_set = null;
 var set_done = null;
 var set_failed = null;
@@ -189,7 +189,7 @@ redis.register_function("async_set_trigger", function(client, key, val){
 
 @gearsTest(withReplicas=True)
 def testRunOnReplica(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test1", function(client){
     return 1;
 });
@@ -212,7 +212,7 @@ redis.register_function("test2", function(client){
 
 @gearsTest(withReplicas=True)
 def testFunctionDelReplicatedToReplica(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", function(client){
     return 1;
 },
@@ -231,7 +231,7 @@ redis.register_function("test", function(client){
 
 @gearsTest()
 def testNoWritesFlag(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("my_set", function(client, key, val){
     return client.call('set', key, val);
 },
@@ -241,7 +241,7 @@ redis.register_function("my_set", function(client, key, val){
 
 @gearsTest()
 def testBecomeReplicaWhenFunctionRunning(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var continue_set = null;
 var set_done = null;
 var set_failed = null;
@@ -285,7 +285,7 @@ redis.register_function("async_set_trigger", function(client, key, val){
 
 @gearsTest()
 def testScriptTimeout(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test1", function(client){
     while (true);
 });
@@ -295,7 +295,7 @@ redis.register_function("test1", function(client){
 
 @gearsTest()
 def testAsyncScriptTimeout(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test1", async function(client){
     client.block(function(){
         while (true);
@@ -307,7 +307,7 @@ redis.register_function("test1", async function(client){
 
 @gearsTest()
 def testTimeoutErrorNotCatchable(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test1", async function(client){
     try {
         client.block(function(){
@@ -323,7 +323,7 @@ redis.register_function("test1", async function(client){
 
 @gearsTest()
 def testScriptLoadTimeout(env):
-    script = """#!js name=lib
+    script = """#!js api_version=1.0 name=lib
 while(true);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
@@ -331,7 +331,7 @@ while(true);
 
 @gearsTest()
 def testTimeoutOnStream(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_stream_consumer("consumer", "stream", 1, true, function(){
     while(true);
 })
@@ -343,7 +343,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(){
 
 @gearsTest()
 def testTimeoutOnStreamAsync(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_stream_consumer("consumer", "stream", 1, true, async function(c){
     c.block(function(){
         while(true);
@@ -358,7 +358,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(c){
 
 @gearsTest()
 def testTimeoutOnNotificationConsumer(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "", function(client, data) {
     while(true);
 });
@@ -370,7 +370,7 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {
 
 @gearsTest()
 def testTimeoutOnNotificationConsumerAsync(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "", async function(client, data) {
     client.block(function(){
         while(true);
@@ -385,7 +385,7 @@ redis.register_notifications_consumer("consumer", "", async function(client, dat
 
 @gearsTest()
 def testOOM(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test1", function(client){
     a = [1]
     while (true) {
@@ -398,7 +398,7 @@ redis.register_function("test1", function(client){
 
 @gearsTest()
 def testLibraryConfiguration(env):
-    code = """#!js name=lib
+    code = """#!js api_version=1.0 name=lib
 redis.register_function("test1", function(){
     return redis.config;
 });
@@ -408,7 +408,7 @@ redis.register_function("test1", function(){
 
 @gearsTest()
 def testLibraryConfigurationPersistAfterLoading(env):
-    code = """#!js name=lib
+    code = """#!js api_version=1.0 name=lib
 redis.register_function("test1", function(){
     return redis.config;
 });
@@ -419,7 +419,7 @@ redis.register_function("test1", function(){
 
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", function(client){
     var res;
 
@@ -464,7 +464,7 @@ redis.register_function("test", function(client){
     }
 
     res = client.call("debug", "protocol", "verbatim");
-    if (typeof res !== "object" || res.__reply_type !== "verbatim") {
+    if (!(res instanceof ArrayBuffer)) {
         throw `verbatim protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
     }
 
@@ -486,7 +486,7 @@ redis.register_function("test", function(client){
 
 @gearsTest()
 def testNoAsyncFunctionOnMultiExec(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", async() => {return 'test'});
     """
     conn = env.getConnection()
@@ -500,7 +500,7 @@ redis.register_function("test", async() => {return 'test'});
 
 @gearsTest()
 def testSyncFunctionWithPromiseOnMultiExec(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", () => {return new Promise((resume, reject) => {})});
     """
     conn = env.getConnection()
@@ -514,7 +514,7 @@ redis.register_function("test", () => {return new Promise((resume, reject) => {}
 
 @gearsTest()
 def testAllowBlockAPI(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", (c) => {return c.allow_block()});
     """
     env.expect('RG.FCALL', 'lib', 'test', '0').equal('true')
@@ -526,7 +526,7 @@ redis.register_function("test", (c) => {return c.allow_block()});
 
 @gearsTest(decodeResponses=False)
 def testRawArguments(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("my_set", (c, key, val) => {
     return c.call("set", key, val);
 },
@@ -539,7 +539,7 @@ redis.register_function("my_set", (c, key, val) => {
 
 @gearsTest(decodeResponses=False)
 def testRawArgumentsAsync(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("my_set", async (c, key, val) => {
     return c.block((c)=>{
         return c.call("set", key, val);
@@ -554,7 +554,7 @@ redis.register_function("my_set", async (c, key, val) => {
 
 @gearsTest(decodeResponses=False)
 def testReplyWithBinaryData(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", () => {
     return new Uint8Array([255, 255, 255, 255]).buffer;
 });
@@ -563,7 +563,7 @@ redis.register_function("test", () => {
 
 @gearsTest(decodeResponses=False)
 def testRawCall(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", (c, key) => {
     return c.call_raw("get", key)
 },
@@ -574,7 +574,7 @@ redis.register_function("test", (c, key) => {
 
 @gearsTest()
 def testSimpleHgetall(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", (c, key) => {
     return c.call("hgetall", key)
 },
@@ -586,18 +586,18 @@ redis.register_function("test", (c, key) => {
 
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHashRaiseError(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", (c, key) => {
     return c.call("hgetall", key)
 },
 ["raw-arguments"]);
     """
-    env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
+    env.expect('hset', b'\xaa', b'foo', b'\xaa').equal(True)
     env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').error().contains('Could not decode value as string')
 
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHash(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", (c, key) => {
     return typeof Object.keys(c.call_raw("hgetall", key))[0];
 },
@@ -608,7 +608,7 @@ redis.register_function("test", (c, key) => {
 
 @gearsTest()
 def testFunctionListWithLibraryOption(env):
-    code = """#!js name=lib
+    code = """#!js api_version=1.0 name=lib
 redis.register_function("test", (c, key) => {
     return typeof Object.keys(c.call_raw("hgetall", key))[0];
 },
@@ -628,7 +628,7 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {})
 
 @gearsTest()
 def testReplyWithSimpleString(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", async () => {
     var res = new String('test');
     res.__reply_type = 'status';
@@ -639,7 +639,7 @@ redis.register_function("test", async () => {
 
 @gearsTest()
 def testReplyWithDouble(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", () => {
     return 1.1;
 });
@@ -648,7 +648,7 @@ redis.register_function("test", () => {
 
 @gearsTest()
 def testReplyWithDoubleAsync(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", async () => {
     return 1.1;
 });
@@ -657,10 +657,10 @@ redis.register_function("test", async () => {
 
 @gearsTest()
 def testRunOnBackgroundThatRaisesError(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", (c) => {
     return c.run_on_background(async (c) => {
-        throw "Some Error"        
+        throw "Some Error"
     });
 });
     """
@@ -668,7 +668,7 @@ redis.register_function("test", (c) => {
 
 @gearsTest()
 def testRunOnBackgroundThatReturnInteger(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_function("test", (c) => {
     return c.run_on_background(async (c) => {
         return 1;
@@ -679,7 +679,7 @@ redis.register_function("test", (c) => {
 
 @gearsTest()
 def testOver100Isolates(env):
-    code = """#!js name=lib%d
+    code = """#!js api_version=1.0 name=lib%d
 redis.register_function("test", (c) => {
     return c.run_on_background(async (c) => {
         return 1;

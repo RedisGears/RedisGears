@@ -139,7 +139,7 @@ def gearsTest(skipTest=False,
                 v8_plugin_path = os.path.join(root_path, 'target/debug/libredisgears_v8_plugin.dylib')
                 if not os.path.exists(v8_plugin_path):
                     raise Exception('V8 plugin %s does not exists' % v8_plugin_path)
-            module_args = [v8_plugin_path]
+            module_args = ["v8-plugin-path", v8_plugin_path]
             if skipTest:
                 raise unittest.SkipTest()
             final_envArgs = envArgs.copy()

@@ -12,7 +12,7 @@ RedisGears attempt to give a better flexibility to the Gears function writer and
 RedisGears function can go to the background by implement the function as a JS Coroutine. The Coroutine is invoked on a background thread and do not block the Redis processes. Example:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('test', async function(){
     return 'test';
@@ -24,7 +24,7 @@ The above function will simply return `test`, but will run on a background threa
 The Coroutine accept an optional client argument, this client is different then the client accepted by synchronous functions. The client does not allow to invoke Redis command, but instead the client allows to block Redis and enter an atomic section where the atomicity property is once again guaranteed. The following example shows how to invoke a simple `ping` command from within an async Coroutine:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('test', async function(client){
     return client.block(function(redis_client){
@@ -43,7 +43,7 @@ Running this function will return a `pong` reply:
 Lets look at a more complex example, assuming we want to write a function that counts the number of hashes in Redis that has name property with some value. Lets first write a synchronous function that does it, we will use the [SCAN](https://redis.io/commands/scan/) command to scan the key space:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('test', function(client, expected_name){
     var count = 0;
@@ -65,7 +65,7 @@ redis.register_function('test', function(client, expected_name){
 Though working fine, this function has a potential to block Redis for a long time, lets modify this function to run on the background as a Coroutine:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('test', async function(async_client, expected_name){
     var count = 0;
@@ -93,7 +93,7 @@ Both implementations return the same result, but the seconds runs in the backgro
 The above example is costly, even though Redis is not blocked it is still takes time to return the reply to the user. If we flatten the requirement in such way that we agree to get an approximate value, we can get a much better performance (on most cases). We will cache the result on a key called `<name>_count` and set some expiration on that key so that we will recalculate the value from time to time. The new code will look like this:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('test', async function(async_client, expected_name){
     // check the cache first
@@ -134,7 +134,7 @@ redis.register_function('test', async function(async_client, expected_name){
 The above code works as expected, it first check the cache, if cache exists it returns it, otherwise it is perform the calculation and update the cache. But the above example is not optimal, the callback is a Coroutine which means that it will always be calculated on a background thread. Moving to a background thread by itself is costly, to best approach would have been to check the cache synchronously and only if its not there, move to the background. RedisGears allows to start synchronously and move asynchronously using `run_on_background` function. The new code:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('test', function(client, expected_name){
     // check the cache first

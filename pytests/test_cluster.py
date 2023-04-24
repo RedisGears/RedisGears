@@ -4,7 +4,7 @@ from common import failTest
 
 @gearsTest(cluster=True)
 def testBasicClusterSupport(env, cluster_conn):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
 redis.register_remote_function(remote_get, async(client, key) => {
@@ -25,7 +25,7 @@ redis.register_function("test", async (async_client, key) => {
 
 @gearsTest(cluster=True)
 def testBasicClusterBinaryInputOutputSupport(env, cluster_conn):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
 redis.register_remote_function(remote_get, async(client, key) => {
@@ -47,7 +47,7 @@ redis.register_function("test", async (async_client, key) => {
 
 @gearsTest(cluster=True)
 def testRemoteFunctionRaiseError(env, cluster_conn):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
 redis.register_remote_function(remote_get, async(client, key) => {
@@ -71,7 +71,7 @@ redis.register_function("test", async (async_client, key) => {
 
 @gearsTest(cluster=True)
 def testRecursiveLookup(env, cluster_conn):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const recursive_get = "recursive_get";
 
 redis.register_remote_function(recursive_get, async(client, key) => {
@@ -100,7 +100,7 @@ redis.register_function("test", async(async_client, key) => {
 
 @gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
 def testRemoteTaskTimeout(env, cluster_conn):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
 redis.register_remote_function(remote_get, async(client, key) => {
@@ -117,7 +117,7 @@ redis.register_function("test", async (async_client, key) => {
 
 @gearsTest(cluster=True)
 def testRunOnAllShards(env, cluster_conn):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const dbside_remote_func = "dbsize";
 
 redis.register_remote_function(dbside_remote_func, async(client) => {
@@ -146,7 +146,7 @@ redis.register_function("test", async(async_client) => {
 
 @gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
 def testRunOnAllShardsTimeout(env, cluster_conn):
-    """#!js name=foo
+    """#!js api_version=1.0 name=foo
 const remote_function = "remote_function";
 
 redis.register_remote_function(remote_function, async(client, key) => {

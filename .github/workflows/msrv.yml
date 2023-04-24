@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  rust_msrv: 1.62.0
+  rust_msrv: 1.63.0
 
 jobs:
   build:
@@ -41,10 +41,12 @@ jobs:
     - name: install rltest
       run: python3 -m pip install RLTest
     - name: install redis
-      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.2-rc1; make install
     - name: Build debug
       run: $HOME/.cargo/bin/cargo build --verbose
     - name: Build release
       run: $HOME/.cargo/bin/cargo build --release --verbose
-    - name: Tests
-      run: cd pytests;./run_tests.sh
+    - name: Unit tests
+      run: $HOME/.cargo/bin/cargo test --verbose
+    - name: Integration tests
+      run: cd pytests; ./run_tests.sh

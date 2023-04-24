@@ -1,0 +1,75 @@
+name: Check if needs trigger CI benchmark
+
+on:
+  pull_request:
+   types: [opened, labeled, unlabeled, synchronize]
+
+jobs:
+  haslabel:
+    name: analyse labels
+    runs-on: ubuntu-latest
+    outputs:
+      benchmark: ${{ steps.haslabel.outputs.labeled-run-benchmark }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Labeled with run-benchmark
+        id: haslabel
+        uses: DanielTamkin/HasLabel@v1.0.4
+        with:
+          contains: 'run-benchmark'
+  perf-ci:
+    name: Trigger CI benchmarks
+    needs: haslabel
+    if: needs.haslabel.outputs.benchmark
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: install redis
+      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+    
+    - name: Build release
+      run: cargo build --release --verbose
+
+    - name: Install terraform
+      env:
+        VERSION: 0.14.8
+      run: ./tests/benchmarks/getterraform
+    
+    - name: install benchmark dependencies
+      run: pip3 install -r ./tests/benchmarks/requirements.txt
+    
+    - name: Run benchmarks
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.PERFORMANCE_EC2_ACCESS_KEY }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.PERFORMANCE_EC2_SECRET_KEY }}
+        AWS_DEFAULT_REGION: ${{ secrets.PERFORMANCE_EC2_REGION }}
+        EC2_PRIVATE_PEM: ${{ secrets.PERFORMANCE_EC2_PRIVATE_PEM }}
+      run: |
+        cd tests/benchmarks
+        redisbench-admin run-remote \
+          --required-module redisgears_2 \
+          --module_path "../../target/release/libredisgears.so ../../target/release/libredisgears_v8_plugin.so" \
+          --github_actor ${{ github.triggering_actor }} \
+          --github_repo ${{ github.event.repository.name }} \
+          --github_org ${{ github.repository_owner }} \
+          --github_branch ${{ github.head_ref || github.ref_name }} \
+          --upload_results_s3 \
+          --triggering_env circleci \
+          --fail_fast \
+          --push_results_redistimeseries \
+          --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \
+          --redistimeseries_port ${{ secrets.PERFORMANCE_RTS_PORT }} \
+          --redistimeseries_pass '${{ secrets.PERFORMANCE_RTS_AUTH }}'
+  
+    - name: Generate Pull Request Performance info
+      if: ${{ github.ref_type == 'branch' }}
+      run: |
+        redisbench-admin compare  \
+          --defaults_filename ./tests/benchmarks/defaults.yml \
+          --comparison-branch ${{ github.head_ref || github.ref_name }} \
+          --auto-approve \
+          --pull-request ${{github.event.pull_request.number}} \
+          --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \
+          --redistimeseries_port ${{ secrets.PERFORMANCE_RTS_PORT }} \
+          --redistimeseries_pass '${{ secrets.PERFORMANCE_RTS_AUTH }}'

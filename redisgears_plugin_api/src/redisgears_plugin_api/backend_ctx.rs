@@ -4,11 +4,15 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use std::alloc::GlobalAlloc;
+
+use redis_module::RedisValue;
+
 use crate::redisgears_plugin_api::load_library_ctx::LibraryCtxInterface;
 use crate::redisgears_plugin_api::redisai_interface::AITensorInterface;
-use crate::redisgears_plugin_api::CallResult;
 use crate::redisgears_plugin_api::GearsApiError;
-use std::alloc::GlobalAlloc;
+
+use super::prologue::ApiVersion;
 
 pub trait CompiledLibraryInterface {
     fn log(&self, msg: &str);
@@ -35,14 +39,29 @@ pub struct BackendCtx {
     pub get_lock_timeout: Box<dyn Fn() -> u128 + 'static>,
 }
 
-pub trait BackendCtxInterface {
-    fn get_name(&self) -> &'static str;
-    fn initialize(&self, backend_ctx: BackendCtx) -> Result<(), GearsApiError>;
+/// The trait which is only implemented for a successfully initialised
+/// backend.
+pub trait BackendCtxInterfaceInitialised {
+    fn get_version(&self) -> String;
     fn compile_library(
         &mut self,
+        module_name: &str,
         code: &str,
+        api_version: ApiVersion,
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError>;
-    fn debug(&mut self, args: &[&str]) -> Result<CallResult, GearsApiError>;
+    fn debug(&mut self, args: &[&str]) -> Result<RedisValue, GearsApiError>;
+}
+
+pub trait BackendCtxInterfaceUninitialised {
+    /// Returns the name of the backend.
+    fn get_name(&self) -> &'static str;
+
+    /// Initialises the backend with the information passed and returns
+    /// a successfully initialised instance.
+    fn initialize(
+        self: Box<Self>,
+        backend_ctx_info: BackendCtx,
+    ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError>;
 }

@@ -5,17 +5,17 @@
  */
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
 
 pub mod backend_ctx;
 pub mod function_ctx;
 pub mod keys_notifications_consumer_ctx;
 pub mod load_library_ctx;
+pub mod prologue;
 pub mod redisai_interface;
 pub mod run_function_ctx;
 pub mod stream_ctx;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GearsApiError {
     msg: String,
     verbose_msg: Option<String>,
@@ -48,25 +48,15 @@ impl GearsApiError {
     }
 }
 
+impl std::fmt::Display for GearsApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.msg)
+    }
+}
+
 pub enum FunctionCallResult {
     Done,
     Hold,
-}
-
-pub enum CallResult {
-    Error(String),
-    SimpleStr(String),
-    BulkStr(String),
-    StringBuffer(Vec<u8>),
-    Long(i64),
-    Double(f64),
-    Array(Vec<CallResult>),
-    Map(HashMap<Vec<u8>, CallResult>),
-    Set(HashSet<Vec<u8>>),
-    Bool(bool),
-    BigNumber(String),
-    VerbatimString((String, String)),
-    Null,
 }
 
 pub struct RefCellWrapper<T> {

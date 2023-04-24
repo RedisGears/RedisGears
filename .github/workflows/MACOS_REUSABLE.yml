@@ -1,8 +1,20 @@
-name: Macos Latest
+name: Macos
 
 on:
-  push:
-    branches: [ master ]
+  workflow_call:
+    inputs:
+      v8_version:
+        default: 'default'
+        required: false
+        type: string
+      v8_update_headers:
+        default: 'no'
+        required: false
+        type: string
+      redis_version:
+        default: 7.2-rc1
+        required: false
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,6 +23,9 @@ jobs:
   build:
 
     runs-on: macos-latest
+    env:
+      V8_VERSION: ${{ inputs.v8_version }}
+      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
     - uses: actions/checkout@v3
@@ -24,7 +39,7 @@ jobs:
     - name: install openssl
       run: brew install openssl@1.1
     - name: install redis
-      run: git clone https://github.com/redis/redis; cd redis; git checkout 7.0.3; make install
+      run: git clone https://github.com/redis/redis; cd redis; git checkout ${{ inputs.redis_version }}; make install
     - name: format
       run: cargo fmt -- --check
     - name: Build
@@ -32,5 +47,7 @@ jobs:
       env:
         PKG_CONFIG_PATH: /usr/local/opt/openssl@1.1/lib/pkgconfig
         OPENSSL_PREFIX: /usr/local/opt/openssl@1.1
-    - name: Tests
+    - name: Unit tests
+      run: $HOME/.cargo/bin/cargo test --verbose
+    - name: Integration tests
       run: cd pytests; python3 -m RLTest

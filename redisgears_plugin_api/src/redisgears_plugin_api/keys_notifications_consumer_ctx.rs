@@ -13,7 +13,7 @@ use super::GearsApiError;
 pub trait NotificationFiredDataInterface {}
 
 pub trait NotificationRunCtxInterface {
-    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface>;
+    fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_>;
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface>;
 }
 
@@ -22,13 +22,13 @@ pub trait KeysNotificationsConsumerCtxInterface {
         &self,
         event: &str,
         key: &[u8],
-        notification_ctx: Box<dyn NotificationRunCtxInterface>,
+        notification_ctx: &dyn NotificationRunCtxInterface,
     ) -> Option<Box<dyn Any>>;
 
     fn post_command_notification(
         &self,
         notificaion_data: Option<Box<dyn Any>>,
-        notification_ctx: Box<dyn NotificationRunCtxInterface>,
+        notification_ctx: &dyn NotificationRunCtxInterface,
         ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     );
 }

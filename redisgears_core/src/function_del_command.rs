@@ -3,13 +3,12 @@
  * Licensed under your choice of the Redis Source Available License 2.0 (RSALv2) or
  * the Server Side Public License v1 (SSPLv1).
  */
-
 use redis_module::{Context, RedisError, RedisResult, RedisValue, ThreadSafeContext};
 
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::{get_ctx, get_libraries, Deserialize, Serialize};
+use crate::{get_libraries, Deserialize, Serialize};
 
 use mr_derive::BaseObject;
 
@@ -58,15 +57,11 @@ impl RemoteTask for GearsFunctionDelRemoteTask {
         r: Self::InRecord,
         on_done: Box<dyn FnOnce(Result<Self::OutRecord, RustMRError>) + Send>,
     ) {
-        let _ctx_guard = ThreadSafeContext::new().lock();
+        let ctx_guard = ThreadSafeContext::new().lock();
         let mut libraries = get_libraries();
         let res = match libraries.remove(&r.lib_name) {
             Some(_) => {
-                redis_module::replicate_slices(
-                    get_ctx().ctx,
-                    "_rg.function",
-                    &["del".as_bytes(), r.lib_name.as_bytes()],
-                );
+                ctx_guard.replicate("_rg.function", &["del".as_bytes(), r.lib_name.as_bytes()]);
                 Ok(GearsFunctionDelOutputRecord)
             }
             None => Err("library does not exists".to_string()),

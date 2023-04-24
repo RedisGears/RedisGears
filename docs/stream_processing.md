@@ -7,7 +7,7 @@ RedisGears 2.0 comes with a full stream API to processes data from [Redis Stream
 RedisGears provide an API that allows Register a stream consumer. Do not get confuse with [Redis Streams Consumer groups](https://redis.io/docs/manual/data-types/streams/#consumer-groups), RedisGears uses Redis Module API to efficiently read the stream and manage its consumers. This approach gives a much better performance as there is no need to invoke any Redis commands in order to read from the stream. Lets see a simple example:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_stream_consumer(
     "consumer", // consumer name
@@ -83,16 +83,18 @@ We can observe the streams which are tracked by our registered consumer using [R
 127.0.0.1:6379> RG.FUNCTION LIST LIBRARY lib vvv
 1)  1) "engine"
     2) "js"
-    3) "name"
-    4) "lib"
-    5) "pending_jobs"
-    6) (integer) 0
-    7) "user"
-    8) "default"
-    9) "functions"
-   10) (empty array)
-   11) "stream_consumers"
-   12) 1)  1) "name"
+    3) "api_version"
+    4) "1.0"
+    5) "name"
+    6) "lib"
+    7) "pending_jobs"
+    8) (integer) 0
+    9) "user"
+    10) "default"
+    11) "functions"
+   12) (empty array)
+   13) "stream_consumers"
+   14) 1)  1) "name"
            2) "consumer"
            3) "prefix"
            4) "stream"
@@ -139,10 +141,10 @@ We can observe the streams which are tracked by our registered consumer using [R
                  16) "None"
                  17) "pending_ids"
                  18) (empty array)
-   13) "notifications_consumers"
-   14) (empty array)
-   15) "gears_box_info"
-   16) (nil)
+   15) "notifications_consumers"
+   16) (empty array)
+   17) "gears_box_info"
+   18) (nil)
 
 ```
 

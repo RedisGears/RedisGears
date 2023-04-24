@@ -4,14 +4,18 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use redis_module::{Context, NextArg, RedisError, RedisResult, RedisValue, ThreadSafeContext};
+use redis_module::{
+    Context, NextArg, RedisError, RedisResult, RedisString, RedisValue, ThreadSafeContext,
+};
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 use crate::compiled_library_api::CompiledLibraryAPI;
 use crate::gears_box::GearsBoxLibraryInfo;
 use crate::{Deserialize, Serialize};
 
 use crate::{
-    get_backends_mut, get_ctx, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData,
+    get_backends_mut, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData,
+    GearsLoadLibraryCtx,
 };
 
 use mr::libmr::{
@@ -37,55 +41,21 @@ pub(crate) struct FunctionLoadArgs {
     config: Option<String>,
     code: String,
     gears_box: Option<GearsBoxLibraryInfo>,
-    user: Option<String>,
+    user: Option<RedisString>,
 }
 
-fn library_extract_matadata(
+fn library_extract_metadata(
     code: &str,
     config: Option<String>,
-    user: String,
+    user: RedisString,
 ) -> Result<GearsLibraryMetaData, RedisError> {
-    let shabeng = match code.split('\n').next() {
-        Some(s) => s,
-        None => return Err(RedisError::Str("could not extract library metadata")),
-    };
-    if !shabeng.starts_with("#!") {
-        return Err(RedisError::Str("could not find #! syntax"));
-    }
-
-    let shabeng = shabeng.strip_prefix("#!").unwrap();
-    let mut data = shabeng.split(' ');
-    let engine = match data.next() {
-        Some(s) => s,
-        None => return Err(RedisError::Str("could not extract engine name")),
-    };
-
-    let name = {
-        let d = match data.next() {
-            Some(s) => s,
-            None => return Err(RedisError::Str("Failed find 'name' property")),
-        };
-        let mut prop = d.split('=');
-        let prop_name = match prop.next() {
-            Some(s) => s,
-            None => return Err(RedisError::Str("could not extract property name")),
-        };
-        let prop_val = match prop.next() {
-            Some(s) => s,
-            None => return Err(RedisError::Str("could not extract property value")),
-        };
-        if prop_name.to_lowercase() != "name" {
-            return Err(RedisError::String(format!(
-                "unknown property '{}'",
-                prop_name
-            )));
-        }
-        prop_val
-    };
+    let prologue = redisgears_plugin_api::redisgears_plugin_api::prologue::parse_prologue(code)
+        .map_err(|e| RedisError::String(GearsApiError::from(e).get_msg().to_owned()))?;
 
     Ok(GearsLibraryMetaData {
-        engine: engine.to_string(),
-        name: name.to_string(),
+        engine: prologue.engine.to_owned(),
+        api_version: prologue.api_version,
+        name: prologue.library_name.to_owned(),
         code: code.to_string(),
         config,
         user,
@@ -116,14 +86,15 @@ pub(crate) fn function_load_revert(
     }
 }
 
-pub(crate) fn function_load_intrernal(
-    user: String,
+pub(crate) fn function_load_internal(
+    ctx: &Context,
+    user: RedisString,
     code: &str,
     config: Option<String>,
     upgrade: bool,
     gears_box_lib: Option<GearsBoxLibraryInfo>,
 ) -> Result<(), String> {
-    let meta_data = library_extract_matadata(code, config, user).map_err(|e| e.to_string())?;
+    let meta_data = library_extract_metadata(code, config, user).map_err(|e| e.to_string())?;
     let backend_name = meta_data.engine.as_str();
     let backend = get_backends_mut().get_mut(backend_name);
     if backend.is_none() {
@@ -132,17 +103,22 @@ pub(crate) fn function_load_intrernal(
     let backend = backend.unwrap();
     let compile_lib_ctx = CompiledLibraryAPI::new();
     let compile_lib_internals = compile_lib_ctx.take_internals();
-    let lib_ctx =
-        backend.compile_library(code, meta_data.config.as_ref(), Box::new(compile_lib_ctx));
+    let lib_ctx = backend.compile_library(
+        &meta_data.name,
+        code,
+        meta_data.api_version,
+        meta_data.config.as_ref(),
+        Box::new(compile_lib_ctx),
+    );
     let lib_ctx = match lib_ctx {
-        Err(e) => return Err(format!("Failed library compilation {}", e.get_msg())),
+        Err(e) => return Err(format!("Failed library compilation: {}", e.get_msg())),
         Ok(lib_ctx) => lib_ctx,
     };
     let mut libraries = get_libraries();
     let old_lib = libraries.remove(&meta_data.name);
     if !upgrade {
         if let Some(old_lib) = old_lib {
-            let err = Err(format!("Library {} already exists", &meta_data.name));
+            let err = Err(format!("Library {} already exists.", &meta_data.name));
             libraries.insert(meta_data.name, old_lib);
             return err;
         }
@@ -157,9 +133,15 @@ pub(crate) fn function_load_intrernal(
         revert_notifications_consumers: Vec::new(),
         old_lib,
     };
-    let res = lib_ctx.load_library(&mut gears_library);
+    let res = lib_ctx.load_library(&GearsLoadLibraryCtx {
+        ctx,
+        gears_lib_ctx: &mut gears_library,
+    });
     if let Err(err) = res {
-        let ret = Err(format!("Failed loading library, {}", get_msg_verbose(&err)));
+        let ret = Err(format!(
+            "Failed loading library: {}.",
+            get_msg_verbose(&err)
+        ));
         function_load_revert(gears_library, &mut libraries);
         return ret;
     }
@@ -205,12 +187,8 @@ fn get_args_values(
             "user" => {
                 let arg = args
                     .next_arg()
-                    .map_err(|_e| RedisError::Str("configuration value was not given"))?
-                    .try_as_str()
-                    .map_err(|_e| {
-                        RedisError::Str("given configuration value is not a valid string")
-                    })?;
-                user = Some(arg.to_string());
+                    .map_err(|_e| RedisError::Str("configuration value was not given"))?;
+                user = Some(arg);
             }
             "config" => {
                 let arg = args
@@ -291,10 +269,11 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
         on_done: Box<dyn FnOnce(Result<Self::OutRecord, RustMRError>) + Send>,
     ) {
         let res = {
-            let _ctx_guard = ThreadSafeContext::new().lock();
+            let ctx_guard = ThreadSafeContext::new().lock();
             let user = r.args.user.unwrap();
-            let res = function_load_intrernal(
-                user.to_string(),
+            let res = function_load_internal(
+                &ctx_guard,
+                user.safe_clone(&ctx_guard),
                 &r.args.code,
                 r.args.config.clone(),
                 r.args.upgrade,
@@ -311,9 +290,9 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
                     replicate_args.push(conf.as_bytes());
                 }
                 replicate_args.push("USER".as_bytes());
-                replicate_args.push(user.as_bytes());
+                replicate_args.push(user.as_slice());
                 replicate_args.push(r.args.code.as_bytes());
-                redis_module::replicate_slices(get_ctx().ctx, "_rg.function", &replicate_args);
+                ctx_guard.replicate("_rg.function", replicate_args.as_slice());
             }
             res
         };
@@ -346,20 +325,21 @@ pub(crate) fn function_load_command(
     if args.user.is_some() {
         return Err(RedisError::Str("Unknown argument user"));
     }
-    args.user = Some(ctx.get_current_user()?);
+    args.user = Some(ctx.get_current_user());
     function_load_with_args(ctx, args);
     Ok(RedisValue::NoReply)
 }
 
 pub(crate) fn function_load_on_replica(
-    _ctx: &Context,
+    ctx: &Context,
     args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> RedisResult {
     let args = get_args_values(args)?;
     if args.user.is_none() {
         return Err(RedisError::Str("User was not provided by primary"));
     }
-    match function_load_intrernal(
+    match function_load_internal(
+        ctx,
         args.user.unwrap(),
         &args.code,
         args.config,
@@ -379,7 +359,7 @@ pub(crate) fn function_install_lib_command(
     if args.user.is_some() {
         return Err(RedisError::Str("Unknown argument user"));
     }
-    let gear_box_lib = gears_box_get_library(&args.code)?;
+    let gear_box_lib = gears_box_get_library(ctx, &args.code)?;
     let function_code = do_http_get_text(&gear_box_lib.installed_version_info.url)?;
 
     let calculated_sha = sha256::digest(function_code.to_string());
@@ -389,7 +369,7 @@ pub(crate) fn function_install_lib_command(
         ));
     }
 
-    args.user = Some(ctx.get_current_user()?);
+    args.user = Some(ctx.get_current_user());
     args.code = function_code;
     function_load_with_args(ctx, args);
     Ok(RedisValue::NoReply)

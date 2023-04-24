@@ -11,7 +11,7 @@ GEARS_V8_DEBUG_PATH=$PWD/target/debug/libredisgears_v8_plugin.so
 REDIS_ARGUMENTS="--enable-debug-command yes"
 REDIS_GLOBAL_PATH=redis-server
 DEBUGGER_SCRIPT="gdb --args"
-VALGRIND="valgrind --leak-check=full --show-leak-kinds=all"
+VALGRIND="valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -s"
 
 function launch() {
     local redis_path=$1
@@ -19,7 +19,7 @@ function launch() {
     local gears_v8_plugin_path=$3
     local redis_arguments="$4 $5"
 
-    $redis_path --loadmodule $gears_module_path $gears_v8_plugin_path $redis_arguments
+    $redis_path --loadmodule $gears_module_path v8-plugin-path $gears_v8_plugin_path $redis_arguments
 }
 
 function parse_args_and_launch() {

@@ -4,14 +4,14 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use redis_module::context::thread_safe::ContextGuard;
-
-use redis_module::Status;
+use redis_module::CallResult;
+use redis_module::ContextGuard;
+use redis_module::RedisString;
 
 use redisgears_plugin_api::redisgears_plugin_api::{
     redisai_interface::AIModelInterface, redisai_interface::AIScriptInterface,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
-    CallResult, GearsApiError,
+    GearsApiError,
 };
 
 use crate::run_ctx::RedisClientCallOptions;
@@ -25,12 +25,10 @@ use std::sync::Arc;
 use redisai_rs::redisai::redisai_model::RedisAIModel;
 use redisai_rs::redisai::redisai_script::RedisAIScript;
 
-use crate::{get_ctx, get_globals};
-
 pub(crate) struct BackgroundRunScopeGuardCtx {
-    pub(crate) _ctx_guard: ContextGuard,
+    pub(crate) ctx_guard: ContextGuard,
     call_options: RedisClientCallOptions,
-    user: Option<String>,
+    user: RedisString,
     lib_meta_data: Arc<GearsLibraryMetaData>,
     _notification_blocker: NotificationBlocker,
 }
@@ -41,12 +39,12 @@ unsafe impl Send for BackgroundRunScopeGuardCtx {}
 impl BackgroundRunScopeGuardCtx {
     pub(crate) fn new(
         ctx_guard: ContextGuard,
-        user: Option<String>,
+        user: RedisString,
         lib_meta_data: &Arc<GearsLibraryMetaData>,
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunScopeGuardCtx {
         BackgroundRunScopeGuardCtx {
-            _ctx_guard: ctx_guard,
+            ctx_guard,
             call_options,
             user,
             lib_meta_data: Arc::clone(lib_meta_data),
@@ -57,11 +55,13 @@ impl BackgroundRunScopeGuardCtx {
 
 impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
-        let user = match self.user.as_ref() {
-            Some(u) => Some(u),
-            None => Some(&self.lib_meta_data.user),
-        };
-        call_redis_command(user, command, &self.call_options.call_options, args)
+        call_redis_command(
+            &self.ctx_guard,
+            &self.user,
+            command,
+            &self.call_options.call_options,
+            args,
+        )
     }
 
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface> {
@@ -73,44 +73,22 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     }
 
     fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
-        let ctx = match &self.user {
-            Some(u) => {
-                let ctx = &get_globals().authenticated_redis_ctx;
-                if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::new(format!(
-                        "Failed authenticate user {}",
-                        u
-                    )));
-                }
-                ctx
-            }
-            None => get_ctx(),
-        };
-        let res = RedisAIModel::open_from_key(ctx, name);
-        match res {
-            Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::new(e)),
-        }
+        let ctx = &self.ctx_guard;
+        let _authenticate_scope = ctx
+            .autenticate_user(&self.user)
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
+        RedisAIModel::open_from_key(ctx, name)
+            .map(|v| Box::new(v) as Box<dyn AIModelInterface>)
+            .map_err(|e| GearsApiError::new(e))
     }
 
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
-        let ctx = match &self.user {
-            Some(u) => {
-                let ctx = &get_globals().authenticated_redis_ctx;
-                if ctx.autenticate_user(u) == Status::Err {
-                    return Err(GearsApiError::new(format!(
-                        "Failed authenticate user {}",
-                        u
-                    )));
-                }
-                ctx
-            }
-            None => get_ctx(),
-        };
-        let res = RedisAIScript::open_from_key(ctx, name);
-        match res {
-            Ok(res) => Ok(Box::new(res)),
-            Err(e) => Err(GearsApiError::new(e)),
-        }
+        let ctx = &self.ctx_guard;
+        let _authenticate_scope = ctx
+            .autenticate_user(&self.user)
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
+        RedisAIScript::open_from_key(ctx, name)
+            .map(|v| Box::new(v) as Box<dyn AIScriptInterface>)
+            .map_err(|e| GearsApiError::new(e))
     }
 }

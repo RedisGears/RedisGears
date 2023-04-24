@@ -7,7 +7,7 @@ import time
 
 @gearsTest()
 def testBasicNotifications(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 redis.register_notifications_consumer("consumer", "", function(client, data) {
     n_notifications += 1;
@@ -28,7 +28,7 @@ redis.register_function("n_notifications", function(){
 
 @gearsTest()
 def testAsyncNotification(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 redis.register_notifications_consumer("consumer", "", async function(client, data) {
     n_notifications += 1;
@@ -49,7 +49,7 @@ redis.register_function("n_notifications", async function(){
 
 @gearsTest()
 def testCallRedisOnNotification(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
@@ -67,7 +67,7 @@ redis.register_notifications_consumer("consumer", "key", async function(client, 
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinFunction(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 redis.register_notifications_consumer("consumer", "", function(client, data) {
     n_notifications += 1;
@@ -89,7 +89,7 @@ redis.register_function("simple_set", function(client){
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 redis.register_notifications_consumer("consumer", "", function(client, data) {
     n_notifications += 1;
@@ -113,7 +113,7 @@ redis.register_function("simple_set", async function(client){
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAnotherNotification(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 redis.register_notifications_consumer("consumer", "", function(client, data) {
     client.call('set', 'x' , '1');
@@ -130,7 +130,7 @@ redis.register_function("n_notifications", async function(){
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinStreamConsumer(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 redis.register_notifications_consumer("consumer", "", function(client, data) {
     redis.log(JSON.stringify(data));
@@ -156,7 +156,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(client) {
 
 @gearsTest(decodeResponses=False)
 def testNotificationsOnBinaryKey(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 var last_key = null;
 var last_key_raw = null;
@@ -182,7 +182,7 @@ redis.register_function("notifications_stats", async function(){
 
 @gearsTest()
 def testSyncNotificationsReturnPromise(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "", (client) => {
     return client.run_on_background(async ()=>{return 1});
 });
@@ -192,7 +192,7 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 
 @gearsTest()
 def testSyncNotificationsReturnPromiseRaiseError(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "", (client) => {
     return client.run_on_background(async ()=>{throw "SomeError"});
 });
@@ -202,7 +202,7 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 
 @gearsTest()
 def testAsyncNotificationsReturnPromise(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "", async (client) => {
     return client.block((client) => {return client.run_on_background(async() => {return 1;})});
 });
@@ -212,7 +212,7 @@ redis.register_notifications_consumer("consumer", "", async (client) => {
 
 @gearsTest()
 def testAsyncNotificationsReturnPromiseRaiseError(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "", async (client) => {
     return client.block((client) => {return client.run_on_background(async() => {throw "SomeError";})});
 });
@@ -222,7 +222,7 @@ redis.register_notifications_consumer("consumer", "", async (client) => {
 
 @gearsTest()
 def testSyncNotificationsReturnResolvedPromise(env):
-    """#!js name=lib
+    """#!js api_version=1.0 name=lib
 redis.register_notifications_consumer("consumer", "", (client) => {
     var resolve_promise = null;
     var promise = new Promise((resolve, reject) => {

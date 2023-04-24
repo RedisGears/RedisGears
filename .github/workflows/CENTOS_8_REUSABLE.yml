@@ -1,8 +1,29 @@
 name: Centos 8
 
 on:
-  push:
-    branches: [ master ]
+  workflow_call:
+    inputs:
+      v8_version:
+        default: 'default'
+        required: false
+        type: string
+      v8_update_headers:
+        default: 'no'
+        required: false
+        type: string
+      redis_version:
+        default: 7.2-rc1
+        required: false
+        type: string
+      upload_artifacts:
+        default: false
+        required: false
+        type: boolean
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,11 +33,14 @@ jobs:
 
     runs-on: ubuntu-latest
     container: rockylinux:8
+    env:
+      V8_VERSION: ${{ inputs.v8_version }}
+      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
     - name: Update yum
       run: yum update -qqy
-    - name: Install requirements 
+    - name: Install requirements
       run: |
         yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang
         dnf install -y gcc-toolset-11-gcc gcc-toolset-11-gcc-c++
@@ -30,7 +54,7 @@ jobs:
         . /opt/rh/gcc-toolset-11/enable
         git clone https://github.com/redis/redis
         cd redis
-        git checkout 7.0.3
+        git checkout ${{ inputs.redis_version }}
         make install
     - name: Install rust
       run: |
@@ -43,7 +67,11 @@ jobs:
         . /opt/rh/gcc-toolset-11/enable
         $HOME/.cargo/bin/cargo build -vv
         $HOME/.cargo/bin/cargo build --release -vv
-    - name: Tests
+    - name: Unit tests
+      run: |
+        . /opt/rh/gcc-toolset-11/enable
+        $HOME/.cargo/bin/cargo test --verbose
+    - name: Integration tests
       run: |
         cd pytests;./run_tests.sh
     - name: install ramp packer
@@ -51,11 +79,8 @@ jobs:
     - name: Pack
       run: |
         target/release/packer
-      env:
-          LC_ALL: en_US.utf-8
-          LANG: en_US.utf-8
     - name: Setup s3cmd action
-      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      if: ${{ inputs.upload_artifacts }}
       uses: s3-actions/s3cmd@v1.2.0
       with:
         provider: aws
@@ -63,6 +88,6 @@ jobs:
         access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
         secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     - name: Upload artifacts
-      if: ${{ github.ref_name == 'master' && github.ref_type == 'branch' }}
+      if: ${{ inputs.upload_artifacts }}
       run: |
-        s3cmd put -P target/release/redisgears2-release.linux-rhel.8-x86_64.master.zip s3://redismodules/redisgears/snapshots/
+        s3cmd put -P target/release/redisgears2.Linux-rhel8-x86_64.master.zip s3://redismodules/redisgears/snapshots/

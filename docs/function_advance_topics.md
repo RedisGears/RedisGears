@@ -5,7 +5,7 @@
 The arguments given on the [`RG.FCALL`](docs/commands.md#rgfcall) command, after the function name, will be passed to the function callback. The following example shows how to implement a simple function that returns the value of a key whether its a string or a hash:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('my_get', function(client, key_name){
     if (client.call('type', key_name) == 'string') {
@@ -38,7 +38,7 @@ OK
 It is also possible to get all th arguments given to the function as a `JS` array. This is how we can extend the above example to except multiple keys and return their values:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('my_get', function(client, ...keys){
     var results = [];
@@ -80,7 +80,7 @@ It is possible to provide some information about the function behaviour on regis
 The following example shows how to set the `no-writes` flag:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function('my_ping', function(client){
     return client.call('ping');
@@ -105,7 +105,7 @@ OK
 When writing a library you might want to be able to provide a loading configuration, so that different users can use the same library with slightly different behaviour (without changing the base code). For example, assuming you writing a library that adds `__last_updated__` field to a hash (you can see how it can also be done with [databases triggers](databse_triggers.md)), the code will look like this:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_function("hset", function(client, key, field, val){
     // get the current time in ms
@@ -129,7 +129,7 @@ Run example:
 The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? RedisGears allow specify library configuration at load time using `CONFIG` argument given to [`FUNCTION LOAD`](commands.md#rgfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 var last_update_field_name = "__last_update__"
 
@@ -201,7 +201,7 @@ By default, RedisGears will decode all data as string and will raise error on fa
 It is possible to instruct RedisGears not to decode function arguments as `JS` `Strings` using [`raw-arguments`](#function-flags) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 redis.register_function("my_set", (c, key, val) => {
     return c.call("set", key, val);
 },
@@ -224,7 +224,7 @@ Notice that `call` function also except `JS` `ArrayBuffer` arguments.
 Getting function arguments as binary data is not enough. We might want to read binary data from Redis key. In order to do this we can use `call_raw` function that will not decode the result as `JS` `String` and instead will return the result as `JS` `ArrayBuffer`. Example:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 redis.register_function("my_get", (c, key) => {
     return c.call_raw("get", key);
 },
@@ -247,7 +247,7 @@ Notice that `JS` `ArrayBuffer` can be returned by RedisGears function, RedisGear
 On [database triggers](databse_triggers.md), if the key name that triggered the event is binary. The `data.key` field will be NULL. The `data.key_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case, example:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 /* The following is just an example, in general it is discourage to use globals. */
 var n_notifications = 0;
 var last_key = null;
@@ -287,7 +287,7 @@ For more information, follow [database triggers](databse_triggers.md) page.
 On [stream consumers](stream_processing.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case it is possible to use `data.record` (which always exists) and contains the data as `JS` `ArrayBuffer`. Example:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 /* The following is just an example, in general it is discourage to use globals. */
 var last_key = null;
 var last_key_raw = null;
