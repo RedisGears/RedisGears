@@ -1,6 +1,7 @@
 from common import gearsTest
 from common import toDictionary
 from common import runUntil
+from redis import Redis
 
 '''
 todo:
@@ -424,8 +425,8 @@ redis.register_function("test", function(client){
     var res;
 
     res = client.call("debug", "protocol", "string");
-    if (typeof res !== "object" || res.__reply_type !== "bulk_string") {
-        throw `string protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
+    if (typeof res !== "string") {
+        throw `string protocol returned wrong type, typeof='${typeof res}'.`;
     }
 
     res = client.call("debug", "protocol", "integer");
@@ -464,8 +465,8 @@ redis.register_function("test", function(client){
     }
 
     res = client.call("debug", "protocol", "verbatim");
-    if (!(res instanceof ArrayBuffer)) {
-        throw `verbatim protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}'.`;
+    if (typeof res !== "object" || res.__reply_type !== "verbatim" || res.__format !== "txt") {
+        throw `verbatim protocol returned wrong type, typeof='${typeof res}', __reply_type='${res.__reply_type}', __format='${res.__format}'.`;
     }
 
     res = client.call("debug", "protocol", "true");
@@ -483,6 +484,46 @@ redis.register_function("test", function(client){
     """
     env.expect('RG.FUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
     env.expect('RG.FCALL', 'lib', 'test', '0').equal("OK")
+
+@gearsTest(enableGearsDebugCommands=True)
+def testResp3Types(env):
+    """#!js api_version=1.0 name=lib
+redis.register_function("debug_protocol", function(client, arg){
+    return client.call("debug", "protocol", arg);
+});
+    """
+    env.expect('RG.FUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
+    port = int(env.cmd('config', 'get', 'port')[1])
+
+    # test resp3
+    conn = Redis('localhost', port, protocol=3, decode_responses=True)
+    
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'string'), 'Hello World')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'integer'), 12345)
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'double'), 3.141)
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'null'), None)
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'set'), set([0, 1, 2]))
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'map'), {1: True, 2: False, 0: False})
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'txt:undefinedThis is a verbatim\nstring')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'true'), True)
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'false'), False)
+
+    # test resp2
+    conn = env.getConnection()
+
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'string'), 'Hello World')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'integer'), 12345)
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'double'), "3.141")
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'null'), None)
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
+    env.assertEqual(sorted(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'set')), sorted([0, 1, 2]))
+    env.assertEqual(sorted(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'map')), sorted([1, 1, 0, 0, 2, 0]))
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'undefinedThis is a verbatim\nstring')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'true'), True)
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'false'), False)
 
 @gearsTest()
 def testNoAsyncFunctionOnMultiExec(env):
@@ -517,12 +558,12 @@ def testAllowBlockAPI(env):
     """#!js api_version=1.0 name=lib
 redis.register_function("test", (c) => {return c.allow_block()});
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal('true')
+    env.expect('RG.FCALL', 'lib', 'test', '0').equal(1)
     conn = env.getConnection()
     p = conn.pipeline()
     p.execute_command('RG.FCALL', 'lib', 'test', '0')
     res = p.execute()
-    env.assertEqual(res, ['false'])
+    env.assertEqual(res, [0])
 
 @gearsTest(decodeResponses=False)
 def testRawArguments(env):

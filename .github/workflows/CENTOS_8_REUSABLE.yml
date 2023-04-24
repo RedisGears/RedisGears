@@ -48,7 +48,9 @@ jobs:
         dnf -y install autoconf automake libtool
     - uses: actions/checkout@v3
     - name: install rltest
-      run: python3 -m pip install RLTest
+      run: |
+        python3 -m pip install RLTest
+        python3 -m pip install -U redis==5.0.0b1
     - name: Install redis
       run: |
         . /opt/rh/gcc-toolset-11/enable

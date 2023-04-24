@@ -52,13 +52,7 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
                 let s = s
                     .to_string()
                     .ok_or("Could not decode value as string".to_string())?;
-                let s = isolate_scope.new_string(&s).to_string_object();
-                s.set(
-                    ctx_scope,
-                    &isolate_scope.new_string("__reply_type").to_value(),
-                    &isolate_scope.new_string("bulk_string").to_value(),
-                );
-                s.to_value()
+                isolate_scope.new_string(&s).to_value()
             } else {
                 isolate_scope.new_array_buffer(s.as_bytes()).to_value()
             }
@@ -68,13 +62,31 @@ pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
         CallReply::Bool(b) => isolate_scope.new_bool(b.to_bool()),
         CallReply::Null(_b) => isolate_scope.new_null(),
         CallReply::Unknown => isolate_scope.new_null(),
-        CallReply::VerbatimString(s) => isolate_scope
-            .new_array_buffer(
-                s.as_parts()
-                    .ok_or("Could not decode format as string".to_string())?
-                    .1,
-            )
-            .to_value(),
+        CallReply::VerbatimString(s) => {
+            let (format, data) = s
+                .as_parts()
+                .ok_or("Could not decode format as string".to_string())?;
+            let val = if decode_responses {
+                isolate_scope
+                    .new_string(std::str::from_utf8(data).map_err(|e| e.to_string())?)
+                    .to_string_object()
+                    .to_value()
+            } else {
+                isolate_scope.new_array_buffer(data).to_value()
+            };
+            let obj = val.as_object();
+            obj.set(
+                ctx_scope,
+                &isolate_scope.new_string("__reply_type").to_value(),
+                &isolate_scope.new_string("verbatim").to_value(),
+            );
+            obj.set(
+                ctx_scope,
+                &isolate_scope.new_string("__format").to_value(),
+                &isolate_scope.new_string(format).to_value(),
+            );
+            obj.to_value()
+        }
         CallReply::BigNumber(b) => {
             let s = b
                 .to_string()

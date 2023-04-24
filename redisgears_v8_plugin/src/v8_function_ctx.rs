@@ -23,7 +23,7 @@ use crate::v8_script_ctx::V8ScriptCtx;
 use crate::{get_error_from_object, get_exception_msg};
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use std::str;
@@ -94,6 +94,18 @@ fn v8_value_to_call_result(
                     return Ok(RedisValue::SimpleString(
                         val.to_utf8().unwrap().as_str().to_string(),
                     ));
+                } else if reply_type_v8_str.as_str() == "verbatim" {
+                    let format = obj_reply
+                        .get_str_field(ctx_scope, "format")
+                        .map_or(None, |v| v.to_utf8());
+                    return Ok(RedisValue::VerbatimString((
+                        format
+                            .as_ref()
+                            .map(|v| v.as_str())
+                            .unwrap_or("txt")
+                            .to_owned(),
+                        val.to_utf8().unwrap().as_str().as_bytes().to_vec(),
+                    )));
                 }
             }
         }
@@ -103,6 +115,17 @@ fn v8_value_to_call_result(
         RedisValue::StringBuffer(val.data().to_vec())
     } else if val.is_null() {
         RedisValue::Null
+    } else if val.is_boolean() {
+        let bool_val = val.get_boolean();
+        RedisValue::Bool(bool_val)
+    } else if val.is_set() {
+        let s = val.as_set();
+        let res: Result<HashSet<RedisValueKey>, RedisError> = s
+            .as_array()
+            .iter(ctx_scope)
+            .map(|v| v8_value_to_redis_value_key(v))
+            .collect();
+        RedisValue::Set(res?)
     } else if val.is_array() {
         let arr = val.as_array();
         let mut res = Vec::new();
