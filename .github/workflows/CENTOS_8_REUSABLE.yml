@@ -68,7 +68,9 @@ jobs:
         $HOME/.cargo/bin/cargo build -vv
         $HOME/.cargo/bin/cargo build --release -vv
     - name: Unit tests
-      run: $HOME/.cargo/bin/cargo test --verbose
+      run: |
+        . /opt/rh/gcc-toolset-11/enable
+        $HOME/.cargo/bin/cargo test --verbose
     - name: Integration tests
       run: |
         cd pytests;./run_tests.sh

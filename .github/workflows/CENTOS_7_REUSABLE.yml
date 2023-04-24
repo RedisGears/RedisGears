@@ -64,7 +64,7 @@ jobs:
     - name: Install redis
       run: |
         set -x
-        . scl_source enable  devtoolset-9 || true
+        . scl_source enable devtoolset-9 || true
         . scl_source enable llvm-toolset-7 || true
         git clone https://github.com/redis/redis
         cd redis
@@ -78,12 +78,15 @@ jobs:
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build
       run: |
-        . scl_source enable  devtoolset-9 || true
+        . scl_source enable devtoolset-9 || true
         . scl_source enable llvm-toolset-7 || true
         $HOME/.cargo/bin/cargo build -vv
         $HOME/.cargo/bin/cargo build --release -vv
     - name: Unit tests
-      run: $HOME/.cargo/bin/cargo test --verbose
+      run: |
+        . scl_source enable devtoolset-9 || true
+        . scl_source enable llvm-toolset-7 || true
+        $HOME/.cargo/bin/cargo test --verbose
     - name: Integration tests
       run: |
         PATH=/opt/rh/rh-python38/root/usr/local/bin:$PATH

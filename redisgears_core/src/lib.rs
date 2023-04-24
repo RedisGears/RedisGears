@@ -136,6 +136,7 @@ fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
 }
 
 /// The meta information about the gears library instance at runtime.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GearsLibraryMetaData {
     name: String,
     engine: String,
