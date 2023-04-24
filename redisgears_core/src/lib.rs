@@ -27,8 +27,8 @@ use threadpool::ThreadPool;
 
 use redis_module::{
     alloc::RedisAlloc, configuration::ConfigurationFlags, raw::KeyType::Stream, redis_command,
-    redis_event_handler, AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg,
-    NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
+    AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg, NotifyEvent,
+    RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
 };
 
 use redis_module::server_events::{
@@ -988,15 +988,28 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
-#[allow(missing_docs)]
 #[cfg(not(test))]
+macro_rules! get_allocator {
+    () => {
+        RedisAlloc
+    };
+}
+
+#[cfg(test)]
+macro_rules! get_allocator {
+    () => {
+        std::alloc::System
+    };
+}
+
+#[allow(missing_docs)]
 mod gears_module {
     use super::*;
 
     redis_module::redis_module! {
         name: "redisgears_2",
         version: VERSION_NUM.unwrap().parse::<i32>().unwrap(),
-        allocator: (RedisAlloc, RedisAlloc),
+        allocator: (get_allocator!(), get_allocator!()),
         data_types: [REDIS_GEARS_TYPE],
         init: js_init,
         info: js_info,

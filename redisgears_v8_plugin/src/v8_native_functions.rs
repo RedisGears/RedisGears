@@ -708,6 +708,7 @@ impl ApiVersionSupported {
     /// # Panics
     ///
     /// Panics if there are no supported versions available.
+    #[allow(dead_code)]
     pub fn maximum_supported() -> Self {
         Self::SUPPORTED
             .iter()
@@ -722,6 +723,7 @@ impl ApiVersionSupported {
     }
 
     /// Returns all the version deprecated.
+    #[allow(dead_code)]
     pub fn all_deprecated() -> Vec<ApiVersion> {
         Self::SUPPORTED
             .iter()
@@ -731,6 +733,7 @@ impl ApiVersionSupported {
     }
 
     /// Returns `true` if the version is supported.
+    #[allow(dead_code)]
     pub fn is_supported(version: ApiVersion) -> bool {
         Self::SUPPORTED.iter().any(|v| v.version == version)
     }
