@@ -10,7 +10,7 @@ For the full list of supported events please refer to [Redis Key Space notificat
 To register a database trigger we need to use the `redis.register_notifications_consumer` API when loading our library. The following example shows how to register a database trigger that will add a last update field when ever a hash key is changed:
 
 ```js
-#!js name=lib
+#!js api_version=1.0 name=lib
 
 redis.register_notifications_consumer("consumer", "", function(client, data){
     if (client.call("type", data.key) != "hash") {
@@ -67,18 +67,20 @@ We can observe the trigger information using [RG.FUNCTION LIST](commands.md#rgfu
 127.0.0.1:6379> RG.FUNCTION list vvv
 1)  1) "engine"
     2) "js"
-    3) "name"
-    4) "foo"
-    5) "pending_jobs"
-    6) (integer) 0
-    7) "user"
-    8) "default"
-    9) "functions"
-   10) (empty array)
-   11) "stream_consumers"
+    3) "api_version"
+    4) "1.0"
+    5) "name"
+    6) "foo"
+    7) "pending_jobs"
+    8) (integer) 0
+    9) "user"
+    10) "default"
+    11) "functions"
    12) (empty array)
-   13) "notifications_consumers"
-   14) 1)  1) "name"
+   13) "stream_consumers"
+   14) (empty array)
+   15) "notifications_consumers"
+   16) 1)  1) "name"
            2) "consumer"
            3) "num_triggered"
            4) (integer) 2
@@ -96,8 +98,8 @@ We can observe the trigger information using [RG.FUNCTION LIST](commands.md#rgfu
           16) (integer) 0
           17) "avg_exection_time"
           18) "0"
-   15) "gears_box_info"
-   16) (nil)
+   17) "gears_box_info"
+   18) (nil)
 ```
 
 ## Triggers Guarantees

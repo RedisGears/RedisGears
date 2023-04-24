@@ -72,6 +72,8 @@ pub(crate) fn function_list_command(
                 let mut res = vec![
                     RedisValue::BulkString("engine".to_string()),
                     RedisValue::BulkString(l.gears_lib_ctx.meta_data.engine.to_string()),
+                    RedisValue::BulkString("api_version".to_string()),
+                    RedisValue::BulkString(l.gears_lib_ctx.meta_data.api_version.to_string()),
                     RedisValue::BulkString("name".to_string()),
                     RedisValue::BulkString(l.gears_lib_ctx.meta_data.name.to_string()),
                     RedisValue::BulkString("user".to_string()),

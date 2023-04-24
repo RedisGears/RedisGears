@@ -20,7 +20,7 @@ An error, if the loading failed or "OK" if everything was done correctly.
 
 **Example**
 ```bash
-> RG.FUNCTION LOAD "#!js name=lib\n redis.register_function('foo', ()=>{return 'bar'})"
+> RG.FUNCTION LOAD "#!js api_version=1.0 name=lib\n redis.register_function('foo', ()=>{return 'bar'})"
 OK
 ```
 
@@ -71,23 +71,25 @@ Information about the requested libraries.
 > RG.FUNCTION list vvv
 1)  1) "engine"
     2) "js"
-    3) "name"
-    4) "lib"
-    5) "pending_jobs"
-    6) (integer) 0
-    7) "user"
-    8) "default"
-    9) "functions"
-   10) 1) 1) "name"
+    3) "api_version"
+    4) "1.0"
+    5) "name"
+    6) "lib"
+    7) "pending_jobs"
+    8) (integer) 0
+    9) "user"
+    10) "default"
+    11) "functions"
+   12) 1) 1) "name"
           2) "foo"
           3) "flags"
           4) (empty array)
-   11) "stream_consumers"
-   12) (empty array)
-   13) "notifications_consumers"
+   13) "stream_consumers"
    14) (empty array)
-   15) "gears_box_info"
-   16) (nil)
+   15) "notifications_consumers"
+   16) (empty array)
+   17) "gears_box_info"
+   18) (nil)
 
 ```
 
