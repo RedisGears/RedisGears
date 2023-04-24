@@ -39,7 +39,9 @@ jobs:
     - name: update pip3
       run: python3 -m pip install -U pip
     - name: install rltest
-      run: python3 -m pip install RLTest
+      run: |
+        python3 -m pip install RLTest
+        python3 -m pip install -U redis==5.0.0b1
     - name: install redis
       run: git clone https://github.com/redis/redis; cd redis; git checkout 7.2-rc1; make install
     - name: Build debug
