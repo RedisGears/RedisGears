@@ -33,6 +33,9 @@ jobs:
 
     runs-on: ubuntu-latest
     container: ubuntu:bionic
+    env:
+      V8_VERSION: ${{ inputs.v8_version }}
+      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
     - name: Update apt
@@ -66,9 +69,9 @@ jobs:
     - name: format
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build debug
-      run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build --verbose
+      run: $HOME/.cargo/bin/cargo build --verbose
     - name: Build release
-      run: V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build --release --verbose
+      run: $HOME/.cargo/bin/cargo build --release --verbose
     - name: Unit tests
       run: $HOME/.cargo/bin/cargo test --verbose
     - name: Integration tests

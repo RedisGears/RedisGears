@@ -10,7 +10,6 @@ rust-version = "1.63"
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
 
 [dependencies]
-#redis-module = { version="1.0", features = ["experimental-api"]}
 redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
 redis-module-derive = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
 lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }

@@ -33,6 +33,9 @@ jobs:
 
     runs-on: ubuntu-latest
     container: rockylinux:8
+    env:
+      V8_VERSION: ${{ inputs.v8_version }}
+      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
     - name: Update yum
@@ -62,9 +65,11 @@ jobs:
     - name: Build
       run: |
         . /opt/rh/gcc-toolset-11/enable
-        V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build -vv
-        V8_VERSION=${{ inputs.v8_version }} V8_UPDATE_HEADERS=${{ inputs.v8_update_headers }} $HOME/.cargo/bin/cargo build --release -vv
-    - name: Tests
+        $HOME/.cargo/bin/cargo build -vv
+        $HOME/.cargo/bin/cargo build --release -vv
+    - name: Unit tests
+      run: $HOME/.cargo/bin/cargo test --verbose
+    - name: Integration tests
       run: |
         cd pytests;./run_tests.sh
     - name: install ramp packer
