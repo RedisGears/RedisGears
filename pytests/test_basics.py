@@ -525,6 +525,33 @@ redis.register_function("debug_protocol", function(client, arg){
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'true'), True)
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'false'), False)
 
+@gearsTest(enableGearsDebugCommands=True)
+def testFunctionListResp3(env):
+    """#!js api_version=1.0 name=lib
+redis.register_function("test", function(){
+    return "test";
+});
+    """
+    port = int(env.cmd('config', 'get', 'port')[1])
+
+    # test resp3
+    conn = Redis('localhost', port, protocol=3, decode_responses=True)
+    
+    env.assertEqual(conn.execute_command('RG.FUNCTION', 'LIST'), [\
+        {\
+         'configuration': None,\
+         'remote_functions': [],\
+         'engine': 'js',\
+         'name': 'lib',\
+         'pending_jobs': 0,\
+         'functions': ['test'],\
+         'user': 'default',\
+         'notifications_consumers': [],\
+         'api_version': '1.0',\
+         'stream_consumers': []\
+        }\
+    ])
+
 @gearsTest()
 def testNoAsyncFunctionOnMultiExec(env):
     """#!js api_version=1.0 name=lib

@@ -13,6 +13,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     FunctionCallResult,
 };
 
+use v8_rs::v8::v8_array::V8LocalArray;
 use v8_rs::v8::{
     isolate_scope::V8IsolateScope, v8_context_scope::V8ContextScope, v8_promise::V8PromiseState,
     v8_value::V8LocalValue, v8_value::V8PersistValue,
@@ -96,7 +97,7 @@ fn v8_value_to_call_result(
                     ));
                 } else if reply_type_v8_str.as_str() == "verbatim" {
                     let format = obj_reply
-                        .get_str_field(ctx_scope, "format")
+                        .get_str_field(ctx_scope, "__format")
                         .map_or(None, |v| v.to_utf8());
                     return Ok(RedisValue::VerbatimString((
                         format
@@ -119,39 +120,33 @@ fn v8_value_to_call_result(
         let bool_val = val.get_boolean();
         RedisValue::Bool(bool_val)
     } else if val.is_set() {
-        let s = val.as_set();
-        let res: Result<HashSet<RedisValueKey>, RedisError> = s
-            .as_array()
+        let arr: V8LocalArray = val.as_set().into();
+        let res: Result<HashSet<RedisValueKey>, RedisError> = arr
             .iter(ctx_scope)
             .map(|v| v8_value_to_redis_value_key(v))
             .collect();
         RedisValue::Set(res?)
     } else if val.is_array() {
         let arr = val.as_array();
-        let mut res = Vec::new();
-        for i in 0..arr.len() {
-            let val = arr.get(ctx_scope, i);
-            res.push(v8_value_to_call_result(
-                nesting_level + 1,
-                isolate_scope,
-                ctx_scope,
-                val,
-            )?);
-        }
-        RedisValue::Array(res)
+        let res: Result<Vec<RedisValue>, RedisError> = arr
+            .iter(ctx_scope)
+            .map(|v| v8_value_to_call_result(nesting_level + 1, isolate_scope, ctx_scope, v))
+            .collect();
+        RedisValue::Array(res?)
     } else if val.is_object() {
         let res = val.as_object();
         let keys = res.get_property_names(ctx_scope);
-        let mut result = HashMap::new();
-        for i in 0..keys.len() {
-            let key = keys.get(ctx_scope, i);
-            let obj = res.get(ctx_scope, &key).unwrap();
-            result.insert(
-                v8_value_to_redis_value_key(key)?,
-                v8_value_to_call_result(nesting_level + 1, isolate_scope, ctx_scope, obj)?,
-            );
-        }
-        RedisValue::Map(result)
+        let result: Result<HashMap<RedisValueKey, RedisValue>, RedisError> = keys
+            .iter(ctx_scope)
+            .map(|key| {
+                let obj = res.get(ctx_scope, &key).unwrap();
+                Ok((
+                    v8_value_to_redis_value_key(key)?,
+                    v8_value_to_call_result(nesting_level + 1, isolate_scope, ctx_scope, obj)?,
+                ))
+            })
+            .collect();
+        RedisValue::Map(result?)
     } else {
         RedisValue::BulkString(val.to_utf8().unwrap().as_str().to_string())
     })
