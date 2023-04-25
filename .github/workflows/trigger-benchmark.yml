@@ -46,7 +46,7 @@ jobs:
         cd tests/benchmarks
         redisbench-admin run-remote \
           --required-module redisgears_2 \
-          --module_path "../../target/release/libredisgears.so ../../target/release/libredisgears_v8_plugin.so" \
+          --module_path "../../target/release/libredisgears.so v8-plugin-path ../../target/release/libredisgears_v8_plugin.so" \
           --github_actor ${{ github.triggering_actor }} \
           --github_repo ${{ github.event.repository.name }} \
           --github_org ${{ github.repository_owner }} \
