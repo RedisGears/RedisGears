@@ -100,7 +100,11 @@ fn v8_value_to_call_result(
                         .get_str_field(ctx_scope, "__format")
                         .map_or(None, |v| v.to_utf8());
                     return Ok(RedisValue::VerbatimString((
-                        format.as_ref().map(|v| v.as_str()).unwrap_or("txt").into(),
+                        format
+                            .as_ref()
+                            .map(|v| v.as_str())
+                            .unwrap_or("txt")
+                            .try_into()?,
                         val.to_utf8().unwrap().as_str().as_bytes().to_vec(),
                     )));
                 }
