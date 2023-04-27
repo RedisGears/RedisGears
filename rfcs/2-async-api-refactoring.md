@@ -1,4 +1,4 @@
-- RedisGears Issue: [RedisGears/RedisGears#873]()
+- RedisGears Issue: [RedisGears/RedisGears#873](https://github.com/RedisGears/RedisGears/pull/895)
 
 # RedisGears JavaScript Async API refactoring
 
