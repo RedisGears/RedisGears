@@ -27,9 +27,9 @@ use redis_module::raw::RedisModule__Assert;
 use threadpool::ThreadPool;
 
 use redis_module::{
-    alloc::RedisAlloc, configuration::ConfigurationFlags, raw::KeyType::Stream, redis_command,
-    AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg, NotifyEvent,
-    RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
+    alloc::RedisAlloc, configuration::ConfigurationFlags, raw::KeyType::Stream, AclPermissions,
+    CallOptions, Context, InfoContext, KeysCursor, NextArg, NotifyEvent, RedisError, RedisResult,
+    RedisString, RedisValue, Status, ThreadSafeContext,
 };
 
 use redis_module::server_events::{

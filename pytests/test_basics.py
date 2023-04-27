@@ -506,7 +506,7 @@ redis.register_function("debug_protocol", function(client, arg){
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'set'), set([0, 1, 2]))
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'map'), {1: True, 2: False, 0: False})
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'txt:undefinedThis is a verbatim\nstring')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'txt:This is a verbatim\nstring')
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'true'), True)
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'false'), False)
 
@@ -521,7 +521,7 @@ redis.register_function("debug_protocol", function(client, arg){
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
     env.assertEqual(sorted(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'set')), sorted([0, 1, 2]))
     env.assertEqual(sorted(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'map')), sorted([1, 1, 0, 0, 2, 0]))
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'undefinedThis is a verbatim\nstring')
+    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'This is a verbatim\nstring')
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'true'), True)
     env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'false'), False)
 

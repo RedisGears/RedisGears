@@ -219,7 +219,7 @@ When running Redis commands from within a RedisGears function using `client.call
 | `map`                                                            | `array`       | `map`                                  |
 | `set`                                                            | `array`       | `set`                                  |
 | `bool`                                                           | `long`        | `bool`                                 |
-| `string` object with field`__reply_type=status` and `format=txt` | `bulk string` | `verbatim string` with format as `txt` |
+| `string` object with field`__reply_type=varbatim` and `__format=txt` | `bulk string` | `verbatim string` with format as `txt` |
 | `null`                                                           | resp2 `null`  | resp3 `null`                           |
 
 ## Working with Binary Data
