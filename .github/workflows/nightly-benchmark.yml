@@ -46,6 +46,7 @@ jobs:
           --github_branch ${{ github.head_ref || github.ref_name }} \
           --upload_results_s3 \
           --triggering_env circleci \
+          --continue-on-module-check-error \
           --fail_fast \
           --push_results_redistimeseries \
           --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \

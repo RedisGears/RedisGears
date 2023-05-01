@@ -51,6 +51,7 @@ jobs:
           --github_repo ${{ github.event.repository.name }} \
           --github_org ${{ github.repository_owner }} \
           --github_branch ${{ github.head_ref || github.ref_name }} \
+          --continue-on-module-check-error \
           --upload_results_s3 \
           --triggering_env circleci \
           --fail_fast \
