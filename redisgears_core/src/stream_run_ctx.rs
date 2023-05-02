@@ -43,7 +43,7 @@ impl<'ctx> StreamRunCtx<'ctx> {
         flags: FunctionFlags,
     ) -> StreamRunCtx<'ctx> {
         StreamRunCtx {
-            ctx: ctx,
+            ctx,
             lib_meta_data: Arc::clone(lib_meta_data),
             flags,
         }
