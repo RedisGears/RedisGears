@@ -1,12 +1,12 @@
 version: 0.2
-name: "rg_fcall_simple"
-description: ""
+name: "rg_fcall_asyc"
+description: "Simple script with async execution."
 remote:
  - type: oss-1nodes
  - setup: c5.4xlarge
 dbconfig:
   - init_commands:
-    - ["RG.FUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_function('foo', ()=>{return 1;});"]
+    - ["RG.FUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_function('foo', async ()=>{return 1;});"]
 clientconfig:
   benchmark_type: "read-only"
   tool: memtier_benchmark
