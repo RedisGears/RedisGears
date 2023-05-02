@@ -125,11 +125,7 @@ fn main() {
     let os_nick = match os_type.as_str() {
         "centos" | "rocky" => format!(
             "rhel{}",
-            os_ver
-                .split('.')
-                .next()
-                .expect("Failed getting os version")
-                .to_string()
+            os_ver.split('.').next().expect("Failed getting os version")
         ),
         "ubuntu" => match os_ver.as_str() {
             "18.04" => "bionic".into(),
