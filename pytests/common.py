@@ -199,6 +199,8 @@ def gearsTest(skipTest=False,
                     # make sure all shards are in sync with their replica
                     for con in shardsConnections(env):
                         def synchronise_replicas():
+                            con.execute_command('set', 'x', '1')
+                            con.execute_command('del', 'x')
                             status = con.execute_command('wait', '1', '0')
                             return status
 
