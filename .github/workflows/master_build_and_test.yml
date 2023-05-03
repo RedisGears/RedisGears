@@ -8,6 +8,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+
+  build-and-test-jammy:
+    uses: ./.github/workflows/UBUNTU_JAMMY_REUSABLE.yml
+    with:
+      upload_artifacts: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  build-and-test-bionic:
   build-and-test-focal:
     uses: ./.github/workflows/UBUNTU_FOCAL_REUSABLE.yml
     with:
@@ -22,6 +32,23 @@ jobs:
     secrets:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  build-and-test-bullseye:
+    uses: ./.github/workflows/DEBIAN_BULLSEYE_REUSABLE.yml
+    with:
+      upload_artifacts: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  build-and-test-amzn2:
+    uses: ./.github/workflows/AMZN2_REUSEABLE.yml
+    with:
+      upload_artifacts: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
   build-and-test-centos_8:
     uses: ./.github/workflows/CENTOS_8_REUSABLE.yml
     with:
@@ -29,6 +56,7 @@ jobs:
     secrets:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
   build-and-test-centos_7:
     uses: ./.github/workflows/CENTOS_7_REUSABLE.yml
     with:
@@ -36,5 +64,6 @@ jobs:
     secrets:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
   build-and-test-macos:
     uses: ./.github/workflows/MACOS_REUSABLE.yml

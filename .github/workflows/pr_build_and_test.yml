@@ -8,10 +8,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  build-and-test-jammy:
+    uses: ./.github/workflows/UBUNTU_JAMMY_REUSABLE.yml
   build-and-test-focal:
     uses: ./.github/workflows/UBUNTU_FOCAL_REUSABLE.yml
   build-and-test-bionic:
     uses: ./.github/workflows/UBUNTU_BIONIC_REUSABLE.yml
+  build-and-test-bullseye:
+    uses: ./.github/workflows/DEBIAN_BULLSEYE_REUSABLE.yml
+  build-and-test-amzn2:
+    uses: ./.github/workflows/AMZN2_REUSEABLE.yml
   build-and-test-centos_8:
     uses: ./.github/workflows/CENTOS_8_REUSABLE.yml
   build-and-test-centos_7:
