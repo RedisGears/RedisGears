@@ -61,7 +61,9 @@ jobs:
     - name: update pip3
       run: pip3 install -U pip
     - name: install rltest
-      run: pip3 install RLTest
+      run: |
+        pip3 install RLTest
+        pip3 install -U redis==5.0.0b1
     - name: install redis
       run: git clone https://github.com/redis/redis; cd redis; git checkout ${{ inputs.redis_version }}; make install
     - name: install rust
