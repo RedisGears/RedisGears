@@ -127,11 +127,6 @@ fn main() {
             "rhel{}",
             os_ver.split('.').next().expect("Failed getting os version")
         ),
-        "ubuntu" => match os_ver.as_str() {
-            "18.04" => "bionic".into(),
-            "20.04" => "focal".into(),
-            _ => format!("{os_type}{os_ver}"),
-        },
         _ => format!("{os_type}{os_ver}"),
     };
     println!("cargo:rustc-env=BUILD_OS_NICK={}", os_nick);
