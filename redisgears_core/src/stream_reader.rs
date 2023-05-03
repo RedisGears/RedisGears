@@ -23,6 +23,7 @@ pub type StreamReaderCallback<T> = dyn Fn(&Context, &[u8], Option<RedisModuleStr
     + Sync
     + Send;
 pub type StreamTrimmerCallback = dyn Fn(&Context, &[u8], RedisModuleStreamID) + Sync + Send;
+pub(crate) type AcknowledgeCallback = dyn FnOnce(&Context, StreamReaderAck) + Send;
 
 pub(crate) trait StreamReaderRecord {
     fn get_id(&self) -> RedisModuleStreamID;
@@ -46,7 +47,7 @@ pub(crate) trait StreamConsumer<T: StreamReaderRecord> {
         ctx: &Context,
         stream_name: &[u8],
         record: T,
-        ack_callback: Box<dyn FnOnce(&Context, StreamReaderAck) + Send>,
+        ack_callback: Box<AcknowledgeCallback>,
     ) -> Option<StreamReaderAck>;
 }
 

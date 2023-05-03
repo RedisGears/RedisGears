@@ -79,7 +79,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
             .map_err(|e| GearsApiError::new(e.to_string()))?;
         RedisAIModel::open_from_key(ctx, name)
             .map(|v| Box::new(v) as Box<dyn AIModelInterface>)
-            .map_err(|e| GearsApiError::new(e))
+            .map_err(GearsApiError::new)
     }
 
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
@@ -89,6 +89,6 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
             .map_err(|e| GearsApiError::new(e.to_string()))?;
         RedisAIScript::open_from_key(ctx, name)
             .map(|v| Box::new(v) as Box<dyn AIScriptInterface>)
-            .map_err(|e| GearsApiError::new(e))
+            .map_err(GearsApiError::new)
     }
 }

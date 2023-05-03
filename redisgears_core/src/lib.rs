@@ -10,6 +10,7 @@
 
 #![deny(missing_docs)]
 
+use redis_module::redisvalue::RedisValueKey;
 use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
@@ -18,17 +19,16 @@ use serde::{Deserialize, Serialize};
 
 use config::{
     FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
-    FATAL_FAILURE_POLICY, GEARS_BOX_ADDRESS, LIBRARY_MAX_MEMORY, LOCK_REDIS_TIMEOUT,
-    REMOTE_TASK_DEFAULT_TIMEOUT, V8_PLUGIN_PATH,
+    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_PLUGIN_PATH,
 };
 
 use redis_module::raw::RedisModule__Assert;
 use threadpool::ThreadPool;
 
 use redis_module::{
-    alloc::RedisAlloc, configuration::ConfigurationFlags, raw::KeyType::Stream, redis_command,
-    AclPermissions, CallOptions, Context, InfoContext, KeysCursor, NextArg, NotifyEvent,
-    RedisError, RedisResult, RedisString, RedisValue, Status, ThreadSafeContext,
+    alloc::RedisAlloc, raw::KeyType::Stream, AclPermissions, CallOptions, Context, InfoContext,
+    KeysCursor, NextArg, NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status,
+    ThreadSafeContext,
 };
 
 use redis_module::server_events::{
@@ -38,8 +38,6 @@ use redis_module_macros::{
     flush_event_handler, loading_event_handler, module_changed_event_handler,
     role_changed_event_handler,
 };
-
-use rdb::REDIS_GEARS_TYPE;
 
 use redisgears_plugin_api::redisgears_plugin_api::{
     backend_ctx::BackendCtx, backend_ctx::BackendCtxInterfaceUninitialised,
@@ -786,14 +784,11 @@ pub(crate) fn json_to_redis_value(val: serde_json::Value) -> RedisValue {
             }
             RedisValue::Array(res)
         }
-        serde_json::Value::Object(o) => {
-            let mut res = Vec::new();
-            for (k, v) in o.into_iter() {
-                res.push(RedisValue::BulkString(k));
-                res.push(json_to_redis_value(v));
-            }
-            RedisValue::Array(res)
-        }
+        serde_json::Value::Object(o) => RedisValue::Map(
+            o.into_iter()
+                .map(|(k, v)| (RedisValueKey::String(k), json_to_redis_value(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -802,7 +797,7 @@ fn function_search_lib_command(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> RedisResult {
     let search_token = args.next_arg()?.try_as_str()?;
-    let search_result = gears_box_search(&ctx, search_token)?;
+    let search_result = gears_box_search(ctx, search_token)?;
     Ok(json_to_redis_value(search_result))
 }
 
@@ -1005,6 +1000,9 @@ macro_rules! get_allocator {
 #[allow(missing_docs)]
 mod gears_module {
     use super::*;
+    use config::{GEARS_BOX_ADDRESS, LIBRARY_MAX_MEMORY, REMOTE_TASK_DEFAULT_TIMEOUT};
+    use rdb::REDIS_GEARS_TYPE;
+    use redis_module::configuration::ConfigurationFlags;
 
     redis_module::redis_module! {
         name: "redisgears_2",
