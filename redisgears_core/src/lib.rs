@@ -784,13 +784,11 @@ pub(crate) fn json_to_redis_value(val: serde_json::Value) -> RedisValue {
             }
             RedisValue::Array(res)
         }
-        serde_json::Value::Object(o) => {
-            let mut res = HashMap::new();
-            for (k, v) in o.into_iter() {
-                res.insert(RedisValueKey::String(k), json_to_redis_value(v));
-            }
-            RedisValue::Map(res)
-        }
+        serde_json::Value::Object(o) => RedisValue::Map(
+            o.into_iter()
+                .map(|(k, v)| (RedisValueKey::String(k), json_to_redis_value(v)))
+                .collect(),
+        ),
     }
 }
 

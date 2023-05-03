@@ -65,10 +65,7 @@ pub(crate) fn function_list_command(
     Ok(RedisValue::Array(
         libraries
             .values()
-            .filter(|l| match lib {
-                Some(lib_name) => l.gears_lib_ctx.meta_data.name == lib_name,
-                None => true,
-            })
+            .filter(|l| lib.map(|lib_name| l.gears_lib_ctx.meta_data.name == lib_name).unwrap_or(true))
             .map(|l| {
                 let mut res =
                     HashMap::from([
