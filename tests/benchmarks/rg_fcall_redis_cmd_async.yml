@@ -1,0 +1,13 @@
+version: 0.2
+name: "rg_fcall_redis_cmd_async"
+description: "Simple script calling a redis command async."
+remote:
+ - type: oss-1nodes
+ - setup: c5.4xlarge
+dbconfig:
+  - init_commands:
+    - ["RG.FUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_function('foo', async function(client){\n    return client.block(function(redis_client){\n        return redis_client.call('ping');\n    }); \n});"]
+clientconfig:
+  benchmark_type: "read-only"
+  tool: memtier_benchmark
+  arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --command 'rg.fcall lib foo 0'"
