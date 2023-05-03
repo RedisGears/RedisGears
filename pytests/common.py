@@ -199,6 +199,16 @@ def gearsTest(skipTest=False,
                     # make sure all shards are in sync with their replica
                     for con in shardsConnections(env):
                         def synchronise_replicas():
+                            # Wait works on the connection level.
+                            # Because the client who register the function
+                            # and this current client are different, we need
+                            # to perform a simple command that will be replicated
+                            # to the replica so the `wait` command will be effective
+                            # and will return only after the library will reach
+                            # all the replicas.
+                            # A simple publish command will do the trick
+                            # and will also work properly on cluster.
+                            con.execute_command('publish', 'foo', 'bar')
                             status = con.execute_command('wait', '1', '0')
                             return status
 
