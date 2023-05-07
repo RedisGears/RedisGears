@@ -52,7 +52,7 @@ jobs:
     - name: install rltest
       run: |
         python3 -m pip install RLTest
-        python -m pip install -U redis==5.0.0b3
+        python3 -m pip install -U redis==5.0.0b3
     - name: Install redis
       run: |
         git clone https://github.com/redis/redis
