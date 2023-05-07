@@ -954,7 +954,7 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
         arity: -4,
         key_spec: [
             {
-                flags: ["RO", "ACCESS"],
+                flags: ["RW", "ACCESS", "UPDATE"],
                 begin_search: Index(3),
                 find_keys: Keynum((0, 1, 1)),
             }
@@ -973,7 +973,7 @@ fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
         arity: -4,
         key_spec: [
             {
-                flags: ["RO", "ACCESS"],
+                flags: ["RW", "ACCESS", "UPDATE"],
                 begin_search: Index(3),
                 find_keys: Keynum((0, 1, 1)),
             }
