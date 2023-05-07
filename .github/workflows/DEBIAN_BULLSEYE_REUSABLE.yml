@@ -44,7 +44,9 @@ jobs:
         apt update -qq
         apt install -yqq python3-pip
     - name: install rltest
-      run: pip install RLTest
+      run: |
+        pip install RLTest
+        pip install -U redis==5.0.0b3
     - name: install redis
       run: git clone https://github.com/redis/redis; cd redis; git checkout ${{ inputs.redis_version }}; make install
     - name: format

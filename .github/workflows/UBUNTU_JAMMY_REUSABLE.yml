@@ -39,7 +39,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: install rltest
-      run: pip install RLTest
+      run: |
+        pip install RLTest
+        python -m pip install -U redis==5.0.0b3
     - name: install redis
       run: git clone https://github.com/redis/redis; cd redis; git checkout ${{ inputs.redis_version }}; make install
     - name: format
@@ -61,7 +63,7 @@ jobs:
       uses: s3-actions/s3cmd@v1.2.0
       with:
         provider: aws
-        region: us-east-2
+        oegion: us-east-2
         access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
         secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     - name: Upload artifacts

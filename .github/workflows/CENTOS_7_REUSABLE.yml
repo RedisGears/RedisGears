@@ -62,7 +62,7 @@ jobs:
     - name: install rltest
       run: |
         /opt/rh/rh-python38/root/usr/bin/python -m pip install RLTest
-        /opt/rh/rh-python38/root/usr/bin/python -m pip install -U redis==5.0.0b1
+        /opt/rh/rh-python38/root/usr/bin/python -m pip install -U redis==5.0.0b3
     - name: Install redis
       run: |
         set -x

@@ -35,7 +35,7 @@ jobs:
     - name: install rltest
       run: |
         python3 -m pip install RLTest
-        python3 -m pip install -U redis==5.0.0b1
+        python3 -m pip install -U redis==5.0.0b3
     - name: install automake
       run: brew install automake
     - name: install openssl
