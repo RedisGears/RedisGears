@@ -45,12 +45,9 @@ jobs:
         yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang \
           gcc10 gcc10-c++ libatomic10-devel file \
           autoconf automake libtool python3 python3-pip
-        update-alternatives --set g++ /usr/bin/gcc10-g++
-        update-alternatives --set gcc /usr/bin/gcc10-gcc
-        update-alternatives --set cc /usr/bin/cc10-cc
-        update-alternatives --set c++ /usr/bin/c++10-c++
-        update-alternatives --set ar /usr/bin/gcc10-ar
-        update-alternatives --set ranlib /usr/bin/gcc10-ranlib
+        rm -f /usr/bin/gcc /usr/bin/g++
+        ln -s /usr/bin/gcc10-g++ /usr/bin/g++
+        ln -s /usr/bin/gcc10-gcc /usr/bin/gcc
     - uses: actions/checkout@v3
     - name: install rltest
       run: |
