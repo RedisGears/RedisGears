@@ -39,6 +39,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: prepare environment
+      run: |
+        apt update -qq
+        apt install -yqq python3-pip
     - name: install rltest
       run: pip install RLTest
     - name: install redis
