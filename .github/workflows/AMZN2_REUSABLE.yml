@@ -50,7 +50,6 @@ jobs:
       run: python3 -m pip install RLTest
     - name: Install redis
       run: |
-        . /opt/rh/gcc-toolset-11/enable
         git clone https://github.com/redis/redis
         cd redis
         git checkout ${{ inputs.redis_version }}
@@ -63,12 +62,10 @@ jobs:
       run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build
       run: |
-        . /opt/rh/gcc-toolset-11/enable
         $HOME/.cargo/bin/cargo build -vv
         $HOME/.cargo/bin/cargo build --release -vv
     - name: Unit tests
       run: |
-        . /opt/rh/gcc-toolset-11/enable
         $HOME/.cargo/bin/cargo test --verbose
     - name: Integration tests
       run: |
