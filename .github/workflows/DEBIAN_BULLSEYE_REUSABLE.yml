@@ -42,7 +42,7 @@ jobs:
     - name: prepare environment
       run: |
         apt update -qq
-        apt install -yqq python3-pip git
+        apt install -yqq python3-pip git curl
     - name: install rltest
       run: |
         python3 -m pip install RLTest
