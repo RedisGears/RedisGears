@@ -60,7 +60,9 @@ jobs:
     - name: Add RedisGears directory to git safe directory
       run: git config --global --add safe.directory /__w/RedisGears/RedisGears
     - name: install rltest
-      run: /opt/rh/rh-python38/root/usr/bin/python -m pip install RLTest
+      run: |
+        /opt/rh/rh-python38/root/usr/bin/python -m pip install RLTest
+        /opt/rh/rh-python38/root/usr/bin/python -m pip install -U redis==5.0.0b1
     - name: Install redis
       run: |
         set -x

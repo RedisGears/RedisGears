@@ -10,6 +10,7 @@
 
 #![deny(missing_docs)]
 
+use redis_module::redisvalue::RedisValueKey;
 use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
@@ -783,14 +784,11 @@ pub(crate) fn json_to_redis_value(val: serde_json::Value) -> RedisValue {
             }
             RedisValue::Array(res)
         }
-        serde_json::Value::Object(o) => {
-            let mut res = Vec::new();
-            for (k, v) in o.into_iter() {
-                res.push(RedisValue::BulkString(k));
-                res.push(json_to_redis_value(v));
-            }
-            RedisValue::Array(res)
-        }
+        serde_json::Value::Object(o) => RedisValue::Map(
+            o.into_iter()
+                .map(|(k, v)| (RedisValueKey::String(k), json_to_redis_value(v)))
+                .collect(),
+        ),
     }
 }
 

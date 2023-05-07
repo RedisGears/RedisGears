@@ -168,25 +168,60 @@ And we can see that the last update field name is `last_update`:
 
 Notice, RedisGears only gives the library the json configuration, **its the library responsibility to verify the correctness of the given configuration**.
 
-## Resp <-> JS Conversion
+## Resp -> JS Conversion
 
 When running Redis commands from within a RedisGears function using `client.call` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
 
-| resp 3            | JS object type                                                                                                                              |
-|-------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| `status`          | `StringObject` with a field called `__reply_type` and value `status`                                                                        |
-| `bulk string`     | `StringObject` with a field called `__reply_type` and value `bulk_string`                                                                   |
-| `Error`           | Raise JS exception                                                                                                                          |
-| `long`            | JS big integer                                                                                                                              |
-| `double`          | JS number                                                                                                                                   |
-| `array`           | JS array                                                                                                                                    |
-| `map`             | JS object                                                                                                                                   |
-| `set`             | JS set                                                                                                                                      |
-| `bool`            | JS boolean                                                                                                                                  |
-| `big number`      | `StringObject` with a field called `__reply_type` and value `big_number`                                                                    |
-| `verbatim string` | `StringObject` with 2 additional fields: 1. `__reply_type` and value `verbatim` 2. `__ext` with the value of the ext in the verbatim string |
-| `null`            | JS null                                                                                                                                     |
-|                   |                                                                                                                                             |
+| resp 3            | JS object type                                                                                                                                 |
+|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| `status`          | `StringObject` with a field called `__reply_type` and value `status` (or error if failed to convert to utf8)                                   |
+| `bulk string`     | JS `String` (or error if failed to convert to utf8)                                                                                            |
+| `Error`           | Raise JS exception                                                                                                                             |
+| `long`            | JS big integer                                                                                                                                 |
+| `double`          | JS number                                                                                                                                      |
+| `array`           | JS array                                                                                                                                       |
+| `map`             | JS object                                                                                                                                      |
+| `set`             | JS set                                                                                                                                         |
+| `bool`            | JS boolean                                                                                                                                     |
+| `big number`      | `StringObject` with a field called `__reply_type` and value `big_number`                                                                       |
+| `verbatim string` | `StringObject` with 2 additional fields: 1. `__reply_type` and value `verbatim` 2. `__format` with the value of the ext in the verbatim string (or error if failed to convert to utf8) |
+| `null`            | JS null                                                                                                                                        |
+|                   |                                                                                                                                                |
+
+When running Redis commands from within a RedisGears function using `client.call_raw` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
+
+| resp 3            | JS object type                                                                                                                                 |
+|-------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| `status`          | JS `ArrayBufffer` with a field called `__reply_type` and value `status`                                                                        |
+| `bulk string`     | JS `ArrayBufffer`                                                                                                                              |
+| `Error`           | Raise JS exception                                                                                                                             |
+| `long`            | JS big integer                                                                                                                                 |
+| `double`          | JS number                                                                                                                                      |
+| `array`           | JS array                                                                                                                                       |
+| `map`             | JS object                                                                                                                                      |
+| `set`             | JS set                                                                                                                                         |
+| `bool`            | JS boolean                                                                                                                                     |
+| `big number`      | `StringObject` with a field called `__reply_type` and value `big_number`                                                                       |
+| `verbatim string` | JS `ArrayBufffer` with 2 additional fields: 1. `__reply_type` and value `verbatim` 2. `__format` with the value of the ext in the verbatim string |
+| `null`            | JS null                                                                                                                                        |
+|                   |                                                                                                                                                |
+
+## JS -> RESP Conversion
+
+| JS type                                                          | RESP2         | RESP3                                  |
+|------------------------------------------------------------------|---------------|----------------------------------------|
+| `string`                                                         | `bulk string` | `bulk string`                          |
+| `string` object with field `__reply_type=status`                 | `status`      | `status`                               |
+| Exception                                                        | `error`       | `error`                                |
+| `big integer`                                                    | `long`        | `long`                                 |
+| `number`                                                         | `bulk string` | `double`                               |
+| `array`                                                          | `array`       | `array`                                |
+| `map`                                                            | `array`       | `map`                                  |
+| `set`                                                            | `array`       | `set`                                  |
+| `bool`                                                           | `long`        | `bool`                                 |
+| `string` object with field`__reply_type=varbatim` and `__format=txt` | `bulk string` | `verbatim string` with format as `txt` |
+| `null`                                                           | resp2 `null`  | resp3 `null`                           |
+
 ## Working with Binary Data
 
 By default, RedisGears will decode all data as string and will raise error on failures. Though usefull for most users sometimes there is a need to work with binary data. In order to do so, the library developer has to considerations the following:
