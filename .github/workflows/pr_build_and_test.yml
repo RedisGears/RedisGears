@@ -17,7 +17,7 @@ jobs:
   build-and-test-bullseye:
     uses: ./.github/workflows/DEBIAN_BULLSEYE_REUSABLE.yml
   build-and-test-amzn2:
-    uses: ./.github/workflows/AMZN2_REUSEABLE.yml
+    uses: ./.github/workflows/AMZN2_REUSABLE.yml
   build-and-test-centos_8:
     uses: ./.github/workflows/CENTOS_8_REUSABLE.yml
   build-and-test-centos_7:

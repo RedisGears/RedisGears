@@ -42,7 +42,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
   build-and-test-amzn2:
-    uses: ./.github/workflows/AMZN2_REUSEABLE.yml
+    uses: ./.github/workflows/AMZN2_REUSABLE.yml
     with:
       upload_artifacts: true
     secrets:
