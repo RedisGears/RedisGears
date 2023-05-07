@@ -65,18 +65,18 @@ def testNoRegistrations(env):
 @gearsTest()
 def testBlockRedisTwice(env):
     """#!js api_version=1.0 name=foo
-redis.register_function('test', async function(c1){
+redis.register_async_function('test', async function(c1){
     return await c1.block(function(c2){
         c1.block(function(c3){}); // blocking again
     });
 })
     """
-    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('thread is already blocked')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '0').error().contains('thread is already blocked')
 
 @gearsTest()
 def testCallRedisWhenNotBlocked(env):
     """#!js api_version=1.0 name=foo
-redis.register_function('test', async function(c){
+redis.register_async_function('test', async function(c){
     return await c.block(function(c1){
         return c1.run_on_background(async function(c2){
             return c1.call('ping'); // call redis when not blocked
@@ -84,7 +84,7 @@ redis.register_function('test', async function(c){
     });
 })
     """
-    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('thread is not locked')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '0').error().contains('thread is not locked')
 
 @gearsTest()
 def testCommandsNotAllowedOnScript(env):
@@ -92,14 +92,14 @@ def testCommandsNotAllowedOnScript(env):
 redis.register_function('test1', function(c){
     return c.call('eval', 'return 1', '0');
 })
-redis.register_function('test2', async function(c1){
+redis.register_async_function('test2', async function(c1){
     c1.block(function(c2){
         return c2.call('eval', 'return 1', '0');
     });
 })
     """
     env.expect('RG.FCALL', 'foo', 'test1', '0').error().contains('is not allowed on script mode')
-    env.expect('RG.FCALL', 'foo', 'test2', '0').error().contains('is not allowed on script mode')
+    env.expect('RG.FCALLASYNC', 'foo', 'test2', '0').error().contains('is not allowed on script mode')
 
 @gearsTest()
 def testJSStackOverflow(env):
@@ -184,11 +184,11 @@ redis.register_function('test', test);
 @gearsTest()
 def testNotExistsRemoteFunction(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", async (async_client) => {
+redis.register_async_function("test", async (async_client) => {
     return await async_client.run_on_key('x', 'not_exists');
 });
     """
-    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Remote function not_exists does not exists')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '0').error().contains('Remote function not_exists does not exists')
 
 @gearsTest()
 def testRemoteFunctionNotSerializableInput(env):
@@ -202,11 +202,11 @@ redis.register_remote_function(remote_get, async(client, key) => {
     return res;
 });
 
-redis.register_function("test", async (async_client, key) => {
+redis.register_async_function("test", async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, ()=>{return 1;});
 });
     """
-    env.expect('RG.FCALL', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function argument')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function argument')
 
 @gearsTest()
 def testRemoteFunctionNotSerializableOutput(env):
@@ -217,11 +217,11 @@ redis.register_remote_function(remote_get, async(client, key) => {
     return ()=>{return 1;};
 });
 
-redis.register_function("test", async (async_client, key) => {
+redis.register_async_function("test", async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, key);
 });
     """
-    env.expect('RG.FCALL', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function result')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function result')
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngNumberOfArgs(env):
@@ -293,7 +293,7 @@ redis.register_function("test", (client) => {
     });
 });
     """
-    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Used on invalid client')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '0').error().contains('Used on invalid client')
 
 @gearsTest()
 def testCallWithoutBlock(env):
@@ -304,7 +304,7 @@ redis.register_function("test", (client) => {
     });
 });
     """
-    env.expect('RG.FCALL', 'foo', 'test', '0').error().contains('Main thread is not locked')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '0').error().contains('Main thread is not locked')
 
 @gearsTest()
 def testDelNoneExistingFunction(env):
@@ -492,6 +492,24 @@ redis.register_function('test', () => {return 1})
 @gearsTest()
 def testArgDecodeFailureAsync(env):
     '''#!js api_version=1.0 name=lib
-redis.register_function('test', async () => {return 1})
+redis.register_async_function('test', async () => {return 1})
     '''
-    env.expect('RG.FCALL', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
+    env.expect('RG.FCALLASYNC', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
+
+@gearsTest()
+def testCallAsyncFunctionWithRGFCALL(env):
+    '''#!js api_version=1.0 name=lib
+redis.register_async_function('test', async () => {return 1})
+    '''
+    env.expect('RG.FCALL', 'lib', 'test', '0').error().contains('Function is declated async and was called while blocking is not allowed')
+
+@gearsTest()
+def testBlockOnRGFCall(env):
+    '''#!js api_version=1.0 name=lib
+redis.register_function('test', (c) => {
+    return c.run_on_background(async function(){
+        return 1;
+    });
+});
+    '''
+    env.expect('RG.FCALL', 'lib', 'test', '0').error().contains('Can not block client for background execution')

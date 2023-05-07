@@ -127,6 +127,7 @@ pub(crate) struct RunCtx<'a> {
     pub(crate) args: Vec<redis_module::RedisString>,
     pub(crate) flags: FunctionFlags,
     pub(crate) lib_meta_data: Arc<GearsLibraryMetaData>,
+    pub(crate) allow_block: bool,
 }
 
 impl<'a> ReplyCtxInterface for RunCtx<'a> {
@@ -173,7 +174,7 @@ impl<'a> RunFunctionCtxInterface for RunCtx<'a> {
     }
 
     fn allow_block(&self) -> bool {
-        !self.ctx.get_flags().contains(ContextFlags::DENY_BLOCKING)
+        self.allow_block && !self.ctx.get_flags().contains(ContextFlags::DENY_BLOCKING)
     }
 }
 

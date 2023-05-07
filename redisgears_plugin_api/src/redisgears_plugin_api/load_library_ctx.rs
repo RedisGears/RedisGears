@@ -52,6 +52,12 @@ pub trait LoadLibraryCtxInterface {
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
     ) -> Result<(), GearsApiError>;
+    fn register_async_function(
+        &mut self,
+        name: &str,
+        function_ctx: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+    ) -> Result<(), GearsApiError>;
     fn register_remote_task(
         &mut self,
         name: &str,

@@ -22,7 +22,8 @@ capabilities:
     - intershard_tls_pass
     - ipv6
 exclude_commands:
-    - _RG.FUNCTION
+    - _RG_INTERNALS.FUNCTION
+    - _RG_INTERNALS.UPDATE_STREAM_LAST_READ_ID
     - redisgears_2.REFRESHCLUSTER
     - redisgears_2.INFOCLUSTER
     - redisgears_2.NETWORKTEST
@@ -31,8 +32,12 @@ exclude_commands:
     - redisgears_2.CLUSTERSETFROMSHARD
     - rg.config_set
     - RG.CONFIG_SET
+    - rg.fcall
+    - RG.FCALL
+    - rg.fcallasync
+    - RG.FCALLASYNC
     - _rg_internals.update_stream_last_read_id
-    - _rg.function
+    - _rg_internals.function
 dependencies:
     gears_v8:
         local_path: "{os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"
