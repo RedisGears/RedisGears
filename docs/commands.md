@@ -121,7 +121,7 @@ The return value from the function on error in case of failure.
 
 # RG.FCALLASYNC
 
-Invoke an async function (coroutine).
+Invoke an async function (Coroutine).
 
 ```
 RG.FCALLASYNC <library name> <function name> <number of keys> [<key1> ... <keyn>] [<arg1> ... <argn>]
