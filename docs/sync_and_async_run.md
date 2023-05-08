@@ -175,7 +175,7 @@ redis.register_async_function('test', function(client, expected_name){
 
 `run_on_background` will return a `Promise` object, we return this Promise object as the function return value. When RedisGears sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much faster in case of cache hit.
 
-**Notice** that even though we registered a sync function (not a coroutine) we still used `register_async_function`. This is because our function has the poterntial of blocking the client and take the execution to the background. If we would have used `register_function` RedisGears would not have allow us to blocke the client and would have ignore the returned promise object.
+**Notice** that even though we registered a sync function (not a Coroutine) we still used `register_async_function`. This is because our function has the potential of blocking the client and take the execution to the background. If we would have used `register_function` RedisGears would not have allow us to blocked the client and would have ignore the returned promise object.
 
 **Also notice** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.allow_block()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possible.
 
