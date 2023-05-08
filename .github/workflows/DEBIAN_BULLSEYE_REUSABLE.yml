@@ -52,11 +52,11 @@ jobs:
     - name: Install rust
       run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     - name: format
-      run: cargo fmt -- --check
+      run: $HOME/.cargo/bin/cargo fmt -- --check
     - name: Build debug
       run:  cargo build --verbose
     - name: Build release
-      run:  cargo build --release --verbose
+      run:  $HOME/.cargo/bin/cargo build --release --verbose
     - name: Unit tests
       run: $HOME/.cargo/bin/cargo test --verbose
     - name: Integration tests
