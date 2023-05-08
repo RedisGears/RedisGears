@@ -10,4 +10,4 @@ RUN sh install_rust.sh -y
 RUN git clone https://github.com/redis/redis; cd redis; git checkout 7.2-rc1; make install
 RUN $HOME/.cargo/bin/cargo build --release
 
-CMD ["redis-server", "--protected-mode", "no", "--loadmodule", "./target/release/libredisgears.so", "./target/release/libredisgears_v8_plugin.so"]
+CMD ["redis-server", "--protected-mode", "no", "--loadmodule", "./target/release/libredisgears.so", "v8-plugin-path", "./target/release/libredisgears_v8_plugin.so"]
