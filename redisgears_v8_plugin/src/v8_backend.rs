@@ -24,11 +24,80 @@ use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::collections::HashSet;
 use std::str;
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, Weak};
+lazy_static::lazy_static! {
+    static ref GLOBALS_ALLOW_LIST: HashSet<String> = HashSet::from([
+        "Object".to_owned(),
+        "Function".to_owned(),
+        "Array".to_owned(),
+        "Number".to_owned(),
+        "parseFloat".to_owned(),
+        "parseInt".to_owned(),
+        "Infinity".to_owned(),
+        "NaN".to_owned(),
+        "undefined".to_owned(),
+        "Boolean".to_owned(),
+        "String".to_owned(),
+        "Symbol".to_owned(),
+        "Date".to_owned(),
+        "Promise".to_owned(),
+        "RegExp".to_owned(),
+        "Error".to_owned(),
+        "AggregateError".to_owned(),
+        "RangeError".to_owned(),
+        "ReferenceError".to_owned(),
+        "SyntaxError".to_owned(),
+        "TypeError".to_owned(),
+        "URIError".to_owned(),
+        "globalThis".to_owned(),
+        "JSON".to_owned(),
+        "Math".to_owned(),
+        "Intl".to_owned(),
+        "ArrayBuffer".to_owned(),
+        "Uint8Array".to_owned(),
+        "Int8Array".to_owned(),
+        "Uint16Array".to_owned(),
+        "Int16Array".to_owned(),
+        "Uint32Array".to_owned(),
+        "Int32Array".to_owned(),
+        "Float32Array".to_owned(),
+        "Float64Array".to_owned(),
+        "Uint8ClampedArray".to_owned(),
+        "BigUint64Array".to_owned(),
+        "BigInt64Array".to_owned(),
+        "DataView".to_owned(),
+        "Map".to_owned(),
+        "BigInt".to_owned(),
+        "Set".to_owned(),
+        "WeakMap".to_owned(),
+        "WeakSet".to_owned(),
+        "Proxy".to_owned(),
+        "Reflect".to_owned(),
+        "FinalizationRegistry".to_owned(),
+        "WeakRef".to_owned(),
+        "decodeURI".to_owned(),
+        "decodeURIComponent".to_owned(),
+        "encodeURI".to_owned(),
+        "encodeURIComponent".to_owned(),
+        "escape".to_owned(),
+        "unescape".to_owned(),
+        "isFinite".to_owned(),
+        "isNaN".to_owned(),
+        "console".to_owned(),
+        "WebAssembly".to_owned(),
+    ]);
 
+    static ref GLOBALS_DENY_LIST: HashSet<String> = HashSet::from([
+        "eval".to_owned(), // Might be considered dangerous.
+        "EvalError".to_owned(), // Sense we remove eval, this one is also not needed.
+        "SharedArrayBuffer".to_owned(), // Needed for web workers which we are not supporting
+        "Atomics".to_owned(), // Needed for web workers which we are not supporting
+    ]);
+}
 struct Globals {
     backend_ctx: Option<BackendCtx>,
 }
@@ -206,6 +275,26 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
+
+                let globals = ctx_scope.get_globals();
+                let propeties = globals.get_own_property_names(&ctx_scope);
+                propeties.iter(&ctx_scope).try_for_each(|v| {
+                    let s = v.to_utf8().ok_or(GearsApiError::new("Failed converting global property name to string"))?;
+                    if !GLOBALS_ALLOW_LIST.contains(s.as_str())
+                    {
+                        if !GLOBALS_DENY_LIST.contains(s.as_str()) {
+                            compiled_library_api.log(&format!(
+                                "Found global '{}' which is not on the allowed list nor on the deny list.",
+                                s.as_str()
+                            ));
+                        }
+                        // property does not exists on the allow list. lets drop it.
+                        if !globals.delete(&ctx_scope, &v) {
+                            return Err(GearsApiError::new(format!("Failed deleting global '{}' which is not on the allowed list, can not load the library.", s.as_str())));
+                        }
+                    }
+                    Ok(())
+                })?;
 
                 let v8code_str = isolate_scope.new_string(code);
 
