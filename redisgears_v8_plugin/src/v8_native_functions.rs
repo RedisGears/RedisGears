@@ -1242,7 +1242,7 @@ pub(crate) fn initialize_globals_1_0(
         "log",
         new_native_function!(move |_isolate, _curr_ctx_scope, msg: V8LocalUtf8| {
             match script_ctx_ref.upgrade() {
-                Some(s) => s.compiled_library_api.log(msg.as_str()),
+                Some(s) => s.compiled_library_api.log_notice(msg.as_str()),
                 None => crate::v8_backend::log(msg.as_str()), /* do not abort logs */
             }
             Ok::<Option<V8LocalValue>, String>(None)

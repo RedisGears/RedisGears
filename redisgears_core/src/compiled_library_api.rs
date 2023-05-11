@@ -4,14 +4,12 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::config::LIBRARY_MAX_MEMORY;
 use crate::{execute_on_pool, DETACHED_CONTEXT};
 use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use std::collections::LinkedList;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct CompiledLibraryInternals {
@@ -85,16 +83,24 @@ impl CompiledLibraryAPI {
 }
 
 impl CompiledLibraryInterface for CompiledLibraryAPI {
-    fn log(&self, msg: &str) {
+    fn log_debug(&self, msg: &str) {
+        DETACHED_CONTEXT.log_debug(msg);
+    }
+
+    fn log_notice(&self, msg: &str) {
         DETACHED_CONTEXT.log_notice(msg);
+    }
+
+    fn log_verbose(&self, msg: &str) {
+        DETACHED_CONTEXT.log_verbose(msg);
+    }
+
+    fn log_warning(&self, msg: &str) {
+        DETACHED_CONTEXT.log_warning(msg);
     }
 
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>) {
         self.add_job(job);
-    }
-
-    fn get_maxmemory(&self) -> usize {
-        LIBRARY_MAX_MEMORY.load(Ordering::Relaxed) as usize
     }
 
     fn redisai_create_tensor(

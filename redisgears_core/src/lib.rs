@@ -19,7 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use config::{
     FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
-    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_PLUGIN_PATH,
+    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+    V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY, V8_PLUGIN_PATH,
 };
 
 use redis_module::raw::RedisModule__Assert;
@@ -476,6 +477,39 @@ pub(crate) fn call_redis_command(
     ctx.call_ext(command, call_options, args)
 }
 
+fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
+    let v8_max_memory = V8_MAX_MEMORY.load(Ordering::Relaxed);
+    let v8_lib_initial_mem = V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed);
+    let v8_lib_initial_mem_limit = V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed);
+    let v8_lib_mem_delta = V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed);
+
+    if v8_lib_initial_mem > v8_max_memory {
+        return Err(RedisError::Str(
+            "V8 library initial memory usage can not bypass the v8 max memory.",
+        ));
+    }
+
+    if v8_lib_initial_mem_limit > v8_max_memory {
+        return Err(RedisError::Str(
+            "V8 library initial memory limit can not bypass the v8 max memory.",
+        ));
+    }
+
+    if v8_lib_mem_delta > v8_max_memory {
+        return Err(RedisError::Str(
+            "V8 library memory delta can not bypass the v8 max memory.",
+        ));
+    }
+
+    if v8_lib_initial_mem > v8_lib_initial_mem_limit {
+        return Err(RedisError::Str(
+            "V8 library initial initial memory usage can not bypass the initial memory limit.",
+        ));
+    }
+
+    Ok(())
+}
+
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     mr_init(ctx, 1, None);
 
@@ -494,10 +528,17 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         BUILD_OS_NICK.unwrap_or_default(),
         BUILD_OS_ARCH.unwrap_or_default()
     ));
+
     if let Err(e) = check_redis_version_compatible(ctx) {
         ctx.log_warning(&e);
         return Status::Err;
     }
+
+    if let Err(e) = verify_v8_mem_usage_values() {
+        ctx.log_warning(&e.to_string());
+        return Status::Err;
+    }
+
     std::panic::set_hook(Box::new(|panic_info| {
         DETACHED_CONTEXT.log_warning(&format!("Application panicked, {}", panic_info));
         let (file, line) = match panic_info.location() {
@@ -610,6 +651,16 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
                 FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
             }),
             get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
+            get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
+            get_v8_library_initial_memory: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_initial_memory_limit: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_memory_delta: Box::new(|| {
+                V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
+            }),
         }) {
             Ok(b) => b,
             Err(e) => {
@@ -1000,7 +1051,10 @@ macro_rules! get_allocator {
 #[allow(missing_docs)]
 mod gears_module {
     use super::*;
-    use config::{GEARS_BOX_ADDRESS, LIBRARY_MAX_MEMORY, REMOTE_TASK_DEFAULT_TIMEOUT};
+    use config::{
+        GEARS_BOX_ADDRESS, REMOTE_TASK_DEFAULT_TIMEOUT, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+        V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY,
+    };
     use rdb::REDIS_GEARS_TYPE;
     use redis_module::configuration::ConfigurationFlags;
 
@@ -1029,8 +1083,12 @@ mod gears_module {
                 ["error-verbosity", &*ERROR_VERBOSITY ,1, 1, 2, ConfigurationFlags::DEFAULT, None],
                 ["execution-threads", &*EXECUTION_THREADS ,1, 1, 32, ConfigurationFlags::IMMUTABLE, None],
                 ["remote-task-default-timeout", &*REMOTE_TASK_DEFAULT_TIMEOUT , 500, 1, i64::MAX, ConfigurationFlags::DEFAULT, None],
-                ["library-maxmemory", &*LIBRARY_MAX_MEMORY , 1024 * 1024 * 1024, 16 * 1024 * 1024, 2 * 1024 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
                 ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT , 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
+
+                ["v8-maxmemory", &*V8_MAX_MEMORY , 200 * 1024 * 1024, 50 * 1024 * 1024, 1024 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
+                ["v8-library-initial-mem-usage", &*V8_LIBRARY_INITIAL_MEMORY_USAGE , 2 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
+                ["v8-library-initial-mem-limit", &*V8_LIBRARY_INITIAL_MEMORY_LIMIT , 3 * 1024 * 1024, 2 * 1024 * 1024, 20 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
+                ["v8-library-mem-usage-delta", &*V8_LIBRARY_MEMORY_USAGE_DELTA , 1 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
             ],
             string: [
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],

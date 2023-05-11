@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
@@ -24,13 +25,15 @@ use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::collections::HashMap;
 use std::str;
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 struct Globals {
     backend_ctx: Option<BackendCtx>,
+    estimated_isolates_used_mem: Option<AtomicUsize>,
 }
 
 unsafe impl GlobalAlloc for Globals {
@@ -50,7 +53,10 @@ unsafe impl GlobalAlloc for Globals {
 }
 
 #[global_allocator]
-static mut GLOBAL: Globals = Globals { backend_ctx: None };
+static mut GLOBAL: Globals = Globals {
+    backend_ctx: None,
+    estimated_isolates_used_mem: None,
+};
 
 pub(crate) fn log(msg: &str) {
     #[cfg(not(test))]
@@ -77,6 +83,52 @@ pub(crate) fn gil_lock_timeout() -> u128 {
     }
     #[cfg(test)]
     0u128
+}
+
+pub(crate) fn max_memory_limit() -> usize {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().get_v8_maxmemory)()
+    }
+    #[cfg(test)]
+    0usize
+}
+
+pub(crate) fn initial_memory_usage() -> usize {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().get_v8_library_initial_memory)()
+    }
+    #[cfg(test)]
+    0usize
+}
+
+pub(crate) fn initial_memory_limit() -> usize {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().get_v8_library_initial_memory_limit)()
+    }
+    #[cfg(test)]
+    0usize
+}
+
+pub(crate) fn memory_delta() -> usize {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().get_v8_library_memory_delta)()
+    }
+    #[cfg(test)]
+    0usize
+}
+
+pub(crate) fn estimated_isolates_used_memory() -> &'static AtomicUsize {
+    unsafe { GLOBAL.estimated_isolates_used_mem.as_ref().unwrap() }
+}
+
+/// Return `true` if we did not bypass the memory limit
+/// and it is safe to run JS code.
+pub(crate) fn is_safe_to_run_code() -> bool {
+    estimated_isolates_used_memory().load(Ordering::Relaxed) <= max_memory_limit()
 }
 
 pub(crate) struct V8Backend {
@@ -109,6 +161,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
     ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
         unsafe {
             GLOBAL.backend_ctx = Some(backend_ctx);
+            GLOBAL.estimated_isolates_used_mem = Some(AtomicUsize::new(0));
         }
         v8_init_with_error_handlers(
             Box::new(|line, msg| {
@@ -134,14 +187,17 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
 
         let script_ctxs = Arc::clone(&self.script_ctx_vec);
         std::thread::spawn(move || {
+            let mut detected_memory_pressure = false;
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(100));
+                let mut total_heap_size: usize = 0;
                 let l = script_ctxs.lock().unwrap();
                 for script_ctx_weak in l.iter() {
                     let script_ctx = match script_ctx_weak.upgrade() {
                         Some(s) => s,
                         None => continue,
                     };
+                    total_heap_size += script_ctx.isolate.total_heap_size();
                     if script_ctx
                         .is_running
                         .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
@@ -160,13 +216,13 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
                                 let gil_lock_configured_timeout = gil_lock_timeout();
                                 if gil_lock_duration > gil_lock_configured_timeout {
                                     script_ctx.set_lock_timedout();
-                                    script_ctx.compiled_library_api.log(&format!("Script locks Redis for about {}ms which is more then the configured timeout {}ms.", gil_lock_duration, gil_lock_configured_timeout));
+                                    script_ctx.compiled_library_api.log_warning(&format!("Script locks Redis for about {}ms which is more then the configured timeout {}ms.", gil_lock_duration, gil_lock_configured_timeout));
                                     match get_fatal_failure_policy() {
                                         LibraryFatalFailurePolicy::Kill => {
-                                            script_ctx.compiled_library_api.log("Fatal error policy do not allow to abort the script, we will allow the script to continue running, best effort approach.");
+                                            script_ctx.compiled_library_api.log_warning("Fatal error policy do not allow to abort the script, we will allow the script to continue running, best effort approach.");
                                         }
                                         LibraryFatalFailurePolicy::Abort => {
-                                            script_ctx.compiled_library_api.log("Aborting script with timeout error.");
+                                            script_ctx.compiled_library_api.log_warning("Aborting script with timeout error.");
                                             isolate.terminate_execution();
                                         }
                                     }
@@ -174,6 +230,26 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
                             }
                             script_ctx.before_run();
                         });
+                    }
+                }
+                estimated_isolates_used_memory().store(total_heap_size, Ordering::Relaxed);
+                if total_heap_size > max_memory_limit() {
+                    // we are under memory pressure
+                    if !detected_memory_pressure {
+                        log("Detects OOM state on the JS engine, will send memory pressure notification to all libraries.");
+                        detected_memory_pressure = true;
+                    }
+                    for script_ctx_weak in l.iter() {
+                        let script_ctx = match script_ctx_weak.upgrade() {
+                            Some(s) => s,
+                            None => continue,
+                        };
+                        script_ctx.isolate.memory_pressure_notification();
+                    }
+                } else {
+                    if detected_memory_pressure {
+                        log("Exit OOM state, JS memory usage dropped bellow the max memory limit.");
+                        detected_memory_pressure = false;
                     }
                 }
             }
@@ -196,9 +272,13 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError> {
+        if !is_safe_to_run_code() {
+            return Err(GearsApiError::new("JS engine reached OOM state and can not run any more code"));
+        }
+
         let isolate = V8Isolate::new_with_limits(
-            8 * 1024 * 1024, /* 8M */
-            compiled_library_api.get_maxmemory(),
+            initial_memory_usage(),
+            initial_memory_limit(),
         );
 
         let script_ctx = {
@@ -222,12 +302,14 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 (ctx, script, tensor_obj_template)
             };
             let script_ctx = Arc::new(V8ScriptCtx::new(
+                module_name.to_owned(),
                 isolate,
                 ctx,
                 script,
                 tensor_obj_template,
                 compiled_library_api,
             ));
+            estimated_isolates_used_memory().fetch_add(initial_memory_usage(), Ordering::Relaxed);
             let len = {
                 let mut l = self.script_ctx_vec.lock().unwrap();
                 l.push(Arc::downgrade(&script_ctx));
@@ -248,7 +330,8 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     .isolate
                     .set_near_oom_callback(move |curr_limit, initial_limit| {
                         let msg = format!(
-                            "V8 near OOM notification arrive, curr_limit={curr_limit}, initial_limit={initial_limit}"
+                            "V8 near OOM notification arrive, curr_limit={curr_limit}, initial_limit={initial_limit}",
+                            
                         );
                         let script_ctx = match oom_script_ctx.upgrade() {
                             Some(s_c) => s_c,
@@ -259,32 +342,41 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                             }
                         };
 
-                        let msg = format!("{msg}, used_heap_size={}, total_heap_size={}", script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
+                        let msg = format!("{msg}, library={}, used_heap_size={}, total_heap_size={}", script_ctx.name, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
+                        
+                        let memory_delta = memory_delta();
+                        let new_isolate_limit = (script_ctx.isolate.total_heap_size() + memory_delta) as usize;
 
-                        script_ctx.compiled_library_api.log(&msg);
-
-                        match get_fatal_failure_policy() {
-                            LibraryFatalFailurePolicy::Kill => {
-                                script_ctx.compiled_library_api.log("Fatal error policy do not allow to abort the script, server will be killed shortly.");
-                                curr_limit
+                        let new_mem_limit = loop {
+                            let curr_mem_usage = estimated_isolates_used_memory().load(Ordering::Relaxed);
+                            let new_mem_limit: usize = curr_mem_usage + memory_delta;
+                            if estimated_isolates_used_memory().compare_exchange(curr_mem_usage, new_mem_limit, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+                                break new_mem_limit;
                             }
-                            LibraryFatalFailurePolicy::Abort => {
-                                let mut new_limit: usize = (curr_limit as f64 * 1.2 ) as usize;
-                                if new_limit < script_ctx.isolate.total_heap_size() {
-                                    new_limit = (script_ctx.isolate.total_heap_size() as f64 * 1.2) as usize;
+                        };
+                        if new_mem_limit > max_memory_limit() {
+                            script_ctx.compiled_library_api.log_warning(&msg);
+                            // we are going to bypass the total memory limit, lets try to abort.
+                            match get_fatal_failure_policy() {
+                                LibraryFatalFailurePolicy::Kill => {
+                                    script_ctx.compiled_library_api.log_warning("Fatal error policy do not allow to abort the script, server will be killed shortly.");
                                 }
-                                script_ctx.isolate.request_interrupt(|isolate| {
-                                    isolate.memory_pressure_notification();
-                                });
-                                script_ctx.isolate.terminate_execution();
-
-                                script_ctx
-                                    .compiled_library_api
-                                    .log(&format!("Temporarily increasing max memory to {new_limit} memory and aborting the script"));
-
-                                new_limit
+                                LibraryFatalFailurePolicy::Abort => {
+                                    script_ctx.isolate.request_interrupt(|isolate| {
+                                        isolate.memory_pressure_notification();
+                                    });
+                                    script_ctx.isolate.terminate_execution();
+    
+                                    script_ctx
+                                        .compiled_library_api
+                                        .log_warning(&format!("Temporarily increasing max memory to {new_isolate_limit} and aborting the script"));
+                                }
                             }
+                        } else {
+                            script_ctx.compiled_library_api.log_verbose(&msg);
+                            script_ctx.compiled_library_api.log_verbose(&format!("Increasing max memory to {new_isolate_limit}"));
                         }
+                        new_isolate_limit
                     });
 
                 let api_version_supported: ApiVersionSupported = api_version.try_into()?;
@@ -297,7 +389,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     .for_each(|message| {
                         script_ctx
                             .compiled_library_api
-                            .log(&format!("Module \"{module_name}\": {message}"))
+                            .log_notice(&format!("Module \"{module_name}\": {message}"))
                     });
 
                 let api_version_supported = api_version_supported.into_latest_compatible();
@@ -335,7 +427,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 ),
                 RedisValue::BulkString("help - Print this message.".to_string()),
             ])),
-            "isolates_stats" => {
+            "isolates_aggregated_stats" => {
                 let l = self.script_ctx_vec.lock().unwrap();
                 let active = l.iter().filter(|v| v.strong_count() > 0).count() as i64;
                 let not_active = l.iter().filter(|v| v.strong_count() == 0).count() as i64;
@@ -344,6 +436,8 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     RedisValue::Integer(active),
                     RedisValue::BulkString("not_active".to_string()),
                     RedisValue::Integer(not_active),
+                    RedisValue::BulkString("combined_memory_limit".to_string()),
+                    RedisValue::Integer(estimated_isolates_used_memory().load(Ordering::Relaxed) as i64),
                 ]))
             }
             "isolates_strong_count" => {
@@ -357,6 +451,33 @@ impl BackendCtxInterfaceInitialised for V8Backend {
             "isolates_gc" => {
                 self.isolates_gc();
                 Ok(RedisValue::SimpleString("OK".to_string()))
+            }
+            "isolates_stats" => {
+                let l = self.script_ctx_vec.lock().unwrap();
+                let isolates_strong_count = l
+                    .iter()
+                    .filter_map(|v| v.upgrade())
+                    .map(|v| {
+                        (
+                            RedisValueKey::String(v.name.clone()),
+                            RedisValue::Map(HashMap::from([
+                                (
+                                    RedisValueKey::String("total_heap_size".to_owned()),
+                                    RedisValue::Integer(v.isolate.total_heap_size() as i64),
+                                ),
+                                (
+                                    RedisValueKey::String("used_heap_size".to_owned()),
+                                    RedisValue::Integer(v.isolate.used_heap_size() as i64),
+                                ),
+                                (
+                                    RedisValueKey::String("heap_size_limit".to_owned()),
+                                    RedisValue::Integer(v.isolate.heap_size_limit() as i64),
+                                ),
+                            ]))
+                        )
+                    })
+                    .collect();
+                Ok(RedisValue::Map(isolates_strong_count))
             }
             _ => Err(GearsApiError::new(format!(
                 "Unknown subcommand '{sub_command}'",
