@@ -28,7 +28,7 @@ bitflags::bitflags! {
     /// executed.
     #[derive(Default)]
     pub struct FunctionFlags: u8 {
-        /// The function is not performing writes.
+        /// The function is not performing writes to the database.
         const NO_WRITES = 0x01;
         /// TODO
         const ALLOW_OOM = 0x02;
