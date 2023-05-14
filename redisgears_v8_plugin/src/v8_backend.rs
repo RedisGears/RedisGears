@@ -31,10 +31,12 @@ use std::str;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
+type ScriptCtxVec = Arc<Mutex<Vec<Weak<V8ScriptCtx>>>>;
+
 struct Globals {
     backend_ctx: Option<BackendCtx>,
     bypassed_memory_limit: Option<AtomicBool>,
-    script_ctx_vec: Option<Arc<Mutex<Vec<Weak<V8ScriptCtx>>>>>,
+    script_ctx_vec: Option<ScriptCtxVec>,
 }
 
 unsafe impl GlobalAlloc for Globals {
@@ -60,6 +62,10 @@ static mut GLOBAL: Globals = Globals {
     script_ctx_vec: None,
 };
 
+/// Log a generic info message which are not related to
+/// a specific library.
+/// Notice that logging messages which are library related
+/// should be done using `CompiledLibraryInterface`
 pub(crate) fn log_info(msg: &str) {
     #[cfg(not(test))]
     unsafe {
@@ -69,6 +75,10 @@ pub(crate) fn log_info(msg: &str) {
     println!("log message: {msg}");
 }
 
+/// Log a generic warning message which are not related to
+/// a specific library.
+/// Notice that logging messages which are library related
+/// should be done using `CompiledLibraryInterface`
 pub(crate) fn log_warning(msg: &str) {
     #[cfg(not(test))]
     unsafe {
@@ -78,6 +88,10 @@ pub(crate) fn log_warning(msg: &str) {
     println!("log message: {msg}");
 }
 
+/// Log a generic error message which are not related to
+/// a specific library.
+/// Notice that logging messages which are library related
+/// should be done using `CompiledLibraryInterface`
 pub(crate) fn log_error(msg: &str) {
     #[cfg(not(test))]
     unsafe {
@@ -87,6 +101,7 @@ pub(crate) fn log_error(msg: &str) {
     println!("log message: {msg}");
 }
 
+/// Return the fatal failure policy configuration value.
 pub(crate) fn get_fatal_failure_policy() -> LibraryFatalFailurePolicy {
     #[cfg(not(test))]
     unsafe {
@@ -96,6 +111,9 @@ pub(crate) fn get_fatal_failure_policy() -> LibraryFatalFailurePolicy {
     LibraryFatalFailurePolicy::Abort
 }
 
+/// Return the timeout for which a library is allowed to
+/// take the Redis GIL. Once this timeout reached it is
+/// considered a fatal failure.
 pub(crate) fn gil_lock_timeout() -> u128 {
     #[cfg(not(test))]
     unsafe {
@@ -105,6 +123,9 @@ pub(crate) fn gil_lock_timeout() -> u128 {
     0u128
 }
 
+/// Return the total memory limit that is allowed
+/// to be used by all isolate combined.
+/// Bypass this limit is considered a fatal failure.
 pub(crate) fn max_memory_limit() -> usize {
     #[cfg(not(test))]
     unsafe {
@@ -114,6 +135,7 @@ pub(crate) fn max_memory_limit() -> usize {
     0usize
 }
 
+/// Return the initial memory usage to set for isolates.
 pub(crate) fn initial_memory_usage() -> usize {
     #[cfg(not(test))]
     unsafe {
@@ -127,6 +149,7 @@ pub(crate) fn initial_memory_usage() -> usize {
     0usize
 }
 
+/// Return the initial memory limit to set for isolates.
 pub(crate) fn initial_memory_limit() -> usize {
     #[cfg(not(test))]
     unsafe {
@@ -140,6 +163,9 @@ pub(crate) fn initial_memory_limit() -> usize {
     0usize
 }
 
+/// Return the delta by which we should increase
+/// an isolate memory limit, as long as the max
+/// memory did not yet reached.
 pub(crate) fn memory_delta() -> usize {
     #[cfg(not(test))]
     unsafe {
@@ -180,7 +206,7 @@ pub(crate) fn bypass_memory_limit() -> bool {
 }
 
 pub(crate) struct V8Backend {
-    pub(crate) script_ctx_vec: Arc<Mutex<Vec<Weak<V8ScriptCtx>>>>,
+    pub(crate) script_ctx_vec: ScriptCtxVec,
 }
 
 impl V8Backend {
