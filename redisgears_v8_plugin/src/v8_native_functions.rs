@@ -25,7 +25,7 @@ use v8_derive::new_native_function;
 
 use crate::v8_redisai::{get_redisai_api, get_redisai_client};
 
-use crate::v8_backend::log;
+use crate::v8_backend::log_warning;
 use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
 use crate::v8_script_ctx::V8ScriptCtx;
@@ -307,7 +307,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 Some(s) => s,
                 None => {
                     resolver.forget();
-                    log("Library was delete while not all the remote jobs were done");
+                    log_warning("Library was delete while not all the remote jobs were done");
                     return;
                 }
             };
@@ -317,7 +317,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                     Some(s) => s,
                     None => {
                         resolver.forget();
-                        log("Library was delete while not all the remote jobs were done");
+                        log_warning("Library was delete while not all the remote jobs were done");
                         return;
                     }
                 };
@@ -377,7 +377,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 Some(s) => s,
                 None => {
                     resolver.forget();
-                    log("Library was delete while not all the remote jobs were done");
+                    log_warning("Library was delete while not all the remote jobs were done");
                     return;
                 }
             };
@@ -387,7 +387,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                     Some(s) => s,
                     None => {
                         resolver.forget();
-                        log("Library was delete while not all the remote jobs were done");
+                        log_warning("Library was delete while not all the remote jobs were done");
                         return;
                     }
                 };
@@ -1242,8 +1242,8 @@ pub(crate) fn initialize_globals_1_0(
         "log",
         new_native_function!(move |_isolate, _curr_ctx_scope, msg: V8LocalUtf8| {
             match script_ctx_ref.upgrade() {
-                Some(s) => s.compiled_library_api.log_notice(msg.as_str()),
-                None => crate::v8_backend::log(msg.as_str()), /* do not abort logs */
+                Some(s) => s.compiled_library_api.log_info(msg.as_str()),
+                None => crate::v8_backend::log_info(msg.as_str()), /* do not abort logs */
             }
             Ok::<Option<V8LocalValue>, String>(None)
         }),
@@ -1301,17 +1301,18 @@ pub(crate) fn initialize_globals_1_0(
                         script_ctx_ref_resolve
                             .compiled_library_api
                             .run_on_background(Box::new(move || {
-                                let new_script_ctx_ref_resolve = match new_script_ctx_ref_resolve
-                                    .upgrade()
-                                {
-                                    Some(s) => s,
-                                    None => {
-                                        resolver_resolve.ref_cell.borrow_mut().forget();
-                                        res.forget();
-                                        log("Library was delete while not all the jobs were done");
-                                        return;
-                                    }
-                                };
+                                let new_script_ctx_ref_resolve =
+                                    match new_script_ctx_ref_resolve.upgrade() {
+                                        Some(s) => s,
+                                        None => {
+                                            resolver_resolve.ref_cell.borrow_mut().forget();
+                                            res.forget();
+                                            log_warning(
+                                            "Library was delete while not all the jobs were done",
+                                        );
+                                            return;
+                                        }
+                                    };
                                 let isolate_scope = new_script_ctx_ref_resolve.isolate.enter();
                                 let ctx_scope =
                                     new_script_ctx_ref_resolve.ctx.enter(&isolate_scope);
@@ -1344,17 +1345,18 @@ pub(crate) fn initialize_globals_1_0(
                         script_ctx_ref_reject
                             .compiled_library_api
                             .run_on_background(Box::new(move || {
-                                let new_script_ctx_ref_reject = match new_script_ctx_ref_reject
-                                    .upgrade()
-                                {
-                                    Some(s) => s,
-                                    None => {
-                                        res.forget();
-                                        resolver_reject.ref_cell.borrow_mut().forget();
-                                        log("Library was delete while not all the jobs were done");
-                                        return;
-                                    }
-                                };
+                                let new_script_ctx_ref_reject =
+                                    match new_script_ctx_ref_reject.upgrade() {
+                                        Some(s) => s,
+                                        None => {
+                                            res.forget();
+                                            resolver_reject.ref_cell.borrow_mut().forget();
+                                            log_warning(
+                                            "Library was delete while not all the jobs were done",
+                                        );
+                                            return;
+                                        }
+                                    };
                                 let isolate_scope = new_script_ctx_ref_reject.isolate.enter();
                                 let ctx_scope = new_script_ctx_ref_reject.ctx.enter(&isolate_scope);
                                 let _trycatch = isolate_scope.new_try_catch();

@@ -194,7 +194,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                         Some(s) => s,
                         None => {
                             persisted_resolver.forget();
-                            crate::v8_backend::log("Use of invalid function context on redisai on_done");
+                            crate::v8_backend::log_warning("Use of invalid function context on redisai on_done");
                             return;
                         }
                     };
@@ -204,7 +204,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             Some(s) => s,
                             None => {
                                 persisted_resolver.forget();
-                                crate::v8_backend::log("Use of invalid function context on redisai on_done");
+                                crate::v8_backend::log_warning("Use of invalid function context on redisai on_done");
                                 return;
                             }
                         };
@@ -276,7 +276,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                         Some(s) => s,
                         None => {
                             persisted_resolver.forget();
-                            crate::v8_backend::log("Use of invalid function context on redisai on_done");
+                            crate::v8_backend::log_warning("Use of invalid function context on redisai on_done");
                             return;
                         }
                     };
@@ -286,7 +286,7 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             Some(s) => s,
                             None => {
                                 persisted_resolver.forget();
-                                crate::v8_backend::log("Use of invalid function context on redisai on_done");
+                                crate::v8_backend::log_warning("Use of invalid function context on redisai on_done");
                                 return;
                             }
                         };

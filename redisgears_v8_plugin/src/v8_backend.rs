@@ -60,10 +60,28 @@ static mut GLOBAL: Globals = Globals {
     script_ctx_vec: None,
 };
 
-pub(crate) fn log(msg: &str) {
+pub(crate) fn log_info(msg: &str) {
     #[cfg(not(test))]
     unsafe {
-        (GLOBAL.backend_ctx.as_ref().unwrap().log)(msg)
+        (GLOBAL.backend_ctx.as_ref().unwrap().log_info)(msg)
+    };
+    #[cfg(test)]
+    println!("log message: {msg}");
+}
+
+pub(crate) fn log_warning(msg: &str) {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().log_warning)(msg)
+    };
+    #[cfg(test)]
+    println!("log message: {msg}");
+}
+
+pub(crate) fn log_error(msg: &str) {
+    #[cfg(not(test))]
+    unsafe {
+        (GLOBAL.backend_ctx.as_ref().unwrap().log_error)(msg)
     };
     #[cfg(test)]
     println!("log message: {msg}");
@@ -184,15 +202,15 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         v8_init_with_error_handlers(
             Box::new(|line, msg| {
                 let msg = format!("v8 fatal error on {}, {}", line, msg);
-                log(&msg);
+                log_error(&msg);
                 panic!("{}", msg);
             }),
             Box::new(|line, is_heap_oom| {
                 let isolate = V8Isolate::current_isolate();
                 let msg = format!("v8 oom error on {}, is_heap_oom:{}", line, is_heap_oom);
-                log(&msg);
+                log_error(&msg);
                 if let Some(i) = isolate {
-                    log(&format!(
+                    log_error(&format!(
                         "used_heap_size={}, total_heap_size={}",
                         i.used_heap_size(),
                         i.total_heap_size()
@@ -252,7 +270,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
                 }
                 if bypass_memory_limit() {
                     if !detected_memory_pressure {
-                        log("Detects OOM state on the JS engine, will send memory pressure notification to all libraries.");
+                        log_warning("Detects OOM state on the JS engine, will send memory pressure notification to all libraries.");
                         detected_memory_pressure = true;
                     }
                     script_ctxs.lock().unwrap().iter().for_each(|v| {
@@ -260,7 +278,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
                     });
                 } else {
                     if detected_memory_pressure {
-                        log("Exit OOM state, JS memory usage dropped bellow the max memory limit.");
+                        log_info("Exit OOM state, JS memory usage dropped bellow the max memory limit.");
                         detected_memory_pressure = false;
                     }
                 }
@@ -347,8 +365,8 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                         let script_ctx = match oom_script_ctx.upgrade() {
                             Some(s_c) => s_c,
                             None => {
-                                log("V8 near OOM notification arrive after script was deleted");
-                                log(&msg);
+                                log_warning("V8 near OOM notification arrive after script was deleted");
+                                log_warning(&msg);
                                 panic!("{}", msg);
                             }
                         };
@@ -377,8 +395,8 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                                 }
                             }
                         } else {
-                            script_ctx.compiled_library_api.log_verbose(&msg);
-                            script_ctx.compiled_library_api.log_verbose(&format!("Increasing max memory to {new_isolate_limit}"));
+                            script_ctx.compiled_library_api.log_trace(&msg);
+                            script_ctx.compiled_library_api.log_trace(&format!("Increasing max memory to {new_isolate_limit}"));
                         }
                         new_isolate_limit
                     });
@@ -393,7 +411,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     .for_each(|message| {
                         script_ctx
                             .compiled_library_api
-                            .log_notice(&format!("Module \"{module_name}\": {message}"))
+                            .log_info(&format!("Module \"{module_name}\": {message}"))
                     });
 
                 let api_version_supported = api_version_supported.into_latest_compatible();

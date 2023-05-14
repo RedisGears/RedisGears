@@ -87,11 +87,11 @@ impl CompiledLibraryInterface for CompiledLibraryAPI {
         log::debug!("{msg}");
     }
 
-    fn log_notice(&self, msg: &str) {
+    fn log_info(&self, msg: &str) {
         log::info!("{msg}");
     }
 
-    fn log_verbose(&self, msg: &str) {
+    fn log_trace(&self, msg: &str) {
         log::trace!("{msg}");
     }
 

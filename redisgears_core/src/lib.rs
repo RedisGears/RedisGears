@@ -644,7 +644,11 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         }
         let initialised_backend = match backend.initialize(BackendCtx {
             allocator: &RedisAlloc,
-            log: Box::new(|msg| log::info!("{msg}")),
+            log_info: Box::new(|msg| log::info!("{msg}")),
+            log_trace: Box::new(|msg| log::trace!("{msg}")),
+            log_debug: Box::new(|msg| log::debug!("{msg}")),
+            log_error: Box::new(|msg| log::error!("{msg}")),
+            log_warning: Box::new(|msg| log::warn!("{msg}")),
             get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
                 FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
                 FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
