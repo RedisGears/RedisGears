@@ -28,7 +28,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::HashMap;
 use std::str;
 
-use std::sync::atomic::{Ordering, AtomicBool};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 struct Globals {
@@ -117,7 +117,11 @@ pub(crate) fn max_memory_limit() -> usize {
 pub(crate) fn initial_memory_usage() -> usize {
     #[cfg(not(test))]
     unsafe {
-        (GLOBAL.backend_ctx.as_ref().unwrap().get_v8_library_initial_memory)()
+        (GLOBAL
+            .backend_ctx
+            .as_ref()
+            .unwrap()
+            .get_v8_library_initial_memory)()
     }
     #[cfg(test)]
     0usize
@@ -126,7 +130,11 @@ pub(crate) fn initial_memory_usage() -> usize {
 pub(crate) fn initial_memory_limit() -> usize {
     #[cfg(not(test))]
     unsafe {
-        (GLOBAL.backend_ctx.as_ref().unwrap().get_v8_library_initial_memory_limit)()
+        (GLOBAL
+            .backend_ctx
+            .as_ref()
+            .unwrap()
+            .get_v8_library_initial_memory_limit)()
     }
     #[cfg(test)]
     0usize
@@ -135,7 +143,11 @@ pub(crate) fn initial_memory_limit() -> usize {
 pub(crate) fn memory_delta() -> usize {
     #[cfg(not(test))]
     unsafe {
-        (GLOBAL.backend_ctx.as_ref().unwrap().get_v8_library_memory_delta)()
+        (GLOBAL
+            .backend_ctx
+            .as_ref()
+            .unwrap()
+            .get_v8_library_memory_delta)()
     }
     #[cfg(test)]
     0usize
@@ -145,12 +157,12 @@ pub(crate) fn memory_delta() -> usize {
 /// If the calculated memory usage is bigger then the max memory allow
 /// set `GLOBAL.bypassed_memory_limit` to `true`.
 pub(crate) fn calc_isolates_used_memory() -> usize {
-    let script_ctxs =  unsafe {GLOBAL.script_ctx_vec.as_ref().unwrap()};
+    let script_ctxs = unsafe { GLOBAL.script_ctx_vec.as_ref().unwrap() };
     let total_used_memory = script_ctxs.lock().unwrap().iter().fold(0, |agg, v| {
         agg + v.upgrade().map_or(0, |v| v.isolate.total_heap_size())
     });
     if total_used_memory >= max_memory_limit() {
-        unsafe {GLOBAL.bypassed_memory_limit.as_ref().unwrap()}.store(true, Ordering::Relaxed);
+        unsafe { GLOBAL.bypassed_memory_limit.as_ref().unwrap() }.store(true, Ordering::Relaxed);
     }
     total_used_memory
 }
@@ -159,7 +171,8 @@ pub(crate) fn calc_isolates_used_memory() -> usize {
 /// In case we bypass the memory limit. Check the current memory usage
 /// in case GC cleaned some memory.
 pub(crate) fn bypass_memory_limit() -> bool {
-    let bypassed_memory_limit = unsafe {GLOBAL.bypassed_memory_limit.as_ref().unwrap()}.load(Ordering::Relaxed);
+    let bypassed_memory_limit =
+        unsafe { GLOBAL.bypassed_memory_limit.as_ref().unwrap() }.load(Ordering::Relaxed);
     if !bypassed_memory_limit {
         return false;
     }
@@ -227,7 +240,8 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(100));
                 {
-                    let l: std::sync::MutexGuard<Vec<Weak<V8ScriptCtx>>> = script_ctxs.lock().unwrap();
+                    let l: std::sync::MutexGuard<Vec<Weak<V8ScriptCtx>>> =
+                        script_ctxs.lock().unwrap();
                     for script_ctx_weak in l.iter() {
                         let script_ctx = match script_ctx_weak.upgrade() {
                             Some(s) => s,
@@ -274,11 +288,14 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
                         detected_memory_pressure = true;
                     }
                     script_ctxs.lock().unwrap().iter().for_each(|v| {
-                        v.upgrade().map(|v| v.isolate.memory_pressure_notification());
+                        v.upgrade()
+                            .map(|v| v.isolate.memory_pressure_notification());
                     });
                 } else {
                     if detected_memory_pressure {
-                        log_info("Exit OOM state, JS memory usage dropped bellow the max memory limit.");
+                        log_info(
+                            "Exit OOM state, JS memory usage dropped bellow the max memory limit.",
+                        );
                         detected_memory_pressure = false;
                     }
                 }
@@ -303,13 +320,12 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError> {
         if bypass_memory_limit() {
-            return Err(GearsApiError::new("JS engine reached OOM state and can not run any more code"));
+            return Err(GearsApiError::new(
+                "JS engine reached OOM state and can not run any more code",
+            ));
         }
 
-        let isolate = V8Isolate::new_with_limits(
-            initial_memory_usage(),
-            initial_memory_limit(),
-        );
+        let isolate = V8Isolate::new_with_limits(initial_memory_usage(), initial_memory_limit());
 
         let script_ctx = {
             let (ctx, script, tensor_obj_template) = {
@@ -360,7 +376,6 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                     .set_near_oom_callback(move |curr_limit, initial_limit| {
                         let msg = format!(
                             "V8 near OOM notification arrive, curr_limit={curr_limit}, initial_limit={initial_limit}",
-                            
                         );
                         let script_ctx = match oom_script_ctx.upgrade() {
                             Some(s_c) => s_c,
@@ -372,7 +387,6 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                         };
 
                         let msg = format!("{msg}, library={}, used_heap_size={}, total_heap_size={}", script_ctx.name, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
-                        
                         let memory_delta = memory_delta();
                         let new_isolate_limit = (script_ctx.isolate.total_heap_size() + memory_delta) as usize;
 
@@ -388,7 +402,6 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                                         isolate.memory_pressure_notification();
                                     });
                                     script_ctx.isolate.terminate_execution();
-    
                                     script_ctx
                                         .compiled_library_api
                                         .log_warning(&format!("Temporarily increasing max memory to {new_isolate_limit} and aborting the script"));
@@ -498,7 +511,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                                     RedisValueKey::String("heap_size_limit".to_owned()),
                                     RedisValue::Integer(v.isolate.heap_size_limit() as i64),
                                 ),
-                            ]))
+                            ])),
                         )
                     })
                     .collect();
