@@ -1090,9 +1090,9 @@ mod gears_module {
                 ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT , 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
 
                 ["v8-maxmemory", &*V8_MAX_MEMORY , 200 * 1024 * 1024, 50 * 1024 * 1024, 1024 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
-                ["v8-library-initial-mem-usage", &*V8_LIBRARY_INITIAL_MEMORY_USAGE , 2 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
-                ["v8-library-initial-mem-limit", &*V8_LIBRARY_INITIAL_MEMORY_LIMIT , 3 * 1024 * 1024, 2 * 1024 * 1024, 20 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
-                ["v8-library-mem-usage-delta", &*V8_LIBRARY_MEMORY_USAGE_DELTA , 1 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
+                ["v8-library-initial-memory-usage", &*V8_LIBRARY_INITIAL_MEMORY_USAGE , 2 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
+                ["v8-library-initial-memory-limit", &*V8_LIBRARY_INITIAL_MEMORY_LIMIT , 3 * 1024 * 1024, 2 * 1024 * 1024, 20 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
+                ["v8-library-memory-usage-delta", &*V8_LIBRARY_MEMORY_USAGE_DELTA , 1 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
             ],
             string: [
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],

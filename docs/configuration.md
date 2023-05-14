@@ -95,9 +95,9 @@ _Runtime Configurability_
 
 No
 
-## v8-library-initial-mem-usage
+## v8-library-initial-memory-usage
 
-The `v8-library-initial-mem-usage` configuration option controls the initial memory given to a single V8 library. This value can not be greater then [`v8-library-initial-mem-limit`](#v8-library-initial-mem-limit) or [v8-maxmemory](#v8-maxmemory).
+The `v8-library-initial-memory-usage` configuration option controls the initial memory given to a single V8 library. This value can not be greater then [`v8-library-initial-memory-limit`](#v8-library-initial-memory-limit) or [v8-maxmemory](#v8-maxmemory).
 
 _Expected Value_
 
@@ -119,9 +119,9 @@ _Runtime Configurability_
 
 No
 
-## v8-library-initial-mem-limit
+## v8-library-initial-memory-limit
 
-The `v8-library-initial-mem-limit` configuration option controls the initial memory limit on a single V8 library. This value can not be greater then [v8-maxmemory](#v8-maxmemory).
+The `v8-library-initial-memory-limit` configuration option controls the initial memory limit on a single V8 library. This value can not be greater then [v8-maxmemory](#v8-maxmemory).
 
 _Expected Value_
 
@@ -143,9 +143,9 @@ _Runtime Configurability_
 
 No
 
-## v8-library-mem-usage-delta
+## v8-library-memory-usage-delta
 
-The `v8-library-mem-usage-delta` configuration option controls the delta by which we will increase the V8 library memory limit once the limit reached. This value can not be greater then [v8-maxmemory](#v8-maxmemory).
+The `v8-library-memory-usage-delta` configuration option controls the delta by which we will increase the V8 library memory limit once the limit reached. This value can not be greater then [v8-maxmemory](#v8-maxmemory).
 
 _Expected Value_
 
