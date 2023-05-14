@@ -11,7 +11,7 @@
 #![deny(missing_docs)]
 
 use redis_module::redisvalue::RedisValueKey;
-use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
+use redis_module::{CallResult, ContextFlags, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
@@ -398,9 +398,7 @@ struct GlobalCtx {
     avoid_key_space_notifications: bool,
     allow_unsafe_redis_commands: bool,
 }
-lazy_static::lazy_static! {
-    static ref DETACHED_CONTEXT: DetachedContext = DetachedContext::default();
-}
+
 static mut GLOBALS: Option<GlobalCtx> = None;
 
 pub(crate) struct NotificationBlocker;
@@ -479,12 +477,16 @@ pub(crate) fn call_redis_command(
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     mr_init(ctx, 1, None);
 
+    if let Err(e) = redis_module::logging::setup() {
+        ctx.log_notice(&format!("Failed to setup the standard logging: {e}"));
+    }
+
     match redisai_rs::redisai_init(ctx) {
         Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),
         Err(_) => ctx.log_notice("Failed loading RedisAI API."),
     }
 
-    ctx.log_notice(&format!(
+    log::info!(
         "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_for='{}-{}.{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
@@ -493,13 +495,13 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         BUILD_OS.unwrap_or_default(),
         BUILD_OS_NICK.unwrap_or_default(),
         BUILD_OS_ARCH.unwrap_or_default()
-    ));
+    );
     if let Err(e) = check_redis_version_compatible(ctx) {
-        ctx.log_warning(&e);
+        log::warn!("{e}");
         return Status::Err;
     }
     std::panic::set_hook(Box::new(|panic_info| {
-        DETACHED_CONTEXT.log_warning(&format!("Application panicked, {}", panic_info));
+        log::error!("Application panicked, {}", panic_info);
         let (file, line) = match panic_info.location() {
             Some(l) => (l.file(), l.line()),
             None => ("", 0),
@@ -514,9 +516,6 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         }
     }));
     let mgmt_pool = ThreadPool::new(1);
-    DETACHED_CONTEXT
-        .set_context(ctx)
-        .expect("Couldn't set the detached context");
     let mut global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
@@ -604,7 +603,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         }
         let initialised_backend = match backend.initialize(BackendCtx {
             allocator: &RedisAlloc,
-            log: Box::new(|msg| DETACHED_CONTEXT.log_notice(msg)),
+            log: Box::new(|msg| log::info!("{msg}")),
             get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
                 FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
                 FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
@@ -631,6 +630,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     globals.pool = Some(Mutex::new(ThreadPool::new(
         (*EXECUTION_THREADS.lock(ctx)) as usize,
     )));
+
     Status::Ok
 }
 
@@ -649,7 +649,7 @@ pub(crate) fn verify_oom(ctx: &Context, flags: FunctionFlags) -> bool {
         || !ctx.get_flags().contains(ContextFlags::OOM)
 }
 
-/// Returns true if the function with the specified flags is allowed
+/// Returns `true` if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
 pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool {
     // not replica, ok to run || we can run function with no writes on replica.
@@ -904,7 +904,7 @@ fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisRes
 fn scan_key_space_for_streams() {
     get_globals().mgmt_pool.execute(|| {
         let cursor = KeysCursor::new();
-        let thread_ctx = ThreadSafeContext::new();
+        let thread_ctx = ThreadSafeContext::default();
         loop {
             let guard = thread_ctx.lock();
             let ctx = &guard;
