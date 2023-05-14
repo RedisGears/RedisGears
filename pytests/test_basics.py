@@ -43,7 +43,7 @@ redis.register_function("test", function(client){
     env.expect('RG.FCALL', 'foo', 'test', 0).equal(2)
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
@@ -65,7 +65,7 @@ redis.register_function("test", "bar"); // this will fail
     env.expect('RG.FCALL', 'foo', 'test', 0).equal(1)
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
@@ -93,7 +93,7 @@ redis.register_function("test", "bar"); // this will fail
     runUntil(env, '2', lambda: env.cmd('get', 'x'))
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
@@ -121,7 +121,7 @@ redis.register_function("test", "bar"); // this will fail
     runUntil(env, '2', lambda: env.cmd('get', 'x'))
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
@@ -135,7 +135,7 @@ redis.register_function("test", function(client){
     env.expect('RG.FCALL', 'foo', 'test', 0).equal(None)
 
 @gearsTest()
-def testOOM(env):
+def testRedisOOM(env):
     """#!js api_version=1.0 name=lib
 redis.register_function("set", function(client, key, val){
     return client.call('set', key, val);
@@ -146,7 +146,7 @@ redis.register_function("set", function(client, key, val){
     env.expect('RG.FCALL', 'lib', 'set', '1', 'x', '1').error().contains('OOM can not run the function when out of memory')
 
 @gearsTest()
-def testOOMOnAsyncFunction(env):
+def testRedisOOMOnAsyncFunction(env):
     """#!js api_version=1.0 name=lib
 var continue_set = null;
 var set_done = null;
@@ -384,8 +384,8 @@ redis.register_notifications_consumer("consumer", "", async function(client, dat
     res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vv'), 6)
     env.assertContains('Execution was terminated due to OOM or timeout', res[0]['notifications_consumers'][0]['last_error'])
 
-@gearsTest()
-def testOOM(env):
+@gearsTest(v8MaxMemory=20 * 1024 * 1024)
+def testV8OOM(env):
     """#!js api_version=1.0 name=lib
 redis.register_function("test1", function(client){
     a = [1]

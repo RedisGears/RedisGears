@@ -168,14 +168,9 @@ impl LibraryCtxInterface for V8LibraryCtx {
         self.script_ctx.before_release_gil();
         self.script_ctx.after_run();
 
-        if res.is_none() {
-            return Err(get_exception_msg(
-                &self.script_ctx.isolate,
-                trycatch,
-                &ctx_scope,
-            ));
-        }
-        let res = res.unwrap();
+        let res =
+            res.ok_or_else(|| get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope))?;
+
         if res.is_promise() {
             let promise = res.as_promise();
             if promise.state() == V8PromiseState::Rejected {

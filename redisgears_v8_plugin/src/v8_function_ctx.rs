@@ -21,7 +21,7 @@ use v8_rs::v8::{
 
 use crate::v8_native_functions::{get_backgrounnd_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
-use crate::{get_error_from_object, get_exception_msg, v8_backend::is_safe_to_run_code};
+use crate::{get_error_from_object, get_exception_msg, v8_backend::bypass_memory_limit};
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -423,7 +423,7 @@ impl V8Function {
 
 impl FunctionCtxInterface for V8Function {
     fn call(&self, run_ctx: &dyn RunFunctionCtxInterface) -> FunctionCallResult {
-        if !is_safe_to_run_code() {
+        if bypass_memory_limit() {
             run_ctx.send_reply(Err(RedisError::Str(
                 "JS engine reached OOM state and can not run any more code",
             )));

@@ -4,7 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::{execute_on_pool, DETACHED_CONTEXT};
+use crate::execute_on_pool;
 use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
@@ -84,19 +84,23 @@ impl CompiledLibraryAPI {
 
 impl CompiledLibraryInterface for CompiledLibraryAPI {
     fn log_debug(&self, msg: &str) {
-        DETACHED_CONTEXT.log_debug(msg);
+        log::debug!("{msg}");
     }
 
     fn log_notice(&self, msg: &str) {
-        DETACHED_CONTEXT.log_notice(msg);
+        log::info!("{msg}");
     }
 
     fn log_verbose(&self, msg: &str) {
-        DETACHED_CONTEXT.log_verbose(msg);
+        log::trace!("{msg}");
     }
 
     fn log_warning(&self, msg: &str) {
-        DETACHED_CONTEXT.log_warning(msg);
+        log::warn!("{msg}");
+    }
+
+    fn log_error(&self, msg: &str) {
+        log::error!("{msg}");
     }
 
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>) {

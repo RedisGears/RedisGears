@@ -19,6 +19,7 @@ pub trait CompiledLibraryInterface {
     fn log_notice(&self, msg: &str);
     fn log_verbose(&self, msg: &str);
     fn log_warning(&self, msg: &str);
+    fn log_error(&self, msg: &str);
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>);
     fn redisai_create_tensor(
         &self,

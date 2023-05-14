@@ -4,9 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::{
-    function_load_command::function_load_internal, get_globals_mut, get_libraries, DETACHED_CONTEXT,
-};
+use crate::{function_load_command::function_load_internal, get_globals_mut, get_libraries};
 
 use redis_module::{
     error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB, Context,
@@ -227,10 +225,11 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
 
 unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when: c_int) -> c_int {
     if encver > REDIS_GEARS_VERSION {
-        DETACHED_CONTEXT.log_notice(&format!(
+        log::info!(
             "Can not load RedisGears data type version '{}', max supported version '{}'",
-            encver, REDIS_GEARS_VERSION
-        ));
+            encver,
+            REDIS_GEARS_VERSION
+        );
         return raw::REDISMODULE_ERR as i32;
     }
 
@@ -240,7 +239,7 @@ unsafe extern "C" fn aux_load(rdb: *mut raw::RedisModuleIO, encver: c_int, _when
     match aux_load_internals(&ctx, rdb) {
         Ok(_) => raw::REDISMODULE_OK as i32,
         Err(e) => {
-            DETACHED_CONTEXT.log_warning(&format!("Failed loading functions from rdb, {}.", e));
+            log::warn!("Failed loading functions from rdb, {}.", e);
             raw::REDISMODULE_ERR as i32
         }
     }
