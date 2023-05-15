@@ -5,6 +5,7 @@
  */
 
 use redis_module::RedisValue;
+use redisgears_macros_internals::get_allow_deny_lists;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -30,74 +31,84 @@ use std::str;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, Weak};
 lazy_static::lazy_static! {
-    static ref GLOBALS_ALLOW_LIST: HashSet<String> = [
-        "Object",
-        "Function",
-        "Array",
-        "Number",
-        "parseFloat",
-        "parseInt",
-        "Infinity",
-        "NaN",
-        "undefined",
-        "Boolean",
-        "String",
-        "Symbol",
-        "Date",
-        "Promise",
-        "RegExp",
-        "Error",
-        "AggregateError",
-        "RangeError",
-        "ReferenceError",
-        "SyntaxError",
-        "TypeError",
-        "URIError",
-        "globalThis",
-        "JSON",
-        "Math",
-        "Intl",
-        "ArrayBuffer",
-        "Uint8Array",
-        "Int8Array",
-        "Uint16Array",
-        "Int16Array",
-        "Uint32Array",
-        "Int32Array",
-        "Float32Array",
-        "Float64Array",
-        "Uint8ClampedArray",
-        "BigUint64Array",
-        "BigInt64Array",
-        "DataView",
-        "Map",
-        "BigInt",
-        "Set",
-        "WeakMap",
-        "WeakSet",
-        "Proxy",
-        "Reflect",
-        "FinalizationRegistry",
-        "WeakRef",
-        "decodeURI",
-        "decodeURIComponent",
-        "encodeURI",
-        "encodeURIComponent",
-        "escape",
-        "unescape",
-        "isFinite",
-        "isNaN",
-        "console",
-        "WebAssembly",
-    ].into_iter().map(|v| v.to_owned()).collect();
-
-    static ref GLOBALS_DENY_LIST: HashSet<String> = [
-        "eval",              // Might be considered dangerous.
-        "EvalError",         // Because we remove eval, this one is also not needed.
-        "SharedArrayBuffer", // Needed for workers which we are not supporting
-        "Atomics",           // Needed for workers which we are not supporting
-    ].into_iter().map(|v| v.to_owned()).collect();
+    static ref GLOBALS_ALLOW_DENY_LISTS: (HashSet<String>, HashSet<String>) = get_allow_deny_lists!({
+        allow_list: [
+            "Object",
+            "Function",
+            "Array",
+            "Number",
+            "parseFloat",
+            "parseInt",
+            "Infinity",
+            "NaN",
+            "undefined",
+            "Boolean",
+            "String",
+            "Symbol",
+            "Date",
+            "Promise",
+            "RegExp",
+            "Error",
+            "AggregateError",
+            "RangeError",
+            "ReferenceError",
+            "SyntaxError",
+            "TypeError",
+            "URIError",
+            "globalThis",
+            "JSON",
+            "Math",
+            "Intl",
+            "ArrayBuffer",
+            "Uint8Array",
+            "Int8Array",
+            "Uint16Array",
+            "Int16Array",
+            "Uint32Array",
+            "Int32Array",
+            "Float32Array",
+            "Float64Array",
+            "Uint8ClampedArray",
+            "BigUint64Array",
+            "BigInt64Array",
+            "DataView",
+            "Map",
+            "BigInt",
+            "Set",
+            "WeakMap",
+            "WeakSet",
+            "Proxy",
+            "Reflect",
+            "FinalizationRegistry",
+            "WeakRef",
+            "decodeURI",
+            "decodeURIComponent",
+            "encodeURI",
+            "encodeURIComponent",
+            "escape",
+            "unescape",
+            "isFinite",
+            "isNaN",
+            "console",
+            "WebAssembly",
+        ],
+        deny_list: [
+            "eval",              // Might be considered dangerous.
+            "EvalError",         // Because we remove eval, this one is also not needed.
+            "SharedArrayBuffer", // Needed for workers which we are not supporting
+            "Atomics",           // Needed for workers which we are not supporting
+        ]
+    });
 }
+
+fn allow_list() -> &'static HashSet<String> {
+    &GLOBALS_ALLOW_DENY_LISTS.0
+}
+
+fn deny_list() -> &'static HashSet<String> {
+    &GLOBALS_ALLOW_DENY_LISTS.1
+}
+
 struct Globals {
     backend_ctx: Option<BackendCtx>,
 }
@@ -280,8 +291,8 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let propeties = globals.get_own_property_names(&ctx_scope);
                 propeties.iter(&ctx_scope).try_for_each(|v| {
                     let s = v.to_utf8().ok_or(GearsApiError::new("Failed converting global property name to string"))?;
-                    if !GLOBALS_ALLOW_LIST.contains(s.as_str()) {
-                        if !GLOBALS_DENY_LIST.contains(s.as_str()) {
+                    if !allow_list().contains(s.as_str()) {
+                        if !deny_list().contains(s.as_str()) {
                             compiled_library_api.log(&format!(
                                 "Found global '{}' which is not on the allowed list nor on the deny list.",
                                 s.as_str()
