@@ -386,16 +386,54 @@ redis.register_notifications_consumer("consumer", "", async function(client, dat
 
 @gearsTest(v8MaxMemory=20 * 1024 * 1024)
 def testV8OOM(env):
-    """#!js api_version=1.0 name=lib
+    code = """#!js api_version=1.0 name=lib
+
+redis.register_function("test", function(client){
+    return "OK";
+});
+
 redis.register_function("test1", function(client){
-    a = [1]
+    a = []
     while (true) {
-        a = [a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a]
+        a.push('foo')
     }
 });
+
+redis.register_notifications_consumer("consumer", "", function(client, data){
+    return
+});
+
+redis.register_stream_consumer(
+    "consumer", // consumer name
+    "stream", // streams prefix
+    1, // window
+    false, // trim stream
+    function(c, data) {
+        return;
+    }
+);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '1000000000').equal('OK')
+    env.expect('RG.FUNCTION', 'LOAD', code).equal('OK')
+
     env.expect('RG.FCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('RG.FCALL', 'lib', 'test', '0').error().contains('JS engine reached OOM state and can not run any more code')
+
+    # make sure JS code is not running on key space notifications
+    env.expect('set', 'x', '1').equal(True)
+    env.assertEqual(toDictionary(env.cmd('RG.FUNCTION', 'list', 'library', 'lib', 'vv'))[0]['notifications_consumers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+
+    # make sure JS code is not running to process stream data
+    env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
+    env.assertEqual(toDictionary(env.cmd('RG.FUNCTION', 'list', 'library', 'lib', 'vv'))[0]['stream_consumers'][0]['streams'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+
+    # make sure we can not load any more libraries
+    env.expect('RG.FUNCTION', 'LOAD', code).error().contains('JS engine reached OOM state and can not run any more code')
+
+    # delete the library and make sure we can run JS code again
+    env.expect('RG.FUNCTION', 'DEL', 'lib').equal('OK')
+    env.expect('RG.FUNCTION', 'LOAD', code).equal('OK')
+    env.expect('RG.FCALL', 'lib', 'test', '0').equal('OK')
 
 @gearsTest()
 def testLibraryConfiguration(env):

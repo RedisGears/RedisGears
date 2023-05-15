@@ -414,7 +414,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
 
                         let msg = format!("{msg}, library={}, used_heap_size={}, total_heap_size={}", script_ctx.name, script_ctx.isolate.used_heap_size(), script_ctx.isolate.total_heap_size());
                         let memory_delta = memory_delta();
-                        let new_isolate_limit = (script_ctx.isolate.total_heap_size() + memory_delta) as usize;
+                        let new_isolate_limit = (usize::max(script_ctx.isolate.total_heap_size(), curr_limit) + memory_delta) as usize;
 
                         if calc_isolates_used_memory() + memory_delta >= max_memory_limit() {
                             script_ctx.compiled_library_api.log_warning(&msg);
