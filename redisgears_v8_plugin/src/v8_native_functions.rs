@@ -455,14 +455,14 @@ impl<'isolate_scope, 'isolate> TryFrom<V8LocalValue<'isolate_scope, 'isolate>>
     }
 }
 
-impl<'isolate_scope, 'isolate, 'a>
-    TryFrom<&mut V8LocalNativeFunctionArgsIter<'isolate_scope, 'isolate, 'a>>
+impl<'isolate_scope, 'isolate, 'ctx_scope, 'a>
+    TryFrom<&mut V8LocalNativeFunctionArgsIter<'isolate_scope, 'isolate, 'ctx_scope, 'a>>
     for V8RedisCallArgs<'isolate_scope, 'isolate>
 {
     type Error = &'static str;
 
     fn try_from(
-        val: &mut V8LocalNativeFunctionArgsIter<'isolate_scope, 'isolate, 'a>,
+        val: &mut V8LocalNativeFunctionArgsIter<'isolate_scope, 'isolate, 'ctx_scope, 'a>,
     ) -> Result<Self, Self::Error> {
         val.next().ok_or("Wrong number of arguments.")?.try_into()
     }
