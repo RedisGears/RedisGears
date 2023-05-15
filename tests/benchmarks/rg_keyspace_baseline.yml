@@ -1,0 +1,9 @@
+version: 0.2
+name: "rg_keyspace_baseline"
+description: "Baseline for keyspace notifications -- no listening, just normal benchmark."
+remote:
+ - type: oss-1nodes
+ - setup: c5.4xlarge
+clientconfig:
+  tool: memtier_benchmark
+  arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --key-minimum=1 --key-maximum=1000000 --command 'SET __key__ __data__'"
