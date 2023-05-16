@@ -36,7 +36,7 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    flush_event_handler, loading_event_handler, module_changed_event_handler,
+    command, flush_event_handler, loading_event_handler, module_changed_event_handler,
     role_changed_event_handler,
 };
 
@@ -49,7 +49,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     stream_ctx::StreamCtxInterface, GearsApiError,
 };
 
-use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
+use redisgears_plugin_api::redisgears_plugin_api::{FunctionCallResult, RefCellWrapper};
 
 use crate::run_ctx::RunCtx;
 
@@ -149,11 +149,20 @@ pub struct GearsLibraryMetaData {
 struct GearsFunctionCtx {
     func: Box<dyn FunctionCtxInterface>,
     flags: FunctionFlags,
+    is_async: bool,
 }
 
 impl GearsFunctionCtx {
-    fn new(func: Box<dyn FunctionCtxInterface>, flags: FunctionFlags) -> GearsFunctionCtx {
-        GearsFunctionCtx { func, flags }
+    fn new(
+        func: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+        is_async: bool,
+    ) -> GearsFunctionCtx {
+        GearsFunctionCtx {
+            func,
+            flags,
+            is_async,
+        }
     }
 }
 
@@ -184,12 +193,11 @@ struct GearsLibrary {
     gears_box_lib: Option<GearsBoxLibraryInfo>,
 }
 
-impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
-    fn register_function(
+impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
+    fn register_function_internal(
         &mut self,
         name: &str,
-        function_ctx: Box<dyn FunctionCtxInterface>,
-        flags: FunctionFlags,
+        func_ctx: GearsFunctionCtx,
     ) -> Result<(), GearsApiError> {
         if self.gears_lib_ctx.functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
@@ -197,11 +205,30 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 name
             )));
         }
-        let func_ctx = GearsFunctionCtx::new(function_ctx, flags);
         self.gears_lib_ctx
             .functions
             .insert(name.to_string(), func_ctx);
         Ok(())
+    }
+}
+
+impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
+    fn register_function(
+        &mut self,
+        name: &str,
+        function_ctx: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+    ) -> Result<(), GearsApiError> {
+        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, false))
+    }
+
+    fn register_async_function(
+        &mut self,
+        name: &str,
+        function_ctx: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+    ) -> Result<(), GearsApiError> {
+        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, true))
     }
 
     fn register_remote_task(
@@ -714,6 +741,7 @@ pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool 
 fn function_call_command(
     ctx: &Context,
     mut args: Skip<IntoIter<redis_module::RedisString>>,
+    allow_block: bool,
 ) -> RedisResult {
     let library_name = args.next_arg()?.try_as_str()?;
     let function_name = args.next_arg()?.try_as_str()?;
@@ -751,17 +779,31 @@ fn function_call_command(
         )));
     }
 
+    if function.is_async && !allow_block {
+        // Blocking is not allowed but the function declated as async which means it might block, we will not invoke it.
+        return Err(RedisError::Str("The function is declared as async and was called while blocking was not allowed; note that you cannot invoke async functions from within Lua or MULTI, and you must use RG.FCALLASYNC instead."));
+    }
+
     {
         let _notification_blocker = get_notification_blocker();
-        function.func.call(&RunCtx {
+        let res = function.func.call(&RunCtx {
             ctx,
             args,
             flags: function.flags,
             lib_meta_data: Arc::clone(&lib.gears_lib_ctx.meta_data),
+            allow_block: allow_block,
         });
+        if matches!(res, FunctionCallResult::Hold) && !allow_block {
+            // If we reach here, it means that the plugin violates the API, it blocked the client even though it is not allow to.
+            log::warn!(
+                "Plugin API violation, plugin blocked the client even though blocking is forbiden."
+            );
+            return Err(RedisError::Str(
+                "Clien got blocked when blocking is not allow",
+            ));
+        }
+        Ok(RedisValue::NoReply)
     }
-
-    Ok(RedisValue::NoReply)
 }
 
 fn function_debug_command(
@@ -856,52 +898,6 @@ fn function_search_lib_command(
     Ok(json_to_redis_value(search_result))
 }
 
-fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let args = args.into_iter().skip(1);
-    function_call_command(ctx, args)
-}
-
-fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "load" => function_load_command::function_load_on_replica(ctx, args),
-        "del" => function_del_command::function_del_on_replica(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
-fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "load" => function_load_command::function_load_command(ctx, args),
-        "list" => function_list_command::function_list_command(ctx, args),
-        "del" => function_del_command::function_del_command(ctx, args),
-        "debug" => function_debug_command(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
-fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "search" => function_search_lib_command(ctx, args),
-        "install" => function_load_command::function_install_lib_command(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if ctx.get_flags().contains(ContextFlags::MASTER) {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
@@ -922,38 +918,6 @@ fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, 
         return;
     }
     globals.notifications_ctx.on_key_touched(ctx, event, key)
-}
-
-fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let library_name = args.next_arg()?.try_as_str()?;
-    let stream_consumer = args.next_arg()?.try_as_str()?;
-    let stream_arg = args.next_arg()?;
-    let stream = stream_arg.as_slice();
-    let ms = args.next_arg()?.try_as_str()?.parse::<u64>()?;
-    let seq = args.next_arg()?.try_as_str()?.parse::<u64>()?;
-    let libraries = get_libraries();
-    let library = libraries.get(library_name);
-    if library.is_none() {
-        return Err(RedisError::String(format!(
-            "No such library '{}'",
-            library_name
-        )));
-    }
-    let library = library.unwrap();
-    let consumer = library.gears_lib_ctx.stream_consumers.get(stream_consumer);
-    if consumer.is_none() {
-        return Err(RedisError::String(format!(
-            "No such consumer '{}'",
-            stream_consumer
-        )));
-    }
-    let consumer = consumer.unwrap();
-    get_globals_mut()
-        .stream_ctx
-        .update_stream_for_consumer(stream, consumer, ms, seq);
-    ctx.replicate_verbatim();
-    Ok(RedisValue::SimpleStringStatic("OK"))
 }
 
 fn scan_key_space_for_streams() {
@@ -1038,6 +1002,141 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
+#[command(
+    {
+        name: "rg.fcall",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -4,
+        key_spec: [
+            {
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 3}),
+                find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
+            }
+        ],
+    }
+)]
+fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let args = args.into_iter().skip(1);
+    function_call_command(ctx, args, false)
+}
+
+#[command(
+    {
+        name: "rg.fcallasync",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -4,
+        key_spec: [
+            {
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 3}),
+                find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
+            }
+        ],
+    }
+)]
+fn function_call_async(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let args = args.into_iter().skip(1);
+    function_call_command(ctx, args, true)
+}
+
+#[command(
+    {
+        name: "_rg_internals.function",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -3,
+        key_spec: [],
+    }
+)]
+fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
+    match sub_command.as_ref() {
+        "load" => function_load_command::function_load_on_replica(ctx, args),
+        "del" => function_del_command::function_del_on_replica(ctx, args),
+        _ => Err(RedisError::String(format!(
+            "Unknown subcommand {}",
+            sub_command
+        ))),
+    }
+}
+
+#[command(
+    {
+        name: "rg.function",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -2,
+        key_spec: [],
+    }
+)]
+fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
+    match sub_command.as_ref() {
+        "load" => function_load_command::function_load_command(ctx, args),
+        "list" => function_list_command::function_list_command(ctx, args),
+        "del" => function_del_command::function_del_command(ctx, args),
+        "debug" => function_debug_command(ctx, args),
+        _ => Err(RedisError::String(format!(
+            "Unknown subcommand {}",
+            sub_command
+        ))),
+    }
+}
+
+#[command(
+    {
+        name: "rg.box",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -3,
+        key_spec: [],
+    }
+)]
+fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
+    match sub_command.as_ref() {
+        "search" => function_search_lib_command(ctx, args),
+        "install" => function_load_command::function_install_lib_command(ctx, args),
+        _ => Err(RedisError::String(format!(
+            "Unknown subcommand {}",
+            sub_command
+        ))),
+    }
+}
+
+#[command(
+    {
+        name: "_rg_internals.update_stream_last_read_id",
+        flags: [ReadOnly, DenyScript, NoMandatoryKeys],
+        arity: 6,
+        key_spec: [],
+    }
+)]
+fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let library_name = args.next_arg()?.try_as_str()?;
+    let stream_consumer = args.next_arg()?.try_as_str()?;
+    let stream_arg = args.next_arg()?;
+    let stream = stream_arg.as_slice();
+    let ms = args.next_arg()?.try_as_str()?.parse::<u64>()?;
+    let seq = args.next_arg()?.try_as_str()?.parse::<u64>()?;
+    let libraries = get_libraries();
+    let library = libraries
+        .get(library_name)
+        .ok_or_else(|| RedisError::String(format!("No such library '{}'", library_name)))?;
+    let consumer = library
+        .gears_lib_ctx
+        .stream_consumers
+        .get(stream_consumer)
+        .ok_or_else(|| RedisError::String(format!("No such consumer '{}'", stream_consumer)))?;
+    get_globals_mut()
+        .stream_ctx
+        .update_stream_for_consumer(stream, consumer, ms, seq);
+    ctx.replicate_verbatim();
+    Ok(RedisValue::SimpleStringStatic("OK"))
+}
+
 #[cfg(not(test))]
 macro_rules! get_allocator {
     () => {
@@ -1069,14 +1168,7 @@ mod gears_module {
         data_types: [REDIS_GEARS_TYPE],
         init: js_init,
         info: js_info,
-        commands: [
-            ["rg.function", function_command, "may-replicate deny-script", 0,0,0],
-            ["_rg.function", function_command_on_replica, "may-replicate deny-script", 0,0,0],
-            ["rg.fcall", function_call, "may-replicate deny-script", 4,4,1],
-            ["rg.fcall_no_keys", function_call, "may-replicate deny-script", 0,0,0],
-            ["rg.box", gears_box_command, "may-replicate deny-script", 0,0,0],
-            ["_rg_internals.update_stream_last_read_id", update_stream_last_read_id, "readonly", 0,0,0],
-        ],
+        commands: [],
         event_handlers: [
             [@STREAM: on_stream_touched],
             [@GENERIC: generic_notification],

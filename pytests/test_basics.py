@@ -152,7 +152,7 @@ var continue_set = null;
 var set_done = null;
 var set_failed = null;
 
-redis.register_function("async_set_continue",
+redis.register_async_function("async_set_continue",
     async function(client) {
         if (continue_set == null) {
             throw "no async set was triggered"
@@ -186,7 +186,7 @@ redis.register_function("async_set_trigger", function(client, key, val){
     """
     env.expect('RG.FCALL', 'lib', 'async_set_trigger', '1', 'x', '1').equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
-    env.expect('RG.FCALL', 'lib', 'async_set_continue', '0').error().contains('OOM Can not lock redis for write')
+    env.expect('RG.FCALLASYNC', 'lib', 'async_set_continue', '0').error().contains('OOM Can not lock redis for write')
 
 @gearsTest(withReplicas=True)
 def testRunOnReplica(env):
@@ -247,7 +247,7 @@ var continue_set = null;
 var set_done = null;
 var set_failed = null;
 
-redis.register_function("async_set_continue",
+redis.register_async_function("async_set_continue",
     async function(client) {
         if (continue_set == null) {
             throw "no async set was triggered"
@@ -281,7 +281,7 @@ redis.register_function("async_set_trigger", function(client, key, val){
     """
     env.expect('RG.FCALL', 'lib', 'async_set_trigger', '1', 'x', '1').equal('OK')
     env.expect('replicaof', '127.0.0.1', '33333')
-    env.expect('RG.FCALL', 'lib', 'async_set_continue', '0').error().contains('Can not lock redis for write on replica')
+    env.expect('RG.FCALLASYNC', 'lib', 'async_set_continue', '0').error().contains('Can not lock redis for write on replica')
     env.expect('replicaof', 'no', 'one')
 
 @gearsTest()
@@ -297,19 +297,19 @@ redis.register_function("test1", function(client){
 @gearsTest()
 def testAsyncScriptTimeout(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test1", async function(client){
+redis.register_async_function("test1", async function(client){
     client.block(function(){
         while (true);
     });
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('RG.FCALLASYNC', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testTimeoutErrorNotCatchable(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test1", async function(client){
+redis.register_async_function("test1", async function(client){
     try {
         client.block(function(){
             while (true);
@@ -320,7 +320,7 @@ redis.register_function("test1", async function(client){
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('RG.FCALLASYNC', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testScriptLoadTimeout(env):
@@ -593,11 +593,11 @@ redis.register_function("test", function(){
 @gearsTest()
 def testNoAsyncFunctionOnMultiExec(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", async() => {return 'test'});
+redis.register_async_function("test", async() => {return 'test'});
     """
     conn = env.getConnection()
     p = conn.pipeline()
-    p.execute_command('RG.FCALL', 'lib', 'test', '0')
+    p.execute_command('RG.FCALLASYNC', 'lib', 'test', '0')
     try:
         p.execute()
         env.assertTrue(False, message='Except error on async function inside transaction')
@@ -623,12 +623,14 @@ def testAllowBlockAPI(env):
     """#!js api_version=1.0 name=lib
 redis.register_function("test", (c) => {return c.allow_block()});
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal(1)
+    env.expect('RG.FCALL', 'lib', 'test', '0').equal(0)
+    env.expect('RG.FCALLASYNC', 'lib', 'test', '0').equal(1)
     conn = env.getConnection()
     p = conn.pipeline()
     p.execute_command('RG.FCALL', 'lib', 'test', '0')
+    p.execute_command('RG.FCALLASYNC', 'lib', 'test', '0')
     res = p.execute()
-    env.assertEqual(res, [0])
+    env.assertEqual(res, [0, 0])
 
 @gearsTest(decodeResponses=False)
 def testRawArguments(env):
@@ -646,16 +648,16 @@ redis.register_function("my_set", (c, key, val) => {
 @gearsTest(decodeResponses=False)
 def testRawArgumentsAsync(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("my_set", async (c, key, val) => {
+redis.register_async_function("my_set", async (c, key, val) => {
     return c.block((c)=>{
         return c.call("set", key, val);
     });
 },
 ["raw-arguments"]);
     """
-    env.expect('RG.FCALL', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
+    env.expect('RG.FCALLASYNC', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
     env.expect('get', 'x').equal(b'1')
-    env.expect('RG.FCALL', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
+    env.expect('RG.FCALLASYNC', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
     env.expect('get', b'\xaa').equal(b'\xaa')
 
 @gearsTest(decodeResponses=False)
@@ -735,13 +737,13 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {})
 @gearsTest()
 def testReplyWithSimpleString(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", async () => {
+redis.register_async_function("test", async () => {
     var res = new String('test');
     res.__reply_type = 'status';
     return res;
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal("test")
+    env.expect('RG.FCALLASYNC', 'lib', 'test', '0').equal("test")
 
 @gearsTest()
 def testReplyWithDouble(env):
@@ -755,11 +757,11 @@ redis.register_function("test", () => {
 @gearsTest()
 def testReplyWithDoubleAsync(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", async () => {
+redis.register_async_function("test", async () => {
     return 1.1;
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').contains("1.1")
+    env.expect('RG.FCALLASYNC', 'lib', 'test', '0').contains("1.1")
 
 @gearsTest()
 def testRunOnBackgroundThatRaisesError(env):
@@ -770,7 +772,7 @@ redis.register_function("test", (c) => {
     });
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').error().equal("Some Error")
+    env.expect('RG.FCALLASYNC', 'lib', 'test', '0').error().equal("Some Error")
 
 @gearsTest()
 def testRunOnBackgroundThatReturnInteger(env):
@@ -781,7 +783,7 @@ redis.register_function("test", (c) => {
     });
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'test', '0').equal(1)
 
 @gearsTest()
 def testOver100Isolates(env):

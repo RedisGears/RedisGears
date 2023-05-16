@@ -61,7 +61,10 @@ impl RemoteTask for GearsFunctionDelRemoteTask {
         let mut libraries = get_libraries();
         let res = match libraries.remove(&r.lib_name) {
             Some(_) => {
-                ctx_guard.replicate("_rg.function", &["del".as_bytes(), r.lib_name.as_bytes()]);
+                ctx_guard.replicate(
+                    "_rg_internals.function",
+                    &["del".as_bytes(), r.lib_name.as_bytes()],
+                );
                 Ok(GearsFunctionDelOutputRecord)
             }
             None => Err("library does not exists".to_string()),

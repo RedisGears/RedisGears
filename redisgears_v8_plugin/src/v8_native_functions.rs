@@ -882,6 +882,95 @@ pub(crate) fn initialize_globals_1_1(
     Ok(())
 }
 
+fn add_register_function_api(
+    redis: &V8LocalObject,
+    script_ctx: &Arc<V8ScriptCtx>,
+    ctx_scope: &V8ContextScope,
+    is_async: bool,
+) {
+    let name = if !is_async {
+        "register_function"
+    } else {
+        "register_async_function"
+    };
+    let script_ctx_ref = Arc::downgrade(script_ctx);
+    redis.set_native_function(
+        ctx_scope,
+        name,
+        new_native_function!(
+            move |isolate_scope,
+                  curr_ctx_scope,
+                  function_name_utf8: V8LocalUtf8,
+                  function_callback: V8LocalValue,
+                  function_flags: Option<V8LocalArray>| {
+                if !function_callback.is_function() {
+                    return Err(
+                        "Second argument to 'register_function' must be a function".to_owned()
+                    );
+                }
+                if !is_async && function_callback.is_async_function() {
+                    return Err(
+                        "'register_function' can not be used with async function, use 'register_async_function' instead.".to_owned()
+                    );
+                }
+
+                let persisted_function = function_callback.persist();
+
+                let function_flags = match function_flags {
+                    Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
+                        .map_err(|e| format!("Failed parsing function flags, {}", e))?,
+                    None => FunctionFlags::empty(),
+                };
+
+                let load_ctx =
+                    curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
+                if load_ctx.is_none() {
+                    return Err("Called 'register_function' out of context".into());
+                }
+
+                let script_ctx_ref = match script_ctx_ref.upgrade() {
+                    Some(s) => s,
+                    None => {
+                        return Err("Use of uninitialized script context".into());
+                    }
+                };
+
+                let load_ctx = load_ctx.unwrap();
+                let c = Arc::new(RefCell::new(RedisClient::new()));
+                let redis_client =
+                    get_redis_client(&script_ctx_ref, isolate_scope, curr_ctx_scope, &c);
+
+                let f = V8Function::new(
+                    &script_ctx_ref,
+                    persisted_function,
+                    redis_client.to_value().persist(),
+                    &c,
+                    function_callback.is_async_function(),
+                    !function_flags.contains(FunctionFlags::RAW_ARGUMENTS),
+                );
+
+                let res = if is_async {
+                    load_ctx.register_async_function(
+                        function_name_utf8.as_str(),
+                        Box::new(f),
+                        function_flags,
+                    )
+                } else {
+                    load_ctx.register_function(
+                        function_name_utf8.as_str(),
+                        Box::new(f),
+                        function_flags,
+                    )
+                };
+                if let Err(err) = res {
+                    return Err(err.get_msg().into());
+                }
+                Ok(None)
+            }
+        ),
+    );
+}
+
 /// Creates a global `redis` object with methods for the API of version "1.0".
 pub(crate) fn initialize_globals_1_0(
     _api_version: ApiVersionSupported,
@@ -1002,68 +1091,10 @@ pub(crate) fn initialize_globals_1_0(
         Ok(None)
     }));
 
-    let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set_native_function(
-        ctx_scope,
-        "register_function",
-        new_native_function!(
-            move |isolate_scope,
-                  curr_ctx_scope,
-                  function_name_utf8: V8LocalUtf8,
-                  function_callback: V8LocalValue,
-                  function_flags: Option<V8LocalArray>| {
-                if !function_callback.is_function() {
-                    return Err(
-                        "Second argument to 'register_function' must be a function".to_owned()
-                    );
-                }
-                let persisted_function = function_callback.persist();
-
-                let function_flags = match function_flags {
-                    Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
-                        .map_err(|e| format!("Failed parsing function flags, {}", e))?,
-                    None => FunctionFlags::empty(),
-                };
-
-                let load_ctx =
-                    curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
-                if load_ctx.is_none() {
-                    return Err("Called 'register_function' out of context".into());
-                }
-
-                let script_ctx_ref = match script_ctx_ref.upgrade() {
-                    Some(s) => s,
-                    None => {
-                        return Err("Use of uninitialized script context".into());
-                    }
-                };
-
-                let load_ctx = load_ctx.unwrap();
-                let c = Arc::new(RefCell::new(RedisClient::new()));
-                let redis_client =
-                    get_redis_client(&script_ctx_ref, isolate_scope, curr_ctx_scope, &c);
-
-                let f = V8Function::new(
-                    &script_ctx_ref,
-                    persisted_function,
-                    redis_client.to_value().persist(),
-                    &c,
-                    function_callback.is_async_function(),
-                    !function_flags.contains(FunctionFlags::RAW_ARGUMENTS),
-                );
-
-                let res = load_ctx.register_function(
-                    function_name_utf8.as_str(),
-                    Box::new(f),
-                    function_flags,
-                );
-                if let Err(err) = res {
-                    return Err(err.get_msg().into());
-                }
-                Ok(None)
-            }
-        ),
-    );
+    // add 'register_function'
+    add_register_function_api(redis, script_ctx, ctx_scope, false);
+    // add 'register_async_function'
+    add_register_function_api(redis, script_ctx, ctx_scope, true);
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
     redis.set_native_function(ctx_scope, "register_remote_function", new_native_function!(move|

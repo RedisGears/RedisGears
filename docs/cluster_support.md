@@ -24,7 +24,7 @@ We have couple of options to call a remote function, those options are expose th
 The following example register a function that will return the total amount of keys on the cluster. The function will use the remote function define above:
 
 ```js
-redis.register_function("my_dbsize", async(async_client) => {
+redis.register_async_function("my_dbsize", async(async_client) => {
     let res = await async_client.run_on_all_shards("dbsize");
     let results = res[0];
     let errors = res[1];
@@ -50,7 +50,7 @@ redis.register_remote_function("dbsize", async(client) => {
     });
 });
 
-redis.register_function("test", async(async_client) => {
+redis.register_async_function("test", async(async_client) => {
     let res = await async_client.run_on_all_shards("dbsize");
     let results = res[0];
     let errors = res[1];
@@ -78,7 +78,7 @@ redis.register_remote_function(remote_get, async(client, key) => {
     return res;
 });
 
-redis.register_function("test", async (async_client) => {
+redis.register_async_function("test", async (async_client) => {
     return await async_client.run_on_key("x", remote_get, "x");
 });
 ```

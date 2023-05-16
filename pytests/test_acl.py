@@ -23,25 +23,25 @@ redis.register_function("get", function(client, dummy, key){
 @gearsTest()
 def testAclOnAsyncFunction(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("get", async function(client, dummy, key){
+redis.register_async_function("get", async function(client, dummy, key){
     return client.block(function(client){
         return client.call('get', key);
     });
 })
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcallasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclOnAsyncComplex(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("get", async function(client, dummy, key){
+redis.register_async_function("get", async function(client, dummy, key){
     return client.block(function(client){
         return client.run_on_background(async function(client) {
             return client.block(function(client) {
@@ -51,14 +51,14 @@ redis.register_function("get", async function(client, dummy, key){
     });
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcallasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclUserDeletedWhileFunctionIsRunning(env):
@@ -67,7 +67,7 @@ var async_get_continue = null;
 var async_get_resolve = null;
 var async_get_reject = null;
 
-redis.register_function("async_get_continue", async function(client){
+redis.register_async_function("async_get_continue", async function(client){
     async_get_continue("continue");
     return await new Promise((resolve, reject) => {
         async_get_resolve = resolve;
@@ -91,33 +91,33 @@ redis.register_function("async_get_start", function(client, dummy, key){
     return "OK";
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcallasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'x').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'async_get_continue', '0').equal('1')
-    env.expect('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'async_get_continue', '0').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x').equal('OK')
+    env.expect('RG.FCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
+    env.expect('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x').equal('OK')
+    env.expect('RG.FCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
 
-    env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'x'), "OK")
+    env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x'), "OK")
     try:
-        c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0')
+        c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains(NO_PERMISSIONS_ERROR_MSG, str(e))
 
-    env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
+    env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
     try:
-        env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0'), '1')
+        env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_continue', '0'), '1')
     except Exception as e:
         env.assertTrue(False, message='Command failed though should success, %s' % str(e))
 
-    env.assertEqual(c.execute_command('RG.FCALL', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
+    env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
     env.expect('ACL', 'DELUSER', 'alice').equal(1) # delete alice user while function is running
     try:
-        c.execute_command('RG.FCALL', 'lib', 'async_get_continue', '0')
+        c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains("User does not exists or disabled", str(e))
