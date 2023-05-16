@@ -6,6 +6,7 @@
 
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::RedisValue;
+use redisgears_macros_internals::get_allow_deny_lists;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -25,11 +26,89 @@ use crate::v8_redisai::get_tensor_object_template;
 use crate::v8_script_ctx::V8LibraryCtx;
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
+lazy_static::lazy_static! {
+    static ref GLOBALS_ALLOW_DENY_LISTS: (HashSet<String>, HashSet<String>) = get_allow_deny_lists!({
+        allow_list: [
+            "Object",
+            "Function",
+            "Array",
+            "Number",
+            "parseFloat",
+            "parseInt",
+            "Infinity",
+            "NaN",
+            "undefined",
+            "Boolean",
+            "String",
+            "Symbol",
+            "Date",
+            "Promise",
+            "RegExp",
+            "Error",
+            "AggregateError",
+            "RangeError",
+            "ReferenceError",
+            "SyntaxError",
+            "TypeError",
+            "URIError",
+            "globalThis",
+            "JSON",
+            "Math",
+            "Intl",
+            "ArrayBuffer",
+            "Uint8Array",
+            "Int8Array",
+            "Uint16Array",
+            "Int16Array",
+            "Uint32Array",
+            "Int32Array",
+            "Float32Array",
+            "Float64Array",
+            "Uint8ClampedArray",
+            "BigUint64Array",
+            "BigInt64Array",
+            "DataView",
+            "Map",
+            "BigInt",
+            "Set",
+            "WeakMap",
+            "WeakSet",
+            "Proxy",
+            "Reflect",
+            "FinalizationRegistry",
+            "WeakRef",
+            "decodeURI",
+            "decodeURIComponent",
+            "encodeURI",
+            "encodeURIComponent",
+            "escape",
+            "unescape",
+            "isFinite",
+            "isNaN",
+            "console",
+            "WebAssembly",
+        ],
+        deny_list: [
+            "eval",              // Might be considered dangerous.
+            "EvalError",         // Because we remove eval, this one is also not needed.
+            "SharedArrayBuffer", // Needed for workers which we are not supporting
+            "Atomics",           // Needed for workers which we are not supporting
+        ]
+    });
+}
+
+fn allow_list() -> &'static HashSet<String> {
+    &GLOBALS_ALLOW_DENY_LISTS.0
+}
+
+fn deny_list() -> &'static HashSet<String> {
+    &GLOBALS_ALLOW_DENY_LISTS.1
+}
 
 type ScriptCtxVec = Arc<Mutex<Vec<Weak<V8ScriptCtx>>>>;
 
@@ -358,6 +437,25 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 let isolate_scope = isolate.enter();
                 let ctx = isolate_scope.new_context(None);
                 let ctx_scope = ctx.enter(&isolate_scope);
+
+                let globals = ctx_scope.get_globals();
+                let propeties = globals.get_own_property_names(&ctx_scope);
+                propeties.iter(&ctx_scope).try_for_each(|v| {
+                    let s = v.to_utf8().ok_or(GearsApiError::new("Failed converting global property name to string"))?;
+                    if !allow_list().contains(s.as_str()) {
+                        if !deny_list().contains(s.as_str()) {
+                            compiled_library_api.log_warning(&format!(
+                                "Found global '{}' which is not on the allowed list nor on the deny list.",
+                                s.as_str()
+                            ));
+                        }
+                        // property does not exists on the allow list. lets drop it.
+                        if !globals.delete(&ctx_scope, &v) {
+                            return Err(GearsApiError::new(format!("Failed deleting global '{}' which is not on the allowed list, can not load the library.", s.as_str())));
+                        }
+                    }
+                    Ok(())
+                })?;
 
                 let v8code_str = isolate_scope.new_string(code);
 
