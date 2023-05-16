@@ -564,7 +564,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     }
 
     if let Err(e) = verify_v8_mem_usage_values() {
-        ctx.log_warning(&e.to_string());
+        log::error!("{e}");
         return Status::Err;
     }
 
@@ -1181,10 +1181,42 @@ mod gears_module {
                 ["remote-task-default-timeout", &*REMOTE_TASK_DEFAULT_TIMEOUT , 500, 1, i64::MAX, ConfigurationFlags::DEFAULT, None],
                 ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT , 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
 
-                ["v8-maxmemory", &*V8_MAX_MEMORY , 200 * 1024 * 1024, 50 * 1024 * 1024, 1024 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
-                ["v8-library-initial-memory-usage", &*V8_LIBRARY_INITIAL_MEMORY_USAGE , 2 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
-                ["v8-library-initial-memory-limit", &*V8_LIBRARY_INITIAL_MEMORY_LIMIT , 3 * 1024 * 1024, 2 * 1024 * 1024, 20 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
-                ["v8-library-memory-usage-delta", &*V8_LIBRARY_MEMORY_USAGE_DELTA , 1 * 1024 * 1024, 1 * 1024 * 1024, 10 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
+                [
+                    "v8-maxmemory",
+                    &*V8_MAX_MEMORY,
+                    byte_unit::n_mb_bytes!(200) as i64,
+                    byte_unit::n_mb_bytes!(50) as i64,
+                    byte_unit::n_gb_bytes!(1) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
+                [
+                    "v8-library-initial-memory-usage",
+                    &*V8_LIBRARY_INITIAL_MEMORY_USAGE,
+                    byte_unit::n_mb_bytes!(2) as i64,
+                    byte_unit::n_mb_bytes!(1) as i64,
+                    byte_unit::n_mb_bytes!(10) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
+                [
+                    "v8-library-initial-memory-limit",
+                    &*V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+                    byte_unit::n_mb_bytes!(3) as i64,
+                    byte_unit::n_mb_bytes!(2) as i64,
+                    byte_unit::n_mb_bytes!(20) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
+                [
+                    "v8-library-memory-usage-delta",
+                    &*V8_LIBRARY_MEMORY_USAGE_DELTA,
+                    byte_unit::n_mb_bytes!(1) as i64,
+                    byte_unit::n_mb_bytes!(1) as i64,
+                    byte_unit::n_mb_bytes!(10) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
             ],
             string: [
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],
