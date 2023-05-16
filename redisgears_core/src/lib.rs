@@ -158,7 +158,7 @@ impl GearsFunctionCtx {
         is_async: bool,
     ) -> GearsFunctionCtx {
         GearsFunctionCtx {
-            func: func,
+            func,
             flags,
             is_async,
         }
