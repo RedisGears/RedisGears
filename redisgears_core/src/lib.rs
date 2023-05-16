@@ -35,7 +35,7 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    flush_event_handler, loading_event_handler, module_changed_event_handler, redis_command,
+    command, flush_event_handler, loading_event_handler, module_changed_event_handler,
     role_changed_event_handler,
 };
 
@@ -741,7 +741,7 @@ fn function_call_command(
         if let FunctionCallResult::Hold = res {
             if !allow_block {
                 // If we reach here, it means that the plugin violates the API, it blocked the client even though it is not allow to.
-                DETACHED_CONTEXT.log_warning("Plugin API violation, plugin blocked the client even though blocking is forbiden.");
+                log::warn!("Plugin API violation, plugin blocked the client even though blocking is forbiden.");
                 return Err(RedisError::Str(
                     "Clien got blocked when blocking is not allow",
                 ));
@@ -947,16 +947,16 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     err.get_msg_verbose()
 }
 
-#[redis_command(
+#[command(
     {
         name: "rg.fcall",
-        flags: "may-replicate deny-script no-mandatory-keys",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -4,
         key_spec: [
             {
-                flags: ["RW", "ACCESS", "UPDATE"],
-                begin_search: Index(3),
-                find_keys: Keynum((0, 1, 1)),
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 3}),
+                find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
     }
@@ -966,16 +966,16 @@ fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     function_call_command(ctx, args, false)
 }
 
-#[redis_command(
+#[command(
     {
         name: "rg.fcallasync",
-        flags: "may-replicate deny-script no-mandatory-keys",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -4,
         key_spec: [
             {
-                flags: ["RW", "ACCESS", "UPDATE"],
-                begin_search: Index(3),
-                find_keys: Keynum((0, 1, 1)),
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 3}),
+                find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
     }
@@ -985,10 +985,10 @@ fn function_call_async(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     function_call_command(ctx, args, true)
 }
 
-#[redis_command(
+#[command(
     {
         name: "_rg_internals.function",
-        flags: "may-replicate deny-script no-mandatory-keys",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -3,
         key_spec: [],
     }
@@ -1006,10 +1006,10 @@ fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisRe
     }
 }
 
-#[redis_command(
+#[command(
     {
         name: "rg.function",
-        flags: "may-replicate deny-script no-mandatory-keys",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -2,
         key_spec: [],
     }
@@ -1029,10 +1029,10 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     }
 }
 
-#[redis_command(
+#[command(
     {
         name: "rg.box",
-        flags: "may-replicate deny-script no-mandatory-keys",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -3,
         key_spec: [],
     }
@@ -1050,10 +1050,10 @@ fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     }
 }
 
-#[redis_command(
+#[command(
     {
         name: "_rg_internals.update_stream_last_read_id",
-        flags: "readonly deny-script no-mandatory-keys",
+        flags: [ReadOnly, DenyScript, NoMandatoryKeys],
         arity: 6,
         key_spec: [],
     }
