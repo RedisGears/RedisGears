@@ -4,6 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
+use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8LocalValue, v8_value::V8PersistValue};
 
 use redisgears_plugin_api::redisgears_plugin_api::stream_ctx::{
@@ -12,6 +13,7 @@ use redisgears_plugin_api::redisgears_plugin_api::stream_ctx::{
 
 use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInterface;
 
+use crate::v8_backend::bypass_memory_limit;
 use crate::v8_native_functions::{get_backgrounnd_client, get_redis_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
 
@@ -325,6 +327,11 @@ impl StreamCtxInterface for V8StreamCtx {
         run_ctx: &dyn StreamProcessCtxInterface,
         ack_callback: Box<dyn FnOnce(StreamRecordAck) + Send>,
     ) -> Option<StreamRecordAck> {
+        if bypass_memory_limit() {
+            return Some(StreamRecordAck::Nack(GearsApiError::new(
+                "JS engine reached OOM state and can not run any more code",
+            )));
+        }
         if self.is_async {
             let internals = Arc::clone(&self.internals);
             let stream_name: Vec<u8> = stream_name.to_vec();

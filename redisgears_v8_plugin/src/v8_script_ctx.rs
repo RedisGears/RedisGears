@@ -78,6 +78,7 @@ impl GilStateCtx {
 }
 
 pub(crate) struct V8ScriptCtx {
+    pub(crate) name: String,
     pub(crate) script: V8PersistedScript,
     pub(crate) tensor_object_template: V8PersistedObjectTemplate,
     pub(crate) ctx: V8Context,
@@ -89,6 +90,7 @@ pub(crate) struct V8ScriptCtx {
 
 impl V8ScriptCtx {
     pub(crate) fn new(
+        name: String,
         isolate: V8Isolate,
         ctx: V8Context,
         script: V8PersistedScript,
@@ -96,6 +98,7 @@ impl V8ScriptCtx {
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Self {
         Self {
+            name,
             isolate,
             ctx,
             script,

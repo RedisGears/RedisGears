@@ -51,7 +51,7 @@ No
 The `library-fatal-failure-policy` configuration option controls how to handle a fatal error. Fatal error is consider one of the following:
 
 * Block timeout - The function blocks the Redis processes for to long (configurable using [lock-redis-timeout](#lock-redis-timeout) configuration value)
-* OOM - The function consumer to much memory (configurable using [library-maxmemory](#library-maxmemory) configuration value).
+* OOM - The function consumer to much memory (configurable using [v8-maxmemory](#v8-maxmemory) configuration value).
 
 This configuration basically allow choosing between 2 options:
 
@@ -71,9 +71,9 @@ _Runtime Configurability_
 
 Yes
 
-## library-maxmemory
+## v8-maxmemory
 
-The `library-maxmemory` configuration option controls the maximum amount of memory a single library is allowed to consume. Exceeding this limit is considered a fatal error and will be handled base of the [library-fatal-failure-policy](#library-fatal-failure-policy) configuration value.
+The `v8-maxmemory` configuration option controls the maximum amount of memory used by all V8 libraries. Exceeding this limit is considered a fatal error and will be handled base of the [library-fatal-failure-policy](#library-fatal-failure-policy) configuration value.
 
 _Expected Value_
 
@@ -81,15 +81,87 @@ Integer
 
 _Default_
 
-1G
+200M
 
 _Minimum Value_
 
-16M
+50M
 
 _Maximum Value_
 
-2G
+1G
+
+_Runtime Configurability_
+
+No
+
+## v8-library-initial-memory-usage
+
+The `v8-library-initial-memory-usage` configuration option controls the initial memory given to a single V8 library. This value can not be greater then [`v8-library-initial-memory-limit`](#v8-library-initial-memory-limit) or [v8-maxmemory](#v8-maxmemory).
+
+_Expected Value_
+
+Integer
+
+_Default_
+
+2M
+
+_Minimum Value_
+
+1M
+
+_Maximum Value_
+
+10M
+
+_Runtime Configurability_
+
+No
+
+## v8-library-initial-memory-limit
+
+The `v8-library-initial-memory-limit` configuration option controls the initial memory limit on a single V8 library. This value can not be greater then [v8-maxmemory](#v8-maxmemory).
+
+_Expected Value_
+
+Integer
+
+_Default_
+
+3M
+
+_Minimum Value_
+
+2M
+
+_Maximum Value_
+
+20M
+
+_Runtime Configurability_
+
+No
+
+## v8-library-memory-usage-delta
+
+The `v8-library-memory-usage-delta` configuration option controls the delta by which we will increase the V8 library memory limit once the limit reached. This value can not be greater then [v8-maxmemory](#v8-maxmemory).
+
+_Expected Value_
+
+Integer
+
+_Default_
+
+1M
+
+_Minimum Value_
+
+1M
+
+_Maximum Value_
+
+10M
 
 _Runtime Configurability_
 
