@@ -5,7 +5,8 @@
  */
 
 use crate::redisgears_plugin_api::run_function_ctx::RunFunctionCtxInterface;
-use crate::redisgears_plugin_api::FunctionCallResult;
+
+use super::FunctionCallResult;
 
 pub trait FunctionCtxInterface {
     fn call(&self, run_ctx: &dyn RunFunctionCtxInterface) -> FunctionCallResult;

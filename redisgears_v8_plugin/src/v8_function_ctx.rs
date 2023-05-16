@@ -448,7 +448,7 @@ impl FunctionCtxInterface for V8Function {
                 .run_on_background(Box::new(move || {
                     inner_function.call_async(args, bg_client, bg_redis_client, decode_arguments);
                 }));
-            FunctionCallResult::Done
+            FunctionCallResult::Hold
         } else {
             let redis_client = run_ctx.get_redis_client();
             {
@@ -456,10 +456,13 @@ impl FunctionCtxInterface for V8Function {
                 c.set_allow_block(run_ctx.allow_block());
                 c.set_client(redis_client.as_ref());
             }
-            self.inner_function
+            let res = self
+                .inner_function
                 .call_sync(run_ctx, self.decode_arguments);
+
             self.client.borrow_mut().make_invalid();
-            FunctionCallResult::Done
+
+            res
         }
     }
 }

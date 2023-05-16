@@ -24,11 +24,11 @@ redis.register_function("test", function(client){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncFunctionRun(env):
     '''#!js api_version=1.0 name=foo
-redis.register_function("test", async function(client){
+redis.register_async_function("test", async function(client){
     return foo()
 })
     '''
-    env.expect('RG.FCALL', 'foo', 'test', 0).error().contains(':3:') # error on line 5
+    env.expect('RG.FCALLASYNC', 'foo', 'test', 0).error().contains(':3:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionThatReturnsCoro(env):
@@ -39,7 +39,7 @@ redis.register_function("test", function(client){
     });
 })
     '''
-    env.expect('RG.FCALL', 'foo', 'test', 0).error().contains(':4:') # error on line 5
+    env.expect('RG.FCALLASYNC', 'foo', 'test', 0).error().contains(':4:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnStreamProcessing(env):

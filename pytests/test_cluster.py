@@ -14,13 +14,13 @@ redis.register_remote_function(remote_get, async(client, key) => {
     return res;
 });
 
-redis.register_function("test", async (async_client, key) => {
+redis.register_async_function("test", async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, key);
 });
     """
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):
-        res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x')
+        res = conn.execute_command('RG.FCALLASYNC', 'foo', 'test', '1', 'x')
         env.assertEqual(res, '1')
 
 @gearsTest(cluster=True)
@@ -35,14 +35,14 @@ redis.register_remote_function(remote_get, async(client, key) => {
     return res;
 });
 
-redis.register_function("test", async (async_client, key) => {
+redis.register_async_function("test", async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, key);
 },
 ["raw-arguments"]);
     """
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):
-        res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x')
+        res = conn.execute_command('RG.FCALLASYNC', 'foo', 'test', '1', 'x')
         env.assertEqual(res, '1')
 
 @gearsTest(cluster=True)
@@ -54,7 +54,7 @@ redis.register_remote_function(remote_get, async(client, key) => {
     throw 'Remote function failure';
 });
 
-redis.register_function("test", async (async_client, key) => {
+redis.register_async_function("test", async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, key);
 },
 ["raw-arguments"]);
@@ -62,7 +62,7 @@ redis.register_function("test", async (async_client, key) => {
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):
         try:
-            conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x')
+            conn.execute_command('RG.FCALLASYNC', 'foo', 'test', '1', 'x')
             pass
         except Exception as e:
             env.assertContains('Remote function failure', str(e))
@@ -87,7 +87,7 @@ redis.register_remote_function(recursive_get, async(client, key) => {
     });
 });
 
-redis.register_function("test", async(async_client, key) => {
+redis.register_async_function("test", async(async_client, key) => {
     return await async_client.run_on_key(key, recursive_get, key);
 });
     """
@@ -95,7 +95,7 @@ redis.register_function("test", async(async_client, key) => {
         cluster_conn.execute_command('hset', 'key%d' % i, 'lookup', 'key%d' % (i + 1))
     cluster_conn.execute_command('set', 'key%d' % i, 'final_value')
     for conn in shardsConnections(env):
-        res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'key0')
+        res = conn.execute_command('RG.FCALLASYNC', 'foo', 'test', '1', 'key0')
         env.assertEqual(res, 'final_value')
 
 @gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
@@ -108,12 +108,12 @@ redis.register_remote_function(remote_get, async(client, key) => {
     return 'done';
 });
 
-redis.register_function("test", async (async_client, key) => {
+redis.register_async_function("test", async (async_client, key) => {
     return await async_client.run_on_key(key, remote_get, key);
 });
     """
     cluster_conn.execute_command('set', 'x', '1')
-    env.expect('RG.FCALL_NO_KEYS', 'foo', 'test', '1', 'x').error().contains('Remote task timeout')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '1', 'x').error().contains('Remote task timeout')
 
 @gearsTest(cluster=True)
 def testRunOnAllShards(env, cluster_conn):
@@ -126,7 +126,7 @@ redis.register_remote_function(dbside_remote_func, async(client) => {
     });
 });
 
-redis.register_function("test", async(async_client) => {
+redis.register_async_function("test", async(async_client) => {
     let res = await async_client.run_on_all_shards(dbside_remote_func);
     let results = res[0];
     let errors = res[1];
@@ -141,7 +141,7 @@ redis.register_function("test", async(async_client) => {
     for i in range(1000):
         cluster_conn.execute_command('set', 'key%d' % i, '1')
     for conn in shardsConnections(env):
-        res = conn.execute_command('RG.FCALL_NO_KEYS', 'foo', 'test', '0')
+        res = conn.execute_command('RG.FCALLASYNC', 'foo', 'test', '0')
         env.assertEqual(res, 1000)
 
 @gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
@@ -163,7 +163,7 @@ redis.register_remote_function(remote_function, async(client, key) => {
     return val;
 });
 
-redis.register_function("test", async (async_client) => {
+redis.register_async_function("test", async (async_client) => {
     let res = await async_client.run_on_all_shards(remote_function);
     if (res[1].length > 0) {
         throw res[1][0];
@@ -172,4 +172,4 @@ redis.register_function("test", async (async_client) => {
 });
     """
     cluster_conn.execute_command('set', 'z', '1')
-    env.expect('RG.FCALL', 'foo', 'test', '1', 'z').error().contains('Timeout')
+    env.expect('RG.FCALLASYNC', 'foo', 'test', '1', 'z').error().contains('Timeout')

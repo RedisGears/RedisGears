@@ -34,18 +34,18 @@ redis.register_notifications_consumer("consumer", "", async function(client, dat
     n_notifications += 1;
 });
 
-redis.register_function("n_notifications", async function(){
+redis.register_async_function("n_notifications", async function(){
     return n_notifications
 })
     """
 
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'n_notifications', '0'))
+    runUntil(env, 1, lambda: env.cmd('RG.FCALLASYNC', 'lib', 'n_notifications', '0'))
     env.expect('SET', 'X', '2').equal(True)
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'n_notifications', '0'))
+    runUntil(env, 2, lambda: env.cmd('RG.FCALLASYNC', 'lib', 'n_notifications', '0'))
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'n_notifications', '0'))
+    runUntil(env, 3, lambda: env.cmd('RG.FCALLASYNC', 'lib', 'n_notifications', '0'))
 
 @gearsTest()
 def testCallRedisOnNotification(env):
@@ -73,7 +73,7 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
-redis.register_function("n_notifications", async function(){
+redis.register_async_function("n_notifications", async function(){
     return n_notifications
 });
 
@@ -81,11 +81,11 @@ redis.register_function("simple_set", function(client){
     return client.call('set', 'x', '1');
 });
     """
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
     env.expect('RG.FCALL', 'lib', 'simple_set', '0').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
@@ -95,21 +95,21 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
-redis.register_function("n_notifications", async function(){
+redis.register_async_function("n_notifications", async function(){
     return n_notifications
 });
 
-redis.register_function("simple_set", async function(client){
+redis.register_async_function("simple_set", async function(client){
     return client.block(function(client){
         return client.call('set', 'x', '1');
     });
 });
     """
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
-    env.expect('RG.FCALL', 'lib', 'simple_set', '0').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'simple_set', '0').equal('OK')
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAnotherNotification(env):
@@ -120,13 +120,13 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
-redis.register_function("n_notifications", async function(){
+redis.register_async_function("n_notifications", async function(){
     return n_notifications
 });
     """
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinStreamConsumer(env):
@@ -139,7 +139,7 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {
     }
 });
 
-redis.register_function("n_notifications", async function(){
+redis.register_async_function("n_notifications", async function(){
     return n_notifications
 });
 
@@ -147,12 +147,12 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(client) {
     client.call('set', 'X' , '2');
 })
     """
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
     env.cmd('XADD', 'stream:1', '*', 'foo', 'bar')
     env.expect('GET', 'X').equal('2')
-    env.expect('RG.FCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('RG.FCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
 
 @gearsTest(decodeResponses=False)
 def testNotificationsOnBinaryKey(env):
@@ -168,7 +168,7 @@ redis.register_notifications_consumer("consumer", new Uint8Array([255]).buffer, 
     }
 });
 
-redis.register_function("notifications_stats", async function(){
+redis.register_async_function("notifications_stats", async function(){
     return [
         n_notifications,
         last_key,
@@ -176,9 +176,9 @@ redis.register_function("notifications_stats", async function(){
     ];
 });
     """
-    env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([0, None, None])
+    env.expect('RG.FCALLASYNC', 'lib', 'notifications_stats', '0').equal([0, None, None])
     env.expect('SET', b'\xff\xff', b'\xaa').equal(True)
-    env.expect('RG.FCALL', 'lib', 'notifications_stats', '0').equal([1, None, b'\xff\xff'])
+    env.expect('RG.FCALLASYNC', 'lib', 'notifications_stats', '0').equal([1, None, b'\xff\xff'])
 
 @gearsTest()
 def testSyncNotificationsReturnPromise(env):

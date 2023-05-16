@@ -113,6 +113,10 @@ pub(crate) fn function_list_command(
                                                 RedisValueKey::String("flags".to_string()),
                                                 function_list_command_flags(v.flags),
                                             ),
+                                            (
+                                                RedisValueKey::String("is_async".to_string()),
+                                                RedisValue::Bool(v.is_async),
+                                            ),
                                         ]))
                                     })
                                     .collect::<Vec<RedisValue>>()

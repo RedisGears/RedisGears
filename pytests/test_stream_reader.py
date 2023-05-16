@@ -444,7 +444,7 @@ def testBecomeReplicaWhileProcessingData(env):
 var promise = null;
 var done = null;
 
-redis.register_function("continue_process", async function(){
+redis.register_async_function("continue_process", async function(){
     if (promise == null) {
         return "no data to processes";
     }
@@ -468,15 +468,15 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(cli
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 'OK', lambda: env.cmd('RG.FCALL', 'lib', 'continue_process', '0'))
+    runUntil(env, 'OK', lambda: env.cmd('RG.FCALLASYNC', 'lib', 'continue_process', '0'))
     runUntil(env, 1, lambda: toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed'])
 
     # Turn into a slave
     env.cmd('slaveof', '127.0.0.1', '3300')
-    runUntil(env, 'OK', lambda: env.cmd('RG.FCALL', 'lib', 'continue_process', '0'))
+    runUntil(env, 'OK', lambda: env.cmd('RG.FCALLASYNC', 'lib', 'continue_process', '0'))
     runUntil(env, 2, lambda: toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed'])
 
-    runFor('no data to processes', lambda: env.cmd('RG.FCALL', 'lib', 'continue_process', '0'))
+    runFor('no data to processes', lambda: env.cmd('RG.FCALLASYNC', 'lib', 'continue_process', '0'))
     res = toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed']
     env.assertEqual(2, res)
 

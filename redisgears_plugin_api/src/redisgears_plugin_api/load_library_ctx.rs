@@ -28,7 +28,7 @@ bitflags::bitflags! {
     /// executed.
     #[derive(Default)]
     pub struct FunctionFlags: u8 {
-        /// The function is not performing writes.
+        /// The function is not performing writes to the database.
         const NO_WRITES = 0x01;
         /// TODO
         const ALLOW_OOM = 0x02;
@@ -47,6 +47,12 @@ pub type RemoteFunctionCtx = Box<
 
 pub trait LoadLibraryCtxInterface {
     fn register_function(
+        &mut self,
+        name: &str,
+        function_ctx: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+    ) -> Result<(), GearsApiError>;
+    fn register_async_function(
         &mut self,
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
