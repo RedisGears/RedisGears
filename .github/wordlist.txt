@@ -56,3 +56,4 @@ pytests
 oss
 MSRV
 utf
+FCALLASYNC

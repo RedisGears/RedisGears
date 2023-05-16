@@ -292,7 +292,7 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
                 replicate_args.push("USER".as_bytes());
                 replicate_args.push(user.as_slice());
                 replicate_args.push(r.args.code.as_bytes());
-                ctx_guard.replicate("_rg.function", replicate_args.as_slice());
+                ctx_guard.replicate("_rg_internals.function", replicate_args.as_slice());
             }
             res
         };
