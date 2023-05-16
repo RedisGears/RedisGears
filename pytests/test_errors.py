@@ -501,7 +501,7 @@ def testCallAsyncFunctionWithRGFCALL(env):
     '''#!js api_version=1.0 name=lib
 redis.register_async_function('test', async () => {return 1})
     '''
-    env.expect('RG.FCALL', 'lib', 'test', '0').error().contains('Function is declated async and was called while blocking is not allowed')
+    env.expect('RG.FCALL', 'lib', 'test', '0').error().contains('function is declared as async and was called while blocking was not allowed')
 
 @gearsTest()
 def testBlockOnRGFCall(env):

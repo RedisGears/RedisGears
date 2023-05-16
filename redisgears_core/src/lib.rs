@@ -726,7 +726,7 @@ fn function_call_command(
 
     if function.is_async && !allow_block {
         // Blocking is not allowed but the function declated as async which means it might block, we will not invoke it.
-        return Err(RedisError::Str("Function is declated async and was called while blocking is not allowed, notice that you can not invoke async functions from within lua or multi, and you must use RG.FCALLASYNC."));
+        return Err(RedisError::Str("The function is declared as async and was called while blocking was not allowed; note that you cannot invoke async functions from within Lua or MULTI, and you must use RG.FCALLASYNC instead."));
     }
 
     {
@@ -738,14 +738,14 @@ fn function_call_command(
             lib_meta_data: Arc::clone(&lib.gears_lib_ctx.meta_data),
             allow_block: allow_block,
         });
-        if let FunctionCallResult::Hold = res {
-            if !allow_block {
-                // If we reach here, it means that the plugin violates the API, it blocked the client even though it is not allow to.
-                log::warn!("Plugin API violation, plugin blocked the client even though blocking is forbiden.");
-                return Err(RedisError::Str(
-                    "Clien got blocked when blocking is not allow",
-                ));
-            }
+        if matches!(res, FunctionCallResult::Hold) && !allow_block {
+            // If we reach here, it means that the plugin violates the API, it blocked the client even though it is not allow to.
+            log::warn!(
+                "Plugin API violation, plugin blocked the client even though blocking is forbiden."
+            );
+            return Err(RedisError::Str(
+                "Clien got blocked when blocking is not allow",
+            ));
         }
         Ok(RedisValue::NoReply)
     }
@@ -1067,22 +1067,14 @@ fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisRes
     let ms = args.next_arg()?.try_as_str()?.parse::<u64>()?;
     let seq = args.next_arg()?.try_as_str()?.parse::<u64>()?;
     let libraries = get_libraries();
-    let library = libraries.get(library_name);
-    if library.is_none() {
-        return Err(RedisError::String(format!(
-            "No such library '{}'",
-            library_name
-        )));
-    }
-    let library = library.unwrap();
-    let consumer = library.gears_lib_ctx.stream_consumers.get(stream_consumer);
-    if consumer.is_none() {
-        return Err(RedisError::String(format!(
-            "No such consumer '{}'",
-            stream_consumer
-        )));
-    }
-    let consumer = consumer.unwrap();
+    let library = libraries
+        .get(library_name)
+        .ok_or_else(|| RedisError::String(format!("No such library '{}'", library_name)))?;
+    let consumer = library
+        .gears_lib_ctx
+        .stream_consumers
+        .get(stream_consumer)
+        .ok_or_else(|| RedisError::String(format!("No such consumer '{}'", stream_consumer)))?;
     get_globals_mut()
         .stream_ctx
         .update_stream_for_consumer(stream, consumer, ms, seq);
