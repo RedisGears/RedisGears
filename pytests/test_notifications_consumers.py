@@ -234,3 +234,73 @@ redis.register_notifications_consumer("consumer", "", (client) => {
     """
     env.expect('SET', 'x', '1').equal(True)
     runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+
+@gearsTest()
+def testOnTriggerFiredCallback(env):
+    """#!js api_version=1.0 name=lib
+redis.register_notifications_consumer("consumer", "", (client, data) => {
+    client.call('set', 'x', data.test);
+},{
+    onTriggerFired: (client, data) => {
+        data.test = 'test';
+    }
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    env.expect('GET', 'x').equal('test')
+
+@gearsTest()
+def testUnableToWriteOnTriggerFiredCallback(env):
+    """#!js api_version=1.0 name=lib
+redis.register_notifications_consumer("consumer", "", (client, data) => {
+    client.call('set', 'x', data.test);
+},{
+    onTriggerFired: (client, data) => {
+        client.call('set', 'x', 'test')
+        data.test = 'test';
+    }
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    env.expect('GET', 'x').equal('1')
+    env.assertContains("Write command 'set' was called while write is not allowed", toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+
+@gearsTest()
+def testReadOnTriggerFiredCallback(env):
+    """#!js api_version=1.0 name=lib
+redis.register_notifications_consumer("consumer", "", (client, data) => {
+    client.call('set', 'x', (data.content + 1).toString());
+},{
+    onTriggerFired: (client, data) => {
+        data.content = parseInt(client.call('get', 'x'), 10);
+    }
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    env.expect('GET', 'x').equal('2')
+
+@gearsTest()
+def testTimeoutOnTriggerFiredCallback(env):
+    """#!js api_version=1.0 name=lib
+redis.register_notifications_consumer("consumer", "", (client, data) => {
+    client.call('set', 'x', data.test);
+},{
+    onTriggerFired: (client, data) => {
+        while(true){}
+    }
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    env.expect('GET', 'x').equal('1')
+    env.assertContains("Execution was terminated due to OOM or timeout", toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+
+@gearsTest()
+def testWrongTypeForOnTriggerFiredCallbackArgument(env):
+    script = """#!js api_version=1.0 name=lib
+redis.register_notifications_consumer("consumer", "", (client, data) => {
+    client.call('set', 'x', data.test);
+},{
+    onTriggerFired: 1
+});
+    """
+    env.expect('RG.FUNCTION', 'LOAD', script).error().contains("'onTriggerFired' argument to 'register_notifications_consumer' must be a function")

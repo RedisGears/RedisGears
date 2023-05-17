@@ -21,7 +21,7 @@ use v8_rs::v8::{
     v8_value::V8LocalValue, v8_version,
 };
 
-use v8_derive::new_native_function;
+use v8_derive::{new_native_function, NativeFunctionArgument};
 
 use crate::v8_redisai::{get_redisai_api, get_redisai_client};
 
@@ -971,6 +971,70 @@ fn add_register_function_api(
     );
 }
 
+#[allow(non_snake_case)]
+#[derive(NativeFunctionArgument)]
+struct NoficationConsumerOptionalArgs<'isolate_scope, 'isolate> {
+    onTriggerFired: Option<V8LocalValue<'isolate_scope, 'isolate>>,
+}
+
+fn add_register_notification_consumer_api(
+    redis: &V8LocalObject,
+    script_ctx: &Arc<V8ScriptCtx>,
+    ctx_scope: &V8ContextScope,
+) {
+    let script_ctx_ref = Arc::downgrade(script_ctx);
+    redis.set_native_function(ctx_scope, "register_notifications_consumer", new_native_function!(move|
+        _isolate_scope,
+        curr_ctx_scope,
+        registration_name_utf8: V8LocalUtf8,
+        prefix: V8LocalValue,
+        function_callback: V8LocalValue,
+        optional_args: Option<NoficationConsumerOptionalArgs>,
+    | {
+        if !function_callback.is_function() {
+            return Err("Third argument to 'register_notifications_consumer' must be a function".into());
+        }
+        let persisted_function = function_callback.persist();
+
+        let on_trigger_fired = optional_args.map_or(Result::<_, String>::Ok(None), |v| {
+            v.onTriggerFired.map_or(Ok(None), |v|{
+                if !v.is_function() || v.is_async_function() {
+                    return Err("'onTriggerFired' argument to 'register_notifications_consumer' must be a function".into());
+                }
+                Ok(Some(v.persist()))
+            })
+        })?;
+
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
+        if load_ctx.is_none() {
+            return Err("Called 'register_notifications_consumer' out of context".into());
+        }
+        let load_ctx = load_ctx.unwrap();
+
+        let script_ctx_ref = match script_ctx_ref.upgrade() {
+            Some(s) => s,
+            None => {
+                return Err("Use of uninitialized script context".into());
+            }
+        };
+        let v8_notification_ctx = V8NotificationsCtx::new(persisted_function, on_trigger_fired, &script_ctx_ref, function_callback.is_async_function());
+
+        let res = if prefix.is_string() {
+            let prefix = prefix.to_utf8().unwrap();
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx))
+        } else if prefix.is_array_buffer() {
+            let prefix = prefix.as_array_buffer();
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx))
+        } else {
+            return Err("Second argument to 'register_notifications_consumer' must be a string or ArrayBuffer representing the prefix".into());
+        };
+        if let Err(err) = res {
+            return Err(err.get_msg().to_string());
+        }
+        Ok(None)
+    }));
+}
+
 /// Creates a global `redis` object with methods for the API of version "1.0".
 pub(crate) fn initialize_globals_1_0(
     _api_version: ApiVersionSupported,
@@ -1049,47 +1113,7 @@ pub(crate) fn initialize_globals_1_0(
         Ok(None)
     }));
 
-    let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set_native_function(ctx_scope, "register_notifications_consumer", new_native_function!(move|
-        _isolate_scope,
-        curr_ctx_scope,
-        registration_name_utf8: V8LocalUtf8,
-        prefix: V8LocalValue,
-        function_callback: V8LocalValue,
-    | {
-        if !function_callback.is_function() {
-            return Err("Third argument to 'register_notifications_consumer' must be a function".into());
-        }
-        let persisted_function = function_callback.persist();
-
-        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
-        if load_ctx.is_none() {
-            return Err("Called 'register_notifications_consumer' out of context".into());
-        }
-        let load_ctx = load_ctx.unwrap();
-
-        let script_ctx_ref = match script_ctx_ref.upgrade() {
-            Some(s) => s,
-            None => {
-                return Err("Use of uninitialized script context".into());
-            }
-        };
-        let v8_notification_ctx = V8NotificationsCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
-
-        let res = if prefix.is_string() {
-            let prefix = prefix.to_utf8().unwrap();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx))
-        } else if prefix.is_array_buffer() {
-            let prefix = prefix.as_array_buffer();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx))
-        } else {
-            return Err("Second argument to 'register_notifications_consumer' must be a string or ArrayBuffer representing the prefix".into());
-        };
-        if let Err(err) = res {
-            return Err(err.get_msg().to_string());
-        }
-        Ok(None)
-    }));
+    add_register_notification_consumer_api(redis, script_ctx, ctx_scope);
 
     // add 'register_function'
     add_register_function_api(redis, script_ctx, ctx_scope, false);

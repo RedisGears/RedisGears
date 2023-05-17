@@ -6,15 +6,21 @@
 
 use crate::redisgears_plugin_api::run_function_ctx::BackgroundRunFunctionCtxInterface;
 use crate::redisgears_plugin_api::run_function_ctx::RedisClientCtxInterface;
-use std::any::Any;
 
 use super::GearsApiError;
-
-pub trait NotificationFiredDataInterface {}
 
 pub trait NotificationRunCtxInterface {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_>;
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface>;
+}
+
+pub trait NotificationPostJobCtxInterface {
+    fn add_post_notification_job(&self, job: Box<dyn FnOnce(&dyn NotificationRunCtxInterface)>);
+}
+
+pub trait NotificationCtxInterface:
+    NotificationPostJobCtxInterface + NotificationRunCtxInterface
+{
 }
 
 pub trait KeysNotificationsConsumerCtxInterface {
@@ -22,13 +28,7 @@ pub trait KeysNotificationsConsumerCtxInterface {
         &self,
         event: &str,
         key: &[u8],
-        notification_ctx: &dyn NotificationRunCtxInterface,
-    ) -> Option<Box<dyn Any>>;
-
-    fn post_command_notification(
-        &self,
-        notificaion_data: Option<Box<dyn Any>>,
-        notification_ctx: &dyn NotificationRunCtxInterface,
+        notification_ctx: &dyn NotificationCtxInterface,
         ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     );
 }

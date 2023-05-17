@@ -112,12 +112,90 @@ If the callback is a Coroutine, it will be executed in the background and there 
 
 When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOAD`](commands.md#rgfunction-load) command) all the trigger parameters can be modified.
 
-## Known Issues
+## Advance Usage
 
-On the current Redis version (7.0.3) there are couple of known issues that effects databases triggers:
+For most usecases, `register_notifications_consumer` API is enough. But there are some usecases where you might need a better garentees on when the trigger will be fired. Lets look at the following example:
 
-* The effect of the trigger and the command that fire the trigger will be replicated (to the replica and AOF) at a reverse order. This means that if `set x 1` fire a trigger that performs `del x`, the replication will see the `del x` command before the `set x 1` command. This will cause replication inconsistency. To avoid it, the trigger should only perform operations that are independent and are not effected the by execution order.
-* On active expire, the `del` command and the trigger effect will not be wrapped with `multi/exec` block.
-* On active eviction, the `del` command and the trigger effect will not be wrapped with `multi/exec` block.
+```js
+#!js api_version=1.0 name=lib
 
-There is already a [PR](https://github.com/redis/redis/pull/10969) that should fix those issues on Redis, we hope it will be merged soon.
+redis.register_notifications_consumer("consumer", "", function(client, data){
+    if (client.call("type", data.key) != "hash") {
+        // key is not a has, do not touch it.
+        return;
+    }
+    var name = client.call('hget', data.key, 'name');
+    client.call('incr', `name_${name}`);
+});
+```
+
+Whenever a hash key is changing, the example above will read the field `name` from the hash (assume its `foo`) and increase the value of the key `name_foo` (**notice that this function will not work properly on cluster, we need to use `{}` on the keys name to make sure we are writing to a key located on the current shard, for simplicity we ignore the cluster issues now**). Running the function will give the following results:
+
+```bash
+127.0.0.1:6379> hset x name foo
+(integer) 1
+127.0.0.1:6379> hset x name bar
+(integer) 0
+127.0.0.1:6379> get name_foo
+"1"
+127.0.0.1:6379> get name_bar
+"1"
+```
+
+We can see that the key `name_foo` was increased once, and the key `name_bar` was increased once. Will we get the same results if we wrap the `hset`'s in a `multi`/`exec`?
+
+```bash
+127.0.0.1:6379> multi
+OK
+127.0.0.1:6379(TX)> hset x name foo
+QUEUED
+127.0.0.1:6379(TX)> hset x name bar
+QUEUED
+127.0.0.1:6379(TX)> exec
+1) (integer) 1
+2) (integer) 0
+127.0.0.1:6379> get name_foo
+(nil)
+127.0.0.1:6379> get name_bar
+"2"
+```
+
+What just happened? `name_bar` was increased once while `name_foo` was not increaed at all. This happened because in case of a `multi`/`exec` or Lua, the notifications are fire at the end of the transaction, so all the notifications will see the last value that was written which is `bar`.
+
+To fix the code and still get the expected results even on `multi`/`exec`. RedisGears allow to specify an optional callback that will run exactly when the notification happened (and not at the end of the transaction). The constrains on this callback is that it can only **read** data without performing any writes. The new code will be as follow:
+
+```js
+#!js api_version=1.0 name=lib
+
+redis.register_notifications_consumer("consumer", "", function(client, data){
+    if (data.name !== undefined) {
+        client.call('incr', `name_${data.name}`);
+    }
+},{
+    onTriggerFired: (client, data) => {
+        if (client.call("type", data.key) != "hash") {
+            // key is not a has, do not touch it.
+            return;
+        }
+        data.name = client.call('hget', data.key, 'name');
+    }
+});
+```
+
+The above code gives an optional function argument, `onTriggerFired`, to our trigger. The function will be fired right after the key change and will allow us to read the content of the key. We are adding the content into the `data` argument which will be given to the actual trigger function that can write the data. The above code works as expected:
+
+```bash
+127.0.0.1:6379> multi
+OK
+127.0.0.1:6379(TX)> hset x name foo
+QUEUED
+127.0.0.1:6379(TX)> hset x name bar
+QUEUED
+127.0.0.1:6379(TX)> exec
+1) (integer) 1
+2) (integer) 0
+127.0.0.1:6379> get name_foo
+"1"
+127.0.0.1:6379> get name_bar
+"1"
+```

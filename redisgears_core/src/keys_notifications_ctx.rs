@@ -5,6 +5,9 @@
  */
 
 use redis_module::Context;
+use redisgears_plugin_api::redisgears_plugin_api::keys_notifications_consumer_ctx::{
+    NotificationCtxInterface, NotificationPostJobCtxInterface,
+};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::NotificationRunCtxInterface,
@@ -13,23 +16,23 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 
 use crate::background_run_ctx::BackgroundRunCtx;
 use crate::run_ctx::{RedisClient, RedisClientCallOptions};
-use crate::GearsLibraryMetaData;
+use crate::{get_notification_blocker, GearsLibraryMetaData};
 
 use std::sync::Arc;
 
-pub(crate) struct KeysNotificationsRunCtx<'ctx> {
+pub(crate) struct KeySpaceNotificationsCtx<'ctx> {
     ctx: &'ctx Context,
     lib_meta_data: Arc<GearsLibraryMetaData>,
     flags: FunctionFlags,
 }
 
-impl<'ctx> KeysNotificationsRunCtx<'ctx> {
+impl<'ctx> KeySpaceNotificationsCtx<'ctx> {
     pub(crate) fn new(
         ctx: &'ctx Context,
         lib_meta_data: Arc<GearsLibraryMetaData>,
         flags: FunctionFlags,
-    ) -> KeysNotificationsRunCtx {
-        KeysNotificationsRunCtx {
+    ) -> KeySpaceNotificationsCtx {
+        KeySpaceNotificationsCtx {
             ctx,
             lib_meta_data,
             flags,
@@ -37,7 +40,7 @@ impl<'ctx> KeysNotificationsRunCtx<'ctx> {
     }
 }
 
-impl<'ctx> NotificationRunCtxInterface for KeysNotificationsRunCtx<'ctx> {
+impl<'ctx> NotificationRunCtxInterface for KeySpaceNotificationsCtx<'ctx> {
     fn get_redis_client(&self) -> Box<dyn RedisClientCtxInterface + '_> {
         Box::new(RedisClient::new(
             self.ctx,
@@ -55,3 +58,17 @@ impl<'ctx> NotificationRunCtxInterface for KeysNotificationsRunCtx<'ctx> {
         ))
     }
 }
+
+impl<'ctx> NotificationPostJobCtxInterface for KeySpaceNotificationsCtx<'ctx> {
+    fn add_post_notification_job(&self, job: Box<dyn FnOnce(&dyn NotificationRunCtxInterface)>) {
+        let lib_meta_data = Arc::clone(&self.lib_meta_data);
+        self.ctx.add_post_notification_job(move |ctx| {
+            let post_notification_ctx =
+                KeySpaceNotificationsCtx::new(ctx, lib_meta_data, FunctionFlags::empty());
+            let _notification_blocker = get_notification_blocker();
+            job(&post_notification_ctx);
+        });
+    }
+}
+
+impl<'ctx> NotificationCtxInterface for KeySpaceNotificationsCtx<'ctx> {}
