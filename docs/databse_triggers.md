@@ -142,7 +142,7 @@ Whenever a hash key is changing, the example above will read the field `name` fr
 "1"
 ```
 
-We can see that the key `name_foo` was increased once, and the key `name_bar` was increased once. Will we get the same results if we wrap the `hset`'s in a `multi`/`exec`?
+We can see that the key `name_foo` was increased once, and the key `name_bar` was increased once. Will we get the same results if we wrap the `hset`'s with a `multi`/`exec`?
 
 ```bash
 127.0.0.1:6379> multi
@@ -160,7 +160,7 @@ QUEUED
 "2"
 ```
 
-What just happened? `name_bar` was increased once while `name_foo` was not increased at all. This happened because in case of a `multi`/`exec` or Lua, the notifications are fire at the end of the transaction, so all the notifications will see the last value that was written which is `bar`.
+What just happened? `name_bar` was increased twice while `name_foo` was not increased at all. This happened because in case of a `multi`/`exec` or Lua, the notifications are fire at the end of the transaction, so all the notifications will see the last value that was written which is `bar`.
 
 To fix the code and still get the expected results even on `multi`/`exec`. RedisGears allow to specify an optional callback that will run exactly when the notification happened (and not at the end of the transaction). The constrains on this callback is that it can only **read** data without performing any writes. The new code will be as follow:
 
