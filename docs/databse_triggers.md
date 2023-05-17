@@ -114,7 +114,7 @@ When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOA
 
 ## Advance Usage
 
-For most usecases, `register_notifications_consumer` API is enough. But there are some usecases where you might need a better garentees on when the trigger will be fired. Lets look at the following example:
+For most use cases, `register_notifications_consumer` API is enough. But there are some use cases where you might need a better guaranteed on when the trigger will be fired. Lets look at the following example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -160,7 +160,7 @@ QUEUED
 "2"
 ```
 
-What just happened? `name_bar` was increased once while `name_foo` was not increaed at all. This happened because in case of a `multi`/`exec` or Lua, the notifications are fire at the end of the transaction, so all the notifications will see the last value that was written which is `bar`.
+What just happened? `name_bar` was increased once while `name_foo` was not increased at all. This happened because in case of a `multi`/`exec` or Lua, the notifications are fire at the end of the transaction, so all the notifications will see the last value that was written which is `bar`.
 
 To fix the code and still get the expected results even on `multi`/`exec`. RedisGears allow to specify an optional callback that will run exactly when the notification happened (and not at the end of the transaction). The constrains on this callback is that it can only **read** data without performing any writes. The new code will be as follow:
 
