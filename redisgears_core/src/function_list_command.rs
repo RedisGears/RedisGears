@@ -5,12 +5,10 @@
  */
 
 use redis_module::redisvalue::RedisValueKey;
-use redis_module::{Context, NextArg, RedisError, RedisResult, RedisValue};
+use redis_module::{Context, NextArg, RedisError, RedisResult, RedisString, RedisValue};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 
 use std::collections::BTreeMap;
-use std::iter::Skip;
-use std::vec::IntoIter;
 
 use crate::{get_libraries, get_msg_verbose, json_to_redis_value};
 
@@ -28,9 +26,9 @@ fn function_list_command_flags(flags: FunctionFlags) -> RedisValue {
     RedisValue::Array(res)
 }
 
-pub(crate) fn function_list_command(
+pub(crate) fn function_list_command<T: Iterator<Item = RedisString>>(
     ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
+    mut args: T,
 ) -> RedisResult {
     let mut with_code = false;
     let mut lib = None;
