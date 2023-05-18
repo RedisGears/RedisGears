@@ -3,7 +3,7 @@ from common import gearsTest
 @gearsTest()
 def testWrongEngine(env):
     script = '''#!js1 api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
     '''
@@ -12,7 +12,7 @@ redis.register_function("test", function(client){
 @gearsTest()
 def testNoApiVersion(env):
     script = '''#!js name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
     '''
@@ -21,7 +21,7 @@ redis.register_function("test", function(client){
 @gearsTest()
 def testNoName(env):
     script = '''#!js api_version=1.0
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
     '''
@@ -30,10 +30,10 @@ redis.register_function("test", function(client){
 @gearsTest()
 def testSameFunctionName(env):
     script = '''#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
     '''
@@ -42,7 +42,7 @@ redis.register_function("test", function(client){
 @gearsTest()
 def testWrongArguments1(env):
     script = '''#!js api_version=1.0 name=foo
-redis.register_function(1, function(client){
+redis.registerFunction(1, function(client){
     return 2
 })
     '''
@@ -51,7 +51,7 @@ redis.register_function(1, function(client){
 @gearsTest()
 def testWrongArguments2(env):
     script = '''#!js api_version=1.0 name=foo
-redis.register_function("test", "foo")
+redis.registerFunction("test", "foo")
     '''
     env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains("must be a function")
 
@@ -65,7 +65,7 @@ def testNoRegistrations(env):
 @gearsTest()
 def testBlockRedisTwice(env):
     """#!js api_version=1.0 name=foo
-redis.register_async_function('test', async function(c1){
+redis.registerAsyncFunction('test', async function(c1){
     return await c1.block(function(c2){
         c1.block(function(c3){}); // blocking again
     });
@@ -76,9 +76,9 @@ redis.register_async_function('test', async function(c1){
 @gearsTest()
 def testCallRedisWhenNotBlocked(env):
     """#!js api_version=1.0 name=foo
-redis.register_async_function('test', async function(c){
+redis.registerAsyncFunction('test', async function(c){
     return await c.block(function(c1){
-        return c1.run_on_background(async function(c2){
+        return c1.executeAsync(async function(c2){
             return c1.call('ping'); // call redis when not blocked
         });
     });
@@ -89,10 +89,10 @@ redis.register_async_function('test', async function(c){
 @gearsTest()
 def testCommandsNotAllowedOnScript(env):
     """#!js api_version=1.0 name=foo
-redis.register_function('test1', function(c){
+redis.registerFunction('test1', function(c){
     return c.call('eval', 'return 1', '0');
 })
-redis.register_async_function('test2', async function(c1){
+redis.registerAsyncFunction('test2', async function(c1){
     c1.block(function(c2){
         return c2.call('eval', 'return 1', '0');
     });
@@ -107,7 +107,7 @@ def testJSStackOverflow(env):
 function test() {
     test();
 }
-redis.register_function('test', test);
+redis.registerFunction('test', test);
     """
     env.expect('TFCALL', 'foo', 'test', '0').error().contains('Maximum call stack size exceeded')
 
@@ -119,7 +119,7 @@ function test(i) {
     test(i+1);
 }
 test(1);
-redis.register_function('test', test);
+redis.registerFunction('test', test);
     """
     env.expect('CONFIG', 'SET', 'redisgears_2.lock-redis-timeout', '10000')
     env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains("Maximum call stack size exceeded")
@@ -131,7 +131,7 @@ function test() {
     test();
 }
 test();
-redis.register_function('test', test);
+redis.registerFunction('test', test);
     """
     env.expect('TFUNCTION', 'LOAD', 'CONFIG').error().contains("configuration value was not given")
 
@@ -142,7 +142,7 @@ function test() {
     test();
 }
 test();
-redis.register_function('test', test);
+redis.registerFunction('test', test);
     """
     env.expect('TFUNCTION', 'LOAD', 'CONFIG', 'foo').error().contains("configuration must be a valid json")
 
@@ -153,7 +153,7 @@ function test() {
     test();
 }
 test();
-redis.register_function('test', test);
+redis.registerFunction('test', test);
     """
     env.expect('TFUNCTION', 'LOAD', 'CONFIG', '5').error().contains("configuration must be a valid json object")
 
@@ -165,7 +165,7 @@ function test() {
     a[0] = a;
     return a;
 }
-redis.register_function('test', test);
+redis.registerFunction('test', test);
     """
     env.expect('TFCALL', 'foo', 'test', '0')
     env.expect('PING').equal(True)
@@ -176,7 +176,7 @@ def testFcallWithWrangArgumets(env):
 function test() {
     return 'test';
 }
-redis.register_function('test', test);
+redis.registerFunction('test', test);
     """
     env.expect('TFCALL', 'foo', 'test', '10', 'bar').error().contains('Not enough arguments was given')
     env.expect('TFCALL', 'foo', 'test').error().contains('wrong number of arguments ')
@@ -184,8 +184,8 @@ redis.register_function('test', test);
 @gearsTest()
 def testNotExistsRemoteFunction(env):
     """#!js api_version=1.0 name=foo
-redis.register_async_function("test", async (async_client) => {
-    return await async_client.run_on_key('x', 'not_exists');
+redis.registerAsyncFunction("test", async (async_client) => {
+    return await async_client.runOnKey('x', 'not_exists');
 });
     """
     env.expect('TFCALLASYNC', 'foo', 'test', '0').error().contains('Remote function not_exists does not exists')
@@ -195,15 +195,15 @@ def testRemoteFunctionNotSerializableInput(env):
     """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
-redis.register_remote_function(remote_get, async(client, key) => {
+redis.registerClusterFunction(remote_get, async(client, key) => {
     let res = client.block((client) => {
         return client.call("get", key);
     });
     return res;
 });
 
-redis.register_async_function("test", async (async_client, key) => {
-    return await async_client.run_on_key(key, remote_get, ()=>{return 1;});
+redis.registerAsyncFunction("test", async (async_client, key) => {
+    return await async_client.runOnKey(key, remote_get, ()=>{return 1;});
 });
     """
     env.expect('TFCALLASYNC', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function argument')
@@ -213,12 +213,12 @@ def testRemoteFunctionNotSerializableOutput(env):
     """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
-redis.register_remote_function(remote_get, async(client, key) => {
+redis.registerClusterFunction(remote_get, async(client, key) => {
     return ()=>{return 1;};
 });
 
-redis.register_async_function("test", async (async_client, key) => {
-    return await async_client.run_on_key(key, remote_get, key);
+redis.registerAsyncFunction("test", async (async_client, key) => {
+    return await async_client.runOnKey(key, remote_get, key);
 });
     """
     env.expect('TFCALLASYNC', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function result')
@@ -226,15 +226,15 @@ redis.register_async_function("test", async (async_client, key) => {
 @gearsTest()
 def testRegisterRemoteFunctionWorngNumberOfArgs(env):
     script = """#!js api_version=1.0 name=foo
-redis.register_remote_function();
+redis.registerClusterFunction();
     """
     env.expect('TFUNCTION', 'LOAD', script).error().contains("Wrong number of arguments given")
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType(env):
     script = """#!js api_version=1.0 name=foo
-redis.register_remote_function(1, async (async_client, key) => {
-    return await async_client.run_on_key(key, remote_get, key);
+redis.registerClusterFunction(1, async (async_client, key) => {
+    return await async_client.runOnKey(key, remote_get, key);
 });
     """
     env.expect('TFUNCTION', 'LOAD', script).error().contains("Value is not string")
@@ -242,15 +242,15 @@ redis.register_remote_function(1, async (async_client, key) => {
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType2(env):
     script = """#!js api_version=1.0 name=foo
-redis.register_remote_function('test', 'test');
+redis.registerClusterFunction('test', 'test');
     """
-    env.expect('TFUNCTION', 'LOAD', script).error().contains("Second argument to 'register_remote_function' must be a function")
+    env.expect('TFUNCTION', 'LOAD', script).error().contains("Second argument to 'registerClusterFunction' must be a function")
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngfArgsType3(env):
     script = """#!js api_version=1.0 name=foo
-redis.register_remote_function('test', (async_client, key) => {
-    return async_client.run_on_key(key, remote_get, key);
+redis.registerClusterFunction('test', (async_client, key) => {
+    return async_client.runOnKey(key, remote_get, key);
 });
     """
     env.expect('TFUNCTION', 'LOAD', script).error().contains("Remote function must be async")
@@ -258,7 +258,7 @@ redis.register_remote_function('test', (async_client, key) => {
 @gearsTest()
 def testRedisAITensorCreateWithoutRedisAI(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", (client) => {
+redis.registerFunction("test", (client) => {
     return redis.redisai.create_tensor("FLOAT", [1, 3], new Uint8Array(16).buffer);
 });
     """
@@ -267,7 +267,7 @@ redis.register_function("test", (client) => {
 @gearsTest()
 def testRedisAIModelCreateWithoutRedisAI(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", (client) => {
+redis.registerFunction("test", (client) => {
     return client.redisai.open_model("foo");
 });
     """
@@ -276,7 +276,7 @@ redis.register_function("test", (client) => {
 @gearsTest()
 def testRedisAIScriptCreateWithoutRedisAI(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", (client) => {
+redis.registerFunction("test", (client) => {
     return client.redisai.open_script("foo");
 });
     """
@@ -285,8 +285,8 @@ redis.register_function("test", (client) => {
 @gearsTest()
 def testUseOfInvalidClient(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", (client) => {
-    return client.run_on_background(async (async_client) => {
+redis.registerFunction("test", (client) => {
+    return client.executeAsync(async (async_client) => {
         return async_client.block(()=>{
             return client.call("ping");
         });
@@ -298,8 +298,8 @@ redis.register_function("test", (client) => {
 @gearsTest()
 def testCallWithoutBlock(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", (client) => {
-    return client.run_on_background(async () => {
+redis.registerFunction("test", (client) => {
+    return client.executeAsync(async () => {
             return client.call("ping");
     });
 });
@@ -371,14 +371,14 @@ def testNoLibraryCode(env):
 @gearsTest()
 def testNoValidJsonConfig(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1})
+redis.registerFunction('test', () => {return 1})
     '''
     env.expect('TFUNCTION', 'LOAD', 'CONFIG', b'\xaa', code).error().contains("given configuration value is not a valid string")
 
 @gearsTest()
 def testSetUserAsArgument(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1})
+redis.registerFunction('test', () => {return 1})
     '''
     env.expect('TFUNCTION', 'LOAD', 'USER', 'foo', code).error().contains("Unknown argument user")
 
@@ -390,7 +390,7 @@ def testBinaryLibCode(env):
 @gearsTest()
 def testUploadSameLibraryName(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1})
+redis.registerFunction('test', () => {return 1})
     '''
     env.expect('TFUNCTION', 'LOAD', code).equal('OK')
     env.expect('TFUNCTION', 'LOAD', code).error().contains('already exists')
@@ -398,21 +398,21 @@ redis.register_function('test', () => {return 1})
 @gearsTest()
 def testUnknownFunctionSubCommand(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1})
+redis.registerFunction('test', () => {return 1})
     '''
     env.expect('TFUNCTION', 'Foo').error().contains('Unknown subcommand')
 
 @gearsTest()
 def testUnknownFunctionName(env):
     '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1})
+redis.registerFunction('test', () => {return 1})
     '''
     env.expect('TFCALL', 'lib', 'foo', '0').error().contains("Unknown function")
 
 @gearsTest()
 def testCallFunctionOnOOM(env):
     '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1})
+redis.registerFunction('test', () => {return 1})
     '''
     env.expect('config', 'set', 'maxmemory', '1').equal('OK')
     env.expect('TFCALL', 'lib', 'test', '0').error().contains("OOM can not run the function when out of memory")
@@ -420,13 +420,13 @@ redis.register_function('test', () => {return 1})
 @gearsTest()
 def testRegisterSameConsumerTwice(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "key", async function(client, data) {
+redis.registerTrigger("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
     });
 });
 
-redis.register_notifications_consumer("consumer", "key", async function(client, data) {
+redis.registerTrigger("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
     });
@@ -437,10 +437,10 @@ redis.register_notifications_consumer("consumer", "key", async function(client, 
 @gearsTest()
 def testRegisterSameStreamConsumerTwice(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
     return 0;
 });
-redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
     return 0;
 });
     '''
@@ -449,7 +449,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
 @gearsTest()
 def testUpgradeStreamConsumerWithDifferentPrefix(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_stream_consumer("consumer", "%s", 1, false, function(){
+redis.registerStreamTrigger("consumer", "%s", 1, false, function(){
     return 0;
 });
     '''
@@ -459,10 +459,10 @@ redis.register_stream_consumer("consumer", "%s", 1, false, function(){
 @gearsTest()
 def testRegisterSameRemoteTaskTwice(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_remote_function("remote", async(client, key) => {
+redis.registerClusterFunction("remote", async(client, key) => {
     return 1;
 });
-redis.register_remote_function("remote", async(client, key) => {
+redis.registerClusterFunction("remote", async(client, key) => {
     return 1;
 });
     '''
@@ -471,43 +471,43 @@ redis.register_remote_function("remote", async(client, key) => {
 @gearsTest()
 def testWrongFlagValue(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1}, [1])
+redis.registerFunction('test', () => {return 1}, [1])
     '''
     env.expect('TFUNCTION', 'LOAD', code).error().contains('wrong type of string value')
 
 @gearsTest()
 def testUnknownFlagValue(env):
     code = '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1}, ["unknown"])
+redis.registerFunction('test', () => {return 1}, ["unknown"])
     '''
     env.expect('TFUNCTION', 'LOAD', code).error().contains('Unknow flag')
 
 @gearsTest()
 def testArgDecodeFailure(env):
     '''#!js api_version=1.0 name=lib
-redis.register_function('test', () => {return 1})
+redis.registerFunction('test', () => {return 1})
     '''
     env.expect('TFCALL', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
 
 @gearsTest()
 def testArgDecodeFailureAsync(env):
     '''#!js api_version=1.0 name=lib
-redis.register_async_function('test', async () => {return 1})
+redis.registerAsyncFunction('test', async () => {return 1})
     '''
     env.expect('TFCALLASYNC', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
 
 @gearsTest()
 def testCallAsyncFunctionWithTFCALL(env):
     '''#!js api_version=1.0 name=lib
-redis.register_async_function('test', async () => {return 1})
+redis.registerAsyncFunction('test', async () => {return 1})
     '''
     env.expect('TFCALL', 'lib', 'test', '0').error().contains('function is declared as async and was called while blocking was not allowed')
 
 @gearsTest()
 def testBlockOnTFCall(env):
     '''#!js api_version=1.0 name=lib
-redis.register_function('test', (c) => {
-    return c.run_on_background(async function(){
+redis.registerFunction('test', (c) => {
+    return c.executeAsync(async function(){
         return 1;
     });
 });

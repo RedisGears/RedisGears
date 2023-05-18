@@ -7,7 +7,7 @@ NO_PERMISSIONS_ERROR_MSG = 'No permissions to access a key'
 @gearsTest()
 def testAclOnSyncFunction(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("get", function(client, dummy, key){
+redis.registerFunction("get", function(client, dummy, key){
     return client.call('get', key);
 })
     """
@@ -23,7 +23,7 @@ redis.register_function("get", function(client, dummy, key){
 @gearsTest()
 def testAclOnAsyncFunction(env):
     """#!js api_version=1.0 name=lib
-redis.register_async_function("get", async function(client, dummy, key){
+redis.registerAsyncFunction("get", async function(client, dummy, key){
     return client.block(function(client){
         return client.call('get', key);
     });
@@ -41,9 +41,9 @@ redis.register_async_function("get", async function(client, dummy, key){
 @gearsTest()
 def testAclOnAsyncComplex(env):
     """#!js api_version=1.0 name=lib
-redis.register_async_function("get", async function(client, dummy, key){
+redis.registerAsyncFunction("get", async function(client, dummy, key){
     return client.block(function(client){
-        return client.run_on_background(async function(client) {
+        return client.executeAsync(async function(client) {
             return client.block(function(client) {
                 return client.call('get', key);
             });
@@ -67,7 +67,7 @@ var async_get_continue = null;
 var async_get_resolve = null;
 var async_get_reject = null;
 
-redis.register_async_function("async_get_continue", async function(client){
+redis.registerAsyncFunction("async_get_continue", async function(client){
     async_get_continue("continue");
     return await new Promise((resolve, reject) => {
         async_get_resolve = resolve;
@@ -75,8 +75,8 @@ redis.register_async_function("async_get_continue", async function(client){
     })
 });
 
-redis.register_function("async_get_start", function(client, dummy, key){
-    client.run_on_background(async function(client) {
+redis.registerFunction("async_get_start", function(client, dummy, key){
+    client.executeAsync(async function(client) {
         await new Promise((resolve, reject) => {
             async_get_continue = resolve;
         });
@@ -125,7 +125,7 @@ redis.register_function("async_get_start", function(client, dummy, key){
 @gearsTest()
 def testAclOnNotificationConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("test", "", function(client, data) {
+redis.registerTrigger("test", "", function(client, data) {
     return client.call("get", "x");
 });
     """
@@ -145,7 +145,7 @@ redis.register_notifications_consumer("test", "", function(client, data) {
 @gearsTest()
 def testAclOnAsyncNotificationConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("test", "", async function(client, data) {
+redis.registerTrigger("test", "", async function(client, data) {
     client.block(function(c){
         return c.call("get", "x");
     });
@@ -171,7 +171,7 @@ redis.register_notifications_consumer("test", "", async function(client, data) {
 @gearsTest()
 def testAclOnStreamConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.register_stream_consumer("consumer", "", 1, false, function(client){
+redis.registerStreamTrigger("consumer", "", 1, false, function(client){
     return client.call("get", "x");
 });
     """
@@ -194,7 +194,7 @@ redis.register_stream_consumer("consumer", "", 1, false, function(client){
 @gearsTest()
 def testAclOnAsyncStreamConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.register_stream_consumer("consumer", "", 1, false, async function(client){
+redis.registerStreamTrigger("consumer", "", 1, false, async function(client){
     return client.block(function(c) {
         return c.call("get", "x");
     });

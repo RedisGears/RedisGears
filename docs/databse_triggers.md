@@ -7,12 +7,12 @@ Database triggers allow register a function that will be invoked whenever an eve
 
 For the full list of supported events please refer to [Redis Key Space notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands)
 
-To register a database trigger we need to use the `redis.register_notifications_consumer` API when loading our library. The following example shows how to register a database trigger that will add a last update field when ever a hash key is changed:
+To register a database trigger we need to use the `redis.registerTrigger` API when loading our library. The following example shows how to register a database trigger that will add a last update field when ever a hash key is changed:
 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_notifications_consumer("consumer", "", function(client, data){
+redis.registerTrigger("consumer", "", function(client, data){
     if (client.call("type", data.key) != "hash") {
         // key is not a has, do not touch it.
         return;
@@ -114,12 +114,12 @@ When upgrading the trigger code (using the `UPGRADE` option of [`TFUNCTION LOAD`
 
 ## Advance Usage
 
-For most use cases, `register_notifications_consumer` API is enough. But there are some use cases where you might need a better guaranteed on when the trigger will be fired. Lets look at the following example:
+For most use cases, `registerTrigger` API is enough. But there are some use cases where you might need a better guaranteed on when the trigger will be fired. Lets look at the following example:
 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_notifications_consumer("consumer", "", function(client, data){
+redis.registerTrigger("consumer", "", function(client, data){
     if (client.call("type", data.key) != "hash") {
         // key is not a has, do not touch it.
         return;
@@ -167,7 +167,7 @@ To fix the code and still get the expected results even on `multi`/`exec`. Redis
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_notifications_consumer("consumer", "", function(client, data){
+redis.registerTrigger("consumer", "", function(client, data){
     if (data.name !== undefined) {
         client.call('incr', `name_${data.name}`);
     }

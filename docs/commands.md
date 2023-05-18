@@ -20,7 +20,7 @@ An error, if the loading failed or "OK" if everything was done correctly.
 
 **Example**
 ```bash
-> TFUNCTION LOAD "#!js api_version=1.0 name=lib\n redis.register_function('foo', ()=>{return 'bar'})"
+> TFUNCTION LOAD "#!js api_version=1.0 name=lib\n redis.registerFunction('foo', ()=>{return 'bar'})"
 OK
 ```
 

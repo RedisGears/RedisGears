@@ -7,7 +7,7 @@ The arguments given on the [`TFCALL`](docs/commands.md#tfcall) command, after th
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_function('my_get', function(client, key_name){
+redis.registerFunction('my_get', function(client, key_name){
     if (client.call('type', key_name) == 'string') {
         return client.call('get', key_name);
     }
@@ -40,7 +40,7 @@ It is also possible to get all th arguments given to the function as a `JS` arra
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_function('my_get', function(client, ...keys){
+redis.registerFunction('my_get', function(client, ...keys){
     var results = [];
     keys.forEach((key_name)=> {
             if (client.call('type', key_name) == 'string') {
@@ -82,7 +82,7 @@ The following example shows how to set the `no-writes` flag:
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_function('my_ping', function(client){
+redis.registerFunction('my_ping', function(client){
     return client.call('ping');
 },
 ["no-writes"]);
@@ -107,7 +107,7 @@ When writing a library you might want to be able to provide a loading configurat
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_function("hset", function(client, key, field, val){
+redis.registerFunction("hset", function(client, key, field, val){
     // get the current time in ms
     var curr_time = client.call("time")[0];
     return client.call('hset', key, field, val, "__last_update__", curr_time);
@@ -140,7 +140,7 @@ if (redis.config.last_update_field_name !== undefined) {
     last_update_field_name = redis.config.last_update_field_name
 }
 
-redis.register_function("hset", function(client, key, field, val){
+redis.registerFunction("hset", function(client, key, field, val){
     // get the current time in ms
     var curr_time = client.call("time")[0];
     return client.call('hset', key, field, val, last_update_field_name, curr_time);
@@ -188,7 +188,7 @@ When running Redis commands from within a RedisGears function using `client.call
 | `null`            | JS null                                                                                                                                        |
 |                   |                                                                                                                                                |
 
-When running Redis commands from within a RedisGears function using `client.call_raw` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
+When running Redis commands from within a RedisGears function using `client.callRaw` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
 
 | resp 3            | JS object type                                                                                                                                 |
 |-------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -237,7 +237,7 @@ It is possible to instruct RedisGears not to decode function arguments as `JS` `
 
 ```js
 #!js api_version=1.0 name=lib
-redis.register_function("my_set", (c, key, val) => {
+redis.registerFunction("my_set", (c, key, val) => {
     return c.call("set", key, val);
 },
 ["raw-arguments"]);
@@ -256,12 +256,12 @@ Notice that `call` function also except `JS` `ArrayBuffer` arguments.
 
 ### Binary Command Results
 
-Getting function arguments as binary data is not enough. We might want to read binary data from Redis key. In order to do this we can use `call_raw` function that will not decode the result as `JS` `String` and instead will return the result as `JS` `ArrayBuffer`. Example:
+Getting function arguments as binary data is not enough. We might want to read binary data from Redis key. In order to do this we can use `callRaw` function that will not decode the result as `JS` `String` and instead will return the result as `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib
-redis.register_function("my_get", (c, key) => {
-    return c.call_raw("get", key);
+redis.registerFunction("my_get", (c, key) => {
+    return c.callRaw("get", key);
 },
 ["raw-arguments"]);
 ```
@@ -287,7 +287,7 @@ On [database triggers](databse_triggers.md), if the key name that triggered the 
 var n_notifications = 0;
 var last_key = null;
 var last_key_raw = null;
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.registerTrigger("consumer", "", function(client, data) {
     if (data.event == "set") {
         n_notifications += 1;
         last_data = data.key;
@@ -295,7 +295,7 @@ redis.register_notifications_consumer("consumer", "", function(client, data) {
     }
 });
 
-redis.register_function("notifications_stats", async function(){
+redis.registerFunction("notifications_stats", async function(){
     return [
         n_notifications,
         last_key,
@@ -328,7 +328,7 @@ var last_key = null;
 var last_key_raw = null;
 var last_data = null;
 var last_data_raw = null;
-redis.register_function("stats", function(){
+redis.registerFunction("stats", function(){
     return [
         last_key,
         last_key_raw,
@@ -336,7 +336,7 @@ redis.register_function("stats", function(){
         last_data_raw
     ];
 })
-redis.register_stream_consumer("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
+redis.registerStreamTrigger("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
     last_key = data.stream_name;
     last_key_raw = data.stream_name_raw;
     last_data = data.record;

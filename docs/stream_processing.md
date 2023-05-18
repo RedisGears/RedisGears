@@ -9,7 +9,7 @@ RedisGears provide an API that allows Register a stream consumer. Do not get con
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_stream_consumer(
+redis.registerStreamTrigger(
     "consumer", // consumer name
     "stream", // streams prefix
     1, // window

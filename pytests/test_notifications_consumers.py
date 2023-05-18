@@ -9,11 +9,11 @@ import time
 def testBasicNotifications(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.registerTrigger("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
-redis.register_function("n_notifications", function(){
+redis.registerFunction("n_notifications", function(){
     return n_notifications
 })
     """
@@ -30,11 +30,11 @@ redis.register_function("n_notifications", function(){
 def testAsyncNotification(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.register_notifications_consumer("consumer", "", async function(client, data) {
+redis.registerTrigger("consumer", "", async function(client, data) {
     n_notifications += 1;
 });
 
-redis.register_async_function("n_notifications", async function(){
+redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 })
     """
@@ -50,7 +50,7 @@ redis.register_async_function("n_notifications", async function(){
 @gearsTest()
 def testCallRedisOnNotification(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "key", async function(client, data) {
+redis.registerTrigger("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
     });
@@ -69,15 +69,15 @@ redis.register_notifications_consumer("consumer", "key", async function(client, 
 def testNotificationsAreNotFiredFromWithinFunction(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.registerTrigger("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
-redis.register_async_function("n_notifications", async function(){
+redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
 
-redis.register_function("simple_set", function(client){
+redis.registerFunction("simple_set", function(client){
     return client.call('set', 'x', '1');
 });
     """
@@ -91,15 +91,15 @@ redis.register_function("simple_set", function(client){
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.registerTrigger("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
-redis.register_async_function("n_notifications", async function(){
+redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
 
-redis.register_async_function("simple_set", async function(client){
+redis.registerAsyncFunction("simple_set", async function(client){
     return client.block(function(client){
         return client.call('set', 'x', '1');
     });
@@ -115,12 +115,12 @@ redis.register_async_function("simple_set", async function(client){
 def testNotificationsAreNotFiredFromWithinAnotherNotification(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.registerTrigger("consumer", "", function(client, data) {
     client.call('set', 'x' , '1');
     n_notifications += 1;
 });
 
-redis.register_async_function("n_notifications", async function(){
+redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
     """
@@ -132,18 +132,18 @@ redis.register_async_function("n_notifications", async function(){
 def testNotificationsAreNotFiredFromWithinStreamConsumer(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.registerTrigger("consumer", "", function(client, data) {
     redis.log(JSON.stringify(data));
     if (data.event == "set") {
         n_notifications += 1;
     }
 });
 
-redis.register_async_function("n_notifications", async function(){
+redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
 
-redis.register_stream_consumer("consumer", "stream", 1, true, function(client) {
+redis.registerStreamTrigger("consumer", "stream", 1, true, function(client) {
     client.call('set', 'X' , '2');
 })
     """
@@ -160,7 +160,7 @@ def testNotificationsOnBinaryKey(env):
 var n_notifications = 0;
 var last_key = null;
 var last_key_raw = null;
-redis.register_notifications_consumer("consumer", new Uint8Array([255]).buffer, function(client, data) {
+redis.registerTrigger("consumer", new Uint8Array([255]).buffer, function(client, data) {
     if (data.event == "set") {
         n_notifications += 1;
         last_data = data.key;
@@ -168,7 +168,7 @@ redis.register_notifications_consumer("consumer", new Uint8Array([255]).buffer, 
     }
 });
 
-redis.register_async_function("notifications_stats", async function(){
+redis.registerAsyncFunction("notifications_stats", async function(){
     return [
         n_notifications,
         last_key,
@@ -183,8 +183,8 @@ redis.register_async_function("notifications_stats", async function(){
 @gearsTest()
 def testSyncNotificationsReturnPromise(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client) => {
-    return client.run_on_background(async ()=>{return 1});
+redis.registerTrigger("consumer", "", (client) => {
+    return client.executeAsync(async ()=>{return 1});
 });
     """
     env.expect('SET', 'x', '1').equal(True)
@@ -193,8 +193,8 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 @gearsTest()
 def testSyncNotificationsReturnPromiseRaiseError(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client) => {
-    return client.run_on_background(async ()=>{throw "SomeError"});
+redis.registerTrigger("consumer", "", (client) => {
+    return client.executeAsync(async ()=>{throw "SomeError"});
 });
     """
     env.expect('SET', 'x', '1').equal(True)
@@ -203,8 +203,8 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 @gearsTest()
 def testAsyncNotificationsReturnPromise(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", async (client) => {
-    return client.block((client) => {return client.run_on_background(async() => {return 1;})});
+redis.registerTrigger("consumer", "", async (client) => {
+    return client.block((client) => {return client.executeAsync(async() => {return 1;})});
 });
     """
     env.expect('SET', 'x', '1').equal(True)
@@ -213,8 +213,8 @@ redis.register_notifications_consumer("consumer", "", async (client) => {
 @gearsTest()
 def testAsyncNotificationsReturnPromiseRaiseError(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", async (client) => {
-    return client.block((client) => {return client.run_on_background(async() => {throw "SomeError";})});
+redis.registerTrigger("consumer", "", async (client) => {
+    return client.block((client) => {return client.executeAsync(async() => {throw "SomeError";})});
 });
     """
     env.expect('SET', 'x', '1').equal(True)
@@ -223,7 +223,7 @@ redis.register_notifications_consumer("consumer", "", async (client) => {
 @gearsTest()
 def testSyncNotificationsReturnResolvedPromise(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client) => {
+redis.registerTrigger("consumer", "", (client) => {
     var resolve_promise = null;
     var promise = new Promise((resolve, reject) => {
         resolve_promise = resolve;
@@ -238,7 +238,7 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 @gearsTest()
 def testOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client, data) => {
+redis.registerTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: (client, data) => {
@@ -252,7 +252,7 @@ redis.register_notifications_consumer("consumer", "", (client, data) => {
 @gearsTest()
 def testUnableToWriteOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client, data) => {
+redis.registerTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: (client, data) => {
@@ -268,7 +268,7 @@ redis.register_notifications_consumer("consumer", "", (client, data) => {
 @gearsTest()
 def testReadOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client, data) => {
+redis.registerTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', (data.content + 1).toString());
 },{
     onTriggerFired: (client, data) => {
@@ -282,7 +282,7 @@ redis.register_notifications_consumer("consumer", "", (client, data) => {
 @gearsTest()
 def testTimeoutOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client, data) => {
+redis.registerTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: (client, data) => {
@@ -297,10 +297,10 @@ redis.register_notifications_consumer("consumer", "", (client, data) => {
 @gearsTest()
 def testWrongTypeForOnTriggerFiredCallbackArgument(env):
     script = """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", (client, data) => {
+redis.registerTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: 1
 });
     """
-    env.expect('TFUNCTION', 'LOAD', script).error().contains("'onTriggerFired' argument to 'register_notifications_consumer' must be a function")
+    env.expect('TFUNCTION', 'LOAD', script).error().contains("'onTriggerFired' argument to 'registerTrigger' must be a function")

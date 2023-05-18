@@ -50,7 +50,7 @@ touch index.js
 Now lets add some code to `index.js`, open `index.js` file and past the following code:
 
 ```js
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return "foo";
 });
 ```
@@ -85,7 +85,7 @@ If all was done correctly you will see a new directory, `dist`, with a single fi
 
 ```js
 #!js api_version=1.0 name=foo
-redis.register_function("foo", (function() { return"foo" }));
+redis.registerFunction("foo", (function() { return"foo" }));
 ```
 
 This file can be send to be evaluated by RedisGears using `redis-cli`. From the project root directory, run the following:
@@ -114,7 +114,7 @@ Lets modify `index.js` to import the `test` variable from `test.js`:
 ```js
 import {test} from "./test.js"
 
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return test;
 });
 ```
@@ -129,7 +129,7 @@ We will see that the generated file content has changed and it is now contains t
 
 ```js
 #!js api_version=1.0 name=foo
-(()=>{"use strict";redis.register_function("foo",(function(){return"test"}))})();
+(()=>{"use strict";redis.registerFunction("foo",(function(){return"test"}))})();
 ```
 
 Now we can upload our function (notice that we use the `REPLACE` option to replace the existing function):
@@ -158,7 +158,7 @@ Lets change our program to use `pi` variable imported from `mathjs` library:
 ```js
 import {pi} from "mathjs"
 
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return pi;
 });
 ```
@@ -331,7 +331,7 @@ var wasm_code = base64.decode(data);
 var decoded_wasm = Uint8Array.from(wasm_code, c => c.charCodeAt(0));
 initSync(decoded_wasm)
 
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return test();
 });
 
@@ -508,7 +508,7 @@ var wasm_code = base64.decode(data);
 var decoded_wasm = Uint8Array.from(wasm_code, c => c.charCodeAt(0));
 initSync(decoded_wasm)
 
-redis.register_function("foo", function(client){
+redis.registerFunction("foo", function(client){
     var rust_client = new Object();
     rust_client.get = (key) => {
         return client.call("get", key);

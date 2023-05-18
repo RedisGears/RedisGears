@@ -7,15 +7,15 @@ def testBasicClusterSupport(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
-redis.register_remote_function(remote_get, async(client, key) => {
+redis.registerClusterFunction(remote_get, async(client, key) => {
     let res = client.block((client) => {
         return client.call("get", key);
     });
     return res;
 });
 
-redis.register_async_function("test", async (async_client, key) => {
-    return await async_client.run_on_key(key, remote_get, key);
+redis.registerAsyncFunction("test", async (async_client, key) => {
+    return await async_client.runOnKey(key, remote_get, key);
 });
     """
     cluster_conn.execute_command('set', 'x', '1')
@@ -28,15 +28,15 @@ def testBasicClusterBinaryInputOutputSupport(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
-redis.register_remote_function(remote_get, async(client, key) => {
+redis.registerClusterFunction(remote_get, async(client, key) => {
     let res = client.block((client) => {
-        return client.call_raw("get", key);
+        return client.callRaw("get", key);
     });
     return res;
 });
 
-redis.register_async_function("test", async (async_client, key) => {
-    return await async_client.run_on_key(key, remote_get, key);
+redis.registerAsyncFunction("test", async (async_client, key) => {
+    return await async_client.runOnKey(key, remote_get, key);
 },
 ["raw-arguments"]);
     """
@@ -50,12 +50,12 @@ def testRemoteFunctionRaiseError(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
-redis.register_remote_function(remote_get, async(client, key) => {
+redis.registerClusterFunction(remote_get, async(client, key) => {
     throw 'Remote function failure';
 });
 
-redis.register_async_function("test", async (async_client, key) => {
-    return await async_client.run_on_key(key, remote_get, key);
+redis.registerAsyncFunction("test", async (async_client, key) => {
+    return await async_client.runOnKey(key, remote_get, key);
 },
 ["raw-arguments"]);
     """
@@ -74,21 +74,21 @@ def testRecursiveLookup(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const recursive_get = "recursive_get";
 
-redis.register_remote_function(recursive_get, async(client, key) => {
+redis.registerClusterFunction(recursive_get, async(client, key) => {
     return await client.block((client) => {
         let t = client.call("type", key);
         if (t == 'string') {
             return client.call("get", key);
         }
         let next_key = client.call("hget", key, 'lookup');
-        return client.run_on_background(async(client) => {
-            return await client.run_on_key(next_key, recursive_get, next_key);
+        return client.executeAsync(async(client) => {
+            return await client.runOnKey(next_key, recursive_get, next_key);
         });
     });
 });
 
-redis.register_async_function("test", async(async_client, key) => {
-    return await async_client.run_on_key(key, recursive_get, key);
+redis.registerAsyncFunction("test", async(async_client, key) => {
+    return await async_client.runOnKey(key, recursive_get, key);
 });
     """
     for i in range(100):
@@ -103,13 +103,13 @@ def testRemoteTaskTimeout(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const remote_get = "remote_get";
 
-redis.register_remote_function(remote_get, async(client, key) => {
+redis.registerClusterFunction(remote_get, async(client, key) => {
     while (true); // run forever so we will get the timeout.
     return 'done';
 });
 
-redis.register_async_function("test", async (async_client, key) => {
-    return await async_client.run_on_key(key, remote_get, key);
+redis.registerAsyncFunction("test", async (async_client, key) => {
+    return await async_client.runOnKey(key, remote_get, key);
 });
     """
     cluster_conn.execute_command('set', 'x', '1')
@@ -120,14 +120,14 @@ def testRunOnAllShards(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const dbside_remote_func = "dbsize";
 
-redis.register_remote_function(dbside_remote_func, async(client) => {
+redis.registerClusterFunction(dbside_remote_func, async(client) => {
     return await client.block((client) => {
         return client.call("dbsize").toString();
     });
 });
 
-redis.register_async_function("test", async(async_client) => {
-    let res = await async_client.run_on_all_shards(dbside_remote_func);
+redis.registerAsyncFunction("test", async(async_client) => {
+    let res = await async_client.runOnShards(dbside_remote_func);
     let results = res[0];
     let errors = res[1];
     if (errors.length > 0) {
@@ -149,7 +149,7 @@ def testRunOnAllShardsTimeout(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const remote_function = "remote_function";
 
-redis.register_remote_function(remote_function, async(client, key) => {
+redis.registerClusterFunction(remote_function, async(client, key) => {
     let val = client.block((client) => {
         try {
             return client.call("get", "z");
@@ -163,8 +163,8 @@ redis.register_remote_function(remote_function, async(client, key) => {
     return val;
 });
 
-redis.register_async_function("test", async (async_client) => {
-    let res = await async_client.run_on_all_shards(remote_function);
+redis.registerAsyncFunction("test", async (async_client) => {
+    let res = await async_client.runOnShards(remote_function);
     if (res[1].length > 0) {
         throw res[1][0];
     }

@@ -5,7 +5,7 @@ from common import runUntil
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionLoad(env):
     script = '''#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
 foo()
@@ -15,7 +15,7 @@ foo()
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionRun(env):
     '''#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return foo()
 })
     '''
@@ -24,7 +24,7 @@ redis.register_function("test", function(client){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncFunctionRun(env):
     '''#!js api_version=1.0 name=foo
-redis.register_async_function("test", async function(client){
+redis.registerAsyncFunction("test", async function(client){
     return foo()
 })
     '''
@@ -33,8 +33,8 @@ redis.register_async_function("test", async function(client){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionThatReturnsCoro(env):
     '''#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
-    return client.run_on_background(async ()=>{
+redis.registerFunction("test", function(client){
+    return client.executeAsync(async ()=>{
         return foo();
     });
 })
@@ -44,7 +44,7 @@ redis.register_function("test", function(client){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnStreamProcessing(env):
     '''#!js api_version=1.0 name=foo
-redis.register_stream_consumer("consumer", "stream", 1, false, function(c, data){
+redis.registerStreamTrigger("consumer", "stream", 1, false, function(c, data){
     return foo()
 })
     '''
@@ -55,7 +55,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(c, data)
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncStreamProcessing(env):
     '''#!js api_version=1.0 name=foo
-redis.register_stream_consumer("consumer", "stream", 1, false, async function(c, data){
+redis.registerStreamTrigger("consumer", "stream", 1, false, async function(c, data){
     return foo()
 })
     '''
@@ -67,7 +67,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(c,
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnNotificationConsumer(env):
     '''#!js api_version=1.0 name=foo
-redis.register_notifications_consumer("consumer", "", function(c, data){
+redis.registerTrigger("consumer", "", function(c, data){
     return foo()
 })
     '''
@@ -78,7 +78,7 @@ redis.register_notifications_consumer("consumer", "", function(c, data){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncNotificationConsumer(env):
     '''#!js api_version=1.0 name=foo
-redis.register_notifications_consumer("consumer", "", async function(c, data){
+redis.registerTrigger("consumer", "", async function(c, data){
     return foo()
 })
     '''
@@ -90,8 +90,8 @@ redis.register_notifications_consumer("consumer", "", async function(c, data){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnSyncNotificationConsumerThatMoveAsync(env):
     '''#!js api_version=1.0 name=foo
-redis.register_notifications_consumer("consumer", "", function(c, data){
-    return c.run_on_background(async() => {
+redis.registerTrigger("consumer", "", function(c, data){
+    return c.executeAsync(async() => {
         return foo();
     });
 })

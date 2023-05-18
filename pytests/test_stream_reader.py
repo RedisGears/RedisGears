@@ -14,10 +14,10 @@ todo:
 def testBasicStreamReader(env):
     """#!js api_version=1.0 name=lib
 var num_events = 0;
-redis.register_function("num_events", function(){
+redis.registerFunction("num_events", function(){
     return num_events;
 })
-redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
     num_events++;
 })
     """
@@ -34,7 +34,7 @@ var last_key = null;
 var last_key_raw = null;
 var last_data = null;
 var last_data_raw = null;
-redis.register_function("stats", function(){
+redis.registerFunction("stats", function(){
     return [
         last_key,
         last_key_raw,
@@ -42,7 +42,7 @@ redis.register_function("stats", function(){
         last_data_raw
     ];
 })
-redis.register_stream_consumer("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
+redis.registerStreamTrigger("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
     last_key = data.stream_name;
     last_key_raw = data.stream_name_raw;
     last_data = data.record;
@@ -57,10 +57,10 @@ redis.register_stream_consumer("consumer", new Uint8Array([255]).buffer, 1, fals
 def testAsyncStreamReader(env):
     """#!js api_version=1.0 name=lib
 var num_events = 0;
-redis.register_function("num_events", function(){
+redis.registerFunction("num_events", function(){
     return num_events;
 })
-redis.register_stream_consumer("consumer", "stream", 1, false, async function(){
+redis.registerStreamTrigger("consumer", "stream", 1, false, async function(){
     num_events++;
 })
     """
@@ -74,10 +74,10 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(){
 def testStreamTrim(env):
     """#!js api_version=1.0 name=lib
 var num_events = 0;
-redis.register_function("num_events", function(){
+redis.registerFunction("num_events", function(){
     return num_events;
 })
-redis.register_stream_consumer("consumer", "stream", 1, true, function(){
+redis.registerStreamTrigger("consumer", "stream", 1, true, function(){
     num_events++;
 })
     """
@@ -92,7 +92,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(){
 @gearsTest()
 def testStreamProccessError(env):
     """#!js api_version=1.0 name=lib
-redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
     throw 'Error';
 })
     """
@@ -104,11 +104,11 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
 def testStreamWindow(env):
     """#!js api_version=1.0 name=lib
 var promises = [];
-redis.register_function("num_pending", function(){
+redis.registerFunction("num_pending", function(){
     return promises.length;
 })
 
-redis.register_function("continue", function(){
+redis.registerFunction("continue", function(){
     if (promises.length == 0) {
         throw "No pending records"
     }
@@ -117,7 +117,7 @@ redis.register_function("continue", function(){
     return "OK"
 })
 
-redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
+redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
     return await new Promise((resolve, reject) => {
         promises.push(resolve);
     });
@@ -162,11 +162,11 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 def testStreamWithReplication(env):
     """#!js api_version=1.0 name=lib
 var promises = [];
-redis.register_function("num_pending", function(){
+redis.registerFunction("num_pending", function(){
     return promises.length;
 })
 
-redis.register_function("continue", function(){
+redis.registerFunction("continue", function(){
     if (promises.length == 0) {
         throw "No pending records"
     }
@@ -177,7 +177,7 @@ redis.register_function("continue", function(){
     return id[0].toString() + "-" + id[1].toString()
 })
 
-redis.register_stream_consumer("consumer", "stream", 3, true, async function(client, data){
+redis.registerStreamTrigger("consumer", "stream", 3, true, async function(client, data){
     return await new Promise((resolve, reject) => {
         promises.push([data,resolve]);
     });
@@ -219,11 +219,11 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(cli
 def testStreamDeletoin(env):
     """#!js api_version=1.0 name=lib
 var promises = [];
-redis.register_function("num_pending", function(){
+redis.registerFunction("num_pending", function(){
     return promises.length;
 })
 
-redis.register_function("continue", function(){
+redis.registerFunction("continue", function(){
     if (promises.length == 0) {
         throw "No pending records"
     }
@@ -232,7 +232,7 @@ redis.register_function("continue", function(){
     return "OK"
 })
 
-redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
+redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
     return await new Promise((resolve, reject) => {
         promises.push(resolve);
     });
@@ -268,11 +268,11 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 def testFlushall(env):
     """#!js api_version=1.0 name=lib
 var promises = [];
-redis.register_function("num_pending", function(){
+redis.registerFunction("num_pending", function(){
     return promises.length;
 })
 
-redis.register_function("continue", function(){
+redis.registerFunction("continue", function(){
     if (promises.length == 0) {
         throw "No pending records"
     }
@@ -281,7 +281,7 @@ redis.register_function("continue", function(){
     return "OK"
 })
 
-redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
+redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
     return await new Promise((resolve, reject) => {
         promises.push(resolve);
     });
@@ -317,11 +317,11 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
 def testMultipleConsumers(env):
     script = """#!js api_version=1.0 name=%s
 var promises = [];
-redis.register_function("num_pending", function(){
+redis.registerFunction("num_pending", function(){
     return promises.length;
 })
 
-redis.register_function("continue", function(){
+redis.registerFunction("continue", function(){
     if (promises.length == 0) {
         throw "No pending records"
     }
@@ -330,7 +330,7 @@ redis.register_function("continue", function(){
     return "OK"
 })
 
-redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
+redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
     return await new Promise((resolve, reject) => {
         promises.push(resolve);
     });
@@ -378,7 +378,7 @@ def testMultipleStreamsForConsumer(env):
     """#!js api_version=1.0 name=lib
 var streams = [];
 
-redis.register_function("get_stream", function(){
+redis.registerFunction("get_stream", function(){
     if (streams.length == 0) {
         throw "No streams"
     }
@@ -387,7 +387,7 @@ redis.register_function("get_stream", function(){
     return name
 })
 
-redis.register_stream_consumer("consumer", "stream", 1, true, async function(client, data){
+redis.registerStreamTrigger("consumer", "stream", 1, true, async function(client, data){
     streams.push(data.stream_name)
 })
     """
@@ -407,7 +407,7 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(cli
 def testRDBSaveAndLoad(env):
     """#!js api_version=1.0 name=lib
 
-redis.register_stream_consumer("consumer", "stream", 1, false, async function(client, data){
+redis.registerStreamTrigger("consumer", "stream", 1, false, async function(client, data){
     redis.log(data.id);
 })
     """
@@ -429,7 +429,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(cl
 def testCallingRedisCommandOnStreamConsumer(env):
     """#!js api_version=1.0 name=lib
 
-redis.register_stream_consumer("consumer", "stream", 1, false, function(client, data){
+redis.registerStreamTrigger("consumer", "stream", 1, false, function(client, data){
     client.call('ping');
 })
     """
@@ -444,7 +444,7 @@ def testBecomeReplicaWhileProcessingData(env):
 var promise = null;
 var done = null;
 
-redis.register_async_function("continue_process", async function(){
+redis.registerAsyncFunction("continue_process", async function(){
     if (promise == null) {
         return "no data to processes";
     }
@@ -458,7 +458,7 @@ redis.register_async_function("continue_process", async function(){
 },
 ['no-writes'])
 
-redis.register_stream_consumer("consumer", "stream", 1, true, async function(client) {
+redis.registerStreamTrigger("consumer", "stream", 1, true, async function(client) {
     await new Promise((resume, reject) => {
         promise = resume;
     });

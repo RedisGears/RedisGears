@@ -6,7 +6,7 @@ remote:
  - setup: c5.4xlarge
 dbconfig:
   - init_commands:
-    - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_function('foo', (client)=>{return client.call('PING');});"]
+    - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerFunction('foo', (client)=>{return client.call('PING');});"]
 clientconfig:
   benchmark_type: "read-only"
   tool: memtier_benchmark

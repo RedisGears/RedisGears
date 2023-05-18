@@ -8,7 +8,7 @@ remote:
  - setup: c5.4xlarge
 dbconfig:
   - init_commands:
-    - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_notifications_consumer('consumer', '', function(client, data){     if (client.call('type', data.key) != 'hash') {                  return;     }      var curr_time = client.call('time')[0];       client.call('hset', data.key, '__last_updated__', curr_time); });"]
+    - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerTrigger('consumer', '', function(client, data){     if (client.call('type', data.key) != 'hash') {                  return;     }      var curr_time = client.call('time')[0];       client.call('hset', data.key, '__last_updated__', curr_time); });"]
 clientconfig:
   tool: memtier_benchmark
   arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --key-minimum=1 --key-maximum=1000000 --command 'SET __key__ __data__'"

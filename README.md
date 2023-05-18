@@ -35,7 +35,7 @@ The API expose by the module is very similar to the way [Redis Functions](https:
 ```js
 #!js name=lib
 
-redis.register_function('hello_world', function(){
+redis.registerFunction('hello_world', function(){
     return 'hello_world';
 });
 ```
@@ -65,7 +65,7 @@ It is possible to call Redis commands inside our gears function. The function ge
 ```js
 #!js name=lib
 
-redis.register_function('my_ping', function(client){
+redis.registerFunction('my_ping', function(client){
     return client.call('ping');
 });
 ```
