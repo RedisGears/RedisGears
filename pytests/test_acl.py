@@ -11,14 +11,14 @@ redis.register_function("get", function(client, dummy, key){
     return client.call('get', key);
 })
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALL').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expect('TFCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('TFCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('RG.FCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expect('TFCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expect('TFCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclOnAsyncFunction(env):
@@ -29,14 +29,14 @@ redis.register_async_function("get", async function(client, dummy, key){
     });
 })
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcallasync').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALLasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclOnAsyncComplex(env):
@@ -51,14 +51,14 @@ redis.register_async_function("get", async function(client, dummy, key){
     });
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcallasync').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALLasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('RG.FCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
 
 @gearsTest()
 def testAclUserDeletedWhileFunctionIsRunning(env):
@@ -91,33 +91,33 @@ redis.register_function("async_get_start", function(client, dummy, key){
     return "OK";
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcallasync').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALLasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x').equal('OK')
-    env.expect('RG.FCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
-    env.expect('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x').equal('OK')
-    env.expect('RG.FCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x').equal('OK')
+    env.expect('TFCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
+    env.expect('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x').equal('OK')
+    env.expect('TFCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
 
-    env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x'), "OK")
+    env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x'), "OK")
     try:
-        c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_continue', '0')
+        c.execute_command('TFCALLASYNC', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains(NO_PERMISSIONS_ERROR_MSG, str(e))
 
-    env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
+    env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
     try:
-        env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_continue', '0'), '1')
+        env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_continue', '0'), '1')
     except Exception as e:
         env.assertTrue(False, message='Command failed though should success, %s' % str(e))
 
-    env.assertEqual(c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
+    env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
     env.expect('ACL', 'DELUSER', 'alice').equal(1) # delete alice user while function is running
     try:
-        c.execute_command('RG.FCALLASYNC', 'lib', 'async_get_continue', '0')
+        c.execute_command('TFCALLASYNC', 'lib', 'async_get_continue', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains("User does not exists or disabled", str(e))
@@ -129,17 +129,17 @@ redis.register_notifications_consumer("test", "", function(client, data) {
     return client.call("get", "x");
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALL').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
-    c.execute_command('RG.FUNCTION', 'LOAD', script)
-    user = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['user']
+    c.execute_command('TFUNCTION', 'LOAD', script)
+    user = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['user']
     env.assertEqual(user, 'alice')
     env.expect('set', 'x', '1').equal(True)
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
     env.expect('set', 'cached:x', '1').equal(True)
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
@@ -151,21 +151,21 @@ redis.register_notifications_consumer("test", "", async function(client, data) {
     });
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALL').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
-    c.execute_command('RG.FUNCTION', 'LOAD', script)
-    user = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['user']
+    c.execute_command('TFUNCTION', 'LOAD', script)
+    user = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['user']
     env.assertEqual(user, 'alice')
 
     env.expect('set', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
 
     env.expect('set', 'cached:x', '1').equal(True)
-    runUntil(env, 2, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    runUntil(env, 2, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
@@ -175,20 +175,20 @@ redis.register_stream_consumer("consumer", "", 1, false, function(client){
     return client.call("get", "x");
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALL').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
-    c.execute_command('RG.FUNCTION', 'LOAD', script)
-    user = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['user']
+    c.execute_command('TFUNCTION', 'LOAD', script)
+    user = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['user']
     env.assertEqual(user, 'alice')
     env.cmd('xadd', 's', '*', 'foo', 'bar')
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
 
     env.cmd('del', 's') # delete the stream, we want to have a single stream for tests simplicity.
 
     env.cmd('xadd', 'cached:x', '*', 'foo', 'bar')
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
@@ -200,22 +200,22 @@ redis.register_stream_consumer("consumer", "", 1, false, async function(client){
     });
 });
     """
-    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+rg.function', '+rg.fcall').equal('OK')
+    env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALL').equal('OK')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
-    c.execute_command('RG.FUNCTION', 'LOAD', script)
-    user = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['user']
+    c.execute_command('TFUNCTION', 'LOAD', script)
+    user = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['user']
     env.assertEqual(user, 'alice')
 
     env.cmd('xadd', 's', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
 
     env.cmd('del', 's') # delete the stream, we want to have a single stream for tests simplicity.
 
     env.cmd('xadd', 'cached:x', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    last_error = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 

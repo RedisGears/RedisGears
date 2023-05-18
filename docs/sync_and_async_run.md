@@ -36,11 +36,11 @@ redis.register_function('test', async function(client){
 Running this function will return a `pong` reply:
 
 ```bash
-127.0.0.1:6379> RG.FCALLASYNC lib test 0
+127.0.0.1:6379> TFCALLASYNC lib test 0
 "PONG"
 ```
 
-Notice that this time, in order to invoke the function, we used [`RG.FCALLASYNC`](commands.md#rgfcallasync). **We can only invoke async functions using [`RG.FCALLASYNC`](commands.md#rgfcallasync)**.
+Notice that this time, in order to invoke the function, we used [`TFCALLASYNC`](commands.md#tfcallasync). **We can only invoke async functions using [`TFCALLASYNC`](commands.md#tfcallasync)**.
 
 Now lets look at a more complex example, assuming we want to write a function that counts the number of hashes in Redis that has name property with some value. Lets first write a synchronous function that does it, we will use the [SCAN](https://redis.io/commands/scan/) command to scan the key space:
 

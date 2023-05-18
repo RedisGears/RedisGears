@@ -42,21 +42,21 @@ redis.register_function('hello_world', function(){
 The first line indicates the engine to use (`js`) and the library name (`lib`). The rest is the library code.
 
 
-Assuming we put the following code on a file `lib.js`, we can register our function on RedisGears using `RG.FUNCTION LOAD` command:
+Assuming we put the following code on a file `lib.js`, we can register our function on RedisGears using `TFUNCTION LOAD` command:
 
 ```bash
-> redis-cli -x RG.FUNCTION LOAD < ./lib.js
+> redis-cli -x TFUNCTION LOAD < ./lib.js
 OK
 ```
 
-And now we can execute our function using [`RG.FCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name:
+And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name:
 
 ```bash
-> redis-cli RG.FCALL lib hello_world 0
+> redis-cli TFCALL lib hello_world 0
 "hello_world"
 ```
 
-Notice that [`RG.FCALL`](docs/commands.md#rgfcal) command arguments is very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on RedisGears the command also gets the library name. The `0` represent the number of keys that will follow (which in our case is `0`).
+Notice that [`TFCALL`](docs/commands.md#rgfcal) command arguments is very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on RedisGears the command also gets the library name. The `0` represent the number of keys that will follow (which in our case is `0`).
 
 ### Calling Redis Commands Inside our Gears Function
 
@@ -72,19 +72,19 @@ redis.register_function('my_ping', function(client){
 
 If we will try to send it to our running Redis instance, we will get the following error:
 ```bash
-> redis-cli -x RG.FUNCTION LOAD < ./lib.js
+> redis-cli -x TFUNCTION LOAD < ./lib.js
 (error) Library lib already exists
 ```
 
-We get the error because the library with the same name already exists, we can use the `UPGRADE` argument to upgrade the library with the new code:
+We get the error because the library with the same name already exists, we can use the `REPLACE` argument to replace the library with the new code:
 ```bash
-> redis-cli -x RG.FUNCTION LOAD UPGRADE < ./lib.js
+> redis-cli -x TFUNCTION LOAD UPGRADE < ./lib.js
 OK
 ```
 
-And now we can invoke `my_ping` using [`RG.FCALL`](docs/commands.md#rgfcal) :
+And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
 ```bash
-> redis-cli RG.FCALL lib my_ping 0
+> redis-cli TFCALL lib my_ping 0
 "PONG"
 ```
 

@@ -61,10 +61,10 @@ The `data` argument which pass to the consumer callback are in the following for
 
 Notice that `key` field is given only if the key can be decoded as `String`, otherwise the value will be `null`.
 
-We can observe the trigger information using [RG.FUNCTION LIST](commands.md#rgfunction-list) command:
+We can observe the trigger information using [TFUNCTION LIST](commands.md#tfunction-list) command:
 
 ```bash
-127.0.0.1:6379> RG.FUNCTION list vvv
+127.0.0.1:6379> TFUNCTION list vvv
 1)  1) "engine"
     2) "js"
     3) "api_version"
@@ -110,7 +110,7 @@ If the callback is a Coroutine, it will be executed in the background and there 
 
 ## Upgrades
 
-When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOAD`](commands.md#rgfunction-load) command) all the trigger parameters can be modified.
+When upgrading the trigger code (using the `UPGRADE` option of [`TFUNCTION LOAD`](commands.md#tfunction-load) command) all the trigger parameters can be modified.
 
 ## Advance Usage
 

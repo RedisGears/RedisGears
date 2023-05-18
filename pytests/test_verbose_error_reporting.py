@@ -10,7 +10,7 @@ redis.register_function("test", function(client){
 })
 foo()
     '''
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains(':5:') # error on line 5
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains(':5:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionRun(env):
@@ -19,7 +19,7 @@ redis.register_function("test", function(client){
     return foo()
 })
     '''
-    env.expect('RG.FCALL', 'foo', 'test', 0).error().contains(':3:') # error on line 5
+    env.expect('TFCALL', 'foo', 'test', 0).error().contains(':3:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncFunctionRun(env):
@@ -28,7 +28,7 @@ redis.register_async_function("test", async function(client){
     return foo()
 })
     '''
-    env.expect('RG.FCALLASYNC', 'foo', 'test', 0).error().contains(':3:') # error on line 5
+    env.expect('TFCALLASYNC', 'foo', 'test', 0).error().contains(':3:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionThatReturnsCoro(env):
@@ -39,7 +39,7 @@ redis.register_function("test", function(client){
     });
 })
     '''
-    env.expect('RG.FCALLASYNC', 'foo', 'test', 0).error().contains(':4:') # error on line 5
+    env.expect('TFCALLASYNC', 'foo', 'test', 0).error().contains(':4:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnStreamProcessing(env):
@@ -49,7 +49,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(c, data)
 })
     '''
     env.cmd('xadd', 'stream', '*', 'foo', 'bar')
-    res = toDictionary(env.cmd('rg.function', 'list', 'vvv'), 6)
+    res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
     env.assertContains(':3:', res[0]['stream_consumers'][0]['streams'][0]['last_error']) # error on line 3
 
 @gearsTest(errorVerbosity=2)
@@ -60,8 +60,8 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(c,
 })
     '''
     env.cmd('xadd', 'stream', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    res = toDictionary(env.cmd('rg.function', 'list', 'vvv'), 6)
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
+    res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
     env.assertContains(':3:', res[0]['stream_consumers'][0]['streams'][0]['last_error']) # error on line 3
 
 @gearsTest(errorVerbosity=2)
@@ -72,7 +72,7 @@ redis.register_notifications_consumer("consumer", "", function(c, data){
 })
     '''
     env.cmd('set', 'x', '1')
-    res = toDictionary(env.cmd('rg.function', 'list', 'vvv'), 6)
+    res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
     env.assertContains(':3:', res[0]['notifications_consumers'][0]['last_error']) # error on line 3
 
 @gearsTest(errorVerbosity=2)
@@ -83,8 +83,8 @@ redis.register_notifications_consumer("consumer", "", async function(c, data){
 })
     '''
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
-    res = toDictionary(env.cmd('rg.function', 'list', 'vvv'), 6)
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
+    res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
     env.assertContains(':3:', res[0]['notifications_consumers'][0]['last_error']) # error on line 3
 
 @gearsTest(errorVerbosity=2)
@@ -97,7 +97,7 @@ redis.register_notifications_consumer("consumer", "", function(c, data){
 })
     '''
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
-    res = toDictionary(env.cmd('rg.function', 'list', 'vvv'), 6)
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
+    res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
     env.assertContains(':4:', res[0]['notifications_consumers'][0]['last_error']) # error on line 4
 

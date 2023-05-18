@@ -11,7 +11,7 @@ remote:
  - setup: c5.4xlarge
 dbconfig:
   - init_commands:
-    - ["RG.FUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_notifications_consumer('consumer', '', function(client, data){  return; });"]
+    - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_notifications_consumer('consumer', '', function(client, data){  return; });"]
 clientconfig:
   tool: memtier_benchmark
   arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --key-minimum=1 --key-maximum=1000000 --command 'SET __key__ __data__'"

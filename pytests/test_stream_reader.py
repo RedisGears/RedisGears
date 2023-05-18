@@ -21,11 +21,11 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
     num_events++;
 })
     """
-    env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(0)
+    env.expect('TFCALL', 'lib', 'num_events', '0').equal(0)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(1)
+    env.expect('TFCALL', 'lib', 'num_events', '0').equal(1)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(2)
+    env.expect('TFCALL', 'lib', 'num_events', '0').equal(2)
 
 @gearsTest(decodeResponses=False)
 def testBasicStreamReaderWithBinaryData(env):
@@ -49,9 +49,9 @@ redis.register_stream_consumer("consumer", new Uint8Array([255]).buffer, 1, fals
     last_data_raw = data.record_raw;
 })
     """
-    env.expect('RG.FCALL', 'lib', 'stats', '0').equal([None, None, None, None])
+    env.expect('TFCALL', 'lib', 'stats', '0').equal([None, None, None, None])
     env.cmd('xadd', b'\xff\xff', '*', b'\xaa', b'\xaa')
-    env.expect('RG.FCALL', 'lib', 'stats', '0').equal([None, b'\xff\xff', [[None, None]], [[b'\xaa', b'\xaa']]])
+    env.expect('TFCALL', 'lib', 'stats', '0').equal([None, b'\xff\xff', [[None, None]], [[b'\xaa', b'\xaa']]])
 
 @gearsTest()
 def testAsyncStreamReader(env):
@@ -64,11 +64,11 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(){
     num_events++;
 })
     """
-    env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(0)
+    env.expect('TFCALL', 'lib', 'num_events', '0').equal(0)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'num_events', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_events', '0'))
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_events', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_events', '0'))
 
 @gearsTest()
 def testStreamTrim(env):
@@ -81,13 +81,13 @@ redis.register_stream_consumer("consumer", "stream", 1, true, function(){
     num_events++;
 })
     """
-    env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(0)
+    env.expect('TFCALL', 'lib', 'num_events', '0').equal(0)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.expect('xlen', 'stream:1').equal(0)
-    env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(1)
+    env.expect('TFCALL', 'lib', 'num_events', '0').equal(1)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.expect('xlen', 'stream:1').equal(0)
-    env.expect('RG.FCALL', 'lib', 'num_events', '0').equal(2)
+    env.expect('TFCALL', 'lib', 'num_events', '0').equal(2)
 
 @gearsTest()
 def testStreamProccessError(env):
@@ -97,7 +97,7 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(){
 })
     """
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vv'), 6)
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
     env.assertEqual('Error', res[0]['stream_consumers'][0]['streams'][0]['last_error'])
 
 @gearsTest()
@@ -123,39 +123,39 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
     });
 })
     """
-    env.expect('RG.FCALL', 'lib', 'num_pending', '0').equal(0)
-    env.expect('RG.FCALL', 'lib', 'continue', '0').error().contains('No pending records')
+    env.expect('TFCALL', 'lib', 'num_pending', '0').equal(0)
+    env.expect('TFCALL', 'lib', 'continue', '0').error().contains('No pending records')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     env.assertEqual(3, len(res[0]['stream_consumers'][0]['streams'][0]['pending_ids']))
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    runUntil(env, 2, lambda: len(toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['pending_ids']))
+    runUntil(env, 2, lambda: len(toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['pending_ids']))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     env.assertEqual(3, len(res[0]['stream_consumers'][0]['streams'][0]['pending_ids']))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runFor(3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runFor(3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     env.assertEqual(2, res[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
 
 @gearsTest(withReplicas=True)
@@ -188,14 +188,14 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(cli
     env.expect('WAIT', '1', '7000').equal(1)
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     id_to_read_from = res[0]['stream_consumers'][0]['streams'][0]['id_to_read_from']
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal(id_to_read_from)
-    runUntil(env, 1, lambda: len(toDictionary(slave_conn.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams']))
-    env.assertEqual(id_to_read_from, toDictionary(slave_conn.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['id_to_read_from'])
+    env.expect('TFCALL', 'lib', 'continue', '0').equal(id_to_read_from)
+    runUntil(env, 1, lambda: len(toDictionary(slave_conn.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams']))
+    env.assertEqual(id_to_read_from, toDictionary(slave_conn.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['id_to_read_from'])
 
     # add 2 more record to the stream
     id1 = env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
@@ -205,10 +205,10 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(cli
 
     # Turn slave to master
     slave_conn.execute_command('slaveof', 'no', 'one')
-    runUntil(env, 2, lambda: slave_conn.execute_command('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: slave_conn.execute_command('TFCALL', 'lib', 'num_pending', '0'))
     def continue_function():
         try:
-            return slave_conn.execute_command('RG.FCALL', 'lib', 'continue', '0')
+            return slave_conn.execute_command('TFCALL', 'lib', 'continue', '0')
         except Exception as e:
             return str(e)
     runUntil(env, id1, continue_function)
@@ -238,30 +238,30 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
     });
 })
     """
-    env.expect('RG.FCALL', 'lib', 'num_pending', '0').equal(0)
-    env.expect('RG.FCALL', 'lib', 'continue', '0').error().contains('No pending records')
+    env.expect('TFCALL', 'lib', 'num_pending', '0').equal(0)
+    env.expect('TFCALL', 'lib', 'continue', '0').error().contains('No pending records')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.expect('del', 'stream:1').equal(1)
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    res = env.cmd('RG.FUNCTION', 'LIST', 'vvv')
+    res = env.cmd('TFUNCTION', 'LIST', 'vvv')
     env.assertEqual(0, len(toDictionary(res, 6)[0]['stream_consumers'][0]['streams']))
 
 @gearsTest()
@@ -287,30 +287,30 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
     });
 })
     """
-    env.expect('RG.FCALL', 'lib', 'num_pending', '0').equal(0)
-    env.expect('RG.FCALL', 'lib', 'continue', '0').error().contains('No pending records')
+    env.expect('TFCALL', 'lib', 'num_pending', '0').equal(0)
+    env.expect('TFCALL', 'lib', 'continue', '0').error().contains('No pending records')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
     env.expect('flushall').equal(True)
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    env.expect('RG.FCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('RG.FCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
+    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
 
-    res = env.cmd('RG.FUNCTION', 'LIST', 'vvv')
+    res = env.cmd('TFUNCTION', 'LIST', 'vvv')
     env.assertEqual(0, len(toDictionary(res, 6)[0]['stream_consumers'][0]['streams']))
 
 @gearsTest()
@@ -336,41 +336,41 @@ redis.register_stream_consumer("consumer", "stream", 3, true, async function(){
     });
 })
     """
-    env.expect('RG.FUNCTION', 'LOAD', script % 'lib1').equal('OK')
-    env.expect('RG.FUNCTION', 'LOAD', script % 'lib2').equal('OK')
+    env.expect('TFUNCTION', 'LOAD', script % 'lib1').equal('OK')
+    env.expect('TFUNCTION', 'LOAD', script % 'lib2').equal('OK')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 1, lambda: env.cmd('RG.FCALL', 'lib2', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib2', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib2', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
 
-    env.expect('RG.FCALL', 'lib1', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 3, lambda: env.cmd('RG.FCALL', 'lib2', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib1', 'continue', '0').equal('OK')
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
     runFor(3, lambda: env.cmd('XLEN', 'stream:1')) # make sure not trimming
 
-    env.expect('RG.FCALL', 'lib2', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib2', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib2', 'continue', '0').equal('OK')
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
     runUntil(env, 2, lambda: env.cmd('XLEN', 'stream:1'))
 
-    env.expect('RG.FCALL', 'lib1', 'continue', '0').equal('OK')
-    env.expect('RG.FCALL', 'lib1', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('RG.FCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 2, lambda: env.cmd('RG.FCALL', 'lib2', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib1', 'continue', '0').equal('OK')
+    env.expect('TFCALL', 'lib1', 'continue', '0').equal('OK')
+    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
     runFor(2, lambda: env.cmd('XLEN', 'stream:1')) # make sure not trimming
 
-    env.expect('RG.FCALL', 'lib2', 'continue', '0').equal('OK')
-    env.expect('RG.FCALL', 'lib2', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('RG.FCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 0, lambda: env.cmd('RG.FCALL', 'lib2', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib2', 'continue', '0').equal('OK')
+    env.expect('TFCALL', 'lib2', 'continue', '0').equal('OK')
+    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
+    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
     runUntil(env, 0, lambda: env.cmd('XLEN', 'stream:1'))
 
 @gearsTest()
@@ -392,16 +392,16 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(cli
 })
     """
 
-    env.expect('RG.FCALL', 'lib', 'get_stream', '0').error().contains('No streams')
+    env.expect('TFCALL', 'lib', 'get_stream', '0').error().contains('No streams')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:2', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:2', '*', 'foo', 'bar')
 
-    runUntil(env, 'stream:1', lambda: env.cmd('RG.FCALL', 'lib', 'get_stream', '0'), timeout=1)
-    runUntil(env, 'stream:2', lambda: env.cmd('RG.FCALL', 'lib', 'get_stream', '0'), timeout=1)
-    runUntil(env, 'stream:1', lambda: env.cmd('RG.FCALL', 'lib', 'get_stream', '0'), timeout=1)
-    runUntil(env, 'stream:2', lambda: env.cmd('RG.FCALL', 'lib', 'get_stream', '0'), timeout=1)
+    runUntil(env, 'stream:1', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
+    runUntil(env, 'stream:2', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
+    runUntil(env, 'stream:1', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
+    runUntil(env, 'stream:2', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
 
 @gearsTest()
 def testRDBSaveAndLoad(env):
@@ -416,12 +416,12 @@ redis.register_stream_consumer("consumer", "stream", 1, false, async function(cl
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
 
-    runUntil(env, 4, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    id_to_read_from1 = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['id_to_read_from']
+    runUntil(env, 4, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
+    id_to_read_from1 = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['id_to_read_from']
 
     env.expect('DEBUG', 'RELOAD').equal('OK')
 
-    id_to_read_from2 = toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['id_to_read_from']
+    id_to_read_from2 = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['id_to_read_from']
 
     env.assertEqual(id_to_read_from1, id_to_read_from2)
 
@@ -435,8 +435,8 @@ redis.register_stream_consumer("consumer", "stream", 1, false, function(client, 
     """
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
 
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    env.assertEqual('None', toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error'])
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
+    env.assertEqual('None', toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error'])
 
 @gearsTest()
 def testBecomeReplicaWhileProcessingData(env):
@@ -468,16 +468,16 @@ redis.register_stream_consumer("consumer", "stream", 1, true, async function(cli
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 'OK', lambda: env.cmd('RG.FCALLASYNC', 'lib', 'continue_process', '0'))
-    runUntil(env, 1, lambda: toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed'])
+    runUntil(env, 'OK', lambda: env.cmd('TFCALLASYNC', 'lib', 'continue_process', '0'))
+    runUntil(env, 1, lambda: toDictionary(toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed'])
 
     # Turn into a slave
     env.cmd('slaveof', '127.0.0.1', '3300')
-    runUntil(env, 'OK', lambda: env.cmd('RG.FCALLASYNC', 'lib', 'continue_process', '0'))
-    runUntil(env, 2, lambda: toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed'])
+    runUntil(env, 'OK', lambda: env.cmd('TFCALLASYNC', 'lib', 'continue_process', '0'))
+    runUntil(env, 2, lambda: toDictionary(toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed'])
 
-    runFor('no data to processes', lambda: env.cmd('RG.FCALLASYNC', 'lib', 'continue_process', '0'))
-    res = toDictionary(toDictionary(env.execute_command('RG.FUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed']
+    runFor('no data to processes', lambda: env.cmd('TFCALLASYNC', 'lib', 'continue_process', '0'))
+    res = toDictionary(toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 4)[0]['stream_consumers'][0]['streams'][0], 1)['total_record_processed']
     env.assertEqual(2, res)
 
     env.cmd('slaveof', 'no', 'one')

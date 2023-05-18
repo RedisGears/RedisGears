@@ -2,7 +2,7 @@
 
 ## Function Arguments
 
-The arguments given on the [`RG.FCALL`](docs/commands.md#rgfcall) command, after the function name, will be passed to the function callback. The following example shows how to implement a simple function that returns the value of a key whether its a string or a hash:
+The arguments given on the [`TFCALL`](docs/commands.md#tfcall) command, after the function name, will be passed to the function callback. The following example shows how to implement a simple function that returns the value of a key whether its a string or a hash:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -23,11 +23,11 @@ Example of running the following function:
 ```bash
 127.0.0.1:6379> set x 1
 OK
-127.0.0.1:6379> rg.fcall foo my_get 1 x
+127.0.0.1:6379> TFCALL foo my_get 1 x
 "1"
 127.0.0.1:6379> hset h foo bar x y
 (integer) 2
-127.0.0.1:6379> rg.fcall foo my_get 1 h
+127.0.0.1:6379> TFCALL foo my_get 1 h
 1) "foo"
 2) "bar"
 3) "x"
@@ -62,7 +62,7 @@ redis.register_function('my_get', function(client, ...keys){
 Run example:
 
 ```bash
-127.0.0.1:6379> rg.fcall foo my_get 2 x h
+127.0.0.1:6379> TFCALL foo my_get 2 x h
 1) "1"
 2) 1) "foo"
    2) "bar"
@@ -91,11 +91,11 @@ redis.register_function('my_ping', function(client){
 Run example:
 
 ```bash
-127.0.0.1:6379> rg.fcall foo my_ping 0
+127.0.0.1:6379> TFCALL foo my_ping 0
 "PONG"
 127.0.0.1:6379> config set maxmemory 1
 OK
-127.0.0.1:6379> rg.fcall foo my_ping 0
+127.0.0.1:6379> TFCALL foo my_ping 0
 "PONG"
 
 ```
@@ -117,7 +117,7 @@ redis.register_function("hset", function(client, key, field, val){
 Run example:
 
 ```bash
-127.0.0.1:6379> RG.Fcall lib hset k foo bar 0
+127.0.0.1:6379> TFCALL lib hset k foo bar 0
 (integer) 2
 127.0.0.1:6379> hgetall k
 1) "foo"
@@ -126,7 +126,7 @@ Run example:
 4) "1658653125"
 ```
 
-The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? RedisGears allow specify library configuration at load time using `CONFIG` argument given to [`FUNCTION LOAD`](commands.md#rgfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
+The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? RedisGears allow specify library configuration at load time using `CONFIG` argument given to [`FUNCTION LOAD`](commands.md#tfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -150,14 +150,14 @@ redis.register_function("hset", function(client, key, field, val){
 Notica that in the above example we first set `last_update_field_name` to `__last_update__`, this will be the default value in case not given by the configuration. Then we check if we have `last_update_field_name` in our configuration and if we do we use it. We can now upload our function with `CONFIG` argument:
 
 ```bash
-> redis-cli -x RG.FUNCTION LOAD UPGRADE CONFIG '{"last_update_field_name":"last_update"}' < <path to code file>
+> redis-cli -x TFUNCTION LOAD REPLACE CONFIG '{"last_update_field_name":"last_update"}' < <path to code file>
 OK
 ```
 
 And we can see that the last update field name is `last_update`:
 
 ```bash
-127.0.0.1:6379> RG.FCALL lib hset h foo bar 0
+127.0.0.1:6379> TFCALL lib hset h foo bar 0
 (integer) 2
 127.0.0.1:6379> hgetall h
 1) "foo"
@@ -246,7 +246,7 @@ redis.register_function("my_set", (c, key, val) => {
 The above example will allow us to set `key` and `val` even if those are binary data. Run example:
 
 ```bash
-127.0.0.1:6379> rg.fcall lib my_set 1 "\xaa" "\xaa"
+127.0.0.1:6379> TFCALL lib my_set 1 "\xaa" "\xaa"
 "OK"
 127.0.0.1:6379> get "\xaa"
 "\xaa"
@@ -271,7 +271,7 @@ The above example will be able to fetch binary data and return it to the user. R
 ```bash
 27.0.0.1:6379> set "\xaa" "\xaa"
 OK
-127.0.0.1:6379> rg.fcall lib my_get 1 "\xaa"
+127.0.0.1:6379> TFCALL lib my_get 1 "\xaa"
 "\xaa"
 ```
 
@@ -309,7 +309,7 @@ Run example:
 ```bash
 127.0.0.1:6379> set "\xaa" "\xaa"
 OK
-127.0.0.1:6379> rg.fcall lib notifications_stats 0
+127.0.0.1:6379> TFCALL lib notifications_stats 0
 1) (integer) 1
 2) (nil)
 3) "\xaa"
@@ -349,7 +349,7 @@ Run Example:
 ```bash
 127.0.0.1:6379> xadd "\xff\xff" * "\xaa" "\xaa"
 "1659515146671-0"
-127.0.0.1:6379> rg.fcall foo stats 0
+127.0.0.1:6379> TFCALL foo stats 0
 1) (nil)
 2) "\xff\xff"
 3) 1) 1) (nil)
