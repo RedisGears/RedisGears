@@ -53,7 +53,7 @@ jobs:
           run: |
             python3 dockerbuilds/generate.py --os_version ${{inputs.os_version}} \
               --platform ${{inputs.arch}} --redis_version ${{inputs.redis_version}} \
-              --os_family ${{inputs.os_family}}
+              --os_family ${{inputs.os_family}} \
               --publish
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
