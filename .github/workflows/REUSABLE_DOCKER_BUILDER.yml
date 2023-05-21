@@ -4,6 +4,9 @@ on:
             os_version:
                 required: true
                 type: string
+            os_family:
+                required: true
+                type: string
             dockerfile:
                 required: true
                 type: string
@@ -41,8 +44,17 @@ jobs:
       V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
-
+        - uses: actions/setup-python@v4
+          with:
+            python-version: '3.9'
+            cache: 'pip'
+        - run: pip install jinja2
         - uses: actions/checkout@v3
+        - name: generate docker file
+          run: python3 generate.py --os_version ${{inputs.os_version}} \
+            --platform ${{inputs.arch}} --redis_version ${{inputs.redis_version}} \
+            --os_family ${{inputs.os_family}}
+            --publish
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
           uses: docker/setup-qemu-action@v2
@@ -56,30 +68,7 @@ jobs:
           with:
             push: false
             context: .
-            file: ${{inputs.dockerfile}}
-            tags: gears/gears:ci
+            file: dockerbuilds/Dockerfile.generated
             build-args: |
-                OS_VERSION: ${{inputs.os_version}}
-                PLATFORM: ${{inputs.arch}}
-                REDIS_VERSION: ${{inputs.redis_version}}
                 v8_version: ${{inputs.v8_version}}
                 v8_update_headers: ${{inputs.v8_update_headers}}
-
-        - name: extract from image
-          if: always()
-          uses: shrink/actions-docker-extract@v2
-          id: extract
-          with:
-              image: ${{steps.dockerbuild.outputs.digest}}
-              path: /build/target/release/.
-
-        - name: ls
-          run: |
-            ls -R
-
-        - name: publish extraction
-          if: always()
-          uses: actions/upload-artifact@v3
-          with:
-              name: ${{inputs.os_version}}
-              path: ${{steps.extract.outputs.destination}}

@@ -1,0 +1,3 @@
+RUN python3 -m pip install -U redis==5.0.0b3
+RUN python3 -m pip install -U RLTest
+RUN python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version} s3cmd
