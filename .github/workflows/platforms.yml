@@ -21,6 +21,15 @@ jobs:
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
 
+    jammy-arm64:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 22.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+            arch: arm64
+            docker_arch: linux/arm64
+
     focal-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
         with:
@@ -28,12 +37,30 @@ jobs:
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
 
+    focal-arm64:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 20.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+            arch: arm64
+            docker_arch: linux/arm64
+
     bionic-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
         with:
             os_version: 18.04
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
+
+    bionic-arm64:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 18.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+            arch: arm64
+            docker_arch: linux/arm64
 
     bullseye-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
