@@ -188,7 +188,7 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
 
 @gearsTest()
 def testSyncNotificationsReturnPromiseRaiseError(env):
@@ -198,7 +198,7 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
 
 @gearsTest()
 def testAsyncNotificationsReturnPromise(env):
@@ -208,7 +208,7 @@ redis.register_notifications_consumer("consumer", "", async (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
 
 @gearsTest()
 def testAsyncNotificationsReturnPromiseRaiseError(env):
@@ -218,7 +218,7 @@ redis.register_notifications_consumer("consumer", "", async (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
 
 @gearsTest()
 def testSyncNotificationsReturnResolvedPromise(env):
@@ -233,4 +233,4 @@ redis.register_notifications_consumer("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
