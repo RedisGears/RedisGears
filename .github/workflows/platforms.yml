@@ -19,6 +19,3 @@ jobs:
         with:
             os_version: 22.04
             dockerfile: dockerbuilds/Dockerfile.jammy
-        secrets:
-            AWS_ACCESS_KEY: ${{secrets.AWS_ACCESS_KEY_ID}}
-            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
