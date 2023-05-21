@@ -50,10 +50,11 @@ jobs:
         - run: pip install jinja2
         - uses: actions/checkout@v3
         - name: generate docker file
-          run: python3 dockerbuilds/generate.py --os_version ${{inputs.os_version}} \
-            --platform ${{inputs.arch}} --redis_version ${{inputs.redis_version}} \
-            --os_family ${{inputs.os_family}}
-            --publish
+          run: |
+            python3 dockerbuilds/generate.py --os_version ${{inputs.os_version}} \
+              --platform ${{inputs.arch}} --redis_version ${{inputs.redis_version}} \
+              --os_family ${{inputs.os_family}}
+              --publish
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
           uses: docker/setup-qemu-action@v2
