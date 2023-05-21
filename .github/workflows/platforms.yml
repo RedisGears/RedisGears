@@ -15,7 +15,7 @@ on:
 jobs:
 
     jammy-x86:
-        uses: .github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        uses: .github/workflows/REUSABLE_DOCKER_BUILDER.yml@ck-quicknewbuild
         with:
             os_version: 22.04
             dockerfile: dockerbuilds/Dockerfile.jammy
