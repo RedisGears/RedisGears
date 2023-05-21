@@ -41,6 +41,7 @@ jobs:
       V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
+        - uses: actions/checkout@v3
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
           uses: docker/setup-qemu-action@v2
