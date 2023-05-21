@@ -1,0 +1,24 @@
+name: Platform builds
+
+on:
+    workflow_dispatch:
+
+    push:
+        paths-ignore:
+            - '.circleci/**'
+            - 'docs/**'
+        branches:
+            - main
+
+    pull_request:
+
+jobs:
+
+    jammy-x86:
+        uses: .github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 22.04
+            dockerfile: dockerbuilds/Dockerfile.jammy
+        secrets:
+            AWS_ACCESS_KEY: ${{secrets.AWS_ACCESS_KEY_ID}}
+            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
