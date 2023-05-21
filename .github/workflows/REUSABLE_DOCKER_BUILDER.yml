@@ -55,7 +55,6 @@ jobs:
             push: false
             context: .
             file: ${{inputs.dockerfile}}
-            outputs: type=local,dest=build-output
             tags: gears/gears:ci
             build-args: |
                 OS_VERSION: ${{inputs.os_version}}
@@ -63,17 +62,6 @@ jobs:
                 REDIS_VERSION: ${{inputs.redis_version}}
                 v8_version: ${{inputs.v8_version}}
                 v8_update_headers: ${{inputs.v8_update_headers}}
-
-        - name: list build output
-          if: always()
-          run: ls build-output
-
-        - name: store artifacts
-          if: always()
-          uses: actions/upload-artifact@v3
-          with:
-              name: ${{inputs.os_version}}
-              path: build-output/target/release/redisgears*.zip
 
         - name: extract from image
           if: always()
@@ -87,5 +75,5 @@ jobs:
           if: always()
           uses: actions/upload-artifact@v3
           with:
-              name: extracted-${{inputs.os_version}}
+              name: ${{inputs.os_version}}
               path: ${{steps.extract.outputs.destination}}
