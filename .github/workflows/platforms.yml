@@ -68,3 +68,17 @@ jobs:
             os_version: bullseye
             os_family: debian
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
+
+    rehl7-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 7
+            os_family: centos
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+
+    rhel8-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 8
+            os_family: rockylinux
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
