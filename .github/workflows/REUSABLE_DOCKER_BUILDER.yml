@@ -57,8 +57,7 @@ jobs:
           run: |
             python3 dockerbuilds/generate.py --os_version ${{inputs.os_version}} \
               --platform ${{inputs.arch}} --redis_version ${{inputs.redis_version}} \
-              --os_family ${{inputs.os_family}} \
-              --publish
+              --os_family ${{inputs.os_family}}
 
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
@@ -74,8 +73,6 @@ jobs:
             docker buildx build --platform ${{inputs.docker_arch}} \
               --build-arg v8_version=${{inputs.v8_version}} \
               --build-arg v8_update_headers=${{inputs.v8_update_headers}} \
-              --build-arg AWS_ACCESS_KEY=${{secrets.AWS_ACCESS_KEY_ID}} \
-              --build-arg AWS_SECRET_KEY=${{secrets.AWS_SECRET_ACCESS_KEY}} \
               --progress=plain \
               . \
               -t gears/gears:build \
@@ -97,3 +94,16 @@ jobs:
           with:
             path: ${{ steps.extract.outputs.destination }}
             name: dist
+
+        - name: Setup s3cmd action
+          uses: s3-actions/s3cmd@v1.2.0
+          with:
+              provider: aws
+              region: us-east-2
+              access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+              secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        - name: s3 upload
+          run: |
+            s3cmd  \
+              put -P ${{steps.extract.outputs.destination}}/*.zip
+              s3://redismodules/redisgears/snapshots/
