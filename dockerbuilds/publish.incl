@@ -1,4 +1,0 @@
-{% if PUBLISH is defined %}
-WORKDIR /build/target/release
-RUN s3cmd --access_key=${AWS_ACCESS_KEY} --secret_key=${AWS_SECRET_KEY} cp redisgears2.Linux-${archsuffix}*.zip s3://redismodules/redisgears/snapshots/ 
-{% endif %}

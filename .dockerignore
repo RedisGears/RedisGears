@@ -2,3 +2,4 @@ dockerbuilds/**
 target/**
 .git/**
 .github/**
+Cargo.lock
