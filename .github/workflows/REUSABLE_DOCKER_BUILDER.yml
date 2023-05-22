@@ -78,22 +78,22 @@ jobs:
               --build-arg AWS_SECRET_KEY=${{secrets.AWS_SECRET_ACCESS_KEY}} \
               --progress=plain \
               . \
+              -t gears/gears:build \
               --load
 
         - name: image check
           run: |
             docker images
 
+        - name: extract
+          id: extract
+          uses: shrink/actions-docker-extract@v2
+          with:
+              image: gears/gears:build
+              path: /build/target/release/.
 
-        # - name: build
-        #   uses: docker/build-push-action@v4
-        #   with:
-        #     push: false
-        #     context: .
-        #     file: dockerbuilds/Dockerfile.generated
-        #     platforms: ${{inputs.docker_arch}}
-        #     build-args: |
-        #         AWS_ACCESS_KEY: ${{secrets.AWS_ACCESS_KEY_ID}}
-        #         AWS_SECRET_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
-        #         v8_version: ${{inputs.v8_version}}
-        #         v8_update_headers: ${{inputs.v8_update_headers}}
+        - name: Upload Dist
+          uses: actions/upload-artifact@v2
+          with:
+            path: ${{ steps.extract.outputs.destination }}
+            name: dist
