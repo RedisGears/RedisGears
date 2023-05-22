@@ -90,16 +90,6 @@ jobs:
               image: gears/gears:build
               path: /build/target/release/.
 
-        # - name: show and tell
-        #   run: |
-        #     ls -R ${{ steps.extract.outputs.destination }}
-
-        # - name: Upload Dist
-        #   uses: actions/upload-artifact@v2
-        #   with:
-        #     path: ${{ steps.extract.outputs.destination }}
-        #     name: dist
-
         - name: Setup s3cmd action
           uses: s3-actions/s3cmd@v1.2.0
           with:

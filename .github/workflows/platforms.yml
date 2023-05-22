@@ -33,12 +33,12 @@ jobs:
             arch: arm64
             docker_arch: linux/arm64
 
-    # focal-x86:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: 20.04
-    #         os_family: ubuntu
-    #         dockerfile: dockerbuilds/dockerfile.debian.tmpl
+    focal-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 20.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
 
     # focal-arm64:
     #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
@@ -49,12 +49,12 @@ jobs:
     #         arch: arm64
     #         docker_arch: linux/arm64
 
-    # bionic-x86:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: 18.04
-    #         os_family: ubuntu
-    #         dockerfile: dockerbuilds/dockerfile.debian.tmpl
+    bionic-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 18.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
 
     # bionic-arm64:
     #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
@@ -65,23 +65,23 @@ jobs:
     #         arch: arm64
     #         docker_arch: linux/arm64
 
-    # bullseye-x86:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: bullseye
-    #         os_family: debian
-    #         dockerfile: dockerbuilds/dockerfile.debian.tmpl
+    bullseye-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: bullseye
+            os_family: debian
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
 
-    # rehl7-x86:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: 7
-    #         os_family: centos
-    #         dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+    rehl7-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 7
+            os_family: centos
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
 
-    # rhel8-x86:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: 8
-    #         os_family: rockylinux
-    #         dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+    rhel8-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 8
+            os_family: rockylinux
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
