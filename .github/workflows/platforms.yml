@@ -24,30 +24,15 @@ jobs:
             AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
 
-    jammy-arm64:
-        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        with:
-            os_version: 22.04
-            os_family: ubuntu
-            dockerfile: dockerbuilds/dockerfile.debian.tmpl
-            arch: arm64
-            docker_arch: linux/arm64
-
     focal-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
         with:
             os_version: 20.04
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
-
-    # focal-arm64:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: 20.04
-    #         os_family: ubuntu
-    #         dockerfile: dockerbuilds/dockerfile.debian.tmpl
-    #         arch: arm64
-    #         docker_arch: linux/arm64
+        secrets:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
 
     bionic-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
@@ -55,15 +40,9 @@ jobs:
             os_version: 18.04
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
-
-    # bionic-arm64:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: 18.04
-    #         os_family: ubuntu
-    #         dockerfile: dockerbuilds/dockerfile.debian.tmpl
-    #         arch: arm64
-    #         docker_arch: linux/arm64
+        secrets:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
 
     bullseye-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
@@ -71,13 +50,19 @@ jobs:
             os_version: bullseye
             os_family: debian
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
+        secrets:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
 
-    rehl7-x86:
+    rhel7-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
         with:
             os_version: 7
             os_family: centos
             dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+        secrets:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
 
     rhel8-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
@@ -85,3 +70,6 @@ jobs:
             os_version: 8
             os_family: rockylinux
             dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+        secrets:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}

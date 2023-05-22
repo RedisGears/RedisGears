@@ -6,7 +6,7 @@ ARG PLATFORM="{{ PLATFORM }}"
 ARG v8_version="default"
 ARG v8_update_headers="no"
 ARG ramp_version="master"
-ARG archsuffix="Linux-${OS_VERSION}-${PLATFORM}"
+ARG archsuffix="Linux-rhel${OS_VERSION}-${PLATFORM}"
 
 ARG AWS_ACCESS_KEY=""
 ARG AWS_SECRET_KEY=""
@@ -38,5 +38,3 @@ RUN dnf install -yqq gcc-toolset-11-gcc gcc-toolset-11-gcc-c++ gcc-toolset-11-li
 {% include "pip.incl" %}
 
 {% include "build_and_test.incl" %}
-
-{% include "publish.incl" %}

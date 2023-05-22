@@ -57,6 +57,7 @@ jobs:
           run: |
             python3 dockerbuilds/generate.py --os_version ${{inputs.os_version}} \
               --platform ${{inputs.arch}} --redis_version ${{inputs.redis_version}} \
+              --src ${{inputs.dockerfile}} \
               --os_family ${{inputs.os_family}}
 
         - name: install qemu
