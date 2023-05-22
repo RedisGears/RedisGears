@@ -74,6 +74,7 @@ jobs:
               --build-arg v8_version=${{inputs.v8_version}} \
               --build-arg v8_update_headers=${{inputs.v8_update_headers}} \
               --progress=plain \
+              -f dockerbuilds/Dockerfile.generated \
               . \
               -t gears/gears:build \
               --load
