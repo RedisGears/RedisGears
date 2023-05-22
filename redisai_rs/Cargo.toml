@@ -12,7 +12,7 @@ redis-module-macros = { git = "https://github.com/RedisLabsModules/redismodule-r
 redisgears_plugin_api = { path = "../redisgears_plugin_api/" }
 
 [build-dependencies]
-bindgen = "0.59"
+bindgen = "0.65"
 cc = "1"
 
 [lib]

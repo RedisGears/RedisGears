@@ -78,6 +78,7 @@ impl GilStateCtx {
 }
 
 pub(crate) struct V8ScriptCtx {
+    pub(crate) name: String,
     pub(crate) script: V8PersistedScript,
     pub(crate) tensor_object_template: V8PersistedObjectTemplate,
     pub(crate) ctx: V8Context,
@@ -89,6 +90,7 @@ pub(crate) struct V8ScriptCtx {
 
 impl V8ScriptCtx {
     pub(crate) fn new(
+        name: String,
         isolate: V8Isolate,
         ctx: V8Context,
         script: V8PersistedScript,
@@ -96,6 +98,7 @@ impl V8ScriptCtx {
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Self {
         Self {
+            name,
             isolate,
             ctx,
             script,
@@ -165,14 +168,9 @@ impl LibraryCtxInterface for V8LibraryCtx {
         self.script_ctx.before_release_gil();
         self.script_ctx.after_run();
 
-        if res.is_none() {
-            return Err(get_exception_msg(
-                &self.script_ctx.isolate,
-                trycatch,
-                &ctx_scope,
-            ));
-        }
-        let res = res.unwrap();
+        let res =
+            res.ok_or_else(|| get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope))?;
+
         if res.is_promise() {
             let promise = res.as_promise();
             if promise.state() == V8PromiseState::Rejected {

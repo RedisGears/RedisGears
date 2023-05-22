@@ -15,9 +15,12 @@ use crate::redisgears_plugin_api::GearsApiError;
 use super::prologue::ApiVersion;
 
 pub trait CompiledLibraryInterface {
-    fn log(&self, msg: &str);
+    fn log_debug(&self, msg: &str);
+    fn log_info(&self, msg: &str);
+    fn log_trace(&self, msg: &str);
+    fn log_warning(&self, msg: &str);
+    fn log_error(&self, msg: &str);
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>);
-    fn get_maxmemory(&self) -> usize;
     fn redisai_create_tensor(
         &self,
         data_type: &str,
@@ -34,9 +37,17 @@ pub enum LibraryFatalFailurePolicy {
 
 pub struct BackendCtx {
     pub allocator: &'static dyn GlobalAlloc,
-    pub log: Box<dyn Fn(&str) + 'static>,
+    pub log_info: Box<dyn Fn(&str) + 'static>,
+    pub log_debug: Box<dyn Fn(&str) + 'static>,
+    pub log_trace: Box<dyn Fn(&str) + 'static>,
+    pub log_warning: Box<dyn Fn(&str) + 'static>,
+    pub log_error: Box<dyn Fn(&str) + 'static>,
     pub get_on_oom_policy: Box<dyn Fn() -> LibraryFatalFailurePolicy + 'static>,
     pub get_lock_timeout: Box<dyn Fn() -> u128 + 'static>,
+    pub get_v8_maxmemory: Box<dyn Fn() -> usize + 'static>,
+    pub get_v8_library_initial_memory: Box<dyn Fn() -> usize + 'static>,
+    pub get_v8_library_initial_memory_limit: Box<dyn Fn() -> usize + 'static>,
+    pub get_v8_library_memory_delta: Box<dyn Fn() -> usize + 'static>,
 }
 
 /// The trait which is only implemented for a successfully initialised

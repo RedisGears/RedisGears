@@ -124,6 +124,7 @@ def gearsTest(skipTest=False,
               withReplicas=False,
               shardsCount=2,
               errorVerbosity=1,
+              v8MaxMemory=None,
               gearsConfig={},
               envArgs={}):
     def test_func_generator(test_function):
@@ -164,6 +165,8 @@ def gearsTest(skipTest=False,
                     raise unittest.SkipTest()
             if enableGearsDebugCommands:
                 module_args += ["enable-debug-command", "yes"]
+            if v8MaxMemory:
+                module_args += ["v8-maxmemory", str(v8MaxMemory)]
             for k, v in gearsConfig.items():
                 module_args += [k, v]
             module_args += ["error-verbosity", str(errorVerbosity)]

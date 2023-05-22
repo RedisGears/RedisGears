@@ -17,7 +17,7 @@ use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8PersistValue};
 
 use crate::v8_native_functions::{get_backgrounnd_client, get_redis_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
-use crate::{get_error_from_object, get_exception_msg};
+use crate::{get_error_from_object, get_exception_msg, v8_backend::bypass_memory_limit};
 
 use std::any::Any;
 use std::cell::RefCell;
@@ -311,6 +311,13 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
         notification_ctx: &dyn NotificationRunCtxInterface,
         ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
     ) {
+        if bypass_memory_limit() {
+            ack_callback(Err(GearsApiError::new(
+                "JS engine reached OOM state and can not run any more code",
+            )));
+            return;
+        }
+
         let notificaion_data = notificaion_data
             .unwrap()
             .downcast::<V8NotificationCtxData>()
