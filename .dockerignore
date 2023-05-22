@@ -1,2 +1,4 @@
-dockerbuilds
-target
+dockerbuilds/**
+target/**
+.git/**
+.github/**

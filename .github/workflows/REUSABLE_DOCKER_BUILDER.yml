@@ -70,14 +70,30 @@ jobs:
             platforms: ${{inputs.docker_arch}}
 
         - name: build
-          uses: docker/build-push-action@v4
-          with:
-            push: false
-            context: .
-            file: dockerbuilds/Dockerfile.generated
-            platforms: ${{inputs.docker_arch}}
-            build-args: |
-                AWS_ACCESS_KEY: ${{secrets.AWS_ACCESS_KEY_ID}}
-                AWS_SECRET_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
-                v8_version: ${{inputs.v8_version}}
-                v8_update_headers: ${{inputs.v8_update_headers}}
+          run: |
+            docker buildx build --platform ${{inputs.docker_arch}} \
+              --build-arg v8_version=${{inputs.v8_version}} \
+              --build-arg v8_update_headers=${{inputs.v8_update_headers}} \
+              --build-arg AWS_ACCESS_KEY=${{secrets.AWS_ACCESS_KEY_ID}} \
+              --build-arg AWS_SECRET_KEY=${{secrets.AWS_SECRET_ACCESS_KEY}} \
+              --progress=plain \
+              . \
+              --load
+
+        - name: image check
+          run: |
+            docker images
+
+
+        # - name: build
+        #   uses: docker/build-push-action@v4
+        #   with:
+        #     push: false
+        #     context: .
+        #     file: dockerbuilds/Dockerfile.generated
+        #     platforms: ${{inputs.docker_arch}}
+        #     build-args: |
+        #         AWS_ACCESS_KEY: ${{secrets.AWS_ACCESS_KEY_ID}}
+        #         AWS_SECRET_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+        #         v8_version: ${{inputs.v8_version}}
+        #         v8_update_headers: ${{inputs.v8_update_headers}}
