@@ -90,15 +90,15 @@ jobs:
               image: gears/gears:build
               path: /build/target/release/.
 
-        - name: show and tell
-          run: |
-            ls -R ${{ steps.extract.outputs.destination }}
+        # - name: show and tell
+        #   run: |
+        #     ls -R ${{ steps.extract.outputs.destination }}
 
-        - name: Upload Dist
-          uses: actions/upload-artifact@v2
-          with:
-            path: ${{ steps.extract.outputs.destination }}
-            name: dist
+        # - name: Upload Dist
+        #   uses: actions/upload-artifact@v2
+        #   with:
+        #     path: ${{ steps.extract.outputs.destination }}
+        #     name: dist
 
         - name: Setup s3cmd action
           uses: s3-actions/s3cmd@v1.2.0
@@ -110,5 +110,5 @@ jobs:
         - name: s3 upload
           run: |
             s3cmd  \
-              put -P ${{steps.extract.outputs.destination}}/*.zip
+              put -P ${{steps.extract.outputs.destination}}/redisgears2*.zip \
               s3://redismodules/redisgears/snapshots/

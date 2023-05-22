@@ -24,14 +24,14 @@ jobs:
             AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
 
-    # jammy-arm64:
-    #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-    #     with:
-    #         os_version: 22.04
-    #         os_family: ubuntu
-    #         dockerfile: dockerbuilds/dockerfile.debian.tmpl
-    #         arch: arm64
-    #         docker_arch: linux/arm64
+    jammy-arm64:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 22.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+            arch: arm64
+            docker_arch: linux/arm64
 
     # focal-x86:
     #     uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
