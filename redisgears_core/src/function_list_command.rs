@@ -5,11 +5,10 @@
  */
 
 use redis_module::redisvalue::RedisValueKey;
-use redis_module::{Context, NextArg, RedisError, RedisResult, RedisValue};
+use redis_module::{Context, NextArg, RedisError, RedisResult, RedisString, RedisValue};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 
-use std::vec::IntoIter;
-use std::{collections::HashMap, iter::Skip};
+use std::collections::BTreeMap;
 
 use crate::{get_libraries, get_msg_verbose, json_to_redis_value};
 
@@ -27,9 +26,9 @@ fn function_list_command_flags(flags: FunctionFlags) -> RedisValue {
     RedisValue::Array(res)
 }
 
-pub(crate) fn function_list_command(
+pub(crate) fn function_list_command<T: Iterator<Item = RedisString>>(
     ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
+    mut args: T,
 ) -> RedisResult {
     let mut with_code = false;
     let mut lib = None;
@@ -68,7 +67,7 @@ pub(crate) fn function_list_command(
             .filter(|l| lib.map(|lib_name| l.gears_lib_ctx.meta_data.name == lib_name).unwrap_or(true))
             .map(|l| {
                 let mut res =
-                    HashMap::from([
+                    BTreeMap::from([
                         (
                             RedisValueKey::String("engine".to_string()),
                             RedisValue::BulkString(l.gears_lib_ctx.meta_data.engine.to_string()),
@@ -104,7 +103,7 @@ pub(crate) fn function_list_command(
                                     .functions
                                     .iter()
                                     .map(|(k, v)| {
-                                        RedisValue::Map(HashMap::from([
+                                        RedisValue::OrderedMap(BTreeMap::from([
                                             (
                                                 RedisValueKey::String("name".to_string()),
                                                 RedisValue::BulkString(k.to_string()),
@@ -112,6 +111,10 @@ pub(crate) fn function_list_command(
                                             (
                                                 RedisValueKey::String("flags".to_string()),
                                                 function_list_command_flags(v.flags),
+                                            ),
+                                            (
+                                                RedisValueKey::String("is_async".to_string()),
+                                                RedisValue::Bool(v.is_async),
                                             ),
                                         ]))
                                     })
@@ -143,7 +146,7 @@ pub(crate) fn function_list_command(
                                     .map(|(k, v)| {
                                         let v = v.ref_cell.borrow();
                                         if verbosity > 0 {
-                                            let mut res = HashMap::from([
+                                            let mut res = BTreeMap::from([
                                                 (
                                                     RedisValueKey::String("name".to_string()),
                                                     RedisValue::BulkString(k.to_string()),
@@ -186,7 +189,7 @@ pub(crate) fn function_list_command(
                                                             .iter()
                                                             .map(|(s, v)| {
                                                                 let v = v.ref_cell.borrow();
-                                                                let mut res = HashMap::from([
+                                                                let mut res = BTreeMap::from([
                                                                     (
                                                                         RedisValueKey::String(
                                                                             "name".to_string(),
@@ -276,13 +279,13 @@ pub(crate) fn function_list_command(
                                                                         ),
                                                                     );
                                                                 }
-                                                                RedisValue::Map(res)
+                                                                RedisValue::OrderedMap(res)
                                                             })
                                                             .collect::<Vec<RedisValue>>(),
                                                     ),
                                                 );
                                             }
-                                            RedisValue::Map(res)
+                                            RedisValue::OrderedMap(res)
                                         } else {
                                             RedisValue::BulkString(k.to_string())
                                         }
@@ -301,7 +304,7 @@ pub(crate) fn function_list_command(
                                             RedisValue::BulkString(name.to_string())
                                         } else {
                                             let stats = c.borrow().get_stats();
-                                            RedisValue::Map(HashMap::from([
+                                            RedisValue::OrderedMap(BTreeMap::from([
                                                 (
                                                     RedisValueKey::String("name".to_string()),
                                                     RedisValue::BulkString(name.to_string()),
@@ -383,7 +386,7 @@ pub(crate) fn function_list_command(
                         json_to_redis_value(serde_json::from_str(&gears_box_info_str).unwrap()),
                     );
                 }
-                RedisValue::Map(res)
+                RedisValue::OrderedMap(res)
             })
             .collect::<Vec<RedisValue>>(),
     ))
