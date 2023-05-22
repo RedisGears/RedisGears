@@ -586,7 +586,8 @@ redis.register_function("test", function(){
          'user': 'default',\
          'triggers': [],\
          'api_version': '1.0',\
-         'stream_triggers': []\
+         'stream_triggers': [],\
+         'gears_box_info': None\
         }\
     ])
 
