@@ -44,7 +44,7 @@ commands:
               --os_family ubuntu
 
 jobs:
-  build-arm:
+  build-arm-platforms:
     parameters:
       os_version:
         type: string
@@ -52,14 +52,14 @@ jobs:
         type: string
     machine:
       image: ubuntu-2004:current
-    resource_clas: arm.medium
+    resource_class: arm.medium
     steps:
       - setup-executor
       - checkout-all
       - deb-install-requirements
       - docker-generate:
           os_version: <<parameters.os_version>>
-          redis_version: <<parameters.redis_version>
+          redis_version: <<parameters.redis_version>>
       - run:
           name: build docker
           shell: /bin/bash -l -eo pipefail
