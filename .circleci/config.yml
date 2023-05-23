@@ -8,14 +8,12 @@ commands:
       - run: 
           command: git submodule update --init --recursive
 
-  setup-executor:
-    steps:
-      - run:
-          name: Setup executor
-          command: |
-            sudo apt-get -qq update
-            sudo apt-get -qq install -y git openssh-client curl ca-certificates make tar gzip
-            docker version
+  # setup-executor:
+  #   steps:
+  #     - run:
+  #         name: Setup executor
+  #         command: |
+  #           docker version
 
   deb-install-requirements:
     steps:
@@ -50,7 +48,7 @@ jobs:
       image: ubuntu-2004:current
     resource_class: arm.medium
     steps:
-      - setup-executor
+      # - setup-executor
       - checkout-all
       - deb-install-requirements
       - docker-generate:
