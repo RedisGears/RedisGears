@@ -34,7 +34,7 @@ commands:
           command: |
             python3 dockerbuilds/generate.py --os_version <<parameters.os_version>> \
               --platform arm64 --redis_version <<parameters.redis_version>> \
-              --src dockerbuilds/dockerfile.debian.tmpl
+              --src dockerbuilds/dockerfile.debian.tmpl \
               --os_family ubuntu
 
 jobs:
