@@ -70,5 +70,5 @@ workflows:
           context: common
           matrix:
             parameters: 
-              os_version: [jammy] #, focal, bionic]
+              os_version: ["22.04"] #, focal, bionic]
               redis_version: ["7.2-rc1"]
