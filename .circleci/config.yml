@@ -1,0 +1,81 @@
+version: 2.1
+
+commands:
+
+  checkout-all:
+    steps:
+      - checkout
+      - run: 
+          command: git submodule update --init --recursive
+
+  setup-executor:
+    steps:
+      - run:
+          name: Setup executor
+          command: |
+            apt-get -qq update
+            apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
+            bash <(curl -fsSL https://raw.githubusercontent.com/docker/docker-install/master/install.sh)
+      - setup_remote_docker:
+          version: 20.10.14
+          docker_layer_caching: true
+
+  deb-install-requirements:
+    steps:
+      - run:
+          command: |
+            apt-get update -qqy --fix-missing
+            apt-get install -y python3 python3-pip
+            python3 -m pip install jinja2
+
+  docker-generate:
+    parameters:
+      os_version:
+        type: string
+      redis_version:
+        type: string
+    steps:
+      - run:
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            python3 dockerbuilds/generate.py --os_version <<parameters.os_version>> \
+              --platform arm64 --redis_version <<parameters.redis_version>> \
+              --src dockerbuilds/dockerfile.debian.tmpl
+              --os_family ubuntu
+
+jobs:
+  build-arm:
+    parameters:
+      os_version:
+        type: string
+      redis_version:
+        type: string
+    machine:
+      image: ubuntu-2004:current
+    resource_clas: arm.medium
+    steps:
+      - setup-executor
+      - checkout-all
+      - deb-install-requirements
+      - docker-generate:
+          os_version: <<parameters.os_version>>
+          redis_version: <<parameters.redis_version>
+      - run:
+          name: build docker
+          shell: /bin/bash -l -eo pipefail
+          command: |
+              docker build --platform arm64 --progress=plain -f dockerbuilds/Dockerfile.generated \
+              . \
+              -t gears/gears:build \
+              --load
+
+workflows:
+  version: 2
+  default-flow:
+    jobs:
+      - build-arm-platforms:
+          context: common
+          matrix:
+            parameters: 
+              os_version: [jammy, focal, bionic]
+              redis_version: ["7.2-rc1"]
