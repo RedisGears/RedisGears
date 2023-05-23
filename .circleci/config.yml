@@ -6,18 +6,13 @@ commands:
     steps:
       - checkout
       - run: 
+          name: update submodules if relevant
           command: git submodule update --init --recursive
-
-  # setup-executor:
-  #   steps:
-  #     - run:
-  #         name: Setup executor
-  #         command: |
-  #           docker version
 
   deb-install-requirements:
     steps:
       - run:
+          name: Install python requirements
           command: |
             sudo apt-get update -qqy --fix-missing
             python3 -m pip install jinja2
@@ -30,6 +25,7 @@ commands:
         type: string
     steps:
       - run:
+          name: Generate Dockerfile
           shell: /bin/bash -l -eo pipefail
           command: |
             python3 dockerbuilds/generate.py --os_version <<parameters.os_version>> \
@@ -70,5 +66,5 @@ workflows:
           context: common
           matrix:
             parameters: 
-              os_version: ["22.04"] #, focal, bionic]
+              os_version: ["22.04", "20.04", "18.04"]
               redis_version: ["7.2-rc1"]
