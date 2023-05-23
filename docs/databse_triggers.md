@@ -112,7 +112,7 @@ If the callback is a Coroutine, it will be executed in the background and there 
 
 When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOAD`](commands.md#rgfunction-load) command) all the trigger parameters can be modified.
 
-## Advance Usage
+## Advanced Usage
 
 For most use cases, `register_notifications_consumer` API is enough. But there are some use cases where you might need a better guaranteed on when the trigger will be fired. Lets look at the following example:
 

@@ -5,9 +5,7 @@
  */
 
 use redis_module::Context;
-use redisgears_plugin_api::redisgears_plugin_api::keys_notifications_consumer_ctx::{
-    NotificationCtxInterface, NotificationPostJobCtxInterface,
-};
+use redisgears_plugin_api::redisgears_plugin_api::keys_notifications_consumer_ctx::NotificationPostJobCtxInterface;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::{
     keys_notifications_consumer_ctx::NotificationRunCtxInterface,
@@ -70,5 +68,3 @@ impl<'ctx> NotificationPostJobCtxInterface for KeySpaceNotificationsCtx<'ctx> {
         });
     }
 }
-
-impl<'ctx> NotificationCtxInterface for KeySpaceNotificationsCtx<'ctx> {}
