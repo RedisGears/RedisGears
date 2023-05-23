@@ -60,8 +60,7 @@ jobs:
           command: |
               docker build --platform arm64 --progress=plain -f dockerbuilds/Dockerfile.generated \
               . \
-              -t gears/gears:build \
-              --load
+              -t gears/gears:build
 
 workflows:
   version: 2
