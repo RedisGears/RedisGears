@@ -797,3 +797,17 @@ redis.register_function("test", (c) => {
     for i in range(101):
         env.expect('RG.FUNCTION', 'LOAD', code % (i)).equal('OK')
 
+@gearsTest(useAof=True)
+def testNoNotificationOnAOFLoading(env):
+    """#!js api_version=1.0 name=lib
+redis.register_notifications_consumer("consumer", "", (client) => {
+    client.call('incr', 'notification');
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    env.expect('GET', 'notification').equal('1')
+    env.expect('DEBUG', 'LOADAOF').equal('OK')
+    # make sure notification was not fired.
+    env.expect('GET', 'notification').equal('1')
+    env.expect('SET', 'x', '2').equal(True)
+    env.expect('GET', 'notification').equal('2')
