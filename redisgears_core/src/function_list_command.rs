@@ -29,10 +29,8 @@ struct StreamInfo {
 
 #[derive(RedisValue)]
 struct StreamTriggersInfoVerbose2 {
-    name: String,
-    prefix: Vec<u8>,
-    window: usize,
-    trim: bool,
+    #[RedisValueAttr{flatten: true}]
+    stream_trigger_info: StreamTriggersInfoVerbose1,
     streams: Vec<StreamInfo>,
 }
 
@@ -48,20 +46,11 @@ struct StreamTriggersInfoVerbose1 {
 /// A struct that allows to translate a [StreamTriggersInfo] into
 /// [RedisValue] while taking into consideration the requested
 /// verbosity level.
+#[derive(RedisValue)]
 enum StreamTriggersInfo {
     Verbose0(String),
     Verbose1(StreamTriggersInfoVerbose1),
     Verbose2(StreamTriggersInfoVerbose2),
-}
-
-impl From<StreamTriggersInfo> for RedisValue {
-    fn from(value: StreamTriggersInfo) -> Self {
-        match value {
-            StreamTriggersInfo::Verbose0(s) => s.into(),
-            StreamTriggersInfo::Verbose1(t) => t.into(),
-            StreamTriggersInfo::Verbose2(t) => t.into(),
-        }
-    }
 }
 
 /// Contains all relevant information about RedisGears key space trigger.
@@ -77,18 +66,10 @@ struct TriggersInfoVerbose1 {
     total_execution_time: usize,
 }
 
+#[derive(RedisValue)]
 enum TriggersInfo {
     Verbose0(String),
     Verbose1(TriggersInfoVerbose1),
-}
-
-impl From<TriggersInfo> for RedisValue {
-    fn from(value: TriggersInfo) -> Self {
-        match value {
-            TriggersInfo::Verbose0(s) => s.into(),
-            TriggersInfo::Verbose1(t) => t.into(),
-        }
-    }
 }
 
 /// Contains all relevant information about RedisGears function.
@@ -102,35 +83,10 @@ struct FunctionInfoVerbose {
 /// A struct that allows to translate a [RequestedFunctionInfo] into
 /// [RedisValue] while taking into consideration the requested
 /// verbosity level.
+#[derive(RedisValue)]
 enum FunctionInfo {
     Verbose0(String),
     Verbose1(FunctionInfoVerbose),
-}
-
-impl From<FunctionInfo> for RedisValue {
-    fn from(value: FunctionInfo) -> Self {
-        match value {
-            FunctionInfo::Verbose0(s) => s.into(),
-            FunctionInfo::Verbose1(f) => f.into(),
-        }
-    }
-}
-
-/// Contains all relevant information about RedisGears library.
-#[derive(RedisValue)]
-struct LibraryInfoWithCode {
-    engine: String,
-    api_version: String,
-    name: String,
-    user: String,
-    configuration: Option<String>,
-    code: String,
-    gears_box_info: Option<RedisValue>,
-    pending_jobs: usize,
-    functions: Vec<FunctionInfo>,
-    cluster_functions: Vec<String>,
-    triggers: Vec<TriggersInfo>,
-    stream_triggers: Vec<StreamTriggersInfo>,
 }
 
 #[derive(RedisValue)]
@@ -146,6 +102,14 @@ struct LibraryInfoWithoutCode {
     cluster_functions: Vec<String>,
     triggers: Vec<TriggersInfo>,
     stream_triggers: Vec<StreamTriggersInfo>,
+}
+
+/// Contains all relevant information about RedisGears library.
+#[derive(RedisValue)]
+struct LibraryInfoWithCode {
+    code: String,
+    #[RedisValueAttr{flatten: true}]
+    lib_info: LibraryInfoWithoutCode,
 }
 
 enum LibraryInfo {
@@ -186,13 +150,12 @@ fn get_library_info(
     verbosity_level: usize,
     with_code: bool,
 ) -> LibraryInfo {
-    let lib_info = LibraryInfoWithCode {
+    let lib_info = LibraryInfoWithoutCode {
         engine: lib.gears_lib_ctx.meta_data.engine.to_owned(),
         api_version: lib.gears_lib_ctx.meta_data.api_version.to_string(),
         name: lib.gears_lib_ctx.meta_data.name.to_owned(),
         user: lib.gears_lib_ctx.meta_data.user.to_string_lossy(),
         configuration: lib.gears_lib_ctx.meta_data.config.clone(),
-        code: lib.gears_lib_ctx.meta_data.code.to_owned(),
         gears_box_info: lib.gears_box_lib.as_ref().map(|v| {
             json_to_redis_value(serde_json::from_str(&serde_json::to_string(&v).unwrap()).unwrap())
         }),
@@ -252,68 +215,56 @@ fn get_library_info(
                     return StreamTriggersInfo::Verbose0(name.to_owned());
                 }
                 let val = val.ref_cell.borrow();
+                let stream_trigger_info = StreamTriggersInfoVerbose1 {
+                    name: name.to_owned(),
+                    prefix: val.prefix.clone(),
+                    window: val.window,
+                    trim: val.trim,
+                };
                 if verbosity_level == 1 {
-                    StreamTriggersInfo::Verbose1(StreamTriggersInfoVerbose1 {
-                        name: name.to_owned(),
-                        prefix: val.prefix.clone(),
-                        window: val.window,
-                        trim: val.trim,
-                    })
-                } else {
-                    StreamTriggersInfo::Verbose2(StreamTriggersInfoVerbose2 {
-                        name: name.to_owned(),
-                        prefix: val.prefix.clone(),
-                        window: val.window,
-                        trim: val.trim,
-                        streams: val
-                            .consumed_streams
-                            .iter()
-                            .map(|(name, val)| {
-                                let val = val.ref_cell.borrow();
-                                StreamInfo {
-                                    name: name.to_owned(),
-                                    last_processed_time: val.last_processed_time as usize,
-                                    total_processed_time: val.total_processed_time as usize,
-                                    last_lag: val.last_lag as usize,
-                                    total_lag: val.total_lag as usize,
-                                    total_record_processed: val.records_processed,
-                                    pending_ids: val
-                                        .pending_ids
-                                        .iter()
-                                        .map(|id| format!("{}-{}", id.ms, id.seq))
-                                        .collect(),
-                                    id_to_read_from: val
-                                        .last_read_id
-                                        .map(|id| format!("{}-{}", id.ms, id.seq)),
-                                    last_error: val
-                                        .last_error
-                                        .as_ref()
-                                        .map(|v| get_msg_verbose(v).to_owned()),
-                                }
-                            })
-                            .collect(),
-                    })
+                    return StreamTriggersInfo::Verbose1(stream_trigger_info);
                 }
+                StreamTriggersInfo::Verbose2(StreamTriggersInfoVerbose2 {
+                    stream_trigger_info,
+                    streams: val
+                        .consumed_streams
+                        .iter()
+                        .map(|(name, val)| {
+                            let val = val.ref_cell.borrow();
+                            StreamInfo {
+                                name: name.to_owned(),
+                                last_processed_time: val.last_processed_time as usize,
+                                total_processed_time: val.total_processed_time as usize,
+                                last_lag: val.last_lag as usize,
+                                total_lag: val.total_lag as usize,
+                                total_record_processed: val.records_processed,
+                                pending_ids: val
+                                    .pending_ids
+                                    .iter()
+                                    .map(|id| format!("{}-{}", id.ms, id.seq))
+                                    .collect(),
+                                id_to_read_from: val
+                                    .last_read_id
+                                    .map(|id| format!("{}-{}", id.ms, id.seq)),
+                                last_error: val
+                                    .last_error
+                                    .as_ref()
+                                    .map(|v| get_msg_verbose(v).to_owned()),
+                            }
+                        })
+                        .collect(),
+                })
             })
             .collect(),
     };
 
-    if with_code {
-        return LibraryInfo::WithCode(lib_info);
+    if !with_code {
+        return LibraryInfo::WithoutCode(lib_info);
     }
 
-    LibraryInfo::WithoutCode(LibraryInfoWithoutCode {
-        engine: lib_info.engine,
-        api_version: lib_info.api_version,
-        name: lib_info.name,
-        user: lib_info.user,
-        configuration: lib_info.configuration,
-        gears_box_info: lib_info.gears_box_info,
-        pending_jobs: lib_info.pending_jobs,
-        functions: lib_info.functions,
-        cluster_functions: lib_info.cluster_functions,
-        triggers: lib_info.triggers,
-        stream_triggers: lib_info.stream_triggers,
+    LibraryInfo::WithCode(LibraryInfoWithCode {
+        code: lib.gears_lib_ctx.meta_data.code.to_owned(),
+        lib_info,
     })
 }
 
