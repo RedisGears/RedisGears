@@ -15,10 +15,9 @@ commands:
           command: |
             apt-get -qq update
             apt-get -q install -y git openssh-client curl ca-certificates make tar gzip
-            bash <(curl -fsSL https://raw.githubusercontent.com/docker/docker-install/master/install.sh)
-      - setup_remote_docker:
-          version: 20.10.14
-          docker_layer_caching: true
+            curl -fsSL test.docker.com -o get-docker.sh && sh get-docker.sh
+            docker run hello-world
+            docker version
 
   deb-install-requirements:
     steps:
