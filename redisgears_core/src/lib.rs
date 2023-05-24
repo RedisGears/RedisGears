@@ -10,6 +10,7 @@
 
 #![deny(missing_docs)]
 
+use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
 use redis_module::{CallResult, ContextFlags, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
@@ -67,7 +68,6 @@ use std::vec::IntoIter;
 use crate::compiled_library_api::CompiledLibraryInternals;
 use crate::gears_box::{gears_box_search, GearsBoxLibraryInfo};
 use crate::keys_notifications::{KeysNotificationsCtx, NotificationCallback, NotificationConsumer};
-use crate::keys_notifications_ctx::KeysNotificationsRunCtx;
 use crate::stream_run_ctx::{GearsStreamConsumer, GearsStreamRecord};
 
 use std::cell::RefCell;
@@ -364,16 +364,16 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                     return;
                 }
                 let _notification_blocker = get_notification_blocker();
-                let val = keys_notifications_consumer_ctx.on_notification_fired(
+                keys_notifications_consumer_ctx.on_notification_fired(
                     event,
                     key,
-                    &KeysNotificationsRunCtx::new(ctx, meta_data.clone(), FunctionFlags::empty()),
-                );
-                keys_notifications_consumer_ctx.post_command_notification(
-                    val,
-                    &KeysNotificationsRunCtx::new(ctx, meta_data.clone(), FunctionFlags::empty()),
+                    &KeySpaceNotificationsCtx::new(
+                        ctx,
+                        meta_data.clone(),
+                        FunctionFlags::NO_WRITES,
+                    ),
                     done_callback,
-                )
+                );
             });
 
         let consumer = if let Some(old_notification_consumer) = self
