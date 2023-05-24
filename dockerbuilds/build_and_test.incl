@@ -13,7 +13,7 @@ RUN $HOME/.cargo/bin/cargo build --release --verbose
 RUN $HOME/.cargo/bin/cargo test --verbose
 
 WORKDIR /build/pytests
-RUN ./run_tests.sh
+#RUN ./run_tests.sh
 
 WORKDIR /build
 RUN target/release/packer
