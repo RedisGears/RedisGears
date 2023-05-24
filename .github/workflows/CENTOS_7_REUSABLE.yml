@@ -57,8 +57,8 @@ jobs:
         yum -yqq install rh-python38-python
         yum -yqq install rh-python38-python-pip
     - uses: actions/checkout@v3
-    - name: Add RedisGears directory to git safe directory
-      run: git config --global --add safe.directory /__w/RedisGears/RedisGears
+    - name: configure git
+      run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
     - name: install rltest
       run: |
         /opt/rh/rh-python38/root/usr/bin/python -m pip install RLTest
