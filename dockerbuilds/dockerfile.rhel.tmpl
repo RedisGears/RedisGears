@@ -14,7 +14,7 @@ ENV PATH="/opt/rh/gcc-toolset-11/root/usr/bin:$PATH"
 {% endif %}
 
 {% if OS_VERSION == "7" %}
-RUN /opt/rh/rh-python38/root/usr/bin/python3 -m pip install -U RLTest redhs==5.0.0b3
+RUN /opt/rh/rh-python38/root/usr/bin/python3 -m pip install -U RLTest redis==5.0.0b3
 RUN /opt/rh/rh-python38/root/usr/bin/python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version}
 RUN echo "scl_source enable devtoolset-9" >> /etc/profile
 RUN echo "scl_source enable llvm-toolset-7" >> /etc/profile

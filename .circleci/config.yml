@@ -5,7 +5,7 @@ commands:
   checkout-all:
     steps:
       - checkout
-      - run: 
+      - run:
           name: update submodules if relevant
           command: git submodule update --init --recursive
 
@@ -15,7 +15,17 @@ commands:
           name: Install python requirements
           command: |
             sudo apt-get update -qqy --fix-missing
-            python3 -m pip install jinja2
+            python3 -m pip install jinja2 s3cmd
+
+  s3-upload:
+    steps:
+      - run:
+          name: s3 upload
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
+              put -P release/redisgears2*.zip \
+              s3://redismodules/redisgears/snapshots/
 
   docker-generate:
     parameters:
@@ -51,12 +61,16 @@ jobs:
           os_version: <<parameters.os_version>>
           redis_version: <<parameters.redis_version>>
       - run:
-          name: build docker
+          name: build docker, copy out the bits
           shell: /bin/bash -l -eo pipefail
           command: |
               docker build --platform arm64 --progress=plain -f dockerbuilds/Dockerfile.generated \
               . \
               -t gears/gears:build
+              docker create --name smu gears/gears:build
+              docker cp smu:/build/target/release/. release
+              ls release
+      - s3-upload
 
 workflows:
   version: 2
@@ -65,6 +79,6 @@ workflows:
       - build-arm-platforms:
           context: common
           matrix:
-            parameters: 
+            parameters:
               os_version: ["22.04", "20.04", "18.04"]
               redis_version: ["7.2-rc1"]
