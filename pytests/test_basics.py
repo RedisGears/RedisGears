@@ -100,14 +100,14 @@ redis.registerFunction("test", "bar"); // this will fail
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithNotificationConsumer(env):
     """#!js api_version=1.0 name=foo
-redis.registerTrigger("consumer", "key", async function(c){
+redis.registerKeySpaceTrigger("consumer", "key", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
     """
     script = '''#!js api_version=1.0 name=foo
-redis.registerTrigger("consumer", "key", async function(c){
+redis.registerKeySpaceTrigger("consumer", "key", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
@@ -360,7 +360,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, true, async function(c){
 @gearsTest()
 def testTimeoutOnNotificationConsumer(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     while(true);
 });
     """
@@ -372,7 +372,7 @@ redis.registerTrigger("consumer", "", function(client, data) {
 @gearsTest()
 def testTimeoutOnNotificationConsumerAsync(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", async function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", async function(client, data) {
     client.block(function(){
         while(true);
     })
@@ -399,7 +399,7 @@ redis.registerFunction("test1", function(client){
     }
 });
 
-redis.registerTrigger("consumer", "", function(client, data){
+redis.registerKeySpaceTrigger("consumer", "", function(client, data){
     return
 });
 
@@ -726,7 +726,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
     num_events++;
 })
 
-redis.registerTrigger("consumer", "", function(client, data) {});
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {});
     """
     env.expect('TFUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
     env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'v'))[0]['engine'], 'js') # sanaty check
@@ -800,7 +800,7 @@ redis.registerFunction("test", (c) => {
 @gearsTest(useAof=True)
 def testNoNotificationOnAOFLoading(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client) => {
+redis.registerKeySpaceTrigger("consumer", "", (client) => {
     client.call('incr', 'notification');
 });
     """

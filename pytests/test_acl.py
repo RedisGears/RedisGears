@@ -125,7 +125,7 @@ redis.registerFunction("async_get_start", function(client, dummy, key){
 @gearsTest()
 def testAclOnNotificationConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.registerTrigger("test", "", function(client, data) {
+redis.registerKeySpaceTrigger("test", "", function(client, data) {
     return client.call("get", "x");
 });
     """
@@ -145,7 +145,7 @@ redis.registerTrigger("test", "", function(client, data) {
 @gearsTest()
 def testAclOnAsyncNotificationConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.registerTrigger("test", "", async function(client, data) {
+redis.registerKeySpaceTrigger("test", "", async function(client, data) {
     client.block(function(c){
         return c.call("get", "x");
     });

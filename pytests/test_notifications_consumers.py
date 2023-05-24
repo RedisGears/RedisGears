@@ -9,7 +9,7 @@ import time
 def testBasicNotifications(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.registerTrigger("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
@@ -30,7 +30,7 @@ redis.registerFunction("n_notifications", function(){
 def testAsyncNotification(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.registerTrigger("consumer", "", async function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", async function(client, data) {
     n_notifications += 1;
 });
 
@@ -50,7 +50,7 @@ redis.registerAsyncFunction("n_notifications", async function(){
 @gearsTest()
 def testCallRedisOnNotification(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "key", async function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
     });
@@ -69,7 +69,7 @@ redis.registerTrigger("consumer", "key", async function(client, data) {
 def testNotificationsAreNotFiredFromWithinFunction(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.registerTrigger("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
@@ -91,7 +91,7 @@ redis.registerFunction("simple_set", function(client){
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.registerTrigger("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     n_notifications += 1;
 });
 
@@ -115,7 +115,7 @@ redis.registerAsyncFunction("simple_set", async function(client){
 def testNotificationsAreNotFiredFromWithinAnotherNotification(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.registerTrigger("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     client.call('set', 'x' , '1');
     n_notifications += 1;
 });
@@ -132,7 +132,7 @@ redis.registerAsyncFunction("n_notifications", async function(){
 def testNotificationsAreNotFiredFromWithinStreamConsumer(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
-redis.registerTrigger("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     redis.log(JSON.stringify(data));
     if (data.event == "set") {
         n_notifications += 1;
@@ -160,7 +160,7 @@ def testNotificationsOnBinaryKey(env):
 var n_notifications = 0;
 var last_key = null;
 var last_key_raw = null;
-redis.registerTrigger("consumer", new Uint8Array([255]).buffer, function(client, data) {
+redis.registerKeySpaceTrigger("consumer", new Uint8Array([255]).buffer, function(client, data) {
     if (data.event == "set") {
         n_notifications += 1;
         last_data = data.key;
@@ -183,7 +183,7 @@ redis.registerAsyncFunction("notifications_stats", async function(){
 @gearsTest()
 def testSyncNotificationsReturnPromise(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client) => {
+redis.registerKeySpaceTrigger("consumer", "", (client) => {
     return client.executeAsync(async ()=>{return 1});
 });
     """
@@ -193,7 +193,7 @@ redis.registerTrigger("consumer", "", (client) => {
 @gearsTest()
 def testSyncNotificationsReturnPromiseRaiseError(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client) => {
+redis.registerKeySpaceTrigger("consumer", "", (client) => {
     return client.executeAsync(async ()=>{throw "SomeError"});
 });
     """
@@ -203,7 +203,7 @@ redis.registerTrigger("consumer", "", (client) => {
 @gearsTest()
 def testAsyncNotificationsReturnPromise(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", async (client) => {
+redis.registerKeySpaceTrigger("consumer", "", async (client) => {
     return client.block((client) => {return client.executeAsync(async() => {return 1;})});
 });
     """
@@ -213,7 +213,7 @@ redis.registerTrigger("consumer", "", async (client) => {
 @gearsTest()
 def testAsyncNotificationsReturnPromiseRaiseError(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", async (client) => {
+redis.registerKeySpaceTrigger("consumer", "", async (client) => {
     return client.block((client) => {return client.executeAsync(async() => {throw "SomeError";})});
 });
     """
@@ -223,7 +223,7 @@ redis.registerTrigger("consumer", "", async (client) => {
 @gearsTest()
 def testSyncNotificationsReturnResolvedPromise(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client) => {
+redis.registerKeySpaceTrigger("consumer", "", (client) => {
     var resolve_promise = null;
     var promise = new Promise((resolve, reject) => {
         resolve_promise = resolve;
@@ -238,7 +238,7 @@ redis.registerTrigger("consumer", "", (client) => {
 @gearsTest()
 def testOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client, data) => {
+redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: (client, data) => {
@@ -252,7 +252,7 @@ redis.registerTrigger("consumer", "", (client, data) => {
 @gearsTest()
 def testUnableToWriteOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client, data) => {
+redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: (client, data) => {
@@ -268,7 +268,7 @@ redis.registerTrigger("consumer", "", (client, data) => {
 @gearsTest()
 def testReadOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client, data) => {
+redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', (data.content + 1).toString());
 },{
     onTriggerFired: (client, data) => {
@@ -282,7 +282,7 @@ redis.registerTrigger("consumer", "", (client, data) => {
 @gearsTest()
 def testTimeoutOnTriggerFiredCallback(env):
     """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client, data) => {
+redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: (client, data) => {
@@ -297,10 +297,10 @@ redis.registerTrigger("consumer", "", (client, data) => {
 @gearsTest()
 def testWrongTypeForOnTriggerFiredCallbackArgument(env):
     script = """#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "", (client, data) => {
+redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     client.call('set', 'x', data.test);
 },{
     onTriggerFired: 1
 });
     """
-    env.expect('TFUNCTION', 'LOAD', script).error().contains("'onTriggerFired' argument to 'registerTrigger' must be a function")
+    env.expect('TFUNCTION', 'LOAD', script).error().contains("'onTriggerFired' argument to 'registerKeySpaceTrigger' must be a function")

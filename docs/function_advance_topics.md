@@ -287,7 +287,7 @@ On [database triggers](databse_triggers.md), if the key name that triggered the 
 var n_notifications = 0;
 var last_key = null;
 var last_key_raw = null;
-redis.registerTrigger("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     if (data.event == "set") {
         n_notifications += 1;
         last_data = data.key;

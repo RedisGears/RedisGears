@@ -67,7 +67,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, false, async function(c, da
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnNotificationConsumer(env):
     '''#!js api_version=1.0 name=foo
-redis.registerTrigger("consumer", "", function(c, data){
+redis.registerKeySpaceTrigger("consumer", "", function(c, data){
     return foo()
 })
     '''
@@ -78,7 +78,7 @@ redis.registerTrigger("consumer", "", function(c, data){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncNotificationConsumer(env):
     '''#!js api_version=1.0 name=foo
-redis.registerTrigger("consumer", "", async function(c, data){
+redis.registerKeySpaceTrigger("consumer", "", async function(c, data){
     return foo()
 })
     '''
@@ -90,7 +90,7 @@ redis.registerTrigger("consumer", "", async function(c, data){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnSyncNotificationConsumerThatMoveAsync(env):
     '''#!js api_version=1.0 name=foo
-redis.registerTrigger("consumer", "", function(c, data){
+redis.registerKeySpaceTrigger("consumer", "", function(c, data){
     return c.executeAsync(async() => {
         return foo();
     });

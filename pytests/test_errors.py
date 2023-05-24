@@ -420,13 +420,13 @@ redis.registerFunction('test', () => {return 1})
 @gearsTest()
 def testRegisterSameConsumerTwice(env):
     code = '''#!js api_version=1.0 name=lib
-redis.registerTrigger("consumer", "key", async function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
     });
 });
 
-redis.registerTrigger("consumer", "key", async function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "key", async function(client, data) {
     client.block(function(client){
         client.call('incr', 'count')
     });

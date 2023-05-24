@@ -36,7 +36,7 @@ use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::sync::{Arc, Weak};
 
-const REGISTER_NOTIFICATIONS_CONSUMER: &str = "registerTrigger";
+const REGISTER_NOTIFICATIONS_CONSUMER: &str = "registerKeySpaceTrigger";
 
 pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
     isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
