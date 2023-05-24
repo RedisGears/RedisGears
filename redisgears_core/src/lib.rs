@@ -781,7 +781,7 @@ fn function_call_command(
 
     if function.is_async && !allow_block {
         // Blocking is not allowed but the function declated as async which means it might block, we will not invoke it.
-        return Err(RedisError::Str("The function is declared as async and was called while blocking was not allowed; note that you cannot invoke async functions from within Lua or MULTI, and you must use RG.FCALLASYNC instead."));
+        return Err(RedisError::Str("The function is declared as async and was called while blocking was not allowed; note that you cannot invoke async functions from within Lua or MULTI, and you must use TFCALLASYNC instead."));
     }
 
     {
@@ -1012,7 +1012,7 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
 
 #[command(
     {
-        name: "rg.fcall",
+        name: "tfcall",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -4,
         key_spec: [
@@ -1031,7 +1031,7 @@ fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 
 #[command(
     {
-        name: "rg.fcallasync",
+        name: "tfcallasync",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -4,
         key_spec: [
@@ -1071,7 +1071,7 @@ fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisRe
 
 #[command(
     {
-        name: "rg.function",
+        name: "tfunction",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
         arity: -2,
         key_spec: [],
@@ -1083,7 +1083,7 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     match sub_command.as_ref() {
         "load" => function_load_command::function_load_command(ctx, args),
         "list" => function_list_command::function_list_command(ctx, args),
-        "del" => function_del_command::function_del_command(ctx, args),
+        "delete" => function_del_command::function_del_command(ctx, args),
         "debug" => function_debug_command(ctx, args),
         _ => Err(RedisError::String(format!(
             "Unknown subcommand {}",
@@ -1237,8 +1237,8 @@ mod gears_module {
                 ["library-fatal-failure-policy", &*FATAL_FAILURE_POLICY , config::FatalFailurePolicyConfiguration::Abort, ConfigurationFlags::DEFAULT, None],
             ],
             module_args_as_configuration: true,
-            module_config_get: "RG.CONFIG_GET",
-            module_config_set: "RG.CONFIG_SET",
+            module_config_get: "TCONFIG_GET",
+            module_config_set: "TCONFIG_SET",
         ]
     }
 }

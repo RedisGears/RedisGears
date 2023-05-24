@@ -9,12 +9,12 @@ On major disadvantage of the atomicity property is that during the entire invoca
 
 RedisGears attempt to give a better flexibility to the Gears function writer and allow to invoke function on the background. When function is invoke on the background it can not touch the Redis key space, To touch the Redis key space from the background, the function must block Redis and enter an atomic section where the atomicity property is once again guaranteed.
 
-RedisGears function can go to the background by implement the function as a JS Coroutine and use `register_async_function`. The Coroutine is invoked on a background thread and do not block the Redis processes. Example:
+RedisGears function can go to the background by implement the function as a JS Coroutine and use `registerAsyncFunction`. The Coroutine is invoked on a background thread and do not block the Redis processes. Example:
 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_async_function('test', async function(){
+redis.registerAsyncFunction('test', async function(){
     return 'test';
 });
 ```
@@ -26,7 +26,7 @@ The Coroutine accept an optional client argument, this client is different then 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_function('test', async function(client){
+redis.registerFunction('test', async function(client){
     return client.block(function(redis_client){
         return redis_client.call('ping');
     });
@@ -36,18 +36,18 @@ redis.register_function('test', async function(client){
 Running this function will return a `pong` reply:
 
 ```bash
-127.0.0.1:6379> RG.FCALLASYNC lib test 0
+127.0.0.1:6379> TFCALLASYNC lib test 0
 "PONG"
 ```
 
-Notice that this time, in order to invoke the function, we used [`RG.FCALLASYNC`](commands.md#rgfcallasync). **We can only invoke async functions using [`RG.FCALLASYNC`](commands.md#rgfcallasync)**.
+Notice that this time, in order to invoke the function, we used [`TFCALLASYNC`](commands.md#tfcallasync). **We can only invoke async functions using [`TFCALLASYNC`](commands.md#tfcallasync)**.
 
 Now lets look at a more complex example, assuming we want to write a function that counts the number of hashes in Redis that has name property with some value. Lets first write a synchronous function that does it, we will use the [SCAN](https://redis.io/commands/scan/) command to scan the key space:
 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_function('test', function(client, expected_name){
+redis.registerFunction('test', function(client, expected_name){
     var count = 0;
     var cursor = '0';
     do{
@@ -69,7 +69,7 @@ Though working fine, this function has a potential to block Redis for a long tim
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_async_function('test', async function(async_client, expected_name){
+redis.registerAsyncFunction('test', async function(async_client, expected_name){
     var count = 0;
     var cursor = '0';
     do{
@@ -97,7 +97,7 @@ The above example is costly, even though Redis is not blocked it is still takes 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_async_function('test', async function(async_client, expected_name){
+redis.registerAsyncFunction('test', async function(async_client, expected_name){
     // check the cache first
     var cached_value = async_client.block((client)=>{
         return client.call('get', expected_name + '_count');
@@ -133,12 +133,12 @@ redis.register_async_function('test', async function(async_client, expected_name
 });
 ```
 
-The above code works as expected, it first check the cache, if cache exists it returns it, otherwise it is perform the calculation and update the cache. But the above example is not optimal, the callback is a Coroutine which means that it will always be calculated on a background thread. Moving to a background thread by itself is costly, the best approach would have been to check the cache synchronously and only if its not there, move to the background. RedisGears allows to start synchronously and move asynchronously using `run_on_background` function. The new code:
+The above code works as expected, it first check the cache, if cache exists it returns it, otherwise it is perform the calculation and update the cache. But the above example is not optimal, the callback is a Coroutine which means that it will always be calculated on a background thread. Moving to a background thread by itself is costly, the best approach would have been to check the cache synchronously and only if its not there, move to the background. RedisGears allows to start synchronously and move asynchronously using `executeAsync` function. The new code:
 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_async_function('test', function(client, expected_name){
+redis.registerAsyncFunction('test', function(client, expected_name){
     // check the cache first
     var cached_value = client.call('get', expected_name + '_count');
     if (cached_value != null) {
@@ -146,7 +146,7 @@ redis.register_async_function('test', function(client, expected_name){
     }
 
     // cache is not set, move to background
-    return client.run_on_background(async function(async_client) {
+    return client.executeAsync(async function(async_client) {
         var count = 0;
         var cursor = '0';
         do{
@@ -173,11 +173,11 @@ redis.register_async_function('test', function(client, expected_name){
 });
 ```
 
-`run_on_background` will return a `Promise` object, we return this Promise object as the function return value. When RedisGears sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much faster in case of cache hit.
+`executeAsync` will return a `Promise` object, we return this Promise object as the function return value. When RedisGears sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much faster in case of cache hit.
 
-**Notice** that even though we registered a sync function (not a Coroutine) we still used `register_async_function`. This is because our function has the potential of blocking the client and take the execution to the background. If we would have used `register_function` RedisGears would not have allow us to blocked the client and would have ignore the returned promise object.
+**Notice** that even though we registered a sync function (not a Coroutine) we still used `registerAsyncFunction`. This is because our function has the potential of blocking the client and take the execution to the background. If we would have used `registerFunction` RedisGears would not have allow us to blocked the client and would have ignore the returned promise object.
 
-**Also notice** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.allow_block()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possible.
+**Also notice** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.isBlockAllowed()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possible.
 
 
 # Fail Blocking the Redis

@@ -9,7 +9,7 @@ remote:
  - setup: c5.4xlarge
 dbconfig:
   - init_commands:
-    - ["RG.FUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_function('test', function(client, expected_name){    client.call('type', expected_name);    return client.run_on_background(async function(async_client) {        async_client.block((client)=>{            client.call('type', expected_name);        });    });});"]
+    - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerAsyncFunction('test', function(client, expected_name){    client.call('type', expected_name);    return client.executeAsync(async function(async_client) {        async_client.block((client)=>{            client.call('type', expected_name);        });    });});"]
 clientconfig:
   tool: memtier_benchmark
-  arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --command 'rg.fcall lib test 0 abc'"
+  arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --command 'TFCALL lib test 0 abc'"

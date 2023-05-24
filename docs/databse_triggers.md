@@ -7,12 +7,12 @@ Database triggers allow register a function that will be invoked whenever an eve
 
 For the full list of supported events please refer to [Redis Key Space notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands)
 
-To register a database trigger we need to use the `redis.register_notifications_consumer` API when loading our library. The following example shows how to register a database trigger that will add a last update field when ever a hash key is changed:
+To register a database trigger we need to use the `redis.registerTrigger` API when loading our library. The following example shows how to register a database trigger that will add a last update field when ever a hash key is changed:
 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_notifications_consumer("consumer", "", function(client, data){
+redis.registerTrigger("consumer", "", function(client, data){
     if (client.call("type", data.key) != "hash") {
         // key is not a has, do not touch it.
         return;
@@ -61,10 +61,10 @@ The `data` argument which pass to the consumer callback are in the following for
 
 Notice that `key` field is given only if the key can be decoded as `String`, otherwise the value will be `null`.
 
-We can observe the trigger information using [RG.FUNCTION LIST](commands.md#rgfunction-list) command:
+We can observe the trigger information using [TFUNCTION LIST](commands.md#tfunction-list) command:
 
 ```bash
-127.0.0.1:6379> RG.FUNCTION list vvv
+127.0.0.1:6379> TFUNCTION list vvv
 1)  1) "engine"
     2) "js"
     3) "api_version"
@@ -110,7 +110,7 @@ If the callback is a Coroutine, it will be executed in the background and there 
 
 ## Upgrades
 
-When upgrading the trigger code (using the `UPGRADE` option of [`RG.FUNCTION LOAD`](commands.md#rgfunction-load) command) all the trigger parameters can be modified.
+When upgrading the trigger code (using the `UPGRADE` option of [`TFUNCTION LOAD`](commands.md#tfunction-load) command) all the trigger parameters can be modified.
 
 ## Advanced Usage
 
@@ -119,7 +119,7 @@ For most use cases, `register_notifications_consumer` API is enough. But there a
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_notifications_consumer("consumer", "", function(client, data){
+redis.registerTrigger("consumer", "", function(client, data){
     if (client.call("type", data.key) != "hash") {
         // key is not a has, do not touch it.
         return;
@@ -167,7 +167,7 @@ To fix the code and still get the expected results even on `multi`/`exec`. Redis
 ```js
 #!js api_version=1.0 name=lib
 
-redis.register_notifications_consumer("consumer", "", function(client, data){
+redis.registerTrigger("consumer", "", function(client, data){
     if (data.name !== undefined) {
         client.call('incr', `name_${data.name}`);
     }

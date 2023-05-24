@@ -198,7 +198,7 @@ def gearsTest(skipTest=False,
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             if test_function.__doc__ is not None:
-                env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
+                env.expect('TFUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
                 if withReplicas:
                     # make sure all shards are in sync with their replica
                     for con in shardsConnections(env):
