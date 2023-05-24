@@ -136,10 +136,10 @@ redis.registerKeySpaceTrigger("test", "", function(client, data) {
     user = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['user']
     env.assertEqual(user, 'alice')
     env.expect('set', 'x', '1').equal(True)
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
     env.expect('set', 'cached:x', '1').equal(True)
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
@@ -159,13 +159,13 @@ redis.registerKeySpaceTrigger("test", "", async function(client, data) {
     env.assertEqual(user, 'alice')
 
     env.expect('set', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
 
     env.expect('set', 'cached:x', '1').equal(True)
-    runUntil(env, 2, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['last_error']
+    runUntil(env, 2, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
@@ -182,13 +182,13 @@ redis.registerStreamTrigger("consumer", "", 1, false, function(client){
     user = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['user']
     env.assertEqual(user, 'alice')
     env.cmd('xadd', 's', '*', 'foo', 'bar')
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
 
     env.cmd('del', 's') # delete the stream, we want to have a single stream for tests simplicity.
 
     env.cmd('xadd', 'cached:x', '*', 'foo', 'bar')
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
@@ -208,14 +208,14 @@ redis.registerStreamTrigger("consumer", "", 1, false, async function(client){
     env.assertEqual(user, 'alice')
 
     env.cmd('xadd', 's', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
 
     env.cmd('del', 's') # delete the stream, we want to have a single stream for tests simplicity.
 
     env.cmd('xadd', 'cached:x', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['last_error']
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 

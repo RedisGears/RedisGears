@@ -340,7 +340,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, true, function(){
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_consumers'][0]['streams'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_triggers'][0]['streams'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnStreamAsync(env):
@@ -353,9 +353,9 @@ redis.registerStreamTrigger("consumer", "stream", 1, true, async function(c){
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_consumers'][0]['streams'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_triggers'][0]['streams'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnNotificationConsumer(env):
@@ -367,7 +367,7 @@ redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['notifications_consumers'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['triggers'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnNotificationConsumerAsync(env):
@@ -380,9 +380,9 @@ redis.registerKeySpaceTrigger("consumer", "", async function(client, data) {
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['notifications_consumers'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['triggers'][0]['last_error'])
 
 @gearsTest(v8MaxMemory=20 * 1024 * 1024)
 def testV8OOM(env):
@@ -421,11 +421,11 @@ redis.registerStreamTrigger(
 
     # make sure JS code is not running on key space notifications
     env.expect('set', 'x', '1').equal(True)
-    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['notifications_consumers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['triggers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
 
     # make sure JS code is not running to process stream data
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
-    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['stream_consumers'][0]['streams'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['stream_triggers'][0]['streams'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
 
     # make sure we can not load any more libraries
     env.expect('TFUNCTION', 'LOAD', code).error().contains('JS engine reached OOM state and can not run any more code')
@@ -578,15 +578,16 @@ redis.registerFunction("test", function(){
     env.assertEqual(conn.execute_command('TFUNCTION', 'LIST'), [\
         {\
          'configuration': None,\
-         'remote_functions': [],\
+         'cluster_functions': [],\
          'engine': 'js',\
          'name': 'lib',\
          'pending_jobs': 0,\
          'functions': ['test'],\
          'user': 'default',\
-         'notifications_consumers': [],\
+         'triggers': [],\
          'api_version': '1.0',\
-         'stream_consumers': []\
+         'stream_triggers': [],\
+         'gears_box_info': None\
         }\
     ])
 

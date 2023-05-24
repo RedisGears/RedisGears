@@ -188,7 +188,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
 
 @gearsTest()
 def testSyncNotificationsReturnPromiseRaiseError(env):
@@ -198,7 +198,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
 
 @gearsTest()
 def testAsyncNotificationsReturnPromise(env):
@@ -208,7 +208,7 @@ redis.registerKeySpaceTrigger("consumer", "", async (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
 
 @gearsTest()
 def testAsyncNotificationsReturnPromiseRaiseError(env):
@@ -218,7 +218,7 @@ redis.registerKeySpaceTrigger("consumer", "", async (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
 
 @gearsTest()
 def testSyncNotificationsReturnResolvedPromise(env):
@@ -233,7 +233,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
 
 @gearsTest()
 def testOnTriggerFiredCallback(env):
@@ -263,7 +263,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     """
     env.expect('SET', 'x', '1').equal(True)
     env.expect('GET', 'x').equal('1')
-    env.assertContains("Write command 'set' was called while write is not allowed", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+    env.assertContains("Write command 'set' was called while write is not allowed", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
 
 @gearsTest()
 def testReadOnTriggerFiredCallback(env):
@@ -292,7 +292,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     """
     env.expect('SET', 'x', '1').equal(True)
     env.expect('GET', 'x').equal('1')
-    env.assertContains("Execution was terminated due to OOM or timeout", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['notifications_consumers'][0]['last_error'])
+    env.assertContains("Execution was terminated due to OOM or timeout", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
 
 @gearsTest()
 def testWrongTypeForOnTriggerFiredCallbackArgument(env):
