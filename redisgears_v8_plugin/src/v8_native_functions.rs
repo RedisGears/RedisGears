@@ -36,6 +36,8 @@ use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::sync::{Arc, Weak};
 
+const REGISTER_NOTIFICATIONS_CONSUMER: &str = "registerTrigger";
+
 pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
     isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
     ctx_scope: &V8ContextScope,
@@ -983,7 +985,7 @@ fn add_register_notification_consumer_api(
     ctx_scope: &V8ContextScope,
 ) {
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set_native_function(ctx_scope, "registerTrigger", new_native_function!(move|
+    redis.set_native_function(ctx_scope, REGISTER_NOTIFICATIONS_CONSUMER, new_native_function!(move|
         _isolate_scope,
         curr_ctx_scope,
         registration_name_utf8: V8LocalUtf8,
@@ -992,31 +994,23 @@ fn add_register_notification_consumer_api(
         optional_args: Option<NoficationConsumerOptionalArgs>,
     | {
         if !function_callback.is_function() {
-            return Err("Third argument to 'registerTrigger' must be a function".into());
+            return Err(format!("Third argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a function"));
         }
         let persisted_function = function_callback.persist();
 
         let on_trigger_fired = optional_args.map_or(Result::<_, String>::Ok(None), |v| {
             v.onTriggerFired.map_or(Ok(None), |v|{
                 if !v.is_function() || v.is_async_function() {
-                    return Err("'onTriggerFired' argument to 'registerTrigger' must be a function".into());
+                    return Err(format!("'onTriggerFired' argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a function"));
                 }
                 Ok(Some(v.persist()))
             })
         })?;
 
-        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
-        if load_ctx.is_none() {
-            return Err("Called 'registerTrigger' out of context".into());
-        }
-        let load_ctx = load_ctx.unwrap();
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0).ok_or_else(|| format!("Called '{REGISTER_NOTIFICATIONS_CONSUMER}' out of context"))?;
 
-        let script_ctx_ref = match script_ctx_ref.upgrade() {
-            Some(s) => s,
-            None => {
-                return Err("Use of uninitialized script context".into());
-            }
-        };
+        let script_ctx_ref = script_ctx_ref.upgrade().ok_or_else(|| "Use of uninitialized script context".to_owned())?;
+
         let v8_notification_ctx = V8NotificationsCtx::new(persisted_function, on_trigger_fired, &script_ctx_ref, function_callback.is_async_function());
 
         let res = if prefix.is_string() {
@@ -1026,7 +1020,7 @@ fn add_register_notification_consumer_api(
             let prefix = prefix.as_array_buffer();
             load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx))
         } else {
-            return Err("Second argument to 'registerTrigger' must be a string or ArrayBuffer representing the prefix".into());
+            return Err(format!("Second argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a string or ArrayBuffer representing the prefix"));
         };
         if let Err(err) = res {
             return Err(err.get_msg().to_string());

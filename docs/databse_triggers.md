@@ -112,9 +112,9 @@ If the callback is a Coroutine, it will be executed in the background and there 
 
 When upgrading the trigger code (using the `UPGRADE` option of [`TFUNCTION LOAD`](commands.md#tfunction-load) command) all the trigger parameters can be modified.
 
-## Advance Usage
+## Advanced Usage
 
-For most use cases, `registerTrigger` API is enough. But there are some use cases where you might need a better guaranteed on when the trigger will be fired. Lets look at the following example:
+For most use cases, `register_notifications_consumer` API is enough. But there are some use cases where you might need a better guaranteed on when the trigger will be fired. Lets look at the following example:
 
 ```js
 #!js api_version=1.0 name=lib

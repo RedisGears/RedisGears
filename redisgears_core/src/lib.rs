@@ -966,8 +966,16 @@ fn on_loading_event(ctx: &Context, loading_sub_event: LoadingSubevent) {
             let globals = get_globals_mut();
             globals.libraries.lock().unwrap().clear();
             globals.stream_ctx.clear();
+
+            // During loading we do not want to get any key space notifications
+            globals.avoid_key_space_notifications = true;
         }
-        _ => {}
+        LoadingSubevent::Ended | LoadingSubevent::Failed => {
+            // re-enable key space notifications
+            ctx.log_notice("Loading finished, re-enable key space notificaitons.");
+            let globals = get_globals_mut();
+            globals.avoid_key_space_notifications = false;
+        }
     }
 }
 

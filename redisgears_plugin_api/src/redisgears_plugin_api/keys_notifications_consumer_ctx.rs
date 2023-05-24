@@ -23,6 +23,11 @@ pub trait NotificationCtxInterface:
 {
 }
 
+impl<T> NotificationCtxInterface for T where
+    T: NotificationPostJobCtxInterface + NotificationRunCtxInterface
+{
+}
+
 pub trait KeysNotificationsConsumerCtxInterface {
     fn on_notification_fired(
         &self,

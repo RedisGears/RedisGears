@@ -125,6 +125,7 @@ def gearsTest(skipTest=False,
               shardsCount=2,
               errorVerbosity=1,
               v8MaxMemory=None,
+              useAof=False,
               gearsConfig={},
               envArgs={}):
     def test_func_generator(test_function):
@@ -170,7 +171,7 @@ def gearsTest(skipTest=False,
             for k, v in gearsConfig.items():
                 module_args += [k, v]
             module_args += ["error-verbosity", str(errorVerbosity)]
-            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**final_envArgs)
+            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args), useAof=useAof ,**final_envArgs)
             log_files = []
             for con in shardsConnections(env):
                 file_name = con.execute_command('config', 'get', 'logfile')[1]
