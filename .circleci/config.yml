@@ -15,6 +15,7 @@ commands:
           name: Install python requirements
           command: |
             sudo apt-get update -qqy --fix-missing
+            sudo apt install -y s3cmd
             python3 -m pip install jinja2
 
   s3-upload:
