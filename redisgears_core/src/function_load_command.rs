@@ -168,7 +168,7 @@ pub(crate) fn function_load_internal(
 fn get_args_values(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
 ) -> Result<FunctionLoadArgs, RedisError> {
-    let mut upgrade = false;
+    let mut replace = false;
     let mut config = None;
     let mut user = None;
     let last_arg = loop {
@@ -183,7 +183,7 @@ fn get_args_values(
         };
         let arg_str = arg_str.to_lowercase();
         match arg_str.as_ref() {
-            "upgrade" => upgrade = true,
+            "replace" => replace = true,
             "user" => {
                 let arg = args
                     .next_arg()
@@ -220,7 +220,7 @@ fn get_args_values(
     }
     .to_string();
     Ok(FunctionLoadArgs {
-        upgrade,
+        upgrade: replace,
         config,
         code,
         user,
@@ -283,7 +283,7 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
                 let mut replicate_args = Vec::new();
                 replicate_args.push("load".as_bytes());
                 if r.args.upgrade {
-                    replicate_args.push("UPGRADE".as_bytes());
+                    replicate_args.push("REPLACE".as_bytes());
                 }
                 if let Some(conf) = &r.args.config {
                     replicate_args.push("CONFIG".as_bytes());

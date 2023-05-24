@@ -8,7 +8,7 @@ remote:
  - setup: c5.4xlarge
 dbconfig:
   - init_commands:
-    - ["RG.FUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.register_stream_consumer(     'consumer',     'stream',      1,     false,     function(c, data) {         redis.log(JSON.stringify(data, (key, value) =>             typeof value === 'bigint'                 ? value.toString()                 : value          ));     } );"]
+    - ["TFUNCTION","LOAD","#!js api_version=1.0 name=lib\n redis.registerStreamTrigger(     'consumer',     'stream',      1,     false,     function(c, data) {         redis.log(JSON.stringify(data, (key, value) =>             typeof value === 'bigint'                 ? value.toString()                 : value          ));     } );"]
 clientconfig:
   tool: memtier_benchmark
   arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --key-minimum=1 --key-maximum=1000000 --command 'XADD stream * field value'"
