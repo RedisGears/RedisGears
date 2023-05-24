@@ -15,7 +15,7 @@ commands:
           name: Install python requirements
           command: |
             sudo apt-get update -qqy --fix-missing
-            python3 -m pip install jinja2 s3cmd
+            python3 -m pip install jinja2
 
   s3-upload:
     steps:
@@ -23,7 +23,7 @@ commands:
           name: s3 upload
           shell: /bin/bash -l -eo pipefail
           command: |
-            python3 -m s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
+            s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
               put -P release/redisgears2*.zip \
               s3://redismodules/redisgears/snapshots/
 
