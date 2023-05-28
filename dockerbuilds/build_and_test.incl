@@ -16,4 +16,4 @@ WORKDIR /build/pytests
 #RUN ./run_tests.sh
 
 WORKDIR /build
-RUN target/release/packer
+RUN bash -l -c "target/release/packer"

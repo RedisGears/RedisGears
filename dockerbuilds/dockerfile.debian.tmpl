@@ -22,8 +22,6 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -qqy git build-essential autoconf libtool curl libssl-dev pkg-config clang wget python3 python3-pip lsb-release
 {% endif %}
 
-RUN python3 -m pip install -U RLTest
-RUN python3 -m pip install -U redis==5.0.0b3
-RUN python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version}
+{% include "pip.incl" %}
 
 {% include "build_and_test.incl" %}

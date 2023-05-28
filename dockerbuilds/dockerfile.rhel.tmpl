@@ -26,13 +26,11 @@ ENV PATH="/opt/rh/gcc-toolset-11/root/usr/bin:$PATH"
 {% endif %}
 
 {% if OS_VERSION == "7" or OS_VERSION == "2" %}
-RUN /opt/rh/rh-python38/root/usr/bin/python3 -m pip install -U RLTest redis==5.0.0b3
-RUN /opt/rh/rh-python38/root/usr/bin/python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version}
 RUN echo "source /opt/rh/devtoolset-9/enable" >> /etc/profile
 RUN echo "source /opt/rh/llvm-toolset-7/enable" >> /etc/profile
-{% elif OS_VERSION == "8" %}
-RUN python3 -m pip install -U RLTest redis==5.0.0b3
-RUN python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version}
+RUN echo 'export PATH=/opt/rh/rh-python38/root/usr/local/bin:$PATH' >> /etc/profile
 {% endif %}
+
+{% include "pip.incl" %}
 
 {% include "build_and_test.incl" %}
