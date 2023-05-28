@@ -30,7 +30,10 @@ use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
 use crate::v8_script_ctx::V8ScriptCtx;
 use crate::v8_stream_ctx::V8StreamCtx;
-use crate::{get_exception_msg, get_exception_v8_value, get_function_flags_from_strings, get_function_flags_globals};
+use crate::{
+    get_exception_msg, get_exception_v8_value, get_function_flags_from_strings,
+    get_function_flags_globals,
+};
 
 use std::cell::RefCell;
 use std::ptr::NonNull;
@@ -931,7 +934,7 @@ fn add_register_function_api(
                         |v| get_function_flags_from_strings(curr_ctx_scope, v).map_err(|e| format!("Failed parsing function flags, {}", e))
                     )
                 )?;
-                
+
                 let description = optional_args.map_or(None, |v| v.description);
 
                 let load_ctx =
@@ -1324,7 +1327,11 @@ pub(crate) fn initialize_globals_1_0(
 
     // add function flags
     let function_flags = get_function_flags_globals(ctx_scope, isolate_scope);
-    redis.set(ctx_scope, &isolate_scope.new_string("functionFlags").to_value(), &function_flags);
+    redis.set(
+        ctx_scope,
+        &isolate_scope.new_string("functionFlags").to_value(),
+        &function_flags,
+    );
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
     redis.set_native_function(
