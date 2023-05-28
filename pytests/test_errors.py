@@ -518,10 +518,11 @@ redis.registerFunction('test', (c) => {
 def testSameFunctionsOn2Libraries(env):
     code = '''#!js api_version=1.0 name=%s
 redis.registerFunction('test', (c) => {
-    return c.executeAsync(async function(){
-        return 1;
-    });
+    return %d;
 });
     '''
-    env.expect('TFUNCTION', 'LOAD', code % 'lib1').equal('OK')
-    env.expect('TFUNCTION', 'LOAD', code % 'lib2').error().contains('Function test already exists on another library')
+    env.expect('TFUNCTION', 'LOAD', code % ('lib1', 1)).equal('OK')
+    env.expect('TFCALL', 'test', '0').equal(1)
+    env.expect('TFUNCTION', 'LOAD', code % ('lib2', 2)).error().contains('Function test already exists on another library')
+    # verify that the old library with the old function are still valid.
+    env.expect('TFCALL', 'test', '0').equal(1)
