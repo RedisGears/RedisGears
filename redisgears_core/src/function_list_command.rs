@@ -41,6 +41,7 @@ struct StreamTriggersInfoVerbose1 {
     prefix: Vec<u8>,
     window: usize,
     trim: bool,
+    description: Option<String>,
 }
 
 /// A struct that allows to translate a [StreamTriggersInfo] into
@@ -57,6 +58,7 @@ enum StreamTriggersInfo {
 #[derive(RedisValue)]
 struct TriggersInfoVerbose1 {
     name: String,
+    description: Option<String>,
     num_trigger: usize,
     num_success: usize,
     num_failed: usize,
@@ -78,6 +80,7 @@ struct FunctionInfoVerbose {
     name: String,
     flags: RedisValue,
     is_async: bool,
+    description: Option<String>,
 }
 
 /// A struct that allows to translate a [RequestedFunctionInfo] into
@@ -172,6 +175,7 @@ fn get_library_info(
                         name: name.to_owned(),
                         flags: function_list_command_flags(val.flags),
                         is_async: val.is_async,
+                        description: val.description.to_owned(),
                     })
                 }
             })
@@ -190,9 +194,11 @@ fn get_library_info(
                 if verbosity_level == 0 {
                     return TriggersInfo::Verbose0(name.to_owned());
                 }
-                let stats = val.borrow().get_stats();
+                let val = val.borrow();
+                let stats = val.get_stats();
                 TriggersInfo::Verbose1(TriggersInfoVerbose1 {
                     name: name.to_owned(),
+                    description: val.get_description(),
                     num_trigger: stats.num_trigger,
                     num_success: stats.num_success,
                     num_failed: stats.num_failed,
@@ -220,6 +226,7 @@ fn get_library_info(
                     prefix: val.prefix.clone(),
                     window: val.window,
                     trim: val.trim,
+                    description: val.description.clone(),
                 };
                 if verbosity_level == 1 {
                     return StreamTriggersInfo::Verbose1(stream_trigger_info);

@@ -44,7 +44,7 @@ redis.registerFunction("test", function(client){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnStreamProcessing(env):
     '''#!js api_version=1.0 name=foo
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(c, data){
+redis.registerStreamTrigger("consumer", "stream", function(c, data){
     return foo()
 })
     '''
@@ -55,7 +55,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, false, function(c, data){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncStreamProcessing(env):
     '''#!js api_version=1.0 name=foo
-redis.registerStreamTrigger("consumer", "stream", 1, false, async function(c, data){
+redis.registerStreamTrigger("consumer", "stream", async function(c, data){
     return foo()
 })
     '''

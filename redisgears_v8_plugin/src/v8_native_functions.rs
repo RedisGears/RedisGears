@@ -30,7 +30,7 @@ use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
 use crate::v8_script_ctx::V8ScriptCtx;
 use crate::v8_stream_ctx::V8StreamCtx;
-use crate::{get_exception_msg, get_exception_v8_value, get_function_flags};
+use crate::{get_exception_msg, get_exception_v8_value, get_function_flags_from_strings, get_function_flags_globals};
 
 use std::cell::RefCell;
 use std::ptr::NonNull;
@@ -884,6 +884,12 @@ pub(crate) fn initialize_globals_1_1(
     Ok(())
 }
 
+#[derive(NativeFunctionArgument)]
+struct NativeFunctionOptionalArgs<'isolate_scope, 'isolate> {
+    description: Option<String>,
+    flags: Option<V8LocalArray<'isolate_scope, 'isolate>>,
+}
+
 fn add_register_function_api(
     redis: &V8LocalObject,
     script_ctx: &Arc<V8ScriptCtx>,
@@ -904,7 +910,7 @@ fn add_register_function_api(
                   curr_ctx_scope,
                   function_name_utf8: V8LocalUtf8,
                   function_callback: V8LocalValue,
-                  function_flags: Option<V8LocalArray>| {
+                  optional_args: Option<NativeFunctionOptionalArgs>,| {
                 if !function_callback.is_function() {
                     return Err(
                         "Second argument to 'registerFunction' must be a function".to_owned()
@@ -918,11 +924,15 @@ fn add_register_function_api(
 
                 let persisted_function = function_callback.persist();
 
-                let function_flags = match function_flags {
-                    Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
-                        .map_err(|e| format!("Failed parsing function flags, {}", e))?,
-                    None => FunctionFlags::empty(),
-                };
+                let function_flags = optional_args.as_ref().map_or(
+                    Ok(FunctionFlags::empty()),
+                    |v| v.flags.as_ref().map_or(
+                        Ok(FunctionFlags::empty()),
+                        |v| get_function_flags_from_strings(curr_ctx_scope, v).map_err(|e| format!("Failed parsing function flags, {}", e))
+                    )
+                )?;
+                
+                let description = optional_args.map_or(None, |v| v.description);
 
                 let load_ctx =
                     curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
@@ -956,12 +966,14 @@ fn add_register_function_api(
                         function_name_utf8.as_str(),
                         Box::new(f),
                         function_flags,
+                        description,
                     )
                 } else {
                     load_ctx.register_function(
                         function_name_utf8.as_str(),
                         Box::new(f),
                         function_flags,
+                        description,
                     )
                 };
                 if let Err(err) = res {
@@ -975,8 +987,73 @@ fn add_register_function_api(
 
 #[allow(non_snake_case)]
 #[derive(NativeFunctionArgument)]
+struct StreamTriggerOptionalArgs {
+    description: Option<String>,
+    window: Option<i64>,
+    isStreamTrimmed: Option<bool>,
+}
+
+fn add_stream_trigger_api(
+    redis: &V8LocalObject,
+    script_ctx: &Arc<V8ScriptCtx>,
+    ctx_scope: &V8ContextScope,
+) {
+    let script_ctx_ref = Arc::downgrade(script_ctx);
+    redis.set_native_function(ctx_scope, "registerStreamTrigger", new_native_function!(move|
+        _isolate_scope,
+        curr_ctx_scope,
+        registration_name_utf8: V8LocalUtf8,
+        prefix: V8LocalValue,
+        function_callback: V8LocalValue,
+        optional_args: Option<StreamTriggerOptionalArgs>,
+    | {
+        if !function_callback.is_function() {
+            return Err("The fifth argument to 'registerStreamTrigger' must be a function".into());
+        }
+        let persisted_function = function_callback.persist();
+
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
+        if load_ctx.is_none() {
+            return Err("Called 'registerFunction' out of context".into());
+        }
+        let load_ctx = load_ctx.unwrap();
+
+        let script_ctx_ref = match script_ctx_ref.upgrade() {
+            Some(s) => s,
+            None => {
+                return Err("Use of uninitialized script context".into());
+            }
+        };
+
+        let window = optional_args.as_ref().map_or(1, |v| v.window.as_ref().map_or(1, |v| *v));
+        if window < 1 {
+            return Err("window argument must be a positive number".into());
+        }
+        let trim = optional_args.as_ref().map_or(false, |v| v.isStreamTrimmed.as_ref().map_or(false, |v| *v));
+        let description = optional_args.map_or(None, |v| v.description);
+
+        let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
+        let res = if prefix.is_string() {
+            let prefix = prefix.to_utf8().unwrap();
+            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.as_str().as_bytes(), Box::new(v8_stream_ctx), window as usize, trim, description)
+        } else if prefix.is_array_buffer() {
+            let prefix = prefix.as_array_buffer();
+            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.data(), Box::new(v8_stream_ctx), window as usize, trim, description)
+        } else {
+            return Err("Second argument to 'registerStreamTrigger' must be a String or ArrayBuffer representing the prefix".into());
+        };
+        if let Err(err) = res {
+            return Err(err.get_msg().to_string());
+        }
+        Ok(None)
+    }));
+}
+
+#[allow(non_snake_case)]
+#[derive(NativeFunctionArgument)]
 struct NoficationConsumerOptionalArgs<'isolate_scope, 'isolate> {
     onTriggerFired: Option<V8LocalValue<'isolate_scope, 'isolate>>,
+    description: Option<String>,
 }
 
 fn add_register_notification_consumer_api(
@@ -998,14 +1075,16 @@ fn add_register_notification_consumer_api(
         }
         let persisted_function = function_callback.persist();
 
-        let on_trigger_fired = optional_args.map_or(Result::<_, String>::Ok(None), |v| {
-            v.onTriggerFired.map_or(Ok(None), |v|{
+        let on_trigger_fired = optional_args.as_ref().map_or(Result::<_, String>::Ok(None), |v| {
+            v.onTriggerFired.as_ref().map_or(Ok(None), |v|{
                 if !v.is_function() || v.is_async_function() {
                     return Err(format!("'onTriggerFired' argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a function"));
                 }
                 Ok(Some(v.persist()))
             })
         })?;
+
+        let discription = optional_args.map_or(None, |v| v.description);
 
         let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0).ok_or_else(|| format!("Called '{REGISTER_NOTIFICATIONS_CONSUMER}' out of context"))?;
 
@@ -1015,10 +1094,10 @@ fn add_register_notification_consumer_api(
 
         let res = if prefix.is_string() {
             let prefix = prefix.to_utf8().unwrap();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx))
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx), discription)
         } else if prefix.is_array_buffer() {
             let prefix = prefix.as_array_buffer();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx))
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx, ), discription)
         } else {
             return Err(format!("Second argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a string or ArrayBuffer representing the prefix"));
         };
@@ -1063,49 +1142,7 @@ pub(crate) fn initialize_globals_1_0(
         }
     }
 
-    let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set_native_function(ctx_scope, "registerStreamTrigger", new_native_function!(move|
-        _isolate_scope,
-        curr_ctx_scope,
-        registration_name_utf8: V8LocalUtf8,
-        prefix: V8LocalValue,
-        window: i64,
-        trim: bool,
-        function_callback: V8LocalValue,
-    | {
-        if !function_callback.is_function() {
-            return Err("The fifth argument to 'registerStreamTrigger' must be a function".into());
-        }
-        let persisted_function = function_callback.persist();
-
-        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
-        if load_ctx.is_none() {
-            return Err("Called 'registerFunction' out of context".into());
-        }
-        let load_ctx = load_ctx.unwrap();
-
-        let script_ctx_ref = match script_ctx_ref.upgrade() {
-            Some(s) => s,
-            None => {
-                return Err("Use of uninitialized script context".into());
-            }
-        };
-
-        let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
-        let res = if prefix.is_string() {
-            let prefix = prefix.to_utf8().unwrap();
-            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.as_str().as_bytes(), Box::new(v8_stream_ctx), window as usize, trim)
-        } else if prefix.is_array_buffer() {
-            let prefix = prefix.as_array_buffer();
-            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.data(), Box::new(v8_stream_ctx), window as usize, trim)
-        } else {
-            return Err("Second argument to 'registerStreamTrigger' must be a String or ArrayBuffer representing the prefix".into());
-        };
-        if let Err(err) = res {
-            return Err(err.get_msg().to_string());
-        }
-        Ok(None)
-    }));
+    add_stream_trigger_api(redis, script_ctx, ctx_scope);
 
     add_register_notification_consumer_api(redis, script_ctx, ctx_scope);
 
@@ -1284,6 +1321,10 @@ pub(crate) fn initialize_globals_1_0(
             Ok::<Option<V8LocalValue>, String>(Some(v_v8_str.to_value()))
         }),
     );
+
+    // add function flags
+    let function_flags = get_function_flags_globals(ctx_scope, isolate_scope);
+    redis.set(ctx_scope, &isolate_scope.new_string("functionFlags").to_value(), &function_flags);
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
     redis.set_native_function(

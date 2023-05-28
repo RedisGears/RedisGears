@@ -12,8 +12,6 @@ RedisGears provide an API that allows Register a stream consumer. Do not get con
 redis.registerStreamTrigger(
     "consumer", // consumer name
     "stream", // streams prefix
-    1, // window
-    false, // trim stream
     function(c, data) {
         // callback to run on each element added to the stream
         redis.log(JSON.stringify(data, (key, value) =>
@@ -29,8 +27,6 @@ Argument Description:
 
 * consumer - the consumer name.
 * stream - streams name prefix on which to trigger the callback.
-* window - how many elements can be processed simultaneously.
-* trim stream - whether or not to trim the stream.
 * callback - the callback to invoke on each element in the stream. Following the same rules of [Sync and Async invocation](sync_and_async_run.md). The callback will be invoke only on primary shard.
 
 If we register this library (see the [getting started](../README.md) section to learn how to Register a RedisGears function) and run the following command on our Redis:
@@ -82,73 +78,101 @@ We can observe the streams which are tracked by our registered consumer using [T
 ```
 127.0.0.1:6379> TFUNCTION LIST LIBRARY lib vvv
 1)  1) "engine"
-    2) "js"
-    3) "api_version"
-    4) "1.0"
-    5) "name"
-    6) "lib"
-    7) "pending_jobs"
-    8) (integer) 0
-    9) "user"
-    10) "default"
-    11) "functions"
-   12) (empty array)
-   13) "stream_consumers"
-   14) 1)  1) "name"
-           2) "consumer"
-           3) "prefix"
-           4) "stream"
-           5) "window"
-           6) (integer) 1
-           7) "trim"
-           8) "disabled"
-           9) "num_streams"
-          10) (integer) 2
-          11) "streams"
-          12) 1)  1) "name"
-                  2) "stream:2"
-                  3) "last_processed_time"
-                  4) (integer) 0
-                  5) "avg_processed_time"
-                  6) "0"
-                  7) "last_lag"
-                  8) (integer) 0
-                  9) "avg_lag"
-                 10) "0"
-                 11) "total_record_processed"
-                 12) (integer) 2
-                 13) "id_to_read_from"
-                 14) "1657030412715-0"
-                 15) "last_error"
-                 16) "None"
+    1) "js"
+    2) "api_version"
+    3) "1.0"
+    4) "name"
+    5) "lib"
+    6) "pending_jobs"
+    7) (integer) 0
+    8) "user"
+    9)  "default"
+    10) "functions"
+   1)  (empty array)
+   2)  "stream_consumers"
+   3)  1)  1) "name"
+           1) "consumer"
+           2) "prefix"
+           3) "stream"
+           4) "window"
+           5) (integer) 1
+           6) "trim"
+           7) "disabled"
+           8) "num_streams"
+          1)  (integer) 2
+          2)  "streams"
+          3)  1)  1) "name"
+                  1) "stream:2"
+                  2) "last_processed_time"
+                  3) (integer) 0
+                  4) "avg_processed_time"
+                  5) "0"
+                  6) "last_lag"
+                  7) (integer) 0
+                  8) "avg_lag"
+                 1)  "0"
+                 2)  "total_record_processed"
+                 3)  (integer) 2
+                 4)  "id_to_read_from"
+                 5)  "1657030412715-0"
+                 6)  "last_error"
+                 7)  "None"
                  17) "pending_ids"
                  18) (empty array)
-              2)  1) "name"
-                  2) "stream:1"
-                  3) "last_processed_time"
-                  4) (integer) 1
-                  5) "avg_processed_time"
-                  6) "0.5"
-                  7) "last_lag"
-                  8) (integer) 1
-                  9) "avg_lag"
-                 10) "0.5"
-                 11) "total_record_processed"
-                 12) (integer) 2
-                 13) "id_to_read_from"
-                 14) "1657030405323-0"
-                 15) "last_error"
-                 16) "None"
-                 17) "pending_ids"
-                 18) (empty array)
-   15) "notifications_consumers"
-   16) (empty array)
-   17) "gears_box_info"
-   18) (nil)
+              1)  1) "name"
+                  1) "stream:1"
+                  2) "last_processed_time"
+                  3) (integer) 1
+                  4) "avg_processed_time"
+                  5) "0.5"
+                  6) "last_lag"
+                  7) (integer) 1
+                  8) "avg_lag"
+                 1)  "0.5"
+                 2)  "total_record_processed"
+                 3)  (integer) 2
+                 4)  "id_to_read_from"
+                 5)  "1657030405323-0"
+                 6)  "last_error"
+                 7)  "None"
+                 8)  "pending_ids"
+                 9)  (empty array)
+   4)  "notifications_consumers"
+   5)  (empty array)
+   6)  "gears_box_info"
+   7)  (nil)
 
 ```
 
-## Enable Trimming
+## Enable Trimming and Set Window
+
+We can enable stream trimming by adding `isStreamTrimmed` optional argument after the trigger callback, we can also set the `window` argument that controls how many elements can be processed simultaneously. example:
+
+```js
+#!js api_version=1.0 name=lib
+
+redis.registerStreamTrigger(
+    "consumer", // consumer name
+    "stream", // streams prefix
+    function(c, data) {
+        // callback to run on each element added to the stream
+        redis.log(JSON.stringify(data, (key, value) =>
+            typeof value === 'bigint'
+                ? value.toString()
+                : value // return everything else unchanged
+        ));
+    }, 
+    {
+        isStreamTrimmed: true,
+        window: 3   
+    }
+);
+
+```
+
+The default values are:
+* `isStreamTrimmed` - `false`
+* `window` - 1
 
 It is enough that a single consumer will enable trimming so that the stream will be trimmed. The stream will be trim according to the slowest consumer that consume the stream at a given time (even if this is not the consumer that enabled the trimming). Raising exception during the callback invocation will **not prevent the trimming**. The callback should decide how to handle failures by invoke a retry or write some error log. The error will be added to the `last_error` field on [TFUNCTION LIST](commands.md#tfunction-list) command.
 

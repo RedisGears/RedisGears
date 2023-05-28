@@ -73,7 +73,7 @@ pub(crate) fn get_exception_v8_value<'isolate_scope, 'isolate>(
     }
 }
 
-pub(crate) fn get_function_flags(
+pub(crate) fn get_function_flags_from_strings(
     curr_ctx_scope: &V8ContextScope,
     flags: &V8LocalArray,
 ) -> Result<FunctionFlags, String> {
@@ -92,6 +92,29 @@ pub(crate) fn get_function_flags(
         }
     }
     Ok(flags_val)
+}
+
+pub(crate) fn get_function_flags_globals<'isolate_scope, 'isolate>(
+    ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
+    isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+) -> V8LocalValue<'isolate_scope, 'isolate> {
+    let function_flags = isolate_scope.new_object();
+    function_flags.set(
+        ctx_scope,
+        &isolate_scope.new_string("NO_WRITES").to_value(),
+        &isolate_scope.new_string("no-writes").to_value(),
+    );
+    function_flags.set(
+        ctx_scope,
+        &isolate_scope.new_string("ALLOW_OOM").to_value(),
+        &isolate_scope.new_string("allow-oom").to_value(),
+    );
+    function_flags.set(
+        ctx_scope,
+        &isolate_scope.new_string("RAW_ARGUMENTS").to_value(),
+        &isolate_scope.new_string("raw-arguments").to_value(),
+    );
+    function_flags.to_value()
 }
 
 #[no_mangle]

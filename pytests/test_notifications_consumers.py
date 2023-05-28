@@ -143,9 +143,14 @@ redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
 
-redis.registerStreamTrigger("consumer", "stream", 1, true, function(client) {
-    client.call('set', 'X' , '2');
-})
+redis.registerStreamTrigger("consumer", "stream",
+    function(client) {
+        client.call('set', 'X' , '2');
+    },
+    {
+        isStreamTrimmed:true,
+    }
+);
     """
     env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)

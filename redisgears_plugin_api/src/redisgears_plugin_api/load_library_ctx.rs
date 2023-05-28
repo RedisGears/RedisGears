@@ -51,12 +51,14 @@ pub trait LoadLibraryCtxInterface {
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError>;
     fn register_async_function(
         &mut self,
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError>;
     fn register_remote_task(
         &mut self,
@@ -70,11 +72,13 @@ pub trait LoadLibraryCtxInterface {
         stream_ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,
+        description: Option<String>,
     ) -> Result<(), GearsApiError>;
     fn register_key_space_notification_consumer(
         &mut self,
         name: &str,
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
+        description: Option<String>,
     ) -> Result<(), GearsApiError>;
 }

@@ -171,7 +171,7 @@ redis.registerKeySpaceTrigger("test", "", async function(client, data) {
 @gearsTest()
 def testAclOnStreamConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "", 1, false, function(client){
+redis.registerStreamTrigger("consumer", "", function(client){
     return client.call("get", "x");
 });
     """
@@ -194,7 +194,7 @@ redis.registerStreamTrigger("consumer", "", 1, false, function(client){
 @gearsTest()
 def testAclOnAsyncStreamConsumer(env):
     script = """#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "", 1, false, async function(client){
+redis.registerStreamTrigger("consumer", "", async function(client){
     return client.block(function(c) {
         return c.call("get", "x");
     });
