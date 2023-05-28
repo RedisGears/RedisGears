@@ -10,7 +10,7 @@ use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlag
 
 use std::sync::Arc;
 
-use crate::{get_libraries, get_msg_verbose, json_to_redis_value, GearsLibrary};
+use crate::{get_libraries, get_msg_verbose, GearsLibrary};
 
 /// Contains information about a single stream that tracked
 /// by a stream trigger.
@@ -96,11 +96,10 @@ struct LibraryInfoWithoutCode {
     name: String,
     user: String,
     configuration: Option<String>,
-    gears_box_info: Option<RedisValue>,
     pending_jobs: usize,
     functions: Vec<FunctionInfo>,
     cluster_functions: Vec<String>,
-    triggers: Vec<TriggersInfo>,
+    keyspace_triggers: Vec<TriggersInfo>,
     stream_triggers: Vec<StreamTriggersInfo>,
 }
 
@@ -156,9 +155,6 @@ fn get_library_info(
         name: lib.gears_lib_ctx.meta_data.name.to_owned(),
         user: lib.gears_lib_ctx.meta_data.user.to_string_lossy(),
         configuration: lib.gears_lib_ctx.meta_data.config.clone(),
-        gears_box_info: lib.gears_box_lib.as_ref().map(|v| {
-            json_to_redis_value(serde_json::from_str(&serde_json::to_string(&v).unwrap()).unwrap())
-        }),
         pending_jobs: lib.compile_lib_internals.pending_jobs(),
         functions: lib
             .gears_lib_ctx
@@ -182,7 +178,7 @@ fn get_library_info(
             .keys()
             .map(|name| name.to_owned())
             .collect(),
-        triggers: lib
+        keyspace_triggers: lib
             .gears_lib_ctx
             .notifications_consumers
             .iter()

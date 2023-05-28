@@ -10,7 +10,6 @@ use redis_module::{
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 use crate::compiled_library_api::CompiledLibraryAPI;
-use crate::gears_box::GearsBoxLibraryInfo;
 use crate::{Deserialize, Serialize};
 
 use crate::{
@@ -29,8 +28,6 @@ use std::vec::IntoIter;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::gears_box::{do_http_get_text, gears_box_get_library};
-
 use crate::get_msg_verbose;
 
 use mr_derive::BaseObject;
@@ -40,7 +37,6 @@ pub(crate) struct FunctionLoadArgs {
     upgrade: bool,
     config: Option<String>,
     code: String,
-    gears_box: Option<GearsBoxLibraryInfo>,
     user: Option<RedisString>,
 }
 
@@ -92,7 +88,6 @@ pub(crate) fn function_load_internal(
     code: &str,
     config: Option<String>,
     upgrade: bool,
-    gears_box_lib: Option<GearsBoxLibraryInfo>,
 ) -> Result<(), String> {
     let meta_data = library_extract_metadata(code, config, user).map_err(|e| e.to_string())?;
     let backend_name = meta_data.engine.as_str();
@@ -159,7 +154,6 @@ pub(crate) fn function_load_internal(
             gears_lib_ctx: gears_library,
             _lib_ctx: lib_ctx,
             compile_lib_internals,
-            gears_box_lib,
         }),
     );
     Ok(())
@@ -224,7 +218,6 @@ fn get_args_values(
         config,
         code,
         user,
-        gears_box: None,
     })
 }
 
@@ -277,7 +270,6 @@ impl RemoteTask for GearsFunctionLoadRemoteTask {
                 &r.args.code,
                 r.args.config.clone(),
                 r.args.upgrade,
-                None,
             );
             if res.is_ok() {
                 let mut replicate_args = Vec::new();
@@ -344,33 +336,8 @@ pub(crate) fn function_load_on_replica(
         &args.code,
         args.config,
         args.upgrade,
-        None,
     ) {
         Ok(_) => Ok(RedisValue::SimpleStringStatic("OK")),
         Err(e) => Err(RedisError::String(e)),
     }
-}
-
-pub(crate) fn function_install_lib_command(
-    ctx: &Context,
-    args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let mut args = get_args_values(args)?;
-    if args.user.is_some() {
-        return Err(RedisError::Str("Unknown argument user"));
-    }
-    let gear_box_lib = gears_box_get_library(ctx, &args.code)?;
-    let function_code = do_http_get_text(&gear_box_lib.installed_version_info.url)?;
-
-    let calculated_sha = sha256::digest(function_code.to_string());
-    if calculated_sha != gear_box_lib.installed_version_info.sha256 {
-        return Err(RedisError::Str(
-            "File validation failure, calculated sha256sum does not match the expected value.",
-        ));
-    }
-
-    args.user = Some(ctx.get_current_user());
-    args.code = function_code;
-    function_load_with_args(ctx, args);
-    Ok(RedisValue::NoReply)
 }

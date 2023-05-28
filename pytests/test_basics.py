@@ -367,7 +367,7 @@ redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['triggers'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnNotificationConsumerAsync(env):
@@ -380,9 +380,9 @@ redis.registerKeySpaceTrigger("consumer", "", async function(client, data) {
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['num_failed'])
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['triggers'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest(v8MaxMemory=20 * 1024 * 1024)
 def testV8OOM(env):
@@ -421,7 +421,7 @@ redis.registerStreamTrigger(
 
     # make sure JS code is not running on key space notifications
     env.expect('set', 'x', '1').equal(True)
-    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['triggers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['keyspace_triggers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
 
     # make sure JS code is not running to process stream data
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
@@ -584,10 +584,9 @@ redis.registerFunction("test", function(){
          'pending_jobs': 0,\
          'functions': ['test'],\
          'user': 'default',\
-         'triggers': [],\
+         'keyspace_triggers': [],\
          'api_version': '1.0',\
-         'stream_triggers': [],\
-         'gears_box_info': None\
+         'stream_triggers': []\
         }\
     ])
 
