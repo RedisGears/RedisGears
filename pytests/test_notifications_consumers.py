@@ -18,13 +18,13 @@ redis.registerFunction("n_notifications", function(){
 })
     """
 
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('TFCALL', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('TFCALL', 'n_notifications', '0').equal(1)
     env.expect('SET', 'X', '2').equal(True)
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(2)
+    env.expect('TFCALL', 'n_notifications', '0').equal(2)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(3)
+    env.expect('TFCALL', 'n_notifications', '0').equal(3)
 
 @gearsTest()
 def testAsyncNotification(env):
@@ -39,13 +39,13 @@ redis.registerAsyncFunction("n_notifications", async function(){
 })
     """
 
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 1, lambda: env.cmd('TFCALLASYNC', 'lib', 'n_notifications', '0'))
+    runUntil(env, 1, lambda: env.cmd('TFCALLASYNC', 'n_notifications', '0'))
     env.expect('SET', 'X', '2').equal(True)
-    runUntil(env, 2, lambda: env.cmd('TFCALLASYNC', 'lib', 'n_notifications', '0'))
+    runUntil(env, 2, lambda: env.cmd('TFCALLASYNC', 'n_notifications', '0'))
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 3, lambda: env.cmd('TFCALLASYNC', 'lib', 'n_notifications', '0'))
+    runUntil(env, 3, lambda: env.cmd('TFCALLASYNC', 'n_notifications', '0'))
 
 @gearsTest()
 def testCallRedisOnNotification(env):
@@ -81,11 +81,11 @@ redis.registerFunction("simple_set", function(client){
     return client.call('set', 'x', '1');
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
-    env.expect('TFCALL', 'lib', 'simple_set', '0').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(1)
+    env.expect('TFCALL', 'simple_set', '0').equal('OK')
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
@@ -105,11 +105,11 @@ redis.registerAsyncFunction("simple_set", async function(client){
     });
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
-    env.expect('TFCALLASYNC', 'lib', 'simple_set', '0').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(1)
+    env.expect('TFCALLASYNC', 'simple_set', '0').equal('OK')
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAnotherNotification(env):
@@ -124,9 +124,9 @@ redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinStreamConsumer(env):
@@ -147,12 +147,12 @@ redis.registerStreamTrigger("consumer", "stream", 1, true, function(client) {
     client.call('set', 'X' , '2');
 })
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(1)
     env.cmd('XADD', 'stream:1', '*', 'foo', 'bar')
     env.expect('GET', 'X').equal('2')
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('TFCALLASYNC', 'n_notifications', '0').equal(1)
 
 @gearsTest(decodeResponses=False)
 def testNotificationsOnBinaryKey(env):
@@ -176,9 +176,9 @@ redis.registerAsyncFunction("notifications_stats", async function(){
     ];
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'notifications_stats', '0').equal([0, None, None])
+    env.expect('TFCALLASYNC', 'notifications_stats', '0').equal([0, None, None])
     env.expect('SET', b'\xff\xff', b'\xaa').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'notifications_stats', '0').equal([1, None, b'\xff\xff'])
+    env.expect('TFCALLASYNC', 'notifications_stats', '0').equal([1, None, b'\xff\xff'])
 
 @gearsTest()
 def testSyncNotificationsReturnPromise(env):

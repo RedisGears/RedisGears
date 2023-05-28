@@ -11,7 +11,7 @@ use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 use crate::compiled_library_api::CompiledLibraryAPI;
 use crate::gears_box::GearsBoxLibraryInfo;
-use crate::{Deserialize, Serialize};
+use crate::{get_functions_mut, Deserialize, GearsFunctionData, Serialize};
 
 use crate::{
     get_backends_mut, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData,
@@ -65,6 +65,7 @@ fn library_extract_metadata(
 pub(crate) fn function_load_revert(
     mut gears_library: GearsLibraryCtx,
     libraries: &mut HashMap<String, Arc<GearsLibrary>>,
+    functions: &mut HashMap<String, GearsFunctionData>,
 ) {
     if let Some(old_lib) = gears_library.old_lib.take() {
         for (name, old_ctx, old_window, old_trim) in gears_library.revert_stream_consumers {
@@ -81,6 +82,17 @@ pub(crate) fn function_load_revert(
             s_d.set_key(key);
             let _ = s_d.set_callback(callback);
         }
+
+        old_lib
+            .gears_lib_ctx
+            .functions
+            .iter()
+            .for_each(|(name, func)| {
+                functions.insert(
+                    name.to_owned(),
+                    GearsFunctionData::new(func, &old_lib.gears_lib_ctx.meta_data),
+                );
+            });
 
         libraries.insert(gears_library.meta_data.name.clone(), old_lib);
     }
@@ -123,6 +135,14 @@ pub(crate) fn function_load_internal(
             return err;
         }
     }
+
+    let functions = get_functions_mut();
+    old_lib.as_ref().map(|v| {
+        v.gears_lib_ctx.functions.iter().for_each(|(name, _)| {
+            functions.remove(name.as_str());
+        })
+    });
+
     let mut gears_library = GearsLibraryCtx {
         meta_data: Arc::new(meta_data),
         functions: HashMap::new(),
@@ -137,22 +157,29 @@ pub(crate) fn function_load_internal(
         ctx,
         gears_lib_ctx: &mut gears_library,
     });
+    let functions = get_functions_mut();
     if let Err(err) = res {
         let ret = Err(format!(
             "Failed loading library: {}.",
             get_msg_verbose(&err)
         ));
-        function_load_revert(gears_library, &mut libraries);
+        function_load_revert(gears_library, &mut libraries, functions);
         return ret;
     }
     if gears_library.functions.is_empty()
         && gears_library.stream_consumers.is_empty()
         && gears_library.notifications_consumers.is_empty()
     {
-        function_load_revert(gears_library, &mut libraries);
+        function_load_revert(gears_library, &mut libraries, functions);
         return Err("No function nor registrations was registered".to_string());
     }
     gears_library.old_lib = None;
+    gears_library.functions.iter().for_each(|(name, func)| {
+        functions.insert(
+            name.to_owned(),
+            GearsFunctionData::new(func, &gears_library.meta_data),
+        );
+    });
     libraries.insert(
         gears_library.meta_data.name.to_string(),
         Arc::new(GearsLibrary {

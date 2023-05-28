@@ -58,6 +58,7 @@ use libloading::{Library, Symbol};
 
 use std::collections::HashMap;
 
+use std::hash::Hash;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -152,6 +153,25 @@ struct GearsFunctionCtx {
     is_async: bool,
 }
 
+/// Information about specific function.
+/// Basically holds the function handler and the library meta data.
+pub(crate) struct GearsFunctionData {
+    function_handler: Arc<GearsFunctionCtx>,
+    lib_meta_data: Arc<GearsLibraryMetaData>,
+}
+
+impl GearsFunctionData {
+    pub(crate) fn new(
+        function_handler: &Arc<GearsFunctionCtx>,
+        lib_meta_data: &Arc<GearsLibraryMetaData>,
+    ) -> GearsFunctionData {
+        GearsFunctionData {
+            function_handler: Arc::clone(function_handler),
+            lib_meta_data: Arc::clone(lib_meta_data),
+        }
+    }
+}
+
 impl GearsFunctionCtx {
     fn new(
         func: Box<dyn FunctionCtxInterface>,
@@ -171,7 +191,7 @@ impl GearsFunctionCtx {
 /// state information.
 struct GearsLibraryCtx {
     meta_data: Arc<GearsLibraryMetaData>,
-    functions: HashMap<String, GearsFunctionCtx>,
+    functions: HashMap<String, Arc<GearsFunctionCtx>>,
     remote_functions: HashMap<String, RemoteFunctionCtx>,
     stream_consumers:
         HashMap<String, Arc<RefCellWrapper<ConsumerData<GearsStreamRecord, GearsStreamConsumer>>>>,
@@ -205,9 +225,15 @@ impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
                 name
             )));
         }
+        if get_functions().contains_key(name) {
+            return Err(GearsApiError::new(format!(
+                "Function {} already exists on another library",
+                name
+            )));
+        }
         self.gears_lib_ctx
             .functions
-            .insert(name.to_string(), func_ctx);
+            .insert(name.to_string(), Arc::new(func_ctx));
         Ok(())
     }
 }
@@ -416,6 +442,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
 }
 
 struct GlobalCtx {
+    functions: HashMap<String, GearsFunctionData>,
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
     plugins: Vec<Library>,
@@ -458,6 +485,14 @@ fn get_backends_mut() -> &'static mut HashMap<String, Box<dyn BackendCtxInterfac
 
 fn get_libraries() -> MutexGuard<'static, HashMap<String, Arc<GearsLibrary>>> {
     get_globals().libraries.lock().unwrap()
+}
+
+fn get_functions() -> &'static HashMap<String, GearsFunctionData> {
+    &get_globals().functions
+}
+
+fn get_functions_mut() -> &'static mut HashMap<String, GearsFunctionData> {
+    &mut get_globals_mut().functions
 }
 
 pub(crate) fn get_thread_pool() -> &'static Mutex<ThreadPool> {
@@ -585,6 +620,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     }));
     let mgmt_pool = ThreadPool::new(1);
     let mut global_ctx = GlobalCtx {
+        functions: HashMap::new(),
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
         plugins: Vec::new(),
@@ -743,28 +779,21 @@ fn function_call_command(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
     allow_block: bool,
 ) -> RedisResult {
-    let library_name = args.next_arg()?.try_as_str()?;
     let function_name = args.next_arg()?.try_as_str()?;
     let num_keys = args.next_arg()?.try_as_str()?.parse::<usize>()?;
-    let libraries = get_libraries();
+    let functions = get_functions();
 
-    let lib = libraries
-        .get(library_name)
-        .ok_or_else(|| RedisError::String(format!("Unknown library {}", library_name)))?;
-
-    let function = lib
-        .gears_lib_ctx
-        .functions
+    let function_data = functions
         .get(function_name)
         .ok_or_else(|| RedisError::String(format!("Unknown function {}", function_name)))?;
 
-    if !verify_ok_on_replica(ctx, function.flags) {
+    if !verify_ok_on_replica(ctx, function_data.function_handler.flags) {
         return Err(RedisError::Str(
             "Err can not run a function that might perform writes on a replica",
         ));
     }
 
-    if !verify_oom(ctx, function.flags) {
+    if !verify_oom(ctx, function_data.function_handler.flags) {
         return Err(RedisError::Str(
             "OOM can not run the function when out of memory",
         ));
@@ -779,18 +808,18 @@ fn function_call_command(
         )));
     }
 
-    if function.is_async && !allow_block {
+    if function_data.function_handler.is_async && !allow_block {
         // Blocking is not allowed but the function declated as async which means it might block, we will not invoke it.
         return Err(RedisError::Str("The function is declared as async and was called while blocking was not allowed; note that you cannot invoke async functions from within Lua or MULTI, and you must use TFCALLASYNC instead."));
     }
 
     {
         let _notification_blocker = get_notification_blocker();
-        let res = function.func.call(&RunCtx {
+        let res = function_data.function_handler.func.call(&RunCtx {
             ctx,
             args,
-            flags: function.flags,
-            lib_meta_data: Arc::clone(&lib.gears_lib_ctx.meta_data),
+            flags: function_data.function_handler.flags,
+            lib_meta_data: Arc::clone(&function_data.lib_meta_data),
             allow_block: allow_block,
         });
         if matches!(res, FunctionCallResult::Hold) && !allow_block {
@@ -965,6 +994,7 @@ fn on_loading_event(ctx: &Context, loading_sub_event: LoadingSubevent) {
             ctx.log_notice("Got a loading start event, clear the entire functions data.");
             let globals = get_globals_mut();
             globals.libraries.lock().unwrap().clear();
+            globals.functions.clear();
             globals.stream_ctx.clear();
 
             // During loading we do not want to get any key space notifications
@@ -1014,11 +1044,11 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     {
         name: "tfcall",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
@@ -1033,11 +1063,11 @@ fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     {
         name: "tfcallasync",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],

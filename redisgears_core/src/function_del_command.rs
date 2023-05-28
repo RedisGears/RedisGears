@@ -8,7 +8,7 @@ use redis_module::{Context, RedisError, RedisResult, RedisValue, ThreadSafeConte
 use std::iter::Skip;
 use std::vec::IntoIter;
 
-use crate::{get_libraries, Deserialize, Serialize};
+use crate::{get_functions_mut, get_libraries, Deserialize, Serialize};
 
 use mr_derive::BaseObject;
 
@@ -60,7 +60,14 @@ impl RemoteTask for GearsFunctionDelRemoteTask {
         let ctx_guard = ThreadSafeContext::new().lock();
         let mut libraries = get_libraries();
         let res = match libraries.remove(&r.lib_name) {
-            Some(_) => {
+            Some(lib) => {
+                let functions = get_functions_mut();
+                lib.gears_lib_ctx
+                    .functions
+                    .iter()
+                    .for_each(|(name, _func)| {
+                        functions.remove(name);
+                    });
                 ctx_guard.replicate(
                     "_rg_internals.function",
                     &["del".as_bytes(), r.lib_name.as_bytes()],
@@ -111,7 +118,16 @@ pub(crate) fn function_del_on_replica(
         })?;
     let mut libraries = get_libraries();
     match libraries.remove(lib_name) {
-        Some(_) => Ok(RedisValue::SimpleStringStatic("OK")),
+        Some(lib) => {
+            let functions = get_functions_mut();
+            lib.gears_lib_ctx
+                .functions
+                .iter()
+                .for_each(|(name, _func)| {
+                    functions.remove(name);
+                });
+            Ok(RedisValue::SimpleStringStatic("OK"))
+        }
         None => Err(RedisError::Str("library does not exists")),
     }
 }
