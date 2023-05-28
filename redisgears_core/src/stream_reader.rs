@@ -109,6 +109,7 @@ impl TrackedStream {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct ConsumerInfo {
     pub(crate) last_processed_time: u128, // last processed time in ms
     pub(crate) total_processed_time: u128, // last processed time in ms
