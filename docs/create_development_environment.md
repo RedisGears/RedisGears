@@ -65,7 +65,7 @@ module.exports = {
     mode: "production",
     plugins: [
         new webpack.BannerPlugin({
-			banner:'#!js name=foo',
+			banner:'#!js name=foo api_version=1.1',
             raw: true,
             entryOnly: true,
 	    })
@@ -350,7 +350,7 @@ module.exports = {
     entry: './src/index.js',
     plugins: [
         new webpack.BannerPlugin({
-          banner:'#!js name=foo',
+          banner:'#!js name=foo api_version=1.1',
                 raw: true,
                 entryOnly: true,
         }),
