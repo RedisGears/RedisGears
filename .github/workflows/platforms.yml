@@ -54,6 +54,16 @@ jobs:
             AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
             AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
 
+    amazonlinux2-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 2
+            os_family: amazonlinux
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+        secrets:
+            AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY }}
+
     rhel7-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
         with:

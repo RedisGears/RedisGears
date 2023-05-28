@@ -9,7 +9,9 @@ ARG ramp_version="master"
 ARG archsuffix="Linux-ubuntu${OS_VERSION}-${PLATFORM}"
 {% elif OS_FAMILY == "debian" %}
 ARG archsuffix="Linux-${OS_VERSION}-${PLATFORM}"
-{% else %} 
+{% elif OS_FAMILY == "amazonlinux" %}
+ARG archsuffix="Linux-amzn${OS_VERSION}-${PLATFORM}"
+{% else %}
 ARG archsuffix="Linux-rhel${OS_VERSION}-${PLATFORM}"
 {% endif %}
 

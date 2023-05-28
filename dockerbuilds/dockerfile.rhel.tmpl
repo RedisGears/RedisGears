@@ -2,11 +2,20 @@
 
 {% if OS_VERSION == "7" %}
 RUN yum -yqq install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
-RUN yum install -qqy git build-essential autoconf libtool curl libssl-dev pkg-config clang wget python3 python3-pip python3-devel lsb-release redhat-lsb-core openssl openssl-devel 
+{% endif %}
+{% if OS_VERSION == "2" %}
+{% endif %}
+
+{% if OS_VERSION == "7" %}
+RUN yum install -qqy git build-essential autoconf libtool curl libssl-dev pkg-config clang wget python3 python3-pip python3-devel lsb-release redhat-lsb-core openssl openssl-devel
 RUN yum -yqq install centos-release-scl-rh
 RUN yum -yqq install devtoolset-9 llvm-toolset-7
 RUN yum -yqq install rh-python38-python rh-python38-python-devel rh-python38-python-pip
-
+{% elif OS_VERSION == "2" %} # AMAZONLINUX2
+RUN amazon-linux-extras install -y epel
+RUN amazon-linux-extras enable python3.8
+RUN yum install -qqy git build-essential autoconf libtool curl libssl-dev pkg-config clang wget python3 python3-pip python3-devel lsb-release redhat-lsb-core openssl openssl-devel which
+RUN yum install -y gcc10 llvm7.0
 {% elif OS_VERSION == "8" %}
 RUN yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang
 RUN dnf install -yqq gcc-toolset-11-gcc gcc-toolset-11-gcc-c++ gcc-toolset-11-libatomic-devel autoconf automake libtool
@@ -18,7 +27,7 @@ RUN /opt/rh/rh-python38/root/usr/bin/python3 -m pip install -U RLTest redis==5.0
 RUN /opt/rh/rh-python38/root/usr/bin/python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version}
 RUN echo "scl_source enable devtoolset-9" >> /etc/profile
 RUN echo "scl_source enable llvm-toolset-7" >> /etc/profile
-{% elif OS_VERSION == "8" %}
+{% elif OS_VERSION == "8" or OS_VERSION == "2" %}
 RUN python3 -m pip install -U RLTest redis==5.0.0b3
 RUN python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version}
 {% endif %}
