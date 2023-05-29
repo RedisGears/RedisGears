@@ -7,7 +7,6 @@
 use std::process::Command;
 
 pub const GIT_BRANCH_OR_TAG: Option<&str> = std::option_env!("GIT_BRANCH_OR_TAG");
-pub const VERSION_NUM: Option<&str> = std::option_env!("VERSION_NUM");
 pub const BUILD_OS: Option<&str> = std::option_env!("BUILD_OS");
 pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
