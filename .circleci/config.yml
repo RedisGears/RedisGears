@@ -94,8 +94,8 @@ commands:
           command: |
             wget -q https://redismodules.s3.amazonaws.com/redis-stack/dependencies/redis-<<parameters.redis_version>>-<<parameters.arch_suffix>>.tgz -O redis.tgz
             tar -zxpf redis.tgz
-            cp redis-*/* /usr/bin
-            chmod a+x /usr/bin/redis*
+            cp redis-*/* /usr/local/bin
+            chmod a+x /usr/local/bin/redis*
       - run: 
           name: build and test
           shell: /bin/bash -l -eo pipefail
