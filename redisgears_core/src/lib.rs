@@ -94,8 +94,6 @@ mod stream_run_ctx;
 
 /// GIT commit hash used for this build.
 pub const GIT_SHA: Option<&str> = std::option_env!("GIT_SHA");
-/// GIT branch used for this build.
-pub const GIT_BRANCH: Option<&str> = std::option_env!("GIT_BRANCH");
 /// Crate version (string) used for this build.
 pub const VERSION_STR: Option<&str> = std::option_env!("VERSION_STR");
 /// Crate version (number) used for this build.
@@ -583,10 +581,9 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     }
 
     log::info!(
-        "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_for='{}-{}.{}'.",
+        "RedisGears v{}, sha='{}', build_type='{}', built_for='{}-{}.{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
-        GIT_BRANCH.unwrap_or_default(),
         BUILD_TYPE.unwrap_or_default(),
         BUILD_OS.unwrap_or_default(),
         BUILD_OS_NICK.unwrap_or_default(),

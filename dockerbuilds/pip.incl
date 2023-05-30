@@ -1,0 +1,6 @@
+{% if OS_VERSION == "7" or OS_VERSION == "2" %}
+ENV PATH=/opt/rh/rh-python38/root/usr/bin:$PATH
+{% endif %}
+RUN python3 -m pip install -U RLTest
+RUN python3 -m pip install -U redis==5.0.0b4
+RUN python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@${ramp_version}

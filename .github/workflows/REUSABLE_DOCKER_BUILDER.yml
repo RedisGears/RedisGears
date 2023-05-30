@@ -1,0 +1,113 @@
+on:
+    workflow_call:
+        inputs:
+            os_version:
+                required: true
+                type: string
+            os_family:
+                required: true
+                type: string
+            dockerfile:
+                required: true
+                type: string
+            arch:
+                required: false
+                type: string
+                default: x86_64
+            publish:
+                required: false
+                type: boolean
+                default: false
+            msrv:
+                required: false
+                type: string
+                default: ""
+            docker_arch:
+                required: false
+                type: string
+                default: linux/amd64
+            v8_version:
+                default: 'default'
+                required: false
+                type: string
+            v8_update_headers:
+                default: 'no'
+                required: false
+                type: string
+        secrets:
+            AWS_ACCESS_KEY_ID:
+                required: false
+            AWS_SECRET_ACCESS_KEY:
+                required: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+        - uses: actions/setup-python@v4
+          with:
+            python-version: '3.9'
+        - run: pip install jinja2
+        - uses: actions/checkout@v3
+        - name: generate docker file
+          run: |
+            python3 dockerbuilds/generate.py --os_version ${{inputs.os_version}} \
+              --platform ${{inputs.arch}} \
+              --src ${{inputs.dockerfile}} \
+              --os_family ${{inputs.os_family}} \
+              --v8_version ${{inputs.v8_version}} \
+              --v8_update_headers ${{inputs.v8_update_headers}} \
+              --msrv "${{inputs.msrv}}"
+
+        - name: install qemu
+          if: ${{inputs.arch == 'arm64' }}
+          uses: docker/setup-qemu-action@v2
+
+        - name: install buildx ${{inputs.docker_arch}}
+          uses: docker/setup-buildx-action@v2
+          with:
+            platforms: ${{inputs.docker_arch}}
+
+        - name: build
+          run: |
+            docker buildx build --platform ${{inputs.docker_arch}} \
+              --build-arg v8_version=${{inputs.v8_version}} \
+              --build-arg v8_update_headers=${{inputs.v8_update_headers}} \
+              --progress=plain \
+              -f dockerbuilds/Dockerfile.generated \
+              . \
+              -t gears/gears:build \
+              --load
+
+        - name: image check
+          run: |
+            docker images
+
+        - name: extract
+          if: ${{inputs.publish == true}}
+          id: extract
+          uses: shrink/actions-docker-extract@v2
+          with:
+              image: gears/gears:build
+              path: /build/target/release/.
+
+        - name: Setup s3cmd action
+          if: ${{inputs.publish == true}}
+          uses: s3-actions/s3cmd@v1.2.0
+          with:
+              provider: aws
+              region: us-east-2
+              access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+              secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+        - name: s3 upload
+          if: ${{inputs.publish == true}}
+          run: |
+            s3cmd  \
+              put -P ${{steps.extract.outputs.destination}}/redisgears2*.zip \
+              s3://redismodules/redisgears/snapshots/
