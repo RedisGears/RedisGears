@@ -62,7 +62,7 @@ jobs:
               --os_family ${{inputs.os_family}} \
               --v8_version ${{inputs.v8_version}} \
               --v8_update_headers ${{inputs.v8_update_headers}} \
-              --msrv ${{inputs.msrv}}
+              --msrv "${{inputs.msrv}}"
 
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
