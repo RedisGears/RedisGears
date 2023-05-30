@@ -4,6 +4,9 @@ RUN tar -zxpf redis.tgz
 RUN cp redis-*/* /usr/bin
 RUN chmod a+x /usr/bin/redis*
 
+ENV V8_VERSION {{ V8_VERSION }}
+ENV V8_UPDATE_HEADERS {{ V8_UPDATE_HEADERS }}
+
 WORKDIR /build
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
 RUN sh install_rust.sh -y

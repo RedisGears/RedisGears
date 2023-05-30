@@ -26,10 +26,6 @@ on:
                 default: 'no'
                 required: false
                 type: string
-            redis_version:
-                default: 7.2-rc1
-                required: false
-                type: string
         secrets:
             AWS_ACCESS_KEY_ID:
                 required: false
@@ -43,9 +39,6 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    env:
-      V8_VERSION: ${{ inputs.v8_version }}
-      V8_UPDATE_HEADERS: ${{ inputs.v8_update_headers }}
 
     steps:
         - uses: actions/setup-python@v4
@@ -56,9 +49,11 @@ jobs:
         - name: generate docker file
           run: |
             python3 dockerbuilds/generate.py --os_version ${{inputs.os_version}} \
-              --platform ${{inputs.arch}} --redis_version ${{inputs.redis_version}} \
+              --platform ${{inputs.arch}} \
               --src ${{inputs.dockerfile}} \
-              --os_family ${{inputs.os_family}}
+              --os_family ${{inputs.os_family}} \
+              --v8_version ${{inputs.v8_version}} \
+              --v8_update_headers ${{inputs.v8_update_headers}}
 
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}

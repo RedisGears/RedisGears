@@ -6,9 +6,11 @@ import argparse
 defaults = {
     "OS_VERSION": "22.04",
     "OS_FAMILY": "ubuntu",
-    "REDIS_VERSION": "7.2-rc1",
+    "REDIS_VERSION": "7.2-rc2",
     "PLATFORM": "x86_64",
     "PUBLISH": False,
+    "V8_VERSION": "default",
+    "V8_UPDATE_HEADERS": "no",
 }
 
 p = argparse.ArgumentParser()

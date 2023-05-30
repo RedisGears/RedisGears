@@ -2,6 +2,16 @@ version: 2.1
 
 commands:
 
+  skip-if-no-pr:
+    steps:
+      - run:
+          name: Determine PR target branch
+          command: |
+            if [[ -z "$CIRCLE_PULL_REQUEST" ]]; then
+              echo "This is not a pull request" && exit 1
+              circleci-agent step halt
+            fi
+
   checkout-all:
     steps:
       - checkout
@@ -32,7 +42,9 @@ commands:
     parameters:
       os_version:
         type: string
-      redis_version:
+      v8_update_headers:
+        type: string
+      v8_version:
         type: string
     steps:
       - run:
@@ -40,27 +52,36 @@ commands:
           shell: /bin/bash -l -eo pipefail
           command: |
             python3 dockerbuilds/generate.py --os_version <<parameters.os_version>> \
-              --platform arm64 --redis_version <<parameters.redis_version>> \
+              --platform arm64 \
+              --v8_update_headers <<parameters.v8_update_headers>> \
+              --v8_version <<parameters.v8_version>> \
               --src dockerbuilds/dockerfile.debian.tmpl \
               --os_family ubuntu
 
 jobs:
+
   build-arm-platforms:
-    parameters:
-      os_version:
-        type: string
-      redis_version:
-        type: string
     machine:
       image: ubuntu-2004:current
     resource_class: arm.medium
+
+    parameters:
+      os_version:
+        type: string
+      v8_update_headers:
+        type: string
+        default: "no"
+      v8_version:
+        type: string
+        default: default
+
     steps:
-      # - setup-executor
       - checkout-all
       - deb-install-requirements
       - docker-generate:
           os_version: <<parameters.os_version>>
-          redis_version: <<parameters.redis_version>>
+          v8_version: <<parameters.v8_version>>
+          v8_update_headers: <<parameters.v8_update_headers>>
       - run:
           name: build docker, copy out the bits
           shell: /bin/bash -l -eo pipefail
@@ -73,13 +94,105 @@ jobs:
               ls release
       - s3-upload
 
+  build-arm-pull-request-only:
+    machine:
+      image: ubuntu-2004:current
+    resource_class: arm.medium
+
+    parameters:
+      os_version:
+        type: string
+      v8_update_headers:
+        type: string
+        default: "no"
+      v8_version:
+        type: string
+        default: default
+
+    steps:
+      - checkout-all
+      - skip-if-no-pr
+      - deb-install-requirements
+      - docker-generate:
+          os_version: <<parameters.os_version>>
+          v8_version: <<parameters.v8_version>>
+          v8_update_headers: <<parameters.v8_update_headers>>
+      - run:
+          name: build docker, copy out the bits
+          shell: /bin/bash -l -eo pipefail
+          command: |
+              docker build --platform arm64 --progress=plain -f dockerbuilds/Dockerfile.generated \
+              . \
+              -t gears/gears:build
+              docker create --name smu gears/gears:build
+              docker cp smu:/build/target/release/. release
+              ls release
+      - s3-upload
+
+on-pull-request: &on-pull-request
+  filters:
+    branches:
+      ignore:
+        - master
+        - /^\d+\.\d+.*$/
+        - /^\d+\.\d+\.\d+.*$/
+    tags:
+      ignore: /.*/
+
+on-integ-branch: &on-integ-branch
+  filters:
+    branches:
+      only:
+        - master
+        - /^\d+\.\d+.*$/
+        - /^\d+\.\d+\.\d+.*$/
+    tags:
+      only:
+        - v/^\d+\.\d+\.\d+-rc\d+*$/
+
+on-master: &on-master
+  filters:
+    branches:
+      only: master
+    tags:
+      ignore: /.*/
+
 workflows:
   version: 2
   default-flow:
     jobs:
+
+      - build-arm-pull-request-only:
+          context: common
+          <<: *on-pull-request
+          matrix:
+            parameters:
+              os_version: ["22.04"]
+
       - build-arm-platforms:
           context: common
+          <<: *on-integ-branch
           matrix:
             parameters:
               os_version: ["22.04", "20.04", "18.04"]
-              redis_version: ["7.2-rc1"]
+
+nightly:
+
+  triggers:
+    - schedule:
+        cron: "5 3 * * Sun-Thu"
+        filters:
+          branches:
+            only:
+              - master
+
+  jobs:
+    - build-master:
+      name: "NIghtly build"
+      context: common
+      <<: *on-master
+      matrix:
+        parameters:
+          os_version: ["22.04", "20.04", "18.04"]
+          v8_update_headers: ["yes"]
+          v8_version: ["main"]

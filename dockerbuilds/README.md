@@ -8,17 +8,9 @@ To build for a platform:
 
 1. Go to the root of the repository
 2. Generate the docker file based on your necessary options:
-    ```python dockerbuilds/generate_dockerfile.py --help```
+    ```python dockerbuilds/generate.py --help```
 3. Build, via the generated docker file:
     ```docker buildx build -f dockerbuilds/dockerfile.generated .```
 
 There are various build options that can be passed to even the 
 generated docker file. See the specific template file for more information.
-
-## Supported Platform matrix
-
-| OS | Architecture | Template |
-|----|--------------|----------|
-| Ubuntu 22.04 | x86_64 | dockerfile.debian.tmpl |
-| Ubuntu 20.04 | x86_64 | dockerfile.debian.tmpl |
-| Ubuntu 18.04 | x86_64 | dockerfile.debian.tmpl |
