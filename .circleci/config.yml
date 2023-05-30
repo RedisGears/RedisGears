@@ -188,7 +188,7 @@ nightly:
 
   jobs:
     - build-master:
-      name: "NIghtly build"
+      name: "Nightly build"
       context: common
       <<: *on-master
       matrix:
