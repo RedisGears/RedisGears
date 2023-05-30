@@ -247,10 +247,10 @@ workflows:
 
       - build-macos-arm64:
           context: common
-          <<: *on-integ-branch
+          # <<: *on-integ-branch
       - build-macos-x64:
           context: common
-          <<: *on-integ-branch
+          # <<: *on-integ-branch
 
 #       - build-arm-pull-request-only:
 #           context: common
