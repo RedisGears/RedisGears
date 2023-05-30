@@ -29,13 +29,29 @@ fn main() {
         }
     }
     // Expose GIT_BRANCH env var
-    let git_branch = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output();
-    match git_branch {
+    let git_branch_or_tag = Command::new("git")
+        .args(["describe", "--tags", "--exact-match"])
+        .output()
+        .map_err(|e| format!("Failed invoking git command to get git tag, {}", e))
+        .and_then(|v| {
+            if !v.status.success() {
+                return Err(format!(
+                    "Failed extracting git branch, {}",
+                    String::from_utf8_lossy(&v.stderr)
+                ));
+            }
+            Ok(v)
+        })
+        .or_else(|_| {
+            println!("no tag");
+            Command::new("git")
+                .args(["symbolic-ref", "-q", "--short", "HEAD"])
+                .output()
+        });
+    match git_branch_or_tag {
         Ok(branch) => {
             let branch = String::from_utf8(branch.stdout).unwrap();
-            println!("cargo:rustc-env=GIT_BRANCH={}", branch);
+            println!("cargo:rustc-env=GIT_BRANCH_OR_TAG={}", branch);
         }
         Err(e) => {
             println!("Failed extracting git branch value, {}.", e);
