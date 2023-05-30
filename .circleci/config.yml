@@ -63,8 +63,11 @@ commands:
     parameters:
       arch_suffix:
         type: string
+      openssl_path:
+        type: string
       redis_version:
         type: string
+        default: "7.2-rc2"
 
     steps:
       - checkout-all
@@ -72,7 +75,7 @@ commands:
           name: install dependencies
           shell: /bin/bash -l -eo pipefail
           command: |
-            brew install python3 automake openssl@3 wget
+            brew install python3 automake openssl@3 wget libtool
 
       - run:
           name: pip install
@@ -97,8 +100,8 @@ commands:
           name: build and test
           shell: /bin/bash -l -eo pipefail
           environment:
-            PKG_CONFIG_PATH: /usr/local/opt/openssl@3/lib/pkgconfig
-            OPENSSL_PREFIX: /usr/local/opt/openssl@3
+            PKG_CONFIG_PATH: /<<parameters.openssl_path>>/lib/pkgconfig
+            OPENSSL_PREFIX: <<parameters.openssl_path>>
           command: |
             ${HOME}/.cargo/bin/cargo build --verbose
             ${HOME}/.cargo/bin/cargo build --release --verbose
@@ -199,8 +202,8 @@ jobs:
       xcode: 12.5.1
     steps:
       - build-macos:
-          redis_version: "7.2-rc2"
-          arch_suffix: "catalina-x86_64"
+          arch_suffix: "macos-catalina-x86_64"
+          openssl_path: "/opt/local/opt/openssl@3"
 
   build-macos-arm64:
     resource_class: macos.m1.large.gen1
@@ -208,8 +211,8 @@ jobs:
       xcode: 14.2.0
     steps:
       - build-macos:
-          redis_version: "7.2-rc2"
-          arch_suffix: "monterey-arm64"
+          arch_suffix: "macos-monterey-arm64"
+          openssl_path: "/opt/homebrew/opt/openssl@3"
 
 
 on-pull-request: &on-pull-request
