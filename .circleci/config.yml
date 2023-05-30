@@ -18,25 +18,24 @@ commands:
             sudo apt install -y s3cmd
             python3 -m pip install jinja2
 
+  # upload to s3, only if set to true, using the base folder passed in the srcdir property
   s3-upload:
+    parameters:
+      publish:
+        type: string
+        default: "false"
+      srcdir:
+        type: string
     steps:
       - run:
           name: s3 upload
           shell: /bin/bash -l -eo pipefail
           command: |
-            s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
-              put -P release/redisgears2*.zip \
-              s3://redismodules/redisgears/snapshots/
-
-  s3-mac-upload:
-    steps:
-     - run:
-          name: s3 upload
-          shell: /bin/bash -l -eo pipefail
-          command: |
-            s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
-              put -P target/release/redisgears2*.zip \
+            if [[ $publish == "true" ]]; then
+              s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
+                put -P <<parameters.srcdir>>release/redisgears2*.zip \
                 s3://redismodules/redisgears/snapshots/
+            fi
 
   docker-generate:
     parameters:
@@ -68,6 +67,9 @@ commands:
       redis_version:
         type: string
         default: "7.2-rc2"
+      publish:
+        type: string
+        default: "false"
 
     steps:
       - checkout-all
@@ -76,20 +78,18 @@ commands:
           shell: /bin/bash -l -eo pipefail
           command: |
             brew install python3 automake openssl@3 wget libtool pkg-config
-
       - run:
           name: pip install
           command: |
             python3 -m pip install RLTest
             python3 -m pip install -U redis==5.0.0b4
             python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
-
+            ln -s /Users/distiller/.pyenv/shims/ramp /usr/local/bin/ramp
       - run:
           name: install rust
           command: |
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
             sh install_rust.sh -y
-
       - run:
           name: install redis
           command: |
@@ -103,25 +103,27 @@ commands:
           environment:
             PKG_CONFIG_PATH: <<parameters.openssl_path>>/lib/pkgconfig
             OPENSSL_PREFIX: <<parameters.openssl_path>>
+          timeout: 30m
           command: |
-            ${HOME}/.cargo/bin/cargo build --verbose
-            ${HOME}/.cargo/bin/cargo build --release --verbose
-            ${HOME}/.cargo/bin/cargo test --verbose
+            ${HOME}/.cargo/bin/cargo build -vv
+            ${HOME}/.cargo/bin/cargo build --release -vv
+            ${HOME}/.cargo/bin/cargo test --vv
 
       - run:
           name: run python tests
           working_directory: pytests
           command: |
             ./run_tests.sh
-
       - run:
           shell: /bin/bash -l -eo pipefail
           command: |
             target/release/packer
- 
+      - s3-upload:
+          publish: <<parameters.publish>>
+          srcdir: target/release
 jobs:
 
-  build-arm-platforms:
+  build-arm:
     machine:
       image: ubuntu-2004:current
     resource_class: arm.medium
@@ -135,6 +137,9 @@ jobs:
       v8_version:
         type: string
         default: default
+      publish:
+        type: string
+        default: "false"
 
     steps:
       - checkout-all
@@ -153,81 +158,37 @@ jobs:
               docker create --name smu gears/gears:build
               docker cp smu:/build/target/release/. release
               ls release
-      - s3-upload
-
-  build-arm-pull-request-only:
-    machine:
-      image: ubuntu-2004:current
-    resource_class: arm.medium
-
-    parameters:
-      os_version:
-        type: string
-      v8_update_headers:
-        type: string
-        default: "no"
-      v8_version:
-        type: string
-        default: default
-
-    steps:
-      - checkout-all
-      - deb-install-requirements
-      - docker-generate:
-          os_version: <<parameters.os_version>>
-          v8_version: <<parameters.v8_version>>
-          v8_update_headers: <<parameters.v8_update_headers>>
-      - run:
-          name: build docker, copy out the bits
-          shell: /bin/bash -l -eo pipefail
-          command: |
-              docker build --platform arm64 --progress=plain -f dockerbuilds/Dockerfile.generated \
-              . \
-              -t gears/gears:build
-              docker create --name smu gears/gears:build
-              docker cp smu:/build/target/release/. release
-              ls release
-
+      - s3-upload:
+          publish: <<parameters.publish>>
+          srcdir: release
+ 
   build-macos-x64:
     resource_class: macos.x86.medium.gen2
+    parameters:
+      publish:
+        type: string
+        default: "false"
     macos:
       xcode: 12.5.1
     steps:
       - build-macos:
           arch_suffix: "macos-catalina-x86_64"
           openssl_path: "/usr/local/opt/openssl@3"
-      - s3-mac-upload
+          publish: <<parameters.publish>>
 
   build-macos-arm64:
     resource_class: macos.m1.large.gen1
+    parameters:
+      publish:
+        type: string
+        default: "false"
     macos:
       xcode: 14.2.0
     steps:
       - build-macos:
           arch_suffix: "macos-monterey-arm64"
           openssl_path: "/opt/homebrew/opt/openssl@3"
-      - s3-mac-upload
-
-  build-macos-x64-pr-only:
-    resource_class: macos.x86.medium.gen2
-    macos:
-      xcode: 12.5.1
-    steps:
-      - skip-if-no-pr
-      - build-macos:
-          arch_suffix: "macos-catalina-x86_64"
-          openssl_path: "/usr/local/opt/openssl@3"
-
-  build-macos-arm64-pr-only:
-    resource_class: macos.m1.large.gen1
-    macos:
-      xcode: 14.2.0
-    steps:
-      - skip-if-no-pr
-      - build-macos:
-          arch_suffix: "macos-monterey-arm64"
-          openssl_path: "/opt/homebrew/opt/openssl@3"
-
+          publish: <<parameters.publish>>
 
 on-pull-request: &on-pull-request
   filters:
@@ -264,50 +225,62 @@ workflows:
     jobs:
 
       - build-macos-arm64:
+          name: OSX [arm64] Integration
           context: common
-          # <<: *on-integ-branch
+          <<: *on-integ-branch
+          publish: "true"
+
       - build-macos-x64:
+          name: OSX [intel] Integration
           context: common
-          # <<: *on-integ-branch
+          <<: *on-integ-branch
+          publish: "true"
 
-      # - build-macos-arm64-pr-only:
-      #     context: common
-      #     <<: *on-pull-request
-      # - build-macos-x64-pr-only:
-      #     context: common
-      #     <<: *on-pull-request
+      - build-macos-arm64:
+          name: OSX [arm64] CI
+          context: common
+          <<: *on-pull-request
 
-#       - build-arm-pull-request-only:
-#           context: common
-#           <<: *on-pull-request
-#           matrix:
-#             parameters:
-#               os_version: ["22.04"]
+      - build-macos-x64:
+          name: OSX [intel] CI
+          context: common
+          <<: *on-pull-request
 
-#       - build-arm-platforms:
-#           context: common
-#           <<: *on-integ-branch
-#           matrix:
-#             parameters:
-#               os_version: ["22.04", "20.04", "18.04"]
 
-# nightly:
+      - build-arm:
+          name: ARM CI
+          context: common
+          <<: *on-integ-branch
+          matrix:
+            parameters:
+              os_version: ["22.04"]
 
-#   triggers:
-#     - schedule:
-#         cron: "5 3 * * Sun-Thu"
-#         filters:
-#           branches:
-#             only:
-#               - master
+      - build-arm:
+          name: ARM Integration
+          context: common
+          <<: *on-integ-branch
+          publish: "true"
+          matrix:
+            parameters:
+              os_version: ["22.04", "20.04", "18.04"]
 
-#   jobs:
-#     - build-arm-platforms:
-#       name: "Nightly build"
-#       context: common
-#       <<: *on-master
-#       matrix:
-#         parameters:
-#           os_version: ["22.04", "20.04", "18.04"]
-#           v8_update_headers: ["yes"]
-#           v8_version: ["main"]
+nightly:
+
+  triggers:
+    - schedule:
+        cron: "5 3 * * Sun-Thu"
+        filters:
+          branches:
+            only:
+              - master
+
+  jobs:
+    - build-arm:
+      name: "Nightly build"
+      context: common
+      <<: *on-master
+      matrix:
+        parameters:
+          os_version: ["22.04", "20.04", "18.04"]
+          v8_update_headers: ["yes"]
+          v8_version: ["main"]
