@@ -1,0 +1,36 @@
+{% include "base.incl" %}
+
+{% if OS_VERSION == "7" %}
+RUN yum -yqq install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
+{% endif %}
+{% if OS_VERSION == "2" %}
+{% endif %}
+
+{% if OS_VERSION == "7" %}
+RUN yum install -qqy git build-essential autoconf libtool curl libssl-dev pkg-config clang wget python3 python3-pip python3-devel lsb-release redhat-lsb-core openssl openssl-devel
+RUN yum -yqq install centos-release-scl-rh
+RUN yum -yqq install devtoolset-9 llvm-toolset-7
+RUN yum -yqq install rh-python38-python rh-python38-python-devel rh-python38-python-pip
+{% elif OS_VERSION == "2" %} # AMAZONLINUX2
+RUN yum install -qqy yum-utils
+RUN yum-config-manager --enable epel
+RUN yum install -qqy git build-essential autoconf libtool curl libssl-dev pkg-config clang wget python3 python3-pip python3-devel lsb-release redhat-lsb-core openssl openssl-devel
+RUN yum install -qqy http://mirror.centos.org/centos/7/extras/x86_64/Packages/centos-release-scl-rh-2-3.el7.centos.noarch.rpm
+RUN yum install -qqy http://mirror.centos.org/centos/7/os/x86_64/Packages/libgfortran5-8.3.1-2.1.1.el7.i686.rpm
+RUN yum install -qqy devtoolset-9 llvm-toolset-7
+RUN yum -yqq install rh-python38-python rh-python38-python-devel rh-python38-python-pip
+{% elif OS_VERSION == "8" %}
+RUN yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang
+RUN dnf install -yqq gcc-toolset-11-gcc gcc-toolset-11-gcc-c++ gcc-toolset-11-libatomic-devel autoconf automake libtool
+ENV PATH="/opt/rh/gcc-toolset-11/root/usr/bin:$PATH"
+{% endif %}
+
+{% if OS_VERSION == "7" or OS_VERSION == "2" %}
+RUN echo "source /opt/rh/devtoolset-9/enable" >> /etc/profile
+RUN echo "source /opt/rh/llvm-toolset-7/enable" >> /etc/profile
+RUN echo 'export PATH=/opt/rh/rh-python38/root/usr/local/bin:$PATH' >> /etc/profile
+{% endif %}
+
+{% include "pip.incl" %}
+
+{% include "build_and_test.incl" %}
