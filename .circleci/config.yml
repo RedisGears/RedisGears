@@ -75,7 +75,7 @@ commands:
           name: install dependencies
           shell: /bin/bash -l -eo pipefail
           command: |
-            brew install python3 automake openssl@3 wget libtool
+            brew install python3 automake openssl@3 wget libtool pkg-config
 
       - run:
           name: pip install
@@ -97,11 +97,11 @@ commands:
             tar -zxpf redis.tgz
             cp redis-*/* /usr/local/bin
             chmod a+x /usr/local/bin/redis*
-      - run: 
+      - run:
           name: build and test
           shell: /bin/bash -l -eo pipefail
           environment:
-            PKG_CONFIG_PATH: /<<parameters.openssl_path>>/lib/pkgconfig
+            PKG_CONFIG_PATH: <<parameters.openssl_path>>/lib/pkgconfig
             OPENSSL_PREFIX: <<parameters.openssl_path>>
           command: |
             ${HOME}/.cargo/bin/cargo build --verbose
@@ -114,7 +114,7 @@ commands:
           command: |
             ./run_tests.sh
 
-      - run: 
+      - run:
           shell: /bin/bash -l -eo pipefail
           command: |
             target/release/packer
@@ -213,6 +213,27 @@ jobs:
           arch_suffix: "macos-monterey-arm64"
           openssl_path: "/opt/homebrew/opt/openssl@3"
 
+  build-macos-x64-pr-only:
+    resource_class: macos.x86.medium.gen2
+    macos:
+      xcode: 12.5.1
+    steps:
+      - skip-if-no-pr
+      - build-macos:
+          arch_suffix: "macos-catalina-x86_64"
+          openssl_path: "/opt/local/opt/openssl@3"
+
+  build-macos-arm64-pr-only:
+    resource_class: macos.m1.large.gen1
+    macos:
+      xcode: 14.2.0
+    steps:
+      - skip-if-no-pr
+      - build-macos:
+          arch_suffix: "macos-monterey-arm64"
+          openssl_path: "/opt/homebrew/opt/openssl@3"
+
+
 on-pull-request: &on-pull-request
   filters:
     branches:
@@ -252,6 +273,13 @@ workflows:
       - build-macos-x64:
           context: common
           # <<: *on-integ-branch
+
+      # - build-macos-arm64-pr-only:
+      #     context: common
+      #     <<: *on-pull-request
+      # - build-macos-x64-pr-only:
+      #     context: common
+      #     <<: *on-pull-request
 
 #       - build-arm-pull-request-only:
 #           context: common
