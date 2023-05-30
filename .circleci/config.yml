@@ -59,6 +59,13 @@ commands:
               --os_family ubuntu
 
   build-macos:
+
+    parameters:
+      arch_suffix:
+        type: string
+      redis_version:
+        type: string
+
     steps:
       - checkout-all
       - run:
@@ -79,6 +86,13 @@ commands:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
             sh install_rust.sh -y
 
+      - run:
+          name: install redis
+          command: |
+            wget -q https://redismodules.s3.amazonaws.com/redis-stack/dependencies/redis-<<parameters.redis_version>>-<<parameters.arch_suffix>>.tgz -O redis.tgz
+            tar -zxpf redis.tgz
+            cp redis-*/* /usr/bin
+            chmod a+x /usr/bin/redis*
       - run: 
           name: build and test
           shell: /bin/bash -l -eo pipefail
@@ -184,14 +198,18 @@ jobs:
     macos:
       xcode: 12.5.1
     steps:
-      - build-macos
+      - build-macos:
+          redis_version: "7.2-rc2"
+          arch_suffix: "catalina-x86_64"
 
   build-macos-arm64:
     resource_class: macos.m1.large.gen1
     macos:
-      xcode: 12.5.1
+      xcode: 14.2.0
     steps:
-      - build-macos
+      - build-macos:
+          redis_version: "7.2-rc2"
+          arch_suffix: "monterey-arm64"
 
 
 on-pull-request: &on-pull-request
@@ -245,6 +263,17 @@ workflows:
 #           matrix:
 #             parameters:
 #               os_version: ["22.04", "20.04", "18.04"]
+
+#       - build-mac-x64:
+#           context: common
+#           <<: *on-integ-branch
+
+#       - build-mac-arm64:
+#           context: common
+#           <<: *on-integ-branch
+
+
+
 
 # nightly:
 
