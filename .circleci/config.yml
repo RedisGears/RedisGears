@@ -107,7 +107,7 @@ commands:
           command: |
             ${HOME}/.cargo/bin/cargo build -vv
             ${HOME}/.cargo/bin/cargo build --release -vv
-            ${HOME}/.cargo/bin/cargo test --vv
+            ${HOME}/.cargo/bin/cargo test -vv
 
       - run:
           name: run python tests
