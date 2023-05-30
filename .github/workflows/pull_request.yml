@@ -2,6 +2,8 @@ name: Pull Request
 
 on:
     pull_request:
+        paths-ignore:
+            - '.circleci/**'
 
 jobs:
 
@@ -11,3 +13,11 @@ jobs:
             os_version: 22.04
             os_family: ubuntu
             dockerfile: dockerbuilds/dockerfile.debian.tmpl
+
+    msrv-jammy-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        with:
+            os_version: 22.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+            msrv: 1.65.0
