@@ -18,6 +18,10 @@ on:
                 required: false
                 type: boolean
                 default: false
+            msrv:
+                required: false
+                type: string
+                default: ""
             docker_arch:
                 required: false
                 type: string
@@ -57,7 +61,8 @@ jobs:
               --src ${{inputs.dockerfile}} \
               --os_family ${{inputs.os_family}} \
               --v8_version ${{inputs.v8_version}} \
-              --v8_update_headers ${{inputs.v8_update_headers}}
+              --v8_update_headers ${{inputs.v8_update_headers}} \
+              --msrv ${{inputs.msrv}}
 
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
