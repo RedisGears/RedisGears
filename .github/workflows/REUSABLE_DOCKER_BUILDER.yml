@@ -14,6 +14,10 @@ on:
                 required: false
                 type: string
                 default: x86_64
+            publish:
+                required: false
+                type: boolean
+                default: false
             docker_arch:
                 required: false
                 type: string
@@ -80,6 +84,7 @@ jobs:
             docker images
 
         - name: extract
+          if: ${{inputs.publish == true}}
           id: extract
           uses: shrink/actions-docker-extract@v2
           with:
@@ -87,6 +92,7 @@ jobs:
               path: /build/target/release/.
 
         - name: Setup s3cmd action
+          if: ${{inputs.publish == true}}
           uses: s3-actions/s3cmd@v1.2.0
           with:
               provider: aws

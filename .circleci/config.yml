@@ -127,7 +127,6 @@ jobs:
               docker create --name smu gears/gears:build
               docker cp smu:/build/target/release/. release
               ls release
-      - s3-upload
 
 on-pull-request: &on-pull-request
   filters:
@@ -187,8 +186,8 @@ nightly:
               - master
 
   jobs:
-    - build-master:
-      name: "NIghtly build"
+    - build-arm-platforms:
+      name: "Nightly build"
       context: common
       <<: *on-master
       matrix:
