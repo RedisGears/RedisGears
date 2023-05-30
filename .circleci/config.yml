@@ -202,7 +202,7 @@ jobs:
     steps:
       - build-macos:
           arch_suffix: "macos-catalina-x86_64"
-          openssl_path: "/opt/local/opt/openssl@3"
+          openssl_path: "/usr/local/opt/openssl@3"
 
   build-macos-arm64:
     resource_class: macos.m1.large.gen1
