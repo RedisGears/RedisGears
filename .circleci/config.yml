@@ -58,74 +58,6 @@ commands:
               --src dockerbuilds/dockerfile.debian.tmpl \
               --os_family ubuntu
 
-  build-macos:
-
-    parameters:
-      arch_suffix:
-        type: string
-      openssl_path:
-        type: string
-      redis_version:
-        type: string
-        default: "7.2-rc2"
-
-    steps:
-      - checkout-all
-      - run:
-          name: install dependencies
-          shell: /bin/bash -l -eo pipefail
-          command: |
-            brew install python3 automake openssl@3 wget libtool
-
-      - run:
-          name: pip install
-          command: |
-            python3 -m pip install RLTest
-            python3 -m pip install -U redis==5.0.0b4
-
-      - run:
-          name: install rust
-          command: |
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
-            sh install_rust.sh -y
-
-      - run:
-          name: install redis
-          command: |
-            wget -q https://redismodules.s3.amazonaws.com/redis-stack/dependencies/redis-<<parameters.redis_version>>-<<parameters.arch_suffix>>.tgz -O redis.tgz
-            tar -zxpf redis.tgz
-            cp redis-*/* /usr/bin
-            chmod a+x /usr/bin/redis*
-      - run: 
-          name: build and test
-          shell: /bin/bash -l -eo pipefail
-          environment:
-            PKG_CONFIG_PATH: /<<parameters.openssl_path>>/lib/pkgconfig
-            OPENSSL_PREFIX: <<parameters.openssl_path>>
-          command: |
-            ${HOME}/.cargo/bin/cargo build --verbose
-            ${HOME}/.cargo/bin/cargo build --release --verbose
-            ${HOME}/.cargo/bin/cargo test --verbose
-
-      - run:
-          name: run python tests
-          working_directory: pytests
-          command: |
-            ./run_tests.sh
-
-      - run: 
-          shell: /bin/bash -l -eo pipefail
-          command: |
-            target/release/packer
-      - run:
-          name: s3 upload
-          shell: /bin/bash -l -eo pipefail
-          command: |
-            s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
-              put -P target/release/redisgears2*.zip \
-                s3://redismodules/redisgears/snapshots/
-
-
 jobs:
 
   build-arm-platforms:
@@ -196,25 +128,6 @@ jobs:
               docker cp smu:/build/target/release/. release
               ls release
 
-  build-macos-x64:
-    resource_class: macos.x86.medium.gen2
-    macos:
-      xcode: 12.5.1
-    steps:
-      - build-macos:
-          arch_suffix: "macos-catalina-x86_64"
-          openssl_path: "/opt/local/opt/openssl@3"
-
-  build-macos-arm64:
-    resource_class: macos.m1.large.gen1
-    macos:
-      xcode: 14.2.0
-    steps:
-      - build-macos:
-          arch_suffix: "macos-monterey-arm64"
-          openssl_path: "/opt/homebrew/opt/openssl@3"
-
-
 on-pull-request: &on-pull-request
   filters:
     branches:
@@ -248,53 +161,37 @@ workflows:
   default-flow:
     jobs:
 
-      - build-macos-arm64:
+      - build-arm-pull-request-only:
           context: common
-      - build-macos-x64:
+          <<: *on-pull-request
+          matrix:
+            parameters:
+              os_version: ["22.04"]
+
+      - build-arm-platforms:
           context: common
+          <<: *on-integ-branch
+          matrix:
+            parameters:
+              os_version: ["22.04", "20.04", "18.04"]
 
-#       - build-arm-pull-request-only:
-#           context: common
-#           <<: *on-pull-request
-#           matrix:
-#             parameters:
-#               os_version: ["22.04"]
+nightly:
 
-#       - build-arm-platforms:
-#           context: common
-#           <<: *on-integ-branch
-#           matrix:
-#             parameters:
-#               os_version: ["22.04", "20.04", "18.04"]
+  triggers:
+    - schedule:
+        cron: "5 3 * * Sun-Thu"
+        filters:
+          branches:
+            only:
+              - master
 
-#       - build-mac-x64:
-#           context: common
-#           <<: *on-integ-branch
-
-#       - build-mac-arm64:
-#           context: common
-#           <<: *on-integ-branch
-
-
-
-
-# nightly:
-
-#   triggers:
-#     - schedule:
-#         cron: "5 3 * * Sun-Thu"
-#         filters:
-#           branches:
-#             only:
-#               - master
-
-#   jobs:
-#     - build-arm-platforms:
-#       name: "Nightly build"
-#       context: common
-#       <<: *on-master
-#       matrix:
-#         parameters:
-#           os_version: ["22.04", "20.04", "18.04"]
-#           v8_update_headers: ["yes"]
-#           v8_version: ["main"]
+  jobs:
+    - build-arm-platforms:
+      name: "Nightly build"
+      context: common
+      <<: *on-master
+      matrix:
+        parameters:
+          os_version: ["22.04", "20.04", "18.04"]
+          v8_update_headers: ["yes"]
+          v8_version: ["main"]
