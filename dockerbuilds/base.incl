@@ -1,0 +1,34 @@
+ARG REDIS_VERSION="{{ REDIS_VERSION }}"
+ARG OS_VERSION="{{ OS_VERSION }}"
+ARG OS_FAMILY="{{ OS_FAMILY }}"
+ARG PLATFORM="{{ PLATFORM }}"
+ARG v8_version="default"
+ARG v8_update_headers="no"
+ARG ramp_version="master"
+{% if OS_FAMILY == "ubuntu" %}
+ARG archsuffix="Linux-ubuntu${OS_VERSION}-${PLATFORM}"
+{% elif OS_FAMILY == "debian" %}
+ARG archsuffix="Linux-${OS_VERSION}-${PLATFORM}"
+{% elif OS_FAMILY == "amazonlinux" %}
+ARG archsuffix="Linux-amzn${OS_VERSION}-${PLATFORM}"
+{% else %}
+ARG archsuffix="Linux-rhel${OS_VERSION}-${PLATFORM}"
+{% endif %}
+
+FROM ${OS_FAMILY}:${OS_VERSION}
+
+ARG REDIS_VERSION
+ARG OS_VERSION
+ARG OS_FAMILY
+ARG PLATFORM
+ARG v8_version
+ARG v8_update_headers
+ARG ramp_version
+ARG AWS_ACCESS_KEY
+ARG AWS_SECRET_KEY
+ARG archsuffix
+ARG PUBLISH
+
+COPY . /build
+
+SHELL ["/bin/bash", "-l", "-c"]

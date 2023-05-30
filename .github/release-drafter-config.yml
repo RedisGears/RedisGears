@@ -33,7 +33,10 @@ categories:
       - 'bug'
       - 'BUG'
   - title: '🧰 Maintenance'
-    label: 'maintenance'
+    labels: 
+      - 'maintenance'
+      - 'documentation'
+      - 'docs'
 change-template: '- $TITLE (#$NUMBER)'
 exclude-labels:
   - 'skip-changelog'
@@ -46,4 +49,3 @@ template: |
   We'd like to thank all the contributors who worked on this release!
 
   $CONTRIBUTORS
-
