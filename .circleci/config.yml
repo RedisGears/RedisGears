@@ -38,6 +38,16 @@ commands:
               put -P release/redisgears2*.zip \
               s3://redismodules/redisgears/snapshots/
 
+  s3-mac-upload:
+    steps:
+     - run:
+          name: s3 upload
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
+              put -P target/release/redisgears2*.zip \
+                s3://redismodules/redisgears/snapshots/
+
   docker-generate:
     parameters:
       os_version:
@@ -118,13 +128,7 @@ commands:
           shell: /bin/bash -l -eo pipefail
           command: |
             target/release/packer
-      - run:
-          name: s3 upload
-          shell: /bin/bash -l -eo pipefail
-          command: |
-            s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
-              put -P target/release/redisgears2*.zip \
-                s3://redismodules/redisgears/snapshots/
+ 
 jobs:
 
   build-arm-platforms:
@@ -203,6 +207,7 @@ jobs:
       - build-macos:
           arch_suffix: "macos-catalina-x86_64"
           openssl_path: "/usr/local/opt/openssl@3"
+      - s3-mac-upload
 
   build-macos-arm64:
     resource_class: macos.m1.large.gen1
@@ -212,6 +217,7 @@ jobs:
       - build-macos:
           arch_suffix: "macos-monterey-arm64"
           openssl_path: "/opt/homebrew/opt/openssl@3"
+      - s3-mac-upload
 
   build-macos-x64-pr-only:
     resource_class: macos.x86.medium.gen2
@@ -221,7 +227,7 @@ jobs:
       - skip-if-no-pr
       - build-macos:
           arch_suffix: "macos-catalina-x86_64"
-          openssl_path: "/opt/local/opt/openssl@3"
+          openssl_path: "/usr/local/opt/openssl@3"
 
   build-macos-arm64-pr-only:
     resource_class: macos.m1.large.gen1
