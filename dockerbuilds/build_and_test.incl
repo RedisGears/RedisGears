@@ -9,7 +9,11 @@ ENV V8_UPDATE_HEADERS {{ V8_UPDATE_HEADERS }}
 
 WORKDIR /build
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
+{% if MSRV %}
+RUN sh install_rust.sh -y --default-toolchain={{ MSRV }}
+{% else %}
 RUN sh install_rust.sh -y
+{% endif %}
 RUN bash -l -c "$HOME/.cargo/bin/cargo build --verbose"
 RUN bash -l -c "$HOME/.cargo/bin/cargo build --release --verbose"
 

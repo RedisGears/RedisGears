@@ -14,6 +14,14 @@ on:
                 required: false
                 type: string
                 default: x86_64
+            publish:
+                required: false
+                type: boolean
+                default: false
+            msrv:
+                required: false
+                type: string
+                default: ""
             docker_arch:
                 required: false
                 type: string
@@ -53,7 +61,8 @@ jobs:
               --src ${{inputs.dockerfile}} \
               --os_family ${{inputs.os_family}} \
               --v8_version ${{inputs.v8_version}} \
-              --v8_update_headers ${{inputs.v8_update_headers}}
+              --v8_update_headers ${{inputs.v8_update_headers}} \
+              --msrv "${{inputs.msrv}}"
 
         - name: install qemu
           if: ${{inputs.arch == 'arm64' }}
@@ -80,6 +89,7 @@ jobs:
             docker images
 
         - name: extract
+          if: ${{inputs.publish == true}}
           id: extract
           uses: shrink/actions-docker-extract@v2
           with:
@@ -87,13 +97,16 @@ jobs:
               path: /build/target/release/.
 
         - name: Setup s3cmd action
+          if: ${{inputs.publish == true}}
           uses: s3-actions/s3cmd@v1.2.0
           with:
               provider: aws
               region: us-east-2
               access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
               secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
         - name: s3 upload
+          if: ${{inputs.publish == true}}
           run: |
             s3cmd  \
               put -P ${{steps.extract.outputs.destination}}/redisgears2*.zip \
