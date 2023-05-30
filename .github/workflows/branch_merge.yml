@@ -1,14 +1,22 @@
-name: Platform builds
+name: Branch Merge
 
 on:
-    pull_request:
-        types: [labeled]
+    push:
+        paths-ignore:
+            - '.circleci/**'
+            - 'docs/**'
+            - '*.md'
+        branches:
+            - main
+            - master
+            - '[0-9].[0-9].[0-9]'
+            - '[0-9].[0-9]'
+            - '[0-9].[0-9].[0-9]-rc[0-9]'
 
 jobs:
 
     jammy-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        if: ${{github.event.label.name == 'build-all'}}
         with:
             os_version: 22.04
             os_family: ubuntu
@@ -19,7 +27,6 @@ jobs:
 
     focal-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        if: ${{github.event.label.name == 'build-all'}}
         with:
             os_version: 20.04
             os_family: ubuntu
@@ -30,7 +37,6 @@ jobs:
 
     bionic-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        if: ${{github.event.label.name == 'build-all'}}
         with:
             os_version: 18.04
             os_family: ubuntu
@@ -41,7 +47,6 @@ jobs:
 
     bullseye-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        if: ${{github.event.label.name == 'build-all'}}
         with:
             os_version: bullseye
             os_family: debian
@@ -52,7 +57,6 @@ jobs:
 
     amazonlinux2-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        if: ${{github.event.label.name == 'build-all'}}
         with:
             os_version: 2
             os_family: amazonlinux
@@ -63,7 +67,6 @@ jobs:
 
     rhel7-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        if: ${{github.event.label.name == 'build-all'}}
         with:
             os_version: 7
             os_family: centos
@@ -74,7 +77,6 @@ jobs:
 
     rhel8-x86:
         uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
-        if: ${{github.event.label.name == 'build-all'}}
         with:
             os_version: 8
             os_family: rockylinux
