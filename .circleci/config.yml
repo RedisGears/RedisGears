@@ -2,16 +2,6 @@ version: 2.1
 
 commands:
 
-  skip-if-no-pr:
-    steps:
-      - run:
-          name: Determine PR target branch
-          command: |
-            if [[ -z "$CIRCLE_PULL_REQUEST" ]]; then
-              echo "This is not a pull request" && exit 1
-              circleci-agent step halt
-            fi
-
   checkout-all:
     steps:
       - checkout
@@ -182,7 +172,6 @@ jobs:
 
     steps:
       - checkout-all
-      - skip-if-no-pr
       - deb-install-requirements
       - docker-generate:
           os_version: <<parameters.os_version>>
@@ -260,6 +249,7 @@ on-integ-branch: &on-integ-branch
     tags:
       only:
         - v/^\d+\.\d+\.\d+-rc\d+*$/
+        - v/^\d+\.\d+\.\d+-m\d+*$/
 
 on-master: &on-master
   filters:
