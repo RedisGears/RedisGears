@@ -161,7 +161,7 @@ jobs:
       - s3-upload:
           publish: <<parameters.publish>>
           srcdir: release
- 
+
   build-macos-x64:
     resource_class: macos.x86.medium.gen2
     parameters:
