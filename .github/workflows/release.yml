@@ -24,7 +24,7 @@ jobs:
       - name: get files from s3
         run: |
           mkdir s3uploads/
-          s3cmd get s3://redismodules/redisgears/snapshots/redisgears2*${{ inputs.milestone }}* s3uploads/
+          s3cmd get s3://redismodules/redisgears/snapshots/redisgears*${{ inputs.milestone }}* s3uploads/
           ls s3uploads
 
       - name: rename
