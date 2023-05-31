@@ -136,10 +136,10 @@ redis.registerKeySpaceTrigger("test", "", function(client, data) {
     user = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['user']
     env.assertEqual(user, 'alice')
     env.expect('set', 'x', '1').equal(True)
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
     env.expect('set', 'cached:x', '1').equal(True)
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
@@ -159,13 +159,13 @@ redis.registerKeySpaceTrigger("test", "", async function(client, data) {
     env.assertEqual(user, 'alice')
 
     env.expect('set', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
+    runUntil(env, 1, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['num_failed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['last_error']
     env.assertContains('User does not have permissions on key', last_error)
 
     env.expect('set', 'cached:x', '1').equal(True)
-    runUntil(env, 2, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
-    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['last_error']
+    runUntil(env, 2, lambda: toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['num_failed'])
+    last_error = toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['last_error']
     env.assertContains(NO_PERMISSIONS_ERROR_MSG, last_error)
 
 @gearsTest()
