@@ -10,6 +10,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    name: Make a release
     steps:
       - name: Setup s3cmd action
         uses: s3-actions/s3cmd@v1.2.0
@@ -22,7 +23,8 @@ jobs:
       - name: get files from s3
         run: |
           mkdir s3uploads/
-          s3cmd get s3://redismodules/redisgears/snapshots/redisgears2_*${{ inputs.milestone }}* s3uploads/
+          s3cmd get s3://redismodules/redisgears/snapshots/redisgears2*${{ inputs.milestone }}* s3uploads/
+          ls s3uploads
 
       - name: rename
         shell: bash
@@ -32,6 +34,7 @@ jobs:
           for i in `ls`; do
             mv $i ${i/${{ inputs.milestone }}/${realver}}
           done
+          ls
 
       - name: upload to s3
         working-directory: s3uploads
