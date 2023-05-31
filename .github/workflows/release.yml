@@ -33,7 +33,7 @@ jobs:
         run: |
           realver=`echo ${{inputs.milestone}} | cut -d '-' -f 1-1`
           for i in `ls`; do
-            mv $i ${i/${{ inputs.milestone }}/${realver}}
+            mv $i ${i/v${{ inputs.milestone }}/${realver}}
           done
           ls
 
