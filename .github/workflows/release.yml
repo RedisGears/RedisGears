@@ -1,3 +1,5 @@
+name: Make a release
+
 on:
 
   workflow_dispatch:
@@ -10,7 +12,6 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    name: Make a release
     steps:
       - name: Setup s3cmd action
         uses: s3-actions/s3cmd@v1.2.0
