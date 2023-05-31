@@ -29,7 +29,7 @@ fn main() {
     println!("{:?}", redisgears_v8_plugin_so_path);
 
     let gears_snapeshot_file_name = format!(
-        "redisgears2.{}-{}-{}.{}.zip",
+        "redisgears.{}-{}-{}.{}.zip",
         BUILD_OS.unwrap(),
         BUILD_OS_NICK.unwrap(),
         BUILD_OS_ARCH.unwrap(),
