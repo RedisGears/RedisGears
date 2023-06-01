@@ -24,3 +24,9 @@ RUN ./run_tests.sh
 
 WORKDIR /build
 RUN bash -l -c "target/release/packer"
+WORKDIR /build/target/release
+{% if OS_FAMILY == "amazonlinux" %}
+RUN mv *.zip `ls *.zip|perl -i -pe 's/amazon2/amzn{{OS_VERSION}}/'`
+{% elif OS_FAMILY == "debian" and OS_VERSION == "11" %}
+RUN mv *.zip `ls *.zip|perl -i -pe 's/debian11/bullseye/'`
+{% endif %}
