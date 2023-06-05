@@ -437,10 +437,10 @@ redis.registerKeySpaceTrigger("consumer", "key", async function(client, data) {
 @gearsTest()
 def testRegisterSameStreamConsumerTwice(env):
     code = '''#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     return 0;
 });
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     return 0;
 });
     '''
@@ -449,7 +449,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
 @gearsTest()
 def testUpgradeStreamConsumerWithDifferentPrefix(env):
     code = '''#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "%s", 1, false, function(){
+redis.registerStreamTrigger("consumer", "%s", function(){
     return 0;
 });
     '''
@@ -473,12 +473,12 @@ def testWrongFlagValue(env):
     code = '''#!js api_version=1.0 name=lib
 redis.registerFunction('test', () => {return 1}, [1])
     '''
-    env.expect('TFUNCTION', 'LOAD', code).error().contains('wrong type of string value')
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unknown properties given: 0')
 
 @gearsTest()
 def testUnknownFlagValue(env):
     code = '''#!js api_version=1.0 name=lib
-redis.registerFunction('test', () => {return 1}, ["unknown"])
+redis.registerFunction('test', () => {return 1}, {flags:["unknown"]})
     '''
     env.expect('TFUNCTION', 'LOAD', code).error().contains('Unknow flag')
 

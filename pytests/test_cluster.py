@@ -35,10 +35,14 @@ redis.registerClusterFunction(remote_get, async(client, key) => {
     return res;
 });
 
-redis.registerAsyncFunction("test", async (async_client, key) => {
-    return await async_client.runOnKey(key, remote_get, key);
-},
-["raw-arguments"]);
+redis.registerAsyncFunction("test",
+    async (async_client, key) => {
+        return await async_client.runOnKey(key, remote_get, key);
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):
@@ -54,10 +58,14 @@ redis.registerClusterFunction(remote_get, async(client, key) => {
     throw 'Remote function failure';
 });
 
-redis.registerAsyncFunction("test", async (async_client, key) => {
-    return await async_client.runOnKey(key, remote_get, key);
-},
-["raw-arguments"]);
+redis.registerAsyncFunction("test",
+    async (async_client, key) => {
+        return await async_client.runOnKey(key, remote_get, key);
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):

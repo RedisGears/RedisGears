@@ -156,6 +156,7 @@ pub(crate) struct ConsumerData<T: StreamReaderRecord, C: StreamConsumer<T>> {
     pub(crate) window: usize, // represent the max amount of elements that can be processed at the same time
     pub(crate) trim: bool,
     pub(crate) on_record_acked: Option<Box<RecordAcknowledgeCallback>>,
+    pub(crate) description: Option<String>,
     phantom: std::marker::PhantomData<T>,
 }
 
@@ -180,6 +181,12 @@ where
         let old_trim = self.trim;
         self.trim = trim;
         old_trim
+    }
+
+    pub(crate) fn set_description(&mut self, description: Option<String>) -> Option<String> {
+        let old_description = self.description.take();
+        self.description = description;
+        old_description
     }
 
     pub(crate) fn get_or_create_consumed_stream(
@@ -457,6 +464,7 @@ where
         window: usize,
         trim: bool,
         on_record_acked: Option<Box<RecordAcknowledgeCallback>>,
+        description: Option<String>,
     ) -> Arc<RefCellWrapper<ConsumerData<T, C>>> {
         let consumer_data = Arc::new(RefCellWrapper {
             ref_cell: RefCell::new(ConsumerData {
@@ -467,6 +475,7 @@ where
                 window,
                 trim,
                 on_record_acked,
+                description,
             }),
         });
         self.consumers.push(Arc::downgrade(&consumer_data));

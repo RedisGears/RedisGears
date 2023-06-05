@@ -145,6 +145,7 @@ struct GearsFunctionCtx {
     func: Box<dyn FunctionCtxInterface>,
     flags: FunctionFlags,
     is_async: bool,
+    description: Option<String>,
 }
 
 impl GearsFunctionCtx {
@@ -152,11 +153,13 @@ impl GearsFunctionCtx {
         func: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
         is_async: bool,
+        description: Option<String>,
     ) -> GearsFunctionCtx {
         GearsFunctionCtx {
             func,
             flags,
             is_async,
+            description,
         }
     }
 }
@@ -170,9 +173,10 @@ struct GearsLibraryCtx {
     remote_functions: HashMap<String, RemoteFunctionCtx>,
     stream_consumers:
         HashMap<String, Arc<RefCellWrapper<ConsumerData<GearsStreamRecord, GearsStreamConsumer>>>>,
-    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool)>,
+    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool, Option<String>)>,
     notifications_consumers: HashMap<String, Arc<RefCell<NotificationConsumer>>>,
-    revert_notifications_consumers: Vec<(String, ConsumerKey, NotificationCallback)>,
+    revert_notifications_consumers:
+        Vec<(String, ConsumerKey, NotificationCallback, Option<String>)>,
     old_lib: Option<Arc<GearsLibrary>>,
 }
 
@@ -212,8 +216,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
-        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, false))
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, false, description),
+        )
     }
 
     fn register_async_function(
@@ -221,8 +229,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
-        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, true))
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, true, description),
+        )
     }
 
     fn register_remote_task(
@@ -251,6 +263,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
         if self.gears_lib_ctx.stream_consumers.contains_key(name) {
             return Err(GearsApiError::new(
@@ -278,11 +291,13 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             ));
             let old_window = o_c.set_window(window);
             let old_trim = o_c.set_trim(trim);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_stream_consumers.push((
                 name.to_string(),
                 old_ctx,
                 old_window,
                 old_trim,
+                old_description,
             ));
             Arc::clone(old_consumer)
         } else {
@@ -311,6 +326,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                         ],
                     );
                 })),
+                description,
             );
             if self.ctx.get_flags().contains(ContextFlags::MASTER) {
                 // trigger a key scan
@@ -330,6 +346,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
         if self
             .gears_lib_ctx
@@ -370,11 +387,11 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 );
             });
 
-        let consumer = if let Some(old_notification_consumer) = self
-            .gears_lib_ctx
-            .old_lib
-            .as_ref()
-            .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
+        let consumer: Arc<RefCell<NotificationConsumer>> = if let Some(old_notification_consumer) =
+            self.gears_lib_ctx
+                .old_lib
+                .as_ref()
+                .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
         {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
@@ -383,22 +400,28 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.to_vec()),
             };
             let old_key = o_c.set_key(new_key);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_notifications_consumers.push((
                 name.to_string(),
                 old_key,
                 old_consumer_callback,
+                old_description,
             ));
             Arc::clone(old_notification_consumer)
         } else {
             let globals = get_globals_mut();
 
             match key {
-                RegisteredKeys::Key(k) => globals
-                    .notifications_ctx
-                    .add_consumer_on_key(k, fire_event_callback),
-                RegisteredKeys::Prefix(p) => globals
-                    .notifications_ctx
-                    .add_consumer_on_prefix(p, fire_event_callback),
+                RegisteredKeys::Key(k) => globals.notifications_ctx.add_consumer_on_key(
+                    k,
+                    fire_event_callback,
+                    description,
+                ),
+                RegisteredKeys::Prefix(p) => globals.notifications_ctx.add_consumer_on_prefix(
+                    p,
+                    fire_event_callback,
+                    description,
+                ),
             }
         };
 
