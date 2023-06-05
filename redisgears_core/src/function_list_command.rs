@@ -6,7 +6,10 @@
 
 use redis_module::{Context, NextArg, RedisError, RedisResult, RedisString, RedisValue};
 use redis_module_macros::RedisValue;
-use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{
+    FunctionFlags, FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE, FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE,
+    FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE,
+};
 
 use std::sync::Arc;
 
@@ -41,6 +44,7 @@ struct StreamTriggersInfoVerbose1 {
     prefix: Vec<u8>,
     window: usize,
     trim: bool,
+    description: Option<String>,
 }
 
 /// A struct that allows to translate a [StreamTriggersInfo] into
@@ -57,6 +61,7 @@ enum StreamTriggersInfo {
 #[derive(RedisValue)]
 struct TriggersInfoVerbose1 {
     name: String,
+    description: Option<String>,
     num_trigger: usize,
     num_success: usize,
     num_failed: usize,
@@ -78,6 +83,7 @@ struct FunctionInfoVerbose {
     name: String,
     flags: RedisValue,
     is_async: bool,
+    description: Option<String>,
 }
 
 /// A struct that allows to translate a [RequestedFunctionInfo] into
@@ -128,13 +134,19 @@ impl From<LibraryInfo> for RedisValue {
 fn function_list_command_flags(flags: FunctionFlags) -> RedisValue {
     let mut res = Vec::new();
     if flags.contains(FunctionFlags::NO_WRITES) {
-        res.push(RedisValue::BulkString("no-writes".to_string()));
+        res.push(RedisValue::BulkString(
+            FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE.to_string(),
+        ));
     }
     if flags.contains(FunctionFlags::ALLOW_OOM) {
-        res.push(RedisValue::BulkString("allow-oom".to_string()));
+        res.push(RedisValue::BulkString(
+            FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE.to_string(),
+        ));
     }
     if flags.contains(FunctionFlags::RAW_ARGUMENTS) {
-        res.push(RedisValue::BulkString("raw-arguments".to_string()));
+        res.push(RedisValue::BulkString(
+            FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE.to_string(),
+        ));
     }
     RedisValue::Array(res)
 }
@@ -168,6 +180,7 @@ fn get_library_info(
                         name: name.to_owned(),
                         flags: function_list_command_flags(val.flags),
                         is_async: val.is_async,
+                        description: val.description.to_owned(),
                     })
                 }
             })
@@ -186,9 +199,11 @@ fn get_library_info(
                 if verbosity_level == 0 {
                     return TriggersInfo::Verbose0(name.to_owned());
                 }
-                let stats = val.borrow().get_stats();
+                let val = val.borrow();
+                let stats = val.get_stats();
                 TriggersInfo::Verbose1(TriggersInfoVerbose1 {
                     name: name.to_owned(),
+                    description: val.get_description(),
                     num_trigger: stats.num_trigger,
                     num_success: stats.num_success,
                     num_failed: stats.num_failed,
@@ -216,6 +231,7 @@ fn get_library_info(
                     prefix: val.prefix.clone(),
                     window: val.window,
                     trim: val.trim,
+                    description: val.description.clone(),
                 };
                 if verbosity_level == 1 {
                     return StreamTriggersInfo::Verbose1(stream_trigger_info);

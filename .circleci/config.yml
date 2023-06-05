@@ -25,7 +25,7 @@ commands:
           shell: /bin/bash -l -eo pipefail
           command: |
             s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
-              put -P release/redisgears2*.zip \
+              put -P release/redisgears*.zip \
               s3://redismodules/redisgears/snapshots/
 
   docker-generate:
@@ -136,8 +136,8 @@ on-integ-branch: &on-integ-branch
         - /^\d+\.\d+\.\d+.*$/
     tags:
       only:
-        - v/^\d+\.\d+\.\d+-rc\d+*$/
-        - v/^\d+\.\d+\.\d+-m\d+*$/
+        - /^v\d+\.\d+\.\d+.*-rc*$/
+        - /^v\d+\.\d+\.\d+.*-m*$/
 
 on-master: &on-master
   filters:
