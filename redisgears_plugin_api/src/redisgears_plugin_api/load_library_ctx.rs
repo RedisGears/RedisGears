@@ -11,6 +11,15 @@ use crate::redisgears_plugin_api::run_function_ctx::RemoteFunctionData;
 use crate::redisgears_plugin_api::stream_ctx::StreamCtxInterface;
 use crate::redisgears_plugin_api::GearsApiError;
 
+pub const FUNCTION_FLAG_NO_WRITES_GLOBAL_NAME: &str = "NO_WRITES";
+pub const FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE: &str = "no-writes";
+
+pub const FUNCTION_FLAG_ALLOW_OOM_GLOBAL_NAME: &str = "ALLOW_OOM";
+pub const FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE: &str = "allow-oom";
+
+pub const FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_NAME: &str = "RAW_ARGUMENTS";
+pub const FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE: &str = "raw-arguments";
+
 pub trait LibraryCtxInterface {
     fn load_library(
         &self,

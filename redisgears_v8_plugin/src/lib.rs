@@ -11,7 +11,13 @@ use v8_rs::v8::{
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
-    backend_ctx::BackendCtxInterfaceUninitialised, load_library_ctx::FunctionFlags, GearsApiError,
+    backend_ctx::BackendCtxInterfaceUninitialised,
+    load_library_ctx::{
+        FunctionFlags, FUNCTION_FLAG_ALLOW_OOM_GLOBAL_NAME, FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE,
+        FUNCTION_FLAG_NO_WRITES_GLOBAL_NAME, FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE,
+        FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_NAME, FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE,
+    },
+    GearsApiError,
 };
 
 mod v8_backend;
@@ -85,9 +91,11 @@ pub(crate) fn get_function_flags_from_strings(
         }
         let flag_str = flag.to_utf8().unwrap();
         match flag_str.as_str() {
-            "no-writes" => flags_val.insert(FunctionFlags::NO_WRITES),
-            "allow-oom" => flags_val.insert(FunctionFlags::ALLOW_OOM),
-            "raw-arguments" => flags_val.insert(FunctionFlags::RAW_ARGUMENTS),
+            FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE => flags_val.insert(FunctionFlags::NO_WRITES),
+            FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE => flags_val.insert(FunctionFlags::ALLOW_OOM),
+            FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE => {
+                flags_val.insert(FunctionFlags::RAW_ARGUMENTS)
+            }
             _ => return Err(format!("Unknow flag '{}' was given", flag_str.as_str())),
         }
     }
@@ -101,18 +109,30 @@ pub(crate) fn get_function_flags_globals<'isolate_scope, 'isolate>(
     let function_flags = isolate_scope.new_object();
     function_flags.set(
         ctx_scope,
-        &isolate_scope.new_string("NO_WRITES").to_value(),
-        &isolate_scope.new_string("no-writes").to_value(),
+        &isolate_scope
+            .new_string(FUNCTION_FLAG_NO_WRITES_GLOBAL_NAME)
+            .to_value(),
+        &isolate_scope
+            .new_string(FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE)
+            .to_value(),
     );
     function_flags.set(
         ctx_scope,
-        &isolate_scope.new_string("ALLOW_OOM").to_value(),
-        &isolate_scope.new_string("allow-oom").to_value(),
+        &isolate_scope
+            .new_string(FUNCTION_FLAG_ALLOW_OOM_GLOBAL_NAME)
+            .to_value(),
+        &isolate_scope
+            .new_string(FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE)
+            .to_value(),
     );
     function_flags.set(
         ctx_scope,
-        &isolate_scope.new_string("RAW_ARGUMENTS").to_value(),
-        &isolate_scope.new_string("raw-arguments").to_value(),
+        &isolate_scope
+            .new_string(FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_NAME)
+            .to_value(),
+        &isolate_scope
+            .new_string(FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE)
+            .to_value(),
     );
     function_flags.to_value()
 }

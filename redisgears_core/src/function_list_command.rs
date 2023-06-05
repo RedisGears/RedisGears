@@ -6,7 +6,10 @@
 
 use redis_module::{Context, NextArg, RedisError, RedisResult, RedisString, RedisValue};
 use redis_module_macros::RedisValue;
-use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
+use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{
+    FunctionFlags, FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE, FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE,
+    FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE,
+};
 
 use std::sync::Arc;
 
@@ -131,13 +134,19 @@ impl From<LibraryInfo> for RedisValue {
 fn function_list_command_flags(flags: FunctionFlags) -> RedisValue {
     let mut res = Vec::new();
     if flags.contains(FunctionFlags::NO_WRITES) {
-        res.push(RedisValue::BulkString("no-writes".to_string()));
+        res.push(RedisValue::BulkString(
+            FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE.to_string(),
+        ));
     }
     if flags.contains(FunctionFlags::ALLOW_OOM) {
-        res.push(RedisValue::BulkString("allow-oom".to_string()));
+        res.push(RedisValue::BulkString(
+            FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE.to_string(),
+        ));
     }
     if flags.contains(FunctionFlags::RAW_ARGUMENTS) {
-        res.push(RedisValue::BulkString("raw-arguments".to_string()));
+        res.push(RedisValue::BulkString(
+            FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE.to_string(),
+        ));
     }
     RedisValue::Array(res)
 }

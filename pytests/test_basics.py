@@ -892,7 +892,7 @@ redis.registerKeySpaceTrigger("test", "",
 );
     """
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Some function', res[0]['triggers'][0]['description'])
+    env.assertContains('Some function', res[0]['keyspace_triggers'][0]['description'])
 
 @gearsTest(useAof=True)
 def testStreamTriggerDescription(env):
