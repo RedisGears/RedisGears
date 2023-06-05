@@ -30,13 +30,32 @@ use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
 use crate::v8_script_ctx::V8ScriptCtx;
 use crate::v8_stream_ctx::V8StreamCtx;
-use crate::{get_exception_msg, get_exception_v8_value, get_function_flags};
+use crate::{
+    get_exception_msg, get_exception_v8_value, get_function_flags_from_strings,
+    get_function_flags_globals,
+};
 
 use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::sync::{Arc, Weak};
 
 const REGISTER_NOTIFICATIONS_CONSUMER: &str = "registerKeySpaceTrigger";
+const FUNCTION_FLAGS_GLOBAL_NAME: &str = "functionFlags";
+const V8_VERSION_GLOBAL_NAME: &str = "v8Version";
+const REGISTER_STREAM_TRIGGER_GLOBAL_NAME: &str = "registerStreamTrigger";
+const REGISTER_FUNCTION_GLOBAL_NAME: &str = "registerFunction";
+const REGISTER_ASYNC_FUNCTION_GLOBAL_NAME: &str = "registerAsyncFunction";
+const REGISTER_CLUSTER_FUNCTION_GLOBAL_NAME: &str = "registerClusterFunction";
+const LOG_GLOBAL_NAME: &str = "log";
+const REDISAI_GLOBAL_NAME: &str = "redisai";
+const REDIS_GLOBAL_NAME: &str = "redis";
+const BLOCK_GLOBAL_NAME: &str = "block";
+const RUN_ON_KEY_GLOBAL_NAME: &str = "runOnKey";
+const RUN_ON_SHARDS_GLOBAL_NAME: &str = "runOnShards";
+const CALL_GLOBAL_NAME: &str = "call";
+const CALL_RAW_GLOBAL_NAME: &str = "callRaw";
+const IS_BLOCK_ALLOW_GLOBAL_NAME: &str = "isBlockAllowed";
+const EXECUTE_ASYNC_GLOBAL_NAME: &str = "executeAsync";
 
 pub(crate) fn call_result_to_js_object<'isolate_scope, 'isolate>(
     isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
@@ -245,7 +264,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
     let script_ctx_ref = Arc::downgrade(script_ctx);
     bg_client.set_native_function(
         ctx_scope,
-        "block",
+        BLOCK_GLOBAL_NAME,
         new_native_function!(move |isolate_scope, ctx_scope, f: V8LocalValue| {
             if !f.is_function() {
                 return Err("Argument to 'block' must be a function".into());
@@ -289,7 +308,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
 
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_weak_ref = Arc::downgrade(script_ctx);
-    bg_client.set_native_function(ctx_scope, "runOnKey", new_native_function!(move |
+    bg_client.set_native_function(ctx_scope, RUN_ON_KEY_GLOBAL_NAME, new_native_function!(move |
         _isolate,
         ctx_scope,
         key: V8RedisCallArgs,
@@ -355,7 +374,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
 
     let redis_background_client_ref = Arc::clone(&redis_background_client);
     let script_ctx_weak_ref = Arc::downgrade(script_ctx);
-    bg_client.set_native_function(ctx_scope, "runOnShards", new_native_function!(move |
+    bg_client.set_native_function(ctx_scope, RUN_ON_SHARDS_GLOBAL_NAME, new_native_function!(move |
         _isolate,
         ctx_scope,
         remote_function_name: V8LocalUtf8,
@@ -522,13 +541,19 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
 ) -> V8LocalObject<'isolate_scope, 'isolate> {
     let client = isolate_scope.new_object();
 
-    add_call_function(ctx_scope, redis_client, &client, "call", true);
-    add_call_function(ctx_scope, redis_client, &client, "callRaw", false);
+    add_call_function(ctx_scope, redis_client, &client, CALL_GLOBAL_NAME, true);
+    add_call_function(
+        ctx_scope,
+        redis_client,
+        &client,
+        CALL_RAW_GLOBAL_NAME,
+        false,
+    );
 
     let redis_client_ref = Arc::clone(redis_client);
     client.set_native_function(
         ctx_scope,
-        "isBlockAllowed",
+        IS_BLOCK_ALLOW_GLOBAL_NAME,
         new_native_function!(move |isolate_scope, _ctx_scope| {
             let res = match redis_client_ref.borrow().allow_block.as_ref() {
                 Some(c) => *c,
@@ -544,7 +569,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
     let redisai_client = get_redisai_client(script_ctx, isolate_scope, ctx_scope, redis_client);
     client.set(
         ctx_scope,
-        &isolate_scope.new_string("redisai").to_value(),
+        &isolate_scope.new_string(REDISAI_GLOBAL_NAME).to_value(),
         &redisai_client,
     );
 
@@ -552,23 +577,27 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
     let redis_client_ref = Arc::clone(redis_client);
     client.set_native_function(
         ctx_scope,
-        "executeAsync",
+        EXECUTE_ASYNC_GLOBAL_NAME,
         new_native_function!(move |_isolate, ctx_scope, f: V8LocalValue| {
             let bg_redis_client = match redis_client_ref.borrow().get() {
                 Some(c) => c.get_background_redis_client(),
                 None => {
-                    return Err("Called 'executeAsync' out of context");
+                    return Err(format!(
+                        "Called '{EXECUTE_ASYNC_GLOBAL_NAME}' out of context"
+                    ));
                 }
             };
 
             if !f.is_async_function() {
-                return Err("First argument to 'executeAsync' must be an async function");
+                return Err(format!(
+                    "First argument to '{EXECUTE_ASYNC_GLOBAL_NAME}' must be an async function"
+                ));
             }
 
             let script_ctx_ref = match script_ctx_ref.upgrade() {
                 Some(s) => s,
                 None => {
-                    return Err("Use of invalid function context");
+                    return Err("Use of invalid function context".to_owned());
                 }
             };
             let mut f = f.persist();
@@ -884,6 +913,12 @@ pub(crate) fn initialize_globals_1_1(
     Ok(())
 }
 
+#[derive(NativeFunctionArgument)]
+struct NativeFunctionOptionalArgs<'isolate_scope, 'isolate> {
+    description: Option<String>,
+    flags: Option<V8LocalArray<'isolate_scope, 'isolate>>,
+}
+
 fn add_register_function_api(
     redis: &V8LocalObject,
     script_ctx: &Arc<V8ScriptCtx>,
@@ -891,9 +926,9 @@ fn add_register_function_api(
     is_async: bool,
 ) {
     let name = if !is_async {
-        "registerFunction"
+        REGISTER_FUNCTION_GLOBAL_NAME
     } else {
-        "registerAsyncFunction"
+        REGISTER_ASYNC_FUNCTION_GLOBAL_NAME
     };
     let script_ctx_ref = Arc::downgrade(script_ctx);
     redis.set_native_function(
@@ -904,25 +939,31 @@ fn add_register_function_api(
                   curr_ctx_scope,
                   function_name_utf8: V8LocalUtf8,
                   function_callback: V8LocalValue,
-                  function_flags: Option<V8LocalArray>| {
+                  optional_args: Option<NativeFunctionOptionalArgs>| {
                 if !function_callback.is_function() {
-                    return Err(
-                        "Second argument to 'registerFunction' must be a function".to_owned()
-                    );
+                    return Err(format!(
+                        "Second argument to '{REGISTER_FUNCTION_GLOBAL_NAME}' must be a function"
+                    ));
                 }
                 if !is_async && function_callback.is_async_function() {
-                    return Err(
-                        "'registerFunction' can not be used with async function, use 'registerAsyncFunction' instead.".to_owned()
-                    );
+                    return Err(format!(
+                        "'{REGISTER_FUNCTION_GLOBAL_NAME}' can not be used with async function, use '{REGISTER_ASYNC_FUNCTION_GLOBAL_NAME}' instead."
+                    ));
                 }
 
                 let persisted_function = function_callback.persist();
 
-                let function_flags = match function_flags {
-                    Some(function_flags) => get_function_flags(curr_ctx_scope, &function_flags)
-                        .map_err(|e| format!("Failed parsing function flags, {}", e))?,
-                    None => FunctionFlags::empty(),
-                };
+                let function_flags =
+                    optional_args
+                        .as_ref()
+                        .map_or(Ok(FunctionFlags::empty()), |v| {
+                            v.flags.as_ref().map_or(Ok(FunctionFlags::empty()), |v| {
+                                get_function_flags_from_strings(curr_ctx_scope, v)
+                                    .map_err(|e| format!("Failed parsing function flags, {}", e))
+                            })
+                        })?;
+
+                let description = optional_args.map_or(None, |v| v.description);
 
                 let load_ctx =
                     curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
@@ -956,12 +997,14 @@ fn add_register_function_api(
                         function_name_utf8.as_str(),
                         Box::new(f),
                         function_flags,
+                        description,
                     )
                 } else {
                     load_ctx.register_function(
                         function_name_utf8.as_str(),
                         Box::new(f),
                         function_flags,
+                        description,
                     )
                 };
                 if let Err(err) = res {
@@ -975,8 +1018,64 @@ fn add_register_function_api(
 
 #[allow(non_snake_case)]
 #[derive(NativeFunctionArgument)]
+struct StreamTriggerOptionalArgs {
+    description: Option<String>,
+    window: Option<i64>,
+    isStreamTrimmed: Option<bool>,
+}
+
+fn add_stream_trigger_api(
+    redis: &V8LocalObject,
+    script_ctx: &Arc<V8ScriptCtx>,
+    ctx_scope: &V8ContextScope,
+) {
+    let script_ctx_ref = Arc::downgrade(script_ctx);
+    redis.set_native_function(ctx_scope, REGISTER_STREAM_TRIGGER_GLOBAL_NAME, new_native_function!(move|
+        _isolate_scope,
+        curr_ctx_scope,
+        registration_name_utf8: V8LocalUtf8,
+        prefix: V8LocalValue,
+        function_callback: V8LocalValue,
+        optional_args: Option<StreamTriggerOptionalArgs>,
+    | {
+        if !function_callback.is_function() {
+            return Err(format!("The fifth argument to '{REGISTER_STREAM_TRIGGER_GLOBAL_NAME}' must be a function"));
+        }
+        let persisted_function = function_callback.persist();
+
+        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0).ok_or_else(|| "Called 'registerFunction' out of context".to_string())?;
+
+        let script_ctx_ref = script_ctx_ref.upgrade().ok_or_else(|| "Use of uninitialized script context".to_string())?;
+
+        let window = optional_args.as_ref().map_or(1, |v| v.window.as_ref().map_or(1, |v| *v));
+        if window < 1 {
+            return Err("window argument must be a positive number".into());
+        }
+        let trim = optional_args.as_ref().map_or(false, |v| v.isStreamTrimmed.as_ref().map_or(false, |v| *v));
+        let description = optional_args.map_or(None, |v| v.description);
+
+        let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
+        let res = if prefix.is_string() {
+            let prefix = prefix.to_utf8().unwrap();
+            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.as_str().as_bytes(), Box::new(v8_stream_ctx), window as usize, trim, description)
+        } else if prefix.is_array_buffer() {
+            let prefix = prefix.as_array_buffer();
+            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.data(), Box::new(v8_stream_ctx), window as usize, trim, description)
+        } else {
+            return Err(format!("Second argument to '{REGISTER_STREAM_TRIGGER_GLOBAL_NAME}' must be a String or ArrayBuffer representing the prefix"));
+        };
+        if let Err(err) = res {
+            return Err(err.get_msg().to_string());
+        }
+        Ok(None)
+    }));
+}
+
+#[allow(non_snake_case)]
+#[derive(NativeFunctionArgument)]
 struct NoficationConsumerOptionalArgs<'isolate_scope, 'isolate> {
     onTriggerFired: Option<V8LocalValue<'isolate_scope, 'isolate>>,
+    description: Option<String>,
 }
 
 fn add_register_notification_consumer_api(
@@ -998,14 +1097,16 @@ fn add_register_notification_consumer_api(
         }
         let persisted_function = function_callback.persist();
 
-        let on_trigger_fired = optional_args.map_or(Result::<_, String>::Ok(None), |v| {
-            v.onTriggerFired.map_or(Ok(None), |v|{
+        let on_trigger_fired = optional_args.as_ref().map_or(Result::<_, String>::Ok(None), |v| {
+            v.onTriggerFired.as_ref().map_or(Ok(None), |v|{
                 if !v.is_function() || v.is_async_function() {
                     return Err(format!("'onTriggerFired' argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a function"));
                 }
                 Ok(Some(v.persist()))
             })
         })?;
+
+        let description = optional_args.map_or(None, |v| v.description);
 
         let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0).ok_or_else(|| format!("Called '{REGISTER_NOTIFICATIONS_CONSUMER}' out of context"))?;
 
@@ -1015,10 +1116,10 @@ fn add_register_notification_consumer_api(
 
         let res = if prefix.is_string() {
             let prefix = prefix.to_utf8().unwrap();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx))
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.as_str().as_bytes()), Box::new(v8_notification_ctx), description)
         } else if prefix.is_array_buffer() {
             let prefix = prefix.as_array_buffer();
-            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx))
+            load_ctx.register_key_space_notification_consumer(registration_name_utf8.as_str(), RegisteredKeys::Prefix(prefix.data()), Box::new(v8_notification_ctx, ), description)
         } else {
             return Err(format!("Second argument to '{REGISTER_NOTIFICATIONS_CONSUMER}' must be a string or ArrayBuffer representing the prefix"));
         };
@@ -1063,49 +1164,7 @@ pub(crate) fn initialize_globals_1_0(
         }
     }
 
-    let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set_native_function(ctx_scope, "registerStreamTrigger", new_native_function!(move|
-        _isolate_scope,
-        curr_ctx_scope,
-        registration_name_utf8: V8LocalUtf8,
-        prefix: V8LocalValue,
-        window: i64,
-        trim: bool,
-        function_callback: V8LocalValue,
-    | {
-        if !function_callback.is_function() {
-            return Err("The fifth argument to 'registerStreamTrigger' must be a function".into());
-        }
-        let persisted_function = function_callback.persist();
-
-        let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
-        if load_ctx.is_none() {
-            return Err("Called 'registerFunction' out of context".into());
-        }
-        let load_ctx = load_ctx.unwrap();
-
-        let script_ctx_ref = match script_ctx_ref.upgrade() {
-            Some(s) => s,
-            None => {
-                return Err("Use of uninitialized script context".into());
-            }
-        };
-
-        let v8_stream_ctx = V8StreamCtx::new(persisted_function, &script_ctx_ref, function_callback.is_async_function());
-        let res = if prefix.is_string() {
-            let prefix = prefix.to_utf8().unwrap();
-            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.as_str().as_bytes(), Box::new(v8_stream_ctx), window as usize, trim)
-        } else if prefix.is_array_buffer() {
-            let prefix = prefix.as_array_buffer();
-            load_ctx.register_stream_consumer(registration_name_utf8.as_str(), prefix.data(), Box::new(v8_stream_ctx), window as usize, trim)
-        } else {
-            return Err("Second argument to 'registerStreamTrigger' must be a String or ArrayBuffer representing the prefix".into());
-        };
-        if let Err(err) = res {
-            return Err(err.get_msg().to_string());
-        }
-        Ok(None)
-    }));
+    add_stream_trigger_api(redis, script_ctx, ctx_scope);
 
     add_register_notification_consumer_api(redis, script_ctx, ctx_scope);
 
@@ -1115,14 +1174,14 @@ pub(crate) fn initialize_globals_1_0(
     add_register_function_api(redis, script_ctx, ctx_scope, true);
 
     let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis.set_native_function(ctx_scope, "registerClusterFunction", new_native_function!(move|
+    redis.set_native_function(ctx_scope, REGISTER_CLUSTER_FUNCTION_GLOBAL_NAME, new_native_function!(move|
         _isolate_scope,
         curr_ctx_scope,
         function_name_utf8: V8LocalUtf8,
         function_callback: V8LocalValue,
     | {
         if !function_callback.is_function() {
-            return Err("Second argument to 'registerClusterFunction' must be a function".into());
+            return Err(format!("Second argument to '{REGISTER_CLUSTER_FUNCTION_GLOBAL_NAME}' must be a function"));
         }
 
         if !function_callback.is_async_function() {
@@ -1131,7 +1190,7 @@ pub(crate) fn initialize_globals_1_0(
 
         let load_ctx = curr_ctx_scope.get_private_data_mut::<&mut dyn LoadLibraryCtxInterface, _>(0);
         if load_ctx.is_none() {
-            return Err("Called 'registerClusterFunction' out of context".into());
+            return Err(format!("Called '{REGISTER_CLUSTER_FUNCTION_GLOBAL_NAME}' out of context"));
         }
 
         let mut persisted_function = function_callback.persist();
@@ -1277,7 +1336,7 @@ pub(crate) fn initialize_globals_1_0(
 
     redis.set_native_function(
         ctx_scope,
-        "v8Version",
+        V8_VERSION_GLOBAL_NAME,
         new_native_function!(move |isolate_scope, _curr_ctx_scope| {
             let v = v8_version();
             let v_v8_str = isolate_scope.new_string(v);
@@ -1285,10 +1344,20 @@ pub(crate) fn initialize_globals_1_0(
         }),
     );
 
+    // add function flags
+    let function_flags = get_function_flags_globals(ctx_scope, isolate_scope);
+    redis.set(
+        ctx_scope,
+        &isolate_scope
+            .new_string(FUNCTION_FLAGS_GLOBAL_NAME)
+            .to_value(),
+        &function_flags,
+    );
+
     let script_ctx_ref = Arc::downgrade(script_ctx);
     redis.set_native_function(
         ctx_scope,
-        "log",
+        LOG_GLOBAL_NAME,
         new_native_function!(move |_isolate, _curr_ctx_scope, msg: V8LocalUtf8| {
             match script_ctx_ref.upgrade() {
                 Some(s) => s.compiled_library_api.log_info(msg.as_str()),
@@ -1301,13 +1370,13 @@ pub(crate) fn initialize_globals_1_0(
     let redis_ai = get_redisai_api(script_ctx, isolate_scope, ctx_scope);
     redis.set(
         ctx_scope,
-        &isolate_scope.new_string("redisai").to_value(),
+        &isolate_scope.new_string(REDISAI_GLOBAL_NAME).to_value(),
         &redis_ai,
     );
 
     globals.set(
         ctx_scope,
-        &isolate_scope.new_string("redis").to_value(),
+        &isolate_scope.new_string(REDIS_GLOBAL_NAME).to_value(),
         &redis.to_value(),
     );
 
