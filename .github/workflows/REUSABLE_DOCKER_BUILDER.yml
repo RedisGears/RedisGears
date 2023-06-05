@@ -109,5 +109,5 @@ jobs:
           if: ${{inputs.publish == true}}
           run: |
             s3cmd  \
-              put -P ${{steps.extract.outputs.destination}}/redisgears2*.zip \
+              put -P ${{steps.extract.outputs.destination}}/redisgears*.zip \
               s3://redismodules/redisgears/snapshots/
