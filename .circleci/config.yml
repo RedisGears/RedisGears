@@ -136,8 +136,8 @@ on-integ-branch: &on-integ-branch
         - /^\d+\.\d+\.\d+.*$/
     tags:
       only:
-        - v/^\d+\.\d+\.\d+-rc\d+*$/
-        - v/^\d+\.\d+\.\d+-m\d+*$/
+        - /^v\d+\.\d+\.\d+.*-rc*$/
+        - /^v\d+\.\d+\.\d+.*-m*$/
 
 on-master: &on-master
   filters:
