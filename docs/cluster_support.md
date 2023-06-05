@@ -42,7 +42,7 @@ First the function executes a remote function on all shards that returns the amo
 The full code will look like this:
 
 ```js
-#!js name=lib api_version=1.1
+#!js name=lib api_version=1.0
 
 redis.registerClusterFunction("dbsize", async(client) => {
     return client.block((client) => {
@@ -68,7 +68,7 @@ redis.registerAsyncFunction("test", async(async_client) => {
 It is possible to pass arguments to the remote function. The arguments will be given to the remote function after the `async_client`. The following example shows how to get a value of a key from any shard in the cluster:
 
 ```js
-#!js name=foo api_version=1.1
+#!js name=foo api_version=1.0
 const remote_get = "remote_get";
 
 redis.registerClusterFunction(remote_get, async(client, key) => {
