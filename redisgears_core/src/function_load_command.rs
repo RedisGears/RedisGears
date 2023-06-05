@@ -63,19 +63,23 @@ pub(crate) fn function_load_revert(
     libraries: &mut HashMap<String, Arc<GearsLibrary>>,
 ) {
     if let Some(old_lib) = gears_library.old_lib.take() {
-        for (name, old_ctx, old_window, old_trim) in gears_library.revert_stream_consumers {
+        for (name, old_ctx, old_window, old_trim, description) in
+            gears_library.revert_stream_consumers
+        {
             let stream_data = gears_library.stream_consumers.get(&name).unwrap();
             let mut s_d = stream_data.ref_cell.borrow_mut();
             s_d.set_consumer(old_ctx);
             s_d.set_window(old_window);
             s_d.set_trim(old_trim);
+            s_d.set_description(description);
         }
 
-        for (name, key, callback) in gears_library.revert_notifications_consumers {
+        for (name, key, callback, description) in gears_library.revert_notifications_consumers {
             let notification_consumer = gears_library.notifications_consumers.get(&name).unwrap();
             let mut s_d = notification_consumer.borrow_mut();
             s_d.set_key(key);
             let _ = s_d.set_callback(callback);
+            s_d.set_description(description);
         }
 
         libraries.insert(gears_library.meta_data.name.clone(), old_lib);
