@@ -77,7 +77,7 @@ redis.registerAsyncFunction("test",
             continue
         failTest(env, 'error was not raised by command')
 
-@gearsTest(cluster=True)
+@gearsTest(cluster=True, gearsConfig={"remote-task-default-timeout": "10000"})
 def testRecursiveLookup(env, cluster_conn):
     """#!js api_version=1.0 name=foo
 const recursive_get = "recursive_get";
