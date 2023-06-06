@@ -385,7 +385,8 @@ impl V8Backend {
                 panic!("{}", msg);
             }),
             1,
-        );
+        )
+        .expect("Failed loading V8");
     }
 
     fn spone_background_maintenance_thread(&self) {
