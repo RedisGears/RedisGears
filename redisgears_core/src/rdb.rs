@@ -47,7 +47,7 @@ pub(crate) static REDIS_GEARS_TYPE: RedisType = RedisType::new(
 
 extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     let libraries = get_libraries();
-    if libraries.len() == 0 {
+    if libraries.is_empty() {
         // no libraries to save, we will save nothing to the RDB so it will be
         // possible to load the RDB even without loading RedisGears.
         return;
