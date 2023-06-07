@@ -143,6 +143,11 @@ fn main() {
             "rhel{}",
             os_ver.split('.').next().expect("Failed getting os version")
         ),
+        "amazon" => format!(
+            "amzn{}",
+            os_ver.split('.').next().expect("Failed getting os version")
+        ),
+        "debian" if os_ver == "11" => "bullseye".to_owned(),
         _ => format!("{os_type}{os_ver}"),
     };
     println!("cargo:rustc-env=BUILD_OS_NICK={}", os_nick);

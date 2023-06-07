@@ -10,4 +10,4 @@ dbconfig:
 clientconfig:
   benchmark_type: "read-only"
   tool: memtier_benchmark
-  arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --command 'TFCALL lib foo 0'"
+  arguments: "--test-time 180 -c 32 -t 1 --hide-histogram --command 'TFCALLASYNC lib foo 0'"
