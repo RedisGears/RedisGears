@@ -29,7 +29,8 @@ pub(crate) static REDIS_GEARS_TYPE: RedisType = RedisType::new(
 
         // Auxiliary data (v2)
         aux_load: Some(aux_load),
-        aux_save: Some(aux_save),
+        aux_save: None,
+        aux_save2: Some(aux_save),
         aux_save_triggers: REDISMODULE_AUX_BEFORE_RDB as i32,
 
         free_effort: None,
@@ -46,6 +47,11 @@ pub(crate) static REDIS_GEARS_TYPE: RedisType = RedisType::new(
 
 extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     let libraries = get_libraries();
+    if libraries.is_empty() {
+        // no libraries to save, we will save nothing to the RDB so it will be
+        // possible to load the RDB even without loading RedisGears.
+        return;
+    }
 
     // save the number of libraries
     raw::save_unsigned(rdb, libraries.len() as u64);
