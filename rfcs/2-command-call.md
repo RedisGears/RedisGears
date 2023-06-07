@@ -1,4 +1,4 @@
-- RedisGears Issue: []()
+- RedisGears Issue: [RedisGears/RedisGears#937](https://github.com/RedisGears/RedisGears/pull/937)
 
 
 # RedisGears Async Command Invocation
