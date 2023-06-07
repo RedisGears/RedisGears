@@ -72,14 +72,14 @@ redis.registerFunction("test", "bar"); // this will fail
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithStreamConsumer(env):
     """#!js api_version=1.0 name=foo
-redis.registerStreamTrigger("consumer", "stream", 1, false, async function(c){
+redis.registerStreamTrigger("consumer", "stream", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
     """
     script = '''#!js api_version=1.0 name=foo
-redis.registerStreamTrigger("consumer", "stream", 1, false, async function(c){
+redis.registerStreamTrigger("consumer", "stream", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
@@ -163,7 +163,9 @@ redis.registerAsyncFunction("async_set_continue",
             set_failed = reject
         })
     },
-    ["allow-oom"]
+    {
+        flags: [redis.functionFlags.ALLOW_OOM]
+    }
 )
 
 redis.registerFunction("async_set_trigger", function(client, key, val){
@@ -191,14 +193,18 @@ redis.registerFunction("async_set_trigger", function(client, key, val){
 @gearsTest(withReplicas=True)
 def testRunOnReplica(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test1", function(client){
-    return 1;
-});
+redis.registerFunction("test1", 
+    function(client){
+        return 1;
+    });
 
-redis.registerFunction("test2", function(client){
-    return 1;
-},
-['no-writes']);
+    redis.registerFunction("test2", function(client){
+        return 1;
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES],
+    }
+);
     """
     replica = env.getSlaveConnection()
     env.expect('WAIT', '1', '7000').equal(1)
@@ -214,10 +220,14 @@ redis.registerFunction("test2", function(client){
 @gearsTest(withReplicas=True)
 def testFunctionDelReplicatedToReplica(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", function(client){
-    return 1;
-},
-['no-writes']);
+redis.registerFunction("test",
+    function(client){
+        return 1;
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES]
+    }
+);
     """
     replica = env.getSlaveConnection()
     res = replica.execute_command('TFCALL', 'test', '0')
@@ -233,10 +243,14 @@ redis.registerFunction("test", function(client){
 @gearsTest()
 def testNoWritesFlag(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("my_set", function(client, key, val){
-    return client.call('set', key, val);
-},
-['no-writes']);
+redis.registerFunction("my_set",
+    function(client, key, val){
+        return client.call('set', key, val);
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES]
+    }
+);
     """
     env.expect('TFCALL', 'my_set', '1', 'foo', 'bar').error().contains('was called while write is not allowed')
 
@@ -258,7 +272,9 @@ redis.registerAsyncFunction("async_set_continue",
             set_failed = reject
         })
     },
-    ["no-writes"]
+    {
+        flags: [redis.functionFlags.NO_WRITES]
+    }
 )
 
 redis.registerFunction("async_set_trigger", function(client, key, val){
@@ -333,9 +349,14 @@ while(true);
 @gearsTest()
 def testTimeoutOnStream(env):
     """#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "stream", 1, true, function(){
-    while(true);
-})
+redis.registerStreamTrigger("consumer", "stream",
+    function(){
+        while(true);
+    },
+    {
+        isStreamTrimmed: true
+    }
+);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
@@ -345,11 +366,16 @@ redis.registerStreamTrigger("consumer", "stream", 1, true, function(){
 @gearsTest()
 def testTimeoutOnStreamAsync(env):
     """#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "stream", 1, true, async function(c){
-    c.block(function(){
-        while(true);
-    })
-})
+redis.registerStreamTrigger("consumer", "stream",
+    async function(c){
+        c.block(function(){
+            while(true);
+        })
+    },
+    {
+        isStreamTrimmed: true,
+    }
+);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
@@ -367,7 +393,7 @@ redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['triggers'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnNotificationConsumerAsync(env):
@@ -380,9 +406,9 @@ redis.registerKeySpaceTrigger("consumer", "", async function(client, data) {
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['num_failed'])
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['triggers'][0]['last_error'])
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest(v8MaxMemory=20 * 1024 * 1024)
 def testV8OOM(env):
@@ -406,8 +432,6 @@ redis.registerKeySpaceTrigger("consumer", "", function(client, data){
 redis.registerStreamTrigger(
     "consumer", // consumer name
     "stream", // streams prefix
-    1, // window
-    false, // trim stream
     function(c, data) {
         return;
     }
@@ -421,7 +445,7 @@ redis.registerStreamTrigger(
 
     # make sure JS code is not running on key space notifications
     env.expect('set', 'x', '1').equal(True)
-    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['triggers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['keyspace_triggers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
 
     # make sure JS code is not running to process stream data
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
@@ -584,10 +608,9 @@ redis.registerFunction("test", function(){
          'pending_jobs': 0,\
          'functions': ['test'],\
          'user': 'default',\
-         'triggers': [],\
+         'keyspace_triggers': [],\
          'api_version': '1.0',\
-         'stream_triggers': [],\
-         'gears_box_info': None\
+         'stream_triggers': []\
         }\
     ])
 
@@ -636,10 +659,14 @@ redis.registerFunction("test", (c) => {return c.isBlockAllowed()});
 @gearsTest(decodeResponses=False)
 def testRawArguments(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("my_set", (c, key, val) => {
-    return c.call("set", key, val);
-},
-["raw-arguments"]);
+redis.registerFunction("my_set",
+    (c, key, val) => {
+        return c.call("set", key, val);
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('TFCALL', 'my_set', '1', "x", "1").equal(b'OK')
     env.expect('get', 'x').equal(b'1')
@@ -649,12 +676,16 @@ redis.registerFunction("my_set", (c, key, val) => {
 @gearsTest(decodeResponses=False)
 def testRawArgumentsAsync(env):
     """#!js api_version=1.0 name=lib
-redis.registerAsyncFunction("my_set", async (c, key, val) => {
-    return c.block((c)=>{
-        return c.call("set", key, val);
-    });
-},
-["raw-arguments"]);
+redis.registerAsyncFunction("my_set", 
+    async (c, key, val) => {
+        return c.block((c)=>{
+            return c.call("set", key, val);
+        });
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('TFCALLASYNC', 'my_set', '1', "x", "1").equal(b'OK')
     env.expect('get', 'x').equal(b'1')
@@ -673,10 +704,14 @@ redis.registerFunction("test", () => {
 @gearsTest(decodeResponses=False)
 def testRawCall(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", (c, key) => {
-    return c.callRaw("get", key)
-},
-["raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return c.callRaw("get", key)
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('set', b'\xaa', b'\xaa').equal(True)
     env.expect('TFCALL', 'test', '1', b'\xaa').equal(b'\xaa')
@@ -684,10 +719,14 @@ redis.registerFunction("test", (c, key) => {
 @gearsTest()
 def testSimpleHgetall(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", (c, key) => {
-    return c.call("hgetall", key)
-},
-["raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return c.call("hgetall", key)
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('hset', 'k', 'f', 'v').equal(True)
     env.expect('TFCALL', 'test', '1', 'k').equal(['f', 'v'])
@@ -696,10 +735,14 @@ redis.registerFunction("test", (c, key) => {
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHashRaiseError(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", (c, key) => {
-    return c.call("hgetall", key)
-},
-["raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return c.call("hgetall", key)
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('hset', b'\xaa', b'foo', b'\xaa').equal(True)
     env.expect('TFCALL', 'test', '1', b'\xaa').error().contains('Could not decode value as string')
@@ -707,10 +750,14 @@ redis.registerFunction("test", (c, key) => {
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHash(env):
     """#!js api_version=1.0 name=lib
-redis.registerFunction("test", (c, key) => {
-    return typeof Object.keys(c.callRaw("hgetall", key))[0];
-},
-["raw-arguments"]);
+redis.registerFunction("test",
+    (c, key) => {
+        return typeof Object.keys(c.callRaw("hgetall", key))[0];
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
     env.expect('TFCALL', 'test', '1', b'\xaa').error().contains('Binary map key is not supported')
@@ -718,12 +765,16 @@ redis.registerFunction("test", (c, key) => {
 @gearsTest()
 def testFunctionListWithLibraryOption(env):
     code = """#!js api_version=1.0 name=lib
-redis.registerFunction("test", (c, key) => {
-    return typeof Object.keys(c.callRaw("hgetall", key))[0];
-},
-["raw-arguments", "allow-oom", "raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return typeof Object.keys(c.callRaw("hgetall", key))[0];
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS, redis.functionFlags.ALLOW_OOM]
+    }
+);
 
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     num_events++;
 })
 
@@ -812,3 +863,48 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
     env.expect('GET', 'notification').equal('1')
     env.expect('SET', 'x', '2').equal(True)
     env.expect('GET', 'notification').equal('2')
+
+@gearsTest(useAof=True)
+def testFunctionDescription(env):
+    """#!js api_version=1.0 name=lib
+redis.registerFunction("test", 
+    () => {
+        return "foo";
+    },
+    {
+        description: "Some function",
+    }
+);
+    """
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Some function', res[0]['functions'][0]['description'])
+
+@gearsTest(useAof=True)
+def testTriggerDescription(env):
+    """#!js api_version=1.0 name=lib
+redis.registerKeySpaceTrigger("test", "",
+    () => {
+        return "foo";
+    },
+    {
+        description: "Some function",
+    }
+);
+    """
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Some function', res[0]['keyspace_triggers'][0]['description'])
+
+@gearsTest(useAof=True)
+def testStreamTriggerDescription(env):
+    """#!js api_version=1.0 name=lib
+redis.registerStreamTrigger("test", "",
+    () => {
+        return "foo";
+    },
+    {
+        description: "Some function",
+    }
+);
+    """
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Some function', res[0]['stream_triggers'][0]['description'])

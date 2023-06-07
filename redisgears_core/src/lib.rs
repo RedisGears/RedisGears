@@ -11,7 +11,6 @@
 #![deny(missing_docs)]
 
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
-use redis_module::redisvalue::RedisValueKey;
 use redis_module::{CallResult, ContextFlags, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
@@ -67,7 +66,6 @@ use std::iter::Skip;
 use std::vec::IntoIter;
 
 use crate::compiled_library_api::CompiledLibraryInternals;
-use crate::gears_box::{gears_box_search, GearsBoxLibraryInfo};
 use crate::keys_notifications::{KeysNotificationsCtx, NotificationCallback, NotificationConsumer};
 use crate::stream_run_ctx::{GearsStreamConsumer, GearsStreamRecord};
 
@@ -84,7 +82,6 @@ mod config;
 mod function_del_command;
 mod function_list_command;
 mod function_load_command;
-mod gears_box;
 mod keys_notifications;
 mod keys_notifications_ctx;
 mod rdb;
@@ -149,6 +146,7 @@ struct GearsFunctionCtx {
     func: Box<dyn FunctionCtxInterface>,
     flags: FunctionFlags,
     is_async: bool,
+    description: Option<String>,
 }
 
 /// Information about specific function.
@@ -175,11 +173,13 @@ impl GearsFunctionCtx {
         func: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
         is_async: bool,
+        description: Option<String>,
     ) -> GearsFunctionCtx {
         GearsFunctionCtx {
             func,
             flags,
             is_async,
+            description,
         }
     }
 }
@@ -193,9 +193,10 @@ struct GearsLibraryCtx {
     remote_functions: HashMap<String, RemoteFunctionCtx>,
     stream_consumers:
         HashMap<String, Arc<RefCellWrapper<ConsumerData<GearsStreamRecord, GearsStreamConsumer>>>>,
-    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool)>,
+    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool, Option<String>)>,
     notifications_consumers: HashMap<String, Arc<RefCell<NotificationConsumer>>>,
-    revert_notifications_consumers: Vec<(String, ConsumerKey, NotificationCallback)>,
+    revert_notifications_consumers:
+        Vec<(String, ConsumerKey, NotificationCallback, Option<String>)>,
     old_lib: Option<Arc<GearsLibrary>>,
 }
 
@@ -208,7 +209,6 @@ struct GearsLibrary {
     gears_lib_ctx: GearsLibraryCtx,
     _lib_ctx: Box<dyn LibraryCtxInterface>,
     compile_lib_internals: Arc<CompiledLibraryInternals>,
-    gears_box_lib: Option<GearsBoxLibraryInfo>,
 }
 
 impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
@@ -242,8 +242,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
-        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, false))
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, false, description),
+        )
     }
 
     fn register_async_function(
@@ -251,8 +255,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
-        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, true))
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, true, description),
+        )
     }
 
     fn register_remote_task(
@@ -281,6 +289,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
         if self.gears_lib_ctx.stream_consumers.contains_key(name) {
             return Err(GearsApiError::new(
@@ -308,11 +317,13 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             ));
             let old_window = o_c.set_window(window);
             let old_trim = o_c.set_trim(trim);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_stream_consumers.push((
                 name.to_string(),
                 old_ctx,
                 old_window,
                 old_trim,
+                old_description,
             ));
             Arc::clone(old_consumer)
         } else {
@@ -341,6 +352,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                         ],
                     );
                 })),
+                description,
             );
             if self.ctx.get_flags().contains(ContextFlags::MASTER) {
                 // trigger a key scan
@@ -360,6 +372,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
         if self
             .gears_lib_ctx
@@ -400,11 +413,11 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 );
             });
 
-        let consumer = if let Some(old_notification_consumer) = self
-            .gears_lib_ctx
-            .old_lib
-            .as_ref()
-            .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
+        let consumer: Arc<RefCell<NotificationConsumer>> = if let Some(old_notification_consumer) =
+            self.gears_lib_ctx
+                .old_lib
+                .as_ref()
+                .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
         {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
@@ -413,22 +426,28 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.to_vec()),
             };
             let old_key = o_c.set_key(new_key);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_notifications_consumers.push((
                 name.to_string(),
                 old_key,
                 old_consumer_callback,
+                old_description,
             ));
             Arc::clone(old_notification_consumer)
         } else {
             let globals = get_globals_mut();
 
             match key {
-                RegisteredKeys::Key(k) => globals
-                    .notifications_ctx
-                    .add_consumer_on_key(k, fire_event_callback),
-                RegisteredKeys::Prefix(p) => globals
-                    .notifications_ctx
-                    .add_consumer_on_prefix(p, fire_event_callback),
+                RegisteredKeys::Key(k) => globals.notifications_ctx.add_consumer_on_key(
+                    k,
+                    fire_event_callback,
+                    description,
+                ),
+                RegisteredKeys::Prefix(p) => globals.notifications_ctx.add_consumer_on_prefix(
+                    p,
+                    fire_event_callback,
+                    description,
+                ),
             }
         };
 
@@ -888,42 +907,6 @@ fn function_debug_command(
         .map_err(|e| RedisError::String(e.get_msg().to_string()))
 }
 
-pub(crate) fn json_to_redis_value(val: serde_json::Value) -> RedisValue {
-    match val {
-        serde_json::Value::Bool(b) => RedisValue::Integer(if b { 1 } else { 0 }),
-        serde_json::Value::Number(n) => {
-            if n.is_i64() {
-                RedisValue::Integer(n.as_i64().unwrap())
-            } else {
-                RedisValue::BulkString(n.as_f64().unwrap().to_string())
-            }
-        }
-        serde_json::Value::String(s) => RedisValue::BulkString(s),
-        serde_json::Value::Null => RedisValue::Null,
-        serde_json::Value::Array(a) => {
-            let mut res = Vec::new();
-            for v in a {
-                res.push(json_to_redis_value(v));
-            }
-            RedisValue::Array(res)
-        }
-        serde_json::Value::Object(o) => RedisValue::Map(
-            o.into_iter()
-                .map(|(k, v)| (RedisValueKey::String(k), json_to_redis_value(v)))
-                .collect(),
-        ),
-    }
-}
-
-fn function_search_lib_command(
-    ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let search_token = args.next_arg()?.try_as_str()?;
-    let search_result = gears_box_search(ctx, search_token)?;
-    Ok(json_to_redis_value(search_result))
-}
-
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
     if ctx.get_flags().contains(ContextFlags::MASTER) {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
@@ -1112,27 +1095,6 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
         "list" => function_list_command::function_list_command(ctx, args),
         "delete" => function_del_command::function_del_command(ctx, args),
         "debug" => function_debug_command(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
-#[command(
-    {
-        name: "rg.box",
-        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -3,
-        key_spec: [],
-    }
-)]
-fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "search" => function_search_lib_command(ctx, args),
-        "install" => function_load_command::function_install_lib_command(ctx, args),
         _ => Err(RedisError::String(format!(
             "Unknown subcommand {}",
             sub_command

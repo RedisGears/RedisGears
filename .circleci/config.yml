@@ -2,16 +2,6 @@ version: 2.1
 
 commands:
 
-  skip-if-no-pr:
-    steps:
-      - run:
-          name: Determine PR target branch
-          command: |
-            if [[ -z "$CIRCLE_PULL_REQUEST" ]]; then
-              echo "This is not a pull request" && exit 1
-              circleci-agent step halt
-            fi
-
   checkout-all:
     steps:
       - checkout
@@ -35,7 +25,7 @@ commands:
           shell: /bin/bash -l -eo pipefail
           command: |
             s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
-              put -P release/redisgears2*.zip \
+              put -P release/redisgears*.zip \
               s3://redismodules/redisgears/snapshots/
 
   docker-generate:
@@ -111,7 +101,6 @@ jobs:
 
     steps:
       - checkout-all
-      - skip-if-no-pr
       - deb-install-requirements
       - docker-generate:
           os_version: <<parameters.os_version>>
@@ -147,7 +136,8 @@ on-integ-branch: &on-integ-branch
         - /^\d+\.\d+\.\d+.*$/
     tags:
       only:
-        - v/^\d+\.\d+\.\d+-rc\d+*$/
+        - /^v\d+\.\d+\.\d+.*-rc*$/
+        - /^v\d+\.\d+\.\d+.*-m*$/
 
 on-master: &on-master
   filters:

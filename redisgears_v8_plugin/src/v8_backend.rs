@@ -385,7 +385,8 @@ impl V8Backend {
                 panic!("{}", msg);
             }),
             1,
-        );
+        )
+        .expect("Failed loading V8");
     }
 
     fn spone_background_maintenance_thread(&self) {
@@ -425,7 +426,12 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
 
 impl BackendCtxInterfaceInitialised for V8Backend {
     fn get_version(&self) -> String {
-        format!("Version: {}, v8-rs: {}", v8_version(), v8_rs::GIT_SEMVER)
+        format!(
+            "Version: {}, v8-rs: {}, profile:{}",
+            v8_version(),
+            v8_rs::GIT_SEMVER,
+            v8_rs::PROFILE
+        )
     }
 
     fn compile_library(

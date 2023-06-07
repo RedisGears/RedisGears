@@ -42,7 +42,7 @@ An error, if the library does not exists or "OK" if the library was deleted succ
 
 **Example**
 ```bash
-> TFUNCTION DEL lib
+> TFUNCTION DELETE lib
 OK
 ```
 

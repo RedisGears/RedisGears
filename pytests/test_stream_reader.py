@@ -17,7 +17,7 @@ var num_events = 0;
 redis.registerFunction("num_events", function(){
     return num_events;
 })
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     num_events++;
 })
     """
@@ -42,7 +42,7 @@ redis.registerFunction("stats", function(){
         last_data_raw
     ];
 })
-redis.registerStreamTrigger("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
+redis.registerStreamTrigger("consumer", new Uint8Array([255]).buffer, function(c, data){
     last_key = data.stream_name;
     last_key_raw = data.stream_name_raw;
     last_data = data.record;
@@ -60,7 +60,7 @@ var num_events = 0;
 redis.registerFunction("num_events", function(){
     return num_events;
 })
-redis.registerStreamTrigger("consumer", "stream", 1, false, async function(){
+redis.registerStreamTrigger("consumer", "stream", async function(){
     num_events++;
 })
     """
@@ -77,9 +77,14 @@ var num_events = 0;
 redis.registerFunction("num_events", function(){
     return num_events;
 })
-redis.registerStreamTrigger("consumer", "stream", 1, true, function(){
-    num_events++;
-})
+redis.registerStreamTrigger("consumer", "stream", 
+    function(){
+        num_events++;
+    },
+    {
+        isStreamTrimmed: true
+    }
+);
     """
     env.expect('TFCALL', 'num_events', '0').equal(0)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
@@ -92,7 +97,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, true, function(){
 @gearsTest()
 def testStreamProccessError(env):
     """#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     throw 'Error';
 })
     """
@@ -117,11 +122,17 @@ redis.registerFunction("continue", function(){
     return "OK"
 })
 
-redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
-    return await new Promise((resolve, reject) => {
-        promises.push(resolve);
-    });
-})
+redis.registerStreamTrigger("consumer", "stream",
+    async function(){
+        return await new Promise((resolve, reject) => {
+            promises.push(resolve);
+        });
+    },
+    {
+        isStreamTrimmed: true,
+        window: 3
+    }
+);
     """
     env.expect('TFCALL', 'num_pending', '0').equal(0)
     env.expect('TFCALL', 'continue', '0').error().contains('No pending records')
@@ -177,11 +188,17 @@ redis.registerFunction("continue", function(){
     return id[0].toString() + "-" + id[1].toString()
 })
 
-redis.registerStreamTrigger("consumer", "stream", 3, true, async function(client, data){
-    return await new Promise((resolve, reject) => {
-        promises.push([data,resolve]);
-    });
-})
+redis.registerStreamTrigger("consumer", "stream",
+    async function(client, data){
+        return await new Promise((resolve, reject) => {
+            promises.push([data,resolve]);
+        });
+    },
+    {
+        isStreamTrimmed: true,
+        window: 3
+    }
+);
     """
     slave_conn = env.getSlaveConnection()
 
@@ -232,11 +249,17 @@ redis.registerFunction("continue", function(){
     return "OK"
 })
 
-redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
-    return await new Promise((resolve, reject) => {
-        promises.push(resolve);
-    });
-})
+redis.registerStreamTrigger("consumer", "stream",
+    async function(){
+        return await new Promise((resolve, reject) => {
+            promises.push(resolve);
+        });
+    },
+    {
+        isStreamTrimmed: true,
+        window: 3
+    }
+);
     """
     env.expect('TFCALL', 'num_pending', '0').equal(0)
     env.expect('TFCALL', 'continue', '0').error().contains('No pending records')
@@ -281,11 +304,17 @@ redis.registerFunction("continue", function(){
     return "OK"
 })
 
-redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
-    return await new Promise((resolve, reject) => {
-        promises.push(resolve);
-    });
-})
+redis.registerStreamTrigger("consumer", "stream",
+    async function(){
+        return await new Promise((resolve, reject) => {
+            promises.push(resolve);
+        });
+    },
+    {
+        isStreamTrimmed: true,
+        window: 3
+    }
+);
     """
     env.expect('TFCALL', 'num_pending', '0').equal(0)
     env.expect('TFCALL', 'continue', '0').error().contains('No pending records')
@@ -330,11 +359,17 @@ redis.registerFunction("continue_%s", function(){
     return "OK"
 })
 
-redis.registerStreamTrigger("consumer", "stream", 3, true, async function(){
-    return await new Promise((resolve, reject) => {
-        promises.push(resolve);
-    });
-})
+redis.registerStreamTrigger("consumer", "stream", 
+    async function(){
+        return await new Promise((resolve, reject) => {
+            promises.push(resolve);
+        });
+    },
+    {
+        isStreamTrimmed: true,
+        window: 3
+    }
+)
     """
     env.expect('TFUNCTION', 'LOAD', script % ('lib1', 'lib1', 'lib1')).equal('OK')
     env.expect('TFUNCTION', 'LOAD', script % ('lib2', 'lib2', 'lib2')).equal('OK')
@@ -387,9 +422,14 @@ redis.registerFunction("get_stream", function(){
     return name
 })
 
-redis.registerStreamTrigger("consumer", "stream", 1, true, async function(client, data){
-    streams.push(data.stream_name)
-})
+redis.registerStreamTrigger("consumer", "stream", 
+    async function(client, data){
+        streams.push(data.stream_name)
+    },
+    {
+        isStreamTrimmed: true,
+    }
+);
     """
 
     env.expect('TFCALL', 'get_stream', '0').error().contains('No streams')
@@ -407,7 +447,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, true, async function(client
 def testRDBSaveAndLoad(env):
     """#!js api_version=1.0 name=lib
 
-redis.registerStreamTrigger("consumer", "stream", 1, false, async function(client, data){
+redis.registerStreamTrigger("consumer", "stream", async function(client, data){
     redis.log(data.id);
 })
     """
@@ -429,7 +469,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, false, async function(clien
 def testCallingRedisCommandOnStreamConsumer(env):
     """#!js api_version=1.0 name=lib
 
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(client, data){
+redis.registerStreamTrigger("consumer", "stream", function(client, data){
     client.call('ping');
 })
     """
@@ -444,26 +484,35 @@ def testBecomeReplicaWhileProcessingData(env):
 var promise = null;
 var done = null;
 
-redis.registerAsyncFunction("continue_process", async function(){
-    if (promise == null) {
-        return "no data to processes";
+redis.registerAsyncFunction("continue_process", 
+    async function(){
+        if (promise == null) {
+            return "no data to processes";
+        }
+
+        var p = new Promise((resume, reject) => {
+            done = resume;
+        });
+        promise("continue");
+        promise = null;
+        return await p;
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES]
     }
+);
 
-    var p = new Promise((resume, reject) => {
-        done = resume;
-    });
-    promise("continue");
-    promise = null;
-    return await p;
-},
-['no-writes'])
-
-redis.registerStreamTrigger("consumer", "stream", 1, true, async function(client) {
-    await new Promise((resume, reject) => {
-        promise = resume;
-    });
-    done("OK");
-})
+redis.registerStreamTrigger("consumer", "stream",
+    async function(client) {
+        await new Promise((resume, reject) => {
+            promise = resume;
+        });
+        done("OK");
+    },
+    {
+        isStreamTrimmed: true
+    }
+)
     """
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
