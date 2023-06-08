@@ -385,6 +385,7 @@ impl V8Backend {
                 panic!("{}", msg);
             }),
             1,
+            None,
         )
         .expect("Failed loading V8");
     }
