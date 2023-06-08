@@ -250,7 +250,7 @@ workflows:
 
 
       - build-arm:
-          name: ARM CI
+          name: ARM CI <<matrix.os_version>>
           context: common
           <<: *on-pull-request
           matrix:
@@ -258,7 +258,7 @@ workflows:
               os_version: ["22.04"]
 
       - build-arm:
-          name: ARM Integration
+          name: ARM Integration <<matrix.os_version>>
           context: common
           <<: *on-integ-branch
           publish: "true"
@@ -278,7 +278,7 @@ nightly:
 
   jobs:
     - build-arm:
-      name: "Nightly build"
+      name: Nightly build <<matrix.os_version>> V8 <<matrix.v8_version>> Headers <<matrix.v8_update_headers>>
       context: common
       <<: *on-master
       matrix:
