@@ -101,7 +101,7 @@ redis.registerAsyncFunction('test2', async function(c1){
     env.expect('TFCALL', 'foo', 'test1', '0').error().contains('is not allowed on script mode')
     env.expect('TFCALLASYNC', 'foo', 'test2', '0').error().contains('is not allowed on script mode')
 
-@gearsTest()
+@gearsTest(gearsConfig={"v8-flags": "'--stack-size=50'"})
 def testJSStackOverflow(env):
     """#!js api_version=1.0 name=foo
 function test() {
@@ -111,11 +111,10 @@ redis.registerFunction('test', test);
     """
     env.expect('TFCALL', 'foo', 'test', '0').error().contains('Maximum call stack size exceeded')
 
-@gearsTest()
+@gearsTest(gearsConfig={"v8-flags": "'--stack-size=50'"})
 def testJSStackOverflowOnLoading(env):
     script = """#!js api_version=1.0 name=foo
 function test(i) {
-    redis.log(JSON.stringify(i))
     test(i+1);
 }
 test(1);
