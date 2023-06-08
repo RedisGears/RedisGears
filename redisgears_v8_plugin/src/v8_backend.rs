@@ -419,7 +419,6 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         } else {
             &flags
         };
-        println!("{flags}");
         unsafe {
             GLOBAL.backend_ctx = Some(backend_ctx);
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
