@@ -252,7 +252,7 @@ workflows:
       - build-arm:
           name: ARM CI
           context: common
-          <<: *on-integ-branch
+          <<: *on-pull-request
           matrix:
             parameters:
               os_version: ["22.04"]
