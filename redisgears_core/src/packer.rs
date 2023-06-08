@@ -12,7 +12,7 @@ pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 
 fn get_dylib_ext() -> &'static str {
-    if BUILD_OS == Some("macos") {
+    if BUILD_OS.as_ref().map(|v| v.to_lowercase()) == Some("macos".to_owned()) {
         "dylib"
     } else {
         "so"
