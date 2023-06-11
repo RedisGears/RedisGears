@@ -15,7 +15,7 @@ redis.registerFunction("test", function(){
     return 1
 })
     """
-    env.expect('TFCALL', 'foo', 'test', 0).equal(1)
+    env.expect('TFCALL', 'foo.test', 0).equal(1)
 
 @gearsTest()
 def testCommandInvocation(env):
@@ -24,7 +24,7 @@ redis.registerFunction("test", function(client){
     return client.call('ping')
 })
     """
-    env.expect('TFCALL', 'foo', 'test', 0).equal('PONG')
+    env.expect('TFCALL', 'foo.test', 0).equal('PONG')
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgrade(env):
@@ -38,9 +38,9 @@ redis.registerFunction("test", function(client){
     return 2
 })
     '''
-    env.expect('TFCALL', 'foo', 'test', 0).equal(1)
+    env.expect('TFCALL', 'foo.test', 0).equal(1)
     env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).equal('OK')
-    env.expect('TFCALL', 'foo', 'test', 0).equal(2)
+    env.expect('TFCALL', 'foo.test', 0).equal(2)
 
     # make sure isolate was released
     isolate_stats = toDictionary(env.cmd('TFUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
@@ -60,9 +60,9 @@ redis.registerFunction("test", function(client){
 })
 redis.registerFunction("test", "bar"); // this will fail
     '''
-    env.expect('TFCALL', 'foo', 'test', 0).equal(1)
+    env.expect('TFCALL', 'foo.test', 0).equal(1)
     env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains('must be a function')
-    env.expect('TFCALL', 'foo', 'test', 0).equal(1)
+    env.expect('TFCALL', 'foo.test', 0).equal(1)
 
     # make sure isolate was released
     isolate_stats = toDictionary(env.cmd('TFUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
@@ -132,7 +132,7 @@ redis.registerFunction("test", function(client){
     return client.call('get', 'x');
 })
     """
-    env.expect('TFCALL', 'foo', 'test', 0).equal(None)
+    env.expect('TFCALL', 'foo.test', 0).equal(None)
 
 @gearsTest()
 def testRedisOOM(env):
@@ -141,9 +141,9 @@ redis.registerFunction("set", function(client, key, val){
     return client.call('set', key, val);
 })
     """
-    env.expect('TFCALL', 'lib', 'set', '1', 'x', '1').equal('OK')
+    env.expect('TFCALL', 'lib.set', '1', 'x', '1').equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
-    env.expect('TFCALL', 'lib', 'set', '1', 'x', '1').error().contains('OOM can not run the function when out of memory')
+    env.expect('TFCALL', 'lib.set', '1', 'x', '1').error().contains('OOM can not run the function when out of memory')
 
 @gearsTest()
 def testRedisOOMOnAsyncFunction(env):
@@ -186,9 +186,9 @@ redis.registerFunction("async_set_trigger", function(client, key, val){
     return "OK";
 });
     """
-    env.expect('TFCALL', 'lib', 'async_set_trigger', '1', 'x', '1').equal('OK')
+    env.expect('TFCALL', 'lib.async_set_trigger', '1', 'x', '1').equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
-    env.expect('TFCALLASYNC', 'lib', 'async_set_continue', '0').error().contains('OOM Can not lock redis for write')
+    env.expect('TFCALLASYNC', 'lib.async_set_continue', '0').error().contains('OOM Can not lock redis for write')
 
 @gearsTest(withReplicas=True)
 def testRunOnReplica(env):
@@ -210,12 +210,12 @@ redis.registerFunction("test1",
     env.expect('WAIT', '1', '7000').equal(1)
 
     try:
-        replica.execute_command('TFCALL', 'lib', 'test1', '0')
+        replica.execute_command('TFCALL', 'lib.test1', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains('can not run a function that might perform writes on a replica', str(e))
 
-    env.assertEqual(1, replica.execute_command('TFCALL', 'lib', 'test2', '0'))
+    env.assertEqual(1, replica.execute_command('TFCALL', 'lib.test2', '0'))
 
 @gearsTest(withReplicas=True)
 def testFunctionDelReplicatedToReplica(env):
@@ -230,11 +230,11 @@ redis.registerFunction("test",
 );
     """
     replica = env.getSlaveConnection()
-    res = replica.execute_command('TFCALL', 'lib', 'test', '0')
+    res = replica.execute_command('TFCALL', 'lib.test', '0')
     env.expect('TFUNCTION', 'DELETE', 'lib').equal('OK')
     env.expect('WAIT', '1', '7000').equal(1)
     try:
-        replica.execute_command('TFCALL', 'lib', 'test', '0')
+        replica.execute_command('TFCALL', 'lib.test', '0')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains('Unknown library', str(e))
@@ -252,7 +252,7 @@ redis.registerFunction("my_set",
     }
 );
     """
-    env.expect('TFCALL', 'lib', 'my_set', '1', 'foo', 'bar').error().contains('was called while write is not allowed')
+    env.expect('TFCALL', 'lib.my_set', '1', 'foo', 'bar').error().contains('was called while write is not allowed')
 
 @gearsTest()
 def testBecomeReplicaWhenFunctionRunning(env):
@@ -295,9 +295,9 @@ redis.registerFunction("async_set_trigger", function(client, key, val){
     return "OK";
 });
     """
-    env.expect('TFCALL', 'lib', 'async_set_trigger', '1', 'x', '1').equal('OK')
+    env.expect('TFCALL', 'lib.async_set_trigger', '1', 'x', '1').equal('OK')
     env.expect('replicaof', '127.0.0.1', '33333')
-    env.expect('TFCALLASYNC', 'lib', 'async_set_continue', '0').error().contains('Can not lock redis for write on replica')
+    env.expect('TFCALLASYNC', 'lib.async_set_continue', '0').error().contains('Can not lock redis for write on replica')
     env.expect('replicaof', 'no', 'one')
 
 @gearsTest()
@@ -308,7 +308,7 @@ redis.registerFunction("test1", function(client){
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('TFCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('TFCALL', 'lib.test1', '0').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testAsyncScriptTimeout(env):
@@ -320,7 +320,7 @@ redis.registerAsyncFunction("test1", async function(client){
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('TFCALLASYNC', 'lib.test1', '0').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testTimeoutErrorNotCatchable(env):
@@ -336,7 +336,7 @@ redis.registerAsyncFunction("test1", async function(client){
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('TFCALLASYNC', 'lib.test1', '0').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testScriptLoadTimeout(env):
@@ -440,8 +440,8 @@ redis.registerStreamTrigger(
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '1000000000').equal('OK')
     env.expect('TFUNCTION', 'LOAD', code).equal('OK')
 
-    env.expect('TFCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
-    env.expect('TFCALL', 'lib', 'test', '0').error().contains('JS engine reached OOM state and can not run any more code')
+    env.expect('TFCALL', 'lib.test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('TFCALL', 'lib.test', '0').error().contains('JS engine reached OOM state and can not run any more code')
 
     # make sure JS code is not running on key space notifications
     env.expect('set', 'x', '1').equal(True)
@@ -457,7 +457,7 @@ redis.registerStreamTrigger(
     # delete the library and make sure we can run JS code again
     env.expect('TFUNCTION', 'DELETE', 'lib').equal('OK')
     env.expect('TFUNCTION', 'LOAD', code).equal('OK')
-    env.expect('TFCALL', 'lib', 'test', '0').equal('OK')
+    env.expect('TFCALL', 'lib.test', '0').equal('OK')
 
 @gearsTest()
 def testLibraryConfiguration(env):
@@ -467,7 +467,7 @@ redis.registerFunction("test1", function(){
 });
     """
     env.expect('TFUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
-    env.expect('TFCALL', 'lib', 'test1', '0').equal(['foo', 'bar'])
+    env.expect('TFCALL', 'lib.test1', '0').equal(['foo', 'bar'])
 
 @gearsTest()
 def testLibraryConfigurationPersistAfterLoading(env):
@@ -478,7 +478,7 @@ redis.registerFunction("test1", function(){
     """
     env.expect('TFUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
     env.expect('debug', 'reload').equal("OK")
-    env.expect('TFCALL', 'lib', 'test1', '0').equal(['foo', 'bar'])
+    env.expect('TFCALL', 'lib.test1', '0').equal(['foo', 'bar'])
 
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):
@@ -545,7 +545,7 @@ redis.registerFunction("test", function(client){
 });
     """
     env.expect('TFUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
-    env.expect('TFCALL', 'lib', 'test', '0').equal("OK")
+    env.expect('TFCALL', 'lib.test', '0').equal("OK")
 
 @gearsTest(enableGearsDebugCommands=True)
 def testResp3Types(env):
@@ -560,32 +560,32 @@ redis.registerFunction("debug_protocol", function(client, arg){
     # test resp3
     conn = Redis('localhost', port, protocol=3, decode_responses=True)
     
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'string'), 'Hello World')
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'integer'), 12345)
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'double'), 3.141)
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'null'), None)
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'set'), set([0, 1, 2]))
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'map'), {1: True, 2: False, 0: False})
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'txt:This is a verbatim\nstring')
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'true'), True)
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'false'), False)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'string'), 'Hello World')
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'integer'), 12345)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'double'), 3.141)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'null'), None)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'array'), [0, 1, 2])
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'set'), set([0, 1, 2]))
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'map'), {1: True, 2: False, 0: False})
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'verbatim'), 'txt:This is a verbatim\nstring')
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'true'), True)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'false'), False)
 
     # test resp2
     conn = env.getConnection()
 
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'string'), 'Hello World')
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'integer'), 12345)
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'double'), "3.141")
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'null'), None)
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
-    env.assertEqual(sorted(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'set')), sorted([0, 1, 2]))
-    env.assertEqual(sorted(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'map')), sorted([1, 1, 0, 0, 2, 0]))
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'This is a verbatim\nstring')
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'true'), True)
-    env.assertEqual(conn.execute_command('TFCALL', 'lib', 'debug_protocol', '0', 'false'), False)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'string'), 'Hello World')
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'integer'), 12345)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'double'), "3.141")
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'null'), None)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'array'), [0, 1, 2])
+    env.assertEqual(sorted(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'set')), sorted([0, 1, 2]))
+    env.assertEqual(sorted(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'map')), sorted([1, 1, 0, 0, 2, 0]))
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'verbatim'), 'This is a verbatim\nstring')
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'true'), True)
+    env.assertEqual(conn.execute_command('TFCALL', 'lib.debug_protocol', '0', 'false'), False)
 
 @gearsTest(enableGearsDebugCommands=True)
 def testFunctionListResp3(env):
@@ -621,7 +621,7 @@ redis.registerAsyncFunction("test", async() => {return 'test'});
     """
     conn = env.getConnection()
     p = conn.pipeline()
-    p.execute_command('TFCALLASYNC', 'lib', 'test', '0')
+    p.execute_command('TFCALLASYNC', 'lib.test', '0')
     try:
         p.execute()
         env.assertTrue(False, message='Except error on async function inside transaction')
@@ -635,7 +635,7 @@ redis.registerFunction("test", () => {return new Promise((resume, reject) => {})
     """
     conn = env.getConnection()
     p = conn.pipeline()
-    p.execute_command('TFCALL', 'lib', 'test', '0')
+    p.execute_command('TFCALL', 'lib.test', '0')
     try:
         p.execute()
         env.assertTrue(False, message='Except error on async function inside transaction')
@@ -647,12 +647,12 @@ def testAllowBlockAPI(env):
     """#!js api_version=1.0 name=lib
 redis.registerFunction("test", (c) => {return c.isBlockAllowed()});
     """
-    env.expect('TFCALL', 'lib', 'test', '0').equal(0)
-    env.expect('TFCALLASYNC', 'lib', 'test', '0').equal(1)
+    env.expect('TFCALL', 'lib.test', '0').equal(0)
+    env.expect('TFCALLASYNC', 'lib.test', '0').equal(1)
     conn = env.getConnection()
     p = conn.pipeline()
-    p.execute_command('TFCALL', 'lib', 'test', '0')
-    p.execute_command('TFCALLASYNC', 'lib', 'test', '0')
+    p.execute_command('TFCALL', 'lib.test', '0')
+    p.execute_command('TFCALLASYNC', 'lib.test', '0')
     res = p.execute()
     env.assertEqual(res, [0, 0])
 
@@ -668,9 +668,9 @@ redis.registerFunction("my_set",
     }
 );
     """
-    env.expect('TFCALL', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
+    env.expect('TFCALL', 'lib.my_set', '1', "x", "1").equal(b'OK')
     env.expect('get', 'x').equal(b'1')
-    env.expect('TFCALL', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
+    env.expect('TFCALL', 'lib.my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
     env.expect('get', b'\xaa').equal(b'\xaa')
 
 @gearsTest(decodeResponses=False)
@@ -687,9 +687,9 @@ redis.registerAsyncFunction("my_set",
     }
 );
     """
-    env.expect('TFCALLASYNC', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
+    env.expect('TFCALLASYNC', 'lib.my_set', '1', "x", "1").equal(b'OK')
     env.expect('get', 'x').equal(b'1')
-    env.expect('TFCALLASYNC', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
+    env.expect('TFCALLASYNC', 'lib.my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
     env.expect('get', b'\xaa').equal(b'\xaa')
 
 @gearsTest(decodeResponses=False)
@@ -699,7 +699,7 @@ redis.registerFunction("test", () => {
     return new Uint8Array([255, 255, 255, 255]).buffer;
 });
     """
-    env.expect('TFCALL', 'lib', 'test', '0').equal(b'\xff\xff\xff\xff')
+    env.expect('TFCALL', 'lib.test', '0').equal(b'\xff\xff\xff\xff')
 
 @gearsTest(decodeResponses=False)
 def testRawCall(env):
@@ -714,7 +714,7 @@ redis.registerFunction("test",
 );
     """
     env.expect('set', b'\xaa', b'\xaa').equal(True)
-    env.expect('TFCALL', 'lib', 'test', '1', b'\xaa').equal(b'\xaa')
+    env.expect('TFCALL', 'lib.test', '1', b'\xaa').equal(b'\xaa')
 
 @gearsTest()
 def testSimpleHgetall(env):
@@ -729,7 +729,7 @@ redis.registerFunction("test",
 );
     """
     env.expect('hset', 'k', 'f', 'v').equal(True)
-    env.expect('TFCALL', 'lib', 'test', '1', 'k').equal(['f', 'v'])
+    env.expect('TFCALL', 'lib.test', '1', 'k').equal(['f', 'v'])
 
 
 @gearsTest(decodeResponses=False)
@@ -745,7 +745,7 @@ redis.registerFunction("test",
 );
     """
     env.expect('hset', b'\xaa', b'foo', b'\xaa').equal(True)
-    env.expect('TFCALL', 'lib', 'test', '1', b'\xaa').error().contains('Could not decode value as string')
+    env.expect('TFCALL', 'lib.test', '1', b'\xaa').error().contains('Could not decode value as string')
 
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHash(env):
@@ -760,7 +760,7 @@ redis.registerFunction("test",
 );
     """
     env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
-    env.expect('TFCALL', 'lib', 'test', '1', b'\xaa').error().contains('Binary map key is not supported')
+    env.expect('TFCALL', 'lib.test', '1', b'\xaa').error().contains('Binary map key is not supported')
 
 @gearsTest()
 def testFunctionListWithLibraryOption(env):
@@ -795,7 +795,7 @@ redis.registerAsyncFunction("test", async () => {
     return res;
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'test', '0').equal("test")
+    env.expect('TFCALLASYNC', 'lib.test', '0').equal("test")
 
 @gearsTest()
 def testReplyWithDouble(env):
@@ -804,7 +804,7 @@ redis.registerFunction("test", () => {
     return 1.1;
 });
     """
-    env.expect('TFCALL', 'lib', 'test', '0').contains("1.1")
+    env.expect('TFCALL', 'lib.test', '0').contains("1.1")
 
 @gearsTest()
 def testReplyWithDoubleAsync(env):
@@ -813,7 +813,7 @@ redis.registerAsyncFunction("test", async () => {
     return 1.1;
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'test', '0').contains("1.1")
+    env.expect('TFCALLASYNC', 'lib.test', '0').contains("1.1")
 
 @gearsTest()
 def testRunOnBackgroundThatRaisesError(env):
@@ -824,7 +824,7 @@ redis.registerFunction("test", (c) => {
     });
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'test', '0').error().equal("Some Error")
+    env.expect('TFCALLASYNC', 'lib.test', '0').error().equal("Some Error")
 
 @gearsTest()
 def testRunOnBackgroundThatReturnInteger(env):
@@ -835,7 +835,7 @@ redis.registerFunction("test", (c) => {
     });
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'test', '0').equal(1)
+    env.expect('TFCALLASYNC', 'lib.test', '0').equal(1)
 
 @gearsTest()
 def testOver100Isolates(env):
