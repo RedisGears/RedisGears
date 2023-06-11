@@ -364,7 +364,7 @@ impl V8Backend {
         }
     }
 
-    fn initialize_v8_engine(&self) {
+    fn initialize_v8_engine(&self, flags: &str) {
         v8_init_with_error_handlers(
             Box::new(|line, msg| {
                 let msg = format!("v8 fatal error on {}, {}", line, msg);
@@ -385,6 +385,7 @@ impl V8Backend {
                 panic!("{}", msg);
             }),
             1,
+            Some(flags),
         )
         .expect("Failed loading V8");
     }
@@ -412,12 +413,18 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         self: Box<Self>,
         backend_ctx: BackendCtx,
     ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
+        let flags = (backend_ctx.get_v8_flags)();
+        let flags = if flags.starts_with("'") && flags.len() > 1 {
+            &flags[1..flags.len() - 1]
+        } else {
+            &flags
+        };
         unsafe {
             GLOBAL.backend_ctx = Some(backend_ctx);
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
             GLOBAL.script_ctx_vec = Some(Arc::clone(&self.script_ctx_vec));
         }
-        self.initialize_v8_engine();
+        self.initialize_v8_engine(&flags);
         self.spone_background_maintenance_thread();
 
         Ok(self)

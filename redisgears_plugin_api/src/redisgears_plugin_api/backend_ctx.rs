@@ -48,6 +48,7 @@ pub struct BackendCtx {
     pub get_v8_library_initial_memory: Box<dyn Fn() -> usize + 'static>,
     pub get_v8_library_initial_memory_limit: Box<dyn Fn() -> usize + 'static>,
     pub get_v8_library_memory_delta: Box<dyn Fn() -> usize + 'static>,
+    pub get_v8_flags: Box<dyn Fn() -> String>,
 }
 
 /// The trait which is only implemented for a successfully initialised

@@ -49,6 +49,9 @@ lazy_static! {
     /// Configuration value indicates the path to the V8 plugin.
     pub(crate) static ref V8_PLUGIN_PATH: RedisGILGuard<String> = RedisGILGuard::default();
 
+    /// Configuration value indicates the V8 flags to pass to the V8 engine.
+    pub(crate) static ref V8_FLAGS: RedisGILGuard<String> = RedisGILGuard::default();
+
     /// Configuration value indicates the maximum memory usage for the V8 engine.
     pub(crate) static ref V8_MAX_MEMORY: AtomicI64 = AtomicI64::default();
 

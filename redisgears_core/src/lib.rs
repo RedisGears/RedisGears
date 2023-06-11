@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use config::{
     FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
-    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_FLAGS, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
     V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY, V8_PLUGIN_PATH,
 };
 
@@ -685,6 +685,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             ctx.log_warning(&format!("Backend {} already exists", name));
             return Status::Err;
         }
+        let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
         let initialised_backend = match backend.initialize(BackendCtx {
             allocator: &RedisAlloc,
             log_info: Box::new(|msg| log::info!("{msg}")),
@@ -707,6 +708,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             get_v8_library_memory_delta: Box::new(|| {
                 V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
             }),
+            get_v8_flags: Box::new(move || v8_flags.to_owned()),
         }) {
             Ok(b) => b,
             Err(e) => {
@@ -1188,6 +1190,7 @@ mod gears_module {
             string: [
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],
                 ["v8-plugin-path", &*V8_PLUGIN_PATH , "libredisgears_v8_plugin.so", ConfigurationFlags::IMMUTABLE, None],
+                ["v8-flags", &*V8_FLAGS, "", ConfigurationFlags::IMMUTABLE, None],
             ],
             bool: [
                 ["enable-debug-command", &*ENABLE_DEBUG_COMMAND , false, ConfigurationFlags::IMMUTABLE, None],
