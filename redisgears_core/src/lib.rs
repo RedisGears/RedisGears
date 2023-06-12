@@ -1013,7 +1013,7 @@ pub(crate) fn verify_name(name: &str) -> Result<(), String> {
         return Err(format!("Empty name is not allowed"));
     }
     name.chars().try_for_each(|c| {
-        if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+        if c.is_ascii_alphanumeric() || c == '_' {
             return Ok(());
         }
         Err(format!("Unallowed char was given '{c}'"))
