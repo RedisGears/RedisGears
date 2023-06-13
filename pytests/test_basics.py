@@ -935,7 +935,7 @@ redis.registerKeySpaceTrigger("test", "",
 redis.registerFunction("n_notifications", ()=>{return n_notifications;}, {flags:[redis.functionFlags.NO_WRITES]});
     """
     env.cmd('get', 'x') # should trigger key miss notification
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcall('lib', 'n_notifications').equal(1)
     env.expect('replicaof', 'localhost', '1111').equal('OK')
     env.cmd('get', 'x') # should trigger key miss notification but we should not count it because we are a replica
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcall('lib', 'n_notifications').equal(1)
