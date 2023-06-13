@@ -14,11 +14,11 @@ redis.registerFunction("get", function(client, dummy, key){
     env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALL').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('TFCALL', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('TFCALL', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expectTfcall('lib', 'get', ['x'], ['x']).equal('1')
+    env.expectTfcall('lib', 'get', ['x'], ['cached:x']).equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('TFCALL', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('TFCALL', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expectTfcall('lib', 'get', ['cached:x'], ['x']).error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expectTfcall('lib', 'get', ['cached:x'], ['cached:x']).equal('1')
 
 @gearsTest()
 def testAclOnAsyncFunction(env):
@@ -32,11 +32,11 @@ redis.registerAsyncFunction("get", async function(client, dummy, key){
     env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALLasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expectTfcallAsync('lib', 'get', ['x'], ['x']).equal('1')
+    env.expectTfcallAsync('lib', 'get', ['x'], ['cached:x']).equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expectTfcallAsync('lib', 'get', ['cached:x'], ['x']).error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expectTfcallAsync('lib', 'get', ['cached:x'], ['cached:x']).equal('1')
 
 @gearsTest()
 def testAclOnAsyncComplex(env):
@@ -54,11 +54,11 @@ redis.registerAsyncFunction("get", async function(client, dummy, key){
     env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALLasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'x').equal('1')
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'x', 'cached:x').equal('1')
+    env.expectTfcallAsync('lib', 'get', ['x'], ['x']).equal('1')
+    env.expectTfcallAsync('lib', 'get', ['x'], ['cached:x']).equal('1')
     env.expect('AUTH', 'alice', 'pass').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'x').error().contains(NO_PERMISSIONS_ERROR_MSG)
-    env.expect('TFCALLASYNC', 'lib', 'get', '1', 'cached:x', 'cached:x').equal('1')
+    env.expectTfcallAsync('lib', 'get', ['cached:x'], ['x']).error().contains(NO_PERMISSIONS_ERROR_MSG)
+    env.expectTfcallAsync('lib', 'get', ['cached:x'], ['cached:x']).equal('1')
 
 @gearsTest()
 def testAclUserDeletedWhileFunctionIsRunning(env):
@@ -94,30 +94,30 @@ redis.registerFunction("async_get_start", function(client, dummy, key){
     env.expect('ACL', 'SETUSER', 'alice', 'on', '>pass', '~cached:*', '+get', '+tfunction', '+TFCALLasync').equal('OK')
     env.expect('set', 'x', '1').equal(True)
     env.expect('set', 'cached:x', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
-    env.expect('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'async_get_continue', '0').equal('1')
+    env.expectTfcallAsync('lib', 'async_get_start', ['cached:x'], ['x']).equal('OK')
+    env.expectTfcallAsync('lib', 'async_get_continue').equal('1')
+    env.expectTfcallAsync('lib', 'async_get_start', ['cached:x'], ['cached:x']).equal('OK')
+    env.expectTfcallAsync('lib', 'async_get_continue').equal('1')
     c = env.getConnection()
     c.execute_command('AUTH', 'alice', 'pass')
 
-    env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'x'), "OK")
+    env.assertEqual(env.tfcallAsync('lib', 'async_get_start', ['cached:x'], ['x'], c), "OK")
     try:
-        c.execute_command('TFCALLASYNC', 'lib', 'async_get_continue', '0')
+        env.tfcallAsync('lib', 'async_get_continue', c=c)
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains(NO_PERMISSIONS_ERROR_MSG, str(e))
 
-    env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
+    env.assertEqual(env.tfcallAsync('lib', 'async_get_start', ['cached:x'], ['cached:x'], c), "OK")
     try:
-        env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_continue', '0'), '1')
+        env.assertEqual(env.tfcallAsync('lib', 'async_get_continue', c=c), '1')
     except Exception as e:
         env.assertTrue(False, message='Command failed though should success, %s' % str(e))
 
-    env.assertEqual(c.execute_command('TFCALLASYNC', 'lib', 'async_get_start', '1', 'cached:x', 'cached:x'), "OK")
+    env.assertEqual(env.tfcallAsync('lib', 'async_get_start', ['cached:x'], ['cached:x'], c=c), "OK")
     env.expect('ACL', 'DELUSER', 'alice').equal(1) # delete alice user while function is running
     try:
-        c.execute_command('TFCALLASYNC', 'lib', 'async_get_continue', '0')
+        env.tfcallAsync('lib', 'async_get_continue', c=c)
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains("User does not exists or disabled", str(e))

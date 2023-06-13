@@ -49,10 +49,10 @@ Assuming we put the following code on a file `lib.js`, we can register our funct
 OK
 ```
 
-And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name:
+And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name `.` separated:
 
 ```bash
-> redis-cli TFCALL lib hello_world 0
+> redis-cli TFCALL lib.hello_world 0
 "hello_world"
 ```
 
@@ -84,7 +84,7 @@ OK
 
 And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
 ```bash
-> redis-cli TFCALL lib my_ping 0
+> redis-cli TFCALL lib.my_ping 0
 "PONG"
 ```
 

@@ -449,7 +449,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError> {
-        if bypass_memory_limit() {
+        if calc_isolates_used_memory() >= max_memory_limit() {
             return Err(GearsApiError::new(
                 "JS engine reached OOM state and can not run any more code",
             ));

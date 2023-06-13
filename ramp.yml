@@ -22,6 +22,7 @@ capabilities:
     - intershard_tls
     - intershard_tls_pass
     - ipv6
+    - replica_of
 exclude_commands:
     - _RG_INTERNALS.FUNCTION
     - _RG_INTERNALS.UPDATE_STREAM_LAST_READ_ID
