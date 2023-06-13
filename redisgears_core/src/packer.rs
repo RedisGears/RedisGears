@@ -19,14 +19,6 @@ fn get_dylib_ext() -> &'static str {
     }
 }
 
-fn get_build_arch() -> &'static str {
-    if BUILD_OS_ARCH.as_ref().map(|v| v.to_lowercase()) == Some("aarch64".to_owned()) {
-        "arm64v8"
-    } else {
-        BUILD_OS_ARCH.unwrap()
-    }
-}
-
 fn main() {
     let mut curr_path = std::env::current_exe().expect("Could not get binary location");
     curr_path.pop();
@@ -48,7 +40,7 @@ fn main() {
         "redisgears.{}-{}-{}.{}.zip",
         BUILD_OS.unwrap(),
         BUILD_OS_NICK.unwrap(),
-        get_build_arch(),
+        BUILD_OS_ARCH.unwrap(),
         GIT_BRANCH_OR_TAG.unwrap()
     );
 
