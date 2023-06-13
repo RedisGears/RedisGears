@@ -20,7 +20,7 @@ redis.registerAsyncFunction("test", async (async_client, key) => {
     """
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):
-        res = conn.execute_command('TFCALLASYNC', 'foo.test', '1', 'x')
+        res = env.tfcallAsync('foo', 'test', ['x'], c=conn)
         env.assertEqual(res, '1')
 
 @gearsTest(cluster=True)
@@ -46,7 +46,7 @@ redis.registerAsyncFunction("test",
     """
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):
-        res = conn.execute_command('TFCALLASYNC', 'foo.test', '1', 'x')
+        res = env.tfcallAsync('foo', 'test', ['x'], c=conn)
         env.assertEqual(res, '1')
 
 @gearsTest(cluster=True)
@@ -70,7 +70,7 @@ redis.registerAsyncFunction("test",
     cluster_conn.execute_command('set', 'x', '1')
     for conn in shardsConnections(env):
         try:
-            conn.execute_command('TFCALLASYNC', 'foo.test', '1', 'x')
+            env.tfcallAsync('foo', 'test', ['x'], c=conn)
             pass
         except Exception as e:
             env.assertContains('Remote function failure', str(e))
@@ -103,7 +103,7 @@ redis.registerAsyncFunction("test", async(async_client, key) => {
         cluster_conn.execute_command('hset', 'key%d' % i, 'lookup', 'key%d' % (i + 1))
     cluster_conn.execute_command('set', 'key%d' % i, 'final_value')
     for conn in shardsConnections(env):
-        res = conn.execute_command('TFCALLASYNC', 'foo.test', '1', 'key0')
+        res = env.tfcallAsync('foo', 'test', ['key0'], c=conn)
         env.assertEqual(res, 'final_value')
 
 @gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
@@ -121,7 +121,7 @@ redis.registerAsyncFunction("test", async (async_client, key) => {
 });
     """
     cluster_conn.execute_command('set', 'x', '1')
-    env.expect('TFCALLASYNC', 'foo.test', '1', 'x').error().contains('Remote task timeout')
+    env.expectTfcallAsync('foo', 'test', ['x']).error().contains('Remote task timeout')
 
 @gearsTest(cluster=True)
 def testRunOnAllShards(env, cluster_conn):
@@ -149,7 +149,7 @@ redis.registerAsyncFunction("test", async(async_client) => {
     for i in range(1000):
         cluster_conn.execute_command('set', 'key%d' % i, '1')
     for conn in shardsConnections(env):
-        res = conn.execute_command('TFCALLASYNC', 'foo.test', '0')
+        res = env.tfcallAsync('foo', 'test', c=conn)
         env.assertEqual(res, 1000)
 
 @gearsTest(cluster=True, gearsConfig={'remote-task-default-timeout': '1'})
@@ -180,4 +180,4 @@ redis.registerAsyncFunction("test", async (async_client) => {
 });
     """
     cluster_conn.execute_command('set', 'z', '1')
-    env.expect('TFCALLASYNC', 'foo.test', '1', 'z').error().contains('Timeout')
+    env.expectTfcallAsync('foo', 'test', ['z']).error().contains('Timeout')
