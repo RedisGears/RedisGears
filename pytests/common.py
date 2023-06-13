@@ -111,6 +111,26 @@ def verifyClusterInitialized(env):
             if not allConnected:
                 time.sleep(0.1)
 
+def extendEnvWithGearsFunctionality(env):
+    def expectTfcall(lib, func, keys=[], args=[]):
+        return env.expect('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    def tfcall(lib, func, keys=[], args=[], c=None):
+        c = c if c else env
+        return c.execute_command('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+
+    def expectTfcallAsync(lib, func, keys=[], args=[]):
+        return env.expect('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    def tfcallAsync(lib, func, keys=[], args=[], c=None):
+        c = c if c else env
+        return c.execute_command('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    env.expectTfcall = expectTfcall
+    env.tfcall = tfcall
+    env.expectTfcallAsync = expectTfcallAsync
+    env.tfcallAsync = tfcallAsync
+
 def gearsTest(skipTest=False,
               skipOnCluster=False,
               skipCleanups=False,
@@ -217,6 +237,7 @@ def gearsTest(skipTest=False,
                             return status
 
                         runUntil(env, 1, synchronise_replicas, timeout=10)
+            extendEnvWithGearsFunctionality(env)
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())

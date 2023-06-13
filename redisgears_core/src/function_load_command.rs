@@ -10,7 +10,7 @@ use redis_module::{
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 use crate::compiled_library_api::CompiledLibraryAPI;
-use crate::{Deserialize, Serialize};
+use crate::{verify_name, Deserialize, Serialize};
 
 use crate::{
     get_backends_mut, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData,
@@ -47,6 +47,13 @@ fn library_extract_metadata(
 ) -> Result<GearsLibraryMetaData, RedisError> {
     let prologue = redisgears_plugin_api::redisgears_plugin_api::prologue::parse_prologue(code)
         .map_err(|e| RedisError::String(GearsApiError::from(e).get_msg().to_owned()))?;
+
+    verify_name(&prologue.library_name).map_err(|e| {
+        RedisError::String(format!(
+            "Unallowed library name '{}', {e}.",
+            prologue.library_name
+        ))
+    })?;
 
     Ok(GearsLibraryMetaData {
         engine: prologue.engine.to_owned(),

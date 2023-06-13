@@ -197,6 +197,9 @@ impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
         name: &str,
         func_ctx: GearsFunctionCtx,
     ) -> Result<(), GearsApiError> {
+        verify_name(name)
+            .map_err(|e| GearsApiError::new(format!("Unallowed function name '{name}', {e}.")))?;
+
         if self.gears_lib_ctx.functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Function {} already exists",
@@ -244,6 +247,11 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
     ) -> Result<(), GearsApiError> {
         // TODO move to <https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert>
         // once stabilised.
+
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed cluster function name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.remote_functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Remote function {} already exists",
@@ -265,6 +273,10 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         trim: bool,
         description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed stream trigger name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.stream_consumers.contains_key(name) {
             return Err(GearsApiError::new(
                 "Stream registration already exists".to_string(),
@@ -348,6 +360,10 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
         description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed key space trigger name '{name}', {e}."))
+        })?;
+
         if self
             .gears_lib_ctx
             .notifications_consumers
@@ -761,8 +777,15 @@ fn function_call_command(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
     allow_block: bool,
 ) -> RedisResult {
-    let library_name = args.next_arg()?.try_as_str()?;
-    let function_name = args.next_arg()?.try_as_str()?;
+    let mut lib_func_name = args.next_arg()?.try_as_str()?.split(".");
+
+    let library_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting library name"))?;
+    let function_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting function name"))?;
+
     let num_keys = args.next_arg()?.try_as_str()?.parse::<usize>()?;
     let libraries = get_libraries();
 
@@ -985,6 +1008,18 @@ fn on_flush_event(ctx: &Context, flush_event: FlushSubevent) {
     }
 }
 
+pub(crate) fn verify_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err(format!("Empty name is not allowed"));
+    }
+    name.chars().try_for_each(|c| {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            return Ok(());
+        }
+        Err(format!("Unallowed char was given '{c}'"))
+    })
+}
+
 pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     if ERROR_VERBOSITY.load(Ordering::Relaxed) == 1 {
         return err.get_msg();
@@ -996,11 +1031,11 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     {
         name: "tfcall",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
@@ -1015,11 +1050,11 @@ fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     {
         name: "tfcallasync",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
