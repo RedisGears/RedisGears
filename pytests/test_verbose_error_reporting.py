@@ -19,7 +19,7 @@ redis.registerFunction("test", function(client){
     return foo()
 })
     '''
-    env.expect('TFCALL', 'foo', 'test', 0).error().contains(':3:') # error on line 5
+    env.expectTfcall('foo', 'test').error().contains(':3:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncFunctionRun(env):
@@ -28,7 +28,7 @@ redis.registerAsyncFunction("test", async function(client){
     return foo()
 })
     '''
-    env.expect('TFCALLASYNC', 'foo', 'test', 0).error().contains(':3:') # error on line 5
+    env.expectTfcallAsync('foo', 'test').error().contains(':3:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionThatReturnsCoro(env):
@@ -39,7 +39,7 @@ redis.registerFunction("test", function(client){
     });
 })
     '''
-    env.expect('TFCALLASYNC', 'foo', 'test', 0).error().contains(':4:') # error on line 5
+    env.expectTfcallAsync('foo', 'test').error().contains(':4:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnStreamProcessing(env):

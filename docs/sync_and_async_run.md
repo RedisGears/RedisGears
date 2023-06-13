@@ -36,7 +36,7 @@ redis.registerFunction('test', async function(client){
 Running this function will return a `pong` reply:
 
 ```bash
-127.0.0.1:6379> TFCALLASYNC lib test 0
+127.0.0.1:6379> TFCALLASYNC lib.test 0
 "PONG"
 ```
 
