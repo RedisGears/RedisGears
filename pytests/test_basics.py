@@ -459,6 +459,20 @@ redis.registerStreamTrigger(
     env.expect('TFUNCTION', 'LOAD', code).equal('OK')
     env.expectTfcall('lib', 'test').equal('OK')
 
+@gearsTest(v8MaxMemory=20 * 1024 * 1024)
+def testV8OOMOnFunctionLoad(env):
+    code = """#!js api_version=1.0 name=lib%d
+redis.registerFunction("test", function(client){
+    return "OK";
+});
+    """
+    try:
+        for i in range(100):
+            env.cmd('TFUNCTION', 'LOAD', code % i)
+        env.assertTrue(False, message='Except OOM on function load')
+    except Exception as e:
+        env.assertIn('JS engine reached OOM state', str(e))
+
 @gearsTest()
 def testLibraryConfiguration(env):
     code = """#!js api_version=1.0 name=lib
