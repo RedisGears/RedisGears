@@ -924,7 +924,7 @@ redis.registerStreamTrigger("test", "",
     env.assertContains('Some function', res[0]['stream_triggers'][0]['description'])
 
 @gearsTest()
-def testNoNotificationsOnSalve(env):
+def testNoNotificationsOnSlave(env):
     """#!js api_version=1.0 name=lib
 var n_notifications = 0;
 redis.registerKeySpaceTrigger("test", "",
