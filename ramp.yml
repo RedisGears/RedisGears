@@ -1,4 +1,5 @@
 display_name: RedisGears
+capability_name: Triggers & Functions
 author: RedisLabs
 email: meir@redislabs.com
 description: Dynamic execution framework for your Redis data
