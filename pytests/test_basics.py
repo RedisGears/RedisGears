@@ -922,3 +922,20 @@ redis.registerStreamTrigger("test", "",
     """
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
     env.assertContains('Some function', res[0]['stream_triggers'][0]['description'])
+
+@gearsTest()
+def testNoNotificationsOnSalve(env):
+    """#!js api_version=1.0 name=lib
+var n_notifications = 0;
+redis.registerKeySpaceTrigger("test", "",
+    () => {
+        n_notifications += 1;
+    }
+);
+redis.registerFunction("n_notifications", ()=>{return n_notifications;}, {flags:[redis.functionFlags.NO_WRITES]});
+    """
+    env.cmd('get', 'x') # should trigger key miss notification
+    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expect('replicaof', 'localhost', '1111').equal('OK')
+    env.cmd('get', 'x') # should trigger key miss notification but we should not count it because we are a replica
+    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(1)

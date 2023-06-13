@@ -4,8 +4,11 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::{function_load_command::function_load_internal, get_globals_mut, get_libraries};
+use crate::{
+    function_load_command::function_load_internal, get_globals, get_globals_mut, get_libraries,
+};
 
+use mr::libmr::{calc_slot, is_my_slot};
 use redis_module::{
     error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB, Context,
     RedisModuleTypeMethods,
@@ -125,7 +128,9 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
             None
         };
 
-        match function_load_internal(ctx, user, &code, config, false) {
+        // allow upgrade on pseudo_slave (replica-of) because we might get the same function multiple time from different source shards.
+        let is_pseudo_slave = get_globals().db_policy.is_pseudo_slave();
+        match function_load_internal(ctx, user, &code, config, is_pseudo_slave) {
             Ok(_) => {}
             Err(e) => return Err(Error::generic(&format!("Failed loading librart, {}", e))),
         }
@@ -185,6 +190,13 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
                         consumer_name, e
                     ))
                 })?;
+                // Add the stream only if it belong to our slot range.
+                if is_pseudo_slave {
+                    let slot = calc_slot(stream_name.as_ref());
+                    if !is_my_slot(slot) {
+                        continue;
+                    }
+                }
                 get_globals_mut().stream_ctx.update_stream_for_consumer(
                     stream_name.as_ref(),
                     consumer,
