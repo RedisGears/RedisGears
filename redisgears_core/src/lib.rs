@@ -11,7 +11,8 @@
 #![deny(missing_docs)]
 
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
-use redis_module::{CallResult, ContextFlags, ErrorReply};
+use redis_module::redisvalue::RedisValueKey;
+use redis_module::{CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
@@ -36,8 +37,8 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    command, flush_event_handler, loading_event_handler, module_changed_event_handler,
-    role_changed_event_handler,
+    command, config_changed_event_handler, flush_event_handler, loading_event_handler,
+    module_changed_event_handler, role_changed_event_handler,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -102,6 +103,9 @@ pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 /// The build type of the crate.
 pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
+
+const PSEUDO_SLAVE_READONLY_CONFIG_NAME: &str = "pseudo-slave-readonly";
+const PSEUDO_SLAVE_CONFIG_NAME: &str = "pseudo-slave";
 
 fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     use redis_module::Version;
@@ -340,7 +344,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 })),
                 description,
             );
-            if self.ctx.get_flags().contains(ContextFlags::MASTER) {
+            if is_master(self.ctx) {
                 // trigger a key scan
                 scan_key_space_for_streams();
             }
@@ -448,6 +452,39 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
     }
 }
 
+/// The policy configured on the current database
+enum DbPolicy {
+    /// Regular database
+    Regular,
+    /// A replica-of target
+    PseudoSlave,
+    /// A readonly replica-of target
+    PseudoSlaveReadonly,
+}
+
+impl DbPolicy {
+    pub(crate) fn is_regular(&self) -> bool {
+        match self {
+            DbPolicy::Regular => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_readonly(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_pseudo_slave(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly | DbPolicy::PseudoSlave => true,
+            _ => false,
+        }
+    }
+}
+
 struct GlobalCtx {
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
@@ -458,6 +495,7 @@ struct GlobalCtx {
     notifications_ctx: KeysNotificationsCtx,
     avoid_key_space_notifications: bool,
     allow_unsafe_redis_commands: bool,
+    db_policy: DbPolicy,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -568,6 +606,54 @@ fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
     Ok(())
 }
 
+fn get_db_policy(ctx: &Context) -> DbPolicy {
+    let call_options = CallOptionsBuilder::new()
+        .resp(CallOptionResp::Resp3)
+        .build();
+    let res = ctx.call_ext(
+        "config",
+        &call_options,
+        &[
+            "get",
+            PSEUDO_SLAVE_READONLY_CONFIG_NAME,
+            PSEUDO_SLAVE_CONFIG_NAME,
+        ],
+    );
+    if let Ok(res) = res {
+        let res: RedisValue = (&res).into();
+        if let RedisValue::Map(map) = res {
+            let pseudo_slave_readonly = map
+                .get(&RedisValueKey::String(
+                    PSEUDO_SLAVE_READONLY_CONFIG_NAME.to_owned(),
+                ))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave_readonly == "yes" {
+                return DbPolicy::PseudoSlaveReadonly;
+            }
+
+            let pseudo_slave = map
+                .get(&RedisValueKey::String(PSEUDO_SLAVE_CONFIG_NAME.to_owned()))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave == "yes" {
+                return DbPolicy::PseudoSlave;
+            }
+        }
+    }
+    DbPolicy::Regular
+}
+
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     mr_init(ctx, 1, None);
 
@@ -625,7 +711,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         stream_ctx: StreamReaderCtx::new(
             Box::new(|ctx, key, id, include_id| {
                 // read data from the stream
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     return Err("Can not read data on replica".to_string());
                 }
                 let stream_name = ctx.create_string(key);
@@ -642,7 +728,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             }),
             Box::new(|ctx, key_name, id| {
                 // trim the stream callback
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     ctx.log_warning("Attempt to trim data on replica was denied.");
                     return;
                 }
@@ -670,6 +756,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         notifications_ctx: KeysNotificationsCtx::new(),
         avoid_key_space_notifications: false,
         allow_unsafe_redis_commands: false,
+        db_policy: get_db_policy(ctx),
     };
 
     let v8_path = V8_PLUGIN_PATH.lock(ctx);
@@ -765,11 +852,18 @@ pub(crate) fn verify_oom(ctx: &Context, flags: FunctionFlags) -> bool {
         || !ctx.get_flags().contains(ContextFlags::OOM)
 }
 
+/// Return true iff the current instance is a master which is not a pseudo slave (replica-of target).
+pub(crate) fn is_master(ctx: &Context) -> bool {
+    let globals = get_globals();
+    ctx.get_flags().contains(ContextFlags::MASTER) && globals.db_policy.is_regular()
+}
+
 /// Returns `true` if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
 pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool {
-    // not replica, ok to run || we can run function with no writes on replica.
-    ctx.get_flags().contains(ContextFlags::MASTER) || flags.contains(FunctionFlags::NO_WRITES)
+    // master which is not readonly, ok to run || we can run function with no writes on replica.
+    (ctx.get_flags().contains(ContextFlags::MASTER) && !get_globals().db_policy.is_readonly())
+        || flags.contains(FunctionFlags::NO_WRITES)
 }
 
 fn function_call_command(
@@ -904,7 +998,7 @@ fn function_debug_command(
 }
 
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
-    if ctx.get_flags().contains(ContextFlags::MASTER) {
+    if is_master(ctx) {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
         stream_ctx.on_stream_touched(ctx, event, key);
     }
@@ -918,10 +1012,16 @@ fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, k
 }
 
 fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+    if !is_master(ctx) {
+        // do not fire notifications on slave
+        return;
+    }
+
     let globals = get_globals();
     if globals.avoid_key_space_notifications {
         return;
     }
+
     globals.notifications_ctx.on_key_touched(ctx, event, key)
 }
 
@@ -1005,6 +1105,17 @@ fn on_flush_event(ctx: &Context, flush_event: FlushSubevent) {
             }
         }
         globals.stream_ctx.clear_tracked_streams();
+    }
+}
+
+#[config_changed_event_handler]
+fn on_config_change(ctx: &Context, values: &[&str]) {
+    if let Some(_) = values
+        .iter()
+        .find(|v| **v == PSEUDO_SLAVE_READONLY_CONFIG_NAME || **v == PSEUDO_SLAVE_CONFIG_NAME)
+    {
+        let globals = get_globals_mut();
+        globals.db_policy = get_db_policy(ctx);
     }
 }
 
