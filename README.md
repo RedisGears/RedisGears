@@ -1,7 +1,7 @@
 # RedisGears-2.0
 
 [![GitHub Builds](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml/badge.svg)](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml)
-[![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?syle=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
+[![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
 
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
 
