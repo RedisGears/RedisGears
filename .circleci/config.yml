@@ -179,7 +179,7 @@ jobs:
           publish: <<parameters.publish>>
 
   build-macos-arm64:
-    resource_class: macos.m1.large.gen1
+    resource_class: macos.m1.medium.gen1
     parameters:
       publish:
         type: string
@@ -225,12 +225,6 @@ workflows:
   version: 2
   default-flow:
     jobs:
-
-      - build-macos-arm64:
-          name: OSX [arm64] Integration
-          context: common
-          <<: *on-integ-branch
-          publish: "true"
 
       - build-macos-x64:
           name: OSX [intel] Integration
