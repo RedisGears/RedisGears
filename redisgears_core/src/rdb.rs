@@ -4,8 +4,11 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::{function_load_command::function_load_internal, get_globals_mut, get_libraries};
+use crate::{
+    function_load_command::function_load_internal, get_globals, get_globals_mut, get_libraries,
+};
 
+use mr::libmr::{calc_slot, is_my_slot};
 use redis_module::{
     error::Error, native_types::RedisType, raw, raw::REDISMODULE_AUX_BEFORE_RDB, Context,
     RedisModuleTypeMethods,
@@ -29,7 +32,8 @@ pub(crate) static REDIS_GEARS_TYPE: RedisType = RedisType::new(
 
         // Auxiliary data (v2)
         aux_load: Some(aux_load),
-        aux_save: Some(aux_save),
+        aux_save: None,
+        aux_save2: Some(aux_save),
         aux_save_triggers: REDISMODULE_AUX_BEFORE_RDB as i32,
 
         free_effort: None,
@@ -46,6 +50,11 @@ pub(crate) static REDIS_GEARS_TYPE: RedisType = RedisType::new(
 
 extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
     let libraries = get_libraries();
+    if libraries.is_empty() {
+        // no libraries to save, we will save nothing to the RDB so it will be
+        // possible to load the RDB even without loading RedisGears.
+        return;
+    }
 
     // save the number of libraries
     raw::save_unsigned(rdb, libraries.len() as u64);
@@ -59,12 +68,6 @@ extern "C" fn aux_save(rdb: *mut raw::RedisModuleIO, _when: c_int) {
             raw::save_string(rdb, config);
         } else {
             raw::save_unsigned(rdb, 0); // no config
-        }
-        if let Some(gears_box_info) = &val.gears_box_lib {
-            raw::save_unsigned(rdb, 1);
-            raw::save_string(rdb, &serde_json::to_string(gears_box_info).unwrap());
-        } else {
-            raw::save_unsigned(rdb, 0);
         }
         // save the number of streams consumer
         raw::save_unsigned(rdb, val.gears_lib_ctx.stream_consumers.len() as u64);
@@ -125,32 +128,9 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
             None
         };
 
-        // load gears box info
-        let has_gears_box_info = raw::load_unsigned(rdb).map_err(|e| {
-            Error::generic(&format!(
-                "Failed loading gears box indicator from rdb, {}.",
-                e
-            ))
-        })?;
-
-        let gears_box_info = if has_gears_box_info > 0 {
-            let gears_box_info_str = raw::load_string_buffer(rdb)
-                .map_err(|e| {
-                    Error::generic(&format!("Failed loading gears box data from rdb, {}.", e))
-                })?
-                .to_string()
-                .map_err(|e| {
-                    Error::generic(&format!(
-                        "Failed parsing gears box data from rdb as string, {}.",
-                        e
-                    ))
-                })?;
-            Some(serde_json::from_str(&gears_box_info_str).unwrap())
-        } else {
-            None
-        };
-
-        match function_load_internal(ctx, user, &code, config, false, gears_box_info) {
+        // allow upgrade on pseudo_slave (replica-of) because we might get the same function multiple time from different source shards.
+        let is_pseudo_slave = get_globals().db_policy.is_pseudo_slave();
+        match function_load_internal(ctx, user, &code, config, is_pseudo_slave) {
             Ok(_) => {}
             Err(e) => return Err(Error::generic(&format!("Failed loading librart, {}", e))),
         }
@@ -210,6 +190,13 @@ fn aux_load_internals(ctx: &Context, rdb: *mut raw::RedisModuleIO) -> Result<(),
                         consumer_name, e
                     ))
                 })?;
+                // Add the stream only if it belong to our slot range.
+                if is_pseudo_slave {
+                    let slot = calc_slot(stream_name.as_ref());
+                    if !is_my_slot(slot) {
+                        continue;
+                    }
+                }
                 get_globals_mut().stream_ctx.update_stream_for_consumer(
                     stream_name.as_ref(),
                     consumer,

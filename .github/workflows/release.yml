@@ -1,3 +1,5 @@
+name: Make a release
+
 on:
 
   workflow_dispatch:
@@ -22,7 +24,8 @@ jobs:
       - name: get files from s3
         run: |
           mkdir s3uploads/
-          s3cmd get s3://redismodules/redisgears/snapshots/redisgears2_*${{ inputs.milestone }}* s3uploads/
+          s3cmd get s3://redismodules/redisgears/snapshots/redisgears*${{ inputs.milestone }}* s3uploads/
+          ls s3uploads
 
       - name: rename
         shell: bash
@@ -30,8 +33,9 @@ jobs:
         run: |
           realver=`echo ${{inputs.milestone}} | cut -d '-' -f 1-1`
           for i in `ls`; do
-            mv $i ${i/${{ inputs.milestone }}/${realver}}
+            mv $i ${i/v${{ inputs.milestone }}/${realver}}
           done
+          ls
 
       - name: upload to s3
         working-directory: s3uploads

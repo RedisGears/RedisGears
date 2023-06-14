@@ -33,7 +33,7 @@ See the [build](docs/build_instructions.md) page for more information.
 ### Run JS code
 The API expose by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) is working. Lets write a simple `hello world` RedisGears function that return the string `hello world`:
 ```js
-#!js name=lib
+#!js name=lib api_version=1.0
 
 redis.registerFunction('hello_world', function(){
     return 'hello_world';
@@ -49,10 +49,10 @@ Assuming we put the following code on a file `lib.js`, we can register our funct
 OK
 ```
 
-And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name:
+And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name `.` separated:
 
 ```bash
-> redis-cli TFCALL lib hello_world 0
+> redis-cli TFCALL lib.hello_world 0
 "hello_world"
 ```
 
@@ -63,7 +63,7 @@ Notice that [`TFCALL`](docs/commands.md#rgfcal) command arguments is very close 
 It is possible to call Redis commands inside our gears function. The function gets as first argument a client object that allows interaction with Redis using `call` function. The following example executes a simple `PING` command and return the result:
 
 ```js
-#!js name=lib
+#!js name=lib api_version=1.0
 
 redis.registerFunction('my_ping', function(client){
     return client.call('ping');
@@ -84,7 +84,7 @@ OK
 
 And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
 ```bash
-> redis-cli TFCALL lib my_ping 0
+> redis-cli TFCALL lib.my_ping 0
 "PONG"
 ```
 

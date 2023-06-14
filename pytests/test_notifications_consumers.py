@@ -18,13 +18,13 @@ redis.registerFunction("n_notifications", function(){
 })
     """
 
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(0)
+    env.expectTfcall('lib', 'n_notifications').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcall('lib', 'n_notifications').equal(1)
     env.expect('SET', 'X', '2').equal(True)
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(2)
+    env.expectTfcall('lib', 'n_notifications').equal(2)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALL', 'lib', 'n_notifications', '0').equal(3)
+    env.expectTfcall('lib', 'n_notifications').equal(3)
 
 @gearsTest()
 def testAsyncNotification(env):
@@ -39,13 +39,13 @@ redis.registerAsyncFunction("n_notifications", async function(){
 })
     """
 
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 1, lambda: env.cmd('TFCALLASYNC', 'lib', 'n_notifications', '0'))
+    runUntil(env, 1, lambda: env.tfcallAsync('lib', 'n_notifications'))
     env.expect('SET', 'X', '2').equal(True)
-    runUntil(env, 2, lambda: env.cmd('TFCALLASYNC', 'lib', 'n_notifications', '0'))
+    runUntil(env, 2, lambda: env.tfcallAsync('lib', 'n_notifications'))
     env.expect('SET', 'X', '1').equal(True)
-    runUntil(env, 3, lambda: env.cmd('TFCALLASYNC', 'lib', 'n_notifications', '0'))
+    runUntil(env, 3, lambda: env.tfcallAsync('lib', 'n_notifications'))
 
 @gearsTest()
 def testCallRedisOnNotification(env):
@@ -81,11 +81,11 @@ redis.registerFunction("simple_set", function(client){
     return client.call('set', 'x', '1');
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
-    env.expect('TFCALL', 'lib', 'simple_set', '0').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(1)
+    env.expectTfcall('lib', 'simple_set').equal('OK')
+    env.expectTfcallAsync('lib', 'n_notifications').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAsyncFunction(env):
@@ -105,11 +105,11 @@ redis.registerAsyncFunction("simple_set", async function(client){
     });
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
-    env.expect('TFCALLASYNC', 'lib', 'simple_set', '0').equal('OK')
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(1)
+    env.expectTfcallAsync('lib', 'simple_set').equal('OK')
+    env.expectTfcallAsync('lib', 'n_notifications').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinAnotherNotification(env):
@@ -124,9 +124,9 @@ redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(1)
 
 @gearsTest()
 def testNotificationsAreNotFiredFromWithinStreamConsumer(env):
@@ -143,16 +143,21 @@ redis.registerAsyncFunction("n_notifications", async function(){
     return n_notifications
 });
 
-redis.registerStreamTrigger("consumer", "stream", 1, true, function(client) {
-    client.call('set', 'X' , '2');
-})
+redis.registerStreamTrigger("consumer", "stream",
+    function(client) {
+        client.call('set', 'X' , '2');
+    },
+    {
+        isStreamTrimmed:true,
+    }
+);
     """
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(0)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(0)
     env.expect('SET', 'X', '1').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(1)
     env.cmd('XADD', 'stream:1', '*', 'foo', 'bar')
     env.expect('GET', 'X').equal('2')
-    env.expect('TFCALLASYNC', 'lib', 'n_notifications', '0').equal(1)
+    env.expectTfcallAsync('lib', 'n_notifications').equal(1)
 
 @gearsTest(decodeResponses=False)
 def testNotificationsOnBinaryKey(env):
@@ -176,9 +181,9 @@ redis.registerAsyncFunction("notifications_stats", async function(){
     ];
 });
     """
-    env.expect('TFCALLASYNC', 'lib', 'notifications_stats', '0').equal([0, None, None])
+    env.expectTfcallAsync('lib', 'notifications_stats').equal([0, None, None])
     env.expect('SET', b'\xff\xff', b'\xaa').equal(True)
-    env.expect('TFCALLASYNC', 'lib', 'notifications_stats', '0').equal([1, None, b'\xff\xff'])
+    env.expectTfcallAsync('lib', 'notifications_stats').equal([1, None, b'\xff\xff'])
 
 @gearsTest()
 def testSyncNotificationsReturnPromise(env):
@@ -188,7 +193,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['keyspace_triggers'][0]['num_success'])
 
 @gearsTest()
 def testSyncNotificationsReturnPromiseRaiseError(env):
@@ -198,7 +203,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest()
 def testAsyncNotificationsReturnPromise(env):
@@ -208,7 +213,7 @@ redis.registerKeySpaceTrigger("consumer", "", async (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['keyspace_triggers'][0]['num_success'])
 
 @gearsTest()
 def testAsyncNotificationsReturnPromiseRaiseError(env):
@@ -218,7 +223,7 @@ redis.registerKeySpaceTrigger("consumer", "", async (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
+    runUntil(env, 'SomeError', lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest()
 def testSyncNotificationsReturnResolvedPromise(env):
@@ -233,7 +238,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client) => {
 });
     """
     env.expect('SET', 'x', '1').equal(True)
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['num_success'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['keyspace_triggers'][0]['num_success'])
 
 @gearsTest()
 def testOnTriggerFiredCallback(env):
@@ -263,7 +268,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     """
     env.expect('SET', 'x', '1').equal(True)
     env.expect('GET', 'x').equal('1')
-    env.assertContains("Write command 'set' was called while write is not allowed", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
+    env.assertContains("Write command 'set' was called while write is not allowed", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest()
 def testReadOnTriggerFiredCallback(env):
@@ -292,7 +297,7 @@ redis.registerKeySpaceTrigger("consumer", "", (client, data) => {
     """
     env.expect('SET', 'x', '1').equal(True)
     env.expect('GET', 'x').equal('1')
-    env.assertContains("Execution was terminated due to OOM or timeout", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['triggers'][0]['last_error'])
+    env.assertContains("Execution was terminated due to OOM or timeout", toDictionary(env.cmd('TFUNCTION', 'LIST', 'v'))[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest()
 def testWrongTypeForOnTriggerFiredCallbackArgument(env):

@@ -19,7 +19,7 @@ redis.registerFunction("test", function(client){
     return foo()
 })
     '''
-    env.expect('TFCALL', 'foo', 'test', 0).error().contains(':3:') # error on line 5
+    env.expectTfcall('foo', 'test').error().contains(':3:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncFunctionRun(env):
@@ -28,7 +28,7 @@ redis.registerAsyncFunction("test", async function(client){
     return foo()
 })
     '''
-    env.expect('TFCALLASYNC', 'foo', 'test', 0).error().contains(':3:') # error on line 5
+    env.expectTfcallAsync('foo', 'test').error().contains(':3:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnFunctionThatReturnsCoro(env):
@@ -39,12 +39,12 @@ redis.registerFunction("test", function(client){
     });
 })
     '''
-    env.expect('TFCALLASYNC', 'foo', 'test', 0).error().contains(':4:') # error on line 5
+    env.expectTfcallAsync('foo', 'test').error().contains(':4:') # error on line 5
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnStreamProcessing(env):
     '''#!js api_version=1.0 name=foo
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(c, data){
+redis.registerStreamTrigger("consumer", "stream", function(c, data){
     return foo()
 })
     '''
@@ -55,7 +55,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, false, function(c, data){
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncStreamProcessing(env):
     '''#!js api_version=1.0 name=foo
-redis.registerStreamTrigger("consumer", "stream", 1, false, async function(c, data){
+redis.registerStreamTrigger("consumer", "stream", async function(c, data){
     return foo()
 })
     '''
@@ -73,7 +73,7 @@ redis.registerKeySpaceTrigger("consumer", "", function(c, data){
     '''
     env.cmd('set', 'x', '1')
     res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
-    env.assertContains(':3:', res[0]['triggers'][0]['last_error']) # error on line 3
+    env.assertContains(':3:', res[0]['keyspace_triggers'][0]['last_error']) # error on line 3
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnAsyncNotificationConsumer(env):
@@ -83,9 +83,9 @@ redis.registerKeySpaceTrigger("consumer", "", async function(c, data){
 })
     '''
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['num_failed'])
     res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
-    env.assertContains(':3:', res[0]['triggers'][0]['last_error']) # error on line 3
+    env.assertContains(':3:', res[0]['keyspace_triggers'][0]['last_error']) # error on line 3
 
 @gearsTest(errorVerbosity=2)
 def testVerboseErrorOnSyncNotificationConsumerThatMoveAsync(env):
@@ -97,7 +97,7 @@ redis.registerKeySpaceTrigger("consumer", "", function(c, data){
 })
     '''
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['triggers'][0]['num_failed'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['num_failed'])
     res = toDictionary(env.cmd('TFUNCTION', 'list', 'vvv'), 6)
-    env.assertContains(':4:', res[0]['triggers'][0]['last_error']) # error on line 4
+    env.assertContains(':4:', res[0]['keyspace_triggers'][0]['last_error']) # error on line 4
 

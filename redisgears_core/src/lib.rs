@@ -12,7 +12,7 @@
 
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
-use redis_module::{CallResult, ContextFlags, ErrorReply};
+use redis_module::{CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use config::{
     FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
-    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_FLAGS, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
     V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY, V8_PLUGIN_PATH,
 };
 
@@ -37,8 +37,8 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    command, flush_event_handler, loading_event_handler, module_changed_event_handler,
-    role_changed_event_handler,
+    command, config_changed_event_handler, flush_event_handler, loading_event_handler,
+    module_changed_event_handler, role_changed_event_handler,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -66,7 +66,6 @@ use std::iter::Skip;
 use std::vec::IntoIter;
 
 use crate::compiled_library_api::CompiledLibraryInternals;
-use crate::gears_box::{gears_box_search, GearsBoxLibraryInfo};
 use crate::keys_notifications::{KeysNotificationsCtx, NotificationCallback, NotificationConsumer};
 use crate::stream_run_ctx::{GearsStreamConsumer, GearsStreamRecord};
 
@@ -83,7 +82,6 @@ mod config;
 mod function_del_command;
 mod function_list_command;
 mod function_load_command;
-mod gears_box;
 mod keys_notifications;
 mod keys_notifications_ctx;
 mod rdb;
@@ -105,6 +103,9 @@ pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 /// The build type of the crate.
 pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
+
+const PSEUDO_SLAVE_READONLY_CONFIG_NAME: &str = "pseudo-slave-readonly";
+const PSEUDO_SLAVE_CONFIG_NAME: &str = "pseudo-slave";
 
 fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     use redis_module::Version;
@@ -148,6 +149,7 @@ struct GearsFunctionCtx {
     func: Box<dyn FunctionCtxInterface>,
     flags: FunctionFlags,
     is_async: bool,
+    description: Option<String>,
 }
 
 impl GearsFunctionCtx {
@@ -155,11 +157,13 @@ impl GearsFunctionCtx {
         func: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
         is_async: bool,
+        description: Option<String>,
     ) -> GearsFunctionCtx {
         GearsFunctionCtx {
             func,
             flags,
             is_async,
+            description,
         }
     }
 }
@@ -173,9 +177,10 @@ struct GearsLibraryCtx {
     remote_functions: HashMap<String, RemoteFunctionCtx>,
     stream_consumers:
         HashMap<String, Arc<RefCellWrapper<ConsumerData<GearsStreamRecord, GearsStreamConsumer>>>>,
-    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool)>,
+    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool, Option<String>)>,
     notifications_consumers: HashMap<String, Arc<RefCell<NotificationConsumer>>>,
-    revert_notifications_consumers: Vec<(String, ConsumerKey, NotificationCallback)>,
+    revert_notifications_consumers:
+        Vec<(String, ConsumerKey, NotificationCallback, Option<String>)>,
     old_lib: Option<Arc<GearsLibrary>>,
 }
 
@@ -188,7 +193,6 @@ struct GearsLibrary {
     gears_lib_ctx: GearsLibraryCtx,
     _lib_ctx: Box<dyn LibraryCtxInterface>,
     compile_lib_internals: Arc<CompiledLibraryInternals>,
-    gears_box_lib: Option<GearsBoxLibraryInfo>,
 }
 
 impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
@@ -197,6 +201,9 @@ impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
         name: &str,
         func_ctx: GearsFunctionCtx,
     ) -> Result<(), GearsApiError> {
+        verify_name(name)
+            .map_err(|e| GearsApiError::new(format!("Unallowed function name '{name}', {e}.")))?;
+
         if self.gears_lib_ctx.functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Function {} already exists",
@@ -216,8 +223,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
-        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, false))
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, false, description),
+        )
     }
 
     fn register_async_function(
@@ -225,8 +236,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
-        self.register_function_internal(name, GearsFunctionCtx::new(function_ctx, flags, true))
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, true, description),
+        )
     }
 
     fn register_remote_task(
@@ -236,6 +251,11 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
     ) -> Result<(), GearsApiError> {
         // TODO move to <https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert>
         // once stabilised.
+
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed cluster function name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.remote_functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Remote function {} already exists",
@@ -255,7 +275,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed stream trigger name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.stream_consumers.contains_key(name) {
             return Err(GearsApiError::new(
                 "Stream registration already exists".to_string(),
@@ -282,11 +307,13 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             ));
             let old_window = o_c.set_window(window);
             let old_trim = o_c.set_trim(trim);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_stream_consumers.push((
                 name.to_string(),
                 old_ctx,
                 old_window,
                 old_trim,
+                old_description,
             ));
             Arc::clone(old_consumer)
         } else {
@@ -315,8 +342,9 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                         ],
                     );
                 })),
+                description,
             );
-            if self.ctx.get_flags().contains(ContextFlags::MASTER) {
+            if is_master(self.ctx) {
                 // trigger a key scan
                 scan_key_space_for_streams();
             }
@@ -334,7 +362,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed key space trigger name '{name}', {e}."))
+        })?;
+
         if self
             .gears_lib_ctx
             .notifications_consumers
@@ -374,11 +407,11 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 );
             });
 
-        let consumer = if let Some(old_notification_consumer) = self
-            .gears_lib_ctx
-            .old_lib
-            .as_ref()
-            .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
+        let consumer: Arc<RefCell<NotificationConsumer>> = if let Some(old_notification_consumer) =
+            self.gears_lib_ctx
+                .old_lib
+                .as_ref()
+                .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
         {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
@@ -387,22 +420,28 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.to_vec()),
             };
             let old_key = o_c.set_key(new_key);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_notifications_consumers.push((
                 name.to_string(),
                 old_key,
                 old_consumer_callback,
+                old_description,
             ));
             Arc::clone(old_notification_consumer)
         } else {
             let globals = get_globals_mut();
 
             match key {
-                RegisteredKeys::Key(k) => globals
-                    .notifications_ctx
-                    .add_consumer_on_key(k, fire_event_callback),
-                RegisteredKeys::Prefix(p) => globals
-                    .notifications_ctx
-                    .add_consumer_on_prefix(p, fire_event_callback),
+                RegisteredKeys::Key(k) => globals.notifications_ctx.add_consumer_on_key(
+                    k,
+                    fire_event_callback,
+                    description,
+                ),
+                RegisteredKeys::Prefix(p) => globals.notifications_ctx.add_consumer_on_prefix(
+                    p,
+                    fire_event_callback,
+                    description,
+                ),
             }
         };
 
@@ -410,6 +449,39 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             .notifications_consumers
             .insert(name.to_string(), consumer);
         Ok(())
+    }
+}
+
+/// The policy configured on the current database
+enum DbPolicy {
+    /// Regular database
+    Regular,
+    /// A replica-of target
+    PseudoSlave,
+    /// A readonly replica-of target
+    PseudoSlaveReadonly,
+}
+
+impl DbPolicy {
+    pub(crate) fn is_regular(&self) -> bool {
+        match self {
+            DbPolicy::Regular => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_readonly(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_pseudo_slave(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly | DbPolicy::PseudoSlave => true,
+            _ => false,
+        }
     }
 }
 
@@ -423,6 +495,7 @@ struct GlobalCtx {
     notifications_ctx: KeysNotificationsCtx,
     avoid_key_space_notifications: bool,
     allow_unsafe_redis_commands: bool,
+    db_policy: DbPolicy,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -533,6 +606,54 @@ fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
     Ok(())
 }
 
+fn get_db_policy(ctx: &Context) -> DbPolicy {
+    let call_options = CallOptionsBuilder::new()
+        .resp(CallOptionResp::Resp3)
+        .build();
+    let res = ctx.call_ext(
+        "config",
+        &call_options,
+        &[
+            "get",
+            PSEUDO_SLAVE_READONLY_CONFIG_NAME,
+            PSEUDO_SLAVE_CONFIG_NAME,
+        ],
+    );
+    if let Ok(res) = res {
+        let res: RedisValue = (&res).into();
+        if let RedisValue::Map(map) = res {
+            let pseudo_slave_readonly = map
+                .get(&RedisValueKey::String(
+                    PSEUDO_SLAVE_READONLY_CONFIG_NAME.to_owned(),
+                ))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave_readonly == "yes" {
+                return DbPolicy::PseudoSlaveReadonly;
+            }
+
+            let pseudo_slave = map
+                .get(&RedisValueKey::String(PSEUDO_SLAVE_CONFIG_NAME.to_owned()))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave == "yes" {
+                return DbPolicy::PseudoSlave;
+            }
+        }
+    }
+    DbPolicy::Regular
+}
+
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     mr_init(ctx, 1, None);
 
@@ -590,7 +711,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         stream_ctx: StreamReaderCtx::new(
             Box::new(|ctx, key, id, include_id| {
                 // read data from the stream
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     return Err("Can not read data on replica".to_string());
                 }
                 let stream_name = ctx.create_string(key);
@@ -607,7 +728,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             }),
             Box::new(|ctx, key_name, id| {
                 // trim the stream callback
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     ctx.log_warning("Attempt to trim data on replica was denied.");
                     return;
                 }
@@ -635,6 +756,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         notifications_ctx: KeysNotificationsCtx::new(),
         avoid_key_space_notifications: false,
         allow_unsafe_redis_commands: false,
+        db_policy: get_db_policy(ctx),
     };
 
     let v8_path = V8_PLUGIN_PATH.lock(ctx);
@@ -666,6 +788,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             ctx.log_warning(&format!("Backend {} already exists", name));
             return Status::Err;
         }
+        let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
         let initialised_backend = match backend.initialize(BackendCtx {
             allocator: &RedisAlloc,
             log_info: Box::new(|msg| log::info!("{msg}")),
@@ -688,6 +811,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             get_v8_library_memory_delta: Box::new(|| {
                 V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
             }),
+            get_v8_flags: Box::new(move || v8_flags.to_owned()),
         }) {
             Ok(b) => b,
             Err(e) => {
@@ -728,11 +852,18 @@ pub(crate) fn verify_oom(ctx: &Context, flags: FunctionFlags) -> bool {
         || !ctx.get_flags().contains(ContextFlags::OOM)
 }
 
+/// Return true iff the current instance is a master which is not a pseudo slave (replica-of target).
+pub(crate) fn is_master(ctx: &Context) -> bool {
+    let globals = get_globals();
+    ctx.get_flags().contains(ContextFlags::MASTER) && globals.db_policy.is_regular()
+}
+
 /// Returns `true` if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
 pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool {
-    // not replica, ok to run || we can run function with no writes on replica.
-    ctx.get_flags().contains(ContextFlags::MASTER) || flags.contains(FunctionFlags::NO_WRITES)
+    // master which is not readonly, ok to run || we can run function with no writes on replica.
+    (ctx.get_flags().contains(ContextFlags::MASTER) && !get_globals().db_policy.is_readonly())
+        || flags.contains(FunctionFlags::NO_WRITES)
 }
 
 fn function_call_command(
@@ -740,8 +871,15 @@ fn function_call_command(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
     allow_block: bool,
 ) -> RedisResult {
-    let library_name = args.next_arg()?.try_as_str()?;
-    let function_name = args.next_arg()?.try_as_str()?;
+    let mut lib_func_name = args.next_arg()?.try_as_str()?.split(".");
+
+    let library_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting library name"))?;
+    let function_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting function name"))?;
+
     let num_keys = args.next_arg()?.try_as_str()?.parse::<usize>()?;
     let libraries = get_libraries();
 
@@ -859,44 +997,8 @@ fn function_debug_command(
         .map_err(|e| RedisError::String(e.get_msg().to_string()))
 }
 
-pub(crate) fn json_to_redis_value(val: serde_json::Value) -> RedisValue {
-    match val {
-        serde_json::Value::Bool(b) => RedisValue::Integer(if b { 1 } else { 0 }),
-        serde_json::Value::Number(n) => {
-            if n.is_i64() {
-                RedisValue::Integer(n.as_i64().unwrap())
-            } else {
-                RedisValue::BulkString(n.as_f64().unwrap().to_string())
-            }
-        }
-        serde_json::Value::String(s) => RedisValue::BulkString(s),
-        serde_json::Value::Null => RedisValue::Null,
-        serde_json::Value::Array(a) => {
-            let mut res = Vec::new();
-            for v in a {
-                res.push(json_to_redis_value(v));
-            }
-            RedisValue::Array(res)
-        }
-        serde_json::Value::Object(o) => RedisValue::Map(
-            o.into_iter()
-                .map(|(k, v)| (RedisValueKey::String(k), json_to_redis_value(v)))
-                .collect(),
-        ),
-    }
-}
-
-fn function_search_lib_command(
-    ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let search_token = args.next_arg()?.try_as_str()?;
-    let search_result = gears_box_search(ctx, search_token)?;
-    Ok(json_to_redis_value(search_result))
-}
-
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
-    if ctx.get_flags().contains(ContextFlags::MASTER) {
+    if is_master(ctx) {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
         stream_ctx.on_stream_touched(ctx, event, key);
     }
@@ -910,10 +1012,16 @@ fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, k
 }
 
 fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+    if !is_master(ctx) {
+        // do not fire notifications on slave
+        return;
+    }
+
     let globals = get_globals();
     if globals.avoid_key_space_notifications {
         return;
     }
+
     globals.notifications_ctx.on_key_touched(ctx, event, key)
 }
 
@@ -1000,6 +1108,29 @@ fn on_flush_event(ctx: &Context, flush_event: FlushSubevent) {
     }
 }
 
+#[config_changed_event_handler]
+fn on_config_change(ctx: &Context, values: &[&str]) {
+    if let Some(_) = values
+        .iter()
+        .find(|v| **v == PSEUDO_SLAVE_READONLY_CONFIG_NAME || **v == PSEUDO_SLAVE_CONFIG_NAME)
+    {
+        let globals = get_globals_mut();
+        globals.db_policy = get_db_policy(ctx);
+    }
+}
+
+pub(crate) fn verify_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err(format!("Empty name is not allowed"));
+    }
+    name.chars().try_for_each(|c| {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            return Ok(());
+        }
+        Err(format!("Unallowed char was given '{c}'"))
+    })
+}
+
 pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     if ERROR_VERBOSITY.load(Ordering::Relaxed) == 1 {
         return err.get_msg();
@@ -1011,11 +1142,11 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     {
         name: "tfcall",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
@@ -1030,11 +1161,11 @@ fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     {
         name: "tfcallasync",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
@@ -1082,27 +1213,6 @@ fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
         "list" => function_list_command::function_list_command(ctx, args),
         "delete" => function_del_command::function_del_command(ctx, args),
         "debug" => function_debug_command(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
-#[command(
-    {
-        name: "rg.box",
-        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -3,
-        key_spec: [],
-    }
-)]
-fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "search" => function_search_lib_command(ctx, args),
-        "install" => function_load_command::function_install_lib_command(ctx, args),
         _ => Err(RedisError::String(format!(
             "Unknown subcommand {}",
             sub_command
@@ -1226,6 +1336,7 @@ mod gears_module {
             string: [
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],
                 ["v8-plugin-path", &*V8_PLUGIN_PATH , "libredisgears_v8_plugin.so", ConfigurationFlags::IMMUTABLE, None],
+                ["v8-flags", &*V8_FLAGS, "", ConfigurationFlags::IMMUTABLE, None],
             ],
             bool: [
                 ["enable-debug-command", &*ENABLE_DEBUG_COMMAND , false, ConfigurationFlags::IMMUTABLE, None],

@@ -11,6 +11,14 @@ pub const BUILD_OS: Option<&str> = std::option_env!("BUILD_OS");
 pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 
+fn get_dylib_ext() -> &'static str {
+    if BUILD_OS.as_ref().map(|v| v.to_lowercase()) == Some("macos".to_owned()) {
+        "dylib"
+    } else {
+        "so"
+    }
+}
+
 fn main() {
     let mut curr_path = std::env::current_exe().expect("Could not get binary location");
     curr_path.pop();
@@ -21,15 +29,15 @@ fn main() {
     ramp_yml_path.push("ramp.yml");
 
     let mut redisgears_so_path = curr_path.clone();
-    redisgears_so_path.push("libredisgears.so");
+    redisgears_so_path.push(format!("libredisgears.{}", get_dylib_ext()));
 
     let mut redisgears_v8_plugin_so_path = curr_path.clone();
-    redisgears_v8_plugin_so_path.push("libredisgears_v8_plugin.so");
+    redisgears_v8_plugin_so_path.push(format!("libredisgears_v8_plugin.{}", get_dylib_ext()));
 
     println!("{:?}", redisgears_v8_plugin_so_path);
 
     let gears_snapeshot_file_name = format!(
-        "redisgears2.{}-{}-{}.{}.zip",
+        "redisgears.{}-{}-{}.{}.zip",
         BUILD_OS.unwrap(),
         BUILD_OS_NICK.unwrap(),
         BUILD_OS_ARCH.unwrap(),

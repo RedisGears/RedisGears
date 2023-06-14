@@ -42,7 +42,7 @@ An error, if the library does not exists or "OK" if the library was deleted succ
 
 **Example**
 ```bash
-> TFUNCTION DEL lib
+> TFUNCTION DELETE lib
 OK
 ```
 
@@ -97,7 +97,7 @@ Information about the requested libraries.
 Invoke a function.
 
 ```
-RFCALL <library name> <function name> <number of keys> [<key1> ... <keyn>] [<arg1> ... <argn>]
+RFCALL <library name>.<function name> <number of keys> [<key1> ... <keyn>] [<arg1> ... <argn>]
 ```
 
 _Arguments_
@@ -114,7 +114,7 @@ The return value from the function on error in case of failure.
 
 **Example**
 ```bash
-> TFCALL lib foo 0
+> TFCALL lib.foo 0
 "bar"
 ```
 
@@ -123,7 +123,7 @@ The return value from the function on error in case of failure.
 Invoke an async function (Coroutine).
 
 ```
-TFCALLASYNC <library name> <function name> <number of keys> [<key1> ... <keyn>] [<arg1> ... <argn>]
+TFCALLASYNC <library name>.<function name> <number of keys> [<key1> ... <keyn>] [<arg1> ... <argn>]
 ```
 
 _Arguments_
@@ -140,6 +140,6 @@ The return value from the async function on error in case of failure.
 
 **Example**
 ```bash
-> TFCALLASYNC lib foo 0
+> TFCALLASYNC lib.foo 0
 "bar"
 ```

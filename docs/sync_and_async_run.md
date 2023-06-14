@@ -36,7 +36,7 @@ redis.registerFunction('test', async function(client){
 Running this function will return a `pong` reply:
 
 ```bash
-127.0.0.1:6379> TFCALLASYNC lib test 0
+127.0.0.1:6379> TFCALLASYNC lib.test 0
 "PONG"
 ```
 
@@ -184,8 +184,8 @@ redis.registerAsyncFunction('test', function(client, expected_name){
 
 Blocking Redis might fail, couple of reasons for such failure can be:
 
-* Redis reached OOM state and the `no-writes` or `allow-oom` flags are not set (see [functions flags](function_advance_topics.md#function-flags) for more information)
-* `no-writes` flag is not set and the Redis instance turned role and it is now a replica.
+* Redis reached OOM state and the `redis.functionFlags.NO_WRITES` or `redis.functionFlags.ALLOW_OOM` flags are not set (see [functions flags](function_advance_topics.md#function-flags) for more information)
+* `redis.functionFlags.NO_WRITES` flag is not set and the Redis instance turned role and it is now a replica.
 * ACL user that invoked the function was deleted.
 
 The failure will result in an exception that the function writer can choose to handle or throw it to be catch by RedisGears.

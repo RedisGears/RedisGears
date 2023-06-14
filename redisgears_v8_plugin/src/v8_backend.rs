@@ -364,7 +364,7 @@ impl V8Backend {
         }
     }
 
-    fn initialize_v8_engine(&self) {
+    fn initialize_v8_engine(&self, flags: &str) {
         v8_init_with_error_handlers(
             Box::new(|line, msg| {
                 let msg = format!("v8 fatal error on {}, {}", line, msg);
@@ -385,7 +385,9 @@ impl V8Backend {
                 panic!("{}", msg);
             }),
             1,
-        );
+            Some(flags),
+        )
+        .expect("Failed loading V8");
     }
 
     fn spone_background_maintenance_thread(&self) {
@@ -411,12 +413,18 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
         self: Box<Self>,
         backend_ctx: BackendCtx,
     ) -> Result<Box<dyn BackendCtxInterfaceInitialised>, GearsApiError> {
+        let flags = (backend_ctx.get_v8_flags)();
+        let flags = if flags.starts_with("'") && flags.len() > 1 {
+            &flags[1..flags.len() - 1]
+        } else {
+            &flags
+        };
         unsafe {
             GLOBAL.backend_ctx = Some(backend_ctx);
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
             GLOBAL.script_ctx_vec = Some(Arc::clone(&self.script_ctx_vec));
         }
-        self.initialize_v8_engine();
+        self.initialize_v8_engine(&flags);
         self.spone_background_maintenance_thread();
 
         Ok(self)
@@ -425,7 +433,12 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
 
 impl BackendCtxInterfaceInitialised for V8Backend {
     fn get_version(&self) -> String {
-        format!("Version: {}, v8-rs: {}", v8_version(), v8_rs::GIT_SEMVER)
+        format!(
+            "Version: {}, v8-rs: {}, profile:{}",
+            v8_version(),
+            v8_rs::GIT_SEMVER,
+            v8_rs::PROFILE
+        )
     }
 
     fn compile_library(
@@ -436,7 +449,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
         config: Option<&String>,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
     ) -> Result<Box<dyn LibraryCtxInterface>, GearsApiError> {
-        if bypass_memory_limit() {
+        if calc_isolates_used_memory() >= max_memory_limit() {
             return Err(GearsApiError::new(
                 "JS engine reached OOM state and can not run any more code",
             ));

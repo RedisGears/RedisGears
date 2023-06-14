@@ -65,7 +65,7 @@ module.exports = {
     mode: "production",
     plugins: [
         new webpack.BannerPlugin({
-			banner:'#!js name=foo',
+			banner:'#!js name=foo api_version=1.0',
             raw: true,
             entryOnly: true,
 	    })
@@ -97,7 +97,7 @@ redis-cli -x TFUNCTION LOAD < ./dist/main.js
 An `OK` reply will indicating that the library was loaded successfully. Test the library functionality by running the following:
 
 ```bash
-> redis-cli TFCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "foo"
 ```
 
@@ -141,7 +141,7 @@ redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 And we can test our function:
 
 ```bash
-> redis-cli TFCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "test"
 ```
 
@@ -178,7 +178,7 @@ redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 And run it:
 
 ```bash
-> redis-cli TFCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "3.1415926535897931"
 ```
 
@@ -350,7 +350,7 @@ module.exports = {
     entry: './src/index.js',
     plugins: [
         new webpack.BannerPlugin({
-          banner:'#!js name=foo',
+          banner:'#!js name=foo api_version=1.0',
                 raw: true,
                 entryOnly: true,
         }),
@@ -478,10 +478,10 @@ Deploying
 OK
 ```
 
-Now if we will call `foo` function using [`FCALL`](commands.md#tfcall), we will see that `Hello, World!` is printed to the Redis log file.
+Now if we will call `foo` function using [`TFCALL`](commands.md#tfcall), we will see that `Hello, World!` is printed to the Redis log file.
 
 ```bash
-> redis-cli TFCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "undefined"
 ```
 
@@ -548,11 +548,11 @@ We define a new `Client` type and declare its `get` function. Then we use it on 
 
 ```bash
 > redis-cli
-127.0.0.1:6379> TFCALL foo foo 0
+127.0.0.1:6379> TFCALL foo.foo 0
 "undefined"
 127.0.0.1:6379> set x 1
 OK
-127.0.0.1:6379> TFCALL foo foo 0
+127.0.0.1:6379> TFCALL foo.foo 0
 "1"
 ```
 

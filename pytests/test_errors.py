@@ -71,7 +71,7 @@ redis.registerAsyncFunction('test', async function(c1){
     });
 })
     """
-    env.expect('TFCALLASYNC', 'foo', 'test', '0').error().contains('thread is already blocked')
+    env.expectTfcallAsync('foo', 'test').error().contains('thread is already blocked')
 
 @gearsTest()
 def testCallRedisWhenNotBlocked(env):
@@ -84,7 +84,7 @@ redis.registerAsyncFunction('test', async function(c){
     });
 })
     """
-    env.expect('TFCALLASYNC', 'foo', 'test', '0').error().contains('thread is not locked')
+    env.expectTfcallAsync('foo', 'test').error().contains('thread is not locked')
 
 @gearsTest()
 def testCommandsNotAllowedOnScript(env):
@@ -98,10 +98,10 @@ redis.registerAsyncFunction('test2', async function(c1){
     });
 })
     """
-    env.expect('TFCALL', 'foo', 'test1', '0').error().contains('is not allowed on script mode')
-    env.expect('TFCALLASYNC', 'foo', 'test2', '0').error().contains('is not allowed on script mode')
+    env.expectTfcall('foo', 'test1').error().contains('is not allowed on script mode')
+    env.expectTfcallAsync('foo', 'test2').error().contains('is not allowed on script mode')
 
-@gearsTest()
+@gearsTest(gearsConfig={"v8-flags": "'--stack-size=50'"})
 def testJSStackOverflow(env):
     """#!js api_version=1.0 name=foo
 function test() {
@@ -109,13 +109,12 @@ function test() {
 }
 redis.registerFunction('test', test);
     """
-    env.expect('TFCALL', 'foo', 'test', '0').error().contains('Maximum call stack size exceeded')
+    env.expectTfcall('foo', 'test').error().contains('Maximum call stack size exceeded')
 
-@gearsTest()
+@gearsTest(gearsConfig={"v8-flags": "'--stack-size=50'"})
 def testJSStackOverflowOnLoading(env):
     script = """#!js api_version=1.0 name=foo
 function test(i) {
-    redis.log(JSON.stringify(i))
     test(i+1);
 }
 test(1);
@@ -167,7 +166,7 @@ function test() {
 }
 redis.registerFunction('test', test);
     """
-    env.expect('TFCALL', 'foo', 'test', '0')
+    env.expectTfcall('foo', 'test')
     env.expect('PING').equal(True)
 
 @gearsTest()
@@ -178,8 +177,8 @@ function test() {
 }
 redis.registerFunction('test', test);
     """
-    env.expect('TFCALL', 'foo', 'test', '10', 'bar').error().contains('Not enough arguments was given')
-    env.expect('TFCALL', 'foo', 'test').error().contains('wrong number of arguments ')
+    env.expect('TFCALL', 'foo.test', '10', 'bar').error().contains('Not enough arguments was given')
+    env.expect('TFCALL', 'foo.test').error().contains('wrong number of arguments ')
 
 @gearsTest()
 def testNotExistsRemoteFunction(env):
@@ -188,7 +187,7 @@ redis.registerAsyncFunction("test", async (async_client) => {
     return await async_client.runOnKey('x', 'not_exists');
 });
     """
-    env.expect('TFCALLASYNC', 'foo', 'test', '0').error().contains('Remote function not_exists does not exists')
+    env.expectTfcallAsync('foo', 'test').error().contains('Remote function not_exists does not exists')
 
 @gearsTest()
 def testRemoteFunctionNotSerializableInput(env):
@@ -206,7 +205,7 @@ redis.registerAsyncFunction("test", async (async_client, key) => {
     return await async_client.runOnKey(key, remote_get, ()=>{return 1;});
 });
     """
-    env.expect('TFCALLASYNC', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function argument')
+    env.expectTfcallAsync('foo', 'test', ['1']).error().contains('Failed deserializing remote function argument')
 
 @gearsTest()
 def testRemoteFunctionNotSerializableOutput(env):
@@ -221,7 +220,7 @@ redis.registerAsyncFunction("test", async (async_client, key) => {
     return await async_client.runOnKey(key, remote_get, key);
 });
     """
-    env.expect('TFCALLASYNC', 'foo', 'test', '1', '1').error().contains('Failed deserializing remote function result')
+    env.expectTfcallAsync('foo', 'test', ['1']).error().contains('Failed deserializing remote function result')
 
 @gearsTest()
 def testRegisterRemoteFunctionWorngNumberOfArgs(env):
@@ -262,7 +261,7 @@ redis.registerFunction("test", (client) => {
     return redis.redisai.create_tensor("FLOAT", [1, 3], new Uint8Array(16).buffer);
 });
     """
-    env.expect('TFCALL', 'foo', 'test', '0').error().contains('RedisAI is not initialize')
+    env.expectTfcall('foo', 'test').error().contains('RedisAI is not initialize')
 
 @gearsTest()
 def testRedisAIModelCreateWithoutRedisAI(env):
@@ -271,7 +270,7 @@ redis.registerFunction("test", (client) => {
     return client.redisai.open_model("foo");
 });
     """
-    env.expect('TFCALL', 'foo', 'test', '0').error().contains('RedisAI is not initialize')
+    env.expectTfcall('foo', 'test').error().contains('RedisAI is not initialize')
 
 @gearsTest()
 def testRedisAIScriptCreateWithoutRedisAI(env):
@@ -280,7 +279,7 @@ redis.registerFunction("test", (client) => {
     return client.redisai.open_script("foo");
 });
     """
-    env.expect('TFCALL', 'foo', 'test', '0').error().contains('RedisAI is not initialize')
+    env.expectTfcall('foo', 'test').error().contains('RedisAI is not initialize')
 
 @gearsTest()
 def testUseOfInvalidClient(env):
@@ -293,7 +292,7 @@ redis.registerFunction("test", (client) => {
     });
 });
     """
-    env.expect('TFCALLASYNC', 'foo', 'test', '0').error().contains('Used on invalid client')
+    env.expectTfcallAsync('foo', 'test').error().contains('Used on invalid client')
 
 @gearsTest()
 def testCallWithoutBlock(env):
@@ -304,7 +303,7 @@ redis.registerFunction("test", (client) => {
     });
 });
     """
-    env.expect('TFCALLASYNC', 'foo', 'test', '0').error().contains('Main thread is not locked')
+    env.expectTfcallAsync('foo', 'test').error().contains('Main thread is not locked')
 
 @gearsTest()
 def testDelNoneExistingFunction(env):
@@ -407,7 +406,7 @@ def testUnknownFunctionName(env):
     '''#!js api_version=1.0 name=lib
 redis.registerFunction('test', () => {return 1})
     '''
-    env.expect('TFCALL', 'lib', 'foo', '0').error().contains("Unknown function")
+    env.expectTfcall('lib', 'foo').error().contains("Unknown function")
 
 @gearsTest()
 def testCallFunctionOnOOM(env):
@@ -415,7 +414,7 @@ def testCallFunctionOnOOM(env):
 redis.registerFunction('test', () => {return 1})
     '''
     env.expect('config', 'set', 'maxmemory', '1').equal('OK')
-    env.expect('TFCALL', 'lib', 'test', '0').error().contains("OOM can not run the function when out of memory")
+    env.expectTfcallAsync('lib', 'test').error().contains("OOM can not run the function when out of memory")
 
 @gearsTest()
 def testRegisterSameConsumerTwice(env):
@@ -437,10 +436,10 @@ redis.registerKeySpaceTrigger("consumer", "key", async function(client, data) {
 @gearsTest()
 def testRegisterSameStreamConsumerTwice(env):
     code = '''#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     return 0;
 });
-redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     return 0;
 });
     '''
@@ -449,7 +448,7 @@ redis.registerStreamTrigger("consumer", "stream", 1, false, function(){
 @gearsTest()
 def testUpgradeStreamConsumerWithDifferentPrefix(env):
     code = '''#!js api_version=1.0 name=lib
-redis.registerStreamTrigger("consumer", "%s", 1, false, function(){
+redis.registerStreamTrigger("consumer", "%s", function(){
     return 0;
 });
     '''
@@ -473,12 +472,12 @@ def testWrongFlagValue(env):
     code = '''#!js api_version=1.0 name=lib
 redis.registerFunction('test', () => {return 1}, [1])
     '''
-    env.expect('TFUNCTION', 'LOAD', code).error().contains('wrong type of string value')
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unknown properties given: 0')
 
 @gearsTest()
 def testUnknownFlagValue(env):
     code = '''#!js api_version=1.0 name=lib
-redis.registerFunction('test', () => {return 1}, ["unknown"])
+redis.registerFunction('test', () => {return 1}, {flags:["unknown"]})
     '''
     env.expect('TFUNCTION', 'LOAD', code).error().contains('Unknow flag')
 
@@ -487,21 +486,21 @@ def testArgDecodeFailure(env):
     '''#!js api_version=1.0 name=lib
 redis.registerFunction('test', () => {return 1})
     '''
-    env.expect('TFCALL', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
+    env.expectTfcall('lib', 'test', [], [b'\xaa']).error().contains('Can not convert argument to string')
 
 @gearsTest()
 def testArgDecodeFailureAsync(env):
     '''#!js api_version=1.0 name=lib
 redis.registerAsyncFunction('test', async () => {return 1})
     '''
-    env.expect('TFCALLASYNC', 'lib', 'test', '0', b'\xaa').error().contains('Can not convert argument to string')
+    env.expectTfcallAsync('lib', 'test', [], [b'\xaa']).error().contains('Can not convert argument to string')
 
 @gearsTest()
 def testCallAsyncFunctionWithTFCALL(env):
     '''#!js api_version=1.0 name=lib
 redis.registerAsyncFunction('test', async () => {return 1})
     '''
-    env.expect('TFCALL', 'lib', 'test', '0').error().contains('function is declared as async and was called while blocking was not allowed')
+    env.expectTfcall('lib', 'test').error().contains('function is declared as async and was called while blocking was not allowed')
 
 @gearsTest()
 def testBlockOnTFCall(env):
@@ -512,4 +511,58 @@ redis.registerFunction('test', (c) => {
     });
 });
     '''
-    env.expect('TFCALL', 'lib', 'test', '0').error().contains('Can not block client for background execution')
+    env.expectTfcall('lib', 'test').error().contains('Can not block client for background execution')
+
+@gearsTest()
+def testUnallowedLibraryName(env):
+    code = '''#!js api_version=1.0 name=foo.bar
+redis.registerFunction("test", (client) => {
+    return 1;
+});
+    '''
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unallowed library name \'foo.bar\'')
+
+@gearsTest()
+def testUnallowedFunctionName(env):
+    code = '''#!js api_version=1.0 name=foo
+redis.registerFunction("test.test", (client) => {
+    return 1;
+});
+    '''
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unallowed function name \'test.test\'')
+
+@gearsTest()
+def testUnallowedAsyncFunctionName(env):
+    code = '''#!js api_version=1.0 name=foo
+redis.registerAsyncFunction("test.test", async (client) => {
+    return 1;
+});
+    '''
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unallowed function name \'test.test\'')
+
+@gearsTest()
+def testUnallowedStreamTriggerName(env):
+    code = '''#!js api_version=1.0 name=foo
+redis.registerStreamTrigger("test.test", "stream", async (client) => {
+    return 1;
+});
+    '''
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unallowed stream trigger name \'test.test\'')
+
+@gearsTest()
+def testUnallowedKeySpaceTriggerName(env):
+    code = '''#!js api_version=1.0 name=foo
+redis.registerKeySpaceTrigger("test.test", "key", async (client) => {
+    return 1;
+});
+    '''
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unallowed key space trigger name \'test.test\'')
+
+@gearsTest()
+def testUnallowedClusterFunctionName(env):
+    code = '''#!js api_version=1.0 name=foo
+redis.registerClusterFunction("test.test", async (client) => {
+    return 1;
+});
+    '''
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('Unallowed cluster function name \'test.test\'')

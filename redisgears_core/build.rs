@@ -143,10 +143,22 @@ fn main() {
             "rhel{}",
             os_ver.split('.').next().expect("Failed getting os version")
         ),
+        "amazon" => format!(
+            "amzn{}",
+            os_ver.split('.').next().expect("Failed getting os version")
+        ),
+        "debian" if os_ver == "11" => "bullseye".to_owned(),
         _ => format!("{os_type}{os_ver}"),
     };
+
+
+    let mut os_arch = std::env::consts::ARCH.to_string().to_lowercase();
+    if os_arch == "aarc64" {
+        os_arch = "arm64v8".to_string();
+    }
+
     println!("cargo:rustc-env=BUILD_OS_NICK={}", os_nick);
-    println!("cargo:rustc-env=BUILD_OS_ARCH={}", std::env::consts::ARCH);
+    println!("cargo:rustc-env=BUILD_OS_ARCH={}", os_arch);
     println!(
         "cargo:rustc-env=BUILD_TYPE={}",
         std::env::var("PROFILE").expect("Can not get PROFILE env var")

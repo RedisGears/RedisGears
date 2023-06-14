@@ -23,11 +23,11 @@ Example of running the following function:
 ```bash
 127.0.0.1:6379> set x 1
 OK
-127.0.0.1:6379> TFCALL foo my_get 1 x
+127.0.0.1:6379> TFCALL foo.my_get 1 x
 "1"
 127.0.0.1:6379> hset h foo bar x y
 (integer) 2
-127.0.0.1:6379> TFCALL foo my_get 1 h
+127.0.0.1:6379> TFCALL foo.my_get 1 h
 1) "foo"
 2) "bar"
 3) "x"
@@ -62,7 +62,7 @@ redis.registerFunction('my_get', function(client, ...keys){
 Run example:
 
 ```bash
-127.0.0.1:6379> TFCALL foo my_get 2 x h
+127.0.0.1:6379> TFCALL foo.my_get 2 x h
 1) "1"
 2) 1) "foo"
    2) "bar"
@@ -73,29 +73,33 @@ Run example:
 ## Function Flags
 
 It is possible to provide some information about the function behaviour on registration time. Such information is called function flags. The function flags is a optional argument that can be given after the function implementation. The supported flags are:
-1. `no-writes` - indicating that the function performs not write commands. If this flag is on, it will be possible to run the function on read only replicas or on OOM. RedisGears force this flag behaviour, this means that any attempt to call a write command from within a function that has this flag will result in an exception.
-2. `allow-oom` - by default, RedisGears will not allow running any function on OOM. This flag allows overide this behaviour and running the function even on OOM. Enable this flag is considered unsafe and could cause Redis to bypass the maxmemory value. **User should only enable this flag if he knows for sure that his function do not consume memory** (for example, on OOM, it is safe to run a function that only deletes data).
-3. `raw-arguments` - by default, RedisGears will try to decode all function arguments as `JS` `String` and if it failed an error will be return to the client. When this flag is set, RedisGears will avoid String decoding and will pass the argument as `JS` `ArrayBuffer`.
+1. `redis.functionFlags.NO_WRITES` - indicating that the function performs not write commands. If this flag is on, it will be possible to run the function on read only replicas or on OOM. RedisGears force this flag behaviour, this means that any attempt to call a write command from within a function that has this flag will result in an exception.
+2. `redis.functionFlags.ALLOW_OOM` - by default, RedisGears will not allow running any function on OOM. This flag allows overide this behaviour and running the function even on OOM. Enable this flag is considered unsafe and could cause Redis to bypass the maxmemory value. **User should only enable this flag if he knows for sure that his function do not consume memory** (for example, on OOM, it is safe to run a function that only deletes data).
+3. `redis.functionFlags.RAW_ARGUMENTS` - by default, RedisGears will try to decode all function arguments as `JS` `String` and if it failed an error will be return to the client. When this flag is set, RedisGears will avoid String decoding and will pass the argument as `JS` `ArrayBuffer`.
 
-The following example shows how to set the `no-writes` flag:
+The following example shows how to set the `redis.functionFlags.NO_WRITES` flag:
 
 ```js
 #!js api_version=1.0 name=lib
 
-redis.registerFunction('my_ping', function(client){
-    return client.call('ping');
-},
-["no-writes"]);
+redis.registerFunction('my_ping',
+    function(client){
+        return client.call('ping');
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES]
+    }
+);
 ```
 
 Run example:
 
 ```bash
-127.0.0.1:6379> TFCALL foo my_ping 0
+127.0.0.1:6379> TFCALL foo.my_ping 0
 "PONG"
 127.0.0.1:6379> config set maxmemory 1
 OK
-127.0.0.1:6379> TFCALL foo my_ping 0
+127.0.0.1:6379> TFCALL foo.my_ping 0
 "PONG"
 
 ```
@@ -117,7 +121,7 @@ redis.registerFunction("hset", function(client, key, field, val){
 Run example:
 
 ```bash
-127.0.0.1:6379> TFCALL lib hset k foo bar 0
+127.0.0.1:6379> TFCALL lib.hset k foo bar 0
 (integer) 2
 127.0.0.1:6379> hgetall k
 1) "foo"
@@ -157,7 +161,7 @@ OK
 And we can see that the last update field name is `last_update`:
 
 ```bash
-127.0.0.1:6379> TFCALL lib hset h foo bar 0
+127.0.0.1:6379> TFCALL lib.hset h foo bar 0
 (integer) 2
 127.0.0.1:6379> hgetall h
 1) "foo"
@@ -233,20 +237,24 @@ By default, RedisGears will decode all data as string and will raise error on fa
 
 ### Binary Function Arguments
 
-It is possible to instruct RedisGears not to decode function arguments as `JS` `Strings` using [`raw-arguments`](#function-flags) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
+It is possible to instruct RedisGears not to decode function arguments as `JS` `Strings` using [redis.functionFlags.RAW_ARGUMENTS](#function-flags) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib
-redis.registerFunction("my_set", (c, key, val) => {
-    return c.call("set", key, val);
-},
-["raw-arguments"]);
+redis.registerFunction("my_set",
+    (c, key, val) => {
+        return c.call("set", key, val);
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
 ```
 
 The above example will allow us to set `key` and `val` even if those are binary data. Run example:
 
 ```bash
-127.0.0.1:6379> TFCALL lib my_set 1 "\xaa" "\xaa"
+127.0.0.1:6379> TFCALL lib.my_set 1 "\xaa" "\xaa"
 "OK"
 127.0.0.1:6379> get "\xaa"
 "\xaa"
@@ -260,10 +268,14 @@ Getting function arguments as binary data is not enough. We might want to read b
 
 ```js
 #!js api_version=1.0 name=lib
-redis.registerFunction("my_get", (c, key) => {
-    return c.callRaw("get", key);
-},
-["raw-arguments"]);
+redis.registerFunction("my_get", 
+    (c, key) => {
+        return c.callRaw("get", key);
+    },
+    {
+        flags: [redis.functionFalgs.RAW_ARGUMENTS]
+    }
+);
 ```
 
 The above example will be able to fetch binary data and return it to the user. Run example:
@@ -271,7 +283,7 @@ The above example will be able to fetch binary data and return it to the user. R
 ```bash
 27.0.0.1:6379> set "\xaa" "\xaa"
 OK
-127.0.0.1:6379> TFCALL lib my_get 1 "\xaa"
+127.0.0.1:6379> TFCALL lib.my_get 1 "\xaa"
 "\xaa"
 ```
 
@@ -309,7 +321,7 @@ Run example:
 ```bash
 127.0.0.1:6379> set "\xaa" "\xaa"
 OK
-127.0.0.1:6379> TFCALL lib notifications_stats 0
+127.0.0.1:6379> TFCALL lib.notifications_stats 0
 1) (integer) 1
 2) (nil)
 3) "\xaa"
@@ -336,7 +348,7 @@ redis.registerFunction("stats", function(){
         last_data_raw
     ];
 })
-redis.registerStreamTrigger("consumer", new Uint8Array([255]).buffer, 1, false, function(c, data){
+redis.registerStreamTrigger("consumer", new Uint8Array([255]).buffer, function(c, data){
     last_key = data.stream_name;
     last_key_raw = data.stream_name_raw;
     last_data = data.record;
@@ -349,7 +361,7 @@ Run Example:
 ```bash
 127.0.0.1:6379> xadd "\xff\xff" * "\xaa" "\xaa"
 "1659515146671-0"
-127.0.0.1:6379> TFCALL foo stats 0
+127.0.0.1:6379> TFCALL foo.stats 0
 1) (nil)
 2) "\xff\xff"
 3) 1) 1) (nil)
