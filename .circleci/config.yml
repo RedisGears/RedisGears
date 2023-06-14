@@ -226,12 +226,6 @@ workflows:
   default-flow:
     jobs:
 
-      - build-macos-arm64:
-          name: OSX [arm64] Integration
-          context: common
-          <<: *on-integ-branch
-          publish: "true"
-
       - build-macos-x64:
           name: OSX [intel] Integration
           context: common
