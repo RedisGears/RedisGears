@@ -33,7 +33,7 @@ commands:
           command: |
             if [[ $publish == "true" ]]; then
               s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
-                put -P <<parameters.srcdir>>release/redisgears2*.zip \
+                put -P <<parameters.srcdir>>/redisgears*.zip \
                 s3://redismodules/redisgears/snapshots/
             fi
 
