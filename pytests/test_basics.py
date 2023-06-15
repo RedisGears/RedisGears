@@ -11,148 +11,148 @@ todo:
 @gearsTest()
 def testBasicJSInvocation(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", function(){
+redis.registerFunction("test", function(){
     return 1
 })
     """
-    env.expect('RG.FCALL', 'foo', 'test', 0).equal(1)
+    env.expectTfcall('foo', 'test').equal(1)
 
 @gearsTest()
 def testCommandInvocation(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return client.call('ping')
 })
     """
-    env.expect('RG.FCALL', 'foo', 'test', 0).equal('PONG')
+    env.expectTfcall('foo', 'test').equal('PONG')
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgrade(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 1
 })
     """
     script = '''#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
     '''
-    env.expect('RG.FCALL', 'foo', 'test', 0).equal(1)
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).equal('OK')
-    env.expect('RG.FCALL', 'foo', 'test', 0).equal(2)
+    env.expectTfcall('foo', 'test').equal(1)
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).equal('OK')
+    env.expectTfcall('foo', 'test').equal(2)
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('TFUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailure(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 1
 })
     """
     script = '''#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return 2
 })
-redis.register_function("test", "bar"); // this will fail
+redis.registerFunction("test", "bar"); // this will fail
     '''
-    env.expect('RG.FCALL', 'foo', 'test', 0).equal(1)
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains('must be a function')
-    env.expect('RG.FCALL', 'foo', 'test', 0).equal(1)
+    env.expectTfcall('foo', 'test').equal(1)
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains('must be a function')
+    env.expectTfcall('foo', 'test').equal(1)
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('TFUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithStreamConsumer(env):
     """#!js api_version=1.0 name=foo
-redis.register_stream_consumer("consumer", "stream", 1, false, async function(c){
+redis.registerStreamTrigger("consumer", "stream", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
     """
     script = '''#!js api_version=1.0 name=foo
-redis.register_stream_consumer("consumer", "stream", 1, false, async function(c){
+redis.registerStreamTrigger("consumer", "stream", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
-redis.register_function("test", "bar"); // this will fail
+redis.registerFunction("test", "bar"); // this will fail
     '''
     env.cmd('XADD', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, '1', lambda: env.cmd('get', 'x'))
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains('must be a function')
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains('must be a function')
     env.cmd('XADD', 'stream:1', '*', 'foo', 'bar')
     runUntil(env, '2', lambda: env.cmd('get', 'x'))
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('TFUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
 @gearsTest(enableGearsDebugCommands=True)
 def testLibraryUpgradeFailureWithNotificationConsumer(env):
     """#!js api_version=1.0 name=foo
-redis.register_notifications_consumer("consumer", "key", async function(c){
+redis.registerKeySpaceTrigger("consumer", "key", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
     """
     script = '''#!js api_version=1.0 name=foo
-redis.register_notifications_consumer("consumer", "key", async function(c){
+redis.registerKeySpaceTrigger("consumer", "key", async function(c){
     c.block(function(c) {
         c.call('incr', 'x')
     })
 })
-redis.register_function("test", "bar"); // this will fail
+redis.registerFunction("test", "bar"); // this will fail
     '''
     env.cmd('set', 'key1', '1')
     runUntil(env, '1', lambda: env.cmd('get', 'x'))
-    env.expect('RG.FUNCTION', 'LOAD', 'UPGRADE', script).error().contains('must be a function')
+    env.expect('TFUNCTION', 'LOAD', 'REPLACE', script).error().contains('must be a function')
     env.cmd('set', 'key1', '1')
     runUntil(env, '2', lambda: env.cmd('get', 'x'))
 
     # make sure isolate was released
-    isolate_stats = toDictionary(env.cmd('RG.FUNCTION', 'DEBUG', 'js', 'isolates_stats'))
+    isolate_stats = toDictionary(env.cmd('TFUNCTION', 'DEBUG', 'js', 'isolates_aggregated_stats'))
     env.assertEqual(isolate_stats['active'], 1)
     env.assertEqual(isolate_stats['not_active'], 1)
 
 @gearsTest()
 def testRedisCallNullReply(env):
     """#!js api_version=1.0 name=foo
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     return client.call('get', 'x');
 })
     """
-    env.expect('RG.FCALL', 'foo', 'test', 0).equal(None)
+    env.expectTfcall('foo', 'test').equal(None)
 
 @gearsTest()
-def testOOM(env):
+def testRedisOOM(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("set", function(client, key, val){
+redis.registerFunction("set", function(client, key, val){
     return client.call('set', key, val);
 })
     """
-    env.expect('RG.FCALL', 'lib', 'set', '1', 'x', '1').equal('OK')
+    env.expectTfcall('lib', 'set', ['x'], ['1']).equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
-    env.expect('RG.FCALL', 'lib', 'set', '1', 'x', '1').error().contains('OOM can not run the function when out of memory')
+    env.expectTfcall('lib', 'set', ['x'], ['1']).error().contains('OOM can not run the function when out of memory')
 
 @gearsTest()
-def testOOMOnAsyncFunction(env):
+def testRedisOOMOnAsyncFunction(env):
     """#!js api_version=1.0 name=lib
 var continue_set = null;
 var set_done = null;
 var set_failed = null;
 
-redis.register_function("async_set_continue",
+redis.registerAsyncFunction("async_set_continue",
     async function(client) {
         if (continue_set == null) {
             throw "no async set was triggered"
@@ -163,11 +163,13 @@ redis.register_function("async_set_continue",
             set_failed = reject
         })
     },
-    ["allow-oom"]
+    {
+        flags: [redis.functionFlags.ALLOW_OOM]
+    }
 )
 
-redis.register_function("async_set_trigger", function(client, key, val){
-    client.run_on_background(async function(client){
+redis.registerFunction("async_set_trigger", function(client, key, val){
+    client.executeAsync(async function(client){
         await new Promise((resolve, reject) => {
             continue_set = resolve;
         })
@@ -184,47 +186,55 @@ redis.register_function("async_set_trigger", function(client, key, val){
     return "OK";
 });
     """
-    env.expect('RG.FCALL', 'lib', 'async_set_trigger', '1', 'x', '1').equal('OK')
+    env.expectTfcall('lib', 'async_set_trigger', ['x'], ['1']).equal('OK')
     env.expect('CONFIG', 'SET', 'maxmemory', '1')
-    env.expect('RG.FCALL', 'lib', 'async_set_continue', '0').error().contains('OOM Can not lock redis for write')
+    env.expectTfcallAsync('lib', 'async_set_continue').error().contains('OOM Can not lock redis for write')
 
 @gearsTest(withReplicas=True)
 def testRunOnReplica(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test1", function(client){
-    return 1;
-});
+redis.registerFunction("test1", 
+    function(client){
+        return 1;
+    });
 
-redis.register_function("test2", function(client){
-    return 1;
-},
-['no-writes']);
+    redis.registerFunction("test2", function(client){
+        return 1;
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES],
+    }
+);
     """
     replica = env.getSlaveConnection()
     env.expect('WAIT', '1', '7000').equal(1)
 
     try:
-        replica.execute_command('RG.FCALL', 'lib', 'test1', '0')
+        env.tfcall('lib', 'test1', c=replica)
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains('can not run a function that might perform writes on a replica', str(e))
 
-    env.assertEqual(1, replica.execute_command('RG.FCALL', 'lib', 'test2', '0'))
+    env.assertEqual(1, env.tfcall('lib', 'test2', c=replica))
 
 @gearsTest(withReplicas=True)
 def testFunctionDelReplicatedToReplica(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", function(client){
-    return 1;
-},
-['no-writes']);
+redis.registerFunction("test",
+    function(client){
+        return 1;
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES]
+    }
+);
     """
     replica = env.getSlaveConnection()
-    res = replica.execute_command('RG.FCALL', 'lib', 'test', '0')
-    env.expect('RG.FUNCTION', 'DEL', 'lib').equal('OK')
+    res = env.tfcall('lib', 'test', c=replica)
+    env.expect('TFUNCTION', 'DELETE', 'lib').equal('OK')
     env.expect('WAIT', '1', '7000').equal(1)
     try:
-        replica.execute_command('RG.FCALL', 'lib', 'test', '0')
+        env.tfcall('lib', 'test', c=replica)
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains('Unknown library', str(e))
@@ -233,12 +243,16 @@ redis.register_function("test", function(client){
 @gearsTest()
 def testNoWritesFlag(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("my_set", function(client, key, val){
-    return client.call('set', key, val);
-},
-['no-writes']);
+redis.registerFunction("my_set",
+    function(client, key, val){
+        return client.call('set', key, val);
+    },
+    {
+        flags: [redis.functionFlags.NO_WRITES]
+    }
+);
     """
-    env.expect('RG.FCALL', 'lib', 'my_set', '1', 'foo', 'bar').error().contains('was called while write is not allowed')
+    env.expectTfcall('lib', 'my_set', ['foo'], ['bar']).error().contains('was called while write is not allowed')
 
 @gearsTest()
 def testBecomeReplicaWhenFunctionRunning(env):
@@ -247,7 +261,7 @@ var continue_set = null;
 var set_done = null;
 var set_failed = null;
 
-redis.register_function("async_set_continue",
+redis.registerAsyncFunction("async_set_continue",
     async function(client) {
         if (continue_set == null) {
             throw "no async set was triggered"
@@ -258,11 +272,13 @@ redis.register_function("async_set_continue",
             set_failed = reject
         })
     },
-    ["no-writes"]
+    {
+        flags: [redis.functionFlags.NO_WRITES]
+    }
 )
 
-redis.register_function("async_set_trigger", function(client, key, val){
-    client.run_on_background(async function(client){
+redis.registerFunction("async_set_trigger", function(client, key, val){
+    client.executeAsync(async function(client){
         await new Promise((resolve, reject) => {
             continue_set = resolve;
         })
@@ -279,37 +295,37 @@ redis.register_function("async_set_trigger", function(client, key, val){
     return "OK";
 });
     """
-    env.expect('RG.FCALL', 'lib', 'async_set_trigger', '1', 'x', '1').equal('OK')
+    env.expectTfcall('lib', 'async_set_trigger', ['x'], ['1']).equal('OK')
     env.expect('replicaof', '127.0.0.1', '33333')
-    env.expect('RG.FCALL', 'lib', 'async_set_continue', '0').error().contains('Can not lock redis for write on replica')
+    env.expectTfcallAsync('lib', 'async_set_continue').error().contains('Can not lock redis for write on replica')
     env.expect('replicaof', 'no', 'one')
 
 @gearsTest()
 def testScriptTimeout(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test1", function(client){
+redis.registerFunction("test1", function(client){
     while (true);
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expectTfcall('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testAsyncScriptTimeout(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test1", async function(client){
+redis.registerAsyncFunction("test1", async function(client){
     client.block(function(){
         while (true);
     });
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expectTfcallAsync('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testTimeoutErrorNotCatchable(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test1", async function(client){
+redis.registerAsyncFunction("test1", async function(client){
     try {
         client.block(function(){
             while (true);
@@ -320,7 +336,7 @@ redis.register_function("test1", async function(client){
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expectTfcallAsync('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testScriptLoadTimeout(env):
@@ -328,51 +344,61 @@ def testScriptLoadTimeout(env):
 while(true);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
-    env.expect('RG.FUNCTION', 'LOAD', script).error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('TFUNCTION', 'LOAD', script).error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
 def testTimeoutOnStream(env):
     """#!js api_version=1.0 name=lib
-redis.register_stream_consumer("consumer", "stream", 1, true, function(){
-    while(true);
-})
+redis.registerStreamTrigger("consumer", "stream",
+    function(){
+        while(true);
+    },
+    {
+        isStreamTrimmed: true
+    }
+);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_consumers'][0]['streams'][0]['last_error'])
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_triggers'][0]['streams'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnStreamAsync(env):
     """#!js api_version=1.0 name=lib
-redis.register_stream_consumer("consumer", "stream", 1, true, async function(c){
-    c.block(function(){
-        while(true);
-    })
-})
+redis.registerStreamTrigger("consumer", "stream",
+    async function(c){
+        c.block(function(){
+            while(true);
+        })
+    },
+    {
+        isStreamTrimmed: true,
+    }
+);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['stream_consumers'][0]['streams'][0]['total_record_processed'])
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_consumers'][0]['streams'][0]['last_error'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['stream_triggers'][0]['streams'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnNotificationConsumer(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {
     while(true);
 });
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['notifications_consumers'][0]['last_error'])
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['keyspace_triggers'][0]['last_error'])
 
 @gearsTest()
 def testTimeoutOnNotificationConsumerAsync(env):
     """#!js api_version=1.0 name=lib
-redis.register_notifications_consumer("consumer", "", async function(client, data) {
+redis.registerKeySpaceTrigger("consumer", "", async function(client, data) {
     client.block(function(){
         while(true);
     })
@@ -380,48 +406,98 @@ redis.register_notifications_consumer("consumer", "", async function(client, dat
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
     env.cmd('set', 'x', '1')
-    runUntil(env, 1, lambda: toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vvv'), 6)[0]['notifications_consumers'][0]['num_failed'])
-    res = toDictionary(env.cmd('RG.FUNCTION', 'LIST', 'vv'), 6)
-    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['notifications_consumers'][0]['last_error'])
+    runUntil(env, 1, lambda: toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['keyspace_triggers'][0]['num_failed'])
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Execution was terminated due to OOM or timeout', res[0]['keyspace_triggers'][0]['last_error'])
 
-@gearsTest()
-def testOOM(env):
-    """#!js api_version=1.0 name=lib
-redis.register_function("test1", function(client){
-    a = [1]
+@gearsTest(v8MaxMemory=20 * 1024 * 1024)
+def testV8OOM(env):
+    code = """#!js api_version=1.0 name=lib
+
+redis.registerFunction("test", function(client){
+    return "OK";
+});
+
+redis.registerFunction("test1", function(client){
+    a = []
     while (true) {
-        a = [a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a,a]
+        a.push('foo')
     }
 });
+
+redis.registerKeySpaceTrigger("consumer", "", function(client, data){
+    return
+});
+
+redis.registerStreamTrigger(
+    "consumer", // consumer name
+    "stream", // streams prefix
+    function(c, data) {
+        return;
+    }
+);
     """
     env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '1000000000').equal('OK')
-    env.expect('RG.FCALL', 'lib', 'test1', '0').error().contains('Execution was terminated due to OOM or timeout')
+    env.expect('TFUNCTION', 'LOAD', code).equal('OK')
+
+    env.expectTfcall('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
+    env.expectTfcall('lib', 'test').error().contains('JS engine reached OOM state and can not run any more code')
+
+    # make sure JS code is not running on key space notifications
+    env.expect('set', 'x', '1').equal(True)
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['keyspace_triggers'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+
+    # make sure JS code is not running to process stream data
+    env.cmd('xadd', 'stream1', '*', 'foo', 'bar')
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['stream_triggers'][0]['streams'][0]['last_error'], 'JS engine reached OOM state and can not run any more code')
+
+    # make sure we can not load any more libraries
+    env.expect('TFUNCTION', 'LOAD', code).error().contains('JS engine reached OOM state and can not run any more code')
+
+    # delete the library and make sure we can run JS code again
+    env.expect('TFUNCTION', 'DELETE', 'lib').equal('OK')
+    env.expect('TFUNCTION', 'LOAD', code).equal('OK')
+    env.expectTfcall('lib', 'test').equal('OK')
+
+@gearsTest(v8MaxMemory=20 * 1024 * 1024)
+def testV8OOMOnFunctionLoad(env):
+    code = """#!js api_version=1.0 name=lib%d
+redis.registerFunction("test", function(client){
+    return "OK";
+});
+    """
+    try:
+        for i in range(100):
+            env.cmd('TFUNCTION', 'LOAD', code % i)
+        env.assertTrue(False, message='Except OOM on function load')
+    except Exception as e:
+        env.assertIn('JS engine reached OOM state', str(e))
 
 @gearsTest()
 def testLibraryConfiguration(env):
     code = """#!js api_version=1.0 name=lib
-redis.register_function("test1", function(){
+redis.registerFunction("test1", function(){
     return redis.config;
 });
     """
-    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
-    env.expect('RG.FCALL', 'lib', 'test1', '0').equal(['foo', 'bar'])
+    env.expect('TFUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
+    env.expectTfcall('lib', 'test1').equal(['foo', 'bar'])
 
 @gearsTest()
 def testLibraryConfigurationPersistAfterLoading(env):
     code = """#!js api_version=1.0 name=lib
-redis.register_function("test1", function(){
+redis.registerFunction("test1", function(){
     return redis.config;
 });
     """
-    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
+    env.expect('TFUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
     env.expect('debug', 'reload').equal("OK")
-    env.expect('RG.FCALL', 'lib', 'test1', '0').equal(['foo', 'bar'])
+    env.expectTfcall('lib', 'test1').equal(['foo', 'bar'])
 
 @gearsTest(enableGearsDebugCommands=True)
 def testCallTypeParsing(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", function(client){
+redis.registerFunction("test", function(client){
     var res;
 
     res = client.call("debug", "protocol", "string");
@@ -482,53 +558,53 @@ redis.register_function("test", function(client){
     return (()=>{var ret = new String("OK"); ret.__reply_type = "status"; return ret})();
 });
     """
-    env.expect('RG.FUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal("OK")
+    env.expect('TFUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
+    env.expectTfcall('lib', 'test').equal("OK")
 
 @gearsTest(enableGearsDebugCommands=True)
 def testResp3Types(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("debug_protocol", function(client, arg){
+redis.registerFunction("debug_protocol", function(client, arg){
     return client.call("debug", "protocol", arg);
 });
     """
-    env.expect('RG.FUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
+    env.expect('TFUNCTION', 'DEBUG', 'allow_unsafe_redis_commands').equal("OK")
     port = int(env.cmd('config', 'get', 'port')[1])
 
     # test resp3
     conn = Redis('localhost', port, protocol=3, decode_responses=True)
     
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'string'), 'Hello World')
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'integer'), 12345)
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'double'), 3.141)
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'null'), None)
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'set'), set([0, 1, 2]))
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'map'), {1: True, 2: False, 0: False})
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'txt:This is a verbatim\nstring')
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'true'), True)
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'false'), False)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['string'], c=conn), 'Hello World')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['integer'], c=conn), 12345)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['double'], c=conn), 3.141)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['bignum'], c=conn), '1234567999999999999999999999999999999')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['null'], c=conn), None)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['array'], c=conn), [0, 1, 2])
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['set'], c=conn), set([0, 1, 2]))
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['map'], c=conn), {1: True, 2: False, 0: False})
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['verbatim'], c=conn), 'txt:This is a verbatim\nstring')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['true'], c=conn), True)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['false'], c=conn), False)
 
     # test resp2
     conn = env.getConnection()
 
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'string'), 'Hello World')
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'integer'), 12345)
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'double'), "3.141")
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'bignum'), '1234567999999999999999999999999999999')
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'null'), None)
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'array'), [0, 1, 2])
-    env.assertEqual(sorted(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'set')), sorted([0, 1, 2]))
-    env.assertEqual(sorted(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'map')), sorted([1, 1, 0, 0, 2, 0]))
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'verbatim'), 'This is a verbatim\nstring')
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'true'), True)
-    env.assertEqual(conn.execute_command('RG.FCALL', 'lib', 'debug_protocol', '0', 'false'), False)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['string'], c=conn), 'Hello World')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['integer'], c=conn), 12345)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['double'], c=conn), "3.141")
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['bignum'], c=conn), '1234567999999999999999999999999999999')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['null'], c=conn), None)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['array'], c=conn), [0, 1, 2])
+    env.assertEqual(sorted(env.tfcall('lib', 'debug_protocol', [], ['set'], c=conn)), sorted([0, 1, 2]))
+    env.assertEqual(sorted(env.tfcall('lib', 'debug_protocol', [], ['map'], c=conn)), sorted([1, 1, 0, 0, 2, 0]))
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['verbatim'], c=conn), 'This is a verbatim\nstring')
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['true'], c=conn), True)
+    env.assertEqual(env.tfcall('lib', 'debug_protocol', [], ['false'], c=conn), False)
 
 @gearsTest(enableGearsDebugCommands=True)
 def testFunctionListResp3(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", function(){
+redis.registerFunction("test", function(){
     return "test";
 });
     """
@@ -537,29 +613,29 @@ redis.register_function("test", function(){
     # test resp3
     conn = Redis('localhost', port, protocol=3, decode_responses=True)
     
-    env.assertEqual(conn.execute_command('RG.FUNCTION', 'LIST'), [\
+    env.assertEqual(conn.execute_command('TFUNCTION', 'LIST'), [\
         {\
          'configuration': None,\
-         'remote_functions': [],\
+         'cluster_functions': [],\
          'engine': 'js',\
          'name': 'lib',\
          'pending_jobs': 0,\
          'functions': ['test'],\
          'user': 'default',\
-         'notifications_consumers': [],\
+         'keyspace_triggers': [],\
          'api_version': '1.0',\
-         'stream_consumers': []\
+         'stream_triggers': []\
         }\
     ])
 
 @gearsTest()
 def testNoAsyncFunctionOnMultiExec(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", async() => {return 'test'});
+redis.registerAsyncFunction("test", async() => {return 'test'});
     """
     conn = env.getConnection()
     p = conn.pipeline()
-    p.execute_command('RG.FCALL', 'lib', 'test', '0')
+    env.tfcallAsync('lib', 'test', c=p)
     try:
         p.execute()
         env.assertTrue(False, message='Except error on async function inside transaction')
@@ -569,11 +645,11 @@ redis.register_function("test", async() => {return 'test'});
 @gearsTest()
 def testSyncFunctionWithPromiseOnMultiExec(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", () => {return new Promise((resume, reject) => {})});
+redis.registerFunction("test", () => {return new Promise((resume, reject) => {})});
     """
     conn = env.getConnection()
     p = conn.pipeline()
-    p.execute_command('RG.FCALL', 'lib', 'test', '0')
+    env.tfcall('lib', 'test', c=p)
     try:
         p.execute()
         env.assertTrue(False, message='Except error on async function inside transaction')
@@ -583,177 +659,283 @@ redis.register_function("test", () => {return new Promise((resume, reject) => {}
 @gearsTest()
 def testAllowBlockAPI(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", (c) => {return c.allow_block()});
+redis.registerFunction("test", (c) => {return c.isBlockAllowed()});
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal(1)
+    env.expectTfcall('lib', 'test').equal(0)
+    env.expectTfcallAsync('lib', 'test').equal(1)
     conn = env.getConnection()
     p = conn.pipeline()
-    p.execute_command('RG.FCALL', 'lib', 'test', '0')
+    env.tfcall('lib', 'test', c=p)
+    env.tfcallAsync('lib', 'test', c=p)
     res = p.execute()
-    env.assertEqual(res, [0])
+    env.assertEqual(res, [0, 0])
 
 @gearsTest(decodeResponses=False)
 def testRawArguments(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("my_set", (c, key, val) => {
-    return c.call("set", key, val);
-},
-["raw-arguments"]);
+redis.registerFunction("my_set",
+    (c, key, val) => {
+        return c.call("set", key, val);
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
-    env.expect('RG.FCALL', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
+    env.expectTfcall('lib', 'my_set', ["x"], ["1"]).equal(b'OK')
     env.expect('get', 'x').equal(b'1')
-    env.expect('RG.FCALL', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
+    env.expectTfcall('lib', 'my_set', [b'\xaa'], [b'\xaa']).equal(b'OK')
     env.expect('get', b'\xaa').equal(b'\xaa')
 
 @gearsTest(decodeResponses=False)
 def testRawArgumentsAsync(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("my_set", async (c, key, val) => {
-    return c.block((c)=>{
-        return c.call("set", key, val);
-    });
-},
-["raw-arguments"]);
+redis.registerAsyncFunction("my_set", 
+    async (c, key, val) => {
+        return c.block((c)=>{
+            return c.call("set", key, val);
+        });
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
-    env.expect('RG.FCALL', 'lib', 'my_set', '1', "x", "1").equal(b'OK')
+    env.expectTfcallAsync('lib', 'my_set', ["x"], ["1"]).equal(b'OK')
     env.expect('get', 'x').equal(b'1')
-    env.expect('RG.FCALL', 'lib', 'my_set', '1', b'\xaa', b'\xaa').equal(b'OK')
+    env.expectTfcallAsync('lib', 'my_set', [b'\xaa'], [b'\xaa']).equal(b'OK')
     env.expect('get', b'\xaa').equal(b'\xaa')
 
 @gearsTest(decodeResponses=False)
 def testReplyWithBinaryData(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", () => {
+redis.registerFunction("test", () => {
     return new Uint8Array([255, 255, 255, 255]).buffer;
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal(b'\xff\xff\xff\xff')
+    env.expectTfcall('lib', 'test').equal(b'\xff\xff\xff\xff')
 
 @gearsTest(decodeResponses=False)
 def testRawCall(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", (c, key) => {
-    return c.call_raw("get", key)
-},
-["raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return c.callRaw("get", key)
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('set', b'\xaa', b'\xaa').equal(True)
-    env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').equal(b'\xaa')
+    env.expectTfcall('lib', 'test', [b'\xaa']).equal(b'\xaa')
 
 @gearsTest()
 def testSimpleHgetall(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", (c, key) => {
-    return c.call("hgetall", key)
-},
-["raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return c.call("hgetall", key)
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('hset', 'k', 'f', 'v').equal(True)
-    env.expect('RG.FCALL', 'lib', 'test', '1', 'k').equal(['f', 'v'])
+    env.expectTfcall('lib', 'test', ['k']).equal(['f', 'v'])
 
 
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHashRaiseError(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", (c, key) => {
-    return c.call("hgetall", key)
-},
-["raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return c.call("hgetall", key)
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('hset', b'\xaa', b'foo', b'\xaa').equal(True)
-    env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').error().contains('Could not decode value as string')
+    env.expectTfcall('lib', 'test', [b'\xaa']).error().contains('Could not decode value as string')
 
 @gearsTest(decodeResponses=False)
 def testBinaryFieldsNamesOnHash(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", (c, key) => {
-    return typeof Object.keys(c.call_raw("hgetall", key))[0];
-},
-["raw-arguments"]);
+redis.registerFunction("test",
+    (c, key) => {
+        return typeof Object.keys(c.callRaw("hgetall", key))[0];
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS]
+    }
+);
     """
     env.expect('hset', b'\xaa', b'\xaa', b'\xaa').equal(True)
-    env.expect('RG.FCALL', 'lib', 'test', '1', b'\xaa').error().contains('Binary map key is not supported')
+    env.expectTfcall('lib', 'test', [b'\xaa']).error().contains('Binary map key is not supported')
 
 @gearsTest()
 def testFunctionListWithLibraryOption(env):
     code = """#!js api_version=1.0 name=lib
-redis.register_function("test", (c, key) => {
-    return typeof Object.keys(c.call_raw("hgetall", key))[0];
-},
-["raw-arguments", "allow-oom", "raw-arguments"]);
+redis.registerFunction("test", 
+    (c, key) => {
+        return typeof Object.keys(c.callRaw("hgetall", key))[0];
+    },
+    {
+        flags: [redis.functionFlags.RAW_ARGUMENTS, redis.functionFlags.ALLOW_OOM]
+    }
+);
 
-redis.register_stream_consumer("consumer", "stream", 1, false, function(){
+redis.registerStreamTrigger("consumer", "stream", function(){
     num_events++;
 })
 
-redis.register_notifications_consumer("consumer", "", function(client, data) {});
+redis.registerKeySpaceTrigger("consumer", "", function(client, data) {});
     """
-    env.expect('RG.FUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
-    env.assertEqual(toDictionary(env.cmd('RG.FUNCTION', 'list', 'library', 'lib', 'v'))[0]['engine'], 'js') # sanaty check
-    env.assertEqual(toDictionary(env.cmd('RG.FUNCTION', 'list', 'library', 'lib', 'vv'))[0]['engine'], 'js') # sanaty check
-    env.assertEqual(toDictionary(env.cmd('RG.FUNCTION', 'list', 'library', 'lib'), max_recursion=2)[0]['engine'], 'js') # sanaty check
-    env.assertEqual(toDictionary(env.cmd('RG.FUNCTION', 'list', 'withcode'), max_recursion=2)[0]['engine'], 'js') # sanaty check
+    env.expect('TFUNCTION', 'LOAD', 'CONFIG', '{"foo":"bar"}', code).equal("OK")
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'v'))[0]['engine'], 'js') # sanaty check
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib', 'vv'))[0]['engine'], 'js') # sanaty check
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'library', 'lib'), max_recursion=2)[0]['engine'], 'js') # sanaty check
+    env.assertEqual(toDictionary(env.cmd('TFUNCTION', 'list', 'withcode'), max_recursion=2)[0]['engine'], 'js') # sanaty check
 
 @gearsTest()
 def testReplyWithSimpleString(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", async () => {
+redis.registerAsyncFunction("test", async () => {
     var res = new String('test');
     res.__reply_type = 'status';
     return res;
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal("test")
+    env.expectTfcallAsync('lib', 'test').equal("test")
 
 @gearsTest()
 def testReplyWithDouble(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", () => {
+redis.registerFunction("test", () => {
     return 1.1;
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').contains("1.1")
+    env.expectTfcall('lib', 'test').contains("1.1")
 
 @gearsTest()
 def testReplyWithDoubleAsync(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", async () => {
+redis.registerAsyncFunction("test", async () => {
     return 1.1;
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').contains("1.1")
+    env.expectTfcallAsync('lib', 'test').contains("1.1")
 
 @gearsTest()
 def testRunOnBackgroundThatRaisesError(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", (c) => {
-    return c.run_on_background(async (c) => {
+redis.registerFunction("test", (c) => {
+    return c.executeAsync(async (c) => {
         throw "Some Error"
     });
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').error().equal("Some Error")
+    env.expectTfcallAsync('lib', 'test').error().equal("Some Error")
 
 @gearsTest()
 def testRunOnBackgroundThatReturnInteger(env):
     """#!js api_version=1.0 name=lib
-redis.register_function("test", (c) => {
-    return c.run_on_background(async (c) => {
+redis.registerFunction("test", (c) => {
+    return c.executeAsync(async (c) => {
         return 1;
     });
 });
     """
-    env.expect('RG.FCALL', 'lib', 'test', '0').equal(1)
+    env.expectTfcallAsync('lib', 'test').equal(1)
 
 @gearsTest()
 def testOver100Isolates(env):
     code = """#!js api_version=1.0 name=lib%d
-redis.register_function("test", (c) => {
-    return c.run_on_background(async (c) => {
+redis.registerFunction("test", (c) => {
+    return c.executeAsync(async (c) => {
         return 1;
     });
 });
     """
     for i in range(101):
-        env.expect('RG.FUNCTION', 'LOAD', code % (i)).equal('OK')
+        env.expect('TFUNCTION', 'LOAD', code % (i)).equal('OK')
 
+@gearsTest(useAof=True)
+def testNoNotificationOnAOFLoading(env):
+    """#!js api_version=1.0 name=lib
+redis.registerKeySpaceTrigger("consumer", "", (client) => {
+    client.call('incr', 'notification');
+});
+    """
+    env.expect('SET', 'x', '1').equal(True)
+    env.expect('GET', 'notification').equal('1')
+    env.expect('DEBUG', 'LOADAOF').equal('OK')
+    # make sure notification was not fired.
+    env.expect('GET', 'notification').equal('1')
+    env.expect('SET', 'x', '2').equal(True)
+    env.expect('GET', 'notification').equal('2')
+
+@gearsTest(useAof=True)
+def testFunctionDescription(env):
+    """#!js api_version=1.0 name=lib
+redis.registerFunction("test", 
+    () => {
+        return "foo";
+    },
+    {
+        description: "Some function",
+    }
+);
+    """
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Some function', res[0]['functions'][0]['description'])
+
+@gearsTest(useAof=True)
+def testTriggerDescription(env):
+    """#!js api_version=1.0 name=lib
+redis.registerKeySpaceTrigger("test", "",
+    () => {
+        return "foo";
+    },
+    {
+        description: "Some function",
+    }
+);
+    """
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Some function', res[0]['keyspace_triggers'][0]['description'])
+
+@gearsTest(useAof=True)
+def testStreamTriggerDescription(env):
+    """#!js api_version=1.0 name=lib
+redis.registerStreamTrigger("test", "",
+    () => {
+        return "foo";
+    },
+    {
+        description: "Some function",
+    }
+);
+    """
+    res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vv'), 6)
+    env.assertContains('Some function', res[0]['stream_triggers'][0]['description'])
+
+@gearsTest()
+def testNoNotificationsOnSlave(env):
+    """#!js api_version=1.0 name=lib
+var n_notifications = 0;
+redis.registerKeySpaceTrigger("test", "",
+    () => {
+        n_notifications += 1;
+    }
+);
+redis.registerFunction("n_notifications", ()=>{return n_notifications;}, {flags:[redis.functionFlags.NO_WRITES]});
+    """
+    env.cmd('get', 'x') # should trigger key miss notification
+    env.expectTfcall('lib', 'n_notifications').equal(1)
+    env.expect('replicaof', 'localhost', '1111').equal('OK')
+    env.cmd('get', 'x') # should trigger key miss notification but we should not count it because we are a replica
+    env.expectTfcall('lib', 'n_notifications').equal(1)

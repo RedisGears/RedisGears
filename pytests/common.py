@@ -111,6 +111,26 @@ def verifyClusterInitialized(env):
             if not allConnected:
                 time.sleep(0.1)
 
+def extendEnvWithGearsFunctionality(env):
+    def expectTfcall(lib, func, keys=[], args=[]):
+        return env.expect('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    def tfcall(lib, func, keys=[], args=[], c=None):
+        c = c if c else env
+        return c.execute_command('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+
+    def expectTfcallAsync(lib, func, keys=[], args=[]):
+        return env.expect('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    def tfcallAsync(lib, func, keys=[], args=[], c=None):
+        c = c if c else env
+        return c.execute_command('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    env.expectTfcall = expectTfcall
+    env.tfcall = tfcall
+    env.expectTfcallAsync = expectTfcallAsync
+    env.tfcallAsync = tfcallAsync
+
 def gearsTest(skipTest=False,
               skipOnCluster=False,
               skipCleanups=False,
@@ -124,6 +144,8 @@ def gearsTest(skipTest=False,
               withReplicas=False,
               shardsCount=2,
               errorVerbosity=1,
+              v8MaxMemory=None,
+              useAof=False,
               gearsConfig={},
               envArgs={}):
     def test_func_generator(test_function):
@@ -164,10 +186,12 @@ def gearsTest(skipTest=False,
                     raise unittest.SkipTest()
             if enableGearsDebugCommands:
                 module_args += ["enable-debug-command", "yes"]
+            if v8MaxMemory:
+                module_args += ["v8-maxmemory", str(v8MaxMemory)]
             for k, v in gearsConfig.items():
                 module_args += [k, v]
             module_args += ["error-verbosity", str(errorVerbosity)]
-            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args) ,**final_envArgs)
+            env = Env(testName = test_function.__name__, decodeResponses=decodeResponses, enableDebugCommand=True, module=module_path, moduleArgs=' '.join(module_args), useAof=useAof ,**final_envArgs)
             log_files = []
             for con in shardsConnections(env):
                 file_name = con.execute_command('config', 'get', 'logfile')[1]
@@ -194,7 +218,7 @@ def gearsTest(skipTest=False,
             if skipOnRedis6 and '6.0' in version:
                 env.skip()
             if test_function.__doc__ is not None:
-                env.expect('RG.FUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
+                env.expect('TFUNCTION', 'LOAD', test_function.__doc__).equal('OK' if decodeResponses else b'OK')
                 if withReplicas:
                     # make sure all shards are in sync with their replica
                     for con in shardsConnections(env):
@@ -213,6 +237,7 @@ def gearsTest(skipTest=False,
                             return status
 
                         runUntil(env, 1, synchronise_replicas, timeout=10)
+            extendEnvWithGearsFunctionality(env)
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())

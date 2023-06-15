@@ -10,8 +10,9 @@
 
 #![deny(missing_docs)]
 
+use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
-use redis_module::{CallResult, ContextFlags, DetachedContext, ErrorReply};
+use redis_module::{CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
@@ -19,7 +20,8 @@ use serde::{Deserialize, Serialize};
 
 use config::{
     FatalFailurePolicyConfiguration, ENABLE_DEBUG_COMMAND, ERROR_VERBOSITY, EXECUTION_THREADS,
-    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_PLUGIN_PATH,
+    FATAL_FAILURE_POLICY, LOCK_REDIS_TIMEOUT, V8_FLAGS, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+    V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY, V8_PLUGIN_PATH,
 };
 
 use redis_module::raw::RedisModule__Assert;
@@ -35,8 +37,8 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    flush_event_handler, loading_event_handler, module_changed_event_handler,
-    role_changed_event_handler,
+    command, config_changed_event_handler, flush_event_handler, loading_event_handler,
+    module_changed_event_handler, role_changed_event_handler,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -48,7 +50,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     stream_ctx::StreamCtxInterface, GearsApiError,
 };
 
-use redisgears_plugin_api::redisgears_plugin_api::RefCellWrapper;
+use redisgears_plugin_api::redisgears_plugin_api::{FunctionCallResult, RefCellWrapper};
 
 use crate::run_ctx::RunCtx;
 
@@ -64,9 +66,7 @@ use std::iter::Skip;
 use std::vec::IntoIter;
 
 use crate::compiled_library_api::CompiledLibraryInternals;
-use crate::gears_box::{gears_box_search, GearsBoxLibraryInfo};
 use crate::keys_notifications::{KeysNotificationsCtx, NotificationCallback, NotificationConsumer};
-use crate::keys_notifications_ctx::KeysNotificationsRunCtx;
 use crate::stream_run_ctx::{GearsStreamConsumer, GearsStreamRecord};
 
 use std::cell::RefCell;
@@ -82,7 +82,6 @@ mod config;
 mod function_del_command;
 mod function_list_command;
 mod function_load_command;
-mod gears_box;
 mod keys_notifications;
 mod keys_notifications_ctx;
 mod rdb;
@@ -92,8 +91,6 @@ mod stream_run_ctx;
 
 /// GIT commit hash used for this build.
 pub const GIT_SHA: Option<&str> = std::option_env!("GIT_SHA");
-/// GIT branch used for this build.
-pub const GIT_BRANCH: Option<&str> = std::option_env!("GIT_BRANCH");
 /// Crate version (string) used for this build.
 pub const VERSION_STR: Option<&str> = std::option_env!("VERSION_STR");
 /// Crate version (number) used for this build.
@@ -106,6 +103,9 @@ pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 /// The build type of the crate.
 pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
+
+const PSEUDO_SLAVE_READONLY_CONFIG_NAME: &str = "pseudo-slave-readonly";
+const PSEUDO_SLAVE_CONFIG_NAME: &str = "pseudo-slave";
 
 fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     use redis_module::Version;
@@ -148,11 +148,23 @@ pub struct GearsLibraryMetaData {
 struct GearsFunctionCtx {
     func: Box<dyn FunctionCtxInterface>,
     flags: FunctionFlags,
+    is_async: bool,
+    description: Option<String>,
 }
 
 impl GearsFunctionCtx {
-    fn new(func: Box<dyn FunctionCtxInterface>, flags: FunctionFlags) -> GearsFunctionCtx {
-        GearsFunctionCtx { func, flags }
+    fn new(
+        func: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+        is_async: bool,
+        description: Option<String>,
+    ) -> GearsFunctionCtx {
+        GearsFunctionCtx {
+            func,
+            flags,
+            is_async,
+            description,
+        }
     }
 }
 
@@ -165,9 +177,10 @@ struct GearsLibraryCtx {
     remote_functions: HashMap<String, RemoteFunctionCtx>,
     stream_consumers:
         HashMap<String, Arc<RefCellWrapper<ConsumerData<GearsStreamRecord, GearsStreamConsumer>>>>,
-    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool)>,
+    revert_stream_consumers: Vec<(String, GearsStreamConsumer, usize, bool, Option<String>)>,
     notifications_consumers: HashMap<String, Arc<RefCell<NotificationConsumer>>>,
-    revert_notifications_consumers: Vec<(String, ConsumerKey, NotificationCallback)>,
+    revert_notifications_consumers:
+        Vec<(String, ConsumerKey, NotificationCallback, Option<String>)>,
     old_lib: Option<Arc<GearsLibrary>>,
 }
 
@@ -180,7 +193,28 @@ struct GearsLibrary {
     gears_lib_ctx: GearsLibraryCtx,
     _lib_ctx: Box<dyn LibraryCtxInterface>,
     compile_lib_internals: Arc<CompiledLibraryInternals>,
-    gears_box_lib: Option<GearsBoxLibraryInfo>,
+}
+
+impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
+    fn register_function_internal(
+        &mut self,
+        name: &str,
+        func_ctx: GearsFunctionCtx,
+    ) -> Result<(), GearsApiError> {
+        verify_name(name)
+            .map_err(|e| GearsApiError::new(format!("Unallowed function name '{name}', {e}.")))?;
+
+        if self.gears_lib_ctx.functions.contains_key(name) {
+            return Err(GearsApiError::new(format!(
+                "Function {} already exists",
+                name
+            )));
+        }
+        self.gears_lib_ctx
+            .functions
+            .insert(name.to_string(), func_ctx);
+        Ok(())
+    }
 }
 
 impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
@@ -189,18 +223,25 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
-        if self.gears_lib_ctx.functions.contains_key(name) {
-            return Err(GearsApiError::new(format!(
-                "Function {} already exists",
-                name
-            )));
-        }
-        let func_ctx = GearsFunctionCtx::new(function_ctx, flags);
-        self.gears_lib_ctx
-            .functions
-            .insert(name.to_string(), func_ctx);
-        Ok(())
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, false, description),
+        )
+    }
+
+    fn register_async_function(
+        &mut self,
+        name: &str,
+        function_ctx: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+        description: Option<String>,
+    ) -> Result<(), GearsApiError> {
+        self.register_function_internal(
+            name,
+            GearsFunctionCtx::new(function_ctx, flags, true, description),
+        )
     }
 
     fn register_remote_task(
@@ -210,6 +251,11 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
     ) -> Result<(), GearsApiError> {
         // TODO move to <https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert>
         // once stabilised.
+
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed cluster function name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.remote_functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Remote function {} already exists",
@@ -229,7 +275,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed stream trigger name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.stream_consumers.contains_key(name) {
             return Err(GearsApiError::new(
                 "Stream registration already exists".to_string(),
@@ -256,11 +307,13 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             ));
             let old_window = o_c.set_window(window);
             let old_trim = o_c.set_trim(trim);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_stream_consumers.push((
                 name.to_string(),
                 old_ctx,
                 old_window,
                 old_trim,
+                old_description,
             ));
             Arc::clone(old_consumer)
         } else {
@@ -289,8 +342,9 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                         ],
                     );
                 })),
+                description,
             );
-            if self.ctx.get_flags().contains(ContextFlags::MASTER) {
+            if is_master(self.ctx) {
                 // trigger a key scan
                 scan_key_space_for_streams();
             }
@@ -308,7 +362,12 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         name: &str,
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
+        description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed key space trigger name '{name}', {e}."))
+        })?;
+
         if self
             .gears_lib_ctx
             .notifications_consumers
@@ -336,23 +395,23 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                     return;
                 }
                 let _notification_blocker = get_notification_blocker();
-                let val = keys_notifications_consumer_ctx.on_notification_fired(
+                keys_notifications_consumer_ctx.on_notification_fired(
                     event,
                     key,
-                    &KeysNotificationsRunCtx::new(ctx, meta_data.clone(), FunctionFlags::empty()),
-                );
-                keys_notifications_consumer_ctx.post_command_notification(
-                    val,
-                    &KeysNotificationsRunCtx::new(ctx, meta_data.clone(), FunctionFlags::empty()),
+                    &KeySpaceNotificationsCtx::new(
+                        ctx,
+                        meta_data.clone(),
+                        FunctionFlags::NO_WRITES,
+                    ),
                     done_callback,
-                )
+                );
             });
 
-        let consumer = if let Some(old_notification_consumer) = self
-            .gears_lib_ctx
-            .old_lib
-            .as_ref()
-            .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
+        let consumer: Arc<RefCell<NotificationConsumer>> = if let Some(old_notification_consumer) =
+            self.gears_lib_ctx
+                .old_lib
+                .as_ref()
+                .and_then(|v| v.gears_lib_ctx.notifications_consumers.get(name))
         {
             let mut o_c = old_notification_consumer.borrow_mut();
             let old_consumer_callback = o_c.set_callback(fire_event_callback);
@@ -361,22 +420,28 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 RegisteredKeys::Prefix(s) => ConsumerKey::Prefix(s.to_vec()),
             };
             let old_key = o_c.set_key(new_key);
+            let old_description = o_c.set_description(description);
             self.gears_lib_ctx.revert_notifications_consumers.push((
                 name.to_string(),
                 old_key,
                 old_consumer_callback,
+                old_description,
             ));
             Arc::clone(old_notification_consumer)
         } else {
             let globals = get_globals_mut();
 
             match key {
-                RegisteredKeys::Key(k) => globals
-                    .notifications_ctx
-                    .add_consumer_on_key(k, fire_event_callback),
-                RegisteredKeys::Prefix(p) => globals
-                    .notifications_ctx
-                    .add_consumer_on_prefix(p, fire_event_callback),
+                RegisteredKeys::Key(k) => globals.notifications_ctx.add_consumer_on_key(
+                    k,
+                    fire_event_callback,
+                    description,
+                ),
+                RegisteredKeys::Prefix(p) => globals.notifications_ctx.add_consumer_on_prefix(
+                    p,
+                    fire_event_callback,
+                    description,
+                ),
             }
         };
 
@@ -384,6 +449,39 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             .notifications_consumers
             .insert(name.to_string(), consumer);
         Ok(())
+    }
+}
+
+/// The policy configured on the current database
+enum DbPolicy {
+    /// Regular database
+    Regular,
+    /// A replica-of target
+    PseudoSlave,
+    /// A readonly replica-of target
+    PseudoSlaveReadonly,
+}
+
+impl DbPolicy {
+    pub(crate) fn is_regular(&self) -> bool {
+        match self {
+            DbPolicy::Regular => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_readonly(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_pseudo_slave(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly | DbPolicy::PseudoSlave => true,
+            _ => false,
+        }
     }
 }
 
@@ -397,10 +495,9 @@ struct GlobalCtx {
     notifications_ctx: KeysNotificationsCtx,
     avoid_key_space_notifications: bool,
     allow_unsafe_redis_commands: bool,
+    db_policy: DbPolicy,
 }
-lazy_static::lazy_static! {
-    static ref DETACHED_CONTEXT: DetachedContext = DetachedContext::default();
-}
+
 static mut GLOBALS: Option<GlobalCtx> = None;
 
 pub(crate) struct NotificationBlocker;
@@ -476,30 +573,121 @@ pub(crate) fn call_redis_command(
     ctx.call_ext(command, call_options, args)
 }
 
+fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
+    let v8_max_memory = V8_MAX_MEMORY.load(Ordering::Relaxed);
+    let v8_lib_initial_mem = V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed);
+    let v8_lib_initial_mem_limit = V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed);
+    let v8_lib_mem_delta = V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed);
+
+    if v8_lib_initial_mem > v8_max_memory {
+        return Err(RedisError::Str(
+            "V8 library initial memory usage can not bypass the v8 max memory.",
+        ));
+    }
+
+    if v8_lib_initial_mem_limit > v8_max_memory {
+        return Err(RedisError::Str(
+            "V8 library initial memory limit can not bypass the v8 max memory.",
+        ));
+    }
+
+    if v8_lib_mem_delta > v8_max_memory {
+        return Err(RedisError::Str(
+            "V8 library memory delta can not bypass the v8 max memory.",
+        ));
+    }
+
+    if v8_lib_initial_mem > v8_lib_initial_mem_limit {
+        return Err(RedisError::Str(
+            "V8 library initial initial memory usage can not bypass the initial memory limit.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn get_db_policy(ctx: &Context) -> DbPolicy {
+    let call_options = CallOptionsBuilder::new()
+        .resp(CallOptionResp::Resp3)
+        .build();
+    let res = ctx.call_ext(
+        "config",
+        &call_options,
+        &[
+            "get",
+            PSEUDO_SLAVE_READONLY_CONFIG_NAME,
+            PSEUDO_SLAVE_CONFIG_NAME,
+        ],
+    );
+    if let Ok(res) = res {
+        let res: RedisValue = (&res).into();
+        if let RedisValue::Map(map) = res {
+            let pseudo_slave_readonly = map
+                .get(&RedisValueKey::String(
+                    PSEUDO_SLAVE_READONLY_CONFIG_NAME.to_owned(),
+                ))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave_readonly == "yes" {
+                return DbPolicy::PseudoSlaveReadonly;
+            }
+
+            let pseudo_slave = map
+                .get(&RedisValueKey::String(PSEUDO_SLAVE_CONFIG_NAME.to_owned()))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave == "yes" {
+                return DbPolicy::PseudoSlave;
+            }
+        }
+    }
+    DbPolicy::Regular
+}
+
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     mr_init(ctx, 1, None);
+
+    if let Err(e) = redis_module::logging::setup() {
+        ctx.log_notice(&format!("Failed to setup the standard logging: {e}"));
+    }
 
     match redisai_rs::redisai_init(ctx) {
         Ok(_) => ctx.log_notice("RedisAI API was loaded successfully."),
         Err(_) => ctx.log_notice("Failed loading RedisAI API."),
     }
 
-    ctx.log_notice(&format!(
-        "RedisGears v{}, sha='{}', branch='{}', build_type='{}', built_for='{}-{}.{}'.",
+    log::info!(
+        "RedisGears v{}, sha='{}', build_type='{}', built_for='{}-{}.{}'.",
         VERSION_STR.unwrap_or_default(),
         GIT_SHA.unwrap_or_default(),
-        GIT_BRANCH.unwrap_or_default(),
         BUILD_TYPE.unwrap_or_default(),
         BUILD_OS.unwrap_or_default(),
         BUILD_OS_NICK.unwrap_or_default(),
         BUILD_OS_ARCH.unwrap_or_default()
-    ));
+    );
+
     if let Err(e) = check_redis_version_compatible(ctx) {
-        ctx.log_warning(&e);
+        log::error!("{e}");
         return Status::Err;
     }
+
+    if let Err(e) = verify_v8_mem_usage_values() {
+        log::error!("{e}");
+        return Status::Err;
+    }
+
     std::panic::set_hook(Box::new(|panic_info| {
-        DETACHED_CONTEXT.log_warning(&format!("Application panicked, {}", panic_info));
+        log::error!("Application panicked, {}", panic_info);
         let (file, line) = match panic_info.location() {
             Some(l) => (l.file(), l.line()),
             None => ("", 0),
@@ -514,9 +702,6 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         }
     }));
     let mgmt_pool = ThreadPool::new(1);
-    DETACHED_CONTEXT
-        .set_context(ctx)
-        .expect("Couldn't set the detached context");
     let mut global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
@@ -526,7 +711,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         stream_ctx: StreamReaderCtx::new(
             Box::new(|ctx, key, id, include_id| {
                 // read data from the stream
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     return Err("Can not read data on replica".to_string());
                 }
                 let stream_name = ctx.create_string(key);
@@ -543,7 +728,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             }),
             Box::new(|ctx, key_name, id| {
                 // trim the stream callback
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     ctx.log_warning("Attempt to trim data on replica was denied.");
                     return;
                 }
@@ -571,6 +756,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         notifications_ctx: KeysNotificationsCtx::new(),
         avoid_key_space_notifications: false,
         allow_unsafe_redis_commands: false,
+        db_policy: get_db_policy(ctx),
     };
 
     let v8_path = V8_PLUGIN_PATH.lock(ctx);
@@ -602,14 +788,30 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             ctx.log_warning(&format!("Backend {} already exists", name));
             return Status::Err;
         }
+        let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
         let initialised_backend = match backend.initialize(BackendCtx {
             allocator: &RedisAlloc,
-            log: Box::new(|msg| DETACHED_CONTEXT.log_notice(msg)),
+            log_info: Box::new(|msg| log::info!("{msg}")),
+            log_trace: Box::new(|msg| log::trace!("{msg}")),
+            log_debug: Box::new(|msg| log::debug!("{msg}")),
+            log_error: Box::new(|msg| log::error!("{msg}")),
+            log_warning: Box::new(|msg| log::warn!("{msg}")),
             get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
                 FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
                 FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
             }),
             get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
+            get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
+            get_v8_library_initial_memory: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_initial_memory_limit: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_memory_delta: Box::new(|| {
+                V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_flags: Box::new(move || v8_flags.to_owned()),
         }) {
             Ok(b) => b,
             Err(e) => {
@@ -631,6 +833,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     globals.pool = Some(Mutex::new(ThreadPool::new(
         (*EXECUTION_THREADS.lock(ctx)) as usize,
     )));
+
     Status::Ok
 }
 
@@ -649,19 +852,34 @@ pub(crate) fn verify_oom(ctx: &Context, flags: FunctionFlags) -> bool {
         || !ctx.get_flags().contains(ContextFlags::OOM)
 }
 
-/// Returns true if the function with the specified flags is allowed
+/// Return true iff the current instance is a master which is not a pseudo slave (replica-of target).
+pub(crate) fn is_master(ctx: &Context) -> bool {
+    let globals = get_globals();
+    ctx.get_flags().contains(ContextFlags::MASTER) && globals.db_policy.is_regular()
+}
+
+/// Returns `true` if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
 pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool {
-    // not replica, ok to run || we can run function with no writes on replica.
-    ctx.get_flags().contains(ContextFlags::MASTER) || flags.contains(FunctionFlags::NO_WRITES)
+    // master which is not readonly, ok to run || we can run function with no writes on replica.
+    (ctx.get_flags().contains(ContextFlags::MASTER) && !get_globals().db_policy.is_readonly())
+        || flags.contains(FunctionFlags::NO_WRITES)
 }
 
 fn function_call_command(
     ctx: &Context,
     mut args: Skip<IntoIter<redis_module::RedisString>>,
+    allow_block: bool,
 ) -> RedisResult {
-    let library_name = args.next_arg()?.try_as_str()?;
-    let function_name = args.next_arg()?.try_as_str()?;
+    let mut lib_func_name = args.next_arg()?.try_as_str()?.split(".");
+
+    let library_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting library name"))?;
+    let function_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting function name"))?;
+
     let num_keys = args.next_arg()?.try_as_str()?.parse::<usize>()?;
     let libraries = get_libraries();
 
@@ -696,17 +914,31 @@ fn function_call_command(
         )));
     }
 
+    if function.is_async && !allow_block {
+        // Blocking is not allowed but the function declated as async which means it might block, we will not invoke it.
+        return Err(RedisError::Str("The function is declared as async and was called while blocking was not allowed; note that you cannot invoke async functions from within Lua or MULTI, and you must use TFCALLASYNC instead."));
+    }
+
     {
         let _notification_blocker = get_notification_blocker();
-        function.func.call(&RunCtx {
+        let res = function.func.call(&RunCtx {
             ctx,
             args,
             flags: function.flags,
             lib_meta_data: Arc::clone(&lib.gears_lib_ctx.meta_data),
+            allow_block: allow_block,
         });
+        if matches!(res, FunctionCallResult::Hold) && !allow_block {
+            // If we reach here, it means that the plugin violates the API, it blocked the client even though it is not allow to.
+            log::warn!(
+                "Plugin API violation, plugin blocked the client even though blocking is forbiden."
+            );
+            return Err(RedisError::Str(
+                "Clien got blocked when blocking is not allow",
+            ));
+        }
+        Ok(RedisValue::NoReply)
     }
-
-    Ok(RedisValue::NoReply)
 }
 
 fn function_debug_command(
@@ -765,90 +997,8 @@ fn function_debug_command(
         .map_err(|e| RedisError::String(e.get_msg().to_string()))
 }
 
-pub(crate) fn json_to_redis_value(val: serde_json::Value) -> RedisValue {
-    match val {
-        serde_json::Value::Bool(b) => RedisValue::Integer(if b { 1 } else { 0 }),
-        serde_json::Value::Number(n) => {
-            if n.is_i64() {
-                RedisValue::Integer(n.as_i64().unwrap())
-            } else {
-                RedisValue::BulkString(n.as_f64().unwrap().to_string())
-            }
-        }
-        serde_json::Value::String(s) => RedisValue::BulkString(s),
-        serde_json::Value::Null => RedisValue::Null,
-        serde_json::Value::Array(a) => {
-            let mut res = Vec::new();
-            for v in a {
-                res.push(json_to_redis_value(v));
-            }
-            RedisValue::Array(res)
-        }
-        serde_json::Value::Object(o) => RedisValue::Map(
-            o.into_iter()
-                .map(|(k, v)| (RedisValueKey::String(k), json_to_redis_value(v)))
-                .collect(),
-        ),
-    }
-}
-
-fn function_search_lib_command(
-    ctx: &Context,
-    mut args: Skip<IntoIter<redis_module::RedisString>>,
-) -> RedisResult {
-    let search_token = args.next_arg()?.try_as_str()?;
-    let search_result = gears_box_search(ctx, search_token)?;
-    Ok(json_to_redis_value(search_result))
-}
-
-fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let args = args.into_iter().skip(1);
-    function_call_command(ctx, args)
-}
-
-fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "load" => function_load_command::function_load_on_replica(ctx, args),
-        "del" => function_del_command::function_del_on_replica(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
-fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "load" => function_load_command::function_load_command(ctx, args),
-        "list" => function_list_command::function_list_command(ctx, args),
-        "del" => function_del_command::function_del_command(ctx, args),
-        "debug" => function_debug_command(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
-fn gears_box_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
-    match sub_command.as_ref() {
-        "search" => function_search_lib_command(ctx, args),
-        "install" => function_load_command::function_install_lib_command(ctx, args),
-        _ => Err(RedisError::String(format!(
-            "Unknown subcommand {}",
-            sub_command
-        ))),
-    }
-}
-
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
-    if ctx.get_flags().contains(ContextFlags::MASTER) {
+    if is_master(ctx) {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
         stream_ctx.on_stream_touched(ctx, event, key);
     }
@@ -862,49 +1012,23 @@ fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, k
 }
 
 fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+    if !is_master(ctx) {
+        // do not fire notifications on slave
+        return;
+    }
+
     let globals = get_globals();
     if globals.avoid_key_space_notifications {
         return;
     }
-    globals.notifications_ctx.on_key_touched(ctx, event, key)
-}
 
-fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
-    let mut args = args.into_iter().skip(1);
-    let library_name = args.next_arg()?.try_as_str()?;
-    let stream_consumer = args.next_arg()?.try_as_str()?;
-    let stream_arg = args.next_arg()?;
-    let stream = stream_arg.as_slice();
-    let ms = args.next_arg()?.try_as_str()?.parse::<u64>()?;
-    let seq = args.next_arg()?.try_as_str()?.parse::<u64>()?;
-    let libraries = get_libraries();
-    let library = libraries.get(library_name);
-    if library.is_none() {
-        return Err(RedisError::String(format!(
-            "No such library '{}'",
-            library_name
-        )));
-    }
-    let library = library.unwrap();
-    let consumer = library.gears_lib_ctx.stream_consumers.get(stream_consumer);
-    if consumer.is_none() {
-        return Err(RedisError::String(format!(
-            "No such consumer '{}'",
-            stream_consumer
-        )));
-    }
-    let consumer = consumer.unwrap();
-    get_globals_mut()
-        .stream_ctx
-        .update_stream_for_consumer(stream, consumer, ms, seq);
-    ctx.replicate_verbatim();
-    Ok(RedisValue::SimpleStringStatic("OK"))
+    globals.notifications_ctx.on_key_touched(ctx, event, key)
 }
 
 fn scan_key_space_for_streams() {
     get_globals().mgmt_pool.execute(|| {
         let cursor = KeysCursor::new();
-        let thread_ctx = ThreadSafeContext::new();
+        let thread_ctx = ThreadSafeContext::default();
         loop {
             let guard = thread_ctx.lock();
             let ctx = &guard;
@@ -947,8 +1071,16 @@ fn on_loading_event(ctx: &Context, loading_sub_event: LoadingSubevent) {
             let globals = get_globals_mut();
             globals.libraries.lock().unwrap().clear();
             globals.stream_ctx.clear();
+
+            // During loading we do not want to get any key space notifications
+            globals.avoid_key_space_notifications = true;
         }
-        _ => {}
+        LoadingSubevent::Ended | LoadingSubevent::Failed => {
+            // re-enable key space notifications
+            ctx.log_notice("Loading finished, re-enable key space notificaitons.");
+            let globals = get_globals_mut();
+            globals.avoid_key_space_notifications = false;
+        }
     }
 }
 
@@ -976,11 +1108,148 @@ fn on_flush_event(ctx: &Context, flush_event: FlushSubevent) {
     }
 }
 
+#[config_changed_event_handler]
+fn on_config_change(ctx: &Context, values: &[&str]) {
+    if let Some(_) = values
+        .iter()
+        .find(|v| **v == PSEUDO_SLAVE_READONLY_CONFIG_NAME || **v == PSEUDO_SLAVE_CONFIG_NAME)
+    {
+        let globals = get_globals_mut();
+        globals.db_policy = get_db_policy(ctx);
+    }
+}
+
+pub(crate) fn verify_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err(format!("Empty name is not allowed"));
+    }
+    name.chars().try_for_each(|c| {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            return Ok(());
+        }
+        Err(format!("Unallowed char was given '{c}'"))
+    })
+}
+
 pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     if ERROR_VERBOSITY.load(Ordering::Relaxed) == 1 {
         return err.get_msg();
     }
     err.get_msg_verbose()
+}
+
+#[command(
+    {
+        name: "tfcall",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -3,
+        key_spec: [
+            {
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 2}),
+                find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
+            }
+        ],
+    }
+)]
+fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let args = args.into_iter().skip(1);
+    function_call_command(ctx, args, false)
+}
+
+#[command(
+    {
+        name: "tfcallasync",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -3,
+        key_spec: [
+            {
+                flags: [ReadWrite, Access, Update],
+                begin_search: Index({ index : 2}),
+                find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
+            }
+        ],
+    }
+)]
+fn function_call_async(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let args = args.into_iter().skip(1);
+    function_call_command(ctx, args, true)
+}
+
+#[command(
+    {
+        name: "_rg_internals.function",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -3,
+        key_spec: [],
+    }
+)]
+fn function_command_on_replica(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
+    match sub_command.as_ref() {
+        "load" => function_load_command::function_load_on_replica(ctx, args),
+        "del" => function_del_command::function_del_on_replica(ctx, args),
+        _ => Err(RedisError::String(format!(
+            "Unknown subcommand {}",
+            sub_command
+        ))),
+    }
+}
+
+#[command(
+    {
+        name: "tfunction",
+        flags: [MayReplicate, DenyScript, NoMandatoryKeys],
+        arity: -2,
+        key_spec: [],
+    }
+)]
+fn function_command(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let sub_command = args.next_arg()?.try_as_str()?.to_lowercase();
+    match sub_command.as_ref() {
+        "load" => function_load_command::function_load_command(ctx, args),
+        "list" => function_list_command::function_list_command(ctx, args),
+        "delete" => function_del_command::function_del_command(ctx, args),
+        "debug" => function_debug_command(ctx, args),
+        _ => Err(RedisError::String(format!(
+            "Unknown subcommand {}",
+            sub_command
+        ))),
+    }
+}
+
+#[command(
+    {
+        name: "_rg_internals.update_stream_last_read_id",
+        flags: [ReadOnly, DenyScript, NoMandatoryKeys],
+        arity: 6,
+        key_spec: [],
+    }
+)]
+fn update_stream_last_read_id(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+    let mut args = args.into_iter().skip(1);
+    let library_name = args.next_arg()?.try_as_str()?;
+    let stream_consumer = args.next_arg()?.try_as_str()?;
+    let stream_arg = args.next_arg()?;
+    let stream = stream_arg.as_slice();
+    let ms = args.next_arg()?.try_as_str()?.parse::<u64>()?;
+    let seq = args.next_arg()?.try_as_str()?.parse::<u64>()?;
+    let libraries = get_libraries();
+    let library = libraries
+        .get(library_name)
+        .ok_or_else(|| RedisError::String(format!("No such library '{}'", library_name)))?;
+    let consumer = library
+        .gears_lib_ctx
+        .stream_consumers
+        .get(stream_consumer)
+        .ok_or_else(|| RedisError::String(format!("No such consumer '{}'", stream_consumer)))?;
+    get_globals_mut()
+        .stream_ctx
+        .update_stream_for_consumer(stream, consumer, ms, seq);
+    ctx.replicate_verbatim();
+    Ok(RedisValue::SimpleStringStatic("OK"))
 }
 
 #[cfg(not(test))]
@@ -1000,7 +1269,10 @@ macro_rules! get_allocator {
 #[allow(missing_docs)]
 mod gears_module {
     use super::*;
-    use config::{GEARS_BOX_ADDRESS, LIBRARY_MAX_MEMORY, REMOTE_TASK_DEFAULT_TIMEOUT};
+    use config::{
+        GEARS_BOX_ADDRESS, REMOTE_TASK_DEFAULT_TIMEOUT, V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+        V8_LIBRARY_INITIAL_MEMORY_USAGE, V8_LIBRARY_MEMORY_USAGE_DELTA, V8_MAX_MEMORY,
+    };
     use rdb::REDIS_GEARS_TYPE;
     use redis_module::configuration::ConfigurationFlags;
 
@@ -1011,14 +1283,7 @@ mod gears_module {
         data_types: [REDIS_GEARS_TYPE],
         init: js_init,
         info: js_info,
-        commands: [
-            ["rg.function", function_command, "may-replicate deny-script", 0,0,0],
-            ["_rg.function", function_command_on_replica, "may-replicate deny-script", 0,0,0],
-            ["rg.fcall", function_call, "may-replicate deny-script", 4,4,1],
-            ["rg.fcall_no_keys", function_call, "may-replicate deny-script", 0,0,0],
-            ["rg.box", gears_box_command, "may-replicate deny-script", 0,0,0],
-            ["_rg_internals.update_stream_last_read_id", update_stream_last_read_id, "readonly", 0,0,0],
-        ],
+        commands: [],
         event_handlers: [
             [@STREAM: on_stream_touched],
             [@GENERIC: generic_notification],
@@ -1029,12 +1294,49 @@ mod gears_module {
                 ["error-verbosity", &*ERROR_VERBOSITY ,1, 1, 2, ConfigurationFlags::DEFAULT, None],
                 ["execution-threads", &*EXECUTION_THREADS ,1, 1, 32, ConfigurationFlags::IMMUTABLE, None],
                 ["remote-task-default-timeout", &*REMOTE_TASK_DEFAULT_TIMEOUT , 500, 1, i64::MAX, ConfigurationFlags::DEFAULT, None],
-                ["library-maxmemory", &*LIBRARY_MAX_MEMORY , 1024 * 1024 * 1024, 16 * 1024 * 1024, 2 * 1024 * 1024 * 1024, ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE, None],
                 ["lock-redis-timeout", &*LOCK_REDIS_TIMEOUT , 500, 100, 1000000000, ConfigurationFlags::DEFAULT, None],
+
+                [
+                    "v8-maxmemory",
+                    &*V8_MAX_MEMORY,
+                    byte_unit::n_mb_bytes!(200) as i64,
+                    byte_unit::n_mb_bytes!(50) as i64,
+                    byte_unit::n_gb_bytes!(1) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
+                [
+                    "v8-library-initial-memory-usage",
+                    &*V8_LIBRARY_INITIAL_MEMORY_USAGE,
+                    byte_unit::n_mb_bytes!(2) as i64,
+                    byte_unit::n_mb_bytes!(1) as i64,
+                    byte_unit::n_mb_bytes!(10) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
+                [
+                    "v8-library-initial-memory-limit",
+                    &*V8_LIBRARY_INITIAL_MEMORY_LIMIT,
+                    byte_unit::n_mb_bytes!(3) as i64,
+                    byte_unit::n_mb_bytes!(2) as i64,
+                    byte_unit::n_mb_bytes!(20) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
+                [
+                    "v8-library-memory-usage-delta",
+                    &*V8_LIBRARY_MEMORY_USAGE_DELTA,
+                    byte_unit::n_mb_bytes!(1) as i64,
+                    byte_unit::n_mb_bytes!(1) as i64,
+                    byte_unit::n_mb_bytes!(10) as i64,
+                    ConfigurationFlags::MEMORY | ConfigurationFlags::IMMUTABLE,
+                    None
+                ],
             ],
             string: [
                 ["gearsbox-address", &*GEARS_BOX_ADDRESS , "http://localhost:3000", ConfigurationFlags::DEFAULT, None],
                 ["v8-plugin-path", &*V8_PLUGIN_PATH , "libredisgears_v8_plugin.so", ConfigurationFlags::IMMUTABLE, None],
+                ["v8-flags", &*V8_FLAGS, "", ConfigurationFlags::IMMUTABLE, None],
             ],
             bool: [
                 ["enable-debug-command", &*ENABLE_DEBUG_COMMAND , false, ConfigurationFlags::IMMUTABLE, None],
@@ -1043,8 +1345,8 @@ mod gears_module {
                 ["library-fatal-failure-policy", &*FATAL_FAILURE_POLICY , config::FatalFailurePolicyConfiguration::Abort, ConfigurationFlags::DEFAULT, None],
             ],
             module_args_as_configuration: true,
-            module_config_get: "RG.CONFIG_GET",
-            module_config_set: "RG.CONFIG_SET",
+            module_config_get: "TCONFIG_GET",
+            module_config_set: "TCONFIG_SET",
         ]
     }
 }

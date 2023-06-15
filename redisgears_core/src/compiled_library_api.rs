@@ -4,14 +4,12 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::config::LIBRARY_MAX_MEMORY;
-use crate::{execute_on_pool, DETACHED_CONTEXT};
+use crate::execute_on_pool;
 use redisai_rs::redisai::redisai_tensor::RedisAITensor;
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::CompiledLibraryInterface;
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 use std::collections::LinkedList;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 pub(crate) struct CompiledLibraryInternals {
@@ -85,16 +83,28 @@ impl CompiledLibraryAPI {
 }
 
 impl CompiledLibraryInterface for CompiledLibraryAPI {
-    fn log(&self, msg: &str) {
-        DETACHED_CONTEXT.log_notice(msg);
+    fn log_debug(&self, msg: &str) {
+        log::debug!("{msg}");
+    }
+
+    fn log_info(&self, msg: &str) {
+        log::info!("{msg}");
+    }
+
+    fn log_trace(&self, msg: &str) {
+        log::trace!("{msg}");
+    }
+
+    fn log_warning(&self, msg: &str) {
+        log::warn!("{msg}");
+    }
+
+    fn log_error(&self, msg: &str) {
+        log::error!("{msg}");
     }
 
     fn run_on_background(&self, job: Box<dyn FnOnce() + Send>) {
         self.add_job(job);
-    }
-
-    fn get_maxmemory(&self) -> usize {
-        LIBRARY_MAX_MEMORY.load(Ordering::Relaxed) as usize
     }
 
     fn redisai_create_tensor(

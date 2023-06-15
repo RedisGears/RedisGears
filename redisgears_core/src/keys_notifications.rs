@@ -38,10 +38,15 @@ pub(crate) struct NotificationConsumer {
     key: Option<ConsumerKey>,
     callback: Option<NotificationCallback>,
     stats: Arc<RefCellWrapper<NotificationConsumerStats>>,
+    description: Option<String>,
 }
 
 impl NotificationConsumer {
-    fn new(key: ConsumerKey, callback: NotificationCallback) -> NotificationConsumer {
+    fn new(
+        key: ConsumerKey,
+        callback: NotificationCallback,
+        description: Option<String>,
+    ) -> NotificationConsumer {
         NotificationConsumer {
             key: Some(key),
             callback: Some(callback),
@@ -56,6 +61,7 @@ impl NotificationConsumer {
                     total_execution_time: 0,
                 }),
             }),
+            description,
         }
     }
 
@@ -71,8 +77,18 @@ impl NotificationConsumer {
         old_key.unwrap()
     }
 
+    pub(crate) fn set_description(&mut self, description: Option<String>) -> Option<String> {
+        let old_description = self.description.take();
+        self.description = description;
+        old_description
+    }
+
     pub(crate) fn get_stats(&self) -> NotificationConsumerStats {
         self.stats.ref_cell.borrow().clone()
+    }
+
+    pub(crate) fn get_description(&self) -> Option<String> {
+        self.description.clone()
     }
 }
 
@@ -128,10 +144,12 @@ impl KeysNotificationsCtx {
         &mut self,
         prefix: &[u8],
         callback: NotificationCallback,
+        description: Option<String>,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
             ConsumerKey::Prefix(prefix.to_vec()),
             callback,
+            description,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
         consumer
@@ -141,10 +159,12 @@ impl KeysNotificationsCtx {
         &mut self,
         key: &[u8],
         callback: NotificationCallback,
+        description: Option<String>,
     ) -> Arc<RefCell<NotificationConsumer>> {
         let consumer = Arc::new(RefCell::new(NotificationConsumer::new(
             ConsumerKey::Key(key.to_vec()),
             callback,
+            description,
         )));
         self.consumers.push(Arc::downgrade(&consumer));
         consumer

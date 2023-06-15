@@ -50,7 +50,7 @@ touch index.js
 Now lets add some code to `index.js`, open `index.js` file and past the following code:
 
 ```js
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return "foo";
 });
 ```
@@ -65,7 +65,7 @@ module.exports = {
     mode: "production",
     plugins: [
         new webpack.BannerPlugin({
-			banner:'#!js name=foo',
+			banner:'#!js name=foo api_version=1.0',
             raw: true,
             entryOnly: true,
 	    })
@@ -85,19 +85,19 @@ If all was done correctly you will see a new directory, `dist`, with a single fi
 
 ```js
 #!js api_version=1.0 name=foo
-redis.register_function("foo", (function() { return"foo" }));
+redis.registerFunction("foo", (function() { return"foo" }));
 ```
 
 This file can be send to be evaluated by RedisGears using `redis-cli`. From the project root directory, run the following:
 
 ```bash
-redis-cli -x RG.FUNCTION LOAD < ./dist/main.js
+redis-cli -x TFUNCTION LOAD < ./dist/main.js
 ```
 
 An `OK` reply will indicating that the library was loaded successfully. Test the library functionality by running the following:
 
 ```bash
-> redis-cli RG.FCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "foo"
 ```
 
@@ -114,7 +114,7 @@ Lets modify `index.js` to import the `test` variable from `test.js`:
 ```js
 import {test} from "./test.js"
 
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return test;
 });
 ```
@@ -129,19 +129,19 @@ We will see that the generated file content has changed and it is now contains t
 
 ```js
 #!js api_version=1.0 name=foo
-(()=>{"use strict";redis.register_function("foo",(function(){return"test"}))})();
+(()=>{"use strict";redis.registerFunction("foo",(function(){return"test"}))})();
 ```
 
-Now we can upload our function (notice that we use the UPGRADE option to upgrade the existing function):
+Now we can upload our function (notice that we use the `REPLACE` option to replace the existing function):
 
 ```bash
-redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js
+redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 ```
 
 And we can test our function:
 
 ```bash
-> redis-cli RG.FCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "test"
 ```
 
@@ -158,7 +158,7 @@ Lets change our program to use `pi` variable imported from `mathjs` library:
 ```js
 import {pi} from "mathjs"
 
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return pi;
 });
 ```
@@ -169,16 +169,16 @@ Again lets compile our project:
 npx webpack --config webpack.config.js
 ```
 
-Upgrade our library:
+REPLACE our library:
 
 ```bash
-redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js
+redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 ```
 
 And run it:
 
 ```bash
-> redis-cli RG.FCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "3.1415926535897931"
 ```
 
@@ -191,7 +191,7 @@ We can use npm scripts section to achieve an easy build and deploy commands, cha
 ```json
 "scripts": {
     "build": "npx webpack --config webpack.config.js",
-    "deploy": "echo \"Building\";npm run build;echo \"Deploying\";redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js"
+    "deploy": "echo \"Building\";npm run build;echo \"Deploying\";redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js"
 }
 ```
 
@@ -201,7 +201,7 @@ Now we can run `npm run build` and `npm run deploy` to build and deploy our libr
 npm run deploy
 
 > test@1.0.0 deploy
-> echo "Building";npm run build;echo "Deploying";redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js
+> echo "Building";npm run build;echo "Deploying";redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 
 Building
 
@@ -306,7 +306,7 @@ For convenience, let add this build processes to be part of our `npm run deploy`
 "scripts": {
     "build_r":"cd redisgears_rust; wasm-pack build --target web",
     "build":  "npm run build_r; npx webpack --config webpack.config.js",
-    "deploy": "echo \"Building\";npm run build;echo \"Deploying\";redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js"
+    "deploy": "echo \"Building\";npm run build;echo \"Deploying\";redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js"
   },
 ```
 
@@ -331,7 +331,7 @@ var wasm_code = base64.decode(data);
 var decoded_wasm = Uint8Array.from(wasm_code, c => c.charCodeAt(0));
 initSync(decoded_wasm)
 
-redis.register_function("foo", function(){
+redis.registerFunction("foo", function(){
     return test();
 });
 
@@ -350,7 +350,7 @@ module.exports = {
     entry: './src/index.js',
     plugins: [
         new webpack.BannerPlugin({
-          banner:'#!js name=foo',
+          banner:'#!js name=foo api_version=1.0',
                 raw: true,
                 entryOnly: true,
         }),
@@ -427,7 +427,7 @@ And finally we are done, we can build and deploy our code:
 > npm run deploy
 
 > redisgears_rust@1.0.0 deploy
-> echo "Building";npm run build;echo "Deploying";redis-cli -x RG.FUNCTION LOAD UPGRADE < ./dist/main.js
+> echo "Building";npm run build;echo "Deploying";redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 
 Building
 
@@ -478,10 +478,10 @@ Deploying
 OK
 ```
 
-Now if we will call `foo` function using [`FCALL`](commands.md#rgfcall), we will see that `Hello, World!` is printed to the Redis log file.
+Now if we will call `foo` function using [`TFCALL`](commands.md#tfcall), we will see that `Hello, World!` is printed to the Redis log file.
 
 ```bash
-> redis-cli RG.FCALL foo foo 0
+> redis-cli TFCALL foo.foo 0
 "undefined"
 ```
 
@@ -508,7 +508,7 @@ var wasm_code = base64.decode(data);
 var decoded_wasm = Uint8Array.from(wasm_code, c => c.charCodeAt(0));
 initSync(decoded_wasm)
 
-redis.register_function("foo", function(client){
+redis.registerFunction("foo", function(client){
     var rust_client = new Object();
     rust_client.get = (key) => {
         return client.call("get", key);
@@ -548,11 +548,11 @@ We define a new `Client` type and declare its `get` function. Then we use it on 
 
 ```bash
 > redis-cli
-127.0.0.1:6379> RG.FCALL foo foo 0
+127.0.0.1:6379> TFCALL foo.foo 0
 "undefined"
 127.0.0.1:6379> set x 1
 OK
-127.0.0.1:6379> RG.FCALL foo foo 0
+127.0.0.1:6379> TFCALL foo.foo 0
 "1"
 ```
 

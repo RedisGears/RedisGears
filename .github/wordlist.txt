@@ -56,3 +56,9 @@ pytests
 oss
 MSRV
 utf
+FCALLASYNC
+Lua
+TFUNCTION
+TFCALL
+TFCALLASYNC
+functionFlags

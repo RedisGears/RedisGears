@@ -7,9 +7,9 @@ rust-version = "1.63"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
+redis-module = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
 redis-module-macros = { git = "https://github.com/RedisLabsModules/redismodule-rs", branch = "master" }
-lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
+lib_mr = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
 lib_mr_derive = { git = "https://github.com/RedisGears/LibMR.git", branch = "refactoring_rust_api_2" }
 linkme = "0.3"
 redisai_rs = { path = "../redisai_rs" }
@@ -22,6 +22,8 @@ serde = { version = "1", features = ["derive"] }
 serde_derive = "1"
 sha256 = "1"
 lazy_static = "1"
+log = "0.4"
+byte-unit = "4"
 
 [build-dependencies]
 regex = "1"

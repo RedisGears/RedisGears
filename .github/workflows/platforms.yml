@@ -1,0 +1,65 @@
+name: Platform builds
+
+on:
+    pull_request:
+        types: [labeled]
+        paths-ignore:
+            - '.circleci/**'
+
+jobs:
+
+    jammy-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: 22.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+
+    focal-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: 20.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+
+    bionic-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: 18.04
+            os_family: ubuntu
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+
+    bullseye-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: bullseye
+            os_family: debian
+            dockerfile: dockerbuilds/dockerfile.debian.tmpl
+
+    amazonlinux2-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: 2
+            os_family: amazonlinux
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+
+    rhel7-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: 7
+            os_family: centos
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+
+    rhel8-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: 8
+            os_family: rockylinux
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl

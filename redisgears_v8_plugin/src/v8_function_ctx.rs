@@ -21,7 +21,7 @@ use v8_rs::v8::{
 
 use crate::v8_native_functions::{get_backgrounnd_client, RedisClient};
 use crate::v8_script_ctx::V8ScriptCtx;
-use crate::{get_error_from_object, get_exception_msg};
+use crate::{get_error_from_object, get_exception_msg, v8_backend::bypass_memory_limit};
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -423,6 +423,13 @@ impl V8Function {
 
 impl FunctionCtxInterface for V8Function {
     fn call(&self, run_ctx: &dyn RunFunctionCtxInterface) -> FunctionCallResult {
+        if bypass_memory_limit() {
+            run_ctx.send_reply(Err(RedisError::Str(
+                "JS engine reached OOM state and can not run any more code",
+            )));
+            return FunctionCallResult::Done;
+        }
+
         if self.is_async {
             let bg_client = match run_ctx.get_background_client() {
                 Ok(bc) => bc,
@@ -448,7 +455,7 @@ impl FunctionCtxInterface for V8Function {
                 .run_on_background(Box::new(move || {
                     inner_function.call_async(args, bg_client, bg_redis_client, decode_arguments);
                 }));
-            FunctionCallResult::Done
+            FunctionCallResult::Hold
         } else {
             let redis_client = run_ctx.get_redis_client();
             {
@@ -456,10 +463,13 @@ impl FunctionCtxInterface for V8Function {
                 c.set_allow_block(run_ctx.allow_block());
                 c.set_client(redis_client.as_ref());
             }
-            self.inner_function
+            let res = self
+                .inner_function
                 .call_sync(run_ctx, self.decode_arguments);
+
             self.client.borrow_mut().make_invalid();
-            FunctionCallResult::Done
+
+            res
         }
     }
 }

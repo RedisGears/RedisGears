@@ -1,4 +1,5 @@
-display_name: RedisGears-2.0
+display_name: RedisGears
+capability_name: Triggers & Functions
 author: RedisLabs
 email: meir@redislabs.com
 description: Dynamic execution framework for your Redis data
@@ -6,9 +7,9 @@ homepage: 'http://redisgears.io'
 license: Redis Source Available License Agreement
 command_line_args: "libredisgears_v8_plugin.so"
 run_command_line_args: "v8-plugin-path {os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"
-min_redis_version: '6.0.0'
-min_redis_pack_version: '6.2.18'
-config_command: "RG.CONFIG_SET"
+min_redis_version: "7.1"
+min_redis_pack_version: "7.2"
+config_command: "TCONFIG_SET"
 capabilities:
     - types
     - failover_migrate
@@ -21,18 +22,25 @@ capabilities:
     - intershard_tls
     - intershard_tls_pass
     - ipv6
+    - replica_of
+    - flash
 exclude_commands:
-    - _RG.FUNCTION
+    - _RG_INTERNALS.FUNCTION
+    - _RG_INTERNALS.UPDATE_STREAM_LAST_READ_ID
     - redisgears_2.REFRESHCLUSTER
     - redisgears_2.INFOCLUSTER
     - redisgears_2.NETWORKTEST
     - redisgears_2.INNERCOMMUNICATION
     - redisgears_2.HELLO
     - redisgears_2.CLUSTERSETFROMSHARD
-    - rg.config_set
-    - RG.CONFIG_SET
+    - tconfig_set
+    - TCONFIG_SET
+    - tfcall
+    - TFCALL
+    - tfcallasync
+    - TFCALLASYNC
     - _rg_internals.update_stream_last_read_id
-    - _rg.function
+    - _rg_internals.function
 dependencies:
     gears_v8:
         local_path: "{os.getenv('REDISGEARS_V8_PLUGIN_PATH')}"

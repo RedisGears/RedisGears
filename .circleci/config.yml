@@ -2,29 +2,281 @@ version: 2.1
 
 commands:
 
+  checkout-all:
+    steps:
+      - checkout
+      - run:
+          name: update submodules if relevant
+          command: git submodule update --init --recursive
 
-jobs:
-  placeholder:
-    docker:
-      - image: ubuntu:latest
+  deb-install-requirements:
     steps:
       - run:
-          name: Early return if this is a docs build
+          name: Install python requirements
           command: |
-            echo "literally just a placeholder"
+            sudo apt-get update -qqy --fix-missing
+            sudo apt install -y s3cmd
+            python3 -m pip install jinja2
 
-never: &never
+  # upload to s3, only if set to true, using the base folder passed in the srcdir property
+  s3-upload:
+    parameters:
+      publish:
+        type: string
+        default: "false"
+      srcdir:
+        type: string
+    steps:
+      - run:
+          name: s3 upload
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            if [[ $publish == "true" ]]; then
+              s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
+                put -P <<parameters.srcdir>>/redisgears*.zip \
+                s3://redismodules/redisgears/snapshots/
+            fi
+
+  docker-generate:
+    parameters:
+      os_version:
+        type: string
+      v8_update_headers:
+        type: string
+      v8_version:
+        type: string
+    steps:
+      - run:
+          name: Generate Dockerfile
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            python3 dockerbuilds/generate.py --os_version <<parameters.os_version>> \
+              --platform arm64 \
+              --v8_update_headers <<parameters.v8_update_headers>> \
+              --v8_version <<parameters.v8_version>> \
+              --src dockerbuilds/dockerfile.debian.tmpl \
+              --os_family ubuntu
+
+  build-macos:
+
+    parameters:
+      arch_suffix:
+        type: string
+      openssl_path:
+        type: string
+      redis_version:
+        type: string
+        default: "7.2-rc2"
+      publish:
+        type: string
+        default: "false"
+
+    steps:
+      - checkout-all
+      - run:
+          name: install dependencies
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            brew install python3 automake openssl@3 wget libtool pkg-config
+      - run:
+          name: pip install
+          command: |
+            python3 -m pip install RLTest
+            python3 -m pip install -U redis==5.0.0b4
+            python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
+            if [ ! -f /usr/local/bin/ramp ]; then
+              ln -s /Users/distiller/.pyenv/shims/ramp /usr/local/bin/ramp
+            fi
+      - run:
+          name: install rust
+          command: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > install_rust.sh
+            sh install_rust.sh -y
+      - run:
+          name: install redis
+          command: |
+            wget -q https://redismodules.s3.amazonaws.com/redis-stack/dependencies/redis-<<parameters.redis_version>>-<<parameters.arch_suffix>>.tgz -O redis.tgz
+            tar -zxpf redis.tgz
+            cp redis-*/* /usr/local/bin
+            chmod a+x /usr/local/bin/redis*
+      - run:
+          name: build and test
+          shell: /bin/bash -l -eo pipefail
+          environment:
+            PKG_CONFIG_PATH: <<parameters.openssl_path>>/lib/pkgconfig
+            OPENSSL_PREFIX: <<parameters.openssl_path>>
+          timeout: 30m
+          command: |
+            ${HOME}/.cargo/bin/cargo build -vv
+            ${HOME}/.cargo/bin/cargo build --release -vv
+            ${HOME}/.cargo/bin/cargo test -vv
+
+      - run:
+          name: run python tests
+          working_directory: pytests
+          command: |
+            ./run_tests.sh
+      - run:
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            target/release/packer
+      - s3-upload:
+          publish: <<parameters.publish>>
+          srcdir: target/release
+jobs:
+
+  build-arm:
+    machine:
+      image: ubuntu-2004:current
+    resource_class: arm.medium
+
+    parameters:
+      os_version:
+        type: string
+      v8_update_headers:
+        type: string
+        default: "no"
+      v8_version:
+        type: string
+        default: default
+      publish:
+        type: string
+        default: "false"
+
+    steps:
+      - checkout-all
+      - deb-install-requirements
+      - docker-generate:
+          os_version: <<parameters.os_version>>
+          v8_version: <<parameters.v8_version>>
+          v8_update_headers: <<parameters.v8_update_headers>>
+      - run:
+          name: build docker, copy out the bits
+          shell: /bin/bash -l -eo pipefail
+          command: |
+              docker build --platform arm64 --progress=plain -f dockerbuilds/Dockerfile.generated \
+              . \
+              -t gears/gears:build
+              docker create --name smu gears/gears:build
+              docker cp smu:/build/target/release/. release
+              ls release
+      - s3-upload:
+          publish: <<parameters.publish>>
+          srcdir: release
+
+  build-macos-x64:
+    resource_class: macos.x86.medium.gen2
+    parameters:
+      publish:
+        type: string
+        default: "false"
+    macos:
+      xcode: 12.5.1
+    steps:
+      - build-macos:
+          arch_suffix: "macos-catalina-x86_64"
+          openssl_path: "/usr/local/opt/openssl@3"
+          publish: <<parameters.publish>>
+
+  build-macos-arm64:
+    resource_class: macos.m1.medium.gen1
+    parameters:
+      publish:
+        type: string
+        default: "false"
+    macos:
+      xcode: 14.2.0
+    steps:
+      - build-macos:
+          arch_suffix: "macos-monterey-arm64"
+          openssl_path: "/opt/homebrew/opt/openssl@3"
+          publish: <<parameters.publish>>
+
+on-pull-request: &on-pull-request
   filters:
     branches:
-      ignore: /.*/
+      ignore:
+        - master
+        - /^\d+\.\d+.*$/
+        - /^\d+\.\d+\.\d+.*$/
     tags:
       ignore: /.*/
 
-#----------------------------------------------------------------------------------------------------------------------------------
+on-integ-branch: &on-integ-branch
+  filters:
+    branches:
+      only:
+        - master
+        - /^\d+\.\d+.*$/
+        - /^\d+\.\d+\.\d+.*$/
+    tags:
+      only:
+        - /^v\d+\.\d+\.\d+.*-rc*$/
+        - /^v\d+\.\d+\.\d+.*-m*$/
+
+on-master: &on-master
+  filters:
+    branches:
+      only: master
+    tags:
+      ignore: /.*/
 
 workflows:
   version: 2
-  build_and_package:
+  default-flow:
     jobs:
-      - placeholder:
-        <<: *never
+
+      - build-macos-x64:
+          name: OSX [intel] Integration
+          context: common
+          <<: *on-integ-branch
+          publish: "true"
+
+      - build-macos-arm64:
+          name: OSX [arm64] CI
+          context: common
+          <<: *on-pull-request
+
+      - build-macos-x64:
+          name: OSX [intel] CI
+          context: common
+          <<: *on-pull-request
+
+
+      - build-arm:
+          name: ARM CI <<matrix.os_version>>
+          context: common
+          <<: *on-pull-request
+          matrix:
+            parameters:
+              os_version: ["22.04"]
+
+      - build-arm:
+          name: ARM Integration <<matrix.os_version>>
+          context: common
+          <<: *on-integ-branch
+          publish: "true"
+          matrix:
+            parameters:
+              os_version: ["22.04", "20.04", "18.04"]
+
+nightly:
+
+  triggers:
+    - schedule:
+        cron: "5 3 * * Sun-Thu"
+        filters:
+          branches:
+            only:
+              - master
+
+  jobs:
+    - build-arm:
+      name: Nightly build <<matrix.os_version>> V8 <<matrix.v8_version>> Headers <<matrix.v8_update_headers>>
+      context: common
+      <<: *on-master
+      matrix:
+        parameters:
+          os_version: ["22.04", "20.04", "18.04"]
+          v8_update_headers: ["yes"]
+          v8_version: ["main"]

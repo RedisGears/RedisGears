@@ -11,6 +11,15 @@ use crate::redisgears_plugin_api::run_function_ctx::RemoteFunctionData;
 use crate::redisgears_plugin_api::stream_ctx::StreamCtxInterface;
 use crate::redisgears_plugin_api::GearsApiError;
 
+pub const FUNCTION_FLAG_NO_WRITES_GLOBAL_NAME: &str = "NO_WRITES";
+pub const FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE: &str = "no-writes";
+
+pub const FUNCTION_FLAG_ALLOW_OOM_GLOBAL_NAME: &str = "ALLOW_OOM";
+pub const FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE: &str = "allow-oom";
+
+pub const FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_NAME: &str = "RAW_ARGUMENTS";
+pub const FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE: &str = "raw-arguments";
+
 pub trait LibraryCtxInterface {
     fn load_library(
         &self,
@@ -28,7 +37,7 @@ bitflags::bitflags! {
     /// executed.
     #[derive(Default)]
     pub struct FunctionFlags: u8 {
-        /// The function is not performing writes.
+        /// The function is not performing writes to the database.
         const NO_WRITES = 0x01;
         /// TODO
         const ALLOW_OOM = 0x02;
@@ -51,6 +60,14 @@ pub trait LoadLibraryCtxInterface {
         name: &str,
         function_ctx: Box<dyn FunctionCtxInterface>,
         flags: FunctionFlags,
+        description: Option<String>,
+    ) -> Result<(), GearsApiError>;
+    fn register_async_function(
+        &mut self,
+        name: &str,
+        function_ctx: Box<dyn FunctionCtxInterface>,
+        flags: FunctionFlags,
+        description: Option<String>,
     ) -> Result<(), GearsApiError>;
     fn register_remote_task(
         &mut self,
@@ -64,11 +81,13 @@ pub trait LoadLibraryCtxInterface {
         stream_ctx: Box<dyn StreamCtxInterface>,
         window: usize,
         trim: bool,
+        description: Option<String>,
     ) -> Result<(), GearsApiError>;
     fn register_key_space_notification_consumer(
         &mut self,
         name: &str,
         key: RegisteredKeys,
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
+        description: Option<String>,
     ) -> Result<(), GearsApiError>;
 }
