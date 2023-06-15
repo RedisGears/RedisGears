@@ -11,7 +11,7 @@ Usage example:
 ```JS
 #!js name=lib api_version=1.1
 
-import { redis } from '@redis/gears-api/gears-api';
+import { redis } from '@redis/gears-api';
 
 redis.registerFunction('foo', (c)=>{
   return c.call('ping');
