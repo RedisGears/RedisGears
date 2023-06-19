@@ -38,7 +38,7 @@ jobs:
         if: ${{ github.event.release.tag_name == '' }}
         with:
           push: false
-          tags: ${{ vars.DOCKERHUB_REPO }}:edge
+          tags: redislabs/redisgears:edge
           context: .
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
@@ -47,6 +47,6 @@ jobs:
         if: ${{ github.event.release.tag_name != '' }}
         with:
           push: false
-          tags: ${{ vars.DOCKERHUB_REPO }}:${{ github.event.release.tag_name }}
+          tags: redislabs/redisgears:${{ github.event.release.tag_name }}
           context: .
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
