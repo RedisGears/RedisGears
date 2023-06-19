@@ -242,7 +242,6 @@ workflows:
       - build-macos-x64:
           name: OSX [intel] CI
           context: common
-          publish: "true"  # just so that I can test the s3cmd call
           <<: *on-pull-request
 
       - build-arm:
