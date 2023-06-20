@@ -181,7 +181,7 @@ redis.registerAsyncFunction('test', function(client, expected_name){
 
 # Call Blocking Commands
 
-Redis has a few commands that blocks the client and executed asynchroniusly when some condition holds (commands like [blpop](https://redis.io/commands/blpop/)). In general, such commands are not suppose to be called inside a script and calling them will result in running their none blocking logic. For example, [blpop](https://redis.io/commands/blpop/) will basically runs lpop and return empty result if the list it empty.
+Redis has a few commands that blocks the client and executed asynchronously when some condition holds (commands like [blpop](https://redis.io/commands/blpop/)). In general, such commands are not suppose to be called inside a script and calling them will result in running their none blocking logic. For example, [blpop](https://redis.io/commands/blpop/) will basically runs lpop and return empty result if the list it empty.
 
 RedisGears allows running blocking commands using `client.callAsync` API. `client.callAsync` will execute the blocking command and return a promise object which will be resolved when the command invocation finished (notice that `client.callAsync` allow calling any command and not just blocking but it will always return a promise object that will be resolve later, so **using it for regular commands is less efficient**). 
 
@@ -205,7 +205,7 @@ The following function will continue popping elements from the requested list up
 
 RedisGears also provided `client.callAsyncRaw` API, which is the same as `client.callAsync` but will not decode the replies as utf8.
 
-**Notice**: There is no garentee when the promise returned from `client.callAsyn` will be resolved. So the **function writer should not make any assumption about atomicity garentees.**
+**Notice**: There is no guarantee when the promise returned from `client.callAsyn` will be resolved. So the **function writer should not make any assumption about atomicity guarantees.**
 
 # Fail Blocking the Redis
 
