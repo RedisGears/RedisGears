@@ -1,6 +1,10 @@
 name: Run nightly CI benchmarks
 
 on:
+  push:
+    branches:
+      - master
+      - 2.0
 
   workflow_dispatch:
 
@@ -10,11 +14,16 @@ on:
 
 jobs:
   perf-ci:
+    strategy:
+      matrix:
+        ref: ['master','2.0']
     name: Trigger CI benchmarks
     runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        ref: ${{ matrix.ref }}
     - name: Build release
       env:
         V8_VERSION: main
