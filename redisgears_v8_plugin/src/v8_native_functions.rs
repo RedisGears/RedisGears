@@ -721,9 +721,11 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                         &ctx_scope,
                         Arc::new(bg_redis_client),
                     );
+                    new_script_ctx_ref.before_run();
                     let res = f
                         .take_local(&isolate_scope)
                         .call(&ctx_scope, Some(&[&background_client.to_value()]));
+                    new_script_ctx_ref.after_run();
 
                     let resolver = resolver.take_local(&isolate_scope).as_resolver();
                     match res {

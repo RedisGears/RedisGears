@@ -84,6 +84,7 @@ commands:
             python3 -m pip install RLTest
             python3 -m pip install -U redis==5.0.0b4
             python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
+            python3 -m pip install s3cmd
             if [ ! -f /usr/local/bin/ramp ]; then
               ln -s /Users/distiller/.pyenv/shims/ramp /usr/local/bin/ramp
             fi

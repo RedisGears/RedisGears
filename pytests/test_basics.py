@@ -323,6 +323,21 @@ redis.registerAsyncFunction("test1", async function(client){
     env.expectTfcallAsync('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
 
 @gearsTest()
+def testExecuteAsyncScriptTimeout(env):
+    """#!js api_version=1.0 name=lib
+redis.registerAsyncFunction("test1", function(client){
+    return client.executeAsync(async (c) =>{
+        c.block(function(){
+            while (true);
+        });
+    });
+    
+});
+    """
+    env.expect('config', 'set', 'redisgears_2.lock-redis-timeout', '100').equal('OK')
+    env.expectTfcallAsync('lib', 'test1').error().contains('Execution was terminated due to OOM or timeout')
+
+@gearsTest()
 def testTimeoutErrorNotCatchable(env):
     """#!js api_version=1.0 name=lib
 redis.registerAsyncFunction("test1", async function(client){
