@@ -1,0 +1,118 @@
+{
+    "TFCALL": {
+        "summary": "Invoke a function with Triggers and Function",
+        "since": "2.0.0",
+        "group": "scripting",
+        "complexity": "Depends on the function that is executed.",
+        "arguments": [
+            {
+                "name": "function_name",
+                "type": "string"
+            },
+            {
+                "name": "number_of_keys",
+                "type": "integer"
+            }
+        ]
+    },
+    "TFCALLASYNC": {
+        "summary": "Invoke a async function with Triggers and Function",
+        "since": "2.0.0",
+        "group": "scripting",
+        "complexity": "Depends on the function that is executed.",
+        "arguments": [
+            {
+                "name": "function_name",
+                "type": "string"
+            },
+            {
+                "name": "number_of_keys",
+                "type": "integer"
+            }
+        ]
+    },
+    "TFUNCTION": {
+        "summary": "A container for tfunction commands",
+        "since": "2.0.0",
+        "group": "scripting",
+        "complexity": "Depends on subcommand.",
+        "subcommands": {
+            "TFUNCTION|LOAD": {
+                "summary": "Load a new library to Triggers and Functions",
+                "since": "2.0.0",
+                "group": "scripting",
+                "complexity": "O(1)",
+                "arguments": [
+                    {
+                        "name": "replace",
+                        "pure-token": "replace",
+                        "display_text": "replace",
+                        "token": "REPLACE",
+                        "optional": true
+                    },
+                    {
+                        "name": "config",
+                        "type": "string",
+                        "display_text": "config",
+                        "token": "CONFIG",
+                        "optional": true
+                    },
+                    {
+                        "name": "library-code",
+                        "type": "string",
+                        "display_text": "library code"
+                    }
+                ]
+            },
+            "TFUNCTION|DELETE": {
+                "summary": "Delete a library from Triggers and Functions by name",
+                "since": "2.0.0",
+                "group": "scripting",
+                "complexity": "O(1)",
+                "arguments": [
+                    {
+                        "name": "library-name",
+                        "type": "string",
+                        "display_text": "library name"
+                    }
+                ]
+            },
+            "TFUNCTION|LIST": {
+                "summary": "List all libraries loaded into Triggers and Functions",
+                "since": "2.0.0",
+                "group": "scripting",
+                "complexity": "O(N) where N is the number of libraries loaded into Triggers and Functions",
+                "arguments": [
+                    {
+                        "name": "library-name",
+                        "type": "string",
+                        "display_text": "library name",
+                        "token": "LIBRARYNAME",
+                        "optional": true
+                    },
+                    {
+                        "name": "withcode",
+                        "type": "pure-token",
+                        "display_text": "withcode",
+                        "token": "WITHCODE",
+                        "optional": true
+                    },
+                    {
+                        "name": "verbose",
+                        "type": "pure-token",
+                        "display_text": "verbose",
+                        "token": "VERBOSE",
+                        "optional": true
+                    },
+                    {
+                        "name": "v",
+                        "type": "pure-token",
+                        "display_text": "v",
+                        "token": "V",
+                        "optional": true
+                    }
+                ]
+            }
+        }
+    }
+}
