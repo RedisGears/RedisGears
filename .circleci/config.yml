@@ -213,6 +213,8 @@ on-integ-branch: &on-integ-branch
 
 on-tags: &on-tags
   filters:
+    branches:
+      ignore: /.*/
     tags:
       only:
         - /^v\d+\.\d+\.\d+.*-rc*$/
