@@ -2,7 +2,7 @@
 
 ## TFUNCTION LOAD
 
-Load a new library to RedisGears.
+Load a new library to Triggers and Functions.
 
 ```
 TFUNCTION LOAD [REPLACE] [CONFIG <config>] "<library code>"
@@ -10,7 +10,7 @@ TFUNCTION LOAD [REPLACE] [CONFIG <config>] "<library code>"
 
 _Arguments_
 
-* REPLACE - an optional argument, instructs RedisGears to replace the function if its already exists.
+* REPLACE - an optional argument, instructs Triggers and Functions to replace the function if its already exists.
 * CONFIG - a string representation of a JSON object that will be provided to the library on load time, for more information refer to [library configuration](function_advance_topics.md#library-configuration)
 * _library code_ - the library code
 
@@ -26,7 +26,7 @@ OK
 
 ## TFUNCTION DELETE
 
-Delete a library from RedisGears.
+Delete a library from Triggers and Functions.
 
 ```
 TFUNCTION DELETE "<library name>"
@@ -83,9 +83,9 @@ Information about the requested libraries.
           2) "foo"
           3) "flags"
           4) (empty array)
-   13) "stream_consumers"
+   13) "keyspace_triggers"
    14) (empty array)
-   15) "notifications_consumers"
+   15) "stream_triggers"
    16) (empty array)
    17) "gears_box_info"
    18) (nil)
@@ -114,8 +114,8 @@ The return value from the function on error in case of failure.
 
 **Example**
 ```bash
-> TFCALL lib.foo 0
-"bar"
+> TFCALL lib.hello 0
+"Hello World"
 ```
 
 # TFCALLASYNC
@@ -140,6 +140,6 @@ The return value from the async function on error in case of failure.
 
 **Example**
 ```bash
-> TFCALLASYNC lib.foo 0
-"bar"
+> TFCALLASYNC lib.hello 0
+"Hello World"
 ```
