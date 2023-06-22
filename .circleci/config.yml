@@ -213,10 +213,10 @@ on-integ-branch: &on-integ-branch
 
 on-tags: &on-tags
   filters:
-      tags:
-        only:
-          - /^v\d+\.\d+\.\d+.*-rc*$/
-          - /^v\d+\.\d+\.\d+.*-m*$/
+    tags:
+      only:
+        - /^v\d+\.\d+\.\d+.*-rc*$/
+        - /^v\d+\.\d+\.\d+.*-m*$/
 
 on-master: &on-master
   filters:
