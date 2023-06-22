@@ -31,3 +31,4 @@ dump.rdb
 .gdb_history
 packer
 
+.DS_Store
