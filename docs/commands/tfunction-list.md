@@ -52,8 +52,6 @@ TFUNCTION LIST vvv
     14) (empty array)
     15) "stream_triggers"
     16) (empty array)
-    17) "gears_box_info"
-    18) (nil)
 {{</ highlight>}}
 
 ## See also
