@@ -1,11 +1,11 @@
-# RedisGears-2.0
+# Triggers and Functions
 
 [![GitHub Builds](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml/badge.svg)](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml)
 [![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
 
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
 
-**Notice, RedisGears 2.0 is still under active development and not yet GA, the API might (and probably) change at the final GA version.**
+**Notice, Triggers and Functions is still under active development and not yet GA, the API might (and probably) change at the final GA version.**
 
 ## Run Using Docker
 
@@ -34,7 +34,7 @@ See the [build](docs/build_instructions.md) page for more information.
 ## Getting started
 
 ### Run JS code
-The API expose by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) is working. Lets write a simple `hello world` RedisGears function that return the string `hello world`:
+The API expose by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) is working. Lets write a simple `hello world` function that return the string `hello world`:
 ```js
 #!js name=lib api_version=1.0
 
@@ -45,7 +45,7 @@ redis.registerFunction('hello_world', function(){
 The first line indicates the engine to use (`js`) and the library name (`lib`). The rest is the library code.
 
 
-Assuming we put the following code on a file `lib.js`, we can register our function on RedisGears using `TFUNCTION LOAD` command:
+Assuming we put the following code on a file `lib.js`, we can register our function on Triggers and Functions using `TFUNCTION LOAD` command:
 
 ```bash
 > redis-cli -x TFUNCTION LOAD < ./lib.js
@@ -59,11 +59,11 @@ And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) co
 "hello_world"
 ```
 
-Notice that [`TFCALL`](docs/commands.md#rgfcal) command arguments is very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on RedisGears the command also gets the library name. The `0` represent the number of keys that will follow (which in our case is `0`).
+Notice that [`TFCALL`](docs/commands.md#rgfcal) command arguments is very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on Triggers and Functions the command also gets the library name. The `0` represent the number of keys that will follow (which in our case is `0`).
 
-### Calling Redis Commands Inside our Gears Function
+### Calling Redis Commands Inside Triggers and Functions
 
-It is possible to call Redis commands inside our gears function. The function gets as first argument a client object that allows interaction with Redis using `call` function. The following example executes a simple `PING` command and return the result:
+It is possible to call Redis commands inside Triggers and Functions. The function gets as first argument a client object that allows interaction with Redis using `call` function. The following example executes a simple `PING` command and return the result:
 
 ```js
 #!js name=lib api_version=1.0
@@ -98,7 +98,7 @@ And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
 * [Configuration](docs/configuration.md)
 * [Advance Functions Topics](docs/function_advance_topics.md)
 * [Sync and Async Run](docs/sync_and_async_run.md)
-* [Stream Processing with RedisGears 2.0](docs/stream_processing.md)
-* [Database triggers](docs/databse_triggers.md)
+* [Stream Triggers with Triggers and Functions](docs/stream_triggers.md)
+* [KeySpace Triggers](docs/keyspace_triggers.md)
 * [Cluster support](docs/cluster_support.md)
 * [JS API](docs/js_api.md)
