@@ -1,6 +1,6 @@
 # Create a Development Environment
 
-When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and become complex it is less comfortable to maintain it as a single file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi file project and how to wrap it as a single file and send it to RedisGears. The tutorial assume you have Redis with RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
+When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and become complex it is less comfortable to maintain it as a single file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi file project and how to wrap it as a single file and send it to Triggers and Functions. The tutorial assume you have Redis with the module RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
 
 ## Pre-requisite
 
@@ -50,8 +50,8 @@ touch index.js
 Now lets add some code to `index.js`, open `index.js` file and past the following code:
 
 ```js
-redis.registerFunction("foo", function(){
-    return "foo";
+redis.registerFunction("hello", function(){
+    return "Hello World";
 });
 ```
 
@@ -65,7 +65,7 @@ module.exports = {
     mode: "production",
     plugins: [
         new webpack.BannerPlugin({
-			banner:'#!js name=foo api_version=1.0',
+			banner:'#!js name=myFirstLibrary api_version=1.0',
             raw: true,
             entryOnly: true,
 	    })
@@ -73,7 +73,7 @@ module.exports = {
 }
 ```
 
-The `entry` field is the entry point of our project. The plugin we use instruct webpack to add a banner line at the beginning of the generated code that will contains the shebang syntax required by RedisGears along side the library name.
+The `entry` field is the entry point of our project. The plugin we use instruct webpack to add a banner line at the beginning of the generated code that will contains the shebang syntax required by Triggers and Functions along side the library name.
 
 We can now build our project, from within the root directory run the following command:
 
@@ -85,10 +85,10 @@ If all was done correctly you will see a new directory, `dist`, with a single fi
 
 ```js
 #!js api_version=1.0 name=foo
-redis.registerFunction("foo", (function() { return"foo" }));
+redis.registerFunction("hello", (function() { return"Hello World" }));
 ```
 
-This file can be send to be evaluated by RedisGears using `redis-cli`. From the project root directory, run the following:
+This file can be send to be evaluated by Triggers and Functions using `redis-cli`. From the project root directory, run the following:
 
 ```bash
 redis-cli -x TFUNCTION LOAD < ./dist/main.js
@@ -97,8 +97,8 @@ redis-cli -x TFUNCTION LOAD < ./dist/main.js
 An `OK` reply will indicating that the library was loaded successfully. Test the library functionality by running the following:
 
 ```bash
-> redis-cli TFCALL foo.foo 0
-"foo"
+> redis-cli TFCALL myFirstLibrary.hello 0
+"Hello World"
 ```
 
 ## Adding Files to our Project
@@ -114,7 +114,7 @@ Lets modify `index.js` to import the `test` variable from `test.js`:
 ```js
 import {test} from "./test.js"
 
-redis.registerFunction("foo", function(){
+redis.registerFunction("hello", function(){
     return test;
 });
 ```
@@ -128,8 +128,8 @@ npx webpack --config webpack.config.js
 We will see that the generated file content has changed and it is now contains the following code:
 
 ```js
-#!js api_version=1.0 name=foo
-(()=>{"use strict";redis.registerFunction("foo",(function(){return"test"}))})();
+#!js api_version=1.0 name=myFirstLibrary
+(()=>{"use strict";redis.registerFunction("hello",(function(){return"test"}))})();
 ```
 
 Now we can upload our function (notice that we use the `REPLACE` option to replace the existing function):
@@ -141,7 +141,7 @@ redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 And we can test our function:
 
 ```bash
-> redis-cli TFCALL foo.foo 0
+> redis-cli TFCALL myFirstLibrary.hello 0
 "test"
 ```
 
@@ -158,7 +158,7 @@ Lets change our program to use `pi` variable imported from `mathjs` library:
 ```js
 import {pi} from "mathjs"
 
-redis.registerFunction("foo", function(){
+redis.registerFunction("hello", function(){
     return pi;
 });
 ```
@@ -178,11 +178,11 @@ redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
 And run it:
 
 ```bash
-> redis-cli TFCALL foo.foo 0
+> redis-cli TFCALL myFirstLibrary.hello 0
 "3.1415926535897931"
 ```
 
-Notice that RedisGears **only supports pure JS libraries**, a library that has a native code or use some native JS API provided by the browser or by nodejs **will not work**.
+Notice that Triggers and Functions **only supports pure JS libraries**, a library that has a native code or use some native JS API provided by the browser or by nodejs **will not work**.
 
 ## Easy Build and Deploy
 
@@ -232,7 +232,7 @@ OK
 
 **The following tutorial is experimental and is not promised to be supported in the final GA version**
 
-Fortunately for us, v8 comes with an embedded webassembly support. We can leverage it to run our code that was written in some low level language, and achieve better performance on CPU intensive tasks. In this tutorial we will show how to compile and run a rust code inside v8 webassembly embedded inside Redis using RedisGears :).
+Fortunately for us, v8 comes with an embedded webassembly support. We can leverage it to run our code that was written in some low level language, and achieve better performance on CPU intensive tasks. In this tutorial we will show how to compile and run a rust code inside v8 webassembly embedded inside Redis using Triggers and Functions.
 
 ## Pre-requisite
 
@@ -280,7 +280,7 @@ The code defines a `test` function that simply prints `Hello, World!`. Notice th
 wasm-pack build --target web
 ```
 
-Notice that we are building using the `web` target, though we are not actually a web, this target will be good enough for us and will help to avoid `nodejs` specific API that are not supported inside RedisGears (we hope that one day we will be popular enough and a new `RedisGears` target will be added :)).
+Notice that we are building using the `web` target, though we are not actually a web, this target will be good enough for us and will help to avoid `nodejs` specific API that are not supported inside Triggers and Functions (we hope that one day we will be popular enough and a new `RedisGears` target will be added :)).
 
 After build successfully, you will notice that a new `pkg` directory was created containing the following content:
 
@@ -419,7 +419,7 @@ new ModifySourcePlugin({
         })
 ```
 
-This tells webpack to replace all `import.meta.url` with an empty string. We need it because when webpack sees `import.meta.url` it replace it with some `JS` code that uses `document` object which we do not have on RedisGears.
+This tells webpack to replace all `import.meta.url` with an empty string. We need it because when webpack sees `import.meta.url` it replace it with some `JS` code that uses `document` object which we do not have on Triggers and Functions.
 
 And finally we are done, we can build and deploy our code:
 

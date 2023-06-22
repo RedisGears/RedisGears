@@ -23,13 +23,13 @@ Example of running the following function:
 ```bash
 127.0.0.1:6379> set x 1
 OK
-127.0.0.1:6379> TFCALL foo.my_get 1 x
+127.0.0.1:6379> TFCALL lib.my_get 1 x
 "1"
-127.0.0.1:6379> hset h foo bar x y
+127.0.0.1:6379> hset h a b x y
 (integer) 2
-127.0.0.1:6379> TFCALL foo.my_get 1 h
-1) "foo"
-2) "bar"
+127.0.0.1:6379> TFCALL lib.my_get 1 h
+1) "a"
+2) "b"
 3) "x"
 4) "y"
 
@@ -64,8 +64,8 @@ Run example:
 ```bash
 127.0.0.1:6379> TFCALL foo.my_get 2 x h
 1) "1"
-2) 1) "foo"
-   2) "bar"
+2) 1) "a"
+   2) "b"
    3) "x"
    4) "y"
 ```
@@ -95,18 +95,18 @@ redis.registerFunction('my_ping',
 Run example:
 
 ```bash
-127.0.0.1:6379> TFCALL foo.my_ping 0
+127.0.0.1:6379> TFCALL lib.my_ping 0
 "PONG"
 127.0.0.1:6379> config set maxmemory 1
 OK
-127.0.0.1:6379> TFCALL foo.my_ping 0
+127.0.0.1:6379> TFCALL lib.my_ping 0
 "PONG"
 
 ```
 
 ## Library Configuration
 
-When writing a library you might want to be able to provide a loading configuration, so that different users can use the same library with slightly different behaviour (without changing the base code). For example, assuming you writing a library that adds `__last_updated__` field to a hash (you can see how it can also be done with [databases triggers](databse_triggers.md)), the code will look like this:
+When writing a library you might want to be able to provide a loading configuration, so that different users can use the same library with slightly different behaviour (without changing the base code). For example, assuming you writing a library that adds `__last_updated__` field to a hash (you can see how it can also be done with [KeySpace triggers](keyspace_triggers.md)), the code will look like this:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -121,7 +121,7 @@ redis.registerFunction("hset", function(client, key, field, val){
 Run example:
 
 ```bash
-127.0.0.1:6379> TFCALL lib.hset k foo bar 0
+127.0.0.1:6379> TFCALL lib.hset k a b 0
 (integer) 2
 127.0.0.1:6379> hgetall k
 1) "foo"
@@ -130,7 +130,7 @@ Run example:
 4) "1658653125"
 ```
 
-The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? RedisGears allow specify library configuration at load time using `CONFIG` argument given to [`FUNCTION LOAD`](commands.md#tfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
+The problem with the above code is that the `__last_update__` field is hard coded, what if we want to allow the user to configure it at runtime? Triggers and Functions allow specify library configuration at load time using `CONFIG` argument given to [`TFUNCTION LOAD`](commands.md#tfunction-load) command. The configuration argument accept a string representation of a JSON object. The json will be provided to the library as a JS object under `redis.config` variable. We can change the above example to accept `__last_update__` field name as a library configuration. The code will look like this:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -151,7 +151,7 @@ redis.registerFunction("hset", function(client, key, field, val){
 });
 ```
 
-Notica that in the above example we first set `last_update_field_name` to `__last_update__`, this will be the default value in case not given by the configuration. Then we check if we have `last_update_field_name` in our configuration and if we do we use it. We can now upload our function with `CONFIG` argument:
+Notice that in the above example we first set `last_update_field_name` to `__last_update__`, this will be the default value in case not given by the configuration. Then we check if we have `last_update_field_name` in our configuration and if we do we use it. We can now upload our function with `CONFIG` argument:
 
 ```bash
 > redis-cli -x TFUNCTION LOAD REPLACE CONFIG '{"last_update_field_name":"last_update"}' < <path to code file>
@@ -161,20 +161,20 @@ OK
 And we can see that the last update field name is `last_update`:
 
 ```bash
-127.0.0.1:6379> TFCALL lib.hset h foo bar 0
+127.0.0.1:6379> TFCALL lib.hset h a b 0
 (integer) 2
 127.0.0.1:6379> hgetall h
-1) "foo"
-2) "bar"
+1) "a"
+2) "b"
 3) "last_update"
 4) "1658654047"
 ```
 
-Notice, RedisGears only gives the library the json configuration, **its the library responsibility to verify the correctness of the given configuration**.
+Notice, Triggers and Functions only gives the library the json configuration, **its the library responsibility to verify the correctness of the given configuration**.
 
 ## Resp -> JS Conversion
 
-When running Redis commands from within a RedisGears function using `client.call` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
+When running Redis commands from within a Triggers and Functions function using `client.call` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
 
 | resp 3            | JS object type                                                                                                                                 |
 |-------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -192,7 +192,7 @@ When running Redis commands from within a RedisGears function using `client.call
 | `null`            | JS null                                                                                                                                        |
 |                   |                                                                                                                                                |
 
-When running Redis commands from within a RedisGears function using `client.callRaw` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
+When running Redis commands from within a Triggers and Functions function using `client.callRaw` API, the reply is parsed as resp3 reply and converted to JS object using the following rules:
 
 | resp 3            | JS object type                                                                                                                                 |
 |-------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -228,16 +228,16 @@ When running Redis commands from within a RedisGears function using `client.call
 
 ## Working with Binary Data
 
-By default, RedisGears will decode all data as string and will raise error on failures. Though usefull for most users sometimes there is a need to work with binary data. In order to do so, the library developer has to considerations the following:
+By default, Triggers and Functions will decode all data as string and will raise error on failures. Though usefull for most users sometimes there is a need to work with binary data. In order to do so, the library developer has to considerations the following:
 
 1. Binary function arguments
 2. Binary command results
-3. Binary keys names On [database triggers](databse_triggers.md)
-4. Binary data on [stream consumers](stream_processing.md)
+3. Binary keys names On [KeySpace triggers](keyspace_triggers.md)
+4. Binary data on [stream triggers](stream_triggers.md)
 
 ### Binary Function Arguments
 
-It is possible to instruct RedisGears not to decode function arguments as `JS` `Strings` using [redis.functionFlags.RAW_ARGUMENTS](#function-flags) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
+It is possible to instruct Triggers and Functions not to decode function arguments as `JS` `Strings` using [redis.functionFlags.RAW_ARGUMENTS](#function-flags) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -291,7 +291,7 @@ Notice that `JS` `ArrayBuffer` can be returned by RedisGears function, RedisGear
 
 ### Binary Keys Names On Database Triggers
 
-On [database triggers](databse_triggers.md), if the key name that triggered the event is binary. The `data.key` field will be NULL. The `data.key_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case, example:
+On [KeySpace triggers](keyspace_triggers.md), if the key name that triggered the event is binary. The `data.key` field will be NULL. The `data.key_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case, example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -327,11 +327,11 @@ OK
 3) "\xaa"
 ```
 
-For more information, follow [database triggers](databse_triggers.md) page.
+For more information, follow [KeySpace triggers](keyspace_triggers.md) page.
 
 ### Binary Data on Stream Consumers
 
-On [stream consumers](stream_processing.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case it is possible to use `data.record` (which always exists) and contains the data as `JS` `ArrayBuffer`. Example:
+On [stream triggers](stream_triggers.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case it is possible to use `data.record` (which always exists) and contains the data as `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib

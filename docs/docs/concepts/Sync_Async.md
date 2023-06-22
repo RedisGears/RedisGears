@@ -1,4 +1,10 @@
-# Sync and Async Run
+---
+title: "Sync & Async"
+linkTitle: "Sync & Async"
+weight: 3
+description: >
+    Sync and Async Functions
+---
 
 By default, each time a function is invoked, it is invoke synchronously. This means that the atomicity property is promised (no other commands will be invoke or Redis while RedisGears function is running). Atomicity property has some great advantages:
 
@@ -40,9 +46,9 @@ Running this function will return a `pong` reply:
 "PONG"
 ```
 
-Notice that this time, in order to invoke the function, we used [`TFCALLASYNC`](commands.md#tfcallasync). **We can only invoke async functions using [`TFCALLASYNC`](commands.md#tfcallasync)**.
+Notice that this time, in order to invoke the function, we used `TFCALLASYNC`. **We can only invoke async functions using `TFCALLASYNC`**.
 
-Now lets look at a more complex example, assuming we want to write a function that counts the number of hashes in Redis that has name property with some value. Lets first write a synchronous function that does it, we will use the [SCAN](https://redis.io/commands/scan/) command to scan the key space:
+Now lets look at a more complex example, assuming we want to write a function that counts the number of hashes in Redis that has name property with some value. Lets first write a synchronous function that does it, we will use the `SCAN` command to scan the key space:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -184,7 +190,7 @@ redis.registerAsyncFunction('test', function(client, expected_name){
 
 Blocking Redis might fail, couple of reasons for such failure can be:
 
-* Redis reached OOM state and the `redis.functionFlags.NO_WRITES` or `redis.functionFlags.ALLOW_OOM` flags are not set (see [functions flags](function_advance_topics.md#function-flags) for more information)
+* Redis reached OOM state and the `redis.functionFlags.NO_WRITES` or `redis.functionFlags.ALLOW_OOM` flags are not set (see [functions flags](./Function_Flags.md) for more information)
 * `redis.functionFlags.NO_WRITES` flag is not set and the Redis instance turned role and it is now a replica.
 * ACL user that invoked the function was deleted.
 
@@ -192,7 +198,7 @@ The failure will result in an exception that the function writer can choose to h
 
 # Block Redis Timeout
 
-Blocking the Redis for long time is discouraged and considered unsafe operation. Triggers and Functions attempt to protect the function writer and timeout the blocking if it continues for to long. The timeout can be set as a [module configuration](configuration.md) along side the fatal failure policy that indicate how to handle the timeout. Policies can be one of the following:
+Blocking the Redis for long time is discouraged and considered unsafe operation. Triggers and Functions attempt to protect the function writer and timeout the blocking if it continues for to long. The timeout can be set as a [module configuration](./../Configuration.md) along side the fatal failure policy that indicate how to handle the timeout. Policies can be one of the following:
 
 * Abort - stop the function invocation even at the cost of losing the atomicity property
 * Kill - keep the atomicity property and do not stop the function invocation. In such case there is a risk of an external processes to kill the Redis server, thinking that the shard is not responding.

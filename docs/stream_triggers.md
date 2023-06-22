@@ -1,13 +1,13 @@
-# Stream Processing with RedisGears 2.0
+# Stream Processing with Triggers and Functions
 
-RedisGears 2.0 comes with a full stream API to processes data from [Redis Stream](https://redis.io/docs/manual/data-types/streams/) Unlike RedisGears v1 that provided a micro batching API, RedisGears 2.0 provides a **real streaming** API, which means that the data will be processed as soon as it enters the stream.
+Triggers and Functions comes with a full stream API to processes data from [Redis Stream](https://redis.io/docs/manual/data-types/streams/) Unlike RedisGears v1 that provided a micro batching API, Triggers and Functions provides a **real streaming** API, which means that the data will be processed as soon as it enters the stream.
 
 ## Register a Stream consumer
 
-RedisGears provide an API that allows Register a stream consumer. Do not get confuse with [Redis Streams Consumer groups](https://redis.io/docs/manual/data-types/streams/#consumer-groups), RedisGears uses Redis Module API to efficiently read the stream and manage its consumers. This approach gives a much better performance as there is no need to invoke any Redis commands in order to read from the stream. Lets see a simple example:
+Triggers and Functions provide an API that allows to register a stream trigger. Do not get confuse with [Redis Streams Consumer groups](https://redis.io/docs/manual/data-types/streams/#consumer-groups), Triggers and Functions uses Redis Module API to efficiently read the stream and manage its consumers. This approach gives a much better performance as there is no need to invoke any Redis commands in order to read from the stream. Lets see a simple example:
 
 ```js
-#!js api_version=1.0 name=lib
+#!js api_version=1.0 name=myFirstLibrary
 
 redis.registerStreamTrigger(
     "consumer", // consumer name
@@ -89,7 +89,7 @@ We can observe the streams which are tracked by our registered consumer using [T
     9)  "default"
     10) "functions"
    1)  (empty array)
-   2)  "stream_consumers"
+   2)  "stream_triggers"
    3)  1)  1) "name"
            1) "consumer"
            2) "prefix"
@@ -137,11 +137,8 @@ We can observe the streams which are tracked by our registered consumer using [T
                  7)  "None"
                  8)  "pending_ids"
                  9)  (empty array)
-   4)  "notifications_consumers"
+   4)  "keyspace_triggers"
    5)  (empty array)
-   6)  "gears_box_info"
-   7)  (nil)
-
 ```
 
 ## Enable Trimming and Set Window
@@ -149,7 +146,7 @@ We can observe the streams which are tracked by our registered consumer using [T
 We can enable stream trimming by adding `isStreamTrimmed` optional argument after the trigger callback, we can also set the `window` argument that controls how many elements can be processed simultaneously. example:
 
 ```js
-#!js api_version=1.0 name=lib
+#!js api_version=1.0 name=myFirstLibrary
 
 redis.registerStreamTrigger(
     "consumer", // consumer name
@@ -182,7 +179,7 @@ As long as the primary shard is up and running we guarantee exactly once propert
 
 ## Upgrades
 
-When upgrading the consumer code (using the `UPGRADE` option of [`TFUNCTION LOAD`](commands.md#tfunction-load) command) the following consumer parameters can be updated:
+When upgrading the consumer code (using the `REPLACE` option of [`TFUNCTION LOAD`](commands.md#tfunction-load) command) the following consumer parameters can be updated:
 
 * Window
 * Trimming

@@ -1,4 +1,10 @@
-# Configuration
+---
+title: "Configuration"
+linkTitle: "Configuration"
+weight: 2
+description: >
+    Configure the operation parameters
+---
 
 Triggers and Functions provides configuration options to control its operation. These options can be set when the module is bootstrapped and, in some cases, at runtime.
 
@@ -7,11 +13,11 @@ The following sections describe the configuration options and how to set them.
 ## Bootstrap Configuration
 
 You can set your configuration options when the module is loaded.
-When the module is loaded on start time, the module configuration can be set on the Redis configuration file itself. When loading the module on runtime the configuration can be given to the [MODULE LOADEX](https://redis.io/commands/module-loadex/) command. Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
+When the module is loaded on start time, the module configuration can be set on the Redis configuration file itself. When loading the module on runtime the configuration can be given to the `MODULE LOADEX` command. Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 
 ## Runtime Configuration
 
-You may set certain configuration options at runtime. Setting a configuration at runtime is done using [CONFIG SET](https://redis.io/commands/config-set/) command. Here also, Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
+You may set certain configuration options at runtime. Setting a configuration at runtime is done using `CONFIG SET` command. Here also, Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 
 Example:
 

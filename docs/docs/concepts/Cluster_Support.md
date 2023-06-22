@@ -1,4 +1,10 @@
-# Cluster Support
+---
+title: "Cluster Support"
+linkTitle: "Cluster Support"
+weight: 4
+description: >
+    Cluster support for Triggers and Functiosn
+---
 
 **Notice** on oss cluster, before executing any gears function, you must send `REDISGEARS_2.REFRESHCLUSTER` command to all the shards so that all the shards will be aware of the cluster topology. Without this step, each shard will act as a single oss instance.
 
@@ -14,7 +20,7 @@ redis.registerClusterFunction("dbsize", async(async_client) => {
 });
 ```
 
-`redis.registerClusterFunction` gets the remote function name (that will be used later to call the remote function) and the remote function code. The remote function must be a Coroutine (async function) and it is executed on the background on the remote shard. For more information about async function, please refer to [Sync and Async Run](sync_and_async_run.md) page.
+`redis.registerClusterFunction` gets the remote function name (that will be used later to call the remote function) and the remote function code. The remote function must be a Coroutine (async function) and it is executed on the background on the remote shard. For more information about async function, please refer to [Sync and Async Run](./Sync_Async.md) page.
 
 We have couple of options to call a remote function, those options are expose through the async client which is given to a Coroutine:
 
@@ -92,11 +98,11 @@ The remote function arguments and results are serialized in the following way:
 
 ## Execution Timeout
 
-Remote functions has timeout to the results forever . The timeout can be configured using [remote-task-default-timeout](configuration.md#remote-task-default-timeout). When using `async_client.runOnShards` API, the timeout will be added as error to the error array. When using `async_client.runOnKey`, a timeout will cause an exception to be raised.
+Remote functions has timeout to the results forever . The timeout can be configured using [remote-task-default-timeout](./../Configuration.md#remote-task-default-timeout). When using `async_client.runOnShards` API, the timeout will be added as error to the error array. When using `async_client.runOnKey`, a timeout will cause an exception to be raised.
 
 ## Remote Function Limitations
 
-All the limitation listed on [Coroutine](sync_and_async_run.md) are also applied to remote functions. Remote function come with some extra limitations:
+All the limitation listed on [Coroutine](./Sync_Async.md) are also applied to remote functions. Remote function come with some extra limitations:
 
 * Remote function can only perform read operations. An attempt to perform a write operation will result in an error.
 * Remote function are not promise to success (if the shard crashed for example). In such case a timeout error will be given.
