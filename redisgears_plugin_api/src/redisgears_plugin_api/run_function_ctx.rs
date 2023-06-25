@@ -11,11 +11,12 @@ use crate::{Deserialize, Serialize};
 use crate::redisgears_plugin_api::redisai_interface::{AIModelInterface, AIScriptInterface};
 use crate::redisgears_plugin_api::GearsApiError;
 
-type FutureCallback<'ctx> = Box<dyn FnOnce(Box<dyn FnOnce(&Context, CallResult<'static>)>) + 'ctx>;
+type OnDoneCallback<'ctx> = Box<dyn FnOnce(&Context, CallResult<'static>)>;
+type SetOnDoneCallback<'ctx> = Box<dyn FnOnce(OnDoneCallback<'ctx>) + 'ctx>;
 
 pub enum PromiseReply<'root, 'ctx> {
     Resolved(CallResult<'root>),
-    Future(FutureCallback<'ctx>),
+    Future(SetOnDoneCallback<'ctx>),
 }
 
 pub trait RedisClientCtxInterface {

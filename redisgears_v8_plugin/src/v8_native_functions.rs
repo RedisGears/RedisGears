@@ -492,6 +492,22 @@ impl<'isolate_scope, 'isolate, 'ctx_scope, 'a>
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum BackgroundExecution {
+    /// Allow the command to go to the background (if it wants to)
+    /// and return a future object that will be fulfill when the execution
+    /// finishes.
+    Allow,
+    /// Deny the command to go to the background at any cost, even if
+    /// it will need to fallback to some default behavior or return an error.
+    Deny,
+}
+impl BackgroundExecution {
+    fn allow(&self) -> bool {
+        matches!(self, Self::Allow)
+    }
+}
+
 fn add_call_function(
     ctx_scope: &V8ContextScope,
     redis_client: &Arc<RefCell<RedisClient>>,
@@ -499,7 +515,7 @@ fn add_call_function(
     client: &V8LocalObject,
     function_name: &str,
     decode_response: bool,
-    allow_async: bool,
+    backgrond_execution: BackgroundExecution,
 ) {
     let redis_client_ref = Arc::clone(redis_client);
     let script_ctx_weak = Arc::downgrade(script_ctx);
@@ -519,13 +535,10 @@ fn add_call_function(
                 let borrow_client = redis_client_ref.borrow();
                 let c = borrow_client
                     .get()
-                    .ok_or("Used on invalid client".to_owned())?;
+                    .ok_or_else(|| "Used on invalid client".to_owned())?;
 
-                if allow_async {
-                    let script_ctx_ref = match script_ctx_weak.upgrade() {
-                        Some(s) => s,
-                        None => return Err("Library was already deleted".to_string()),
-                    };
+                if backgrond_execution.allow() {
+                    let script_ctx_ref = script_ctx_weak.upgrade().ok_or_else(|| "Library was already deleted".to_owned())?;
                     let res = c.call_async(
                         command_utf8.as_str(),
                         &commands_args
@@ -569,9 +582,9 @@ fn add_call_function(
                                     resolve_result(res);
                                 }));
                         }
-                        PromiseReply::Future(future) => {
+                        PromiseReply::Future(set_on_done) => {
                             let script_ctx_weak = script_ctx_weak.clone();
-                            future(Box::new(move |_ctx, reply| {
+                            set_on_done(Box::new(move |_ctx, reply| {
                                 let script_ctx_ref = match script_ctx_weak.upgrade() {
                                     Some(s) => s,
                                     None => {
@@ -623,7 +636,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
         &client,
         CALL_GLOBAL_NAME,
         true,
-        false,
+        BackgroundExecution::Deny,
     );
     add_call_function(
         ctx_scope,
@@ -632,7 +645,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
         &client,
         CALL_RAW_GLOBAL_NAME,
         false,
-        false,
+        BackgroundExecution::Deny,
     );
     add_call_function(
         ctx_scope,
@@ -641,7 +654,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
         &client,
         CALL_ASYNC_GLOBAL_NAME,
         true,
-        true,
+        BackgroundExecution::Allow,
     );
     add_call_function(
         ctx_scope,
@@ -650,7 +663,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
         &client,
         CALL_ASYNC_RAW_GLOBAL_NAME,
         false,
-        true,
+        BackgroundExecution::Allow,
     );
 
     let redis_client_ref = Arc::clone(redis_client);

@@ -629,9 +629,8 @@ pub(crate) fn call_redis_command_async<'ctx>(
     if let Err(e) = _authenticate_scope {
         return PromiseReply::Resolved(CallResult::Err(e));
     }
-    let res = ctx.call_blocking(command, call_options, args);
 
-    match res {
+    match ctx.call_blocking(command, call_options, args) {
         PromiseCallReply::Resolved(res) => PromiseReply::Resolved(res),
         PromiseCallReply::Future(future) => {
             let lib = lib.to_owned();
@@ -1192,17 +1191,12 @@ fn on_role_changed(ctx: &Context, role_changed: ServerRole) {
         ctx.log_notice("Role changed to primary, initializing key scan to search for streams.");
         scan_key_space_for_streams();
     } else {
-        ctx.log_notice("Role changed to replica, abort all async commands invocation.");
+        log::info!("Role changed to replica, abort all async commands invocation.");
         let globals = get_globals_mut();
         globals.future_handlers.drain().for_each(|(_, v)| {
-            v.iter().for_each(|v| {
-                let future_holder = match v.upgrade() {
-                    Some(v) => v,
-                    None => return,
-                };
-                let mut future_holder = future_holder.lock(ctx);
-                future_holder.abort(ctx);
-            })
+            v.iter()
+                .filter_map(|v| v.upgrade())
+                .for_each(|v| v.lock(ctx).abort(ctx))
         })
     }
 }
@@ -1277,7 +1271,10 @@ fn cron_event_handler(_ctx: &Context, _hz: u64) {
         .filter_map(|(k, mut v)| {
             let res: Vec<_> = v
                 .drain(0..)
-                .filter(|v| v.upgrade().map_or(false, |_| true))
+                .filter_map(|v| {
+                    let _ = v.upgrade()?;
+                    return Some(v);
+                })
                 .collect();
             if res.is_empty() {
                 return None;
