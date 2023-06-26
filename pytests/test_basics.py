@@ -639,7 +639,8 @@ redis.registerFunction("test", function(){
          'user': 'default',\
          'keyspace_triggers': [],\
          'api_version': '1.0',\
-         'stream_triggers': []\
+         'stream_triggers': [],\
+         'pending_async_calls': []\
         }\
     ])
 

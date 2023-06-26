@@ -4,15 +4,39 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use redis_module::{CallResult, RedisResult};
+use redis_module::{CallResult, Context, RedisResult};
 
 use crate::{Deserialize, Serialize};
 
 use crate::redisgears_plugin_api::redisai_interface::{AIModelInterface, AIScriptInterface};
 use crate::redisgears_plugin_api::GearsApiError;
 
-pub trait RedisClientCtxInterface: Send + Sync {
+type OnDoneCallback<'ctx> = Box<dyn FnOnce(&Context, CallResult<'static>)>;
+type SetOnDoneCallback<'ctx> = Box<dyn FnOnce(OnDoneCallback<'ctx>) + 'ctx>;
+
+impl<'root, 'ctx> std::fmt::Debug for PromiseReply<'root, 'ctx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Resolved(val) => {
+                f.write_str("Resolved(")?;
+                val.fmt(f)?;
+                f.write_str(")")?;
+            }
+            Self::Future(val) => f.write_str(&format!("Future({:p})", &val))?,
+        };
+
+        Ok(())
+    }
+}
+
+pub enum PromiseReply<'root, 'ctx> {
+    Resolved(CallResult<'root>),
+    Future(SetOnDoneCallback<'ctx>),
+}
+
+pub trait RedisClientCtxInterface {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult;
+    fn call_async(&self, command: &str, args: &[&[u8]]) -> PromiseReply<'static, '_>;
     fn get_background_redis_client(&self) -> Box<dyn BackgroundRunFunctionCtxInterface>;
     fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError>;
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError>;
