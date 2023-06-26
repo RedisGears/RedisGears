@@ -1,12 +1,12 @@
 {
     "TFCALL": {
-        "summary": "Invoke a function with Triggers and Function",
+        "summary": "Invoke a function",
         "since": "2.0.0",
         "group": "scripting",
         "complexity": "Depends on the function that is executed.",
         "arguments": [
             {
-                "name": "function",
+                "name": "library.function",
                 "type": "string"
             },
             {
@@ -29,13 +29,13 @@
         ]
     },
     "TFCALLASYNC": {
-        "summary": "Invoke a async function with Triggers and Function",
+        "summary": "Invoke an async function",
         "since": "2.0.0",
         "group": "scripting",
         "complexity": "Depends on the function that is executed.",
         "arguments": [
             {
-                "name": "function",
+                "name": "library.function",
                 "type": "string"
             },
             {
@@ -58,13 +58,13 @@
         ]
     },
     "TFUNCTION": {
-        "summary": "A container for tfunction commands",
+        "summary": "A container for the tfunction commands",
         "since": "2.0.0",
         "group": "scripting",
-        "complexity": "Depends on subcommand.",
+        "complexity": "Depends on the subcommand.",
         "subcommands": {
             "TFUNCTION|LOAD": {
-                "summary": "Load a new library to Triggers and Functions",
+                "summary": "Load a new library into Triggers and Functions",
                 "since": "2.0.0",
                 "group": "scripting",
                 "complexity": "O(1)",
