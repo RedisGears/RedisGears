@@ -515,7 +515,7 @@ fn add_call_function(
     client: &V8LocalObject,
     function_name: &str,
     decode_response: bool,
-    backgrond_execution: BackgroundExecution,
+    background_execution: BackgroundExecution,
 ) {
     let redis_client_ref = Arc::clone(redis_client);
     let script_ctx_weak = Arc::downgrade(script_ctx);
@@ -537,7 +537,7 @@ fn add_call_function(
                     .get()
                     .ok_or_else(|| "Used on invalid client".to_owned())?;
 
-                if backgrond_execution.allow() {
+                if background_execution.allow() {
                     let script_ctx_ref = script_ctx_weak.upgrade().ok_or_else(|| "Library was already deleted".to_owned())?;
                     let res = c.call_async(
                         command_utf8.as_str(),

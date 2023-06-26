@@ -14,6 +14,21 @@ use crate::redisgears_plugin_api::GearsApiError;
 type OnDoneCallback<'ctx> = Box<dyn FnOnce(&Context, CallResult<'static>)>;
 type SetOnDoneCallback<'ctx> = Box<dyn FnOnce(OnDoneCallback<'ctx>) + 'ctx>;
 
+impl<'root, 'ctx> std::fmt::Debug for PromiseReply<'root, 'ctx> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Resolved(val) => {
+                f.write_str("Resolved(")?;
+                val.fmt(f)?;
+                f.write_str(")")?;
+            }
+            Self::Future(val) => f.write_str(&format!("Future({:p})", &val))?,
+        };
+
+        Ok(())
+    }
+}
+
 pub enum PromiseReply<'root, 'ctx> {
     Resolved(CallResult<'root>),
     Future(SetOnDoneCallback<'ctx>),
