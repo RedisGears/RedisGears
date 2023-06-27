@@ -1,4 +1,5 @@
 display_name: RedisGears
+capability_name: Triggers and Functions
 author: RedisLabs
 email: meir@redislabs.com
 description: Dynamic execution framework for your Redis data
@@ -21,6 +22,8 @@ capabilities:
     - intershard_tls
     - intershard_tls_pass
     - ipv6
+    - replica_of
+    - flash
 exclude_commands:
     - _RG_INTERNALS.FUNCTION
     - _RG_INTERNALS.UPDATE_STREAM_LAST_READ_ID

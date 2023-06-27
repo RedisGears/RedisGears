@@ -4,9 +4,10 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use redis_module::{CallReply, CallResult};
+use redis_module::{CallReply, CallResult, ErrorReply};
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::{self, ApiVersion};
+use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
 use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, load_library_ctx::RegisteredKeys,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
@@ -54,6 +55,8 @@ const RUN_ON_KEY_GLOBAL_NAME: &str = "runOnKey";
 const RUN_ON_SHARDS_GLOBAL_NAME: &str = "runOnShards";
 const CALL_GLOBAL_NAME: &str = "call";
 const CALL_RAW_GLOBAL_NAME: &str = "callRaw";
+const CALL_ASYNC_GLOBAL_NAME: &str = "callAsync";
+const CALL_ASYNC_RAW_GLOBAL_NAME: &str = "callAsyncRaw";
 const IS_BLOCK_ALLOW_GLOBAL_NAME: &str = "isBlockAllowed";
 const EXECUTE_ASYNC_GLOBAL_NAME: &str = "executeAsync";
 
@@ -489,14 +492,33 @@ impl<'isolate_scope, 'isolate, 'ctx_scope, 'a>
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum BackgroundExecution {
+    /// Allow the command to go to the background (if it wants to)
+    /// and return a future object that will be fulfill when the execution
+    /// finishes.
+    Allow,
+    /// Deny the command to go to the background at any cost, even if
+    /// it will need to fallback to some default behavior or return an error.
+    Deny,
+}
+impl BackgroundExecution {
+    fn allow(&self) -> bool {
+        matches!(self, Self::Allow)
+    }
+}
+
 fn add_call_function(
     ctx_scope: &V8ContextScope,
     redis_client: &Arc<RefCell<RedisClient>>,
+    script_ctx: &Arc<V8ScriptCtx>,
     client: &V8LocalObject,
     function_name: &str,
     decode_response: bool,
+    background_execution: BackgroundExecution,
 ) {
     let redis_client_ref = Arc::clone(redis_client);
+    let script_ctx_weak = Arc::downgrade(script_ctx);
     client.set_native_function(
         ctx_scope,
         function_name,
@@ -511,23 +533,89 @@ fn add_call_function(
                 }
 
                 let borrow_client = redis_client_ref.borrow();
-                let res = match borrow_client.get() {
-                    Some(c) => c.call(
+                let c = borrow_client
+                    .get()
+                    .ok_or_else(|| "Used on invalid client".to_owned())?;
+
+                if background_execution.allow() {
+                    let script_ctx_ref = script_ctx_weak.upgrade().ok_or_else(|| "Library was already deleted".to_owned())?;
+                    let res = c.call_async(
                         command_utf8.as_str(),
                         &commands_args
                             .iter()
                             .map(|v| v.as_bytes())
                             .collect::<Vec<&[u8]>>(),
-                    ),
-                    None => return Err("Used on invalid client".to_string()),
-                };
+                    );
+                    let resolver = ctx_scope.new_resolver();
+                    let promise = resolver.get_promise();
+                    let mut persisted_resolver = resolver.to_value().persist();
+                    let script_ctx_weak_resolve_result = script_ctx_weak.clone();
+                    let mut resolve_result = move |res: Result<CallReply<'static>, ErrorReply<'static>>| {
+                        let script_ctx_ref = match script_ctx_weak_resolve_result.upgrade() {
+                            Some(s) => s,
+                            None => {
+                                log_warning("library was deleted while not all async job were finished");
+                                return;
+                            }
+                        };
+                        let isolate_scope = script_ctx_ref.isolate.enter();
+                        let ctx_scope = script_ctx_ref.ctx.enter(&isolate_scope);
 
-                Ok(Some(call_result_to_js_object(
-                    isolate_scope,
-                    ctx_scope,
-                    res,
-                    decode_response,
-                )?))
+                        let resolver = persisted_resolver.take_local(&isolate_scope).as_resolver();
+                        let res = call_result_to_js_object(
+                            &isolate_scope,
+                            &ctx_scope,
+                            res,
+                            decode_response,
+                        );
+                        match res {
+                            Ok(res) => resolver.resolve(&ctx_scope, &res),
+                            Err(e) => resolver.reject(&ctx_scope, &isolate_scope.new_string(&e).to_value())
+                        }
+                        
+                    };
+                    match res {
+                        PromiseReply::Resolved(res) => {
+                            script_ctx_ref
+                                .compiled_library_api
+                                .run_on_background(Box::new(move || {
+                                    resolve_result(res);
+                                }));
+                        }
+                        PromiseReply::Future(set_on_done) => {
+                            let script_ctx_weak = script_ctx_weak.clone();
+                            set_on_done(Box::new(move |_ctx, reply| {
+                                let script_ctx_ref = match script_ctx_weak.upgrade() {
+                                    Some(s) => s,
+                                    None => {
+                                        log_warning("library was deleted while not all async job were finished");
+                                        return;
+                                    }
+                                };
+                                script_ctx_ref.compiled_library_api.run_on_background(Box::new(move || {
+                                    resolve_result(reply);
+                                }));
+
+                            }));
+                        }
+                    };
+                    Ok(Some(promise.to_value()))
+                } else {
+                    let res = c.call(
+                        command_utf8.as_str(),
+                        &commands_args
+                            .iter()
+                            .map(|v| v.as_bytes())
+                            .collect::<Vec<&[u8]>>(),
+                    );
+
+                    Ok(Some(call_result_to_js_object(
+                        isolate_scope,
+                        ctx_scope,
+                        res,
+                        decode_response,
+                    )?))
+                }
             }
         ),
     );
@@ -541,13 +629,41 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
 ) -> V8LocalObject<'isolate_scope, 'isolate> {
     let client = isolate_scope.new_object();
 
-    add_call_function(ctx_scope, redis_client, &client, CALL_GLOBAL_NAME, true);
     add_call_function(
         ctx_scope,
         redis_client,
+        script_ctx,
+        &client,
+        CALL_GLOBAL_NAME,
+        true,
+        BackgroundExecution::Deny,
+    );
+    add_call_function(
+        ctx_scope,
+        redis_client,
+        script_ctx,
         &client,
         CALL_RAW_GLOBAL_NAME,
         false,
+        BackgroundExecution::Deny,
+    );
+    add_call_function(
+        ctx_scope,
+        redis_client,
+        script_ctx,
+        &client,
+        CALL_ASYNC_GLOBAL_NAME,
+        true,
+        BackgroundExecution::Allow,
+    );
+    add_call_function(
+        ctx_scope,
+        redis_client,
+        script_ctx,
+        &client,
+        CALL_ASYNC_RAW_GLOBAL_NAME,
+        false,
+        BackgroundExecution::Allow,
     );
 
     let redis_client_ref = Arc::clone(redis_client);
@@ -618,9 +734,11 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                         &ctx_scope,
                         Arc::new(bg_redis_client),
                     );
+                    new_script_ctx_ref.before_run();
                     let res = f
                         .take_local(&isolate_scope)
                         .call(&ctx_scope, Some(&[&background_client.to_value()]));
+                    new_script_ctx_ref.after_run();
 
                     let resolver = resolver.take_local(&isolate_scope).as_resolver();
                     match res {

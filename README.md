@@ -1,5 +1,8 @@
 # RedisGears-2.0
 
+[![GitHub Builds](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml/badge.svg)](https://github.com/RedisGears/RedisGears/actions/workflows/branch_merge.yml)
+[![CircleCI](https://circleci.com/gh/RedisGears/RedisGears/tree/master.svg?style=svg)](https://circleci.com/gh/RedisGears/RedisGears/tree/master)
+
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
 
 **Notice, RedisGears 2.0 is still under active development and not yet GA, the API might (and probably) change at the final GA version.**
@@ -49,10 +52,10 @@ Assuming we put the following code on a file `lib.js`, we can register our funct
 OK
 ```
 
-And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name:
+And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name `.` separated:
 
 ```bash
-> redis-cli TFCALL lib hello_world 0
+> redis-cli TFCALL lib.hello_world 0
 "hello_world"
 ```
 
@@ -84,7 +87,7 @@ OK
 
 And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
 ```bash
-> redis-cli TFCALL lib my_ping 0
+> redis-cli TFCALL lib.my_ping 0
 "PONG"
 ```
 

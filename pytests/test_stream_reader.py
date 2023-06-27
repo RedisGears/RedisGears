@@ -21,11 +21,11 @@ redis.registerStreamTrigger("consumer", "stream", function(){
     num_events++;
 })
     """
-    env.expect('TFCALL', 'lib', 'num_events', '0').equal(0)
+    env.expectTfcall('lib', 'num_events').equal(0)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    env.expect('TFCALL', 'lib', 'num_events', '0').equal(1)
+    env.expectTfcall('lib', 'num_events').equal(1)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    env.expect('TFCALL', 'lib', 'num_events', '0').equal(2)
+    env.expectTfcall('lib', 'num_events').equal(2)
 
 @gearsTest(decodeResponses=False)
 def testBasicStreamReaderWithBinaryData(env):
@@ -49,9 +49,9 @@ redis.registerStreamTrigger("consumer", new Uint8Array([255]).buffer, function(c
     last_data_raw = data.record_raw;
 })
     """
-    env.expect('TFCALL', 'lib', 'stats', '0').equal([None, None, None, None])
+    env.expectTfcall('lib', 'stats').equal([None, None, None, None])
     env.cmd('xadd', b'\xff\xff', '*', b'\xaa', b'\xaa')
-    env.expect('TFCALL', 'lib', 'stats', '0').equal([None, b'\xff\xff', [[None, None]], [[b'\xaa', b'\xaa']]])
+    env.expectTfcall('lib', 'stats').equal([None, b'\xff\xff', [[None, None]], [[b'\xaa', b'\xaa']]])
 
 @gearsTest()
 def testAsyncStreamReader(env):
@@ -64,11 +64,11 @@ redis.registerStreamTrigger("consumer", "stream", async function(){
     num_events++;
 })
     """
-    env.expect('TFCALL', 'lib', 'num_events', '0').equal(0)
+    env.expectTfcall('lib', 'num_events').equal(0)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_events', '0'))
+    runUntil(env, 1, lambda: env.tfcall('lib', 'num_events'))
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_events', '0'))
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_events'))
 
 @gearsTest()
 def testStreamTrim(env):
@@ -86,13 +86,13 @@ redis.registerStreamTrigger("consumer", "stream",
     }
 );
     """
-    env.expect('TFCALL', 'lib', 'num_events', '0').equal(0)
+    env.expectTfcall('lib', 'num_events').equal(0)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.expect('xlen', 'stream:1').equal(0)
-    env.expect('TFCALL', 'lib', 'num_events', '0').equal(1)
+    env.expectTfcall('lib', 'num_events').equal(1)
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.expect('xlen', 'stream:1').equal(0)
-    env.expect('TFCALL', 'lib', 'num_events', '0').equal(2)
+    env.expectTfcall('lib', 'num_events').equal(2)
 
 @gearsTest()
 def testStreamProccessError(env):
@@ -134,37 +134,37 @@ redis.registerStreamTrigger("consumer", "stream",
     }
 );
     """
-    env.expect('TFCALL', 'lib', 'num_pending', '0').equal(0)
-    env.expect('TFCALL', 'lib', 'continue', '0').error().contains('No pending records')
+    env.expectTfcall('lib', 'num_pending').equal(0)
+    env.expectTfcall('lib', 'continue').error().contains('No pending records')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.tfcall('lib', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.tfcall('lib', 'num_pending'))
 
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     env.assertEqual(3, len(res[0]['stream_triggers'][0]['streams'][0]['pending_ids']))
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib.continue', '0').equal('OK')
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_pending'))
 
     runUntil(env, 2, lambda: len(toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['pending_ids']))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.tfcall('lib', 'num_pending'))
 
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     env.assertEqual(3, len(res[0]['stream_triggers'][0]['streams'][0]['pending_ids']))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runFor(3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runFor(3, lambda: env.tfcall('lib', 'num_pending'))
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expect('TFCALL', 'lib.continue', '0').equal('OK')
+    runUntil(env, 3, lambda: env.tfcall('lib', 'num_pending'))
 
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     env.assertEqual(2, res[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
@@ -205,12 +205,12 @@ redis.registerStreamTrigger("consumer", "stream",
     env.expect('WAIT', '1', '7000').equal(1)
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.tfcall('lib', 'num_pending'))
 
     res = toDictionary(env.cmd('TFUNCTION', 'LIST', 'vvv'), 6)
     id_to_read_from = res[0]['stream_triggers'][0]['streams'][0]['id_to_read_from']
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal(id_to_read_from)
+    env.expectTfcall('lib', 'continue').equal(id_to_read_from)
     runUntil(env, 1, lambda: len(toDictionary(slave_conn.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams']))
     env.assertEqual(id_to_read_from, toDictionary(slave_conn.execute_command('TFUNCTION', 'LIST', 'vvv'), 6)[0]['stream_triggers'][0]['streams'][0]['id_to_read_from'])
 
@@ -222,10 +222,10 @@ redis.registerStreamTrigger("consumer", "stream",
 
     # Turn slave to master
     slave_conn.execute_command('slaveof', 'no', 'one')
-    runUntil(env, 2, lambda: slave_conn.execute_command('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_pending', c=slave_conn))
     def continue_function():
         try:
-            return slave_conn.execute_command('TFCALL', 'lib', 'continue', '0')
+            return env.tfcall('lib', 'continue', c=slave_conn)
         except Exception as e:
             return str(e)
     runUntil(env, id1, continue_function)
@@ -261,28 +261,28 @@ redis.registerStreamTrigger("consumer", "stream",
     }
 );
     """
-    env.expect('TFCALL', 'lib', 'num_pending', '0').equal(0)
-    env.expect('TFCALL', 'lib', 'continue', '0').error().contains('No pending records')
+    env.expectTfcall('lib', 'num_pending').equal(0)
+    env.expectTfcall('lib', 'continue').error().contains('No pending records')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.tfcall('lib', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.tfcall('lib', 'num_pending'))
 
     env.expect('del', 'stream:1').equal(1)
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_pending'))
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    runUntil(env, 1, lambda: env.tfcall('lib', 'num_pending'))
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    runUntil(env, 0, lambda: env.tfcall('lib', 'num_pending'))
 
     res = env.cmd('TFUNCTION', 'LIST', 'vvv')
     env.assertEqual(0, len(toDictionary(res, 6)[0]['stream_triggers'][0]['streams']))
@@ -316,28 +316,28 @@ redis.registerStreamTrigger("consumer", "stream",
     }
 );
     """
-    env.expect('TFCALL', 'lib', 'num_pending', '0').equal(0)
-    env.expect('TFCALL', 'lib', 'continue', '0').error().contains('No pending records')
+    env.expectTfcall('lib', 'num_pending').equal(0)
+    env.expectTfcall('lib', 'continue').error().contains('No pending records')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.tfcall('lib', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.tfcall('lib', 'num_pending'))
 
     env.expect('flushall').equal(True)
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    runUntil(env, 2, lambda: env.tfcall('lib', 'num_pending'))
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    runUntil(env, 1, lambda: env.tfcall('lib', 'num_pending'))
 
-    env.expect('TFCALL', 'lib', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib', 'num_pending', '0'))
+    env.expectTfcall('lib', 'continue').equal('OK')
+    runUntil(env, 0, lambda: env.tfcall('lib', 'num_pending'))
 
     res = env.cmd('TFUNCTION', 'LIST', 'vvv')
     env.assertEqual(0, len(toDictionary(res, 6)[0]['stream_triggers'][0]['streams']))
@@ -375,37 +375,37 @@ redis.registerStreamTrigger("consumer", "stream",
     env.expect('TFUNCTION', 'LOAD', script % 'lib2').equal('OK')
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 1, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
+    runUntil(env, 1, lambda: env.tfcall('lib1', 'num_pending'))
+    runUntil(env, 1, lambda: env.tfcall('lib2', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
+    runUntil(env, 2, lambda: env.tfcall('lib1', 'num_pending'))
+    runUntil(env, 2, lambda: env.tfcall('lib2', 'num_pending'))
 
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
+    runUntil(env, 3, lambda: env.tfcall('lib1', 'num_pending'))
+    runUntil(env, 3, lambda: env.tfcall('lib2', 'num_pending'))
 
-    env.expect('TFCALL', 'lib1', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 3, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
+    env.expectTfcall('lib1','continue').equal('OK')
+    runUntil(env, 2, lambda: env.tfcall('lib1', 'num_pending'))
+    runUntil(env, 3, lambda: env.tfcall('lib2', 'num_pending'))
     runFor(3, lambda: env.cmd('XLEN', 'stream:1')) # make sure not trimming
 
-    env.expect('TFCALL', 'lib2', 'continue', '0').equal('OK')
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
+    env.expectTfcall('lib2', 'continue').equal('OK')
+    runUntil(env, 2, lambda: env.tfcall('lib1', 'num_pending'))
+    runUntil(env, 2, lambda: env.tfcall('lib2', 'num_pending'))
     runUntil(env, 2, lambda: env.cmd('XLEN', 'stream:1'))
 
-    env.expect('TFCALL', 'lib1', 'continue', '0').equal('OK')
-    env.expect('TFCALL', 'lib1', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 2, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
+    env.expectTfcall('lib1', 'continue').equal('OK')
+    env.expectTfcall('lib1', 'continue').equal('OK')
+    runUntil(env, 0, lambda: env.tfcall('lib1', 'num_pending'))
+    runUntil(env, 2, lambda: env.tfcall('lib2', 'num_pending'))
     runFor(2, lambda: env.cmd('XLEN', 'stream:1')) # make sure not trimming
 
-    env.expect('TFCALL', 'lib2', 'continue', '0').equal('OK')
-    env.expect('TFCALL', 'lib2', 'continue', '0').equal('OK')
-    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib1', 'num_pending', '0'))
-    runUntil(env, 0, lambda: env.cmd('TFCALL', 'lib2', 'num_pending', '0'))
+    env.expectTfcall('lib2', 'continue').equal('OK')
+    env.expectTfcall('lib2', 'continue').equal('OK')
+    runUntil(env, 0, lambda: env.tfcall('lib1', 'num_pending'))
+    runUntil(env, 0, lambda: env.tfcall('lib2', 'num_pending'))
     runUntil(env, 0, lambda: env.cmd('XLEN', 'stream:1'))
 
 @gearsTest()
@@ -432,16 +432,16 @@ redis.registerStreamTrigger("consumer", "stream",
 );
     """
 
-    env.expect('TFCALL', 'lib', 'get_stream', '0').error().contains('No streams')
+    env.expectTfcall('lib', 'get_stream').error().contains('No streams')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:2', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:2', '*', 'foo', 'bar')
 
-    runUntil(env, 'stream:1', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
-    runUntil(env, 'stream:2', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
-    runUntil(env, 'stream:1', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
-    runUntil(env, 'stream:2', lambda: env.cmd('TFCALL', 'lib', 'get_stream', '0'), timeout=1)
+    runUntil(env, 'stream:1', lambda: env.tfcall('lib', 'get_stream'), timeout=1)
+    runUntil(env, 'stream:2', lambda: env.tfcall('lib', 'get_stream'), timeout=1)
+    runUntil(env, 'stream:1', lambda: env.tfcall('lib', 'get_stream'), timeout=1)
+    runUntil(env, 'stream:2', lambda: env.tfcall('lib', 'get_stream'), timeout=1)
 
 @gearsTest()
 def testRDBSaveAndLoad(env):
@@ -517,15 +517,15 @@ redis.registerStreamTrigger("consumer", "stream",
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
     env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
-    runUntil(env, 'OK', lambda: env.cmd('TFCALLASYNC', 'lib', 'continue_process', '0'))
+    runUntil(env, 'OK', lambda: env.tfcallAsync('lib', 'continue_process'))
     runUntil(env, 1, lambda: toDictionary(toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 4)[0]['stream_triggers'][0]['streams'][0], 1)['total_record_processed'])
 
     # Turn into a slave
     env.cmd('slaveof', '127.0.0.1', '3300')
-    runUntil(env, 'OK', lambda: env.cmd('TFCALLASYNC', 'lib', 'continue_process', '0'))
+    runUntil(env, 'OK', lambda: env.tfcallAsync('lib', 'continue_process'))
     runUntil(env, 2, lambda: toDictionary(toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 4)[0]['stream_triggers'][0]['streams'][0], 1)['total_record_processed'])
 
-    runFor('no data to processes', lambda: env.cmd('TFCALLASYNC', 'lib', 'continue_process', '0'))
+    runFor('no data to processes', lambda: env.tfcallAsync('lib', 'continue_process'))
     res = toDictionary(toDictionary(env.execute_command('TFUNCTION', 'LIST', 'vvv'), 4)[0]['stream_triggers'][0]['streams'][0], 1)['total_record_processed']
     env.assertEqual(2, res)
 

@@ -36,7 +36,7 @@ redis.registerFunction('test', async function(client){
 Running this function will return a `pong` reply:
 
 ```bash
-127.0.0.1:6379> TFCALLASYNC lib test 0
+127.0.0.1:6379> TFCALLASYNC lib.test 0
 "PONG"
 ```
 
@@ -179,6 +179,33 @@ redis.registerAsyncFunction('test', function(client, expected_name){
 
 **Also notice** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.isBlockAllowed()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possible.
 
+# Call Blocking Commands
+
+Redis has a few commands that blocks the client and executed asynchronously when some condition holds (commands like [blpop](https://redis.io/commands/blpop/)). In general, such commands are not suppose to be called inside a script and calling them will result in running their none blocking logic. For example, [blpop](https://redis.io/commands/blpop/) will basically runs lpop and return empty result if the list it empty.
+
+RedisGears allows running blocking commands using `client.callAsync` API. `client.callAsync` will execute the blocking command and return a promise object which will be resolved when the command invocation finished (notice that `client.callAsync` allow calling any command and not just blocking but it will always return a promise object that will be resolve later, so **using it for regular commands is less efficient**). 
+
+Example:
+
+```js
+#!js api_version=1.0 name=lib
+
+redis.registerAsyncFunction('my_blpop', async function(client, key, expected_val) {
+    var res = null
+    do {
+        res = await client.block((c) => {
+            return c.callAsync('blpop', key, '0');
+        })
+    } while (res[1] != expected_val);
+    return res;
+});
+```
+
+The following function will continue popping elements from the requested list up until it will encounter the requested value. In case the list is empty it will wait until elements will be added to the list.
+
+RedisGears also provided `client.callAsyncRaw` API, which is the same as `client.callAsync` but will not decode the replies as utf8.
+
+**Notice**: There is no guarantee when the promise returned from `client.callAsyn` will be resolved. So the **function writer should not make any assumption about atomicity guarantees.**
 
 # Fail Blocking the Redis
 

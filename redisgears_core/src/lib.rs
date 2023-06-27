@@ -11,10 +11,15 @@
 #![deny(missing_docs)]
 
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
-use redis_module::{CallResult, ContextFlags, ErrorReply};
+use redis_module::redisvalue::RedisValueKey;
+use redis_module::{
+    BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
+    PromiseCallReply, RedisGILGuard,
+};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
+use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
 use serde::{Deserialize, Serialize};
 
 use config::{
@@ -36,8 +41,8 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    command, flush_event_handler, loading_event_handler, module_changed_event_handler,
-    role_changed_event_handler,
+    command, config_changed_event_handler, cron_event_handler, flush_event_handler,
+    loading_event_handler, module_changed_event_handler, role_changed_event_handler,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -58,7 +63,7 @@ use libloading::{Library, Symbol};
 use std::collections::HashMap;
 
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use crate::stream_reader::{ConsumerData, StreamReaderCtx};
 use std::iter::Skip;
@@ -102,6 +107,9 @@ pub const BUILD_OS_NICK: Option<&str> = std::option_env!("BUILD_OS_NICK");
 pub const BUILD_OS_ARCH: Option<&str> = std::option_env!("BUILD_OS_ARCH");
 /// The build type of the crate.
 pub const BUILD_TYPE: Option<&str> = std::option_env!("BUILD_TYPE");
+
+const PSEUDO_SLAVE_READONLY_CONFIG_NAME: &str = "pseudo-slave-readonly";
+const PSEUDO_SLAVE_CONFIG_NAME: &str = "pseudo-slave";
 
 fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     use redis_module::Version;
@@ -197,6 +205,9 @@ impl<'ctx, 'lib_ctx> GearsLoadLibraryCtx<'ctx, 'lib_ctx> {
         name: &str,
         func_ctx: GearsFunctionCtx,
     ) -> Result<(), GearsApiError> {
+        verify_name(name)
+            .map_err(|e| GearsApiError::new(format!("Unallowed function name '{name}', {e}.")))?;
+
         if self.gears_lib_ctx.functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Function {} already exists",
@@ -244,6 +255,11 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
     ) -> Result<(), GearsApiError> {
         // TODO move to <https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert>
         // once stabilised.
+
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed cluster function name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.remote_functions.contains_key(name) {
             return Err(GearsApiError::new(format!(
                 "Remote function {} already exists",
@@ -265,6 +281,10 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         trim: bool,
         description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed stream trigger name '{name}', {e}."))
+        })?;
+
         if self.gears_lib_ctx.stream_consumers.contains_key(name) {
             return Err(GearsApiError::new(
                 "Stream registration already exists".to_string(),
@@ -328,7 +348,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
                 })),
                 description,
             );
-            if self.ctx.get_flags().contains(ContextFlags::MASTER) {
+            if is_master(self.ctx) {
                 // trigger a key scan
                 scan_key_space_for_streams();
             }
@@ -348,6 +368,10 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
         keys_notifications_consumer_ctx: Box<dyn KeysNotificationsConsumerCtxInterface>,
         description: Option<String>,
     ) -> Result<(), GearsApiError> {
+        verify_name(name).map_err(|e| {
+            GearsApiError::new(format!("Unallowed key space trigger name '{name}', {e}."))
+        })?;
+
         if self
             .gears_lib_ctx
             .notifications_consumers
@@ -432,6 +456,39 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
     }
 }
 
+/// The policy configured on the current database
+enum DbPolicy {
+    /// Regular database
+    Regular,
+    /// A replica-of target
+    PseudoSlave,
+    /// A readonly replica-of target
+    PseudoSlaveReadonly,
+}
+
+impl DbPolicy {
+    pub(crate) fn is_regular(&self) -> bool {
+        match self {
+            DbPolicy::Regular => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_readonly(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_pseudo_slave(&self) -> bool {
+        match self {
+            DbPolicy::PseudoSlaveReadonly | DbPolicy::PseudoSlave => true,
+            _ => false,
+        }
+    }
+}
+
 struct GlobalCtx {
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
@@ -442,6 +499,8 @@ struct GlobalCtx {
     notifications_ctx: KeysNotificationsCtx,
     avoid_key_space_notifications: bool,
     allow_unsafe_redis_commands: bool,
+    db_policy: DbPolicy,
+    future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -519,6 +578,102 @@ pub(crate) fn call_redis_command(
     ctx.call_ext(command, call_options, args)
 }
 
+/// a struct that holds information about not yet resolve future replies.
+/// The struct allows to either abort the execution or invoke the on done callback.
+struct FutureHandlerContext {
+    callback: Option<Box<dyn FnOnce(&Context, CallResult<'static>)>>,
+    disposer: Option<Box<dyn FnOnce(&Context, bool)>>,
+    command: Vec<Vec<u8>>,
+}
+
+impl FutureHandlerContext {
+    /// Call the on done callback that was set to this future object.
+    fn call(
+        &mut self,
+        ctx: &Context,
+        reply: Result<redis_module::CallReply<'static>, ErrorReply<'static>>,
+    ) {
+        self.callback.take().map(|f| f(ctx, reply));
+        self.disposer.take().map(|f| f(ctx, false));
+    }
+
+    /// Abort the command invocation (if possible) and send an error as a reply to the
+    /// on done callback.
+    fn abort(&mut self, ctx: &Context) {
+        self.callback.take().map(|f| {
+            f(
+                ctx,
+                CallResult::Err(ErrorReply::Message("Command was aborted".to_owned())),
+            )
+        });
+        self.disposer.take().map(|f| f(ctx, true));
+    }
+}
+
+/// Calls blocking redis command.
+/// Returns [PromiseReply] which might be already resolved (in case we already got the reply)
+/// or it might be resolved later when the command will be finished.
+/// In case the [PromiseReply] was not yet resolved, the user is expected to give a callback
+/// which will be called when the command will finish.
+pub(crate) fn call_redis_command_async<'ctx>(
+    ctx: &'ctx Context,
+    lib: &str,
+    user: &RedisString,
+    command: &str,
+    call_options: &BlockingCallOptions,
+    args: &[&[u8]],
+) -> PromiseReply<'static, 'ctx> {
+    let _authenticate_scope = ctx
+        .autenticate_user(user)
+        .map_err(|e| ErrorReply::Message(e.to_string()));
+    if let Err(e) = _authenticate_scope {
+        return PromiseReply::Resolved(CallResult::Err(e));
+    }
+
+    match ctx.call_blocking(command, call_options, args) {
+        PromiseCallReply::Resolved(res) => PromiseReply::Resolved(res),
+        PromiseCallReply::Future(future) => {
+            let lib = lib.to_owned();
+            let mut command = vec![command.as_bytes().to_vec()];
+            command.extend(args.iter().map(|v| v.to_vec()));
+            PromiseReply::Future(Box::new(move |callback| {
+                let future_handler_context = FutureHandlerContext {
+                    callback: Some(callback),
+                    disposer: None,
+                    command: command,
+                };
+                let future_handler_context = Arc::new(RedisGILGuard::new(future_handler_context));
+                let future_handler_context_unblocked = Arc::clone(&future_handler_context);
+                let globals = get_globals_mut();
+
+                // add the `future_handler_context` to future_abort_callbacks so we can abort it if needed.
+                globals
+                    .future_handlers
+                    .entry(lib)
+                    .or_insert(Vec::new())
+                    .push(Arc::downgrade(&future_handler_context));
+
+                // Set the unblock handler which will call the plugin callback and free the `future_handler_context`
+                let future_handler = future.set_unblock_handler(move |ctx, reply| {
+                    let mut future_handler_context_unblocked =
+                        future_handler_context_unblocked.lock(ctx);
+                    future_handler_context_unblocked.call(ctx, reply);
+                });
+
+                // Initialize the disposer methon which will abort the command and send an error as a reply to the plugin callback
+                let mut future_handler_context = future_handler_context.lock(ctx);
+                future_handler_context.disposer = Some(Box::new(move |ctx: &Context, abort| {
+                    if abort {
+                        future_handler.abort_and_dispose(ctx);
+                    } else {
+                        future_handler.dispose(ctx);
+                    }
+                }));
+            }))
+        }
+    }
+}
+
 fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
     let v8_max_memory = V8_MAX_MEMORY.load(Ordering::Relaxed);
     let v8_lib_initial_mem = V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed);
@@ -550,6 +705,54 @@ fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
     }
 
     Ok(())
+}
+
+fn get_db_policy(ctx: &Context) -> DbPolicy {
+    let call_options = CallOptionsBuilder::new()
+        .resp(CallOptionResp::Resp3)
+        .build();
+    let res = ctx.call_ext(
+        "config",
+        &call_options,
+        &[
+            "get",
+            PSEUDO_SLAVE_READONLY_CONFIG_NAME,
+            PSEUDO_SLAVE_CONFIG_NAME,
+        ],
+    );
+    if let Ok(res) = res {
+        let res: RedisValue = (&res).into();
+        if let RedisValue::Map(map) = res {
+            let pseudo_slave_readonly = map
+                .get(&RedisValueKey::String(
+                    PSEUDO_SLAVE_READONLY_CONFIG_NAME.to_owned(),
+                ))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave_readonly == "yes" {
+                return DbPolicy::PseudoSlaveReadonly;
+            }
+
+            let pseudo_slave = map
+                .get(&RedisValueKey::String(PSEUDO_SLAVE_CONFIG_NAME.to_owned()))
+                .map_or("no".to_owned(), |v| {
+                    if let RedisValue::SimpleString(s) = v {
+                        s.to_owned()
+                    } else {
+                        "no".to_owned()
+                    }
+                });
+            if pseudo_slave == "yes" {
+                return DbPolicy::PseudoSlave;
+            }
+        }
+    }
+    DbPolicy::Regular
 }
 
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
@@ -609,7 +812,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         stream_ctx: StreamReaderCtx::new(
             Box::new(|ctx, key, id, include_id| {
                 // read data from the stream
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     return Err("Can not read data on replica".to_string());
                 }
                 let stream_name = ctx.create_string(key);
@@ -626,7 +829,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             }),
             Box::new(|ctx, key_name, id| {
                 // trim the stream callback
-                if !ctx.get_flags().contains(ContextFlags::MASTER) {
+                if !is_master(ctx) {
                     ctx.log_warning("Attempt to trim data on replica was denied.");
                     return;
                 }
@@ -654,6 +857,8 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         notifications_ctx: KeysNotificationsCtx::new(),
         avoid_key_space_notifications: false,
         allow_unsafe_redis_commands: false,
+        db_policy: get_db_policy(ctx),
+        future_handlers: HashMap::new(),
     };
 
     let v8_path = V8_PLUGIN_PATH.lock(ctx);
@@ -749,11 +954,18 @@ pub(crate) fn verify_oom(ctx: &Context, flags: FunctionFlags) -> bool {
         || !ctx.get_flags().contains(ContextFlags::OOM)
 }
 
+/// Return true iff the current instance is a master which is not a pseudo slave (replica-of target).
+pub(crate) fn is_master(ctx: &Context) -> bool {
+    let globals = get_globals();
+    ctx.get_flags().contains(ContextFlags::MASTER) && globals.db_policy.is_regular()
+}
+
 /// Returns `true` if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
 pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool {
-    // not replica, ok to run || we can run function with no writes on replica.
-    ctx.get_flags().contains(ContextFlags::MASTER) || flags.contains(FunctionFlags::NO_WRITES)
+    // master which is not readonly, ok to run || we can run function with no writes on replica.
+    (ctx.get_flags().contains(ContextFlags::MASTER) && !get_globals().db_policy.is_readonly())
+        || flags.contains(FunctionFlags::NO_WRITES)
 }
 
 fn function_call_command(
@@ -761,8 +973,15 @@ fn function_call_command(
     mut args: Skip<IntoIter<redis_module::RedisString>>,
     allow_block: bool,
 ) -> RedisResult {
-    let library_name = args.next_arg()?.try_as_str()?;
-    let function_name = args.next_arg()?.try_as_str()?;
+    let mut lib_func_name = args.next_arg()?.try_as_str()?.split(".");
+
+    let library_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting library name"))?;
+    let function_name = lib_func_name
+        .next()
+        .ok_or(RedisError::Str("Failed extracting function name"))?;
+
     let num_keys = args.next_arg()?.try_as_str()?.parse::<usize>()?;
     let libraries = get_libraries();
 
@@ -842,6 +1061,37 @@ fn function_debug_command(
             get_globals_mut().allow_unsafe_redis_commands = true;
             return Ok(RedisValue::SimpleStringStatic("OK"));
         }
+        "dump_pending_async_calls" => {
+            return Ok(RedisValue::OrderedMap(
+                get_globals()
+                    .future_handlers
+                    .iter()
+                    .map(|(lib, v)| {
+                        (
+                            RedisValueKey::String(lib.to_owned()),
+                            RedisValue::Array(
+                                v.iter()
+                                    .map(|v| {
+                                        v.upgrade().map_or(RedisValue::Null, |v| {
+                                            let v = v.lock(ctx);
+                                            let res: Vec<String> = v
+                                                .command
+                                                .iter()
+                                                .map(|v| {
+                                                    String::from_utf8_lossy(v.as_slice())
+                                                        .into_owned()
+                                                })
+                                                .collect();
+                                            RedisValue::BulkString(res.join(" "))
+                                        })
+                                    })
+                                    .collect(),
+                            ),
+                        )
+                    })
+                    .collect(),
+            ))
+        }
         "help" => {
             return Ok(RedisValue::Array(
                 vec![
@@ -881,7 +1131,7 @@ fn function_debug_command(
 }
 
 fn on_stream_touched(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
-    if ctx.get_flags().contains(ContextFlags::MASTER) {
+    if is_master(ctx) {
         let stream_ctx = &mut get_globals_mut().stream_ctx;
         stream_ctx.on_stream_touched(ctx, event, key);
     }
@@ -895,10 +1145,16 @@ fn generic_notification(_ctx: &Context, _event_type: NotifyEvent, event: &str, k
 }
 
 fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, key: &[u8]) {
+    if !is_master(ctx) {
+        // do not fire notifications on slave
+        return;
+    }
+
     let globals = get_globals();
     if globals.avoid_key_space_notifications {
         return;
     }
+
     globals.notifications_ctx.on_key_touched(ctx, event, key)
 }
 
@@ -934,6 +1190,14 @@ fn on_role_changed(ctx: &Context, role_changed: ServerRole) {
     if let ServerRole::Primary = role_changed {
         ctx.log_notice("Role changed to primary, initializing key scan to search for streams.");
         scan_key_space_for_streams();
+    } else {
+        log::info!("Role changed to replica, abort all async commands invocation.");
+        let globals = get_globals_mut();
+        globals.future_handlers.drain().for_each(|(_, v)| {
+            v.iter()
+                .filter_map(|v| v.upgrade())
+                .for_each(|v| v.lock(ctx).abort(ctx))
+        })
     }
 }
 
@@ -985,6 +1249,53 @@ fn on_flush_event(ctx: &Context, flush_event: FlushSubevent) {
     }
 }
 
+#[config_changed_event_handler]
+fn on_config_change(ctx: &Context, values: &[&str]) {
+    if let Some(_) = values
+        .iter()
+        .find(|v| **v == PSEUDO_SLAVE_READONLY_CONFIG_NAME || **v == PSEUDO_SLAVE_CONFIG_NAME)
+    {
+        let globals = get_globals_mut();
+        globals.db_policy = get_db_policy(ctx);
+    }
+}
+
+/// Will be called by Redis to execute some repeated tasks.
+/// Currently we will clean future handlers that has been finised.
+#[cron_event_handler]
+fn cron_event_handler(_ctx: &Context, _hz: u64) {
+    let globals = get_globals_mut();
+    globals.future_handlers = globals
+        .future_handlers
+        .drain()
+        .filter_map(|(k, mut v)| {
+            let res: Vec<_> = v
+                .drain(0..)
+                .filter_map(|v| {
+                    let _ = v.upgrade()?;
+                    return Some(v);
+                })
+                .collect();
+            if res.is_empty() {
+                return None;
+            }
+            Some((k, res))
+        })
+        .collect();
+}
+
+pub(crate) fn verify_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err(format!("Empty name is not allowed"));
+    }
+    name.chars().try_for_each(|c| {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            return Ok(());
+        }
+        Err(format!("Unallowed char was given '{c}'"))
+    })
+}
+
 pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     if ERROR_VERBOSITY.load(Ordering::Relaxed) == 1 {
         return err.get_msg();
@@ -996,11 +1307,11 @@ pub(crate) fn get_msg_verbose(err: &GearsApiError) -> &str {
     {
         name: "tfcall",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
@@ -1015,11 +1326,11 @@ fn function_call(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     {
         name: "tfcallasync",
         flags: [MayReplicate, DenyScript, NoMandatoryKeys],
-        arity: -4,
+        arity: -3,
         key_spec: [
             {
                 flags: [ReadWrite, Access, Update],
-                begin_search: Index({ index : 3}),
+                begin_search: Index({ index : 2}),
                 find_keys: Keynum({ key_num_idx : 0, first_key : 1, key_step : 1 }),
             }
         ],
