@@ -19,10 +19,16 @@ RUN yum install -qqy http://mirror.centos.org/centos/7/extras/x86_64/Packages/ce
 RUN yum install -qqy http://mirror.centos.org/centos/7/os/x86_64/Packages/libgfortran5-8.3.1-2.1.1.el7.i686.rpm
 RUN yum install -qqy devtoolset-9 llvm-toolset-7
 RUN yum -yqq install rh-python38-python rh-python38-python-devel rh-python38-python-pip
+
 {% elif OS_VERSION == "8" %}
 RUN yum install -yqq git openssl wget python38 dialog redhat-lsb subversion chrpath openssl-devel python38-devel clang zip unzip
 RUN dnf install -yqq gcc-toolset-11-gcc gcc-toolset-11-gcc-c++ gcc-toolset-11-libatomic-devel autoconf automake libtool
 ENV PATH="/opt/rh/gcc-toolset-11/root/usr/bin:$PATH"
+
+{% elif OS_VERSION == "9" %}
+RUN yum install -yqq git openssl wget python dialog chrpath openssl-devel python-devel clang zip unzip
+RUN dnf install -yqq gcc gcc-c++ g++ libatomic gcc-toolset-12-libatomic-devel autoconf automake libtool
+
 {% endif %}
 
 {% if OS_VERSION == "7" or OS_VERSION == "2" %}

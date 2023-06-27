@@ -63,3 +63,11 @@ jobs:
             os_version: 8
             os_family: rockylinux
             dockerfile: dockerbuilds/dockerfile.rhel.tmpl
+
+    rhel9-x86:
+        uses: ./.github/workflows/REUSABLE_DOCKER_BUILDER.yml
+        if: ${{github.event.label.name == 'build-all'}}
+        with:
+            os_version: 9
+            os_family: rockylinux
+            dockerfile: dockerbuilds/dockerfile.rhel.tmpl
