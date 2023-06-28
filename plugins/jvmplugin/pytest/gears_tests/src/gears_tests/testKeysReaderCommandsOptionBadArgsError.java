@@ -54,7 +54,7 @@ public class testKeysReaderCommandsOptionBadArgsError {
 		GearsBuilder.CreateGearsBuilder(cr).
 		foreach(r->{
 			KeysReader reader = new KeysReader();
-			reader.setCommands(new String[] {"blpop"});
+			reader.setCommands(new String[] {"shutdown"});
 			reader.setEventTypes(new String[] {"keymiss"});
 			reader.setPattern("x");
 			GearsBuilder.CreateGearsBuilder(reader).

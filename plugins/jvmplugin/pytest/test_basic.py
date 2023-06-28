@@ -50,3 +50,7 @@ def testAccumulateby(env, results, errs, **kargs):
 def testMainArguments(env, results, errs, **kargs):
     env.assertEqual(results, 'OK')
     env.expect('RG.TRIGGER', 'test').equal(['bar', 'foo'])
+
+@jvmTestDecorator()
+def testJVMVersion(env, **kargs):
+    env.expect('RG.TRIGGER', 'jvm_version').equal(['17.0.7'])

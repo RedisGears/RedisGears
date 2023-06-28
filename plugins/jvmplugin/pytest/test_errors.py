@@ -136,4 +136,4 @@ def testNoJarPayload(env, executionError, **kargs):
 
 @jvmTestDecorator()
 def testNoMainClass(env, executionError, **kargs):
-	env.assertContains('NoSuchMethodError: main', executionError)
+	env.assertContains('NoSuchMethodError:', executionError)
