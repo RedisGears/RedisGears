@@ -10,7 +10,7 @@ Or just add it as a dependency to you `package.json` file:
 
 ```json
 "devDependencies": {
-  "@redis/gears-api": "https://gitpkg.now.sh/RedisGears/RedisGears/redisgears_js_api"
+  "@redis/gears-api": "https://gitpkg.now.sh/RedisGears/RedisGears/js_api"
 }
 ```
 
@@ -37,7 +37,7 @@ Wrote to /home/meir/work/RedisGearsJSSDK/gears_project_2/package.json:
 }
 ```
 
-If all went well you should see a `package.json` file, add the following content to `package.json`:
+If all went well you should see a `package.json` file, put the following content to `package.json`:
 
 ```js
 {
@@ -49,7 +49,7 @@ If all went well you should see a `package.json` file, add the following content
     "deploy": "gears-api index.js"
   },
   "devDependencies": {
-    "@redis/gears-api": "https://gitpkg.now.sh/RedisGears/RedisGears/redisgears_js_api"
+    "@redis/gears-api": "https://gitpkg.now.sh/RedisGears/RedisGears/js_api"
   },
   "keywords": [],
   "author": "",
@@ -59,7 +59,7 @@ If all went well you should see a `package.json` file, add the following content
 
 Install the dependencies using `npm install`.
 
-Create a new file, `index.js` and add to following content to it:
+Create a new file, `index.js` and add the following content to it:
 
 ```js
 #!js name=lib api_version=1.0

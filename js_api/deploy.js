@@ -28,11 +28,6 @@ await new Command('deploy')
         preserveShebangs(),
         nodeResolve(),
         commonjs(),
-        // typescript({
-        //   target: 'esnext' // TODO
-        // }),
-        // json(),
-        // wasm()
       ]
     });
   })
