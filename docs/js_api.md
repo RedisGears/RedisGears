@@ -74,7 +74,7 @@ redis.registerFunction("test", ()=>{
 Now you can deploy your code to RedisGears using the following command:
 
 ```bash
-> npm run deploy -- -r redis:/localhost:6379
+> npm run deploy -- -r redis://localhost:6379
 
 > deploy
 > gears-api index.js
