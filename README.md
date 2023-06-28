@@ -34,7 +34,7 @@ See the [build](docs/build_instructions.md) page for more information.
 ## Getting started
 
 ### Run JS code
-The API expose by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) is working. Lets write a simple `hello world` function that return the string `hello world`:
+The API exposed by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) works. Let's write a simple `hello world` function that return the string `hello world`:
 ```js
 #!js name=lib api_version=1.0
 
@@ -45,7 +45,7 @@ redis.registerFunction('hello_world', function(){
 The first line indicates the engine to use (`js`) and the library name (`lib`). The rest is the library code.
 
 
-Assuming we put the following code on a file `lib.js`, we can register our function on Triggers and Functions using `TFUNCTION LOAD` command:
+Assuming we put the following code in the file `lib.js`, we can register our function in Triggers and Functions using `TFUNCTION LOAD` command:
 
 ```bash
 > redis-cli -x TFUNCTION LOAD < ./lib.js
@@ -59,11 +59,11 @@ And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) co
 "hello_world"
 ```
 
-Notice that [`TFCALL`](docs/commands.md#rgfcal) command arguments is very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on Triggers and Functions the command also gets the library name. The `0` represent the number of keys that will follow (which in our case is `0`).
+Notice that [`TFCALL`](docs/commands.md#rgfcal) command arguments are very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on Triggers and Functions, the command also gets the library name. The `0` represents the number of keys that will follow (which in our case is `0`).
 
 ### Calling Redis Commands Inside Triggers and Functions
 
-It is possible to call Redis commands inside Triggers and Functions. The function gets as first argument a client object that allows interaction with Redis using `call` function. The following example executes a simple `PING` command and return the result:
+It is possible to call Redis commands inside Triggers and Functions. The function gets as the first argument a client object that allows interaction with Redis using the `call` function. The following example executes a simple `PING` command and returns the result:
 
 ```js
 #!js name=lib api_version=1.0

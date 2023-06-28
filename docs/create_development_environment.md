@@ -1,6 +1,6 @@
 # Create a Development Environment
 
-When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and become complex it is less comfortable to maintain it as a single file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi file project and how to wrap it as a single file and send it to Triggers and Functions. The tutorial assume you have Redis with the module RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
+When a project is small, it is acceptable to have a single file that contains the entire code base. But as the project grows and becomes more complex, it is less comfortable to maintain it as a single file project. Luckily, JavaScript has already faced such a problem and has a relevant tool to maintain a multi-file project and compress it on build time to a single file containing all the code. In this tutorial, we will explain how to create a multi-file project, wrap it as a single file, and send it to Triggers and Functions. The tutorial assumes you have Redis with the module RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
 
 ## Pre-requisite
 
@@ -73,7 +73,7 @@ module.exports = {
 }
 ```
 
-The `entry` field is the entry point of our project. The plugin we use instruct webpack to add a banner line at the beginning of the generated code that will contains the shebang syntax required by Triggers and Functions along side the library name.
+The `entry` field is the entry point of our project. The plugin instructs Webpack to add a banner line at the beginning of the generated code containing the shebang syntax required by Triggers and Functions alongside the library name.
 
 We can now build our project, from within the root directory run the following command:
 
@@ -88,7 +88,7 @@ If all was done correctly you will see a new directory, `dist`, with a single fi
 redis.registerFunction("hello", (function() { return"Hello World" }));
 ```
 
-This file can be send to be evaluated by Triggers and Functions using `redis-cli`. From the project root directory, run the following:
+This file can be sent to be evaluated by Triggers and Functions using `redis-cli`. To do this, from within the project root directory, run the following:
 
 ```bash
 redis-cli -x TFUNCTION LOAD < ./dist/main.js
@@ -232,7 +232,7 @@ OK
 
 **The following tutorial is experimental and is not promised to be supported in the final GA version**
 
-Fortunately for us, v8 comes with an embedded webassembly support. We can leverage it to run our code that was written in some low level language, and achieve better performance on CPU intensive tasks. In this tutorial we will show how to compile and run a rust code inside v8 webassembly embedded inside Redis using Triggers and Functions.
+Fortunately for us, the V8 engine comes with embedded WebAssembly support. We can leverage it to run our code in some low-level language and achieve better performance on CPU-intensive tasks. This tutorial will show how to compile and run a rust code inside V8 WebAssembly embedded inside Redis using Triggers and Functions.
 
 ## Pre-requisite
 
@@ -280,7 +280,7 @@ The code defines a `test` function that simply prints `Hello, World!`. Notice th
 wasm-pack build --target web
 ```
 
-Notice that we are building using the `web` target, though we are not actually a web, this target will be good enough for us and will help to avoid `nodejs` specific API that are not supported inside Triggers and Functions (we hope that one day we will be popular enough and a new `RedisGears` target will be added :)).
+Notice that we are building using the `web` target. Though we are not actually a web, this target will be good enough for us and will help to avoid `nodejs` specific APIs that are not supported inside Triggers and Functions (we hope that one day we will become popular enough and a new `Triggers and Functions` target will be added :)).
 
 After build successfully, you will notice that a new `pkg` directory was created containing the following content:
 
@@ -419,7 +419,7 @@ new ModifySourcePlugin({
         })
 ```
 
-This tells webpack to replace all `import.meta.url` with an empty string. We need it because when webpack sees `import.meta.url` it replace it with some `JS` code that uses `document` object which we do not have on Triggers and Functions.
+This tells Webpack to replace all `import.meta.url` with an empty string. We need it because when Webpack sees `import.meta.url`, it replaces it with some `JS` code that uses the `document` object, which we do not have in Triggers and Functions.
 
 And finally we are done, we can build and deploy our code:
 
