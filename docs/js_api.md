@@ -37,7 +37,7 @@ Wrote to /home/meir/work/RedisGearsJSSDK/gears_project_2/package.json:
 }
 ```
 
-If all went well you should see a `package.json` file, put the following content to `package.json`:
+If all went well, you should see a `package.json` file, where you need to add the following content:
 
 ```js
 {
