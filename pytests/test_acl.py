@@ -117,7 +117,7 @@ redis.registerFunction("async_get_start", function(client, dummy, key){
     env.assertEqual(env.tfcallAsync('lib', 'async_get_start', ['cached:x'], ['cached:x'], c=c), "OK")
     env.expect('ACL', 'DELUSER', 'alice').equal(1) # delete alice user while function is running
     try:
-        env.tfcallAsync('lib', 'async_get_continue', c=c)
+        env.tfcallAsync('lib', 'async_get_continue')
         env.assertTrue(False, message='Command succeed though should failed')
     except Exception as e:
         env.assertContains("User does not exists or disabled", str(e))

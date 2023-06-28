@@ -31,7 +31,7 @@ commands:
           name: s3 upload
           shell: /bin/bash -l -eo pipefail
           command: |
-            if [[ $publish == "true" ]]; then
+            if [[ "<<parameters.publish>>" == "true" ]]; then
               s3cmd --access_key=$AWS_ACCESS_KEY_ID --secret_key=$AWS_SECRET_ACCESS_KEY \
                 put -P <<parameters.srcdir>>/redisgears*.zip \
                 s3://redismodules/redisgears/snapshots/
@@ -84,6 +84,7 @@ commands:
             python3 -m pip install RLTest
             python3 -m pip install -U redis==5.0.0b4
             python3 -m pip install git+https://github.com/RedisLabsModules/RAMP.git@master
+            python3 -m pip install s3cmd
             if [ ! -f /usr/local/bin/ramp ]; then
               ln -s /Users/distiller/.pyenv/shims/ramp /usr/local/bin/ramp
             fi
@@ -209,10 +210,14 @@ on-integ-branch: &on-integ-branch
         - master
         - /^\d+\.\d+.*$/
         - /^\d+\.\d+\.\d+.*$/
+
+on-tags: &on-tags
+  filters:
+    branches:
+      ignore: /.*/
     tags:
       only:
-        - /^v\d+\.\d+\.\d+.*-rc*$/
-        - /^v\d+\.\d+\.\d+.*-m*$/
+        - /^v\d+\.\d+\.\d+-.*$/
 
 on-master: &on-master
   filters:
@@ -233,15 +238,27 @@ workflows:
           publish: "true"
 
       - build-macos-arm64:
-          name: OSX [arm64] CI
+          name: OSX [arm64] Integration
           context: common
-          <<: *on-pull-request
+          publish: "true"
+          <<: *on-integ-branch
+
+      - build-macos-x64:
+          name: OSX [intel] Release
+          context: common
+          <<: *on-tags
+          publish: "true"
+
+      - build-macos-arm64:
+          name: OSX [arm64] Release
+          context: common
+          publish: "true"
+          <<: *on-tags
 
       - build-macos-x64:
           name: OSX [intel] CI
           context: common
           <<: *on-pull-request
-
 
       - build-arm:
           name: ARM CI <<matrix.os_version>>
@@ -255,6 +272,15 @@ workflows:
           name: ARM Integration <<matrix.os_version>>
           context: common
           <<: *on-integ-branch
+          publish: "true"
+          matrix:
+            parameters:
+              os_version: ["22.04", "20.04", "18.04"]
+
+      - build-arm:
+          name: ARM Release <<matrix.os_version>>
+          context: common
+          <<: *on-tags
           publish: "true"
           matrix:
             parameters:

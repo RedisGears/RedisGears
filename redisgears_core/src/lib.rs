@@ -12,10 +12,14 @@
 
 use keys_notifications_ctx::KeySpaceNotificationsCtx;
 use redis_module::redisvalue::RedisValueKey;
-use redis_module::{CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply};
+use redis_module::{
+    BlockingCallOptions, CallOptionResp, CallOptionsBuilder, CallResult, ContextFlags, ErrorReply,
+    PromiseCallReply, RedisGILGuard,
+};
 use redisgears_plugin_api::redisgears_plugin_api::backend_ctx::BackendCtxInterfaceInitialised;
 use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::FunctionFlags;
 use redisgears_plugin_api::redisgears_plugin_api::prologue::ApiVersion;
+use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
 use serde::{Deserialize, Serialize};
 
 use config::{
@@ -37,8 +41,8 @@ use redis_module::server_events::{
     FlushSubevent, LoadingSubevent, ModuleChangeSubevent, ServerRole,
 };
 use redis_module_macros::{
-    command, config_changed_event_handler, flush_event_handler, loading_event_handler,
-    module_changed_event_handler, role_changed_event_handler,
+    command, config_changed_event_handler, cron_event_handler, flush_event_handler,
+    loading_event_handler, module_changed_event_handler, role_changed_event_handler,
 };
 
 use redisgears_plugin_api::redisgears_plugin_api::{
@@ -59,7 +63,7 @@ use libloading::{Library, Symbol};
 use std::collections::HashMap;
 
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use crate::stream_reader::{ConsumerData, StreamReaderCtx};
 use std::iter::Skip;
@@ -496,6 +500,7 @@ struct GlobalCtx {
     avoid_key_space_notifications: bool,
     allow_unsafe_redis_commands: bool,
     db_policy: DbPolicy,
+    future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -571,6 +576,102 @@ pub(crate) fn call_redis_command(
         .autenticate_user(user)
         .map_err(|e| ErrorReply::Message(e.to_string()))?;
     ctx.call_ext(command, call_options, args)
+}
+
+/// a struct that holds information about not yet resolve future replies.
+/// The struct allows to either abort the execution or invoke the on done callback.
+struct FutureHandlerContext {
+    callback: Option<Box<dyn FnOnce(&Context, CallResult<'static>)>>,
+    disposer: Option<Box<dyn FnOnce(&Context, bool)>>,
+    command: Vec<Vec<u8>>,
+}
+
+impl FutureHandlerContext {
+    /// Call the on done callback that was set to this future object.
+    fn call(
+        &mut self,
+        ctx: &Context,
+        reply: Result<redis_module::CallReply<'static>, ErrorReply<'static>>,
+    ) {
+        self.callback.take().map(|f| f(ctx, reply));
+        self.disposer.take().map(|f| f(ctx, false));
+    }
+
+    /// Abort the command invocation (if possible) and send an error as a reply to the
+    /// on done callback.
+    fn abort(&mut self, ctx: &Context) {
+        self.callback.take().map(|f| {
+            f(
+                ctx,
+                CallResult::Err(ErrorReply::Message("Command was aborted".to_owned())),
+            )
+        });
+        self.disposer.take().map(|f| f(ctx, true));
+    }
+}
+
+/// Calls blocking redis command.
+/// Returns [PromiseReply] which might be already resolved (in case we already got the reply)
+/// or it might be resolved later when the command will be finished.
+/// In case the [PromiseReply] was not yet resolved, the user is expected to give a callback
+/// which will be called when the command will finish.
+pub(crate) fn call_redis_command_async<'ctx>(
+    ctx: &'ctx Context,
+    lib: &str,
+    user: &RedisString,
+    command: &str,
+    call_options: &BlockingCallOptions,
+    args: &[&[u8]],
+) -> PromiseReply<'static, 'ctx> {
+    let _authenticate_scope = ctx
+        .autenticate_user(user)
+        .map_err(|e| ErrorReply::Message(e.to_string()));
+    if let Err(e) = _authenticate_scope {
+        return PromiseReply::Resolved(CallResult::Err(e));
+    }
+
+    match ctx.call_blocking(command, call_options, args) {
+        PromiseCallReply::Resolved(res) => PromiseReply::Resolved(res),
+        PromiseCallReply::Future(future) => {
+            let lib = lib.to_owned();
+            let mut command = vec![command.as_bytes().to_vec()];
+            command.extend(args.iter().map(|v| v.to_vec()));
+            PromiseReply::Future(Box::new(move |callback| {
+                let future_handler_context = FutureHandlerContext {
+                    callback: Some(callback),
+                    disposer: None,
+                    command: command,
+                };
+                let future_handler_context = Arc::new(RedisGILGuard::new(future_handler_context));
+                let future_handler_context_unblocked = Arc::clone(&future_handler_context);
+                let globals = get_globals_mut();
+
+                // add the `future_handler_context` to future_abort_callbacks so we can abort it if needed.
+                globals
+                    .future_handlers
+                    .entry(lib)
+                    .or_insert(Vec::new())
+                    .push(Arc::downgrade(&future_handler_context));
+
+                // Set the unblock handler which will call the plugin callback and free the `future_handler_context`
+                let future_handler = future.set_unblock_handler(move |ctx, reply| {
+                    let mut future_handler_context_unblocked =
+                        future_handler_context_unblocked.lock(ctx);
+                    future_handler_context_unblocked.call(ctx, reply);
+                });
+
+                // Initialize the disposer methon which will abort the command and send an error as a reply to the plugin callback
+                let mut future_handler_context = future_handler_context.lock(ctx);
+                future_handler_context.disposer = Some(Box::new(move |ctx: &Context, abort| {
+                    if abort {
+                        future_handler.abort_and_dispose(ctx);
+                    } else {
+                        future_handler.dispose(ctx);
+                    }
+                }));
+            }))
+        }
+    }
 }
 
 fn verify_v8_mem_usage_values() -> Result<(), RedisError> {
@@ -757,6 +858,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         avoid_key_space_notifications: false,
         allow_unsafe_redis_commands: false,
         db_policy: get_db_policy(ctx),
+        future_handlers: HashMap::new(),
     };
 
     let v8_path = V8_PLUGIN_PATH.lock(ctx);
@@ -959,6 +1061,37 @@ fn function_debug_command(
             get_globals_mut().allow_unsafe_redis_commands = true;
             return Ok(RedisValue::SimpleStringStatic("OK"));
         }
+        "dump_pending_async_calls" => {
+            return Ok(RedisValue::OrderedMap(
+                get_globals()
+                    .future_handlers
+                    .iter()
+                    .map(|(lib, v)| {
+                        (
+                            RedisValueKey::String(lib.to_owned()),
+                            RedisValue::Array(
+                                v.iter()
+                                    .map(|v| {
+                                        v.upgrade().map_or(RedisValue::Null, |v| {
+                                            let v = v.lock(ctx);
+                                            let res: Vec<String> = v
+                                                .command
+                                                .iter()
+                                                .map(|v| {
+                                                    String::from_utf8_lossy(v.as_slice())
+                                                        .into_owned()
+                                                })
+                                                .collect();
+                                            RedisValue::BulkString(res.join(" "))
+                                        })
+                                    })
+                                    .collect(),
+                            ),
+                        )
+                    })
+                    .collect(),
+            ))
+        }
         "help" => {
             return Ok(RedisValue::Array(
                 vec![
@@ -1057,6 +1190,14 @@ fn on_role_changed(ctx: &Context, role_changed: ServerRole) {
     if let ServerRole::Primary = role_changed {
         ctx.log_notice("Role changed to primary, initializing key scan to search for streams.");
         scan_key_space_for_streams();
+    } else {
+        log::info!("Role changed to replica, abort all async commands invocation.");
+        let globals = get_globals_mut();
+        globals.future_handlers.drain().for_each(|(_, v)| {
+            v.iter()
+                .filter_map(|v| v.upgrade())
+                .for_each(|v| v.lock(ctx).abort(ctx))
+        })
     }
 }
 
@@ -1117,6 +1258,30 @@ fn on_config_change(ctx: &Context, values: &[&str]) {
         let globals = get_globals_mut();
         globals.db_policy = get_db_policy(ctx);
     }
+}
+
+/// Will be called by Redis to execute some repeated tasks.
+/// Currently we will clean future handlers that has been finised.
+#[cron_event_handler]
+fn cron_event_handler(_ctx: &Context, _hz: u64) {
+    let globals = get_globals_mut();
+    globals.future_handlers = globals
+        .future_handlers
+        .drain()
+        .filter_map(|(k, mut v)| {
+            let res: Vec<_> = v
+                .drain(0..)
+                .filter_map(|v| {
+                    let _ = v.upgrade()?;
+                    return Some(v);
+                })
+                .collect();
+            if res.is_empty() {
+                return None;
+            }
+            Some((k, res))
+        })
+        .collect();
 }
 
 pub(crate) fn verify_name(name: &str) -> Result<(), String> {

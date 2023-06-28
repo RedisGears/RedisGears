@@ -10,10 +10,9 @@ use redisgears_plugin_api::redisgears_plugin_api::load_library_ctx::{
     FunctionFlags, FUNCTION_FLAG_ALLOW_OOM_GLOBAL_VALUE, FUNCTION_FLAG_NO_WRITES_GLOBAL_VALUE,
     FUNCTION_FLAG_RAW_ARGUMENTS_GLOBAL_VALUE,
 };
-
 use std::sync::Arc;
 
-use crate::{get_libraries, get_msg_verbose, GearsLibrary};
+use crate::{get_globals, get_libraries, get_msg_verbose, GearsLibrary};
 
 /// Contains information about a single stream that tracked
 /// by a stream trigger.
@@ -107,6 +106,7 @@ struct LibraryInfoWithoutCode {
     cluster_functions: Vec<String>,
     keyspace_triggers: Vec<TriggersInfo>,
     stream_triggers: Vec<StreamTriggersInfo>,
+    pending_async_calls: Vec<String>,
 }
 
 /// Contains all relevant information about RedisGears library.
@@ -157,6 +157,7 @@ fn function_list_command_flags(flags: FunctionFlags) -> RedisValue {
 /// object to return the information on other locations
 /// (for example, on Redis `INFO` command).
 fn get_library_info(
+    ctx: &Context,
     lib: &Arc<GearsLibrary>,
     verbosity_level: usize,
     with_code: bool,
@@ -268,6 +269,26 @@ fn get_library_info(
                 })
             })
             .collect(),
+        pending_async_calls: get_globals()
+            .future_handlers
+            .get(&lib.gears_lib_ctx.meta_data.name)
+            .map_or_else(
+                || Vec::new(),
+                |v| {
+                    v.into_iter()
+                        .filter_map(|v| {
+                            let v = v.upgrade()?;
+                            let v = v.lock(ctx);
+                            let res: Vec<String> = v
+                                .command
+                                .iter()
+                                .map(|v| String::from_utf8_lossy(v.as_slice()).into_owned())
+                                .collect();
+                            Some(res.join(" "))
+                        })
+                        .collect()
+                },
+            ),
     };
 
     if !with_code {
@@ -282,7 +303,7 @@ fn get_library_info(
 
 /// Implementation for `FUNCTION LIST` command.
 pub(crate) fn function_list_command<T: Iterator<Item = RedisString>>(
-    _ctx: &Context,
+    ctx: &Context,
     mut args: T,
 ) -> RedisResult {
     let mut with_code = false;
@@ -323,7 +344,7 @@ pub(crate) fn function_list_command<T: Iterator<Item = RedisString>>(
                 lib.map(|lib_name| l.gears_lib_ctx.meta_data.name == lib_name)
                     .unwrap_or(true)
             })
-            .map(|l| get_library_info(l, verbosity_level, with_code).into())
+            .map(|l| get_library_info(ctx, l, verbosity_level, with_code).into())
             .collect::<Vec<RedisValue>>(),
     ))
 }
