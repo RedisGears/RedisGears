@@ -9,6 +9,26 @@ export interface NativeClient {
     call<T = unknown>(...args: Array<string | ArrayBuffer>): T;
 
     /**
+     * Same as call but does not perform UTF8 decoding on the result.
+     * @param args - The command to execute. 
+     */
+    callRaw<T = unknown>(...args: Array<string | ArrayBuffer>): T;
+
+    /**
+     * Call a command on Redis. Allow Redis to block the execution if needed (like blpop command)
+     * and return the result asynchronously. Returns a promise object that will be resolved when
+     * the command invocation finished.
+     * @param args - The command to execute. 
+     */
+    callAsync<T = unknown>(...args: Array<string | ArrayBuffer>): T;
+
+    /**
+     * Sam as callAsync but does not perform UTF8 decoding on the result.
+     * @param args - The command to execute. 
+     */
+    callAsyncRaw<T = unknown>(...args: Array<string | ArrayBuffer>): T;
+
+    /**
      * Return true if it is allow to return promise from the function callback.
      * In case it is allowed and a promise is return, Redis will wait for the promise
      * to be fulfilled and only then will return the function result.

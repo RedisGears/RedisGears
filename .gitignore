@@ -9,6 +9,9 @@
 pytests/__pycache__/
 pytests/logs/
 
+redisgears_js_api/node_modules/
+redisgears_js_api/package-lock.json
+
 # Generated build things
 dockerbuilds/dockerfile.*
 *.tgz
