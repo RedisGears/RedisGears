@@ -14,34 +14,77 @@ Or just add it as a dependency to you `package.json` file:
 }
 ```
 
-Usage example:
+## Full example:
 
-```JS
-#!js name=lib api_version=1.1
+Create an empty directory, `redisgears_project`. Inside the directory run the following command:
+
+```bash
+> npm init -y -f
+npm WARN using --force Recommended protections disabled.
+Wrote to /home/meir/work/RedisGearsJSSDK/gears_project_2/package.json:
+
+{
+  "name": "gears_project_2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+```
+
+If all went well you should see a `package.json` file, add the following content to `package.json`:
+
+```js
+{
+  "name": "gears_project",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "gears-api index.js"
+  },
+  "devDependencies": {
+    "@redis/gears-api": "https://gitpkg.now.sh/RedisGears/RedisGears/redisgears_js_api"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+```
+
+Create a new file, `index.js` and add to following content to it:
+
+```js
+#!js name=lib api_version=1.0
 
 import { redis } from '@redis/gears-api';
 
-redis.registerFunction('foo', (c)=>{
-  return c.call('ping');
+redis.registerFunction("test", ()=>{
+    return "test";
 });
 ```
 
-
-`redisgears_js_api` also contains a bundler that can be use to bundle you code and deploy it. Add the following to your `package.json` (assuming your main file is `index.js`):
-
-```json
-"scripts": {
-  "deploy": "gears-api index.js"
-},
-```
-
-Then run the following to deploy you code:
+Now you can deploy your code to RedisGears using the following command:
 
 ```bash
-> npm run deploy
+> npm run deploy -- -r redis:/localhost:6379
 
 > deploy
 > gears-api index.js
 
 Deployed! :)
+```
+
+The provided URL should follow the following format: `<redis[s]://[[username][:password]@][host][:port][/db-number]>`
+
+If all went well you can now run your RedisGears function:
+
+```bash
+127.0.0.1:6379> TFCALL lib.test 0
+"test"
 ```

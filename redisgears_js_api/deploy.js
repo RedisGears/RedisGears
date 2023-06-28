@@ -16,7 +16,6 @@ await new Command('deploy')
   .option('-r, --redis [redis]')
   .option('-w, --watch')
   .action(async (filename, { redis, watch }) => {
-    console.log(redis)
     const client = createClient({ url: redis });
     client.on('error', err => console.error('Redis client error', err));
     await client.connect();
