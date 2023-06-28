@@ -1277,17 +1277,15 @@ static void KeysReader_DumpRegistrationData(RedisModuleCtx* ctx, FlatExecutionPl
 
 static void KeysReader_RegisterKeySpaceEvent(){
     if(!keysReaderRegistration){
-        RedisModuleCtx * ctx = RedisModule_GetThreadSafeContext(NULL);
         keysReaderRegistration = Gears_listCreate();
         int event = REDISMODULE_NOTIFY_ALL | REDISMODULE_NOTIFY_KEY_MISS;
         if(currVesion.redisMajorVersion >= 6 && IsEnterprise()){
             // we get the trimmed notification on enterprise only from redis v6 and above
             event |= REDISMODULE_NOTIFY_TRIMMED;
         }
-        if(RedisModule_SubscribeToKeyspaceEvents(ctx, event, KeysReader_OnKeyTouched) != REDISMODULE_OK){
+        if(RedisModule_SubscribeToKeyspaceEvents(staticCtx, event, KeysReader_OnKeyTouched) != REDISMODULE_OK){
             RedisModule_Log(staticCtx, "warning", "Failed register on key space notification of KeysReader");
         }
-        RedisModule_FreeThreadSafeContext(ctx);
     }
 }
 

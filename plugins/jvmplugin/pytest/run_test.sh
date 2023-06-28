@@ -13,11 +13,11 @@ fi
 OS="$(../../../deps/readies/bin/platform --os)"
 
 if [[ $OS == macos ]]; then
-    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.14+9/Contents/Home/bin/
-    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.14+9/Contents/Home/
+    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-17.0.7+7/Contents/Home/bin/
+    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-17.0.7+7/Contents/Home/
 else
-    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.9.1+1/bin/
-    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-11.0.9.1+1/
+    JAVA_BIN=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-17.0.7+7/bin/
+    JVM_PATH=${JVM_PLUGIN_ROOT}/bin/OpenJDK/jdk-17.0.7+7/
 fi
 
 mkdir -p gears_tests/build

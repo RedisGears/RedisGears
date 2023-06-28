@@ -19,9 +19,9 @@ set -e
 [[ $OSNICK == bigsur ]]  && OSNICK=catalina
 
 if [[ $OS == macos ]]; then
-    JVM_PATH=./bin/OpenJDK/jdk-11.0.14+9/Contents/Home/
+    JVM_PATH=./bin/OpenJDK/jdk-17.0.7+7/Contents/Home/
 else
-    JVM_PATH=./bin/OpenJDK/jdk-11.0.9.1+1/
+    JVM_PATH=./bin/OpenJDK/jdk-17.0.7+7/
 fi
 
 BRANCH_PLUGIN_TAR=../../artifacts/snapshot/redisgears-jvm.${OS}-${OSNICK}-${ARCH}.$GIT_BRANCH.tgz
