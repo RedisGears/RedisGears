@@ -7,9 +7,6 @@ import * as rollup from 'rollup';
 import { preserveShebangs } from 'rollup-plugin-preserve-shebangs';
 import nodeResolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
-// import typescript from '@rollup/plugin-typescript';
-// import json from '@rollup/plugin-json';
-// import wasm from '@rollup/plugin-wasm';
 
 await new Command('deploy')
   .argument('<filename>')
