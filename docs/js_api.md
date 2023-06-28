@@ -57,6 +57,8 @@ If all went well you should see a `package.json` file, add the following content
 }
 ```
 
+Install the dependencies using `npm install`.
+
 Create a new file, `index.js` and add to following content to it:
 
 ```js
