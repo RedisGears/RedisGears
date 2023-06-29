@@ -26,7 +26,7 @@ lazy_static! {
 
     /// Configuration value indicates the number of execution threads for
     /// background tasks.
-    pub(crate) static ref EXECUTION_THREADS: RedisGILGuard<i64> = RedisGILGuard::default();
+    pub(crate) static ref EXECUTION_THREADS: AtomicI64 = AtomicI64::default();
 
     /// Configuration value indicates the timeout for remote tasks that runs on a remote shard.
     pub(crate) static ref REMOTE_TASK_DEFAULT_TIMEOUT: AtomicI64 = AtomicI64::default();
