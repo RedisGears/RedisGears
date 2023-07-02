@@ -128,14 +128,16 @@
                         "type": "pure-token",
                         "display_text": "verbose",
                         "token": "VERBOSE",
-                        "optional": true
+                        "optional": true,
+                        "multiple": true
                     },
                     {
                         "name": "v",
                         "type": "pure-token",
                         "display_text": "v",
                         "token": "V",
-                        "optional": true
+                        "optional": true,
+                        "multiple": true
                     }
                 ]
             }
