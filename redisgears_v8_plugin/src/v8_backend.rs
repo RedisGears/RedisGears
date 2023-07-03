@@ -364,7 +364,7 @@ impl V8Backend {
         }
     }
 
-    fn initialize_v8_engine(&self, flags: &str) {
+    fn initialize_v8_engine(&self, flags: &str) -> Result<(), GearsApiError> {
         v8_init_with_error_handlers(
             Box::new(|line, msg| {
                 let msg = format!("v8 fatal error on {}, {}", line, msg);
@@ -387,20 +387,24 @@ impl V8Backend {
             1,
             Some(flags),
         )
-        .expect("Failed loading V8");
+        .map_err(|e| GearsApiError::new(e))
     }
 
-    fn spone_background_maintenance_thread(&self) {
+    fn spone_background_maintenance_thread(&self) -> Result<(), GearsApiError> {
         let script_ctxs = Arc::clone(&self.script_ctx_vec);
-        std::thread::spawn(move || {
-            let mut detected_memory_pressure = false;
-            loop {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                scan_for_isolates_timeout(&script_ctxs);
-                detected_memory_pressure =
-                    check_isolates_memory_limit(&script_ctxs, detected_memory_pressure);
-            }
-        });
+        std::thread::Builder::new()
+            .name("v8maintenance".to_string())
+            .spawn(move || {
+                let mut detected_memory_pressure = false;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    scan_for_isolates_timeout(&script_ctxs);
+                    detected_memory_pressure =
+                        check_isolates_memory_limit(&script_ctxs, detected_memory_pressure);
+                }
+            })
+            .map_err(|e| GearsApiError::new(e.to_string()))?;
+        Ok(())
     }
 }
 
@@ -424,8 +428,8 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
             GLOBAL.script_ctx_vec = Some(Arc::clone(&self.script_ctx_vec));
         }
-        self.initialize_v8_engine(&flags);
-        self.spone_background_maintenance_thread();
+        self.initialize_v8_engine(&flags)?;
+        self.spone_background_maintenance_thread()?;
 
         Ok(self)
     }
