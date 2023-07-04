@@ -387,7 +387,7 @@ impl V8Backend {
             1,
             Some(flags),
         )
-        .map_err(|e| GearsApiError::new(e))
+        .map_err(GearsApiError::new)
     }
 
     fn spawn_background_maintenance_thread(&self) -> Result<(), GearsApiError> {
