@@ -390,7 +390,7 @@ impl V8Backend {
         .map_err(|e| GearsApiError::new(e))
     }
 
-    fn spone_background_maintenance_thread(&self) -> Result<(), GearsApiError> {
+    fn spawn_background_maintenance_thread(&self) -> Result<(), GearsApiError> {
         let script_ctxs = Arc::clone(&self.script_ctx_vec);
         std::thread::Builder::new()
             .name("v8maintenance".to_string())
@@ -429,7 +429,7 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
             GLOBAL.script_ctx_vec = Some(Arc::clone(&self.script_ctx_vec));
         }
         self.initialize_v8_engine(&flags)?;
-        self.spone_background_maintenance_thread()?;
+        self.spawn_background_maintenance_thread()?;
 
         Ok(self)
     }
