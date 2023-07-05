@@ -10,11 +10,10 @@ use redis_module::{
 use redisgears_plugin_api::redisgears_plugin_api::GearsApiError;
 
 use crate::compiled_library_api::CompiledLibraryAPI;
-use crate::{verify_name, Deserialize, Serialize};
+use crate::{get_backend, verify_name, Deserialize, Serialize};
 
 use crate::{
-    get_backends_mut, get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData,
-    GearsLoadLibraryCtx,
+    get_libraries, GearsLibrary, GearsLibraryCtx, GearsLibraryMetaData, GearsLoadLibraryCtx,
 };
 
 use mr::libmr::{
@@ -102,11 +101,7 @@ pub(crate) fn function_load_internal(
 ) -> Result<(), String> {
     let meta_data = library_extract_metadata(code, config, user).map_err(|e| e.to_string())?;
     let backend_name = meta_data.engine.as_str();
-    let backend = get_backends_mut().get_mut(backend_name);
-    if backend.is_none() {
-        return Err(format!("Unknown backend {}", backend_name));
-    }
-    let backend = backend.unwrap();
+    let backend = get_backend(ctx, backend_name).map_err(|e| e.to_string())?;
     let compile_lib_ctx = CompiledLibraryAPI::new();
     let compile_lib_internals = compile_lib_ctx.take_internals();
     let lib_ctx = backend.compile_library(

@@ -350,7 +350,7 @@ impl<'ctx, 'lib_ctx> LoadLibraryCtxInterface for GearsLoadLibraryCtx<'ctx, 'lib_
             );
             if is_master(self.ctx) {
                 // trigger a key scan
-                scan_key_space_for_streams();
+                scan_key_space_for_streams(self.ctx);
             }
             consumer
         };
@@ -492,9 +492,13 @@ impl DbPolicy {
 struct GlobalCtx {
     libraries: Mutex<HashMap<String, Arc<GearsLibrary>>>,
     backends: HashMap<String, Box<dyn BackendCtxInterfaceInitialised>>,
-    plugins: Vec<Library>,
-    pool: Option<Mutex<ThreadPool>>,
-    mgmt_pool: ThreadPool,
+    uninitialised_backends: HashMap<String, Box<dyn BackendCtxInterfaceUninitialised>>,
+    /// Holds the handler to the dyn library of all backends, we need to keep it so the handler will not be freed.
+    _plugins: Vec<Library>,
+    pool: Mutex<Option<ThreadPool>>,
+    /// Thread pool which used to run management tasks that should not be
+    /// starved by user tasks (which run on [`GlobalCtx::pool`]).
+    management_pool: RedisGILGuard<Option<ThreadPool>>,
     stream_ctx: StreamReaderCtx<GearsStreamRecord, GearsStreamConsumer>,
     notifications_ctx: KeysNotificationsCtx,
     avoid_key_space_notifications: bool,
@@ -532,12 +536,18 @@ fn get_backends_mut() -> &'static mut HashMap<String, Box<dyn BackendCtxInterfac
     &mut get_globals_mut().backends
 }
 
+/// Returns mutable reference to the uninitialised backends dictionary.
+fn get_uninitialised_backends_mut(
+) -> &'static mut HashMap<String, Box<dyn BackendCtxInterfaceUninitialised>> {
+    &mut get_globals_mut().uninitialised_backends
+}
+
 fn get_libraries() -> MutexGuard<'static, HashMap<String, Arc<GearsLibrary>>> {
     get_globals().libraries.lock().unwrap()
 }
 
-pub(crate) fn get_thread_pool() -> &'static Mutex<ThreadPool> {
-    get_globals().pool.as_ref().unwrap()
+pub(crate) fn get_thread_pool() -> MutexGuard<'static, Option<ThreadPool>> {
+    get_globals().pool.lock().unwrap()
 }
 
 struct Sentinel;
@@ -559,7 +569,14 @@ impl Drop for Sentinel {
 /// Executes the passed job object in a dedicated thread allocated
 /// from the global module thread pool.
 pub(crate) fn execute_on_pool<F: FnOnce() + Send + 'static>(job: F) {
-    get_thread_pool().lock().unwrap().execute(move || {
+    let mut pool = get_thread_pool();
+    pool.get_or_insert_with(|| {
+        ThreadPool::with_name(
+            "RGExecutor".to_owned(),
+            EXECUTION_THREADS.load(Ordering::Relaxed) as usize,
+        )
+    })
+    .execute(move || {
         job();
     });
 }
@@ -755,6 +772,92 @@ fn get_db_policy(ctx: &Context) -> DbPolicy {
     DbPolicy::Regular
 }
 
+fn load_v8_backend(
+    ctx: &Context,
+) -> Result<(String, Box<dyn BackendCtxInterfaceUninitialised>, Library), RedisError> {
+    let v8_path = V8_PLUGIN_PATH.lock(ctx);
+
+    let v8_path = std::env::var("modulesdatadir")
+        .map(|val| {
+            format!(
+                "{}/redisgears_2/{}/deps/gears_v8/{}",
+                val,
+                VERSION_NUM.unwrap(),
+                v8_path.as_str()
+            )
+        })
+        .unwrap_or_else(|_| v8_path.to_string());
+
+    let lib = unsafe { Library::new(&v8_path) }
+        .map_err(|e| RedisError::String(format!("Failed loading '{}', {}", v8_path, e)))?;
+    let func: Symbol<unsafe fn(&Context) -> *mut dyn BackendCtxInterfaceUninitialised> =
+        unsafe { lib.get(b"initialize_plugin") }.map_err(|e| {
+            RedisError::String(format!(
+                "Failed getting initialize_plugin symbol, {}",
+                e.to_string()
+            ))
+        })?;
+    let backend = unsafe { Box::from_raw(func(ctx)) };
+    let name = backend.get_name();
+    log::info!("Registered backend: {name}.");
+    Ok((name.to_owned(), backend, lib))
+}
+
+fn initialize_v8_backend(
+    ctx: &Context,
+    uninitialised_backend: Box<dyn BackendCtxInterfaceUninitialised>,
+) -> Result<Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
+    let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
+    let name = uninitialised_backend.get_name();
+    let initialised_backend: Box<dyn BackendCtxInterfaceInitialised> = uninitialised_backend
+        .initialize(BackendCtx {
+            allocator: &RedisAlloc,
+            log_info: Box::new(|msg| log::info!("{msg}")),
+            log_trace: Box::new(|msg| log::trace!("{msg}")),
+            log_debug: Box::new(|msg| log::debug!("{msg}")),
+            log_error: Box::new(|msg| log::error!("{msg}")),
+            log_warning: Box::new(|msg| log::warn!("{msg}")),
+            get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
+                FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
+                FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
+            }),
+            get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
+            get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
+            get_v8_library_initial_memory: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_initial_memory_limit: Box::new(|| {
+                V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_library_memory_delta: Box::new(|| {
+                V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
+            }),
+            get_v8_flags: Box::new(move || v8_flags.to_owned()),
+        })
+        .map_err(|e| {
+            RedisError::String(format!("Failed loading {} backend, {}.", name, e.get_msg()))
+        })?;
+    let version = initialised_backend.get_version();
+    log::info!("Initialized backend: {name}, {version}.");
+    Ok(initialised_backend)
+}
+
+pub(crate) fn get_backend(
+    ctx: &Context,
+    name: &str,
+) -> Result<&'static mut Box<dyn BackendCtxInterfaceInitialised>, RedisError> {
+    get_backends_mut()
+        .get_mut(name)
+        .ok_or_else(|| RedisError::Str("No such backend"))
+        .or_else(|_| {
+            let uninitialised_backend = get_uninitialised_backends_mut()
+                .remove(name)
+                .ok_or_else(|| RedisError::String(format!("Unknown backend {}", name)))?;
+            let backend = initialize_v8_backend(ctx, uninitialised_backend)?;
+            Ok(get_backends_mut().entry(name.to_owned()).or_insert(backend))
+        })
+}
+
 fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
     mr_init(ctx, 1, None);
 
@@ -802,13 +905,20 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
             );
         }
     }));
-    let mgmt_pool = ThreadPool::new(1);
-    let mut global_ctx = GlobalCtx {
+    let (v8_backend_name, v8_backend, plugin_lib) = match load_v8_backend(ctx) {
+        Ok(res) => res,
+        Err(e) => {
+            log::error!("{e}");
+            return Status::Err;
+        }
+    };
+    let global_ctx = GlobalCtx {
         libraries: Mutex::new(HashMap::new()),
         backends: HashMap::new(),
-        plugins: Vec::new(),
-        pool: None,
-        mgmt_pool,
+        uninitialised_backends: HashMap::from([(v8_backend_name, v8_backend)]),
+        _plugins: vec![plugin_lib],
+        pool: Mutex::new(None),
+        management_pool: RedisGILGuard::new(None),
         stream_ctx: StreamReaderCtx::new(
             Box::new(|ctx, key, id, include_id| {
                 // read data from the stream
@@ -861,80 +971,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         future_handlers: HashMap::new(),
     };
 
-    let v8_path = V8_PLUGIN_PATH.lock(ctx);
-
-    let v8_path = std::env::var("modulesdatadir")
-        .map(|val| {
-            format!(
-                "{}/redisgears_2/{}/deps/gears_v8/{}",
-                val,
-                VERSION_NUM.unwrap(),
-                v8_path.as_str()
-            )
-        })
-        .unwrap_or_else(|_| v8_path.to_string());
-
-    let lib = match unsafe { Library::new(&v8_path) } {
-        Ok(l) => l,
-        Err(e) => {
-            ctx.log_warning(&format!("Failed loading '{}', {}", v8_path, e));
-            return Status::Err;
-        }
-    };
-    {
-        let func: Symbol<unsafe fn(&Context) -> *mut dyn BackendCtxInterfaceUninitialised> =
-            unsafe { lib.get(b"initialize_plugin") }.unwrap();
-        let backend = unsafe { Box::from_raw(func(ctx)) };
-        let name = backend.get_name();
-        if global_ctx.backends.contains_key(name) {
-            ctx.log_warning(&format!("Backend {} already exists", name));
-            return Status::Err;
-        }
-        let v8_flags: String = V8_FLAGS.lock(ctx).to_owned();
-        let initialised_backend = match backend.initialize(BackendCtx {
-            allocator: &RedisAlloc,
-            log_info: Box::new(|msg| log::info!("{msg}")),
-            log_trace: Box::new(|msg| log::trace!("{msg}")),
-            log_debug: Box::new(|msg| log::debug!("{msg}")),
-            log_error: Box::new(|msg| log::error!("{msg}")),
-            log_warning: Box::new(|msg| log::warn!("{msg}")),
-            get_on_oom_policy: Box::new(|| match *FATAL_FAILURE_POLICY.lock().unwrap() {
-                FatalFailurePolicyConfiguration::Abort => LibraryFatalFailurePolicy::Abort,
-                FatalFailurePolicyConfiguration::Kill => LibraryFatalFailurePolicy::Kill,
-            }),
-            get_lock_timeout: Box::new(|| LOCK_REDIS_TIMEOUT.load(Ordering::Relaxed) as u128),
-            get_v8_maxmemory: Box::new(|| V8_MAX_MEMORY.load(Ordering::Relaxed) as usize),
-            get_v8_library_initial_memory: Box::new(|| {
-                V8_LIBRARY_INITIAL_MEMORY_USAGE.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_library_initial_memory_limit: Box::new(|| {
-                V8_LIBRARY_INITIAL_MEMORY_LIMIT.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_library_memory_delta: Box::new(|| {
-                V8_LIBRARY_MEMORY_USAGE_DELTA.load(Ordering::Relaxed) as usize
-            }),
-            get_v8_flags: Box::new(move || v8_flags.to_owned()),
-        }) {
-            Ok(b) => b,
-            Err(e) => {
-                ctx.log_warning(&format!("Failed loading {} backend, {}", name, e.get_msg()));
-                return Status::Err;
-            }
-        };
-        let version = initialised_backend.get_version();
-        ctx.log_notice(&format!("Registered backend: {name}, {version}."));
-        global_ctx
-            .backends
-            .insert(name.to_string(), initialised_backend);
-    }
-    global_ctx.plugins.push(lib);
-
     unsafe { GLOBALS = Some(global_ctx) };
-
-    let globals = get_globals_mut();
-    globals.pool = Some(Mutex::new(ThreadPool::new(
-        (*EXECUTION_THREADS.lock(ctx)) as usize,
-    )));
 
     Status::Ok
 }
@@ -1106,7 +1143,7 @@ fn function_debug_command(
     }
     let backend = get_backends_mut().get_mut(backend_name).map_or(
         Err(RedisError::String(format!(
-            "Backend '{}' does not exists",
+            "Backend '{}' does not exists or not yet loaded",
             backend_name
         ))),
         Ok,
@@ -1158,38 +1195,41 @@ fn key_space_notification(ctx: &Context, _event_type: NotifyEvent, event: &str, 
     globals.notifications_ctx.on_key_touched(ctx, event, key)
 }
 
-fn scan_key_space_for_streams() {
-    get_globals().mgmt_pool.execute(|| {
-        let cursor = KeysCursor::new();
-        let thread_ctx = ThreadSafeContext::default();
-        loop {
-            let guard = thread_ctx.lock();
-            let ctx = &guard;
-            let scanned = cursor.scan(ctx, &|ctx, key_name, key| {
-                let key_type = match key {
-                    Some(k) => k.key_type(),
-                    None => ctx.open_key(&key_name).key_type(),
-                };
-                if key_type == Stream {
-                    get_globals_mut().stream_ctx.on_stream_touched(
-                        ctx,
-                        "created",
-                        key_name.as_slice(),
-                    );
+fn scan_key_space_for_streams(ctx: &Context) {
+    let mut mgmt_pool = get_globals().management_pool.lock(ctx);
+    mgmt_pool
+        .get_or_insert_with(|| ThreadPool::with_name("RGMgmtExecutor".to_owned(), 1))
+        .execute(|| {
+            let cursor = KeysCursor::new();
+            let thread_ctx = ThreadSafeContext::default();
+            loop {
+                let guard = thread_ctx.lock();
+                let ctx = &guard;
+                let scanned = cursor.scan(ctx, &|ctx, key_name, key| {
+                    let key_type = match key {
+                        Some(k) => k.key_type(),
+                        None => ctx.open_key(&key_name).key_type(),
+                    };
+                    if key_type == Stream {
+                        get_globals_mut().stream_ctx.on_stream_touched(
+                            ctx,
+                            "created",
+                            key_name.as_slice(),
+                        );
+                    }
+                });
+                if !scanned {
+                    break;
                 }
-            });
-            if !scanned {
-                break;
             }
-        }
-    })
+        })
 }
 
 #[role_changed_event_handler]
 fn on_role_changed(ctx: &Context, role_changed: ServerRole) {
     if let ServerRole::Primary = role_changed {
         ctx.log_notice("Role changed to primary, initializing key scan to search for streams.");
-        scan_key_space_for_streams();
+        scan_key_space_for_streams(ctx);
     } else {
         log::info!("Role changed to replica, abort all async commands invocation.");
         let globals = get_globals_mut();
