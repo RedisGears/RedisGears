@@ -8,7 +8,7 @@ Load a new library to Triggers and Functions.
 ## Required arguments
 
 <details open>
-<summary><code>library code</code></summar>
+<summary><code>library code</code></summary>
 
 The library code.
 </details>
@@ -32,7 +32,7 @@ A string representation of a JSON object that will be provided to the library on
 TFUNCTION LOAD returns either
 
 * ["OK"](/docs/reference/protocol-spec/#resp-simple-strings) when the library was loaded correctly.
-* [Error reply](/docs/reference/protocol-spec/#resp-errors) when the library could not be added.
+* [Error reply](/docs/reference/protocol-spec/#resp-errors) when the library could not be loaded.
 
 ## Examples
 

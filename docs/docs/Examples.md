@@ -6,7 +6,7 @@ description: >
     How Triggers and Functions can be used
 ---
 
-Triggers and Functions enable the detection of changes to data as they happen and guarantee seamless execution of business logic at the data source. This ensures that new options to manipulate the data are possible and can be delivered for all the clients at the same while deployment and maintenance are simplified. Let's explore some industry-specific use cases where these capabilities shine:
+Triggers and Functions enable the detection of changes to data as they happen and guarantee seamless execution of business logic at the data source. This ensures that new options to manipulate the data are possible and can be delivered for all the clients at the same time, while deployment and maintenance are simplified. Let's explore some industry-specific use cases where these capabilities shine:
 
 - **Retail**: In the retail sector, a function can be developed to update the inventory immediately upon order receipt. This empowers businesses to accurately predict stock requirements for specific warehouses on any given day.
 - **Travel**: For the travel industry, a trigger can be utilized to detect new flight bookings and efficiently load the relevant information into a queue for different consumers. Services can then leverage this data to provide recommendations for hotels, restaurants, car rental services, and more. Leveraging Redis geometries, powerful recommendation systems can offer localized and personalized suggestions.
@@ -44,7 +44,7 @@ redis.registerKeySpaceTrigger('alert_user_changed', 'user:',
 
 ## Enrich and transform data
 
-Data can be extracted, enriched or transformed and loaded again. As an example, upon insertion of a document in a Hash data structure, a Trigger can launch the execution of a Function that computes the number of words in the text (in the example, a simple tokenization is presented but the logic can be as complex as required). The counter is finally stored in the same Hash together with the original document. 
+Data can be extracted, enriched or transformed, and loaded again. As an example, upon insertion of a document in a Hash data structure, a Trigger can launch the execution of a Function that computes the number of words in the text (in the example, a simple tokenization is presented but the logic can be as complex as required). The counter is finally stored in the same Hash together with the original document. 
 
 ```javascript
 function wordsCounter(client, data){
@@ -61,7 +61,7 @@ redis.registerKeySpaceTrigger('words_counter', 'doc:',
 
 ## Batch operations
 
-JavaScript functions can be executed when required, for example as part of a scheduled or periodic maintenance routines. An example could be deleting data identified by the desired pattern. 
+JavaScript functions can be executed when required, for example as part of scheduled or periodic maintenance routines. An example could be deleting data identified by the desired pattern. 
 
 
 ```javascript
@@ -96,7 +96,7 @@ Actions of any kind can be performed on the keyspace or a subset of it.
 
 ## Stream Processing
 
-The ability to detect and process new data pushed to Redis Streams enables real-time data transformation. As an example, it is possible to copy every new entry from a Redis Stream to a Redis JSON data structure. Indexed search and aggregation of Hashes and JSON data structures open to multiple uses. For example, the following function detects new data and increments a counter.
+The ability to detect and process new data pushed to Redis Streams enables real-time data transformation. As an example, it is possible to copy every new entry from a Redis Stream to a Redis JSON data structure. Indexed search and aggregation of Hashes and JSON data structures provide for multiple uses. For example, the following function detects new data and increments a counter.
 
 
 ```javascript

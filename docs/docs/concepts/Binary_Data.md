@@ -6,16 +6,16 @@ description: >
     Working with binary data
 ---
 
-By default, Triggers and Functions will decode all data as string and will raise error on failures. Though usefull for most users sometimes there is a need to work with binary data. In order to do so, the library developer has to considerations the following:
+By default, Triggers and Functions will decode all data as a string and will raise error on failures. Though useful for most users, sometimes there is a need to work with binary data. In order to do so, the library developer has to consider the following:
 
 1. Binary function arguments
 2. Binary command results
-3. Binary keys names On [KeySpace triggers](./triggers/KeySpace_Triggers.md)
+3. Binary key names on [KeySpace triggers](./triggers/KeySpace_Triggers.md)
 4. Binary data on [stream triggers](./triggers/Stream_Triggers.md)
 
 ### Binary Function Arguments
 
-It is possible to instruct Triggers and Functions not to decode function arguments as `JS` `Strings` using [redis.functionFlags.RAW_ARGUMENTS](./Function_Flags.md) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
+It is possible to instruct Triggers and Functions not to decode function arguments as `JS` `Strings` using the [redis.functionFlags.RAW_ARGUMENTS](./Function_Flags.md) function flag. In this case, the function arguments will be given as `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -38,11 +38,11 @@ The above example will allow us to set `key` and `val` even if those are binary 
 "\xaa"
 ```
 
-Notice that `call` function also except `JS` `ArrayBuffer` arguments.
+Notice that the `call` function also accepts `JS` `ArrayBuffer` arguments.
 
 ### Binary Command Results
 
-Getting function arguments as binary data is not enough. We might want to read binary data from Redis key. In order to do this we can use `callRaw` function that will not decode the result as `JS` `String` and instead will return the result as `JS` `ArrayBuffer`. Example:
+Getting function arguments as binary data is not enough. We might want to read binary data from a Redis key. In order to do this we can use the `callRaw` function, which will not decode the result as a `JS` `String` and instead will return the result as a `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -56,7 +56,7 @@ redis.registerFunction("my_get",
 );
 ```
 
-The above example will be able to fetch binary data and return it to the user. Run example:
+The above example will be able to fetch binary data and return it to the user. For example:
 
 ```bash
 27.0.0.1:6379> set "\xaa" "\xaa"
@@ -65,11 +65,11 @@ OK
 "\xaa"
 ```
 
-Notice that `JS` `ArrayBuffer` can be returned by RedisGears function, RedisGears will return it to the client as `bulk string`.
+Notice that a `JS` `ArrayBuffer` can be returned by a function, it will be returned to the client as `bulk string`.
 
 ### Binary Keys Names On Database Triggers
 
-On [KeySpace triggers](./triggers/KeySpace_Triggers.md), if the key name that triggered the event is binary. The `data.key` field will be NULL. The `data.key_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case, example:
+On [KeySpace triggers](./triggers/KeySpace_Triggers.md), if the key name that triggered the event is binary, the `data.key` field will be NULL. The `data.key_raw` field is always provided as a `JS` `ArrayBuffer` and can be used as in the following example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -105,11 +105,11 @@ OK
 3) "\xaa"
 ```
 
-For more information, follow [KeySpace triggers](./triggers/KeySpace_Triggers.md) page.
+For more information see [KeySpace triggers](./triggers/KeySpace_Triggers.md).
 
 ### Binary Data on Stream Consumers
 
-On [stream triggers](./triggers/Stream_Triggers.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is always provided as `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case it is possible to use `data.record` (which always exists) and contains the data as `JS` `ArrayBuffer`. Example:
+On [stream triggers](./triggers/Stream_Triggers.md), if the key name is binary. The `data.stream_name` field will be NULL. The `data.stream_name_raw` field is always provided as a `JS` `ArrayBuffer` and can be used in this case. In addition, if the content of the steam is binary, it will also appear as `null` under `data.record`. In this case, it is possible to use `data.record` (which always exists) and contains the data as a `JS` `ArrayBuffer`. Example:
 
 ```js
 #!js api_version=1.0 name=lib

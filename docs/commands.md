@@ -10,7 +10,7 @@ TFUNCTION LOAD [REPLACE] [CONFIG <config>] "<library code>"
 
 _Arguments_
 
-* REPLACE - an optional argument, instructs Triggers and Functions to replace the function if its already exists.
+* REPLACE - an optional argument, instructs Triggers and Functions to replace the function if it already exists.
 * CONFIG - a string representation of a JSON object that will be provided to the library on load time, for more information refer to [library configuration](function_advance_topics.md#library-configuration)
 * _library code_ - the library code
 

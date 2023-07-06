@@ -5,7 +5,7 @@
 
 A [Redis module](https://redis.io/docs/modules/) that allows running a JS functions inside the Redis processes. The `JS` code is execute use [V8 `JS` engine](https://v8.dev/).
 
-**Notice, Triggers and Functions is still under active development and not yet GA, the API might (and probably) change at the final GA version.**
+**Notice, Triggers and Functions is still under active development and not yet GA. The API might (and probably will) change at the final GA version.**
 
 ## Run Using Docker
 
@@ -34,7 +34,7 @@ See the [build](docs/build_instructions.md) page for more information.
 ## Getting started
 
 ### Run JS code
-The API exposed by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) works. Let's write a simple `hello world` function that return the string `hello world`:
+The API exposed by the module is very similar to the way [Redis Functions](https://redis.io/docs/manual/programmability/functions-intro/) work. Let's write a simple `hello world` function that returns the string `hello world`:
 ```js
 #!js name=lib api_version=1.0
 
@@ -45,7 +45,7 @@ redis.registerFunction('hello_world', function(){
 The first line indicates the engine to use (`js`) and the library name (`lib`). The rest is the library code.
 
 
-Assuming we put the following code in the file `lib.js`, we can register our function in Triggers and Functions using `TFUNCTION LOAD` command:
+Assuming we put the following code in the file `lib.js`, we can register our function in Redis using the `TFUNCTION LOAD` command:
 
 ```bash
 > redis-cli -x TFUNCTION LOAD < ./lib.js
@@ -59,7 +59,7 @@ And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) co
 "hello_world"
 ```
 
-Notice that [`TFCALL`](docs/commands.md#rgfcal) command arguments are very close to Redis [`FCALL`](https://redis.io/commands/fcall/) command, the only difference is that on Triggers and Functions, the command also gets the library name. The `0` represents the number of keys that will follow (which in our case is `0`).
+Notice that the [`TFCALL`](docs/commands.md#rgfcal) command arguments are very close to the Redis [`FCALL`](https://redis.io/commands/fcall/) command arguments. The only difference is that, for Triggers and Functions, the command also requires the library name. The `0` represents the number of keys that will follow, which in our case is `0`.
 
 ### Calling Redis Commands Inside Triggers and Functions
 
@@ -98,7 +98,7 @@ And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
 * [Configuration](docs/configuration.md)
 * [Advance Functions Topics](docs/function_advance_topics.md)
 * [Sync and Async Run](docs/sync_and_async_run.md)
-* [Stream Triggers with Triggers and Functions](docs/stream_triggers.md)
+* [Stream Triggers](docs/stream_triggers.md)
 * [KeySpace Triggers](docs/keyspace_triggers.md)
 * [Cluster support](docs/cluster_support.md)
 * [JS API](docs/js_api.md)

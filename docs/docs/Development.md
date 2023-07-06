@@ -6,7 +6,7 @@ description: >
   How to develop Triggers and Functions
 ---
 
-When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and become complex it is less comfortable to maintain it as a single file project. Lucky for us JS already face such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi file project and how to wrap it as a single file and send it to Triggers and Functions. The tutorial assume you have Redis with the RedisGears 2.0 module installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
+When the project is small it is acceptable to have a single file that contains the entire code base. But as the project grows and becomes complex it is more difficult to maintain it as a single file project. Lucky for us, JS already addressed such problem and has the relevant tool to maintain a multi file project and compress it on build time to a single file that contains all the code. In this tutorial we will explain how to create a multi file project and how to wrap it as a single file and send it to Triggers and Functions. The tutorial assumes you have Redis with the RedisGears 2.0 module installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
 
 ## Pre-requisite
 
@@ -21,7 +21,7 @@ cd test
 npm init -y
 ```
 
-The above will generate a `package.json` file that looks as follow:
+The above will generate a `package.json` file that looks as follows:
 
 ```json
 {
@@ -39,13 +39,13 @@ The above will generate a `package.json` file that looks as follow:
 
 ```
 
-In order to wrap our multi file project into a single file, we will use [webpack](https://webpack.js.org/), let install the required webpack tools:
+In order to wrap our multi file project into a single file, we will use [webpack](https://webpack.js.org/). Let's install the required webpack tools:
 
 ```bash
 npm install webpack webpack-cli --save-dev
 ```
 
-Now lets create the `src` directory that will contain our code. Inside it lets create a single file, `index.js`, that will be used as our main file.
+Now let's create the `src` directory that will contain our code and inside it create a single file, `index.js`, that will be used as our main file.
 
 ```bash
 mkdir src
@@ -53,7 +53,7 @@ cd src
 touch index.js
 ```
 
-Now lets add some code to `index.js`, open `index.js` file and past the following code:
+Now let's add some code to `index.js`. Open `index.js` file and paste in the following code:
 
 ```js
 redis.register_function("hello", function(){
@@ -61,7 +61,7 @@ redis.register_function("hello", function(){
 });
 ```
 
-The next step is to create the webpack configuration file. On the project root directory, generate a file called `webpack.config.js` and add the following code:
+The next step is to create the webpack configuration file. On the project root directory, create a file called `webpack.config.js` and add the following code:
 
 ```js
 const webpack = require('webpack');
@@ -79,7 +79,7 @@ module.exports = {
 }
 ```
 
-The `entry` field is the entry point of our project. The plugin we use instruct webpack to add a banner line at the beginning of the generated code that will contains the shebang syntax required by Triggers and Functions along side the library name.
+The `entry` field is the entry point of our project. The plugin we use instructs webpack to add a banner line at the beginning of the generated code that will contain the shebang syntax required by Triggers and Functions along side the library name.
 
 We can now build our project, from within the root directory run the following command:
 
@@ -94,7 +94,7 @@ If all was done correctly you will see a new directory, `dist`, with a single fi
 redis.register_function("hello", (function() { return"Hello World" }));
 ```
 
-This file can be send to be evaluated by Triggers and Functions using `redis-cli`. From the project root directory, run the following:
+This file can be sent to be evaluated by Triggers and Functions using `redis-cli`. From the project root directory, run the following:
 
 ```bash
 redis-cli -x RG.FUNCTION LOAD < ./dist/main.js
@@ -109,13 +109,13 @@ An `OK` reply will indicating that the library was loaded successfully. Test the
 
 ## Adding Files to our Project
 
-Lets adda another file under the `src` directory called `test.js` that contains the following code:
+Let's add another file under the `src` directory called `test.js` that contains the following code:
 
 ```js
 export var test = 'test';
 ```
 
-Lets modify `index.js` to import the `test` variable from `test.js`:
+Modify `index.js` to import the `test` variable from `test.js`:
 
 ```js
 import {test} from "./test.js"
@@ -131,14 +131,14 @@ If we will compile our code again:
 npx webpack --config webpack.config.js
 ```
 
-We will see that the generated file content has changed and it is now contains the following code:
+we will see that the generated file content has changed and it now contains the following code:
 
 ```js
 #!js api_version=1.0 name=myFirstLibrary
 (()=>{"use strict";redis.register_function("hello",(function(){return"test"}))})();
 ```
 
-Now we can upload our function (notice that we use the UPGRADE option to upgrade the existing function):
+Now we can upload our function. Notice that we use the UPGRADE option to upgrade the existing function; forgetting to do so will result in an error.
 
 ```bash
 redis-cli -x TFUNCTION LOAD REPLACE < ./dist/main.js
@@ -153,13 +153,13 @@ And we can test our function:
 
 ## Using an External Library
 
-Now lets use some external library, for example `mathjs`. To install the library run the following npm command on the project root directory:
+Now let's try using an external library, for example `mathjs`. To install the library, run the following npm command on the project root directory:
 
 ```
 npm install mathjs --save
 ```
 
-Lets change our program to use `pi` variable imported from `mathjs` library:
+Modify our program to use the `pi` variable imported from `mathjs` library:
 
 ```js
 import {pi} from "mathjs"
@@ -169,7 +169,7 @@ redis.register_function("hello", function(){
 });
 ```
 
-Again lets compile our project:
+Again, compile our project:
 
 ```bash
 npx webpack --config webpack.config.js
@@ -188,11 +188,11 @@ And run it:
 "3.1415926535897931"
 ```
 
-Notice that Triggers and Functions **only supports pure JS libraries**, a library that has a native code or use some native JS API provided by the browser or by nodejs **will not work**.
+Notice that Triggers and Functions **only supports pure JS libraries**. A library that has native code or uses some native JS APIs provided by the browser or by nodejs **will not work**.
 
 ## Easy Build and Deploy
 
-We can use npm scripts section to achieve an easy build and deploy commands, change the scripts section on `package.json` to the following:
+We can use an npm scripts section to achieve easy to use build and deploy commands. Change the scripts section on `package.json` to the following:
 
 ```json
 "scripts": {
