@@ -1,6 +1,6 @@
 # Create a Development Environment
 
-When a project is small, it is acceptable to have a single file that contains the entire code base. But as the project grows and becomes more complex, it is less comfortable to maintain it as a single file project. Luckily, JavaScript has already faced such a problem and has a relevant tool to maintain a multi-file project and compress it on build time to a single file containing all the code. In this tutorial, we will explain how to create a multi-file project, wrap it as a single file, and send it to Triggers and Functions. The tutorial assumes you have Redis with the module RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
+When a project is small, it is acceptable to have a single file that contains the entire code base. But as the project grows and becomes more complex, it is more difficult to maintain it as a single file project. Luckily, JavaScript has already faced such a problem and has a relevant tool to maintain a multi-file project and compress it on build time to a single file containing all the code. In this tutorial, we will explain how to create a multi-file project, wrap it as a single file, and send it to Triggers and Functions. The tutorial assumes you have Redis with the module RedisGears 2.0 installed on `localhost:6379`. See [getting started](../README.md) section for installation instructions.
 
 ## Pre-requisite
 
@@ -182,7 +182,7 @@ And run it:
 "3.1415926535897931"
 ```
 
-Notice that Triggers and Functions **only supports pure JS libraries**, a library that has a native code or use some native JS API provided by the browser or by nodejs **will not work**.
+Notice that Triggers and Functions **only supports pure JS libraries**, a library that either has native code or uses some native JS API provided by the browser or by Node.js **will not work**.
 
 ## Easy Build and Deploy
 
@@ -232,7 +232,7 @@ OK
 
 **The following tutorial is experimental and is not promised to be supported in the final GA version**
 
-Fortunately for us, the V8 engine comes with embedded WebAssembly support. We can leverage it to run our code in some low-level language and achieve better performance on CPU-intensive tasks. This tutorial will show how to compile and run a rust code inside V8 WebAssembly embedded inside Redis using Triggers and Functions.
+Fortunately for us, the V8 engine comes with embedded WebAssembly support. We can leverage it to run our code in some low-level language and achieve better performance on CPU-intensive tasks. This tutorial will show how to compile and run Rust code inside V8 WebAssembly, embedded inside Redis using Triggers and Functions.
 
 ## Pre-requisite
 

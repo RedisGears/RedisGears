@@ -13,11 +13,11 @@ The following sections describe the configuration options and how to set them.
 ## Bootstrap Configuration
 
 You can set your configuration options when the module is loaded.
-When the module is loaded on start time, the module configuration can be set on the Redis configuration file itself. When loading the module on runtime the configuration can be given to the `MODULE LOADEX` command. Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
+When the module is loaded at start time, the module configuration can be defined in the Redis configuration file. When loading the module at runtime the configuration can be given to the `MODULE LOADEX` command. Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 
 ## Runtime Configuration
 
-You may set certain configuration options at runtime. Setting a configuration at runtime is done using `CONFIG SET` command. Here also, Each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
+You may set certain configuration options at runtime. Setting a configuration at runtime is done using `CONFIG SET` command. Here each configuration must be prefixed with the module name, `redisgears_2.<configuration name>`.
 
 Example:
 
@@ -30,7 +30,7 @@ OK
 
 ## execution-threads
 
-The `execution-threads` configuration option controls the amount of background thread that runs JS code. **Notice that libraries are considered single threaded**, This configuration allows parallelize the invocation of multiple libraries only.
+The `execution-threads` configuration option controls the number of background threads that run JS code. **Note that libraries are considered single threaded**. This configuration allows Redis to parallelize the invocation of multiple libraries.
 
 _Expected Value_
 
@@ -54,14 +54,14 @@ No
 
 ## library-fatal-failure-policy
 
-The `library-fatal-failure-policy` configuration option controls how to handle a fatal error. Fatal error is consider one of the following:
+The `library-fatal-failure-policy` configuration option controls how to handle a fatal error. A fatal error is consider one of the following:
 
-* Block timeout - The function blocks the Redis processes for to long (configurable using [lock-redis-timeout](#lock-redis-timeout) configuration value)
-* OOM - The function consumer to much memory (configurable using [v8-maxmemory](#v8-maxmemory) configuration value).
+* Block timeout - The function blocks the Redis processes for too long (configurable using the [lock-redis-timeout](#lock-redis-timeout) configuration value)
+* OOM - The function consumes too much memory (configurable using the [v8-maxmemory](#v8-maxmemory) configuration value).
 
-This configuration basically allow choosing between 2 options:
+This configuration basically allows choosing between two options:
 
-* Do not break atomocity property, even at the cost of killing the Redis processes.
+* Do not break atomicity property, even at the cost of killing the Redis processes.
 * Keep my Redis processes alive, even at the cost of losing atomicity.
 
 _Expected Value_
@@ -79,7 +79,7 @@ Yes
 
 ## v8-maxmemory
 
-The `v8-maxmemory` configuration option controls the maximum amount of memory used by all V8 libraries. Exceeding this limit is considered a fatal error and will be handled base of the [library-fatal-failure-policy](#library-fatal-failure-policy) configuration value.
+The `v8-maxmemory` configuration option controls the maximum amount of memory used by all V8 libraries. Exceeding this limit is considered a fatal error and will be handled base on the [library-fatal-failure-policy](#library-fatal-failure-policy) configuration value.
 
 _Expected Value_
 
@@ -175,7 +175,7 @@ No
 
 ## lock-redis-timeout
 
-The `lock-redis-timeout` configuration option controls the maximum amount of time (in MS) a library can lock Redis. Exceeding this limit is considered a fatal error and will be handled base of the [library-fatal-failure-policy](#library-fatal-failure-policy) configuration value.
+The `lock-redis-timeout` configuration option controls the maximum amount of time (in MS) a library can lock Redis. Exceeding this limit is considered a fatal error and will be handled based on the [library-fatal-failure-policy](#library-fatal-failure-policy) configuration value.
 
 _Expected Value_
 
@@ -199,7 +199,7 @@ Yes
 
 ## remote-task-default-timeout
 
-The `remote-task-default-timeout` configuration option controls the timeout when waiting for remote task to finish. If the timeout reaches an error will return.
+The `remote-task-default-timeout` configuration option controls the timeout when waiting for a remote task to finish. If the timeout is reached an error will result.
 
 _Expected Value_
 
@@ -223,7 +223,7 @@ Yes
 
 ## error-verbosity
 
-The `error-verbosity` configuration option controls the error verbosity messages that will be provided by Triggers and Functions, the higher the value the more verbose the error messages will be (include stack traces and extra information for better analysis and debugging).
+The `error-verbosity` configuration option controls the verbosity of error messages that will be provided by Triggers and Functions. The higher the value the more verbose the error messages will be (for example, including stack traces and extra information for better analysis and debugging).
 
 _Expected Value_
 

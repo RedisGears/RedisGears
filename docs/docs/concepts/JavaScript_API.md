@@ -11,7 +11,7 @@ description: >
 
 * Since version: 2.0.0
 
-The Triggers and Functions JavaScript API always provides a singleton instance of an object named *redis*. The *redis* instance enables the functions to interact with the Redis server that is running it. Following is the API provided by the *redis* object instance.
+The Triggers and Functions JavaScript API provides a singleton instance of an object named *redis*. The *redis* instance enables registered functions to interact with the Redis server on which they are running. Following is the API provided by the *redis* instance.
 
 ### `redis.registerFunction`
 

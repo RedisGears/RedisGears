@@ -6,14 +6,14 @@ description: >
     Execute a JavaScript function based on a KeySpace notification
 ---
 
-KeySpace triggers allow register a function that will be invoked whenever an event happened on the database. Most of the events triggers by command invocation but there are 2 special events that are not necessarily triggered by a command:
+KeySpace triggers allow you to register a function that will be executed whenever an event occurs in the database. Most events are triggered by command invocations, but there are two special events that can occur independently of a command:
 
-1. Expired - fired when a key expired from the database.
-2. Evicted - fired when a key evicted from the database.
+1. Expired: This event is fired when a key expires from the database.
+2. Evicted: This event is fired when a key is evicted from the database.
 
-For the full list of supported events please refer to [Redis Key Space notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands)
+For a complete list of supported events, please refer to the [Redis Key Space notifications page](https://redis.io/docs/manual/keyspace-notifications/#events-generated-by-different-commands).
 
-To register a KeySpace trigger we need to use the `redis.registerKeySpaceTrigger` API when loading our library. The following example shows how to register a database trigger that will add a last update field when ever a hash key is changed:
+To register a KeySpace trigger, you need to use the `redis.registerKeySpaceTrigger` API when loading your library. The following example demonstrates how to register a database trigger that adds a "last updated" field whenever a hash key is modified:
 
 ```js
 #!js api_version=1.0 name=myFirstLibrary
@@ -32,11 +32,11 @@ redis.registerKeySpaceTrigger("consumer", "", function(client, data){
 
 Argument Description:
 
-* consumer - the consumer name.
-* prefix - the prefix of keys we want to fire the trigger on
-* callback - the callback to invoke. Following the same rules of [Sync and Async invocation](../Sync_Async.md). The callback will be invoke only on primary shard.
+* `consumer`: The consumer name.
+* `prefix `: The key prefix on which the trigger should be fired.
+* `callback`: The callback function to invoke, following the same rules of [Sync and Async invocation](../Sync_Async.md). The callback will only be invoked on the primary shard.
 
-Run example:
+Run the example:
 
 ```bash
 127.0.0.1:6379> hset h x 1
@@ -55,7 +55,7 @@ Run example:
 4) "1658390910"
 ```
 
-The `data` argument which pass to the consumer callback are in the following format:
+The `data` argument, which is passed to the consumer callback, are in the following format:
 
 ```json
 {
@@ -65,9 +65,9 @@ The `data` argument which pass to the consumer callback are in the following for
 }
 ```
 
-Notice that `key` field is given only if the key can be decoded as `String`, otherwise the value will be `null`.
+Notice that the `key` field is given only if the key can be decoded as a `JS` `String`, otherwise the value will be `null`.
 
-We can observe the trigger information using `TFUNCTION LIST` command:
+We can display trigger information using `TFUNCTION LIST` command:
 
 ```bash
 127.0.0.1:6379> TFUNCTION list vvv
@@ -108,17 +108,17 @@ We can observe the trigger information using `TFUNCTION LIST` command:
 
 ## Triggers Guarantees
 
-If the callback pass to the trigger is a `JS` function (not a Coroutine), it is guarantee that the callback will be invoke atomically along side the operation that cause the trigger, i.e all client will see the data only after the callback has finished. In addition, it is guarantee that the effect of the callback will be replicated to the replication and the AOF in a `multi/exec` block together with the command that fired the trigger.
+If the callback function passed to the trigger is a `JS` function (not a Coroutine), it is guaranteed that the callback will be invoked atomically along side the operation that caused the trigger; meaning all clients will see the data only after the callback has completed. In addition, it is guaranteed that the effect of the callback will be replicated to the replica and the AOF in a `multi/exec` block together with the command that fired the trigger.
 
-If the callback is a Coroutine, it will be executed in the background and there is not guarantees on where or if it will be executed. The guarantees are the same as describe on [Sync and Async invocation](../Sync_Async.md).
+If the callback is a Coroutine, it will be executed in the background and there is no guarantee on where or if it will be executed. The guarantees are the same as described on [Sync and Async invocation](../Sync_Async.md).
 
 ## Upgrades
 
-When upgrading the trigger code (using the `REPLACE` option of `TFUNCTION LOAD` command) all the trigger parameters can be modified.
+When upgrading existing trigger code using the `REPLACE` option of `TFUNCTION LOAD` command, all trigger parameters can be modified.
 
 ## Advanced Usage
 
-For most use cases, `registerKeySpaceTrigger` API is enough. But there are some use cases where you might need a better guaranteed on when the trigger will be fired. Lets look at the following example:
+For most use cases, the `registerKeySpaceTrigger` API is sufficient. But there are some use cases where you might need a better guarantee on when a trigger will be fired. Let's look at the following example:
 
 ```js
 #!js api_version=1.0 name=myFirstLibrary
@@ -133,7 +133,7 @@ redis.registerKeySpaceTrigger("consumer", "", function(client, data){
 });
 ```
 
-Whenever a hash key is changing, the example above will read the field `name` from the hash (assume its `tom`) and increase the value of the key `name_tom` (**notice that this function will not work properly on cluster, we need to use `{}` on the keys name to make sure we are writing to a key located on the current shard, for simplicity we ignore the cluster issues now**). Running the function will give the following results:
+Whenever a hash key is changed, the example above will read the field `name` from the hash, for example `tom`, and increase the value of the key `name_tom`. (**Notice: This function will not work properly on cluster. We need to use `{}` on the key's name to make sure we are writing to a key located on the current shard. For the sake of simplicity we will ignore the cluster issues for the time being**). Running the function will give the following results:
 
 ```bash
 127.0.0.1:6379> hset x name tom
@@ -146,7 +146,7 @@ Whenever a hash key is changing, the example above will read the field `name` fr
 "1"
 ```
 
-We can see that the key `name_tom` was increased once, and the key `name_jerry` was increased once. Will we get the same results if we wrap the `hset`'s with a `multi`/`exec`?
+We can see that the key `name_tom` was incremented once, and the key `name_jerry` was incremented once. Will we get the same results if we wrap the `hset` call with a `multi`/`exec`?
 
 ```bash
 127.0.0.1:6379> multi
@@ -164,9 +164,9 @@ QUEUED
 "2"
 ```
 
-What just happened? `name_jerry` was increased twice while `name_tom` was not increased at all. This happened because in case of a `multi`/`exec` or Lua, the notifications are fire at the end of the transaction, so all the notifications will see the last value that was written which is `jerry`.
+What just happened? `name_jerry` was incremented twice while `name_tom` was not incremented at all. This happened because, in case of a `multi`/`exec` or Lua function, the notifications are fired at the end of the transaction, so all the clients will receive notifications of the last value written, which is `jerry`.
 
-To fix the code and still get the expected results even on `multi`/`exec`. Triggers and Functions allow to specify an optional callback that will run exactly when the notification happened (and not at the end of the transaction). The constrains on this callback is that it can only **read** data without performing any writes. The new code will be as follow:
+To fix the code and still get the expected results even on `multi`/`exec`. Triggers and Functions allow you to specify an optional callback that will run exactly when the notification happened (and not at the end of the transaction). The constraint on this callback is that it can only **read** data without performing any writes. The new code will be as follow:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -186,7 +186,7 @@ redis.registerKeySpaceTrigger("consumer", "", function(client, data){
 });
 ```
 
-The above code gives an optional function argument, `onTriggerFired`, to our trigger. The function will be fired right after the key change and will allow us to read the content of the key. We are adding the content into the `data` argument which will be given to the actual trigger function that can write the data. The above code works as expected:
+The above code gives an optional function argument, `onTriggerFired`, to our trigger. The function will be fired right after a key change and will allow us to read the content of the key. We are adding the content into the `data` argument, which will be given to the actual trigger function that can write the data. The above code works as expected:
 
 ```bash
 127.0.0.1:6379> multi

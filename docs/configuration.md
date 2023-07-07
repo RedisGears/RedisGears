@@ -217,7 +217,7 @@ Yes
 
 ## error-verbosity
 
-The `error-verbosity` configuration option controls the error verbosity messages that will be provided by Triggers and Functions. The higher the value the more verbose the error messages will be (include stack traces and extra information for better analysis and debugging).
+The `error-verbosity` configuration option controls the verbosity of error messages that will be provided by Triggers and Functions. The higher the value the more verbose the error messages will be (for example, including stack traces and extra information for better analysis and debugging).
 
 _Expected Value_
 

@@ -8,7 +8,7 @@ Delete a library from Triggers and Functions.
 ## Required arguments
 
 <details open>
-<summary><code>library name</code></summar>
+<summary><code>library name</code></summary>
 
 The name of the library to delete.
 </details>

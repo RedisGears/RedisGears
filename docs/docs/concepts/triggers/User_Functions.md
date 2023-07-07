@@ -7,7 +7,7 @@ description: >
 ---
 
 
-The arguments given on the [`TFCALL`](docs/commands.md#tfcall) command, after the function name, will be passed to the function callback. The following example shows how to implement a simple function that returns the value of a key whether its a string or a hash:
+All [`TFCALL`](docs/commands.md#tfcall) command arguments that follow the function name are passed to the function callback. The following example shows how to implement a simple function that returns the value of a key of type string or hash:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -23,7 +23,7 @@ redis.registerFunction('my_get', function(client, key_name){
 });
 ```
 
-Example of running the following function:
+Example of running the preceding function:
 
 ```bash
 127.0.0.1:6379> set x 1
@@ -40,7 +40,7 @@ OK
 
 ```
 
-It is also possible to get all th arguments given to the function as a `JS` array. This is how we can extend the above example to except multiple keys and return their values:
+It is also possible to get all the function arguments as a `JS` array. This is how we can extend the above example to accept multiple keys and return their values:
 
 ```js
 #!js api_version=1.0 name=lib
