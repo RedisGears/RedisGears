@@ -42,7 +42,8 @@ fn main() {
         BUILD_OS_NICK.unwrap(),
         BUILD_OS_ARCH.unwrap(),
         GIT_BRANCH_OR_TAG.unwrap()
-    );
+    )
+    .replace(" ", "_");
 
     let mut gears_snapeshot_file_path = curr_path.clone();
     gears_snapeshot_file_path.push(gears_snapeshot_file_name);

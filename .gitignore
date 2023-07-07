@@ -9,6 +9,9 @@
 pytests/__pycache__/
 pytests/logs/
 
+js_api/node_modules/
+js_api/package-lock.json
+
 # Generated build things
 dockerbuilds/dockerfile.*
 *.tgz

@@ -201,6 +201,7 @@ pub fn parse_prologue(code: &str) -> Result<Prologue> {
     }
 
     let shebang = first_line
+        .trim()
         .strip_prefix(ENGINE_PREFIX)
         .ok_or(Error::InvalidOrMissingPrologue)?;
 
@@ -342,5 +343,11 @@ mod tests {
         let s = "#!js api_version=1.0";
         let err = parse_prologue(s).unwrap_err();
         assert_eq!(err, Error::MissingLibraryName);
+    }
+
+    #[test]
+    fn test_additional_space_at_the_end() {
+        let s = "#!js name=test_lib api_version=1.0 ";
+        assert!(parse_prologue(s).is_ok());
     }
 }
