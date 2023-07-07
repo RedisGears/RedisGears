@@ -2,7 +2,7 @@
     "TFCALL": {
         "summary": "Invoke a function",
         "since": "2.0.0",
-        "group": "scripting",
+        "group": "gears",
         "complexity": "Depends on the function that is executed.",
         "arguments": [
             {
@@ -31,7 +31,7 @@
     "TFCALLASYNC": {
         "summary": "Invoke an async function",
         "since": "2.0.0",
-        "group": "scripting",
+        "group": "gears",
         "complexity": "Depends on the function that is executed.",
         "arguments": [
             {
@@ -57,56 +57,50 @@
             }
         ]
     },
-    "TFUNCTION": {
-        "summary": "A container for the tfunction commands",
+    "TFUNCTION DELETE": {
+        "summary": "Delete a library from Triggers and Functions by name",
         "since": "2.0.0",
-        "group": "scripting",
-        "complexity": "Depends on the subcommand.",
-        "subcommands": {
-            "TFUNCTION|LOAD": {
-                "summary": "Load a new library into Triggers and Functions",
-                "since": "2.0.0",
-                "group": "scripting",
-                "complexity": "O(1)",
-                "arguments": [
-                    {
-                        "name": "replace",
-                        "pure-token": "replace",
-                        "display_text": "replace",
-                        "token": "REPLACE",
-                        "optional": true
-                    },
-                    {
-                        "name": "config",
-                        "type": "string",
-                        "display_text": "config",
-                        "token": "CONFIG",
-                        "optional": true
-                    },
-                    {
-                        "name": "library-code",
-                        "type": "string",
-                        "display_text": "library code"
-                    }
-                ]
+        "group": "gears",
+        "complexity": "O(1)",
+        "arguments": [
+            {
+                "name": "library-name",
+                "type": "string",
+                "display_text": "library name"
+            }
+        ]
+    },
+    "TFUNCTION LOAD": {
+        "summary": "Load a new library into Triggers and Functions",
+        "since": "2.0.0",
+        "group": "gears",
+        "complexity": "O(1)",
+        "arguments": [
+            {
+                "name": "replace",
+                "type": "pure-token",
+                "display_text": "replace",
+                "token": "REPLACE",
+                "optional": true
             },
-            "TFUNCTION|DELETE": {
-                "summary": "Delete a library from Triggers and Functions by name",
-                "since": "2.0.0",
-                "group": "scripting",
-                "complexity": "O(1)",
-                "arguments": [
-                    {
-                        "name": "library-name",
-                        "type": "string",
-                        "display_text": "library name"
-                    }
-                ]
+            {
+                "name": "config",
+                "type": "string",
+                "display_text": "config",
+                "token": "CONFIG",
+                "optional": true
             },
-            "TFUNCTION|LIST": {
+            {
+                "name": "library-code",
+                "type": "string",
+                "display_text": "library code"
+            }
+        ]
+    },
+    "TFUNCTION LIST": {
                 "summary": "List all libraries loaded into Triggers and Functions",
                 "since": "2.0.0",
-                "group": "scripting",
+                "group": "gears",
                 "complexity": "O(N) where N is the number of libraries loaded into Triggers and Functions",
                 "arguments": [
                     {
@@ -128,19 +122,15 @@
                         "type": "pure-token",
                         "display_text": "verbose",
                         "token": "VERBOSE",
-                        "optional": true,
-                        "multiple": true
+                        "optional": true
                     },
                     {
                         "name": "v",
                         "type": "pure-token",
                         "display_text": "v",
                         "token": "V",
-                        "optional": true,
-                        "multiple": true
+                        "optional": true
                     }
                 ]
             }
-        }
-    }
 }
