@@ -668,7 +668,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 self.isolates_gc();
                 Ok(RedisValue::SimpleString("OK".to_string()))
             }
-            "request_v8_gc_fore_debugging" => {
+            "request_v8_gc_for_debugging" => {
                 let l = self.script_ctx_vec.lock().unwrap();
                 l.iter().filter_map(|v| v.upgrade()).for_each(|v| {
                     let isolate_scope = v.isolate.enter();

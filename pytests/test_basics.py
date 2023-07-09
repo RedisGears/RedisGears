@@ -340,7 +340,7 @@ redis.registerAsyncFunction("test1", async function(client){
     future = env.noBlockingTfcallAsync('lib', 'test1')
     env.expect('RPUSH', 'l', '1').equal(1)
     def run_v8_gc():
-        env.cmd('tfunction', 'debug', 'js', 'request_v8_gc_fore_debugging')
+        env.cmd('tfunction', 'debug', 'js', 'request_v8_gc_for_debugging')
         res = env.cmd('info', 'clients')['blocked_clients']
         return res
     runUntil(env, 0, run_v8_gc)
