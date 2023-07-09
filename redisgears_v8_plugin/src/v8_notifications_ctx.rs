@@ -12,26 +12,14 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     run_function_ctx::BackgroundRunFunctionCtxInterface,
 };
 
-use v8_rs::v8::v8_value::V8LocalValue;
-use v8_rs::v8::{v8_promise::V8PromiseState, v8_value::V8PersistValue};
+use v8_rs::v8::v8_value::V8PersistValue;
 
 use crate::v8_native_functions::{get_backgrounnd_client, get_redis_client, RedisClient};
-use crate::v8_script_ctx::V8ScriptCtx;
-use crate::{get_error_from_object, get_exception_msg, v8_backend::bypass_memory_limit};
+use crate::v8_script_ctx::{GilStatus, V8ScriptCtx};
+use crate::{get_exception_msg, v8_backend::bypass_memory_limit};
 
 use std::cell::RefCell;
 use std::sync::Arc;
-
-use v8_derive::new_native_function;
-
-struct V8AckCallbackInternal {
-    ack_callback: Box<dyn FnOnce(Result<(), GearsApiError>) + Send + Sync>,
-    locker: Box<dyn BackgroundRunFunctionCtxInterface>,
-}
-
-struct V8AckCallback {
-    internal: Option<V8AckCallbackInternal>,
-}
 
 struct V8NotificationsCtxInternal {
     persisted_function: V8PersistValue,
@@ -60,62 +48,27 @@ impl V8NotificationsCtxInternal {
 
             let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
-            self.script_ctx.before_run();
-            self.script_ctx.after_lock_gil();
-            let res = self.persisted_function.as_local(&isolate_scope).call(
+            let res = self.script_ctx.call(
+                &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 Some(&[&r_client.to_value(), &notification_data]),
+                GilStatus::Lock,
             );
-            self.script_ctx.before_release_gil();
-            self.script_ctx.after_run();
 
             redis_client.borrow_mut().make_invalid();
 
             match res {
                 Some(res) => {
                     if res.is_promise() {
-                        let res = res.as_promise();
-                        if res.state() == V8PromiseState::Rejected {
-                            let res = res.get_result();
-                            Some(Err(get_error_from_object(&res, &ctx_scope)))
-                        } else if res.state() == V8PromiseState::Fulfilled {
-                            Some(Ok(()))
-                        } else {
-                            let ack_callback_resolve = Arc::new(RefCell::new(V8AckCallback {
-                                internal: Some(V8AckCallbackInternal {
-                                    ack_callback,
-                                    locker: notification_ctx.get_background_redis_client(),
-                                }),
-                            }));
-                            let ack_callback_reject = Arc::clone(&ack_callback_resolve);
-                            let resolve = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, _context| {
-                                    let _unlocker = isolate.new_unlocker();
-                                    if let Some(ack) =
-                                        ack_callback_resolve.borrow_mut().internal.take()
-                                    {
-                                        let _locker = ack.locker.lock();
-                                        (ack.ack_callback)(Ok(()));
-                                    }
-                                    Ok::<_, String>(None)
-                                }
-                            ));
-                            let reject = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, ctx_scope, res: V8LocalValue| {
-                                    let res = get_error_from_object(&res, ctx_scope);
-                                    let _unlocker = isolate.new_unlocker();
-                                    if let Some(ack) =
-                                        ack_callback_reject.borrow_mut().internal.take()
-                                    {
-                                        let _locker = ack.locker.lock();
-                                        (ack.ack_callback)(Err(res));
-                                    }
-                                    Ok::<_, String>(None)
-                                }
-                            ));
-                            res.then(&ctx_scope, &resolve, &reject);
-                            return;
-                        }
+                        self.script_ctx.handle_promise(
+                            &isolate_scope,
+                            &ctx_scope,
+                            &res.as_promise(),
+                            move |res| {
+                                ack_callback(res.map(|_| ()));
+                            },
+                        );
+                        return;
                     } else {
                         Some(Ok(()))
                     }
@@ -154,58 +107,28 @@ impl V8NotificationsCtxInternal {
                 Arc::new(background_client),
             );
 
-            self.script_ctx.before_run();
-            let res = self.persisted_function.as_local(&isolate_scope).call(
+            let res = self.script_ctx.call(
+                &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 Some(&[&r_client.to_value(), &notification_data]),
+                GilStatus::Unlock,
             );
-            self.script_ctx.after_run();
 
             match res {
                 Some(res) => {
                     if res.is_promise() {
-                        let res = res.as_promise();
-                        if res.state() == V8PromiseState::Rejected {
-                            let res = res.get_result();
-                            Some(Err(get_error_from_object(&res, &ctx_scope)))
-                        } else if res.state() == V8PromiseState::Fulfilled {
-                            Some(Ok(()))
-                        } else {
-                            let ack_callback_resolve = Arc::new(RefCell::new(V8AckCallback {
-                                internal: Some(V8AckCallbackInternal {
-                                    ack_callback,
-                                    locker,
-                                }),
-                            }));
-                            let ack_callback_reject = Arc::clone(&ack_callback_resolve);
-                            let resolve = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, _context| {
-                                    let _unlocker = isolate.new_unlocker();
-                                    if let Some(ack) =
-                                        ack_callback_resolve.borrow_mut().internal.take()
-                                    {
-                                        let _locker = ack.locker.lock();
-                                        (ack.ack_callback)(Ok(()));
-                                    }
-                                    Ok::<_, String>(None)
-                                }
-                            ));
-                            let reject = ctx_scope.new_native_function(new_native_function!(
-                                move |isolate, ctx_scope, res: V8LocalValue| {
-                                    let res = get_error_from_object(&res, ctx_scope);
-                                    let _unlocker = isolate.new_unlocker();
-                                    if let Some(ack) =
-                                        ack_callback_reject.borrow_mut().internal.take()
-                                    {
-                                        let _locker = ack.locker.lock();
-                                        (ack.ack_callback)(Err(res));
-                                    }
-                                    Ok::<_, String>(None)
-                                }
-                            ));
-                            res.then(&ctx_scope, &resolve, &reject);
-                            return;
-                        }
+                        self.script_ctx.handle_promise(
+                            &isolate_scope,
+                            &ctx_scope,
+                            &res.as_promise(),
+                            move |res| {
+                                let _unlocker =
+                                    res.as_ref().map(|v| v.isolate_scope.new_unlocker());
+                                let _locker = locker.lock();
+                                ack_callback(res.map(|_| ()));
+                            },
+                        );
+                        return;
                     } else {
                         Some(Ok(()))
                     }
@@ -310,13 +233,12 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
 
                 let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
-                self.internal.script_ctx.before_run();
-                self.internal.script_ctx.after_lock_gil();
-
-                let res = on_trigger_fired.call(&ctx_scope, Some(&[&r_client.to_value(), &val]));
-
-                self.internal.script_ctx.before_release_gil();
-                self.internal.script_ctx.after_run();
+                let res = self.internal.script_ctx.call(
+                    &on_trigger_fired,
+                    &ctx_scope,
+                    Some(&[&r_client.to_value(), &val]),
+                    GilStatus::Lock,
+                );
 
                 redis_client.borrow_mut().make_invalid();
 

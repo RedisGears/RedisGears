@@ -216,10 +216,10 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             Ok(res) => {
                                 let values = res.into_iter().map(|v| get_js_tensor_from_tensor(&script_ctx_ref, &isolate_scope, &ctx_scope, v).to_value()).collect::<Vec<V8LocalValue>>();
                                 let res_js = isolate_scope.new_array(&values.iter().collect::<Vec<&V8LocalValue>>()).to_value();
-                                resolver.resolve(&ctx_scope, &res_js);
+                                script_ctx_ref.resolve(&resolver, &ctx_scope, &res_js);
                             }
                             Err(e) => {
-                                resolver.reject(&ctx_scope, &isolate_scope.new_string(e.get_msg()).to_value());
+                                script_ctx_ref.reject(&resolver, &ctx_scope, &isolate_scope.new_string(e.get_msg()).to_value());
                             }
                         }
 
@@ -299,10 +299,10 @@ pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(
                             Ok(res) => {
                                 let values = res.into_iter().map(|v| get_js_tensor_from_tensor(&script_ctx_ref, &isolate_scope, &ctx_scope, v).to_value()).collect::<Vec<V8LocalValue>>();
                                 let res_js = isolate_scope.new_array(&values.iter().collect::<Vec<&V8LocalValue>>()).to_value();
-                                resolver.resolve(&ctx_scope, &res_js);
+                                script_ctx_ref.resolve(&resolver, &ctx_scope, &res_js);
                             }
                             Err(e) => {
-                                resolver.reject(&ctx_scope, &isolate_scope.new_string(e.get_msg()).to_value());
+                                script_ctx_ref.reject(&resolver, &ctx_scope, &isolate_scope.new_string(e.get_msg()).to_value());
                             }
                         }
 

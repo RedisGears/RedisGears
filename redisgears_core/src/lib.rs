@@ -1141,7 +1141,7 @@ fn function_debug_command(
         }
         _ => (),
     }
-    let backend = get_backends_mut().get_mut(backend_name).map_or(
+    let backend = get_backend(ctx, backend_name).map_or(
         Err(RedisError::String(format!(
             "Backend '{}' does not exists or not yet loaded",
             backend_name
