@@ -338,11 +338,12 @@ redis.registerAsyncFunction("test1", async function(client){
     env.expect('tfunction', 'debug', 'js', 'avoid_global_allow_list').equal('OK')
     env.expect('tfunction', 'LOAD', script).equal('OK')
     future = env.noBlockingTfcallAsync('lib', 'test1')
-    env.expect('RPUSH', 'l', '1').equal(1)
     def run_v8_gc():
         env.cmd('tfunction', 'debug', 'js', 'request_v8_gc_for_debugging')
         res = env.cmd('info', 'clients')['blocked_clients']
         return res
+    runUntil(env, 1, run_v8_gc)
+    env.expect('RPUSH', 'l', '1').equal(1)
     runUntil(env, 0, run_v8_gc)
     future.expectError('Promise was dropped without been resolved')
     
