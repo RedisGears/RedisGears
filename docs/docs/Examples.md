@@ -51,7 +51,7 @@ function wordsCounter(client, data){
     text = client.call('hget', data.key, 'content');
     words = text.split(' ').length;
     client.call('hset', data.key, 'cnt', words.toString());
-    redis.log('Number of words: ' + words.toString());
+    redis.log('Number of words: ' + words.toString()); //This log is for demo purposes, be aware of spamming the log file in production
 }
 
 redis.registerKeySpaceTrigger('words_counter', 'doc:', 
@@ -118,8 +118,6 @@ redis.registerStreamTrigger(
 );
 ```
 
-
-
 ## Automatic Expire
 
 Sometimes it is useful to enforce expiration time for data that by nature is short-lived. An example could be session data, or authentication tokens. A trigger fits the use case and can execute a function that sets the desired TTL.
@@ -128,7 +126,7 @@ Sometimes it is useful to enforce expiration time for data that by nature is sho
 ```javascript
 function automaticSessionExpiry(client, data){
     client.call('expire', data.key, '3600');
-    redis.log('Session ' + data.key + ' has been automatically expired');
+    redis.log('Session ' + data.key + ' has been automatically expired'); //This log is for demo purposes, be aware of spamming the log file in production
 }
 
 redis.registerKeySpaceTrigger('automaticSessionExpiry', 'session:', 
