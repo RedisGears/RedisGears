@@ -6,14 +6,14 @@ description: >
     Sync and Async Functions
 ---
 
-By default, each time a function is invoked, it is invoke synchronously. This means that the atomicity property is promised (no other commands will be invoke or Redis while RedisGears function is running). Atomicity property has some great advantages:
+By default, each time a function is invoked, it is executed synchronously. This ensures the atomicity property, meaning that no other commands will be executed on Redis while the function is running. The atomicity property offers several advantages:
 
-* You can update multiple keys at once and be sure any other client will see the entire update (and not partial updates).
-* You can be sure the data in Redis are not changed while processing it.
+* Multiple keys can be updated simultaneously, guaranteeing that other clients see the complete update rather than partial updates.
+* The data in Redis remains unchanged while it is being processed.
 
-On major disadvantage of the atomicity property is that during the entire invocation Redis is blocked and can not serve any other clients.
+However, the major disadvantage of the atomicity property is that Redis is blocked throughout the entire invocation, preventing it from serving other clients.
 
-Triggers and Functions attempt to give a better flexibility to the function writer and allow to invoke function on the background. When function is invoke on the background it can not touch the Redis key space, To touch the Redis key space from the background, the function must block Redis and enter an atomic section where the atomicity property is once again guaranteed.
+Triggers and Functions aim to provide greater flexibility to function writers by enabling the invocation of functions in the background. When a function is invoked in the background, it cannot directly access the Redis key space. To interact with the Redis key space from the background, the function must block Redis and enter an atomic section where the atomicity property is once again guaranteed.
 
 Triggers and Functions function can go to the background by implement the function as a JS Coroutine and use `registerAsyncFunction`. The Coroutine is invoked on a background thread and do not block the Redis processes. Example:
 
@@ -48,7 +48,7 @@ Running this function will return a `pong` reply:
 
 Notice that this time, in order to invoke the function, we used `TFCALLASYNC`. **We can only invoke async functions using `TFCALLASYNC`**.
 
-Now lets look at a more complex example, assuming we want to write a function that counts the number of hashes in Redis that has name property with some value. Lets first write a synchronous function that does it, we will use the `SCAN` command to scan the key space:
+Now let's look at a more complex example. Assume we want to write a function that counts the number of hashes in Redis that have a `name` property with some value. As a first attempt, we'll write a synchronous function that uses the `SCAN` command to scan the key space:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -70,7 +70,7 @@ redis.registerFunction('test', function(client, expected_name){
 });
 ```
 
-Though working fine, this function has a potential to block Redis for a long time, lets modify this function to run on the background as a Coroutine:
+While this function works, it has the potential to block Redis for a long time. So let's modify this function to run in the background as a Coroutine:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -94,11 +94,11 @@ redis.registerAsyncFunction('test', async function(async_client, expected_name){
 });
 ```
 
-Both implementations return the same result, but the seconds runs in the background and block Redis just to analyze the next batch of keys that returned from the scan command. Other commands will be processed in between the scan batches. Notice that the Coroutine approach allows the key space to be changed while the scanning it, function writer will need to decide if this is acceptable.
+Both implementations return the same result, but the second function runs in the background and blocks Redis just to analyze the next batch of keys that are returned from the `SCAN` command. Other commands will be processed in between `SCAN` batches. Notice that the Coroutine approach allows the key space to be changed while the scanning it. The function writer will need to decide if this is acceptable.
 
 # Start Sync and Move Async
 
-The above example is costly, even though Redis is not blocked it is still takes time to return the reply to the user. If we flatten the requirement in such way that we agree to get an approximate value, we can get a much better performance (on most cases). We will cache the result on a key called `<name>_count` and set some expiration on that key so that we will recalculate the value from time to time. The new code will look like this:
+The previous example, although functional, has a drawback in terms of performance. Even though Redis is not blocked, it still takes time to return the reply to the user. However, if we modify the requirement slightly and agree to obtain an approximate value, we can achieve much better performance in most cases. This can be done by implementing result caching using a key named `<name>_count` and setting an expiration time on that key, which triggers recalculation of the value periodically. Here's the updated code:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -139,7 +139,7 @@ redis.registerAsyncFunction('test', async function(async_client, expected_name){
 });
 ```
 
-The above code works as expected, it first check the cache, if cache exists it returns it, otherwise it is perform the calculation and update the cache. But the above example is not optimal, the callback is a Coroutine which means that it will always be calculated on a background thread. Moving to a background thread by itself is costly, the best approach would have been to check the cache synchronously and only if its not there, move to the background. Triggers and Functions allows to start synchronously and move asynchronously using `executeAsync` function. The new code:
+The above code works as expected. It first checks the cache and if the cache exists it's returned. Otherwise it will perform the calculation and update the cache. But the above example is not optimal. The callback is a Coroutine, which means that it will always be calculated on a background thread. Intrinsically, moving to a background thread is costly. The best approach would be to check the cache synchronously and, only if its not there, move to the background. Triggers and Functions provides for starting synchronously and then moving asynchronously using `executeAsync` function as required. The new code:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -179,26 +179,26 @@ redis.registerAsyncFunction('test', function(client, expected_name){
 });
 ```
 
-`executeAsync` will return a `Promise` object, we return this Promise object as the function return value. When Triggers and Functions sees that the function returned a Promise, it waits for the promise to be resolved and return its result to the client. The above implementation will be much faster in case of cache hit.
+`executeAsync` will return a `Promise` object. When Triggers and Functions sees that the function returns a Promise, it waits for the promise to be resolved and returns its result to the client. The above implementation will be much faster in the case of cache hit.
 
-**Notice** that even though we registered a sync function (not a Coroutine) we still used `registerAsyncFunction`. This is because our function has the potential of blocking the client and take the execution to the background. If we would have used `registerFunction` Triggers and Functions would not have allow us to blocked the client and would have ignore the returned promise object.
+**Notice** that even though we registered a synchronous function (not a Coroutine) we still used `registerAsyncFunction`. This is because our function has the potential of blocking the client, taking the execution to the background. If we had used `registerFunction`, Triggers and Functions would not have allowed the function to block the client and it would have ignored the returned promise object.
 
-**Also notice** it is not always possible to wait for a promise to be resolved, if the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such case the client will get an error. It is possible to check if blocking the client is allowed using `client.isBlockAllowed()` function that will return `true` if it is OK to wait for a promise to be resolved and `false` if its not possible.
+**Also notice** it is not always possible to wait for a promise to be resolved. If the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such cases the client will get an error. It is possible to check if blocking the client is allowed using the `client.isBlockAllowed()` function, which will return `true` if it is OK to wait for a promise to be resolved and `false` if it is not possible.
 
 
 # Fail Blocking the Redis
 
-Blocking Redis might fail, couple of reasons for such failure can be:
+Blocking Redis might fail for a few reasons:
 
 * Redis reached OOM state and the `redis.functionFlags.NO_WRITES` or `redis.functionFlags.ALLOW_OOM` flags are not set (see [functions flags](./Function_Flags.md) for more information)
-* `redis.functionFlags.NO_WRITES` flag is not set and the Redis instance turned role and it is now a replica.
-* ACL user that invoked the function was deleted.
+* `redis.functionFlags.NO_WRITES` flag is not set and the Redis instance changed roles and is now a replica.
+* The ACL user that invoked the function was deleted.
 
-The failure will result in an exception that the function writer can choose to handle or throw it to be catch by Triggers and Functions.
+The failure will result in an exception that the function writer can choose to handle or throw it to be caught by Triggers and Functions.
 
 # Block Redis Timeout
 
-Blocking the Redis for long time is discouraged and considered unsafe operation. Triggers and Functions attempt to protect the function writer and timeout the blocking if it continues for to long. The timeout can be set as a [module configuration](./../Configuration.md) along side the fatal failure policy that indicate how to handle the timeout. Policies can be one of the following:
+Blocking Redis for a long time is discouraged and is considered an unsafe operation. Triggers and Functions attempts to protect the function writer and will time out the blocking function if it continues for too long. The timeout can be set as a [module configuration](./../Configuration.md) along side the fatal failure policy that indicates how to handle the timeout. Policies can be one of the following:
 
-* Abort - stop the function invocation even at the cost of losing the atomicity property
-* Kill - keep the atomicity property and do not stop the function invocation. In such case there is a risk of an external processes to kill the Redis server, thinking that the shard is not responding.
+* Abort - Stop the function invocation even at the cost of losing the atomicity property.
+* Kill - Keep the atomicity property and do not stop the function invocation. In this case there is a risk of an external process killing the Redis server, thinking that the shard is not responding.
