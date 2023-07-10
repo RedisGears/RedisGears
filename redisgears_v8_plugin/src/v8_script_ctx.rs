@@ -340,7 +340,7 @@ impl V8ScriptCtx {
         'isolate,
         'ctx_scope,
         T,
-        Done: FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
+        Done: 'static + FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
     >(
         &self,
         ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
@@ -392,7 +392,7 @@ impl V8ScriptCtx {
         'isolate,
         'ctx_scope,
         T,
-        Done: FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
+        Done: 'static + FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
     >(
         &self,
         isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
