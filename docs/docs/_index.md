@@ -3,6 +3,7 @@ title: Triggers and Functions
 description: Trigger and execute JavaScript functions in the Redis process
 linktitle: Triggers and Functions
 type: docs
+stack: true
 ---
 
 [![discord](https://img.shields.io/discord/697882427875393627?style=flat-square)](https://discord.gg/xTbqgTB)
