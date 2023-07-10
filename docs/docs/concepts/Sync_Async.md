@@ -15,7 +15,7 @@ However, the major disadvantage of the atomicity property is that Redis is block
 
 Triggers and Functions aim to provide greater flexibility to function writers by enabling the invocation of functions in the background. When a function is invoked in the background, it cannot directly access the Redis key space. To interact with the Redis key space from the background, the function must block Redis and enter an atomic section where the atomicity property is once again guaranteed.
 
-To run Triggers and Functions in the background, functions can be implemented as JS Coroutines using the `registerAsyncFunction` API. The Coroutine is invoked on a background thread and does not block the Redis processes. Here's an example:
+To run Triggers and Functions in the background, functions can be implemented as JS coroutines using the `registerAsyncFunction` API. The coroutine is invoked on a background thread and does not block the Redis processes. Here's an example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -27,7 +27,7 @@ redis.registerAsyncFunction('test', async function(){
 
 The simple function shown above will return the value 'test' and will execute on a background thread without blocking Redis. This allows Redis to continue accepting commands from other clients while the function is running.
 
-The Coroutine also accepts an optional client argument, which differs from the client used in synchronous functions. This client argument does not allow direct invocation of Redis commands. Instead, it provides the capability to block Redis and enter an atomic section where the atomicity property is once again guaranteed. Here's an example that demonstrates invoking a ping command from within an async Coroutine:
+The coroutine also accepts an optional client argument, which differs from the client used in synchronous functions. This client argument does not allow direct invocation of Redis commands. Instead, it provides the capability to block Redis and enter an atomic section where the atomicity property is once again guaranteed. Here's an example that demonstrates invoking a ping command from within an async coroutine:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -70,7 +70,7 @@ redis.registerFunction('test', function(client, expected_name){
 });
 ```
 
-While this function works, it has the potential to block Redis for a long time. So let's modify this function to run in the background as a Coroutine:
+While this function works, it has the potential to block Redis for a long time. So let's modify this function to run in the background as a coroutine:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -94,7 +94,7 @@ redis.registerAsyncFunction('test', async function(async_client, expected_name){
 });
 ```
 
-Both implementations return the same result, but the second function runs in the background and blocks Redis just to analyze the next batch of keys that are returned from the `SCAN` command. Other commands will be processed in between `SCAN` batches. Notice that the Coroutine approach allows the key space to be changed while the scanning it. The function writer will need to decide if this is acceptable.
+Both implementations return the same result, but the second function runs in the background and blocks Redis just to analyze the next batch of keys that are returned from the `SCAN` command. Other commands will be processed in between `SCAN` batches. Notice that the coroutine approach allows the key space to be changed while the scanning it. The function writer will need to decide if this is acceptable.
 
 # Start Sync and Move Async
 
@@ -139,7 +139,7 @@ redis.registerAsyncFunction('test', async function(async_client, expected_name){
 });
 ```
 
-The above code works as expected. It first checks the cache and if the cache exists it's returned. Otherwise it will perform the calculation and update the cache. But the above example is not optimal. The callback is a Coroutine, which means that it will always be calculated on a background thread. Intrinsically, moving to a background thread is costly. The best approach would be to check the cache synchronously and, only if its not there, move to the background. Triggers and Functions provides for starting synchronously and then moving asynchronously using `executeAsync` function as required. The new code:
+The above code works as expected. It first checks the cache and if the cache exists it's returned. Otherwise it will perform the calculation and update the cache. But the above example is not optimal. The callback is a coroutine, which means that it will always be calculated on a background thread. Intrinsically, moving to a background thread is costly. The best approach would be to check the cache synchronously and, only if its not there, move to the background. Triggers and Functions provides for starting synchronously and then moving asynchronously using `executeAsync` function as required. The new code:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -181,7 +181,7 @@ redis.registerAsyncFunction('test', function(client, expected_name){
 
 `executeAsync` will return a `Promise` object. When Triggers and Functions sees that the function returns a Promise, it waits for the promise to be resolved and returns its result to the client. The above implementation will be much faster in the case of cache hit.
 
-**Notice** that even though we registered a synchronous function (not a Coroutine) we still used `registerAsyncFunction`. This is because our function has the potential of blocking the client, taking the execution to the background. If we had used `registerFunction`, Triggers and Functions would not have allowed the function to block the client and it would have ignored the returned promise object.
+**Notice** that even though we registered a synchronous function (not a coroutine) we still used `registerAsyncFunction`. This is because our function has the potential of blocking the client, taking the execution to the background. If we had used `registerFunction`, Triggers and Functions would not have allowed the function to block the client and it would have ignored the returned promise object.
 
 **Also notice** it is not always possible to wait for a promise to be resolved. If the command is called inside a `multi/exec` it is not possible to block it and wait for the promise. In such cases the client will get an error. It is possible to check if blocking the client is allowed using the `client.isBlockAllowed()` function, which will return `true` if it is OK to wait for a promise to be resolved and `false` if it is not possible.
 
