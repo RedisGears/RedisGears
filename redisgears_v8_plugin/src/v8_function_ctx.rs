@@ -200,7 +200,7 @@ impl V8InternalFunction {
                 &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 args_ref.as_deref(),
-                GilStatus::Unlock,
+                GilStatus::Unlocked,
             )
         };
 
@@ -280,7 +280,7 @@ impl V8InternalFunction {
                 &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 args_ref.as_deref(),
-                GilStatus::Lock,
+                GilStatus::Locked,
             )
         };
 

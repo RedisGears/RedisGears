@@ -301,7 +301,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
 
             let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
-            Ok(script_ctx_ref.call(&f, ctx_scope, Some(&[&c.to_value()]), GilStatus::Lock))
+            Ok(script_ctx_ref.call(&f, ctx_scope, Some(&[&c.to_value()]), GilStatus::Locked))
         }),
     );
 
@@ -730,7 +730,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                         &ctx_scope,
                         Arc::new(bg_redis_client),
                     );
-                    let res = new_script_ctx_ref.call(&f.take_local(&isolate_scope), &ctx_scope, Some(&[&background_client.to_value()]), GilStatus::Unlock);
+                    let res = new_script_ctx_ref.call(&f.take_local(&isolate_scope), &ctx_scope, Some(&[&background_client.to_value()]), GilStatus::Unlocked);
 
                     let resolver = resolver.take_local(&isolate_scope).as_resolver();
                     match res {
@@ -1357,7 +1357,7 @@ pub(crate) fn initialize_globals_1_0(
                 }
                 let args_refs = args.iter().collect::<Vec<&V8LocalValue>>();
 
-                let res = script_ctx.call(&persisted_function.as_local(&isolate_scope), &ctx_scope, Some(&args_refs), GilStatus::Unlock);
+                let res = script_ctx.call(&persisted_function.as_local(&isolate_scope), &ctx_scope, Some(&args_refs), GilStatus::Unlocked);
 
                 match res {
                     Some(r) => {

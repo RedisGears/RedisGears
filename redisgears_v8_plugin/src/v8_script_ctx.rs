@@ -85,27 +85,42 @@ impl GilStateCtx {
 }
 
 pub(crate) enum GilStatus {
-    Lock,
-    Unlock,
+    Locked,
+    Unlocked,
 }
 
 impl GilStatus {
     pub(crate) fn is_locked(&self) -> bool {
-        match self {
-            GilStatus::Lock => true,
-            GilStatus::Unlock => true,
-        }
+        matches!(self, Self::Locked)
     }
 }
 
 pub(crate) struct V8ScriptCtx {
+    /// The name of the library.
     pub(crate) name: String,
+
+    /// The initialisation script to run.
     pub(crate) script: V8PersistedScript,
+
+    /// Tensors API for RedisAI integrations.
     pub(crate) tensor_object_template: V8PersistedObjectTemplate,
+
+    /// The V8 context
     pub(crate) ctx: V8Context,
+
+    /// The V8 isolate
     pub(crate) isolate: V8Isolate,
+
+    /// Api to interact back with Redis for operations like command invocation and logging.
     pub(crate) compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
+
+    /// A boolean value to determine if we are presently executing JavaScript code or not.
+    /// This boolean is employed to ascertain whether we should prompt for JavaScript interruption
+    /// and conduct timeout checks.
     pub(crate) is_running: AtomicBool,
+
+    /// Signifies the present locking status of the running JavaScript code,
+    /// enabling us to distinguish between background JS code execution and JS code that holds a lock on Redis.
     pub(crate) lock_state: RefCellWrapper<GilStateCtx>,
 }
 
@@ -138,34 +153,49 @@ impl V8ScriptCtx {
         }
     }
 
+    /// Perform necessary operation before running JS code.
+    /// Currently, just set an atomic boolean indicating JS code is running.
+    /// Returns [`true`] if JS code was already running or [`false`] otherwise.
     pub(crate) fn before_run(&self) -> bool {
         self.is_running.swap(true, Ordering::Relaxed)
     }
 
+    /// Perform necessary operation after running JS code.
+    /// Gets us input whether or not a JS code was already running before and set
+    /// it to an atomic boolean indicating whether or not a JS code is running.
     pub(crate) fn after_run(&self, val: bool) {
         self.is_running.store(val, Ordering::Relaxed);
     }
 
+    /// Perform necessary operation after locking Redis GIL like saving
+    /// the current time for timeout purposes.
     pub(crate) fn after_lock_gil(&self) {
         self.lock_state.ref_cell.borrow_mut().set_lock();
     }
 
+    /// Perform necessary operation before unlocking Redis GIL like unset
+    /// the current time for timeout purposes.
     pub(crate) fn before_release_gil(&self) {
         self.lock_state.ref_cell.borrow_mut().set_unlock();
     }
 
+    /// Return [`true`] if Redis GIL is locked and [`false`] otherwise.
     pub(crate) fn is_gil_locked(&self) -> bool {
         self.lock_state.ref_cell.borrow().is_locked()
     }
 
+    /// Return the duration (in MS) we locked the Redis GIL.
     pub(crate) fn gil_lock_duration_ms(&self) -> u128 {
         self.lock_state.ref_cell.borrow().git_lock_duration_ms()
     }
 
+    /// Set an indication that we bypass the allowed Redis GIL timeout.
     pub(crate) fn set_lock_timedout(&self) {
         self.lock_state.ref_cell.borrow_mut().set_lock_timedout();
     }
 
+    /// If we have reached a timeout for the Redis Global Interpreter Lock (GIL) lock,
+    /// the function should return [`true`], otherwise [`false`].
     pub(crate) fn is_lock_timedout(&self) -> bool {
         self.lock_state.ref_cell.borrow().is_lock_timedout()
     }
@@ -179,14 +209,14 @@ impl V8ScriptCtx {
         func: &V8LocalValue<'isolate_scope, 'isolate>,
         ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
         args: Option<&[&V8LocalValue<'isolate_scope, 'isolate>]>,
-        gil_statuc: GilStatus,
+        gil_status: GilStatus,
     ) -> Option<V8LocalValue<'isolate_scope, 'isolate>> {
         let old_val = self.before_run();
-        if gil_statuc.is_locked() {
+        if gil_status.is_locked() {
             self.after_lock_gil();
         }
         let res = func.call(&ctx_scope, args);
-        if gil_statuc.is_locked() {
+        if gil_status.is_locked() {
             self.before_release_gil();
         }
         self.after_run(old_val);
@@ -396,7 +426,7 @@ impl LibraryCtxInterface for V8LibraryCtx {
         // set private content
         let _load_library_guard = self.script_ctx.ctx.set_private_data(0, &load_library_ctx);
 
-        let res = self.script_ctx.run(&script, &ctx_scope, GilStatus::Lock);
+        let res = self.script_ctx.run(&script, &ctx_scope, GilStatus::Locked);
 
         let res =
             res.ok_or_else(|| get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope))?;

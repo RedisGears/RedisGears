@@ -52,7 +52,7 @@ impl V8NotificationsCtxInternal {
                 &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 Some(&[&r_client.to_value(), &notification_data]),
-                GilStatus::Lock,
+                GilStatus::Locked,
             );
 
             redis_client.borrow_mut().make_invalid();
@@ -111,7 +111,7 @@ impl V8NotificationsCtxInternal {
                 &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 Some(&[&r_client.to_value(), &notification_data]),
-                GilStatus::Unlock,
+                GilStatus::Unlocked,
             );
 
             match res {
@@ -237,7 +237,7 @@ impl KeysNotificationsConsumerCtxInterface for V8NotificationsCtx {
                     &on_trigger_fired,
                     &ctx_scope,
                     Some(&[&r_client.to_value(), &val]),
-                    GilStatus::Lock,
+                    GilStatus::Locked,
                 );
 
                 redis_client.borrow_mut().make_invalid();

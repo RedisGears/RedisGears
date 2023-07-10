@@ -143,7 +143,7 @@ impl V8StreamCtxInternals {
             &self.persisted_function.as_local(&isolate_scope),
             &ctx_scope,
             Some(&[&r_client.to_value(), &stream_data.to_value()]),
-            GilStatus::Lock,
+            GilStatus::Locked,
         );
 
         redis_client.borrow_mut().make_invalid();
@@ -281,7 +281,7 @@ impl V8StreamCtxInternals {
                 &self.persisted_function.as_local(&isolate_scope),
                 &ctx_scope,
                 Some(&[&r_client.to_value(), &stream_data.to_value()]),
-                GilStatus::Unlock,
+                GilStatus::Unlocked,
             );
 
             match res {
