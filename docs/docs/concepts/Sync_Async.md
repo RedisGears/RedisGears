@@ -15,7 +15,7 @@ However, the major disadvantage of the atomicity property is that Redis is block
 
 Triggers and Functions aim to provide greater flexibility to function writers by enabling the invocation of functions in the background. When a function is invoked in the background, it cannot directly access the Redis key space. To interact with the Redis key space from the background, the function must block Redis and enter an atomic section where the atomicity property is once again guaranteed.
 
-Triggers and Functions function can go to the background by implement the function as a JS Coroutine and use `registerAsyncFunction`. The Coroutine is invoked on a background thread and do not block the Redis processes. Example:
+To run Triggers and Functions in the background, functions can be implemented as JS Coroutines using the `registerAsyncFunction` API. The Coroutine is invoked on a background thread and does not block the Redis processes. Here's an example:
 
 ```js
 #!js api_version=1.0 name=lib
@@ -25,9 +25,9 @@ redis.registerAsyncFunction('test', async function(){
 });
 ```
 
-The above function will simply return `test`, but will run on a background thread and will not block Redis (when running the function, Redis will be able to accept more commands from other clients).
+The simple function shown above will return the value 'test' and will execute on a background thread without blocking Redis. This allows Redis to continue accepting commands from other clients while the function is running.
 
-The Coroutine accept an optional client argument, this client is different then the client accepted by synchronous functions. The client does not allow to invoke Redis command, but instead the client allows to block Redis and enter an atomic section where the atomicity property is once again guaranteed. The following example shows how to invoke a simple `ping` command from within an async Coroutine:
+The Coroutine also accepts an optional client argument, which differs from the client used in synchronous functions. This client argument does not allow direct invocation of Redis commands. Instead, it provides the capability to block Redis and enter an atomic section where the atomicity property is once again guaranteed. Here's an example that demonstrates invoking a ping command from within an async Coroutine:
 
 ```js
 #!js api_version=1.0 name=lib
