@@ -16,15 +16,15 @@ Or just add it as a dependency to you `package.json` file:
 
 ## Full example:
 
-Create an empty directory, `redisgears_project`. Inside the directory run the following command:
+Create an empty directory, `my_first_project`. Inside the directory run the following command:
 
 ```bash
-> npm init -y -f
+npm init -y -f
 npm WARN using --force Recommended protections disabled.
-Wrote to /home/meir/work/RedisGearsJSSDK/gears_project_2/package.json:
+Wrote to /home/work/my_first_project/package.json:
 
 {
-  "name": "gears_project_2",
+  "name": "my_first_project",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
