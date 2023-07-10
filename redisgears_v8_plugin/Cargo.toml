@@ -15,6 +15,7 @@ redisgears-macros-internals = { path = "../redisgears_macros_internals/" }
 serde_json = "1"
 serde = "1"
 lazy_static = "1"
+bitflags = "2"
 
 [build-dependencies]
 

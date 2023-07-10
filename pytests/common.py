@@ -7,6 +7,7 @@ import json
 import asyncio
 from threading import Thread
 from redis.asyncio import Redis as AIORedis
+from redis import Redis
 
 def toDictionary(res, max_recursion=1000):
     if  max_recursion == 0:
@@ -165,6 +166,11 @@ def extendEnvWithGearsFunctionality(env):
     
     def noBlockingTfcallAsync(lib, func, keys=[], args=[]):
         return env.noBlockingCmd('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    def getResp3Connection():
+        port = int(env.cmd('config', 'get', 'port')[1])
+        # test resp3
+        return Redis('localhost', port, protocol=3, decode_responses=True)
 
     
     env.expectTfcall = expectTfcall
@@ -174,6 +180,7 @@ def extendEnvWithGearsFunctionality(env):
     env.noBlockingCmd = noBlockingCmd
     env.noBlockingTfcall = noBlockingTfcall
     env.noBlockingTfcallAsync = noBlockingTfcallAsync
+    env.getResp3Connection = getResp3Connection
 
 def gearsTest(skipTest=False,
               skipOnCluster=False,
