@@ -450,6 +450,23 @@ impl BackendCtxInterfaceUninitialised for V8Backend {
             GLOBAL.bypassed_memory_limit = Some(AtomicBool::new(false));
             GLOBAL.script_ctx_vec = Some(Arc::clone(&self.script_ctx_vec));
         }
+
+        std::panic::set_hook(Box::new(|panic_info| {
+            log_error(&format!("Application panicked, {}", panic_info));
+            let (file, line) = match panic_info.location() {
+                Some(l) => (l.file(), l.line()),
+                None => ("", 0),
+            };
+            let file = std::ffi::CString::new(file).unwrap();
+            unsafe {
+                redis_module::raw::RedisModule__Assert.unwrap()(
+                    "Crashed on panic\0".as_ptr() as *const std::os::raw::c_char,
+                    file.as_ptr(),
+                    line as i32,
+                );
+            }
+        }));
+
         self.initialize_v8_engine(&flags)?;
         self.spawn_background_maintenance_thread()?;
 
