@@ -85,10 +85,15 @@ def getShardInfo(conn, log_file):
             log = f.read()
     except Exception as e:
         log = 'Failed to open log file %s, %s.' % (log_file, str(e))
+    try:
+        functions = conn.execute_command('tfunction', 'list', 'vvv')
+    except Exception as e:
+        functions = 'Failed getting shard info, shards probably crashed.'
     
     return {
         'info': info,
         'log': log,
+        'functions': functions
     }
 
 def extractInfoOnfailure(env, log_files):
@@ -292,8 +297,15 @@ def gearsTest(skipTest=False,
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())
-            test_function(*test_args)
-            if len(env.assertionFailedSummary) > 0:
+            exception_raised = None
+            try:
+                test_function(*test_args)
+            except unittest.SkipTest:
+                raise
+            except Exception as e:
+                exception_raised = e
+            if exception_raised or len(env.assertionFailedSummary) > 0:
                 extractInfoOnfailure(env, log_files)
+                raise exception_raised
         return test_func
     return test_func_generator
