@@ -117,7 +117,7 @@ fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     const VERSION: Version = Version {
         major: 7,
         minor: 1,
-        patch: 240,
+        patch: 242,
     };
 
     match ctx.get_redis_version() {
