@@ -306,6 +306,7 @@ def gearsTest(skipTest=False,
                 exception_raised = e
             if exception_raised or len(env.assertionFailedSummary) > 0:
                 extractInfoOnfailure(env, log_files)
-                raise exception_raised
+                if exception_raised:
+                    raise exception_raised
         return test_func
     return test_func_generator
