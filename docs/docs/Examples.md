@@ -96,7 +96,7 @@ Actions of any kind can be performed on the keyspace or a subset of it.
 
 ## Stream Processing
 
-The ability to detect and process new data pushed to Redis Streams enables real-time data transformation. As an example, it is possible to copy every new entry from a Redis Stream to a Redis JSON data structure. Indexed search and aggregation of Hashes and JSON data structures provide for multiple uses. For example, the following function detects new data and increments a counter.
+The ability to detect and process new data pushed to Redis Streams enables real-time data manipulation and transformation. For example, the following example detects new events added to a Stream and increments a counter. This function is supported on clustered environments, note how the `{tickets}:ntickets` is co-located in the same shard as the Stream `tickets`.
 
 
 ```javascript
@@ -109,7 +109,7 @@ redis.registerStreamTrigger(
                 ? value.toString()
                 : value 
         ));
-        client.call("INCR", "ntickets");
+        client.call("INCR", "{tickets}:" + "ntickets");
     }, 
     {
         isStreamTrimmed: true,
@@ -117,6 +117,67 @@ redis.registerStreamTrigger(
     }
 );
 ```
+
+Load the library including the previous function, and add some data to the Stream to increment a counter tracking the number of tickets.
+
+```
+XADD tickets * userid 181234 title Interstellar id 45256 price 7.99
+```
+
+It is also possible to read every new entry from a Redis Stream, transform and load it to a document. Indexed search and aggregation of Hashes and JSON data structures provide for multiple uses. The following example registers a Stream trigger that captures a website user activity in a Stream per user.  To test the behavior, create two users:
+
+```
+JSON.SET {user:181234}:events $ '{"actions":[]}'
+JSON.SET {user:34524}:events $ '{"actions":[]}'
+```
+
+Import the JavaScript library:
+
+```javascript
+redis.registerStreamTrigger(
+    "tracker", 
+    "user:", 
+    function(client, data) {
+        try {
+            var event = {};
+            event["ts"] = data['id'][0].toString()
+            event["action"] = data.record[0][1]
+
+            client.call("JSON.ARRAPPEND", 
+                        "{" + data['stream_name'] + "}:" + "events", 
+                        "$.actions", 
+                        JSON.stringify(event));
+            return false;
+        }
+        catch(error){
+            redis.log(error);
+        }
+    }, 
+    {
+        isStreamTrimmed: false,
+        window: 3   
+    }
+);
+```
+
+And record some UI events, such as clicks on buttons:
+
+```
+XADD user:181234 * action "click:432"
+XADD user:181234 * action "click:384"
+XADD user:34524 * action "click:92"
+XADD user:34524 * action "click:432"
+```
+
+The events will be recorded in JSON documents, co-located with the related Stream data source.
+
+```
+JSON.GET {user:34524}:events $.actions
+"[[{\"ts\":\"1689076535787\",\"action\":\"click:92\"},{\"ts\":\"1689076540495\",\"action\":\"click:432\"}]]"
+```
+
+JSON documents can be indexed to enable cross-users searches and queries.
+
 
 ## Automatic Expire
 
