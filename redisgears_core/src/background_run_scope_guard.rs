@@ -5,15 +5,17 @@
  */
 
 use redis_module::CallResult;
-use redis_module::ContextGuard;
+use redis_module::DetachedContextGuard;
 use redis_module::RedisString;
 
+use redisgears_plugin_api::redisgears_plugin_api::run_function_ctx::PromiseReply;
 use redisgears_plugin_api::redisgears_plugin_api::{
     redisai_interface::AIModelInterface, redisai_interface::AIScriptInterface,
     run_function_ctx::BackgroundRunFunctionCtxInterface, run_function_ctx::RedisClientCtxInterface,
     GearsApiError,
 };
 
+use crate::call_redis_command_async;
 use crate::run_ctx::RedisClientCallOptions;
 use crate::{
     background_run_ctx::BackgroundRunCtx, call_redis_command, get_notification_blocker,
@@ -26,7 +28,7 @@ use redisai_rs::redisai::redisai_model::RedisAIModel;
 use redisai_rs::redisai::redisai_script::RedisAIScript;
 
 pub(crate) struct BackgroundRunScopeGuardCtx {
-    pub(crate) ctx_guard: ContextGuard,
+    pub(crate) detached_ctx_guard: DetachedContextGuard,
     call_options: RedisClientCallOptions,
     user: RedisString,
     lib_meta_data: Arc<GearsLibraryMetaData>,
@@ -38,13 +40,13 @@ unsafe impl Send for BackgroundRunScopeGuardCtx {}
 
 impl BackgroundRunScopeGuardCtx {
     pub(crate) fn new(
-        ctx_guard: ContextGuard,
+        ctx_guard: DetachedContextGuard,
         user: RedisString,
         lib_meta_data: &Arc<GearsLibraryMetaData>,
         call_options: RedisClientCallOptions,
     ) -> BackgroundRunScopeGuardCtx {
         BackgroundRunScopeGuardCtx {
-            ctx_guard,
+            detached_ctx_guard: ctx_guard,
             call_options,
             user,
             lib_meta_data: Arc::clone(lib_meta_data),
@@ -56,10 +58,21 @@ impl BackgroundRunScopeGuardCtx {
 impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     fn call(&self, command: &str, args: &[&[u8]]) -> CallResult {
         call_redis_command(
-            &self.ctx_guard,
+            &self.detached_ctx_guard,
             &self.user,
             command,
             &self.call_options.call_options,
+            args,
+        )
+    }
+
+    fn call_async(&self, command: &str, args: &[&[u8]]) -> PromiseReply<'static, '_> {
+        call_redis_command_async(
+            &self.detached_ctx_guard,
+            &self.lib_meta_data.name,
+            &self.user,
+            command,
+            &self.call_options.blocking_call_options,
             args,
         )
     }
@@ -73,7 +86,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     }
 
     fn open_ai_model(&self, name: &str) -> Result<Box<dyn AIModelInterface>, GearsApiError> {
-        let ctx = &self.ctx_guard;
+        let ctx = &self.detached_ctx_guard;
         let _authenticate_scope = ctx
             .autenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;
@@ -83,7 +96,7 @@ impl RedisClientCtxInterface for BackgroundRunScopeGuardCtx {
     }
 
     fn open_ai_script(&self, name: &str) -> Result<Box<dyn AIScriptInterface>, GearsApiError> {
-        let ctx = &self.ctx_guard;
+        let ctx = &self.detached_ctx_guard;
         let _authenticate_scope = ctx
             .autenticate_user(&self.user)
             .map_err(|e| GearsApiError::new(e.to_string()))?;

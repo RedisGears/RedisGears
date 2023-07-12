@@ -4,6 +4,10 @@ import unittest
 import os.path
 from RLTest import Env, Defaults
 import json
+import asyncio
+from threading import Thread
+from redis.asyncio import Redis as AIORedis
+from redis import Redis
 
 def toDictionary(res, max_recursion=1000):
     if  max_recursion == 0:
@@ -81,10 +85,15 @@ def getShardInfo(conn, log_file):
             log = f.read()
     except Exception as e:
         log = 'Failed to open log file %s, %s.' % (log_file, str(e))
+    try:
+        functions = conn.execute_command('tfunction', 'list', 'vvv')
+    except Exception as e:
+        functions = 'Failed getting shard info, shards probably crashed.'
     
     return {
         'info': info,
         'log': log,
+        'functions': functions
     }
 
 def extractInfoOnfailure(env, log_files):
@@ -106,12 +115,38 @@ def verifyClusterInitialized(env):
             allConnected = True
             for n in nodes:
                 status = n[17]
-                if status != 'connected':
+                if status != 'connected' and status != 'uninitialized':
                     allConnected = False
             if not allConnected:
                 time.sleep(0.1)
 
+class AsyncResponse:
+    def __init__(self, env, future):
+        self.future = future
+        self.env = env
+
+    def readResponse(self, timeout=1):
+        with TimeLimit(timeout, self.env, "Failed reading response"):
+            if self.future.exception():
+                raise self.future.exception()
+            return self.future.result()
+        
+    def equal(self, val):
+        self.env.assertEqual(self.readResponse(), val)
+    
+    def expectError(self, msg=''):
+        try:
+            res = self.readResponse()
+            failTest(self.env, 'expected error reply, got "%s"' % str(res))
+        except Exception as e:
+            self.env.assertContains(msg, str(e))
+
 def extendEnvWithGearsFunctionality(env):
+    event_loop = asyncio.new_event_loop()
+    thread = Thread(target = event_loop.run_forever)
+    thread.daemon = True
+    thread.start()
+
     def expectTfcall(lib, func, keys=[], args=[]):
         return env.expect('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
     
@@ -125,11 +160,32 @@ def extendEnvWithGearsFunctionality(env):
     def tfcallAsync(lib, func, keys=[], args=[], c=None):
         c = c if c else env
         return c.execute_command('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+
+    def noBlockingCmd(*args, decodeResponses=env.decodeResponses):
+        con = env.getConnection().connection_pool.get_connection("_")
+        async_con = AIORedis(host = con.host, port = con.port, db = con.db, password = con.password, decode_responses=decodeResponses)
+        return AsyncResponse(env, asyncio.run_coroutine_threadsafe(async_con.execute_command(*args), event_loop))
+    
+    def noBlockingTfcall(lib, func, keys=[], args=[]):
+        return env.noBlockingCmd('TFCALL', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    def noBlockingTfcallAsync(lib, func, keys=[], args=[]):
+        return env.noBlockingCmd('TFCALLASYNC', '%s.%s' % (lib, func), str(len(keys)), *(keys + args))
+    
+    def getResp3Connection():
+        port = int(env.cmd('config', 'get', 'port')[1])
+        # test resp3
+        return Redis('localhost', port, protocol=3, decode_responses=True)
+
     
     env.expectTfcall = expectTfcall
     env.tfcall = tfcall
     env.expectTfcallAsync = expectTfcallAsync
     env.tfcallAsync = tfcallAsync
+    env.noBlockingCmd = noBlockingCmd
+    env.noBlockingTfcall = noBlockingTfcall
+    env.noBlockingTfcallAsync = noBlockingTfcallAsync
+    env.getResp3Connection = getResp3Connection
 
 def gearsTest(skipTest=False,
               skipOnCluster=False,
@@ -241,8 +297,16 @@ def gearsTest(skipTest=False,
             test_args = [env]
             if cluster:
                 test_args.append(env.envRunner.getClusterConnection())
-            test_function(*test_args)
-            if len(env.assertionFailedSummary) > 0:
+            exception_raised = None
+            try:
+                test_function(*test_args)
+            except unittest.SkipTest:
+                raise
+            except Exception as e:
+                exception_raised = e
+            if exception_raised or len(env.assertionFailedSummary) > 0:
                 extractInfoOnfailure(env, log_files)
+                if exception_raised:
+                    raise exception_raised
         return test_func
     return test_func_generator

@@ -1,0 +1,16 @@
+{
+  "name": "@redis/gears-api",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./gears-api.js",
+  "bin": "./deploy.js",
+  "dependencies": {
+    "commander": "^10.0.1",
+    "@redis/client": "^2.0.0-next.1",
+    "@rollup/plugin-commonjs": "^24.1.0",
+    "@rollup/plugin-node-resolve": "^15.0.2",
+    "rollup": "^3.21.5",
+    "rollup-plugin-preserve-shebangs": "^0.2.0"
+  },
+  "devDependencies": {}
+}

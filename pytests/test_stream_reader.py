@@ -466,6 +466,20 @@ redis.registerStreamTrigger("consumer", "stream", async function(client, data){
     env.assertEqual(id_to_read_from1, id_to_read_from2)
 
 @gearsTest()
+def testSteamReaderPromiseFromSyncFunction(env):
+    """#!js api_version=1.0 name=lib
+
+redis.registerStreamTrigger("consumer", "stream", function(client, data){
+    return client.callAsync('blpop', 'l', '0');
+})
+    """
+    env.cmd('xadd', 'stream:1', '*', 'foo', 'bar')
+    conn = env.getResp3Connection()
+    env.assertEqual(0, conn.execute_command('TFUNCTION', 'LIST', 'vvv')[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
+    env.expect('lpush', 'l', '1').equal(1)
+    runUntil(env, 1, lambda: conn.execute_command('TFUNCTION', 'LIST', 'vvv')[0]['stream_triggers'][0]['streams'][0]['total_record_processed'])
+
+@gearsTest()
 def testCallingRedisCommandOnStreamConsumer(env):
     """#!js api_version=1.0 name=lib
 

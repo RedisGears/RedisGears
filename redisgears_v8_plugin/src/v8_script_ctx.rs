@@ -9,6 +9,13 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     load_library_ctx::LoadLibraryCtxInterface, GearsApiError,
 };
 
+use v8_derive::new_native_function;
+use v8_rs::v8::isolate_scope::V8IsolateScope;
+use v8_rs::v8::v8_context_scope::V8ContextScope;
+use v8_rs::v8::v8_promise::V8LocalPromise;
+use v8_rs::v8::v8_resolver::V8LocalResolver;
+use v8_rs::v8::v8_script::V8LocalScript;
+use v8_rs::v8::v8_value::V8LocalValue;
 use v8_rs::v8::{
     isolate::V8Isolate, v8_context::V8Context, v8_object_template::V8PersistedObjectTemplate,
     v8_promise::V8PromiseState, v8_script::V8PersistedScript,
@@ -21,7 +28,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use crate::get_exception_msg;
+use crate::{get_error_from_object, get_exception_msg};
 
 pub(crate) enum GilState {
     Lock,
@@ -77,15 +84,50 @@ impl GilStateCtx {
     }
 }
 
+pub(crate) enum GilStatus {
+    Locked,
+    Unlocked,
+}
+
+impl GilStatus {
+    pub(crate) fn is_locked(&self) -> bool {
+        matches!(self, Self::Locked)
+    }
+}
+
 pub(crate) struct V8ScriptCtx {
+    /// The name of the library.
     pub(crate) name: String,
+
+    /// The initialisation script to run.
     pub(crate) script: V8PersistedScript,
+
+    /// Tensors API for RedisAI integrations.
     pub(crate) tensor_object_template: V8PersistedObjectTemplate,
+
+    /// The V8 context
     pub(crate) ctx: V8Context,
+
+    /// The V8 isolate
     pub(crate) isolate: V8Isolate,
+
+    /// Api to interact back with Redis for operations like command invocation and logging.
     pub(crate) compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
+
+    /// A boolean value to determine if we are presently executing JavaScript code or not.
+    /// This boolean is employed to ascertain whether we should prompt for JavaScript interruption
+    /// and conduct timeout checks.
     pub(crate) is_running: AtomicBool,
+
+    /// Signifies the present locking status of the running JavaScript code,
+    /// enabling us to distinguish between background JS code execution and JS code that holds a lock on Redis.
     pub(crate) lock_state: RefCellWrapper<GilStateCtx>,
+}
+
+pub(crate) struct OnDoneCtx<'isolate_scope, 'isolate, 'ctx_scope> {
+    pub(crate) isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+    pub(crate) ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+    pub(crate) res: V8LocalValue<'isolate_scope, 'isolate>,
 }
 
 impl V8ScriptCtx {
@@ -111,36 +153,258 @@ impl V8ScriptCtx {
         }
     }
 
-    pub(crate) fn before_run(&self) {
-        self.is_running.store(true, Ordering::Relaxed);
+    /// Perform necessary operation before running JS code.
+    /// Currently, just set an atomic boolean indicating JS code is running.
+    /// Returns [`true`] if JS code was already running or [`false`] otherwise.
+    pub(crate) fn before_run(&self) -> bool {
+        self.is_running.swap(true, Ordering::Relaxed)
     }
 
-    pub(crate) fn after_run(&self) {
-        self.is_running.store(false, Ordering::Relaxed);
+    /// Perform necessary operation after running JS code.
+    /// Gets us input whether or not a JS code was already running before and set
+    /// it to an atomic boolean indicating whether or not a JS code is running.
+    pub(crate) fn after_run(&self, val: bool) {
+        self.is_running.store(val, Ordering::Relaxed);
     }
 
+    /// Perform necessary operation after locking Redis GIL like saving
+    /// the current time for timeout purposes.
     pub(crate) fn after_lock_gil(&self) {
         self.lock_state.ref_cell.borrow_mut().set_lock();
     }
 
+    /// Perform necessary operation before unlocking Redis GIL like unset
+    /// the current time for timeout purposes.
     pub(crate) fn before_release_gil(&self) {
         self.lock_state.ref_cell.borrow_mut().set_unlock();
     }
 
+    /// Return [`true`] if Redis GIL is locked and [`false`] otherwise.
     pub(crate) fn is_gil_locked(&self) -> bool {
         self.lock_state.ref_cell.borrow().is_locked()
     }
 
-    pub(crate) fn git_lock_duration_ms(&self) -> u128 {
+    /// Return the duration (in MS) we locked the Redis GIL.
+    pub(crate) fn gil_lock_duration_ms(&self) -> u128 {
         self.lock_state.ref_cell.borrow().git_lock_duration_ms()
     }
 
+    /// Set an indication that we bypass the allowed Redis GIL timeout.
     pub(crate) fn set_lock_timedout(&self) {
         self.lock_state.ref_cell.borrow_mut().set_lock_timedout();
     }
 
+    /// If we have reached a timeout for the Redis Global Interpreter Lock (GIL) lock,
+    /// the function should return [`true`], otherwise [`false`].
     pub(crate) fn is_lock_timedout(&self) -> bool {
         self.lock_state.ref_cell.borrow().is_lock_timedout()
+    }
+
+    /// The function calls the specified V8 function with the provided arguments.
+    /// It performs the necessary operations before and after invoking the function,
+    /// such as setting a variable to indicate that JavaScript code is currently running
+    /// or recording the time at which the GIL (Global Interpreter Lock) is locked for timeout support.
+    pub(crate) fn call<'isolate_scope, 'isolate>(
+        &self,
+        func: &V8LocalValue<'isolate_scope, 'isolate>,
+        ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
+        args: Option<&[&V8LocalValue<'isolate_scope, 'isolate>]>,
+        gil_status: GilStatus,
+    ) -> Option<V8LocalValue<'isolate_scope, 'isolate>> {
+        let old_val = self.before_run();
+        if gil_status.is_locked() {
+            self.after_lock_gil();
+        }
+        let res = func.call(&ctx_scope, args);
+        if gil_status.is_locked() {
+            self.before_release_gil();
+        }
+        self.after_run(old_val);
+        res
+    }
+
+    /// The function calls the specified V8 script.
+    /// It performs the necessary operations before and after invoking the function,
+    /// such as setting a variable to indicate that JavaScript code is currently running
+    /// or recording the time at which the GIL (Global Interpreter Lock) is locked for timeout support.
+    pub(crate) fn run<'isolate_scope, 'isolate>(
+        &self,
+        script: &V8LocalScript<'isolate_scope, 'isolate>,
+        ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
+        gil_statuc: GilStatus,
+    ) -> Option<V8LocalValue<'isolate_scope, 'isolate>> {
+        let old_val = self.before_run();
+        if gil_statuc.is_locked() {
+            self.after_lock_gil();
+        }
+        let res = script.run(&ctx_scope);
+        if gil_statuc.is_locked() {
+            self.before_release_gil();
+        }
+        self.after_run(old_val);
+        res
+    }
+
+    /// Resolve the given promise object with the given value.
+    /// It performs the necessary operations before and after invoking the function,
+    /// such as setting a variable to indicate that JavaScript code is currently running.
+    pub(crate) fn resolve(
+        &self,
+        resolver: &V8LocalResolver,
+        ctx_scope: &V8ContextScope,
+        val: &V8LocalValue,
+    ) {
+        let old_val = self.before_run();
+        resolver.resolve(ctx_scope, val);
+        self.after_run(old_val);
+    }
+
+    /// Reject the given promise object with the given value.
+    /// It performs the necessary operations before and after invoking the function,
+    /// such as setting a variable to indicate that JavaScript code is currently running.
+    pub(crate) fn reject(
+        &self,
+        resolver: &V8LocalResolver,
+        ctx_scope: &V8ContextScope,
+        val: &V8LocalValue,
+    ) {
+        let old_val = self.before_run();
+        resolver.reject(ctx_scope, val);
+        self.after_run(old_val);
+    }
+
+    /// Runs the given closure if the given promise obejct was already resolved or rejected.
+    fn run_on_done_promise<
+        'isolate_scope,
+        'isolate,
+        'ctx_scope,
+        T,
+        Done: FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
+    >(
+        &self,
+        isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        promise: &V8LocalPromise<'isolate_scope, 'isolate>,
+        on_done: Done,
+    ) -> T {
+        let res = promise.get_result();
+        if promise.state() == V8PromiseState::Fulfilled {
+            return on_done(Ok(OnDoneCtx {
+                isolate_scope,
+                ctx_scope,
+                res,
+            }));
+        } else {
+            let error = get_error_from_object(&res, &ctx_scope);
+            return on_done(Err(error));
+        }
+    }
+
+    /// Return [`true`] if the given promise was already resolved or rejected, otherwise false.
+    fn is_reject_or_fulfilled(&self, promise: &V8LocalPromise) -> bool {
+        promise.state() == V8PromiseState::Fulfilled || promise.state() == V8PromiseState::Rejected
+    }
+
+    /// The function receives a promise and a closure as parameters,
+    /// and invokes the closure if the promise has already been resolved or rejected.
+    /// In such cases, the function returns Some(T),
+    /// where T represents the return value of the closure.
+    /// If the promise has neither been resolved nor rejected yet,
+    /// the function returns None.
+    pub(crate) fn promise_rejected_or_fulfilled<
+        'isolate_scope,
+        'isolate,
+        'ctx_scope,
+        T,
+        Done: FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
+    >(
+        &self,
+        isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        promise: &V8LocalPromise<'isolate_scope, 'isolate>,
+        on_done: Done,
+    ) -> Option<T> {
+        if self.is_reject_or_fulfilled(promise) {
+            return Some(self.run_on_done_promise(isolate_scope, ctx_scope, promise, on_done));
+        }
+        None
+    }
+
+    /// The function receives a promise and a closure as arguments,
+    /// and assigns the closure as the resolve/reject callback of the promise,
+    /// assuming that the promise has not been resolved or rejected yet.
+    /// If the promise was already resolved or reject, the callback will be called
+    /// on the next V8 minor task cicle.
+    pub(crate) fn promise_rejected_or_fulfilled_async<
+        'isolate_scope,
+        'isolate,
+        'ctx_scope,
+        T,
+        Done: 'static + FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
+    >(
+        &self,
+        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        promise: &V8LocalPromise<'isolate_scope, 'isolate>,
+        on_done: Done,
+    ) {
+        let on_done_resolve = Arc::new(RefCell::new(Some(on_done)));
+        let on_done_reject = Arc::clone(&on_done_resolve);
+        let on_done_dropped = Arc::clone(&on_done_resolve);
+        let resolve = ctx_scope.new_native_function(new_native_function!(
+            move |isolate_scope, ctx_scope, res: V8LocalValue| {
+                let mut on_done = on_done_resolve.borrow_mut();
+                on_done.take().map(|v| {
+                    v(Ok(OnDoneCtx {
+                        isolate_scope,
+                        ctx_scope,
+                        res,
+                    }));
+                });
+                Ok::<_, String>(None)
+            }
+        ));
+        let reject = ctx_scope.new_native_function(new_native_function!(
+            move |_isolate_scope, ctx_scope, res: V8LocalValue| {
+                let mut on_done = on_done_reject.borrow_mut();
+                on_done.take().map(|v| {
+                    v(Err(get_error_from_object(&res, ctx_scope)));
+                });
+                Ok::<_, String>(None)
+            }
+        ));
+        promise.then(&ctx_scope, &resolve, &reject);
+        promise.to_value().on_dropped(move || {
+            let mut on_done = on_done_dropped.borrow_mut();
+            on_done.take().map(|v| {
+                v(Err(GearsApiError::new("Promise was dropped without been resolved. Usually happened because of timeout or OOM.")));
+            });
+        });
+    }
+
+    /// The function accepts a promise object and a closure,
+    /// and invokes the closure when the promise is resolved.
+    /// This invocation occurs immediately if the promise is
+    /// already resolved or when it becomes resolved.
+    /// The closure receives a [`Result<V8LocalValue, GearsApiError>`] parameter,
+    /// which indicates whether the promise was successfully resolved or rejected.
+    pub(crate) fn handle_promise<
+        'isolate_scope,
+        'isolate,
+        'ctx_scope,
+        T,
+        Done: 'static + FnOnce(Result<OnDoneCtx, GearsApiError>) -> T,
+    >(
+        &self,
+        isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
+        ctx_scope: &'ctx_scope V8ContextScope<'isolate_scope, 'isolate>,
+        promise: &V8LocalPromise<'isolate_scope, 'isolate>,
+        on_done: Done,
+    ) -> Option<T> {
+        if self.is_reject_or_fulfilled(promise) {
+            return Some(self.run_on_done_promise(isolate_scope, ctx_scope, promise, on_done));
+        }
+        self.promise_rejected_or_fulfilled_async(ctx_scope, promise, on_done);
+        None
     }
 }
 
@@ -162,11 +426,7 @@ impl LibraryCtxInterface for V8LibraryCtx {
         // set private content
         let _load_library_guard = self.script_ctx.ctx.set_private_data(0, &load_library_ctx);
 
-        self.script_ctx.before_run();
-        self.script_ctx.after_lock_gil();
-        let res = script.run(&ctx_scope);
-        self.script_ctx.before_release_gil();
-        self.script_ctx.after_run();
+        let res = self.script_ctx.run(&script, &ctx_scope, GilStatus::Locked);
 
         let res =
             res.ok_or_else(|| get_exception_msg(&self.script_ctx.isolate, trycatch, &ctx_scope))?;
