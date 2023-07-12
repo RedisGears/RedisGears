@@ -52,14 +52,14 @@ Assuming we put the following code in the file `lib.js`, we can register our fun
 OK
 ```
 
-And now we can execute our function using [`TFCALL`](docs/commands.md#rgfcal) command, the command gets the library name and the function name `.` separated:
+And now we can execute our function using [`TFCALL`](docs/commands/tfcall.md) command, the command gets the library name and the function name `.` separated:
 
 ```bash
 > redis-cli TFCALL lib.hello_world 0
 "hello_world"
 ```
 
-Notice that the [`TFCALL`](docs/commands.md#rgfcal) command arguments are very close to the Redis [`FCALL`](https://redis.io/commands/fcall/) command arguments. The only difference is that, for Triggers and Functions, the command also requires the library name. The `0` represents the number of keys that will follow, which in our case is `0`.
+Notice that the [`TFCALL`](docs/commands/tfcall.md) command arguments are very close to the Redis [`FCALL`](https://redis.io/commands/fcall/) command arguments. The only difference is that, for Triggers and Functions, the command also requires the library name. The `0` represents the number of keys that will follow, which in our case is `0`.
 
 ### Calling Redis Commands Inside Triggers and Functions
 
@@ -85,7 +85,7 @@ We get the error because the library with the same name already exists, we can u
 OK
 ```
 
-And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
+And now we can invoke `my_ping` using [`TFCALL`](docs/commands/tfcall.md) :
 ```bash
 > redis-cli TFCALL lib.my_ping 0
 "PONG"
@@ -93,12 +93,11 @@ And now we can invoke `my_ping` using [`TFCALL`](docs/commands.md#rgfcal) :
 
 ### Whats next?
 
-* [Create a development environment](docs/create_development_environment.md)
-* [Commands](docs/commands.md)
-* [Configuration](docs/configuration.md)
-* [Advance Functions Topics](docs/function_advance_topics.md)
-* [Sync and Async Run](docs/sync_and_async_run.md)
-* [Stream Triggers](docs/stream_triggers.md)
-* [KeySpace Triggers](docs/keyspace_triggers.md)
-* [Cluster support](docs/cluster_support.md)
-* [JS API](docs/js_api.md)
+* [Quick Start](docs/docs/Quick_Start.md)
+* [Commands](https://redis.io/commands)
+* [Configuration](docs/docs/Configuration.md)
+* [Sync and Async Run](docs/docs/concepts/Sync_Async.md)
+* [KeySpace Triggers](docs/docs/concepts/triggers/KeySpace_Triggers.md)
+* [Stream Triggers](docs/docs/concepts/triggers/Stream_Triggers.md)
+* [Cluster support](docs/docs/concepts/Cluster_Support.md)
+* [JS API](docs/docs/concepts//JavaScript_API.md)
