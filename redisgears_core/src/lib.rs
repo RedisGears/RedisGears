@@ -117,7 +117,7 @@ fn check_redis_version_compatible(ctx: &Context) -> Result<(), String> {
     const VERSION: Version = Version {
         major: 7,
         minor: 1,
-        patch: 240,
+        patch: 242,
     };
 
     match ctx.get_redis_version() {
@@ -1141,7 +1141,7 @@ fn function_debug_command(
         }
         _ => (),
     }
-    let backend = get_backends_mut().get_mut(backend_name).map_or(
+    let backend = get_backend(ctx, backend_name).map_or(
         Err(RedisError::String(format!(
             "Backend '{}' does not exists or not yet loaded",
             backend_name

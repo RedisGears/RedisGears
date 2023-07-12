@@ -18,7 +18,7 @@ use v8_rs::v8::v8_array::V8LocalArray;
 use v8_rs::v8::{
     isolate_scope::V8IsolateScope, v8_array_buffer::V8LocalArrayBuffer,
     v8_context_scope::V8ContextScope, v8_native_function_template::V8LocalNativeFunctionArgsIter,
-    v8_object::V8LocalObject, v8_promise::V8PromiseState, v8_utf8::V8LocalUtf8,
+    v8_object::V8LocalObject, v8_utf8::V8LocalUtf8,
     v8_value::V8LocalValue, v8_version,
 };
 
@@ -29,7 +29,7 @@ use crate::v8_redisai::{get_redisai_api, get_redisai_client};
 use crate::v8_backend::log_warning;
 use crate::v8_function_ctx::V8Function;
 use crate::v8_notifications_ctx::V8NotificationsCtx;
-use crate::v8_script_ctx::V8ScriptCtx;
+use crate::v8_script_ctx::{V8ScriptCtx, GilStatus};
 use crate::v8_stream_ctx::V8StreamCtx;
 use crate::{
     get_exception_msg, get_exception_v8_value, get_function_flags_from_strings,
@@ -301,11 +301,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
 
             let _block_guard = ctx_scope.set_private_data(0, &true); // indicate we are blocked
 
-            script_ctx_ref.after_lock_gil();
-            let res = f.call(ctx_scope, Some(&[&c.to_value()]));
-            script_ctx_ref.before_release_gil();
-            r_client.borrow_mut().make_invalid();
-            Ok(res)
+            Ok(script_ctx_ref.call(&f, ctx_scope, Some(&[&c.to_value()]), GilStatus::Locked))
         }),
     );
 
@@ -358,16 +354,16 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                                 let v8_str = isolate_scope.new_string(s);
                                 let v8_obj = ctx_scope.new_object_from_json(&v8_str);
                                 if v8_obj.is_none() {
-                                    resolver.reject(&ctx_scope, &isolate_scope.new_string("Failed deserializing remote function result").to_value());
+                                    script_ctx.reject(&resolver, &ctx_scope, &isolate_scope.new_string("Failed deserializing remote function result").to_value());
                                     return;
                                 }
                                 v8_obj.unwrap()
                             }
                         };
-                        resolver.resolve(&ctx_scope, &v)
+                        script_ctx.resolve(&resolver, &ctx_scope, &v);
                     },
                     Err(e) => {
-                        resolver.reject(&ctx_scope, &isolate_scope.new_string(e.get_msg()).to_value());
+                        script_ctx.reject(&resolver, &ctx_scope, &isolate_scope.new_string(e.get_msg()).to_value());
                     }
                 }
             }));
@@ -437,7 +433,7 @@ pub(crate) fn get_backgrounnd_client<'isolate_scope, 'isolate>(
                 let results_array = isolate_scope.new_array(&results.iter().collect::<Vec<&V8LocalValue>>()).to_value();
                 let errors_array = isolate_scope.new_array(&errors.iter().collect::<Vec<&V8LocalValue>>()).to_value();
 
-                resolver.resolve(&ctx_scope, &isolate_scope.new_array(&[&results_array, &errors_array]).to_value());
+                script_ctx.resolve(&resolver, &ctx_scope, &isolate_scope.new_array(&[&results_array, &errors_array]).to_value());
             }));
         }));
         Ok(Some(promise.to_value()))
@@ -569,8 +565,8 @@ fn add_call_function(
                             decode_response,
                         );
                         match res {
-                            Ok(res) => resolver.resolve(&ctx_scope, &res),
-                            Err(e) => resolver.reject(&ctx_scope, &isolate_scope.new_string(&e).to_value())
+                            Ok(res) => script_ctx_ref.resolve(&resolver, &ctx_scope, &res),
+                            Err(e) => script_ctx_ref.reject(&resolver, &ctx_scope, &isolate_scope.new_string(&e).to_value())
                         }
                         
                     };
@@ -734,16 +730,12 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                         &ctx_scope,
                         Arc::new(bg_redis_client),
                     );
-                    new_script_ctx_ref.before_run();
-                    let res = f
-                        .take_local(&isolate_scope)
-                        .call(&ctx_scope, Some(&[&background_client.to_value()]));
-                    new_script_ctx_ref.after_run();
+                    let res = new_script_ctx_ref.call(&f.take_local(&isolate_scope), &ctx_scope, Some(&[&background_client.to_value()]), GilStatus::Unlocked);
 
                     let resolver = resolver.take_local(&isolate_scope).as_resolver();
                     match res {
                         Some(r) => {
-                            resolver.resolve(&ctx_scope, &r);
+                            new_script_ctx_ref.resolve(&resolver, &ctx_scope, &r);
                         }
                         None => {
                             let error_utf8 = get_exception_v8_value(
@@ -751,7 +743,7 @@ pub(crate) fn get_redis_client<'isolate_scope, 'isolate>(
                                 &isolate_scope,
                                 trycatch,
                             );
-                            resolver.reject(&ctx_scope, &error_utf8);
+                            new_script_ctx_ref.reject(&resolver, &ctx_scope, &error_utf8);
                         }
                     }
                 }));
@@ -1365,70 +1357,26 @@ pub(crate) fn initialize_globals_1_0(
                 }
                 let args_refs = args.iter().collect::<Vec<&V8LocalValue>>();
 
-                script_ctx.before_run();
-                let res = persisted_function
-                    .as_local(&isolate_scope)
-                    .call(
-                        &ctx_scope,
-                        Some(&args_refs),
-                    );
-                script_ctx.after_run();
+                let res = script_ctx.call(&persisted_function.as_local(&isolate_scope), &ctx_scope, Some(&args_refs), GilStatus::Unlocked);
+
                 match res {
                     Some(r) => {
                         if r.is_promise() {
-                            let res = r.as_promise();
-                            if res.state() == V8PromiseState::Fulfilled
-                                || res.state() == V8PromiseState::Rejected
-                            {
-                                let r = res.get_result();
-                                if res.state() == V8PromiseState::Fulfilled {
-                                    let r = js_value_to_remote_function_data(&ctx_scope, r);
-                                    if let Some(v) = r {
-                                        on_done(Ok(v));
-                                    } else {
-                                        let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
-                                        on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));
-                                    }
-                                } else {
-                                    let r = r.to_utf8().unwrap();
-                                    on_done(Err(GearsApiError::new(r.as_str().to_string())));
-                                }
-                            } else {
-                                // Notice, we are allowed to do this trick because we are protected by the isolate GIL
-                                let done_resolve = Arc::new(RefCellWrapper{ref_cell: RefCell::new(Some(on_done))});
-                                let done_reject = Arc::clone(&done_resolve);
-                                let resolve =
-                                    ctx_scope.new_native_function(new_native_function!(move |isolate_scope, ctx_scope, arg: V8LocalValue| {
-                                        {
-                                            if done_resolve.ref_cell.borrow().is_none() {
-                                                return Ok::<_, String>(None)
-                                            }
-                                        }
-                                        let on_done = done_resolve.ref_cell.borrow_mut().take().unwrap();
-                                        let trycatch = isolate_scope.new_try_catch();
-                                        let r = js_value_to_remote_function_data(ctx_scope, arg);
+                            script_ctx.handle_promise(&isolate_scope, &ctx_scope, &r.as_promise(), move |res| {
+                                match res {
+                                    Ok(v) => {
+                                        let trycatch = v.isolate_scope.new_try_catch();
+                                        let r = js_value_to_remote_function_data(v.ctx_scope, v.res);
                                         if let Some(v) = r {
                                             on_done(Ok(v));
                                         } else {
                                             let error_utf8 = trycatch.get_exception().to_utf8().unwrap();
                                             on_done(Err(GearsApiError::new(format!("Failed serializing result, {}.", error_utf8.as_str()))));
                                         }
-                                        Ok(None)
-                                    }));
-                                let reject =
-                                    ctx_scope.new_native_function(new_native_function!(move |_isolate_scope, _ctx_scope, utf8_str: V8LocalUtf8| {
-                                        {
-                                            if done_reject.ref_cell.borrow().is_none() {
-                                                return Ok::<_, String>(None);
-                                            }
-                                        }
-                                        let on_done = done_reject.ref_cell.borrow_mut().take().unwrap();
-
-                                        on_done(Err(GearsApiError::new(utf8_str.as_str().to_string())));
-                                        Ok(None)
-                                    }));
-                                res.then(&ctx_scope, &resolve, &reject);
-                            }
+                                    }
+                                    Err(e) => on_done(Err(e)),
+                                }
+                            });
                         } else {
                             let r = js_value_to_remote_function_data(&ctx_scope, r);
                             if let Some(v) = r {
@@ -1559,7 +1507,7 @@ pub(crate) fn initialize_globals_1_0(
                                     .borrow_mut()
                                     .take_local(&isolate_scope)
                                     .as_resolver();
-                                resolver.resolve(&ctx_scope, &res);
+                                new_script_ctx_ref_resolve.resolve(&resolver, &ctx_scope, &res);
                             }));
                         Ok(None)
                     }
@@ -1602,7 +1550,7 @@ pub(crate) fn initialize_globals_1_0(
                                     .borrow_mut()
                                     .take_local(&isolate_scope)
                                     .as_resolver();
-                                resolver.reject(&ctx_scope, &res);
+                                new_script_ctx_ref_reject.reject(&resolver, &ctx_scope, &res);
                             }));
                         Ok(None)
                     }
