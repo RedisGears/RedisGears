@@ -4,6 +4,8 @@ description: Trigger and execute JavaScript functions in the Redis process
 linktitle: Triggers and Functions
 type: docs
 stack: true
+bannerText: The Triggers and Functions feature and its documentation is currently in preview. If you notice any errors, feel free to submit an issue to GitHub using the "Create new issue" link in the top right-hand corner of this page.
+bannerChildren: true
 ---
 
 [![discord](https://img.shields.io/discord/697882427875393627?style=flat-square)](https://discord.gg/xTbqgTB)

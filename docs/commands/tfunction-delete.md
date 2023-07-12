@@ -1,7 +1,8 @@
---
+---
+bannerText: The Triggers and Functions feature and its documentation is currently in preview. If you notice any errors, feel free to submit an issue to GitHub using the "Create new issue" link in the top right-hand corner of this page.
 syntax: |
     RG.FUNCTION DELETE "<library name>" 
---
+---
 
 Delete a library from Triggers and Functions.
 
