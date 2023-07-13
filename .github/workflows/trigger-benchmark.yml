@@ -54,7 +54,6 @@ jobs:
           --continue-on-module-check-error \
           --upload_results_s3 \
           --triggering_env circleci \
-          --fail_fast \
           --push_results_redistimeseries \
           --redistimeseries_host ${{ secrets.PERFORMANCE_RTS_HOST }} \
           --redistimeseries_port ${{ secrets.PERFORMANCE_RTS_PORT }} \
