@@ -3135,7 +3135,7 @@ void FlatExecutionPlan_Register(SessionRegistrationCtx *srctx){
 }
 
 ExecutionPlan* FlatExecutionPlan_Run(FlatExecutionPlan* fep, ExecutionMode mode, void* arg, RedisGears_OnExecutionDoneCallback callback, void* privateData, WorkerData* worker, char** err, RunFlags runFlags){
-    if(Cluster_IsClusterMode()){
+    if(mode == ExecutionModeAsync && Cluster_IsClusterMode()){
         // on cluster mode, we must make sure we can distribute the execution to all shards.
         if(!FlatExecutionPlan_SerializeInternal(fep, NULL, err)){
             return NULL;

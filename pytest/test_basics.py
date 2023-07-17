@@ -863,3 +863,7 @@ def testKeysReaderCommandsOptionWithAsyncExecution(env):
     env.expect('RG.PYEXECUTE', "GearsBuilder().foreach(lambda x: override_reply('-no allowed')).register(commands=['set'])").equal('OK')
     env.expect('set', 'x', '1').error().equal('no allowed')
     env.expect('RG.PYEXECUTE', "GearsBuilder('ShardsIDReader').map(lambda x: execute('ping')).run()").equal([['PONG'], []])
+
+@gearsTest()
+def testExecutionModeOnRun(env):
+    env.expect('RG.PYEXECUTE', "GearsBuilder('ShardsIDReader').count().run(mode='async_local')").equal([['1'], []])

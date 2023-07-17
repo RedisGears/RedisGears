@@ -1556,6 +1556,25 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
         }
     }
 
+    PyObject* pymode = GearsPyDict_GetItemString(kargs, "mode");
+    ExecutionMode mode = ExecutionModeAsync;
+    if(pymode){
+        if(PyUnicode_Check(pymode)){
+            const char* modeStr = PyUnicode_AsUTF8AndSize(pymode, NULL);
+            if(strcmp(modeStr, "async") == 0){
+                mode = ExecutionModeAsync;
+            }else if(strcmp(modeStr, "async_local") == 0){
+                mode = ExecutionModeAsyncLocal;
+            }else{
+                PyErr_SetString(GearsError, "unknown execution mode");
+                return NULL;
+            }
+        }else{
+            PyErr_SetString(GearsError, "execution mode must be a string");
+            return NULL;
+        }
+    }
+
     if(arg == NULL){
         return NULL;
     }
@@ -1565,7 +1584,7 @@ static PyObject* run(PyObject *self, PyObject *args,  PyObject *kargs){
 
     RedisGears_OnExecutionDoneCallback onDoneCallback = (!ptctx->currentCtx) ? dropExecutionOnDone : NULL;
 
-    ExecutionPlan* ep = RGM_Run(pfep->fep, ExecutionModeAsync, arg, onDoneCallback, NULL, &err);
+    ExecutionPlan* ep = RGM_Run(pfep->fep, mode, arg, onDoneCallback, NULL, &err);
     if(!ep){
         if(err){
             PyErr_SetString(GearsError, err);
