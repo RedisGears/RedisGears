@@ -181,7 +181,7 @@ Trying to run more than one function in the same execution will fail with an err
 
 **Python API**
 ```python
-class GearsBuilder.run(arg=None, convertToStr=True, collect=True)
+class GearsBuilder.run(arg=None, convertToStr=True, collect=True, mode='async')
 ```
 
 _Arguments_
@@ -192,6 +192,9 @@ _Arguments_
     * A Python generator for the [PythonReader](readers.md#pythonreader) reader
 * _convertToStr_: when `True` adds a [map](operations.md#map) operation to the flow's end that converts records to strings
 * _collect_: when `True` adds a [collect](operations.md#collect) operation to flow's end
+* _mode_: the execution mode of the function. Can be one of (notice that unlike register, `sync` is not supported on `run`):
+    * **'async'**: execution will be asynchronous across the entire cluster
+    * **'async_local'**: execution will be asynchronous and restricted to the handling shard
 
 **Examples**
 ```python
