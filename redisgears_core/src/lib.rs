@@ -925,7 +925,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
                 // read data from the stream
                 if !is_master(ctx) || ctx.avoid_replication_traffic() {
                     return Err(
-                        "Can not read data on replica or if avoid replication traffic is enabled"
+                        "Can not read data on replica or the \"avoid replication traffic\" option is enabled"
                             .to_string(),
                     );
                 }
@@ -1041,7 +1041,7 @@ fn function_call_command(
 
     if !verify_ok_on_replica(ctx, function.flags) {
         return Err(RedisError::Str(
-            "Err can not run a function that might perform writes on a replica or when avoid replication traffic is requested",
+            "Err can not run a function that might perform writes on a replica or when the \"avoid replication traffic\" option is enabled",
         ));
     }
 
