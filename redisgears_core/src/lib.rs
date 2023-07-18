@@ -505,6 +505,7 @@ struct GlobalCtx {
     allow_unsafe_redis_commands: bool,
     db_policy: DbPolicy,
     future_handlers: HashMap<String, Vec<Weak<RedisGILGuard<FutureHandlerContext>>>>,
+    avoid_replication_traffic: bool,
 }
 
 static mut GLOBALS: Option<GlobalCtx> = None;
@@ -922,8 +923,11 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         stream_ctx: StreamReaderCtx::new(
             Box::new(|ctx, key, id, include_id| {
                 // read data from the stream
-                if !is_master(ctx) {
-                    return Err("Can not read data on replica".to_string());
+                if !is_master(ctx) || ctx.avoid_replication_traffic() {
+                    return Err(
+                        "Can not read data on replica or the \"avoid replication traffic\" option is enabled"
+                            .to_string(),
+                    );
                 }
                 let stream_name = ctx.create_string(key);
                 let key = ctx.open_key(&stream_name);
@@ -969,6 +973,7 @@ fn js_init(ctx: &Context, _args: &[RedisString]) -> Status {
         allow_unsafe_redis_commands: false,
         db_policy: get_db_policy(ctx),
         future_handlers: HashMap::new(),
+        avoid_replication_traffic: false,
     };
 
     unsafe { GLOBALS = Some(global_ctx) };
@@ -1000,8 +1005,10 @@ pub(crate) fn is_master(ctx: &Context) -> bool {
 /// Returns `true` if the function with the specified flags is allowed
 /// to run on replicas in case the current instance is a replica.
 pub(crate) fn verify_ok_on_replica(ctx: &Context, flags: FunctionFlags) -> bool {
-    // master which is not readonly, ok to run || we can run function with no writes on replica.
-    (ctx.get_flags().contains(ContextFlags::MASTER) && !get_globals().db_policy.is_readonly())
+    // master which is not readonly and avoid replication traffic was not requested, ok to run || we can run function with no writes anyhow.
+    (ctx.get_flags().contains(ContextFlags::MASTER)
+        && !get_globals().db_policy.is_readonly()
+        && !ctx.avoid_replication_traffic())
         || flags.contains(FunctionFlags::NO_WRITES)
 }
 
@@ -1034,7 +1041,7 @@ fn function_call_command(
 
     if !verify_ok_on_replica(ctx, function.flags) {
         return Err(RedisError::Str(
-            "Err can not run a function that might perform writes on a replica",
+            "Err can not run a function that might perform writes on a replica or when the \"avoid replication traffic\" option is enabled",
         ));
     }
 
@@ -1226,8 +1233,10 @@ fn scan_key_space_for_streams(ctx: &Context) {
 }
 
 #[role_changed_event_handler]
-fn on_role_changed(ctx: &Context, role_changed: ServerRole) {
-    if let ServerRole::Primary = role_changed {
+fn on_role_changed(ctx: &Context, _role_changed: ServerRole) {
+    // we should use `is_master` here and not `_role_changed` because `is_master` will also
+    // return false in case its a read only master (replicaof PseudoSlaveReadonly)
+    if is_master(ctx) {
         ctx.log_notice("Role changed to primary, initializing key scan to search for streams.");
         scan_key_space_for_streams(ctx);
     } else {
@@ -1303,7 +1312,7 @@ fn on_config_change(ctx: &Context, values: &[&str]) {
 /// Will be called by Redis to execute some repeated tasks.
 /// Currently we will clean future handlers that has been finised.
 #[cron_event_handler]
-fn cron_event_handler(_ctx: &Context, _hz: u64) {
+fn cron_event_handler(ctx: &Context, _hz: u64) {
     let globals = get_globals_mut();
     globals.future_handlers = globals
         .future_handlers
@@ -1322,6 +1331,15 @@ fn cron_event_handler(_ctx: &Context, _hz: u64) {
             Some((k, res))
         })
         .collect();
+
+    if globals.avoid_replication_traffic && !ctx.avoid_replication_traffic() {
+        // avoid replication traffic was turned off, lets reinitiate stream processing.
+        if is_master(ctx) {
+            ctx.log_notice("Avoid replication traffic was disabled, initializing key scan to search for streams.");
+            scan_key_space_for_streams(ctx);
+        }
+    }
+    globals.avoid_replication_traffic = ctx.avoid_replication_traffic();
 }
 
 pub(crate) fn verify_name(name: &str) -> Result<(), String> {
