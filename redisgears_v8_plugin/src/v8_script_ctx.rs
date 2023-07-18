@@ -297,7 +297,8 @@ impl V8ScriptCtx {
         } else {
             let error = get_error_from_object(&res, &ctx_scope);
             // v callback gets an error object and it can not assume the V8 is locked so there is no
-            // reason not to release the isolate lock.
+            // reason not to release the isolate lock and this will also help to avoid deadlocks with
+            // the Redis GIL.
             let _unlocker = isolate_scope.new_unlocker();
             return on_done(Err(error));
         }
@@ -372,7 +373,8 @@ impl V8ScriptCtx {
                 on_done.take().map(|v| {
                     let res = Err(get_error_from_object(&res, ctx_scope));
                     // v callback gets an error object and it can not assume the V8 is locked so there is no
-                    // reason not to release the isolate lock.
+                    // reason not to release the isolate lock  and this will also help to avoid deadlocks with
+                    // the Redis GIL.
                     let _unlocker = isolate_scope.new_unlocker();
                     v(res);
                 });

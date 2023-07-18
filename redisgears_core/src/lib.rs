@@ -1234,6 +1234,8 @@ fn scan_key_space_for_streams(ctx: &Context) {
 
 #[role_changed_event_handler]
 fn on_role_changed(ctx: &Context, _role_changed: ServerRole) {
+    // we should use `is_master` here and not `_role_changed` because `is_master` will also
+    // return false in case its a read only master (replicaof PseudoSlaveReadonly)
     if is_master(ctx) {
         ctx.log_notice("Role changed to primary, initializing key scan to search for streams.");
         scan_key_space_for_streams(ctx);
