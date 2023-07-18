@@ -20,6 +20,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
     GearsApiError,
 };
 
+mod v8_api;
 mod v8_backend;
 mod v8_function_ctx;
 mod v8_native_functions;
