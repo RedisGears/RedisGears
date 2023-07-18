@@ -151,7 +151,6 @@ fn main() {
         _ => format!("{os_type}{os_ver}"),
     };
 
-
     let mut os_arch = std::env::consts::ARCH.to_string().to_lowercase();
     if os_arch == "aarch64" {
         os_arch = "arm64v8".to_string();

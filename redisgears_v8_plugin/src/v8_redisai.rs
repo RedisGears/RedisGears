@@ -4,7 +4,7 @@
  * the Server Side Public License v1 (SSPLv1).
  */
 
-use crate::v8_script_ctx::V8ScriptCtx;
+use crate::{v8_api::JSApiFunction, v8_script_ctx::V8ScriptCtx};
 use std::sync::{Arc, Mutex, Weak};
 
 use v8_rs::v8::{
@@ -20,6 +20,8 @@ use std::cell::RefCell;
 use redisgears_plugin_api::redisgears_plugin_api::redisai_interface::AITensorInterface;
 
 use v8_derive::new_native_function;
+
+use redisgears_macros_internals::js_api_function;
 
 // Silenced due to actually having a need to return a reference to a
 // boxed trait object, as we store boxed trait objects. We could store
@@ -93,44 +95,33 @@ pub(crate) fn get_tensor_object_template(
     obj_template.persist()
 }
 
-pub(crate) fn get_redisai_api<'isolate, 'isolate_scope>(
-    script_ctx: &Arc<V8ScriptCtx>,
-    isolate_scope: &'isolate_scope V8IsolateScope<'isolate>,
-    ctx_scope: &V8ContextScope<'isolate_scope, 'isolate>,
-) -> V8LocalValue<'isolate_scope, 'isolate> {
-    let redis_ai = isolate_scope.new_object();
-
-    let script_ctx_ref = Arc::downgrade(script_ctx);
-    redis_ai.set_native_function(
-        ctx_scope,
-        "create_tensor",
-        new_native_function!(move |isolate_scope,
-                                   ctx_scope,
-                                   data_type_utf8: V8LocalUtf8,
-                                   dims: V8LocalArray,
-                                   data: V8LocalArrayBuffer| {
-            let mut dims_vec = Vec::new();
-            for i in 0..dims.len() {
-                let val = dims.get(ctx_scope, i);
-                if !val.is_long() {
-                    return Err("Tensor dims must be integers".to_string());
-                }
-                dims_vec.push(val.get_long());
-            }
-
-            let s = script_ctx_ref
-                .upgrade()
-                .ok_or("On redisai_create_tensor, use of invalid script ctx.".to_string())?;
-            let tensor = s
-                .compiled_library_api
-                .redisai_create_tensor(data_type_utf8.as_str(), &dims_vec, data.data())
-                .map_err(|e| e.get_msg().to_string())?;
-            let tensor_obj = get_js_tensor_from_tensor(&s, isolate_scope, ctx_scope, tensor);
-            Ok(Some(tensor_obj.to_value()))
-        }),
+#[js_api_function({available_since: "1.0", object: "redis/redisai"})]
+fn create_tensor<'c_s, 'i_s, 'i>(
+    function_ctx: JSApiFunction<'c_s, 'i_s, 'i>,
+    data_type_utf8: V8LocalUtf8,
+    dims: V8LocalArray,
+    data: V8LocalArrayBuffer,
+) -> Result<Option<V8LocalValue<'i_s, 'i>>, String> {
+    let mut dims_vec = Vec::new();
+    for i in 0..dims.len() {
+        let val = dims.get(function_ctx.ctx_scope, i);
+        if !val.is_long() {
+            return Err("Tensor dims must be integers".to_string());
+        }
+        dims_vec.push(val.get_long());
+    }
+    let tensor = function_ctx
+        .script_ctx
+        .compiled_library_api
+        .redisai_create_tensor(data_type_utf8.as_str(), &dims_vec, data.data())
+        .map_err(|e| e.get_msg().to_string())?;
+    let tensor_obj = get_js_tensor_from_tensor(
+        &function_ctx.script_ctx,
+        function_ctx.isolate_scope,
+        function_ctx.ctx_scope,
+        tensor,
     );
-
-    redis_ai.to_value()
+    Ok(Some(tensor_obj.to_value()))
 }
 
 pub(crate) fn get_redisai_client<'isolate, 'isolate_scope>(

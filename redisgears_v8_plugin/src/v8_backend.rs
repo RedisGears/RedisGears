@@ -18,7 +18,7 @@ use redisgears_plugin_api::redisgears_plugin_api::{
 use v8_rs::v8::isolate_scope::GarbageCollectionJobType;
 use v8_rs::v8::v8_version;
 
-use crate::v8_native_functions::{initialize_globals_for_version, ApiVersionSupported};
+use crate::v8_api::{initialize_globals_for_version, ApiVersionSupported};
 use crate::v8_script_ctx::V8ScriptCtx;
 
 use v8_rs::v8::{isolate::V8Isolate, v8_init_with_error_handlers};
@@ -498,6 +498,8 @@ impl BackendCtxInterfaceInitialised for V8Backend {
             ));
         }
 
+        let api_version_supported: ApiVersionSupported = api_version.try_into()?;
+
         let isolate = V8Isolate::new_with_limits(initial_memory_usage(), initial_memory_limit());
 
         let script_ctx = {
@@ -548,6 +550,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                 script,
                 tensor_obj_template,
                 compiled_library_api,
+                api_version_supported,
             ));
             let len = {
                 let mut l = self.script_ctx_vec.lock().unwrap();
@@ -561,7 +564,6 @@ impl BackendCtxInterfaceInitialised for V8Backend {
             {
                 let isolate_scope = script_ctx.isolate.enter();
                 let ctx_scope = script_ctx.ctx.enter(&isolate_scope);
-                let globals = ctx_scope.get_globals();
 
                 let oom_script_ctx = Arc::downgrade(&script_ctx);
 
@@ -609,8 +611,6 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                         new_isolate_limit
                     });
 
-                let api_version_supported: ApiVersionSupported = api_version.try_into()?;
-
                 api_version_supported
                     .validate_code(code)
                     .iter()
@@ -621,16 +621,7 @@ impl BackendCtxInterfaceInitialised for V8Backend {
                             .compiled_library_api
                             .log_info(&format!("Module \"{module_name}\": {message}"))
                     });
-
-                let api_version_supported = api_version_supported.into_latest_compatible();
-                initialize_globals_for_version(
-                    api_version_supported,
-                    &script_ctx,
-                    &globals,
-                    &isolate_scope,
-                    &ctx_scope,
-                    config,
-                )?;
+                initialize_globals_for_version(&script_ctx, &isolate_scope, &ctx_scope, config)?;
             }
 
             script_ctx

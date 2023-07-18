@@ -28,6 +28,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use crate::v8_api::ApiVersionSupported;
 use crate::{get_error_from_object, get_exception_msg};
 
 pub(crate) enum GilState {
@@ -122,6 +123,9 @@ pub(crate) struct V8ScriptCtx {
     /// Signifies the present locking status of the running JavaScript code,
     /// enabling us to distinguish between background JS code execution and JS code that holds a lock on Redis.
     pub(crate) lock_state: RefCellWrapper<GilStateCtx>,
+
+    /// API version to expose to the library
+    pub(crate) api_version: ApiVersionSupported,
 }
 
 pub(crate) struct OnDoneCtx<'isolate_scope, 'isolate, 'ctx_scope> {
@@ -138,6 +142,7 @@ impl V8ScriptCtx {
         script: V8PersistedScript,
         tensor_object_template: V8PersistedObjectTemplate,
         compiled_library_api: Box<dyn CompiledLibraryInterface + Send + Sync>,
+        api_version: ApiVersionSupported,
     ) -> Self {
         Self {
             name,
@@ -150,6 +155,7 @@ impl V8ScriptCtx {
             lock_state: RefCellWrapper {
                 ref_cell: RefCell::new(GilStateCtx::new()),
             },
+            api_version,
         }
     }
 
