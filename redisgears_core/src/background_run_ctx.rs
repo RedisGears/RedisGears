@@ -159,7 +159,7 @@ impl BackgroundRunFunctionCtxInterface for BackgroundRunCtx {
         let detached_ctx_guard = redis_module::MODULE_CONTEXT.lock();
         if !verify_ok_on_replica(&detached_ctx_guard, self.call_options.flags) {
             return Err(GearsApiError::new(
-                "Can not lock redis for write on replica".to_string(),
+                "Can not lock redis for write on replica or when avoid replication traffic is requested".to_string(),
             ));
         }
         if !verify_oom(&detached_ctx_guard, self.call_options.flags) {

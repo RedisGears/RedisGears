@@ -296,6 +296,9 @@ impl V8ScriptCtx {
             }));
         } else {
             let error = get_error_from_object(&res, &ctx_scope);
+            // v callback gets an error object and it can not assume the V8 is locked so there is no
+            // reason not to release the isolate lock.
+            let _unlocker = isolate_scope.new_unlocker();
             return on_done(Err(error));
         }
     }
@@ -364,10 +367,14 @@ impl V8ScriptCtx {
             }
         ));
         let reject = ctx_scope.new_native_function(new_native_function!(
-            move |_isolate_scope, ctx_scope, res: V8LocalValue| {
+            move |isolate_scope, ctx_scope, res: V8LocalValue| {
                 let mut on_done = on_done_reject.borrow_mut();
                 on_done.take().map(|v| {
-                    v(Err(get_error_from_object(&res, ctx_scope)));
+                    let res = Err(get_error_from_object(&res, ctx_scope));
+                    // v callback gets an error object and it can not assume the V8 is locked so there is no
+                    // reason not to release the isolate lock.
+                    let _unlocker = isolate_scope.new_unlocker();
+                    v(res);
                 });
                 Ok::<_, String>(None)
             }
